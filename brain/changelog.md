@@ -1,3 +1,28 @@
+## 2026-04-10 (leaderboard — live data)
+
+### feat: leaderboard wired to live Supabase data
+
+**Commits:** leaderboard EF v1 deployed to Supabase; vyve-site 7691280542f8
+
+**leaderboard Edge Function v1** (new EF, verify_jwt: false, JWT-preferred auth)
+- Queries `daily_habits`, `workouts`, `cardio`, `session_views` for current calendar month across all members
+- Includes all members table entries (zero-activity members appear at bottom)
+- Per-member counts: all activities, habits only, workouts only, streak
+- **Streak:** consecutive days back from today where any activity of any type was logged
+- Returns: `first_name`, plus per-metric objects (`all`, `habits`, `workouts`, `streak`) each containing `your_rank`, `total_members`, `your_count`, `above` (anonymous), `below_count`, `gap`
+- All members above caller returned as anonymous — no names, no emails exposed
+
+**leaderboard.html** — full rewrite
+- Removed Sage and My team scope tabs — All members only
+- All 4 metric tabs (All / Habits / Workouts / Streak) now live — switch client-side from single EF response
+- Your position card, above board, gap nudge all rendered from live data
+- Zero hardcoded mock data remaining
+- Dynamic month label in pill (JS, not hardcoded)
+- Streak tab gap nudge uses "days" unit not "activities"
+- Loading state shown while EF responds; error state if EF fails
+
+`sw.js` cache bumped: `vyve-cache-v2026-04-10m` → `vyve-cache-v2026-04-10n`
+
 ## 2026-04-10 (workouts modularisation)
 
 ### refactor: workouts.html — split inline JS into 6 modules

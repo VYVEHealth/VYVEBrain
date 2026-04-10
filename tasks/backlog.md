@@ -16,6 +16,8 @@
 
 ## This Week
 
+- ~~Leaderboard: remove Sage/My team tabs, wire to live data~~ ✅ — done 10 Apr, EF leaderboard v1, commit 7691280
+
 - Brevo logo removal (~$12/month)
 - Facebook Make connection refresh — EXPIRES 22 MAY 2026
 - Re-engagement automations x3 — blocked on Lewis email copy
