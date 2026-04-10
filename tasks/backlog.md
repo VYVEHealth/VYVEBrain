@@ -4,6 +4,7 @@
 
 ## Do Now
 
+- Delete `results-preview.html` from Test-Site-Finalv3 once QA sign-off complete
 - Push notification permission request (Capacitor blocker)
 - Health disclaimer — Lewis sign-off needed (Capacitor blocker)
 - Add monthly-checkin link to portal nav / dashboard
@@ -46,3 +47,10 @@
 - External DPO service
 - Grant applications (National Lottery, The Fore)
 - WHISPA research partnership
+
+## Onboarding QA — Deferred (needs Lewis)
+
+- Section H title "Routine & motivation" — add context e.g. "with life in general". Question "What would help you most right now?" needs clearer framing (Alan feedback #6)
+- Questionnaire tone — make it feel more accessible for people who aren't self-aware about their health habits (Alan feedback #7)
+- Intro video on welcome screen — still needed to contextualise skip behaviour and optional answers (Alan feedback #8, #2)
+- Section J / "Specific goal for the week ahead" — decide how to handle nonsense free-text input in AI prompt (Alan feedback #9)
