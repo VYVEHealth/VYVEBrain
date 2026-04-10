@@ -1,3 +1,28 @@
+## 2026-04-10 (workouts modularisation)
+
+### refactor: workouts.html — split inline JS into 6 modules
+
+**Commit:** b28c2b79b6754b58bf1dda79873f94b903bae851
+
+workouts.html was 2,117 lines / 131KB with a single 1,575-line inline `<script>` block. Every future edit had the large-file deployment problem (>10KB Composio inline limit). Split into named `<script src="...">` files — no bundler, no `type="module"`, no behaviour changes.
+
+| File | Lines | Responsibility |
+|------|-------|----------------|
+| `workouts-config.js` | 81 | Consts, 26 globals, `getJWT`, utility functions |
+| `workouts-programme.js` | 237 | Programme load/render, exercise library cache, custom workouts |
+| `workouts-session.js` | 598 | Session open/close, set logging, timers, completion flow |
+| `workouts-exercise-menu.js` | 269 | Exercise menus, reorder, swap/add, history view |
+| `workouts-builder.js` | 153 | Custom workout builder, rest settings |
+| `workouts-notes-prs.js` | 235 | Notes, PRs, sessions history, MutationObserver boot |
+
+`workouts.html` reduced from 2,117 → 548 lines (CSS + HTML shell + 6 `<script src>` tags).
+
+**Verification:** 89/89 functions present across modules. Zero missing, zero extra.
+
+**Load order:** config → programme → session → exercise-menu → builder → notes-prs → nav.js
+
+`sw.js` cache bumped: `vyve-cache-v2026-04-10l` → `vyve-cache-v2026-04-10m`
+
 ## 2026-04-10 (settings page — persona selector, habit manager, goals, units, ai_decisions)
 
 ### New features deployed

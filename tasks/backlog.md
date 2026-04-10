@@ -38,7 +38,7 @@
 
 - Capacitor wrap for iOS + Android
 - Exercise page redesign — umbrella page with gym / cardio / walking plans (product decision pending)
-- Modularise workouts.html
+- ~~Modularise workouts.html~~ ✅ — done 10 Apr, commit b28c2b79
 - Build process / bundler
 - ARIA labels
 - Sentry, PostHog events, TypeScript
