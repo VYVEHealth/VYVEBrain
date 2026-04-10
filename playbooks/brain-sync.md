@@ -1,5 +1,7 @@
 # Brain Sync System
 
+This file is a system-level playbook and must always be followed when performing any Brain Sync operation.
+
 ## Overview
 
 This playbook maintains the External Brain — a clean, structured, persistent system that allows the business to operate independently of any single AI model or chat session.
