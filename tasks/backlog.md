@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Prioritised list of outstanding work. Updated 10 April 2026 (late evening).
+> Prioritised list of outstanding work. Updated 10 April 2026 (evening — bug fix session).
 
 ## Do Now
 
@@ -23,7 +23,11 @@
 - Fix Make social publisher (Scenario 4950386) — 133 posts stuck
 - Consolidate duplicate RLS policies
 - Stuart Watts old account (`swatts@geoffreyrobinson.co.uk`) — decide whether to migrate 12 legacy workout logs to new Gmail account
+- Suppress portrait lock overlay during active workout session (iOS only — currently shows if rotated mid-set)
 - ~~Running plan truncation on long plans~~ — fixed, max_tokens raised to 16000 ✅
+- ~~workouts.html: reorder wipes in-progress sets~~ — fixed ✅
+- ~~workouts.html: PR/history scroll locked + content under nav~~ — fixed ✅
+- ~~workouts.html: navigating away mid-workout resets session~~ — fixed, session persisted to localStorage ✅
 - ~~settings.html: Contact support mailto broken (iOS Mail)~~ — fixed ✅
 - ~~settings.html: Privacy Policy link 404~~ — fixed ✅
 - ~~how-to-videos.html / how-to-pdfs.html: missing nav, auth gate, back button~~ — replaced with clean placeholders ✅
