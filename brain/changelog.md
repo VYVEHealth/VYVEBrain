@@ -1,5 +1,37 @@
 # VYVE Brain Changelog
 
+## 2026-04-10 (onboarding QA — welcome.html)
+
+### welcome.html — fix: text contrast across full questionnaire (light mode)
+- `--text-2` bumped from `#3A5A5A` to `#1E3C3C` in light theme block
+- `--text-3` bumped from `#7A9A9A` to `#4A7272` in light theme block
+- Affects all question labels, hints, slider end labels, and sub-text. welcome.html has its own inline CSS block so change is isolated to onboarding only.
+
+### welcome.html — feat: city/town searchable dropdown for location field
+- Replaced plain text input with type-ahead dropdown backed by static JS array of ~100 UK cities and towns
+- Filters on 2+ characters, shows max 8 results, click/tap to select, closes on blur
+- Hint updated: "Start typing your city or town — if it doesn't appear, just type it in and continue"
+- No external API dependency — fully self-contained
+
+### welcome.html — fix: email sender address in results screen
+- "What happens next" paragraph now explicitly names `team@vyvehealth.co.uk` as the sender
+- Copy: "Keep an eye out for a welcome email from team@vyvehealth.co.uk"
+
+### welcome.html — feat: persona card — coach explanation line
+- Static line added below AI-generated persona reason on results screen
+- Copy: "Your coach shapes every recommendation, check-in, and message you receive. You can change them anytime in your settings."
+
+### welcome.html — feat: "What's inside VYVE" feature showcase on results screen
+- New section below "What happens next" card
+- 7 features: 8-week programme, AI coaching, daily habits, live sessions, nutrition, weekly check-ins, certificates/leaderboards/charity
+- Each item has bold title + 1-sentence description emphasising personalisation and ability to update anytime
+- No emojis (Lewis preference — applied globally to welcome.html)
+
+### results-preview.html — added to Test-Site-Finalv3
+- Standalone QA preview page at www.vyvehealth.co.uk/results-preview.html
+- Shows mocked results screen with realistic data for review
+- Temporary file — delete once QA sign-off complete
+
 ## 2026-04-10 (evening — bug fixes session)
 
 ### workouts.html — fix: reorder wipes in-progress sets
