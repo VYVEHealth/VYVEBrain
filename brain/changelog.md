@@ -34,3 +34,15 @@
 
 ### Data Source
 All verified against live Supabase project ixjfklpckgxrwjlfsaaz on 10 April 2026.
+
+## 2026-04-10 (evening)
+
+### Repo Hygiene
+- `VYVEHealth/VYVEBrain` set to private — contains Supabase IDs, API keys references, commercial pipeline
+- Removed duplicate `brain-sync.md` from repo root (canonical copy is `playbooks/brain-sync.md`)
+
+### vyve-site Actions Cleanup
+- Deleted dead `.github/workflows/inject-key.yml` — legacy workflow from before `anthropic-proxy` EF existed
+- Verified `running-plan.html` already uses `anthropic-proxy` EF v5 (no placeholder, no key in HTML)
+- `static.yml` (GitHub Pages deploy) retained — only workflow now running on vyve-site
+- Commit: f557dae
