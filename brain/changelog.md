@@ -1,3 +1,53 @@
+## 2026-04-10 (onboarding — major bug fixes & persona logic corrections)
+
+### Root causes fixed
+Three separate bugs were silently preventing habit assignment for every new member since v44:
+1. **FK race condition** — `writeHabits` fired in parallel with `writeMember`. When `writeHabits` beat the DB, the FK on `member_email` failed. Fixed in v44: two-stage Promise.all, `writeMember` commits first.
+2. **`assigned_by: 'onboarding_ai'`** — check constraint on `member_habits` only allows `'onboarding'`, `'ai'`, `'theme_update'`, `'self'`. Fixed in v46: changed to `'onboarding'`.
+3. **Stress scale inverted** — onboarding questionnaire labels stress 1=very stressed, 10=very calm. All code treated high stress as negative. Fixed in v45: flipped all hard rules, added scale reminders to all AI prompts.
+
+### onboarding v47 (deployed as EF version 50) — cumulative fixes
+- **v44**: Two-stage Promise.all — `writeMember` then FK-safe writes
+- **v45**: Corrected stress scale throughout — RIVER hard rule: `stress <= 3` (not `>= 7`), NOVA: `stress >= 7` (not `<= 4`)
+- **v46**: `assigned_by: 'onboarding'` (was `'onboarding_ai'` — check constraint violation)
+- **v47**: NOVA hard rule now requires 1-2 goals max where performance is dominant. Members with 3+ mixed goals go to AI path.
+
+### welcome.html — fix: silent failure with fake results
+- Previously: any EF failure (timeout, error) showed fake hardcoded RIVER results. Member thought they'd onboarded. Nothing wrote to DB.
+- Now: 90s `AbortController` timeout. At 30s loading text updates. On failure: error screen with retry button. Stored form data allows retry without re-filling questionnaire. Up to 3 retries.
+- Commit: `9fb62ad5890b` in Test-Site-Finalv3
+
+### Persona corrections (inverted stress scale)
+| Member | Old (wrong) | New (correct) | Reason |
+|--------|-------------|---------------|--------|
+| Stuart Watts | RIVER | NOVA | stress 7=calm, wellbeing 8, energy 8, gym 4x, holiday goal |
+| Alan Bird | RIVER | SPARK | stress 10=very calm but energy 5, mixed lifestyle goals |
+| Dean Brown | NOVA | SPARK | stress 8=calm but 5 mixed goals, 1-2 days/week, demanding work context |
+
+### Alan Bird — habits corrected
+Previous habits were based on wrong assumption he was stressed. Replaced stress-relief set with goal-aligned set:
+- Removed: Consistent bedtime, Pre-sleep wind-down routine, Daily breathing exercise
+- Added: Drink 2 litres of water, Eat breakfast, Move every hour
+
+### Members backfilled (had no habits due to bugs)
+- Alan Bird, Stuart Watts, Owen Barrett: habits manually inserted
+- Owen Barrett: workout plan triggered (had no plan)
+- Callum Budzinski: workout plan triggered
+- Kelly Bestford, Lewis Vines, Callum Budzinski: habits manually inserted
+
+### daily_habits table fixes
+- Unique constraint added: `(member_email, activity_date, habit_id)` — one row per habit per day
+- Cap trigger raised from 1/day to 10/day — allows all 5 habits to log
+- On conflict key in portal updated to `member_email,activity_date,habit_id`
+
+### habits.html fixes
+- Bottom bar: removed `position:fixed` — now flows inline below habits list (was overlapping)
+- Auth: upgraded from polling `waitForAuth` to event-driven `vyveAuthReady`
+- sw.js bumped to `vyve-cache-v2026-04-10k`
+
+
+---
+
 ## 2026-04-10 (performance — caching & loading)
 
 ### sw.js — perf: cache-first portal HTML + Supabase thumbnail caching
