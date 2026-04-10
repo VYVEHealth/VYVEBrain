@@ -1,5 +1,16 @@
 # VYVE Brain Changelog
 
+## 2026-04-10 (evening)
+
+### workouts.html — fix: reorder wipes in-progress sets
+- **Bug:** Opening the reorder modal mid-session and saving the new order called `renderSessionBody()`, which rebuilt the entire DOM from scratch. All ticked sets, kg/reps values, and bodyweight toggles were lost.
+- **Fix:** `saveReorder()` now captures a snapshot of all per-exercise DOM state (kg, reps, ticked, bodyweight, notes) keyed by exercise name before reordering. After `renderSessionBody()` re-renders, the snapshot is replayed back into the new DOM positions.
+- Exercise name is the stable key — this works correctly because reorder doesn't change the exercises, only their positions.
+- commit b93fd175
+
+### sw.js — cache bump vyve-cache-v2026-04-10d → vyve-cache-v2026-04-10e
+
+
 ## 2026-04-10 (late evening session)
 
 ### settings.html — 3 fixes
