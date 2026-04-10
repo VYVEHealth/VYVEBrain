@@ -1,3 +1,33 @@
+## 2026-04-10 (settings page — persona selector, habit manager, goals, units, ai_decisions)
+
+### New features deployed
+
+**settings.html** — major update with 4 new sections:
+
+1. **AI Coach section** — shows current persona name + description. Displays why the coach was chosen, pulled from new `ai_decisions` table (falls back to `members.persona_reason`). "Change coach" bottom sheet shows all 5 personas with descriptions. HAVEN shown as coming soon. Change takes effect immediately, writes to `persona_switches` + `ai_decisions` with `triggered_by: 'self'`.
+
+2. **Daily Habits section** — shows current habits as tags. "Manage habits" bottom sheet shows all 30 habits from `habit_library` grouped by pot (Sleep, Movement, Nutrition, Mindfulness, Social). Max 10 selectable. Saves to `member_habits` with `assigned_by: 'self'`. Logs to `ai_decisions`.
+
+3. **Your Goals section** — 8-button grid (Lose weight, Build muscle, Improve fitness, Reduce stress, Better sleep, Build consistency, More energy, General health). Saves immediately to `members.specific_goal`. Logs to `ai_decisions`.
+
+4. **Units section** — weight (kg/lbs/stone) and height (cm/ft) toggles. Saves to new `members.weight_unit` and `members.height_unit` columns.
+
+### New infrastructure
+
+- **`ai_decisions` table** — created with RLS. Columns: `id`, `member_email`, `decision_type` (persona_assigned/habit_assigned/goal_updated/persona_changed), `decision_value`, `reasoning`, `triggered_by`, `created_at`. Members can read their own rows. Service role inserts.
+
+- **`members.weight_unit` + `members.height_unit`** — new columns, default 'kg' and 'cm'.
+
+### onboarding v48 (EF version 51)
+
+- `selectPersona()` now calls Claude to generate a specific, member-facing reasoning paragraph for every assignment — hard-rule or AI path. Format: "Based on your onboarding responses: [specific signals]. [Coach] is [reason]."
+- `selectHabits()` now returns both `ids` and `reasoning` — Claude explains which profile signals drove the habit selection.
+- New `writeAiDecisions()` function writes two rows to `ai_decisions` at onboarding: one for persona, one for habits.
+- Response now includes `ai_reasoning` and `habit_reasoning` fields.
+
+### sw.js
+Cache bumped: `vyve-cache-v2026-04-10k` → `vyve-cache-v2026-04-10l`
+
 ## 2026-04-10 (onboarding — major bug fixes & persona logic corrections)
 
 ### Root causes fixed
