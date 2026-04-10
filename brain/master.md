@@ -1,7 +1,7 @@
 # VYVE Health — Master Brain Document
 
 > This document gives any AI everything it needs to understand and operate on the VYVE Health platform.
-> Last verified: 10 April 2026 against live Supabase project ixjfklpckgxrwjlfsaaz.
+> Last verified: 11 April 2026 against live Supabase project ixjfklpckgxrwjlfsaaz.
 
 ---
 
@@ -68,6 +68,17 @@ Supabase Auth with auth.js v2.2. All portal pages gated. Auth0 is FULLY RETIRED.
 Single-file HTML pages. Self-contained inline CSS/JS. No build process, no bundler.
 
 Key files: index.html (dashboard), habits.html, workouts.html, nutrition.html, log-food.html, wellbeing-checkin.html, monthly-checkin.html, sessions.html, running-plan.html, settings.html, certificates.html, engagement.html, leaderboard.html, login.html, set-password.html, strategy.html (password: vyve2026), sw.js, auth.js, theme.js, nav.js.
+
+**nav.js injection heights (mobile ≤768px):**
+- Mobile top header: `position:sticky; top:0; height:56px`
+- Bottom nav: `position:fixed; bottom:0; z-index:9999; ~80px tall`
+- Body gets `padding-bottom: calc(80px + env(safe-area-inset-bottom,0px)) !important`
+- Any page-level sticky element must use `top:56px` on mobile, not `top:0`
+- Modals must use `z-index:10001` minimum to render above the bottom nav
+
+**sw.js cache version:** `vyve-cache-v2026-04-10q` (bump letter after every portal push)
+
+**settings.html:** Cache-first load via `vyve_settings_cache` (localStorage, 10-min TTL). UI populates instantly from cache; Supabase refreshes in background. Both modals (coach, habits) use `z-index:10001`, `stopPropagation` on sheet, sticky CTA footer.
 
 ### Onboarding Form
 `www.vyvehealth.co.uk/welcome` = `welcome.html` in `Test-Site-Finalv3` repo. This calls the onboarding Edge Function. NOT onboarding_v8.html (old name).
@@ -221,6 +232,9 @@ AI selects 5 habits from 30 in habit_library using member's profile:
 14. Dean does not use Make. Lewis only.
 15. **Stress scale: 1=very stressed, 10=very calm. NEVER treat high stress as negative.**
 16. **member_habits.assigned_by: only 'onboarding', 'ai', 'theme_update', 'self' allowed.**
+17. **Nav overlap rule:** Sticky elements inside portal pages must use `top:56px` (not `top:0`) on mobile (`max-width:768px`) to clear the nav.js mobile header. The bottom nav is `z-index:9999`; modals must be `z-index:10001` or higher.
+18. **Modal sheets must `stopPropagation`:** Add `onclick="event.stopPropagation()"` to `.modal-sheet` so tapping inside the modal never bubbles to the overlay and closes it.
+19. **Settings cache:** `vyve_settings_cache` in localStorage, 10-min TTL, keyed to user email. `populateFromCache()` fills UI immediately; `loadProfile()` refreshes in background.
 
 ---
 

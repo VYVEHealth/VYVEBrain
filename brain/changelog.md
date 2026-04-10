@@ -1,3 +1,71 @@
+## 2026-04-11 (nav overlap fixes + settings overhaul)
+
+### fix: content hidden under nav on 3 portal pages
+
+**Files:** `workouts.html`, `log-food.html`, `sessions.html`, `sw.js`
+`sw.js` cache bumped: `vyve-cache-v2026-04-10n` → `vyve-cache-v2026-04-10o`
+
+Full audit of all 15 portal pages against nav.js injection (56px mobile header, 80px bottom nav, z-index 9999).
+
+**workouts.html** — sticky sub-view headers (`.es-header`, `.sh-header`, `.prs-header`, `.hist-header`) had `top:0`, sitting under the 56px mobile nav on scroll. Added:
+```css
+@media(max-width:768px){ .es-header,.sh-header,.prs-header,.hist-header{top:56px} }
+```
+
+**log-food.html** — internal `.top-bar` (`position:sticky;top:0`) clipped under mobile nav. Added:
+```css
+@media(max-width:768px){ .top-bar{top:56px} }
+```
+
+**sessions.html** — duplicate `.mob-page-header` CSS block (`position:sticky;top:0`) was dead code; nav.js injects the real element. Removed the block entirely.
+
+**Clean pages (no changes needed):** `index`, `habits`, `nutrition`, `settings`, `wellbeing-checkin`, `certificates`, `engagement`, `leaderboard`, `running-plan`, `login`, `set-password`.
+
+---
+
+### fix(settings): habits modal — save button buried under bottom nav + no close button
+
+**Files:** `settings.html`, `sw.js`
+`sw.js` cache bumped: `vyve-cache-v2026-04-10o` → `vyve-cache-v2026-04-10p`
+
+**Root cause:** `.modal-overlay` had `z-index:1000`; bottom nav is `z-index:9999`. Modal rendered *under* the nav.
+
+- `.modal-overlay` z-index: `1000 → 10001` (above nav) — applied to both habits and persona modals
+- `.modal-sheet` converted to `display:flex; flex-direction:column` — enables sticky footer
+- `.modal-cta` (Cancel / Save buttons) now `position:sticky; bottom:0` — always visible regardless of list length
+- Habits list wrapped in `.modal-body` (`flex:1; overflow-y:auto`) — scrollable content area
+- Added ✕ close button to header of both habits modal and persona modal
+- Sheet padding moved from shorthand to `padding:20px 20px 0` with CTA handling its own bottom safe-area
+
+---
+
+### fix(settings): persona modal closes before save + AI reasoning → clean bestFor snippets + cache-first load
+
+**Files:** `settings.html`, `sw.js`
+`sw.js` cache bumped: `vyve-cache-v2026-04-10p` → `vyve-cache-v2026-04-10q`
+
+**Bug 1 — modal closes on tap inside sheet:**
+Added `onclick="event.stopPropagation()"` to `.modal-sheet` on both modals. Touch events no longer bubble up to the overlay, so only tapping the dark backdrop closes the modal.
+
+**Bug 2 — verbose AI reasoning replaced with clean "Best for" snippet:**
+- Removed `ai_decisions` Supabase fetch from page load (one fewer round trip)
+- "Why this coach was chosen" label → "Best for"
+- Box is now always visible (was `display:none` until DB returned)
+- Each persona now has a `bestFor` field in the JS `PERSONAS` object:
+  - **NOVA** — People driven by targets who want every session to count
+  - **RIVER** — Anyone managing stress, burnout, or poor sleep
+  - **SPARK** — People who struggle with consistency and need an energetic nudge
+  - **SAGE** — Members who want to understand the science behind their choices
+  - **HAVEN** — Anyone needing a safe, non-judgmental space for mental health
+
+**Feature — settings cache-first load:**
+- `populateFromCache(cache)` function fills UI instantly from `localStorage` (`vyve_settings_cache`)
+- Cache TTL: 10 minutes; keyed to user email
+- `waitForAuth` reads cache first → shows full UI immediately → Supabase refreshes in background
+- Cache written at end of `loadProfile`; updated on persona save
+
+---
+
 ## 2026-04-10 (leaderboard — live data)
 
 ### feat: leaderboard wired to live Supabase data
