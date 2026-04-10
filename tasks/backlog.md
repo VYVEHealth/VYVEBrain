@@ -4,7 +4,7 @@
 
 ## Do Now
 
-- Delete `results-preview.html` from Test-Site-Finalv3 once QA sign-off complete
+- ~~Delete `results-preview.html` from Test-Site-Finalv3~~ — deleted ✅
 - Push notification permission request (Capacitor blocker)
 - Health disclaimer — Lewis sign-off needed (Capacitor blocker)
 - Add monthly-checkin link to portal nav / dashboard
