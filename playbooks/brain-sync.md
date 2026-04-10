@@ -1,10 +1,10 @@
 # Brain Sync System
 
-This file is a system-level playbook and must always be followed when performing any Brain Sync operation.
-
 ## Overview
 
 This playbook maintains the External Brain — a clean, structured, persistent system that allows the business to operate independently of any single AI model or chat session.
+
+This file is a system-level playbook and must always be followed when performing any Brain Sync operation.
 
 The purpose is to:
 - preserve confirmed knowledge
@@ -20,7 +20,7 @@ The goal is NOT to:
 
 ---
 
-# Core Principle
+## Core Principle
 
 Only promote SIGNAL, never NOISE.
 
@@ -30,15 +30,15 @@ Before saving anything, validate:
 3. Does it belong in a structured file?
 4. Is it better than what already exists?
 
-If not — do not save it.
+If not, do not save it.
 
 ---
 
-# Sync Types
+## Sync Types
 
-## 1. Session Sync
+### 1. Session Sync
 
-### When to use
+#### When to use
 Run at the end of any meaningful work session where:
 - repo changes were made
 - a task was completed
@@ -46,88 +46,87 @@ Run at the end of any meaningful work session where:
 - a playbook was improved
 - a key decision was made
 
-### Trigger
-"Run Brain Sync"  
-or  
-"Run session sync"
+#### Trigger
+- Run Brain Sync
+- Run session sync
 
 ---
 
-## 2. Daily Sync
+### 2. Daily Sync
 
-### When to use
+#### When to use
 Run once at the end of the day to:
 - consolidate updates
 - clean tasks
 - update changelog
 - remove duplication
 
-### Trigger
-"Run daily sync"
+#### Trigger
+- Run daily sync
 
 ---
 
-## 3. Recovery Sync
+### 3. Recovery Sync
 
-### When to use
+#### When to use
 Run after disruption:
 - account issues
 - model switching
 - context loss
 
-### Trigger
-"Run recovery sync"
+#### Trigger
+- Run recovery sync
 
 ---
 
-# File Structure
+## File Structure
 
-## Brain
-- `/brain/master.md` → core knowledge  
-- `/brain/how-to-use.md` → operating instructions  
-- `/brain/changelog.md` → history of changes  
+### Brain
+- `/brain/master.md` → core knowledge
+- `/brain/how-to-use.md` → operating instructions
+- `/brain/changelog.md` → history of changes
 
-## Playbooks
-- `/playbooks/*.md` → reusable AI workflows  
+### Playbooks
+- `/playbooks/*.md` → reusable AI workflows
 
-## Tasks
-- `/tasks/open/`  
-- `/tasks/completed/`  
-- `/tasks/blocked/`  
-- `/tasks/task-template.md`  
+### Tasks
+- `/tasks/open/`
+- `/tasks/completed/`
+- `/tasks/blocked/`
+- `/tasks/task-template.md`
 
 ---
 
-# Update Categories
+## Update Categories
 
-## Brain Updates
+### Brain Updates
 - product logic
 - architecture decisions
 - business rules
 
-## Playbook Updates
+### Playbook Updates
 - improved workflows
 - new operating modes
 
-## Task Updates
+### Task Updates
 - created
 - completed
 - blocked
 
-## Changelog Updates
+### Changelog Updates
 - meaningful changes to system/business
 
 ---
 
-# Safety Rules
+## Safety Rules
 
-## Auto-Apply (no review)
+### Auto-Apply (no review)
 - small updates
 - additive changes
 - task updates
 - minor playbook improvements
 
-## Require Review
+### Require Review
 - deleting or rewriting core knowledge
 - architecture changes
 - major playbook rewrites
@@ -135,13 +134,13 @@ Run after disruption:
 
 ---
 
-# Branch Strategy
+## Branch Strategy
 
 ### Default
 `brain-sync/YYYY-MM-DD-description`
 
 ### Fast Mode
-Commit to current branch ONLY if:
+Commit to current branch only if:
 - changes are small
 - risk is low
 
@@ -153,7 +152,7 @@ Commit to current branch ONLY if:
 
 ---
 
-# Commit Messages
+## Commit Messages
 
 ### Session Sync
 `brain: sync session updates for [topic]`
@@ -172,9 +171,9 @@ Commit to current branch ONLY if:
 
 ---
 
-# Execution Process
+## Execution Process
 
-## Step 1: Review session
+### Step 1: Review session
 Extract:
 - decisions
 - completed work
@@ -188,7 +187,7 @@ Ignore:
 
 ---
 
-## Step 2: Classify
+### Step 2: Classify
 - Brain
 - Playbook
 - Task
@@ -196,38 +195,38 @@ Ignore:
 
 ---
 
-## Step 3: Map to files
-Assign exact file paths
+### Step 3: Map to files
+Assign exact file paths.
 
 ---
 
-## Step 4: Deduplicate
-Update existing content instead of duplicating
+### Step 4: Deduplicate
+Update existing content instead of duplicating.
 
 ---
 
-## Step 5: Clean content
-Write structured markdown only
+### Step 5: Clean content
+Write structured markdown only.
 
 ---
 
-## Step 6: Apply changes
+### Step 6: Apply changes
+- auto-apply if safe
+- review if risky
 
-- If GitHub tool access (e.g. via Composio) is available:
+If GitHub tool access (e.g. via Composio) is available:
 - apply changes directly to the repository
 - do not simulate changes
 - do not output instructions instead of executing
-- - auto-apply if safe
-- review if risky
 
 ---
 
-## Step 7: Commit
-Use standard format
+### Step 7: Commit
+Use standard format.
 
 ---
 
-## Step 8: Report
+### Step 8: Report
 Return:
 - files created
 - files updated
@@ -236,7 +235,7 @@ Return:
 
 ---
 
-# Output Format (Review Mode)
+## Output Format (Review Mode)
 
 ## Brain Sync Review
 
@@ -258,7 +257,7 @@ Content:
 
 ---
 
-# Output Format (Auto Mode)
+## Output Format (Auto Mode)
 
 ## Brain Sync Complete
 
@@ -279,7 +278,7 @@ Content:
 
 ---
 
-# Task Template
+## Task Template
 
 # Task: [title]
 
@@ -309,19 +308,20 @@ Optional details
 
 ---
 
-# Daily Sync Rules
+## Daily Sync Rules
 
 - move completed → `/tasks/completed/`
 - move blocked → `/tasks/blocked/`
 - update changelog
 - merge duplicate tasks
 - clean structure
+- always append a summary entry to `/brain/changelog.md`
 
-Do NOT rewrite entire brain unless necessary.
+Do not rewrite the entire brain unless necessary.
 
 ---
 
-# Recovery Sync Rules
+## Recovery Sync Rules
 
 - treat repo as source of truth
 - rebuild context from files
@@ -329,7 +329,7 @@ Do NOT rewrite entire brain unless necessary.
 
 ---
 
-# Critical Rules
+## Critical Rules
 
 - no raw chat logs
 - no vague notes
@@ -339,77 +339,7 @@ Do NOT rewrite entire brain unless necessary.
 
 ---
 
-# Trigger Phrases
-
-- Run Brain Sync
-- Run session sync
-- Run daily sync
-- Run recovery sync
-- Sync the brain
-- Update external brain
-
----
-
-# SESSION SYNC PROMPT
-
-Run Brain Sync.
-
-Mode: session sync  
-Default: auto-apply low-risk, review high-risk  
-Branch: create brain-sync branch  
-Commit: session format  
-
-Only save:
-- confirmed knowledge
-- process improvements
-- task updates
-- meaningful changes  
-
-Do not save:
-- raw chat
-- duplicates
-- half ideas  
-
----
-
-# DAILY SYNC PROMPT
-
-Run Brain Sync.
-
-Mode: daily sync  
-Default: auto-clean + review structural changes  
-Branch: daily branch  
-Commit: brain: daily sync for [DATE]
-
-Tasks:
-- consolidate updates
-- clean tasks
-- update changelog
-- deduplicate  
-
----
-
-# RECOVERY SYNC PROMPT
-
-Run Brain Sync.
-
-Mode: recovery sync  
-
-Steps:
-1. read brain files
-2. reconstruct context
-3. identify gaps
-4. update system cleanly  
-
-Treat repo as source of truth.
-
----
-
-# Final Instruction
-
-You are maintaining a clean operational memory system, not a conversation log.
-
-# Tool Failure Rule
+## Tool Failure Rule
 
 If repository access fails:
 1. Retry once
@@ -420,7 +350,77 @@ If repository access fails:
    - repository context issue
 4. Do not assume read-only mode unless confirmed
 
-5. - ALWAYS append a summary entry to `/brain/changelog.md`
+---
+
+## Trigger Phrases
+
+- Run Brain Sync
+- Run session sync
+- Run daily sync
+- Run recovery sync
+- Sync the brain
+- Update external brain
+
+---
+
+## Session Sync Prompt
+
+Run Brain Sync.
+
+Mode: session sync
+Default: auto-apply low-risk, review high-risk
+Branch: create brain-sync branch
+Commit: session format
+
+Only save:
+- confirmed knowledge
+- process improvements
+- task updates
+- meaningful changes
+
+Do not save:
+- raw chat
+- duplicates
+- half ideas
+
+---
+
+## Daily Sync Prompt
+
+Run Brain Sync.
+
+Mode: daily sync
+Default: auto-clean + review structural changes
+Branch: daily branch
+Commit: brain: daily sync for [DATE]
+
+Tasks:
+- consolidate updates
+- clean tasks
+- update changelog
+- deduplicate
+
+---
+
+## Recovery Sync Prompt
+
+Run Brain Sync.
+
+Mode: recovery sync
+
+Steps:
+1. read brain files
+2. reconstruct context
+3. identify gaps
+4. update system cleanly
+
+Treat repo as source of truth.
+
+---
+
+## Final Instruction
+
+You are maintaining a clean operational memory system, not a conversation log.
 
 Ensure:
 - continuity
