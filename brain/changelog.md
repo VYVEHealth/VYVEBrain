@@ -1,5 +1,44 @@
 # VYVE Brain Changelog
 
+## 2026-04-10 (evening session)
+
+### Password Reset Flow — Full Fix
+- Root cause: `login.html` had `redirectTo` pointing to `login.html` instead of `set-password.html`
+- Fixed `redirectTo` in `login.html` to `https://online.vyvehealth.co.uk/set-password.html`
+- Fixed `set-password.html` to call `signOut(scope: global)` after password update, then redirect to `login.html?reset=success`
+- Added success banner on `login.html` when `?reset=success` param present
+- Added "Link already used" card to `set-password.html` with inline resend form — user can request new link without navigating away
+- Increased invalid link timeout from 3s to 5s for slow mobile connections
+- Supabase SMTP configured to send via Brevo (`smtp-relay.brevo.com:587`) — emails now send from VYVE Health <team@vyvehealth.co.uk> not Supabase Auth
+- Brevo domain `vyvehealth.co.uk` verified (DKIM + DMARC green) via GoDaddy DNS
+- Reset email template updated to table-based HTML button (renders correctly in all email clients)
+- cache bumped: `vyve-cache-v2026-04-10a` → `b` → `c`
+
+### Workouts.html — Nav Overlap Fixes
+- Rest timer sheet and reorder exercises sheet were rendering behind the bottom nav bar
+- Fixed `ex-menu-sheet` padding-bottom: `calc(72px + env(safe-area-inset-bottom))`
+- Fixed `reorder-sheet` padding-bottom: `calc(84px + env(safe-area-inset-bottom))` and max-height: `calc(80vh - 65px)`
+- Fixed `reorder-save-btn` bottom margin
+- cache bumped: `vyve-cache-v2026-04-10c`
+
+### Workout Plan Generation — Architecture Fix
+- Root cause: `waitUntil` in onboarding EF has a hard timeout; advanced PPL plans (~14k tokens output) were silently failing
+- Stuart Watts (`stuwatts09@gmail.com`) had no plan in `workout_plan_cache` — was seeing static fallback library
+- Deployed new `generate-workout-plan` Edge Function (v4) as standalone dedicated EF
+  - Generates weeks 1-4 and weeks 5-8 in two parallel API calls, stitches together
+  - `max_tokens: 16000` per call — handles largest possible plans
+  - `stop_reason` guard: fails loudly if output truncated, never writes corrupt data
+- Updated `onboarding` EF to v43: replaces inline `waitUntil(generateWorkoutPlan)` with fire-and-forget fetch to `generate-workout-plan` EF
+- Stuart's plan generated manually and written to `workout_plan_cache`: 8 weeks, 32 sessions, 36,521 chars
+- Plan join verified — week 4→5 transition seamless (same exercises, correct progressive overload step)
+
+### Stuart Watts — Account Notes
+- Two accounts exist: `swatts@geoffreyrobinson.co.uk` (Feb 2026, old/legacy) and `stuwatts09@gmail.com` (10 Apr 2026, active)
+- Active account is `stuwatts09@gmail.com` — RIVER persona, 4-day PPL, Advanced, Gym
+- Old account has 12 workout logs with null plan/name (logged via legacy flow)
+- All workout data safe — nothing deleted
+
+
 ## 2026-04-10
 
 ### External Brain System Created
