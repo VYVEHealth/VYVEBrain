@@ -23,6 +23,10 @@
 - Fix Make social publisher (Scenario 4950386) — 133 posts stuck
 - Consolidate duplicate RLS policies
 - Stuart Watts old account (`swatts@geoffreyrobinson.co.uk`) — decide whether to migrate 12 legacy workout logs to new Gmail account
+- ~~Running plan truncation on long plans~~ — fixed, max_tokens raised to 16000 ✅
+- ~~settings.html: Contact support mailto broken (iOS Mail)~~ — fixed ✅
+- ~~settings.html: Privacy Policy link 404~~ — fixed ✅
+- ~~how-to-videos.html / how-to-pdfs.html: missing nav, auth gate, back button~~ — replaced with clean placeholders ✅
 
 ## Later
 

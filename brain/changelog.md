@@ -2,6 +2,27 @@
 
 ## 2026-04-10 (late evening session)
 
+### settings.html — 3 fixes
+- `<!--email_off-->` tags stripped from `mailto:team@vyvehealth.co.uk` href — Cloudflare was injecting them literally, breaking iOS Mail — commit 737fadd
+- Privacy Policy link corrected from `/privacy` (404) to `/privacy.html` — commit c8d7d40
+- Both fixes atomic, settings.html is clean
+
+### how-to-videos.html + how-to-pdfs.html — replaced with placeholders
+- Both pages had custom nav markup, no theme.js, no nav.js, no auth gate, no SW registration
+- Replaced entirely with clean placeholder pages (coming soon)
+- Each now has: theme.js, nav.js, auth gate IIFE, SW registration, proper `data-theme="dark"` default
+- Back button and standard VYVE nav now work on both pages — commit 32461c3
+- sw.js cache bumped vyve-cache-v2026-04-10c → vyve-cache-v2026-04-10d
+
+### running-plan.html — max_tokens fix
+- `max_tokens` was hard-coded to `4096` when Haiku was switched in on 6 April (commit 758b572)
+- Original code had `getMaxTokens(goal)` — marathon was 10,000, half was 7,000
+- 20-week marathon plan (Stuart Watts) was being truncated mid-JSON every time
+- Fixed: `max_tokens` raised to `16000` — covers all plan combinations with headroom
+- Bonus: stripped `<!--email_off-->` Cloudflare tags from monthly limit mailto link — commit cb729bb
+
+## 2026-04-10 (late evening session)
+
 ### generate-workout-plan — Full Restoration + Video Fix
 - Discovered v4 had two unintentional regressions vs original onboarding v42:
   1. `programme_name` was hardcoded template instead of AI-generated
