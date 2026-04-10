@@ -1,5 +1,15 @@
 # VYVE Brain Changelog
 
+## 2026-04-10 (evening — portrait lock)
+
+### theme.css + auth.js — feat: portrait orientation lock
+- **Problem:** Portal pages rotated freely to landscape on phone rotation. VYVE is portrait-only — landscape is always accidental on a phone.
+- **CSS (theme.css):** Added `#vyve-rotate-overlay` — a fixed full-screen overlay with a rotating phone icon and message. Shown via `@media (orientation: landscape) and (max-height: 430px)` so it only triggers on phone-sized landscape, not tablets. Overlay sits above `#app` but does not unmount it — no state loss.
+- **JS (auth.js):** `vyvePortraitLock()` IIFE injected at bottom of auth.js. Calls `screen.orientation.lock('portrait')` (Android Chrome). Also injects the `#vyve-rotate-overlay` div into the DOM on every portal page at load — no per-page changes needed.
+- iOS Safari ignores the API lock; CSS overlay handles iOS.
+- sw.js bumped vyve-cache-v2026-04-10e → vyve-cache-v2026-04-10f
+
+
 ## 2026-04-10 (evening)
 
 ### workouts.html — fix: reorder wipes in-progress sets
