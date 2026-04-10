@@ -1,5 +1,35 @@
 # VYVE Brain Changelog
 
+## 2026-04-10 (evening — bug fixes session)
+
+### workouts.html — fix: reorder wipes in-progress sets
+- `saveReorder()` now snapshots kg/reps/ticked/bw/notes per exercise name before calling `renderSessionBody()`, then restores after. Mid-session reorder no longer wipes workout progress.
+- commit b93fd175
+
+### theme.css + auth.js — feat: portrait orientation lock
+- CSS `#vyve-rotate-overlay` shown via `@media (orientation: landscape) and (max-height: 430px)` — phone-only, not tablets.
+- `vyvePortraitLock()` IIFE in auth.js: calls `screen.orientation.lock('portrait')` (Android) and injects the overlay div into every portal page automatically — no per-page changes needed.
+- iOS Safari ignores the API; CSS overlay handles iOS.
+- Decision: overlay kept post-Capacitor as safety net for browser access. Suppress during active workout session is a known backlog item.
+- sw.js bumped to vyve-cache-v2026-04-10f
+
+### workouts.html — fix: PR/history scroll lock + content hidden under nav
+- `openPrsView()` / `openSessionsHistory()` now clear `body.overflow` so fixed overlay scrolls on iOS (body:hidden was blocking touch events).
+- `closePrsView()` / `closeSessionsHistory()` re-apply body lock if session still active.
+- Both views reset `scrollTop = 0` on open.
+- `.prs-body` and `.sh-body` bottom padding now `calc(80px + env(safe-area-inset-bottom,0px))` — last items no longer hidden under nav.
+- Both fixed views get `-webkit-overflow-scrolling:touch` + `overscroll-behavior:contain`.
+- sw.js bumped to vyve-cache-v2026-04-10g
+
+### workouts.html — feat: persist active session across navigation
+- Navigating away (e.g. Sessions tab) and back no longer resets a workout.
+- `saveSessionState()` serialises currentSessionData, sessionExercises, sessionLog, completedSetsCount, all DOM state (kg/reps/ticked/bw/notes), and timer to `localStorage` key `vyve_active_session`.
+- Called on session start and every set tick.
+- `restoreSessionState()` called at end of `init()` — reopens session view with all progress and timer intact if saved state exists and is under 4 hours old.
+- Cleared on `closeSessionView()` (explicit exit) and `completeWorkout()` (done).
+- sw.js bumped to vyve-cache-v2026-04-10h
+
+
 ## 2026-04-10 (evening — portrait lock)
 
 ### theme.css + auth.js — feat: portrait orientation lock
