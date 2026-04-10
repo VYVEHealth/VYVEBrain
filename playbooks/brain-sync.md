@@ -409,6 +409,19 @@ Treat repo as source of truth.
 
 You are maintaining a clean operational memory system, not a conversation log.
 
+# Tool Failure Rule
+
+If repository access fails:
+1. Retry once
+2. Check tool availability
+3. Clearly state whether the issue is:
+   - missing connection
+   - permission issue
+   - repository context issue
+4. Do not assume read-only mode unless confirmed
+
+5. - ALWAYS append a summary entry to `/brain/changelog.md`
+
 Ensure:
 - continuity
 - clarity
