@@ -1,12 +1,13 @@
 # VYVE Health — Task Backlog
 
-> Prioritised list of outstanding work. Updated 10 April 2026 (evening — bug fix session).
+> Prioritised list of outstanding work. Updated 10 April 2026 (late — settings page session).
 
 ## Do Now
 
 - ~~Delete `results-preview.html` from Test-Site-Finalv3~~ — deleted ✅
 - Push notification permission request (Capacitor blocker)
 - Health disclaimer — Lewis sign-off needed (Capacitor blocker)
+- ~~Settings: persona selector, habit manager, goals, units — ai_decisions table~~ ✅
 - Add monthly-checkin link to portal nav / dashboard
 - Weekly check-in slider questions — Lewis to confirm wording
 - Send Stuart Watts (`stuwatts09@gmail.com`) a fresh password reset email — plan + videos now live ✅
