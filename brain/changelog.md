@@ -46,3 +46,31 @@ All verified against live Supabase project ixjfklpckgxrwjlfsaaz on 10 April 2026
 - Verified `running-plan.html` already uses `anthropic-proxy` EF v5 (no placeholder, no key in HTML)
 - `static.yml` (GitHub Pages deploy) retained — only workflow now running on vyve-site
 - Commit: f557dae
+
+## 2026-04-10 (morning/afternoon session)
+
+### Daily Report Fixed
+- `BREVO_API_KEY` secret was missing/wrong in Supabase — renamed to correct value
+- `daily-report` v16 deployed — added full activity detail table (member name, type, specific activity, time)
+- Report manually triggered and confirmed sending to team@vyvehealth.co.uk
+
+### Password Reset Flow Fixed
+- Supabase Site URL updated to `https://online.vyvehealth.co.uk/set-password.html`
+- `set-password.html` confirmed correctly handles `PASSWORD_RECOVERY` token event
+- Supabase email template updated: new VYVE-branded HTML body, subject now "Reset your VYVE password"
+
+### Welcome Emails Resent
+- Alan Bird and Owen Barrett identified as missing welcome emails (onboarded while Brevo key was absent)
+- `resend-welcome` one-shot EF deployed — resent branded welcome with fresh set-password links
+- BCC to team@vyvehealth.co.uk confirmed working on all future onboarding emails
+
+### Backlog Updated
+- Added: password reset email template (desktop task)
+- Added: Exercise page redesign (product idea — gym / cardio / walking plan umbrella)
+
+### Product Thinking
+- Discussed replacing "Workouts" nav item with "Exercise" umbrella page
+- Members choose path at onboarding: gym programme, running plan, walking/activity plan, or mix
+- Each path generates an 8-week personalised plan (Sandra use case — non-gym corporate members)
+- Key open question: do non-gym plans use same `workout_plan_cache` structure or simpler format?
+- Decision deferred — parked in backlog under Later

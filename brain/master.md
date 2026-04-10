@@ -10,7 +10,7 @@
 VYVE Health CIC is a UK-based Community Interest Company building a proactive wellbeing platform for individuals and employers. Three pillars: Physical, Mental, Social health. AI coaching personas personalise the member experience.
 
 **Stage:** Pre-revenue, MVP, validation.
-**Members:** 8 active (verified live). Inactive users cleaned out. New members auto-created on onboarding.
+**Members:** 7 active (verified 10 April 2026). New members auto-created on onboarding.
 **Legal:** ICO registered (00013608608). CIC = 6-8 point advantage in public sector procurement.
 
 ### Team
@@ -72,7 +72,7 @@ Key files: index.html (dashboard), habits.html, workouts.html, nutrition.html, l
 ### Edge Functions (24 live, 6 stubs pending deletion)
 | Function | Version | Purpose |
 |----------|---------|---------|
-| onboarding | v43 | Two-phase: fast return + background 8-week programme |
+| onboarding | v45 | Two-phase: fast return + background 8-week programme |
 | member-dashboard | v25 | Full dashboard data, JWT-preferred auth |
 | wellbeing-checkin | v22 | Weekly check-in + AI recommendations |
 | monthly-checkin | v5 | Monthly 8-pillar check-in, Haiku model, AI report |
@@ -81,7 +81,7 @@ Key files: index.html (dashboard), habits.html, workouts.html, nutrition.html, l
 | anthropic-proxy | v5 | AI proxy for running plans |
 | send-email | v11 | Brevo transactional |
 | re-engagement-scheduler | v11 | Cron 8:00 UTC |
-| daily-report | v11 | Cron 8:05 UTC |
+| daily-report | v16 | Cron 8:05 UTC — includes full activity detail table |
 | weekly-report | v7 | Weekly summary |
 | monthly-report | v7 | Monthly summary |
 | certificate-checker | v10 | Cron 9:00 UTC, HTML certs |
@@ -141,7 +141,8 @@ NEVER assign NOVA or SPARK if serious life context in Section G.
 7. Dual dark/light CSS blocks. theme.js before </head>.
 8. Employer dashboard = aggregate only. No PII.
 9. HAVEN must signpost professional help if crisis.
-10. GitHub writes via github-proxy EF PUT. MCP is READ-ONLY (403).
+10. Password reset emails route to `set-password.html` — Supabase Site URL must stay as `https://online.vyvehealth.co.uk/set-password.html`.
+11. GitHub writes via github-proxy EF PUT. MCP is READ-ONLY (403).
 11. workouts.html uses MutationObserver on #app. Never revert to waitForAuth.
 12. Business email: team@vyvehealth.co.uk.
 13. Google Sheets retired for portal data. Business docs only.
@@ -151,7 +152,7 @@ NEVER assign NOVA or SPARK if serious life context in Section G.
 
 ## 7. Onboarding Flow
 
-Stripe payment -> onboarding_v8.html (10 sections) -> onboarding EF v43
+Stripe payment -> onboarding_v8.html (10 sections) -> onboarding EF v45
 Phase 1 (fast): persona + habits + programme overview + DB writes + Brevo welcome email
 Phase 2 (background via waitUntil): full 8-week workout JSON -> workout_plan_cache
 -> Supabase Auth user created -> member logs in
