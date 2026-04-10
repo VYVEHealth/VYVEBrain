@@ -1,38 +1,52 @@
-# Playbook: Repo Audit
-
-> Full health check of the VYVE codebase and infrastructure.
+# Repo Audit Mode
 
 ## Purpose
-Verify live system matches documentation, catch drift, find issues.
+
+Perform a comprehensive audit of the repository.
 
 ## When to Use
-- Monthly (scheduled)
-- After major feature deployments
-- After losing AI context (account disruption, model switch)
-- Before enterprise demos
+Use this when evaluating overall quality, completeness, UX, structure, and implementation gaps.
 
-## Phase 1: Database Verification (10 min)
-1. List all tables via Supabase MCP. Compare count against schema-snapshot.md.
-2. Check RLS status — every table must have rls_enabled: true.
+## Process
+1. Review the repository structure.
+2. Inspect all major pages, flows, and core files.
+3. Identify:
+   - missing functionality
+   - broken logic
+   - inconsistencies
+   - quality issues
+   - UX problems
+4. Produce a prioritised action plan.
+
+## Rules
+- Be exhaustive.
+- Think like both product lead and engineering lead.
+- Focus on real issues and practical improvements.
+- Do not implement changes unless explicitly instructed.
+
+## Output
+- findings
+- issues
+- priorities
+- recommended fixes
+- quick wins
+- structural issues
+
+## Database Audit (VYVE-specific)
+1. List all tables via Supabase MCP. Compare against schema-snapshot.md.
+2. Check RLS on all tables.
 3. Run security advisors: `Supabase:get_advisors(type: security)`
 4. Run performance advisors: `Supabase:get_advisors(type: performance)`
-5. Count auth users: `SELECT count(*) FROM auth.users;` Compare with members.
+5. Count auth users vs members table.
 6. Check Edge Function versions against master.md.
 
-## Phase 2: Repo File Check (10 min)
-1. List all HTML files in vyve-site repo root.
-2. Verify each portal page in master.md exists.
-3. Read sw.js — record CACHE_NAME value.
-4. Check auth.js references Supabase, not Auth0.
-5. Spot-check 3 pages for theme.js, auth gate, no hardcoded keys.
+## Repo File Audit
+1. List all HTML files in vyve-site repo.
+2. Verify portal pages match master.md.
+3. Check sw.js cache version.
+4. Spot-check pages for theme.js, auth gate, no hardcoded keys.
 
-## Phase 3: Edge Function Verification (5 min)
-1. List deployed EFs via Supabase.
-2. Compare against master.md live function list.
-3. Flag any not in keep list.
-4. Check for stub/test functions to clean up.
-
-## Phase 4: Report
+## Report Format
 ```markdown
 # VYVE Repo Audit — [DATE]
 ## Summary
@@ -40,8 +54,6 @@ Verify live system matches documentation, catch drift, find issues.
 - Auth users: [count]
 - Members: [count]
 - Edge Functions: [count]
-- Security issues: [count]
-- Performance warnings: [count]
 ## Action Items
 ### Critical
 ### Should Fix
