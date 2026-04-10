@@ -1,15 +1,17 @@
 # VYVE Health — Task Backlog
 
-> Prioritised list of outstanding work. Updated 10 April 2026.
+> Prioritised list of outstanding work. Updated 10 April 2026 (evening).
 
 ## Do Now
 
-- Delete 6 stub Edge Functions
 - Push notification permission request (Capacitor blocker)
 - Health disclaimer — Lewis sign-off needed (Capacitor blocker)
 - Add monthly-checkin link to portal nav / dashboard
 - Weekly check-in slider questions — Lewis to confirm wording
-- Password reset email template — update in Supabase dashboard (desktop task): replace body with VYVE-branded HTML, set subject to "Reset your VYVE password", set Site URL to https://online.vyvehealth.co.uk/set-password.html
+- Password reset email template — DONE (Supabase SMTP via Brevo, branded template live)
+- Send Stuart Watts (`stuwatts09@gmail.com`) a fresh password reset email — plan is now live
+- Set `EMPLOYER_DASHBOARD_API_KEY` secret in Supabase (from security audit)
+- Delete 89 dead Edge Functions (deletion script in security audit doc)
 
 ## This Week
 
@@ -21,6 +23,7 @@
 - B2B volume discount tiers — define before first contract
 - Fix Make social publisher (Scenario 4950386) — 133 posts stuck
 - Consolidate duplicate RLS policies
+- Stuart Watts old account (`swatts@geoffreyrobinson.co.uk`) — decide whether to migrate 12 legacy workout logs to new Gmail account
 
 ## Later
 
