@@ -9,6 +9,7 @@
 - Health disclaimer — Lewis sign-off needed (Capacitor blocker)
 - Add monthly-checkin link to portal nav / dashboard
 - Weekly check-in slider questions — Lewis to confirm wording
+- Password reset email template — update in Supabase dashboard (desktop task): replace body with VYVE-branded HTML, set subject to "Reset your VYVE password", set Site URL to https://online.vyvehealth.co.uk/set-password.html
 
 ## This Week
 
@@ -24,6 +25,7 @@
 ## Later
 
 - Capacitor wrap for iOS + Android
+- Exercise page redesign — umbrella page with gym / cardio / walking plans (product decision pending)
 - Modularise workouts.html
 - Build process / bundler
 - ARIA labels
