@@ -1,5 +1,29 @@
 # VYVE Brain Changelog
 
+## 2026-04-10 (late evening session)
+
+### generate-workout-plan — Full Restoration + Video Fix
+- Discovered v4 had two unintentional regressions vs original onboarding v42:
+  1. `programme_name` was hardcoded template instead of AI-generated
+  2. `programme_rationale` was hardcoded template instead of AI-generated
+- Root cause of Stuart's missing videos/thumbnails identified:
+  - AI-generated plans invent exercise names (e.g. "Barbell Bench Press")
+  - `workout_plans` library uses different format (e.g. "Bench Press – Barbell")
+  - `workouts.html` uses strict equality match (`===`) — no fuzzy matching
+  - This was always the case for AI plans; videos only worked when Stuart was on the static fallback library
+- Deployed `generate-workout-plan` v5 with full restoration:
+  - Step 1: `generateProgrammeOverview()` restored — AI generates personalised programme name and rationale (matches original onboarding v42 behaviour)
+  - Step 2: Exercise library fetched from `workout_plans` table at runtime and injected into prompt — AI MUST use only approved exercise names
+  - Step 3: After plan generation, each exercise enriched with `video_url` + `thumbnail_url` via direct lookup against library
+  - Plan generation still uses two parallel calls (weeks 1-4, weeks 5-8) to avoid 16k token limit
+- Stuart's plan regenerated with v5: "PPL Holiday Shred" — 8 weeks, 32 sessions, 212/212 exercises matched to videos
+- `generate-workout-plan` is now the canonical plan generation path — onboarding v43 calls it as fire-and-forget
+
+### Known Architecture Note
+- `workouts.html` `getVideoUrl()` / `getThumbnailUrl()` use strict name equality — this is fine now that the EF constrains AI to library names
+- If any future plan has unmatched exercises (v5 logs warnings), the issue will be in the prompt constraint, not the frontend
+
+
 ## 2026-04-10 (evening session)
 
 ### Password Reset Flow — Full Fix
