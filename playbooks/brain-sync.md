@@ -212,7 +212,12 @@ Write structured markdown only
 ---
 
 ## Step 6: Apply changes
-- auto-apply if safe
+
+- If GitHub tool access (e.g. via Composio) is available:
+- apply changes directly to the repository
+- do not simulate changes
+- do not output instructions instead of executing
+- - auto-apply if safe
 - review if risky
 
 ---
