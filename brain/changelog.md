@@ -1,3 +1,28 @@
+## 2026-04-10 (performance — caching & loading)
+
+### sw.js — perf: cache-first portal HTML + Supabase thumbnail caching
+- Added `PORTAL_PAGES` array — all portal HTML pages now served cache-first with background revalidation (previously network-first, required round-trip on every visit)
+- Added stale-while-revalidate handler for Supabase storage URLs (`/storage/`) — thumbnails cached in `RUNTIME_CACHE` after first load
+- Cache version bumped: `vyve-cache-v2026-04-10h` → `vyve-cache-v2026-04-10i`
+
+### auth.js — perf: dispatch vyveAuthReady event
+- Added `window.dispatchEvent(new CustomEvent('vyveAuthReady'))` immediately after `vyveRevealApp()` is called
+- Pages listening for this event now proceed instantly when auth resolves rather than waiting for a polling tick
+
+### index.html — perf: replace waitForAuth polling with event-driven pattern
+- `waitForAuth(attempts)` polling loop (100ms interval, 20 retries max) replaced with `waitForAuth()` event listener
+- Listens for `vyveAuthReady` custom event — fires immediately when auth.js resolves the session
+- Falls back to `setTimeout(3000)` hard fallback if event never fires
+- Eliminates up to 100ms artificial lag per poll cycle on cold loads
+
+### workouts.html — perf: exercise library localStorage cache + lazy thumbnails
+- `loadAllExercises()` now checks `localStorage` key `vyve_exercise_library_v1` before hitting Supabase
+- Cache TTL: 24 hours. Cache hit = zero network request, instant exercise search
+- On cache miss/expiry: fetches from Supabase and writes to cache for next visit
+- Thumbnail `<img>` tags in exercise search list now use `data-src` + `class="es-lazy-thumb"` instead of eager `src`
+- `renderExerciseList()` now attaches an `IntersectionObserver` after rendering — images only load when scrolled into view (`rootMargin: 100px` pre-load buffer)
+- Fallback for browsers without IntersectionObserver: all images load immediately (same as before)
+
 # VYVE Brain Changelog
 
 ## 2026-04-10 (onboarding QA — welcome.html)
