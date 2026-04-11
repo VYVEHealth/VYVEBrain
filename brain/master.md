@@ -293,6 +293,14 @@ AI selects 5 habits from 30 in habit_library using member's profile:
 | Onboarding form | www.vyvehealth.co.uk/welcome |
 | github-proxy PUT | https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/github-proxy?path=filename.html |
 
+### Anthropic Model Strings (verified correct)
+| Model | API String |
+|-------|------------|
+| Claude Sonnet 4 | `claude-sonnet-4-20250514` |
+| Claude Haiku 4.5 | `claude-haiku-4-5` |
+
+**Note:** `claude-haiku-4-5-20251001` is INVALID — do not use. The correct Haiku string has no date suffix.
+
 ---
 
 ## 10. What NOT to Do
@@ -308,4 +316,5 @@ AI selects 5 habits from 30 in habit_library using member's profile:
 - Do NOT create monthly_summaries, activity_patterns, charity_totals, audit_log, milestone_messages — never built
 - Do NOT use `window.load` as auth init fallback alongside `vyveAuthReady` — creates race condition where supa() falls back to anon key
 - Do NOT use static anon key as Bearer token in tracking.js or any page making authenticated REST calls
+- Do NOT use `claude-haiku-4-5-20251001` — invalid model string. Correct string is `claude-haiku-4-5`
 - Do NOT hardcode POSTHOG_KEY as a literal string — always use the real key `phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl` inline
