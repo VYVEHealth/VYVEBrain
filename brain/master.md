@@ -86,7 +86,7 @@ Key files: index.html (dashboard), habits.html, workouts.html, nutrition.html, l
 - Any page-level sticky element must use `top:56px` on mobile, not `top:0`
 - Modals must use `z-index:10001` minimum to render above the bottom nav
 
-**sw.js cache version:** `vyve-cache-v2026-04-10q` (bump letter after every portal push)
+**sw.js cache version:** `vyve-cache-v2026-04-11g` (bump letter after every portal push)
 
 **settings.html:** Cache-first load via `vyve_settings_cache` (localStorage, 10-min TTL). UI populates instantly from cache; Supabase refreshes in background. Both modals (coach, habits) use `z-index:10001`, `stopPropagation` on sheet, sticky CTA footer.
 
