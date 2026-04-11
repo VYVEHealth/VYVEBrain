@@ -1,3 +1,15 @@
+## 2026-04-11 (Web Push encryption fix)
+
+### fix: RFC 8291 full AES-GCM encryption — habit-reminder v4, streak-reminder v4, send-test-push v4
+
+Apple's push service requires fully encrypted payloads (RFC 8291). Previous versions sent unencrypted JSON which Apple rejected with status 0. Rewrote `sendPush()` and `encryptPayload()` using Deno built-in Web Crypto only (no external libraries). Confirmed working on iOS PWA.
+
+| Function | Version |
+|----------|---------|
+| `send-test-push` | v4 (confirmed working) |
+| `habit-reminder` | v4 |
+| `streak-reminder` | v4 |
+
 ## 2026-04-11 (Notifications — Layer 2 Web Push / VAPID)
 
 ### feat: VAPID Web Push — push handler in sw.js, vapid.js subscriber, EFs updated
