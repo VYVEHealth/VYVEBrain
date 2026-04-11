@@ -12,6 +12,36 @@
 
 ---
 
+## 11 April 2026 — Platform Monitoring System
+
+### Built
+- **`platform_alerts` table** — central alert storage (severity, type, source, member, dedup indexes, RLS service-role only)
+- **`platform-alert` Edge Function v1** — receives alerts, deduplicates (same type + member within 1hr), sends Brevo email to Dean + Lewis, sends VAPID push to subscribed devices
+- **Client-side Platform Monitor** (added to `auth.js`) — catches:
+  - JS runtime errors (`window.onerror`)
+  - Unhandled promise rejections
+  - API 401s and 500s (fetch interceptor on all Supabase calls)
+  - Network failures on API calls
+  - Page load timeouts (app container not visible after 15s)
+  - PWA not installed after 7 days of use
+  - Exposes `window.vyveAlert(type, severity, details)` for manual reporting from page code
+- **sw.js cache bumped** `v2026-04-11i` → `v2026-04-11j`
+
+### Commits
+- `vyve-site` 16eeb3e — auth.js monitor + sw.js cache bump
+
+### Architecture decisions
+- Monitor added to `auth.js` (not a separate file) since it's already loaded on every portal page
+- `fetch()` interceptor pattern — wraps native fetch to monitor all Supabase API calls without modifying individual pages
+- Deduplication both client-side (per session) and server-side (per type+member per hour) to prevent alert fatigue
+- `platform-alert` EF is `verify_jwt: false` with CORS restriction — client-side can't send API keys, CORS is sufficient protection
+
+### Outstanding monitoring items
+- Health check cron EF (proactive service monitoring every 30 min) — not yet built
+- Server-side error reporting in critical EFs (member-dashboard, wellbeing-checkin, log-activity, onboarding) — not yet wired
+- Alert dashboard page (alerts.html or section on strategy.html) — not yet built
+
+
 ## 2026-04-11 (Audit Collateral — Certificates + Engagement Pages Fixed)
 
 ### Summary
