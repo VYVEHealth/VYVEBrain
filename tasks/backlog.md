@@ -2,31 +2,32 @@
 
 > Prioritised list of outstanding work. Updated 11 April 2026.
 
-## 🔴 Security — Do Immediately (Before Enterprise Demo)
+## ~~🔴 Security — Do Immediately (Before Enterprise Demo)~~ ✅ Complete
 
-- **Secure `github-proxy`** — add `GITHUB_PROXY_SECRET` header auth. Currently has ZERO authentication — anyone can read/write repo files. (Remediation Plan Fix 1)
-- **Fix `member-dashboard` auth** — remove `?email=` fallback, enforce JWT-only. Currently exposes full member data to anyone who knows an email address. (Fix 2)
-- **Secure `onboarding` endpoint** — restrict CORS to `www.vyvehealth.co.uk`, add `ONBOARDING_SECRET` header. Currently accepts POSTs from anywhere, creates auth users without payment verification. (Fix 3)
-- **Secure `send-email`** — add service-role-key auth to HTTP handler. Currently an open email relay from `team@vyvehealth.co.uk`. (Fix 4)
-- **Set `EMPLOYER_DASHBOARD_API_KEY`** and remove unauthenticated fallback code path. (Fix 5)
+- ~~Secure `github-proxy`~~ ✅ — v15, `x-proxy-key` header auth
+- ~~Fix `member-dashboard` auth~~ ✅ — v34, JWT-only, `?email=` removed
+- ~~Secure `onboarding` endpoint~~ ✅ — v57, CORS restricted (Option A)
+- ~~Secure `send-email`~~ ✅ — v16, service-role-key auth + model fix
+- ~~Set `EMPLOYER_DASHBOARD_API_KEY`~~ ✅ — v26, fallback removed
 
 ## Do Now
 
 - Health disclaimer — Lewis sign-off needed (Capacitor blocker)
 - Add monthly-checkin link to portal nav / dashboard
 - Weekly check-in slider questions — Lewis to confirm wording
-- Fix `send-email` model name — `claude-sonnet-4-5` is invalid, should be `claude-sonnet-4-20250514` (Fix 6)
-- Fix `session_chat` INSERT policy — change `with_check: true` to `with_check: auth.email() = member_email` (Fix 7)
-- Tighten CORS on `onboarding`, `send-email`, `employer-dashboard` — replace `*` with specific origins (Fix 8)
+- ~~Fix `send-email` model name~~ ✅ — fixed to `claude-sonnet-4-20250514`
+- ~~Fix `session_chat` INSERT policy~~ ✅ — already correct (confirmed in audit)
+- ~~Tighten CORS~~ ✅ — all EFs CORS-restricted
 - Delete 89 dead Edge Functions (deletion script in security audit doc)
 - ~~VAPID_PRIVATE_KEY secret set in Supabase~~ ✅ — Dean set this session
+- **Improve dashboard skeleton loading screen** — current skeleton shows large grey blocks that fill the viewport and push real content below the fold. Options: slim down skeleton to subtle placeholders, show member name instantly from auth data (`window.vyveCurrentUser`), use home cache for instant repeat loads (now working after email scope fix). Recommended: Option C (slim skeleton + instant name + cache).
 
 ## This Week
 
 - `certificate-checker` — add `certificate_earned` notification write + push
 - Load `vapid.js` on other portal pages (currently index.html only)
-- Consolidate duplicate RLS policies — drop per-operation policies where ALL policy exists on: cardio, daily_habits, workouts, session_views, replay_views, weekly_scores, wellbeing_checkins, members (Fix 9)
-- Drop duplicate indexes: `weekly_scores_member_week_unique`, `exercise_notes_member_idx`, `idx_exercise_notes_member` (Fix 11)
+- ~~Consolidate duplicate RLS policies~~ ✅ — 20 per-operation policies dropped across 7 tables
+- ~~Drop duplicate indexes~~ ✅ — `exercise_notes_member_idx` + `idx_exercise_notes_member` dropped, `weekly_scores_member_week_unique` retained (unique constraint)
 - Brevo logo removal (~$12/month)
 - Facebook Make connection refresh — EXPIRES 22 MAY 2026
 - Re-engagement automations x3 — blocked on Lewis email copy
@@ -57,6 +58,13 @@
 - Document PostHog as data processor in privacy policy (sends member emails)
 
 ## Completed This Week
+
+- ~~Security remediation (all 8 audit fixes)~~ ✅ — 11 April 2026
+- ~~Fix dashboard stats not rendering~~ ✅ — email scoping bug in `index.html` `loadDashboard()` (writeHomeCache used undefined `email` const)
+- ~~Fix certificates.html auth~~ ✅ — added `getJWT()`, JWT auth header to member-dashboard call
+- ~~Fix engagement.html auth~~ ✅ — same fix as certificates
+- ~~Fix leaderboard.html auth~~ ✅ — `window._supabase` → `window.vyveSupabase` in `getJWT()`
+- ~~SW cache bumped to `vyve-cache-v2026-04-11i`~~ ✅
 
 - ~~Delete `results-preview.html` from Test-Site-Finalv3~~ ✅
 - ~~Push notification permission request (Layer 1 + Layer 2)~~ ✅ — both layers fully live
