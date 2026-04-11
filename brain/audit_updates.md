@@ -151,3 +151,19 @@ Replace `YOUR_KEY` with the value of `EMPLOYER_DASHBOARD_API_KEY` from Supabase 
 `localStorage.setItem('vyve_emp_key','YOUR_KEY')`
 Replace `YOUR_KEY` with the value of `EMPLOYER_DASHBOARD_API_KEY` from Supabase → Settings → Edge Functions → Secrets.
 **Files changed:** `Test-Site-Finalv3/vyve-dashboard-live.html` (commit 51e2e794)
+---
+
+## Backlog Status Update — 11 April 2026
+
+The following two items previously listed as backlog are confirmed complete (Dean, 11 April 2026):
+
+- ~~89 dead Edge Functions to delete~~ ✅ Done
+- ~~6 unnecessary anon SELECT RLS policies to remove~~ ✅ Done
+
+### Remaining open items (pre-existing backlog, not regressions):
+- Employer dashboard proper auth flow — required before Sage demo (current localStorage pattern is interim only)
+- Capacitor iOS/Android wrap — #1 business priority
+- Brevo logo removal (~$12/month) — required before enterprise demo
+- B2B volume discount tiers — define before first enterprise contract
+- Facebook Make connection refresh — expires 22 May 2026 (CRITICAL)
+- Make social publisher fix (Scenario 4950386) — 133 posts stuck since 23 March
