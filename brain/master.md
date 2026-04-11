@@ -42,7 +42,17 @@ Business email: team@vyvehealth.co.uk (never use personal emails for business).
 - Stripe: buy.stripe.com/00wfZicla1Em0NnaIB93y00. Coupons: VYVE15, VYVE10.
 
 ### Priority #1
-Capacitor wrap for iOS App Store + Android Play Store. PWA ready. Blockers: health disclaimer (Lewis) + push notification permission.
+Capacitor wrap for iOS App Store + Android Play Store. PWA ready. Blocker: health disclaimer (Lewis sign-off needed).
+
+### Web Push (VAPID) — Live
+- `vapid.js` loaded on `index.html` — subscribes on bell tap (iOS requires user gesture), saves to `push_subscriptions` table
+- `sw.js` — `push` event listener + `notificationclick` listener live
+- `habit-reminder` v4 + `streak-reminder` v4 — full RFC 8291 AES-GCM encryption via Deno Web Crypto
+- `send-test-push` v4 — test tool (Supabase Dashboard → Edge Functions → Test)
+- `VAPID_PRIVATE_KEY` secret set in Supabase ✅
+- VAPID public key: `BDbz2-0k3JcqRWKyasr3MNgEZrXhKsVvjS-otCyyV7Ya4Pi2xXOxXGETUpVoE56VorKzSNy7uyep53gOzNEMTu4`
+- **Rule:** Apple push requires RFC 8291 encryption. `esm.sh` imports fail in Supabase EFs — always use Deno Web Crypto only.
+- **Rule:** iOS push only works from home screen installed PWA (Safari 16.4+)
 
 ---
 

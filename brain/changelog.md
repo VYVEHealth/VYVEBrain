@@ -1,3 +1,24 @@
+## 2026-04-11 (Daily Sync)
+
+### Summary
+Full session: Layer 2 Web Push (VAPID) implemented end-to-end and confirmed working on iOS. Notifications redesigned from slide-up sheet to full-screen themed page.
+
+### Completed
+- **VAPID Web Push (Layer 2)** — P-256 key pair generated, `vapid.js` created (triggers on bell tap for iOS gesture compliance), `sw.js` push + notificationclick handlers added, `habit-reminder` v4 + `streak-reminder` v4 updated with RFC 8291 AES-GCM encryption using Deno Web Crypto only. `send-test-push` v4 confirmed working on iOS.
+- **`VAPID_PRIVATE_KEY` secret** set in Supabase by Dean.
+- **Notifications full-screen page** — replaced slide-up sheet with solid full-screen page: back arrow top left, clear-all bell top right, bottom nav bar, `var(--bg)` background (theme-aware), unread items highlighted.
+- **Daily report** run manually for Friday 10 April: 5 activities, 2 new members.
+- **sw.js cache** bumped to `vyve-cache-v2026-04-10aa`.
+
+### Key Architecture Decisions
+- iOS push permission must be triggered from a user gesture (bell tap) — not page load
+- `esm.sh` library imports fail in Supabase Edge Functions — use Deno built-in Web Crypto only for RFC 8291 encryption
+- `vapid.js` loaded on `index.html` only for now; expand to other pages when Capacitor wrap is underway
+
+### Secrets
+- `VAPID_PRIVATE_KEY` — set ✅
+- VAPID public key: `BDbz2-0k3JcqRWKyasr3MNgEZrXhKsVvjS-otCyyV7Ya4Pi2xXOxXGETUpVoE56VorKzSNy7uyep53gOzNEMTu4`
+
 ## 2026-04-11 (Web Push encryption fix)
 
 ### fix: RFC 8291 full AES-GCM encryption — habit-reminder v4, streak-reminder v4, send-test-push v4
