@@ -167,3 +167,41 @@ The following two items previously listed as backlog are confirmed complete (Dea
 - B2B volume discount tiers — define before first enterprise contract
 - Facebook Make connection refresh — expires 22 May 2026 (CRITICAL)
 - Make social publisher fix (Scenario 4950386) — 133 posts stuck since 23 March
+---
+
+## RLS Gap Analysis & Fixes — 11 April 2026
+
+### Investigation findings (A1, A2, A3 from post-review gap analysis)
+
+**A1 — `running_plan_cache` public SELECT** — NO ACTION REQUIRED
+On inspection, this table has no `member_email` column. It is a shared cache keyed by goal/level/days/timeframe (5,376 combinations). Plans are generic AI-generated content, not personal data. `qual: true` is correct. Closed — not a leak.
+
+**A2 — `ai_decisions` INSERT `with_check: true`** — NO ACTION REQUIRED
+Table already has a correct SELECT policy (`auth.email() = member_email`). INSERT is only performed by the `onboarding` Edge Function via service-role key, which bypasses RLS entirely — making the `with_check` on INSERT irrelevant in practice. SELECT is already locked. Closed — already correct.
+
+**A3 — `session_chat` SELECT `qual: true`** ✅ FIXED
+**Risk:** Anonymous/unauthenticated callers could read all live session chat messages.
+**Fix:** Applied migration `fix_session_chat_read_policy` — replaced `qual: true` with `auth.role() = 'authenticated'`. Chat remains communal (all authenticated members can read all messages in a session) but is no longer publicly accessible to unauthenticated callers.
+**Policies after fix:**
+- SELECT: `auth.role() = 'authenticated'` ✅
+- INSERT: `auth.email() = member_email` ✅ (already correct, unchanged)
+
+---
+
+## Outstanding items (as of 11 April 2026 end of session)
+
+### Technical / security (deferred — require planned sessions)
+- **A4:** Service-role-key used for member-scoped queries in Edge Functions — refactor to JWT-scoped client for `member-dashboard`, `wellbeing-checkin`, `log-activity`. Avoid touching leaderboard/charity queries. ~1 hr planned session.
+- **A5:** XSS audit — check all portal pages for `.innerHTML` rendering of AI-generated content. Add `DOMPurify` if needed. ~30 min.
+- **C2:** Onboarding race condition — `createAuthUser` vs `writeMember` ordering. ~1 hr.
+- **C3:** Member dashboard data over-fetching — add server-side aggregation. ~2 hrs.
+- **C4:** PostHog raw email PII — hash email before sending to PostHog. ~30 min.
+- **B1:** One-shot migration Edge Functions still in live list — `create-ai-decisions-table`, `setup-ai-decisions`, `setup-member-units`, `run-migration-monthly-checkins`, `run-monthly-checkins-migration`, `delete-housekeeping`, `thumbnail-audit`, `thumbnail-batch-upload`, `thumbnail-upload`, `trigger-callum-workout`, `trigger-owen-workout`, `send-stuart-reset`, `generate-stuart-plan`. Delete when convenient.
+
+### Pre-Sage / business (Lewis actions)
+- Brevo logo removal (~$12/month)
+- B2B volume discount tiers — define before first enterprise contract
+- Facebook Make connection refresh — EXPIRES 22 MAY 2026 (critical)
+- Make social publisher fix — 133 posts stuck since 23 March
+- Capacitor iOS/Android wrap — #1 business priority (Dean)
+- Employer dashboard proper auth flow — before Sage demo (Dean)
