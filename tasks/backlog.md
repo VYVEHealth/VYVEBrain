@@ -2,12 +2,22 @@
 
 > Prioritised list of outstanding work. Updated 11 April 2026.
 
+## 🔴 Security — Do Immediately (Before Enterprise Demo)
+
+- **Secure `github-proxy`** — add `GITHUB_PROXY_SECRET` header auth. Currently has ZERO authentication — anyone can read/write repo files. (Remediation Plan Fix 1)
+- **Fix `member-dashboard` auth** — remove `?email=` fallback, enforce JWT-only. Currently exposes full member data to anyone who knows an email address. (Fix 2)
+- **Secure `onboarding` endpoint** — restrict CORS to `www.vyvehealth.co.uk`, add `ONBOARDING_SECRET` header. Currently accepts POSTs from anywhere, creates auth users without payment verification. (Fix 3)
+- **Secure `send-email`** — add service-role-key auth to HTTP handler. Currently an open email relay from `team@vyvehealth.co.uk`. (Fix 4)
+- **Set `EMPLOYER_DASHBOARD_API_KEY`** and remove unauthenticated fallback code path. (Fix 5)
+
 ## Do Now
 
 - Health disclaimer — Lewis sign-off needed (Capacitor blocker)
 - Add monthly-checkin link to portal nav / dashboard
 - Weekly check-in slider questions — Lewis to confirm wording
-- Set `EMPLOYER_DASHBOARD_API_KEY` secret in Supabase (from security audit)
+- Fix `send-email` model name — `claude-sonnet-4-5` is invalid, should be `claude-sonnet-4-20250514` (Fix 6)
+- Fix `session_chat` INSERT policy — change `with_check: true` to `with_check: auth.email() = member_email` (Fix 7)
+- Tighten CORS on `onboarding`, `send-email`, `employer-dashboard` — replace `*` with specific origins (Fix 8)
 - Delete 89 dead Edge Functions (deletion script in security audit doc)
 - ~~VAPID_PRIVATE_KEY secret set in Supabase~~ ✅ — Dean set this session
 
@@ -15,6 +25,8 @@
 
 - `certificate-checker` — add `certificate_earned` notification write + push
 - Load `vapid.js` on other portal pages (currently index.html only)
+- Consolidate duplicate RLS policies — drop per-operation policies where ALL policy exists on: cardio, daily_habits, workouts, session_views, replay_views, weekly_scores, wellbeing_checkins, members (Fix 9)
+- Drop duplicate indexes: `weekly_scores_member_week_unique`, `exercise_notes_member_idx`, `idx_exercise_notes_member` (Fix 11)
 - Brevo logo removal (~$12/month)
 - Facebook Make connection refresh — EXPIRES 22 MAY 2026
 - Re-engagement automations x3 — blocked on Lewis email copy
@@ -22,13 +34,16 @@
 - AI weekly goals system — blocked on Lewis copy approval
 - B2B volume discount tiers — define before first contract
 - Fix Make social publisher (Scenario 4950386) — 133 posts stuck
-- Consolidate duplicate RLS policies (6 unnecessary anon SELECT policies from security audit)
 - Stuart Watts old account (`swatts@geoffreyrobinson.co.uk`) — decide whether to migrate 12 legacy workout logs
 - Suppress portrait lock overlay during active workout session (iOS only)
 
 ## Later
 
 - Capacitor wrap for iOS + Android
+- Aggregate member-dashboard response server-side (currently returns raw activity rows — won't scale past ~100 active members)
+- Add retry/circuit-breaker logic to AI calls in Edge Functions (onboarding, wellbeing-checkin)
+- Add Content-Security-Policy headers to portal pages
+- Add session timeout to Supabase Auth (currently persists indefinitely)
 - Exercise page redesign — umbrella page with gym / cardio / walking plans (product decision pending)
 - Build process / bundler
 - ARIA labels
@@ -39,6 +54,7 @@
 - External DPO service
 - Grant applications (National Lottery, The Fore)
 - WHISPA research partnership — monitor May 2026 launch
+- Document PostHog as data processor in privacy policy (sends member emails)
 
 ## Completed This Week
 
@@ -53,3 +69,4 @@
 - ~~settings.html: mailto + privacy link fixes~~ ✅
 - ~~how-to pages: auth gate + nav~~ ✅
 - ~~Modularise workouts.html~~ ✅
+- ~~Full system audit~~ ✅ — 11 April 2026. Audit report + remediation plan produced.
