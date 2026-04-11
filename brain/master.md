@@ -1,7 +1,7 @@
 # VYVE Health — Master Brain Document
 
 > This document gives any AI everything it needs to understand and operate on the VYVE Health platform.
-> Last verified: 11 April 2026 against live Supabase project ixjfklpckgxrwjlfsaaz.
+> Last verified: 11 April 2026 (full audit + collateral fixes applied) against live Supabase project ixjfklpckgxrwjlfsaaz.
 
 ---
 
@@ -10,7 +10,7 @@
 VYVE Health CIC is a UK-based Community Interest Company building a proactive wellbeing platform for individuals and employers. Three pillars: Physical, Mental, Social health. AI coaching personas personalise the member experience.
 
 **Stage:** Pre-revenue, MVP, validation.
-**Members:** ~10 active (verified 10 April 2026). New members auto-created on onboarding.
+**Members:** 11 (verified 11 April 2026). New members auto-created on onboarding.
 **Legal:** ICO registered (00013608608). CIC = 6-8 point advantage in public sector procurement.
 
 ### Team
@@ -72,7 +72,7 @@ Capacitor wrap for iOS App Store + Android Play Store. PWA ready. Blocker: healt
 | Automation | Make (Lewis only — social media) |
 
 ### Authentication
-Supabase Auth with auth.js v2.2. All portal pages gated. Auth0 is FULLY RETIRED.
+Supabase Auth with auth.js v2.3. All portal pages gated. Auth0 is FULLY RETIRED.
 
 ### Repo Structure (vyve-site)
 Single-file HTML pages. Self-contained inline CSS/JS. No build process, no bundler.
@@ -93,27 +93,40 @@ Key files: index.html (dashboard), habits.html, workouts.html, nutrition.html, l
 ### Onboarding Form
 `www.vyvehealth.co.uk/welcome` = `welcome.html` in `Test-Site-Finalv3` repo. This calls the onboarding Edge Function. NOT onboarding_v8.html (old name).
 
-### Edge Functions (24 live)
-| Function | Version | Purpose |
-|----------|---------|---------| 
-| onboarding | v47 | Persona + habits + programme overview + 8-week workout (background) |
-| member-dashboard | v25 | Full dashboard data |
-| wellbeing-checkin | v22 | Weekly check-in + AI |
-| monthly-checkin | v5 | Monthly check-in |
-| log-activity | v8 | PWA activity logging |
-| employer-dashboard | v20 | Aggregate, API key auth, no PII |
-| anthropic-proxy | v5 | Running plans |
-| send-email | v11 | Brevo transactional |
-| re-engagement-scheduler | v11 | Cron 8:00 UTC |
-| daily-report | v16 | Cron 8:05 UTC |
-| certificate-checker | v10 | Cron 9:00 UTC |
-| github-proxy | v11 | GET + PUT to vyve-site |
-| off-proxy | v9 | Open Food Facts API |
-| + 11 others | various | reports, certs, test utilities |
+### Edge Functions (44 deployed — 20 core, 24 utilities/one-off)
+
+#### Core Functions
+| Function | Supabase Ver | Purpose | Auth |
+|----------|-------------|---------|------|
+| onboarding | v58 | Persona + habits + programme overview + 8-week workout (background) | CORS www.vyvehealth.co.uk |
+| member-dashboard | v34 | Full dashboard data — JWT-only, no ?email= fallback | JWT required |
+| wellbeing-checkin | v32 | Weekly check-in + AI | JWT |
+| monthly-checkin | v12 | Monthly check-in | JWT |
+| log-activity | v18 | PWA activity logging | JWT |
+| employer-dashboard | v29 | Aggregate, API key auth, no PII | EMPLOYER_DASHBOARD_API_KEY |
+| leaderboard | v7 | Leaderboard rankings — all members, current month | JWT |
+| notifications | v7 | In-app notification feed + badge count | JWT |
+| anthropic-proxy | v13 | Running plans | verify_jwt: true |
+| send-email | v19 | Brevo transactional | service-role-key |
+| re-engagement-scheduler | v19 | Cron 8:00 UTC | Cron/service-role |
+| daily-report | v21 | Cron 8:05 UTC | Cron/service-role |
+| certificate-checker | v17 | Cron 9:00 UTC | Cron/service-role |
+| certificate-serve | v15 | Serve cert PDFs from storage | Public |
+| github-proxy | v19 | GET + PUT to vyve-site | GITHUB_PROXY_SECRET |
+| off-proxy | v16 | Open Food Facts API | JWT |
+| generate-workout-plan | v9 | 8-week AI workout plan (called by onboarding) | service-role |
+| habit-reminder | v8 | Push + in-app habit reminders (VAPID) | Cron/service-role |
+| streak-reminder | v8 | Push + in-app streak alerts (VAPID) | Cron/service-role |
+| check-cron | v18 | Verify cron schedule is running | Service-role |
+
+#### Utility / One-Off Functions (24)
+weekly-report, monthly-report, ops-brief, send-test-push, send-test-welcome, resend-welcome, send-session-recap, send-journey-recap, send-stuart-reset, re-engagement-test-sender, github-proxy-marketing, internal-dashboard, storage-cleanup, delete-housekeeping, thumbnail-audit, thumbnail-upload, thumbnail-batch-upload, generate-stuart-plan, trigger-owen-workout, trigger-callum-workout, create-ai-decisions-table, setup-ai-decisions, setup-member-units, run-monthly-checkins-migration, run-migration-monthly-checkins, monthly-checkin-test.
+
+> **Backlog:** Delete ~24 dead/one-off utility functions (deletion script in audit doc).
 
 ---
 
-## 4. Database (Supabase — 36 Tables)
+## 4. Database (Supabase — 39 Tables)
 
 All RLS enabled. Email = primary key across all member tables.
 
@@ -124,6 +137,10 @@ Workout: workout_plans (244 rows), workout_plan_cache, exercise_logs, exercise_s
 AI: personas (5), persona_switches, running_plan_cache, weekly_goals, knowledge_base
 
 Habit/Nutrition: habit_themes (5), habit_library (30), member_habits, nutrition_logs, nutrition_my_foods, nutrition_common_foods (125), weight_logs
+
+Notifications/Push: member_notifications, push_subscriptions
+
+AI Decisions: ai_decisions (logs persona + habit assignment reasoning)
 
 Other: service_catalogue (21), certificates, employer_members, engagement_emails, session_chat, qa_submissions
 
@@ -174,7 +191,7 @@ Previously wrong due to inverted stress scale:
 ## 6. Onboarding Flow
 
 **URL:** `www.vyvehealth.co.uk/welcome` (welcome.html in Test-Site-Finalv3)
-**EF:** onboarding v47
+**EF:** onboarding v58 (code comment says v54)
 
 ### What fires on submit
 1. `selectPersona()` — hard rules then AI fallback (correct stress scale v45+)
@@ -245,6 +262,14 @@ AI selects 5 habits from 30 in habit_library using member's profile:
 17. **Nav overlap rule:** Sticky elements inside portal pages must use `top:56px` (not `top:0`) on mobile (`max-width:768px`) to clear the nav.js mobile header. The bottom nav is `z-index:9999`; modals must be `z-index:10001` or higher.
 18. **Modal sheets must `stopPropagation`:** Add `onclick="event.stopPropagation()"` to `.modal-sheet` so tapping inside the modal never bubbles to the overlay and closes it.
 19. **Settings cache:** `vyve_settings_cache` in localStorage, 10-min TTL, keyed to user email. `populateFromCache()` fills UI immediately; `loadProfile()` refreshes in background.
+20. **member-dashboard is JWT-only.** No `?email=` fallback. All portal pages calling it MUST send `Authorization: Bearer <jwt>` header via `getJWT()`.
+21. **github-proxy requires `GITHUB_PROXY_SECRET`** header (`x-proxy-key`). CORS restricted to `online.vyvehealth.co.uk`.
+22. **employer-dashboard requires `EMPLOYER_DASHBOARD_API_KEY`** header. Hard fail if key not configured.
+23. **send-email requires service-role-key** on HTTP handler. CORS restricted to portal origins.
+24. **onboarding CORS restricted** to `https://www.vyvehealth.co.uk` (Option A — no secret in static site).
+25. **Portal auth convention:** All portal pages must use `window.vyveSupabase` for Supabase client access. Never `_supabase`, `_sb`, or other aliases. `getJWT()` pattern: `const{data:{session}}=await window.vyveSupabase.auth.getSession(); return session?.access_token;`
+26. **When changing Edge Function auth, grep ALL portal pages** that call that function. Every caller must be updated — not just the main dashboard.
+27. **Variable scope rule:** When refactoring `var`/`let` → `const`, check ALL functions referencing the variable. `const` is block-scoped — functions at script level cannot access it from an inner function's scope.
 
 ---
 
