@@ -1,3 +1,45 @@
+## 11 April 2026 — Food Log, Settings, Weight Unit, Running Plan (Evening Session)
+
+### Fix 5: log-food.html — JWT auth error + LOG FOOD button behind nav
+- **Issue:** "Error logging — try again" on all food log entries + LOG FOOD button hidden behind bottom nav
+- **Root cause 1:** `supa()` helper used `SUPA_ANON` as Bearer token → `nutrition_logs` RLS rejected with 401
+- **Root cause 2:** `.sheet` CSS had `padding-bottom:env(safe-area-inset-bottom,0px)` — only accounts for iPhone notch, not the 80px nav bar
+- **Fix:** `supa()` now uses `vyveSupabase.auth.getSession()` for real JWT; `.sheet` padding-bottom changed to `calc(80px + env(safe-area-inset-bottom,0px))`
+- **Commit:** `e138f2e`
+
+### Fix 6: running-plan.html — wrong Haiku model string
+- **Issue:** Running plan generation silently failing — showing "Plan was too large" for all plans including small ones
+- **Root cause:** Model string `claude-haiku-4-5-20251001` is invalid. Correct string is `claude-haiku-4-5` (no date suffix). Anthropic returns error object → no `data.error` check → falls through as blank → TRUNCATED error message fires
+- **Additional:** No `response.ok` check — HTTP errors from proxy were silently swallowed
+- **Fix:** Model corrected to `claude-haiku-4-5`; added `response.ok` check and `data.error` check so real errors surface
+- **Commit:** `1b86b43`
+- **Brain update:** Correct Anthropic model strings table added to master.md (section 9)
+
+### Fix 7: settings.html — remove height/weight unit toggles + fix privacy link
+- **Removed:** Entire "Units" section (Weight kg/lbs/stone + Height cm/ft toggles), `setUnits()` JS function, both `data-units-weight`/`data-units-height` init blocks, `.units-group` + `.units-btn` CSS — 3,929 chars total
+- **Why:** Unit toggles were saving to `members.weight_unit`/`members.height_unit` but nothing was reading those values. Unit preference is now managed within `nutrition.html` TDEE recalculator only.
+- **Privacy link fixed:** `privacy.html` → `privacy-policy.html`
+- **Commit:** `73dc197`
+
+### Feat: nutrition.html — weight log unit follows member onboarding preference
+- **Issue:** Weight log sheet hardcoded to 'kg' regardless of member's unit preference. TDEE recalculator unit choice not persisted between sessions.
+- **Fix (6 changes):**
+  1. `weight_unit` added to members SELECT query
+  2. `saveTargets()` PATCH now includes `weight_unit: rcState.wtUnit`
+  3. `memberData` in-memory object updated with `weight_unit` after save
+  4. `openSheet()` inits `sheetWtUnit` from `memberData.weight_unit` → localStorage fallback → 'kg'
+  5. `localStorage.setItem('vyve_weight_unit')` written on TDEE save
+  6. `prefillRecalc()` calls `setWtUnit(savedWtUnit)` so recalculator opens in saved unit
+- **Commit:** `7cfbe91`
+
+### sw.js cache progression today
+`r` → `s` → `t` → `u` → `v` → `w` → `x` (final: `vyve-cache-v2026-04-11x`)
+
+### Hard rules added (31–34)
+See master.md section 8 for full rules.
+
+---
+
 ## 11 April 2026 — Platform Alert Fixes + Full Portal Auth Audit
 
 ### Context
