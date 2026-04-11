@@ -1,7 +1,7 @@
 # VYVE Health — Master Brain Document
 
 > This document gives any AI everything it needs to understand and operate on the VYVE Health platform.
-> Last verified: 11 April 2026 (full audit + collateral fixes applied) against live Supabase project ixjfklpckgxrwjlfsaaz.
+> Last verified: 11 April 2026 (full audit + alert fixes: PostHog SyntaxError, tracking.js JWT, nutrition-setup race, running-plan proxy) against live Supabase project ixjfklpckgxrwjlfsaaz.
 
 ---
 
@@ -86,7 +86,7 @@ Key files: index.html (dashboard), habits.html, workouts.html, nutrition.html, l
 - Any page-level sticky element must use `top:56px` on mobile, not `top:0`
 - Modals must use `z-index:10001` minimum to render above the bottom nav
 
-**sw.js cache version:** `vyve-cache-v2026-04-11i` (bump letter after every portal push)
+**sw.js cache version:** `vyve-cache-v2026-04-11t` (bump letter after every portal push)
 
 **settings.html:** Cache-first load via `vyve_settings_cache` (localStorage, 10-min TTL). UI populates instantly from cache; Supabase refreshes in background. Both modals (coach, habits) use `z-index:10001`, `stopPropagation` on sheet, sticky CTA footer.
 
@@ -251,7 +251,7 @@ AI selects 5 habits from 30 in habit_library using member's profile:
 2. Auth0 is dead. Never reference it.
 3. Kahunas/PAD are dead. Product is "VYVE Health app".
 4. Never say "Corporate Wellness" as tagline.
-5. sw.js cache must be bumped after every portal push. Pattern: vyve-cache-v2026-04-[letter].
+5. sw.js cache must be bumped after every portal push. Pattern: vyve-cache-v2026-04-11t[letter].
 6. EF deploys require full index.ts.
 7. Dual dark/light CSS blocks. theme.js before </head>.
 8. Employer dashboard = aggregate only. No PII.
@@ -274,6 +274,9 @@ AI selects 5 habits from 30 in habit_library using member's profile:
 25. **Portal auth convention:** All portal pages must use `window.vyveSupabase` for Supabase client access. Never `_supabase`, `_sb`, or other aliases. `getJWT()` pattern: `const{data:{session}}=await window.vyveSupabase.auth.getSession(); return session?.access_token;`
 26. **When changing Edge Function auth, grep ALL portal pages** that call that function. Every caller must be updated — not just the main dashboard.
 27. **Variable scope rule:** When refactoring `var`/`let` → `const`, check ALL functions referencing the variable. `const` is block-scoped — functions at script level cannot access it from an inner function's scope.
+28. **tracking.js uses `async getHeaders()`** — fetches real user JWT via `vyveSupabase.auth.getSession()` for all session_views/replay_views writes. Never revert to static `Authorization: Bearer SUPABASE_ANON`.
+29. **running-plan.html anthropic-proxy call must use real user JWT** — anon key is rejected by `verify_jwt: true`. Use `window.vyveSupabase.auth.getSession()` to get token before calling proxy.
+30. **nutrition-setup.html init() fires via `vyveAuthReady` only** — no `window.load` fallback. The window.load race fires before session is confirmed.
 
 ---
 
@@ -303,3 +306,6 @@ AI selects 5 habits from 30 in habit_library using member's profile:
 - Do NOT treat high stress score as bad — 10 = very calm
 - Do NOT assign NOVA just because a member ticked strength among many goals
 - Do NOT create monthly_summaries, activity_patterns, charity_totals, audit_log, milestone_messages — never built
+- Do NOT use `window.load` as auth init fallback alongside `vyveAuthReady` — creates race condition where supa() falls back to anon key
+- Do NOT use static anon key as Bearer token in tracking.js or any page making authenticated REST calls
+- Do NOT hardcode POSTHOG_KEY as a literal string — always use the real key `phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl` inline
