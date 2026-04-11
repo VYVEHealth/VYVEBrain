@@ -16,7 +16,7 @@
 
 ## This Week
 
-- Layer 2 push notifications (VAPID) — `push_subscriptions` table ready, cron EFs have extension points. Wire when Capacitor push permission done.
+- ~~Layer 2 push notifications (VAPID)~~ ✅ — vapid.js + sw.js push handler + habit-reminder v2 + streak-reminder v2 live. **Dean: set `VAPID_PRIVATE_KEY` secret in Supabase to activate.**
 - `certificate-checker` — add `certificate_earned` notification write (currently only cron-based certs don't notify)
 - ~~Leaderboard: remove Sage/My team tabs, wire to live data~~ ✅ — done 10 Apr, EF leaderboard v1, commit 7691280
 

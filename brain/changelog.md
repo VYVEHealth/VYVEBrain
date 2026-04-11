@@ -1,3 +1,28 @@
+## 2026-04-11 (Notifications — Layer 2 Web Push / VAPID)
+
+### feat: VAPID Web Push — push handler in sw.js, vapid.js subscriber, EFs updated
+
+**Commit:** d5937b957c63f3770bc4faa3ddbc24bb369cb904 (vyve-site)
+**sw.js cache bumped:** `vyve-cache-v2026-04-10y` → `vyve-cache-v2026-04-10z`
+
+#### Portal changes
+- `vapid.js` (new) — requests push permission on auth, subscribes via `pushManager.subscribe()`, saves `{endpoint, p256dh, auth_key}` to `push_subscriptions` table. Loaded on `index.html` only.
+- `sw.js` — added `push` event listener (shows native OS notification with icon/badge) and `notificationclick` listener (focuses or opens portal). Cache bumped to `vyve-cache-v2026-04-10z`.
+- `index.html` — `<script src="/vapid.js"></script>` added before `nav.js`.
+
+#### Edge Functions updated
+| Function | Version | Change |
+|----------|---------|--------|
+| `habit-reminder` | v2 | After in-app write, fetches `push_subscriptions` for member → fires VAPID push if present. VAPID JWT signed with P-256 + VAPID_PRIVATE_KEY secret. |
+| `streak-reminder` | v2 | Same VAPID dispatch pattern added. |
+
+#### VAPID keys
+- **Public key** (embedded in `vapid.js` and EFs): `BDbz2-0k3JcqRWKyasr3MNgEZrXhKsVvjS-otCyyV7Ya4Pi2xXOxXGETUpVoE56VorKzSNy7uyep53gOzNEMTu4`
+- **Private key** — must be set as Supabase secret: `VAPID_PRIVATE_KEY` = `nlaC3bzFXVUOGj1lq46Uu94LzDZGJh6MA0ObeaPIU74` ⚠️ **Dean: set this secret before push will work**
+
+#### iOS note
+Web Push requires PWA installed to home screen on iOS (Safari 16.4+). Android Chrome works with no install required.
+
 ## 2026-04-11 (Notifications system — Layer 1)
 
 ### feat: in-app notifications — bell badge, slide-up sheet, 5 Edge Functions
