@@ -205,3 +205,61 @@ Table already has a correct SELECT policy (`auth.email() = member_email`). INSER
 - Make social publisher fix — 133 posts stuck since 23 March
 - Capacitor iOS/Android wrap — #1 business priority (Dean)
 - Employer dashboard proper auth flow — before Sage demo (Dean)
+
+
+---
+
+## Post-Audit Collateral Damage — Fixed 11 April 2026
+
+### Status: ✅ Complete
+
+Three portal pages were broken by the security audit's changes to `member-dashboard` (JWT-only auth, `?email=` removal) and by a variable scope regression in the `index.html` refactor. One additional page had a pre-existing wrong Supabase client reference that was previously masked.
+
+---
+
+### Fix C — index.html dashboard stats not rendering ✅
+**Issue:** `loadDashboard()` called `writeHomeCache(email, data)` where `email` was a `const` inside `onAuthReady()` (block-scoped). `loadDashboard()` is defined at script scope and cannot access it → `ReferenceError` caught by try/catch → "Could not connect. Please refresh." displayed instead of stats. `renderDashboardData(data)` was never reached.
+**Fix:** Changed `writeHomeCache(email,data)` to `writeHomeCache((window.vyveCurrentUser&&window.vyveCurrentUser.email)||'',data)`.
+**Files changed:** `vyve-site/index.html` (commit 3b5dedf5)
+
+---
+
+### Fix D — certificates.html 401 on every load ✅
+**Issue:** `certificates.html` called `member-dashboard` EF with `?email=` param and NO Authorization header. No `getJWT()` function existed on the page. After Fix 2 removed the `?email=` fallback, every call returned 401.
+**Fix:** Added `getJWT()` helper and Bearer token header to the fetch call.
+**Files changed:** `vyve-site/certificates.html`
+
+---
+
+### Fix E — engagement.html 401 on every load ✅
+**Issue:** Identical to Fix D — called `member-dashboard` with `?email=` and no auth header.
+**Fix:** Added `getJWT()` helper and Bearer token header.
+**Files changed:** `vyve-site/engagement.html`
+
+---
+
+### Fix F — leaderboard.html wrong Supabase client reference ✅
+**Issue:** `getJWT()` on leaderboard.html used `window._supabase.auth.getSession()` — but auth.js exposes the client as `window.vyveSupabase`. The `try/catch` silently returned null, so the leaderboard EF received no JWT and couldn't identify the caller for ranking.
+**Fix:** Changed `window._supabase` to `window.vyveSupabase`.
+**Files changed:** `vyve-site/leaderboard.html`
+
+---
+
+### SW Cache Bumps
+| Version | Trigger |
+|---------|---------|
+| `vyve-cache-v2026-04-11g` | Fix C (index.html) |
+| `vyve-cache-v2026-04-11h` | Fix D + E (certificates + engagement) |
+| `vyve-cache-v2026-04-11i` | Fix F (leaderboard) |
+
+---
+
+### Rules Added from Collateral Damage
+
+1. **Variable scope:** When refactoring `var`/`let` → `const`, always check ALL functions that reference the variable. `const` is block-scoped; a function defined at script level cannot access it.
+2. **Edge Function auth changes:** When changing auth on an Edge Function, **grep all portal pages** for calls to that function. Every caller must be updated.
+3. **Supabase client name:** All portal pages must use `window.vyveSupabase` for auth — never `_supabase`, `_sb`, or other aliases.
+
+---
+
+*Last updated: 11 April 2026*
