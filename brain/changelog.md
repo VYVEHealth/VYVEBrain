@@ -1,3 +1,64 @@
+## 11 April 2026 — Nutrition Setup Flow + Full Onboarding Data Completeness
+
+### New: nutrition-setup.html
+- Created standalone portal page for members who selected "Maybe later" on nutrition during onboarding
+- Empty state on `nutrition.html` now links to `/nutrition-setup.html` instead of dead `/onboarding_v8.html`
+- Page matches onboarding nutrition section exactly: diet satisfaction slider, activity life-cards, nutrition goal, height/weight with unit toggles, full TDEE preview (maintenance + target + optional harder deficit slider + final target box), nutrition guidance level
+- Auth-gated, respects dark/light theme via `theme.js`
+- On submit: PATCHes `members` table with `tdee_maintenance`, `tdee_target`, `deficit_percentage`, `height_cm`, `weight_kg`, `activity_level`, `goal_focus`, `baseline_diet`, `age`, `dob`
+- DOB input pre-filled from `members.dob` on load; age computed live from DOB for TDEE accuracy
+- "Skip for now" link returns to `nutrition.html`
+
+### Fixed: Supabase anon key rotation
+- `nutrition-setup.html` was using old expired anon key (iat: 1740580304) causing "Invalid API key" save error
+- Updated to current valid key (iat: 1775066495)
+
+### Fix: `baseline_diet` check constraint
+- `baseline_diet` column has `>= 1 AND <= 10` constraint; slider min was 0 (to achieve 50% position) causing saves to fail
+- Fixed: only write `baseline_diet` if value >= 1
+
+### Fix: Diet satisfaction slider centering
+- Changed `min="1"` to `min="0"` so value=5 sits at exactly 50% of the track
+
+### Fix: Nav overlap on mobile
+- Added `@media(max-width:768px)` padding override to clear the 56px top header and 80px bottom nav injected by `nav.js`
+
+### New: DOB stored, age computed dynamically
+- Added `dob date` column to `members` table
+- Created `member_age(dob date)` SQL function — computes current age from DOB in any query
+- Onboarding EF v57 now stores `dob` from form submission; removed static `age` write
+- Age in TDEE calculation is now always accurate and updates automatically on birthdays without cron jobs
+- Backfilled `age` integer for all 11 existing members manually
+- Set Dean's DOB: 1991-02-06
+
+### New: All onboarding questionnaire fields now persisted (onboarding EF v56 → v57)
+DB migration added 7 new columns to `members`:
+- `training_goals` text — comma-separated training goals array
+- `barriers` text — barriers to exercise
+- `sleep_hours_range` text — sleep duration choice (e.g. "7-8 hours")
+- `sleep_help` text — sleep help preferences
+- `social_help` text — social help preferences
+- `nutrition_guidance` text — guidance level preference
+- `location` text — member city/area
+
+welcome.html payload updated to include 3 previously missing fields:
+- `sleepHours`, `bedtime`, `heightUnit`
+
+Onboarding EF now writes all previously missing fields:
+- `training_goals`, `barriers`, `sleep_hours_range`, `sleep_bedtime`, `sleep_help`, `social_help`, `nutrition_guidance`, `location`, `weight_unit`, `height_unit`
+
+Previously fixed in v55/v56: `age`, `goal_focus`, `tdee_maintenance`, `deficit_percentage`, `support_areas`, `support_style`, `motivation_help`
+
+### Onboarding EF version history (11 April 2026)
+- v55: Added age, goal_focus, tdee_maintenance, deficit_percentage, support_areas, support_style, motivation_help
+- v56: Added all remaining questionnaire fields (training_goals, barriers, sleep_hours_range, sleep_bedtime, sleep_help, social_help, nutrition_guidance, location, weight_unit, height_unit)
+- v57: Replaced static age write with dob date storage; computeAge() function added to EF
+
+### SW cache
+- Bumped through `j` → `r` during this session. Current: `vyve-cache-v2026-04-11r`
+
+---
+
 ## 2026-04-11 (Leaderboard Auth Fix)
 
 ### Summary
