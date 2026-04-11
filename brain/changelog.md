@@ -1,3 +1,17 @@
+## 2026-04-11 (Leaderboard Auth Fix)
+
+### Summary
+`leaderboard.html` had `getJWT()` referencing `window._supabase` which doesn't exist. Auth.js exposes the Supabase client as `window.vyveSupabase`. The JWT call silently failed (caught by try/catch returning null), so the leaderboard edge function received no valid authentication and couldn't identify the caller for ranking.
+
+### Fix
+- `leaderboard.html` — changed `window._supabase` to `window.vyveSupabase` in `getJWT()`
+- `sw.js` — cache bumped to `vyve-cache-v2026-04-11i`
+
+### Rule Added
+- All portal pages must use `window.vyveSupabase` for auth — never `_supabase`, `_sb`, or other aliases. grep for non-standard Supabase client references after any auth refactor.
+
+---
+
 ## 2026-04-11 (Audit Collateral — Certificates + Engagement Pages Fixed)
 
 ### Summary
