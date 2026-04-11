@@ -1,3 +1,26 @@
+## 2026-04-11 (Audit Collateral — Certificates + Engagement Pages Fixed)
+
+### Summary
+Two more portal pages were broken by the security audit's removal of the `?email=` fallback from `member-dashboard`. Both `certificates.html` and `engagement.html` were calling the edge function with NO auth header at all — no `getJWT()` function existed on either page. After the audit enforced JWT-only auth on `member-dashboard`, both pages returned 401 on every load.
+
+### Root Cause
+When `member-dashboard` v29 removed the `?email=` fallback (Fix 2 in the audit), `index.html` was updated to use JWT auth. But `certificates.html` and `engagement.html` also call the same edge function and were NOT updated. They had no `getJWT()` helper and no `vyveSupabase` reference.
+
+### Fixes Applied
+- `certificates.html` — added `getJWT()` helper, replaced unauthenticated fetch with JWT-authenticated fetch
+- `engagement.html` — same fix
+- `sw.js` — cache bumped to `vyve-cache-v2026-04-11h`
+
+### Pages Verified Safe
+- `monthly-checkin.html` — already sends JWT ✅
+- `nutrition.html`, `settings.html`, `log-food.html` — use `?email=` as REST API filter (PostgREST WHERE clause), not as EF auth. JWT sent correctly ✅
+- `running-plan.html` — uses ANON key but `running_plan_cache` has `public_read` RLS policy ✅
+
+### Rule Added
+- When changing auth on an Edge Function, **grep all portal pages** for calls to that function. Every caller must be updated, not just the main dashboard.
+
+---
+
 ## 2026-04-11 (Critical Bug Fix — Dashboard Stats Not Rendering)
 
 ### Summary
