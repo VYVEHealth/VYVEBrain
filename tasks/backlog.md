@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Prioritised list of outstanding work. Updated 11 April 2026.
+> Prioritised list of outstanding work. Updated 12 April 2026.
 
 ## ~~🔴 Security — Do Immediately (Before Enterprise Demo)~~ ✅ Complete
 
@@ -18,7 +18,7 @@
 - ~~Fix `send-email` model name~~ ✅ — fixed to `claude-sonnet-4-20250514`
 - ~~Fix `session_chat` INSERT policy~~ ✅ — already correct (confirmed in audit)
 - ~~Tighten CORS~~ ✅ — all EFs CORS-restricted
-- Delete 89 dead Edge Functions (deletion script in security audit doc)
+- ~~Delete 89 dead Edge Functions~~ ✅ — 12 April 2026
 - ~~VAPID_PRIVATE_KEY secret set in Supabase~~ ✅ — Dean set this session
 - **Improve dashboard skeleton loading screen** — current skeleton shows large grey blocks that fill the viewport and push real content below the fold. Options: slim down skeleton to subtle placeholders, show member name instantly from auth data (`window.vyveCurrentUser`), use home cache for instant repeat loads (now working after email scope fix). Recommended: Option C (slim skeleton + instant name + cache).
 
@@ -58,6 +58,8 @@
 - Document PostHog as data processor in privacy policy (sends member emails)
 
 ## Completed This Week
+- ~~Delete 89 dead Edge Functions~~ ✅ — 12 April 2026
+
 
 - ~~Security remediation (all 8 audit fixes)~~ ✅ — 11 April 2026
 - ~~Fix dashboard stats not rendering~~ ✅ — email scoping bug in `index.html` `loadDashboard()` (writeHomeCache used undefined `email` const)
