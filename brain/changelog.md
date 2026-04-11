@@ -1,3 +1,42 @@
+## 2026-04-11 (Notifications system — Layer 1)
+
+### feat: in-app notifications — bell badge, slide-up sheet, 5 Edge Functions
+
+**Commit:** f0f252f1c6421626a86135c77755cf42045aed9f
+**sw.js cache bumped:** `vyve-cache-v2026-04-10x` → `vyve-cache-v2026-04-10y`
+
+#### Supabase
+- New table: `member_notifications` (id, member_email, type, title, body, read, created_at) + RLS (auth.email() = member_email) + lookup index
+- New table: `push_subscriptions` (id, member_email, endpoint, p256dh, auth_key) + RLS — Layer 2 scaffold, no logic yet
+
+#### Edge Functions deployed
+| Function | Version | Change |
+|----------|---------|--------|
+| `notifications` | v1 (new) | GET → unread count + list (last 50). POST mark_read (one or all). JWT-verified. |
+| `log-activity` | v12 | Writes streak milestone notifications (7/14/30/60/100 days) after successful insert via waitUntil(). Per-milestone dedup (fires once ever per milestone value). |
+| `wellbeing-checkin` | v26 | Writes check-in confirmation notification after submission via waitUntil(). Deduped per day. |
+| `habit-reminder` | v1 (new) | Cron 20:00 UTC daily. Finds members with no habit logged today → writes in-app notification. Layer 2 push extension point. |
+| `streak-reminder` | v1 (new) | Cron 18:00 UTC daily. Finds members with streak ≥ 7 and no activity today → writes in-app notification. Layer 2 push extension point. |
+
+#### Cron schedules registered
+- `habit-reminder-daily` — `0 20 * * *` (8pm UTC)
+- `streak-reminder-daily` — `0 18 * * *` (6pm UTC)
+
+#### Portal — index.html
+- Bell button (`#mob-bell-btn`): added `position:relative` to CSS, replaced `href='#notifications'` with `onclick="openNotifSheet()"`
+- Badge span (`#notif-badge`): absolutely positioned on bell, `var(--accent,#e84393)` background, hidden when count = 0
+- Notification sheet: slide-up overlay, `var(--card-bg)` background, `var(--text)`/`var(--text-muted)` text — fully theme-aware light/dark
+- Unread dot per item: `var(--accent)` colour, fades out on read
+- Mark-all-read fires on sheet open (non-blocking fetch)
+- Count polls on `vyveAuthReady` event + every 5 minutes
+
+#### Layer 2 readiness
+- `push_subscriptions` table created (empty)
+- Both cron EFs have a clearly marked Layer 2 extension point for VAPID push dispatch
+- `sw.js` push handler will be a ~10 line addition when Capacitor push permission is wired
+
+---
+
 ## 2026-04-11 (nav overlap fixes + settings overhaul)
 
 ### fix: content hidden under nav on 3 portal pages

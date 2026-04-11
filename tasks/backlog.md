@@ -5,7 +5,7 @@
 ## Do Now
 
 - ~~Delete `results-preview.html` from Test-Site-Finalv3~~ — deleted ✅
-- Push notification permission request (Capacitor blocker)
+- Push notification permission request (Capacitor blocker) — Layer 1 in-app notifications ✅ done; Layer 2 VAPID push ready to wire
 - Health disclaimer — Lewis sign-off needed (Capacitor blocker)
 - ~~Settings: persona selector, habit manager, goals, units — ai_decisions table~~ ✅
 - Add monthly-checkin link to portal nav / dashboard
@@ -16,6 +16,8 @@
 
 ## This Week
 
+- Layer 2 push notifications (VAPID) — `push_subscriptions` table ready, cron EFs have extension points. Wire when Capacitor push permission done.
+- `certificate-checker` — add `certificate_earned` notification write (currently only cron-based certs don't notify)
 - ~~Leaderboard: remove Sage/My team tabs, wire to live data~~ ✅ — done 10 Apr, EF leaderboard v1, commit 7691280
 
 - Brevo logo removal (~$12/month)
