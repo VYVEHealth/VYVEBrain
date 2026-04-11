@@ -146,6 +146,10 @@ Other: service_catalogue (21), certificates, employer_members, engagement_emails
 
 **Activity caps:** habits 1/day, workouts/cardio/sessions 2/day, check-ins 1/ISO week. Over-cap -> activity_dedupe.
 
+**New columns added 11 April 2026:** `dob` (date), `training_goals`, `barriers`, `sleep_hours_range`, `sleep_help`, `social_help`, `nutrition_guidance`, `location` — all onboarding questionnaire fields now fully persisted.
+
+**DOB / Age:** `dob date` is stored. Age is computed live using `member_age(dob)` SQL function — never stored statically. `age integer` column kept for legacy fallback only.
+
 **member_habits.assigned_by constraint:** Only allows: `'onboarding'`, `'ai'`, `'theme_update'`, `'self'`. Never use `'onboarding_ai'` — constraint violation.
 
 **daily_habits unique constraint:** `(member_email, activity_date, habit_id)` — one row per habit per day. Cap is 10/day (raised from 1).
