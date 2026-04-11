@@ -142,3 +142,12 @@ Replace `YOUR_KEY` with the value of `EMPLOYER_DASHBOARD_API_KEY` from Supabase 
 ---
 
 *Last updated: 11 April 2026 (post-review fixes)*
+---
+
+### Fix C — employer dashboard localStorage (persists across sessions) ✅
+**Issue:** Employer dashboard key was stored in `sessionStorage` — cleared on every tab/browser close, requiring re-entry each session.
+**Fix:** Switched to `localStorage` — key persists indefinitely until manually cleared.
+**One-time setup for Lewis/Dean:** In browser console on the dashboard page, run once:
+`localStorage.setItem('vyve_emp_key','YOUR_KEY')`
+Replace `YOUR_KEY` with the value of `EMPLOYER_DASHBOARD_API_KEY` from Supabase → Settings → Edge Functions → Secrets.
+**Files changed:** `Test-Site-Finalv3/vyve-dashboard-live.html` (commit 51e2e794)
