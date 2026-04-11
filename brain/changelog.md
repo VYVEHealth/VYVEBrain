@@ -1,3 +1,42 @@
+## 2026-04-11 (Full System Audit)
+
+### Summary
+Full system audit completed across all layers: architecture, Supabase, Edge Functions, frontend, security, performance. 5 critical vulnerabilities identified, remediation plan created, backlog updated.
+
+### Critical Findings
+- **github-proxy** — zero authentication, allows unauthenticated read/write to private repo (FIX 1)
+- **member-dashboard** — `?email=` fallback exposes member data without JWT (FIX 2)
+- **onboarding** — CORS `*`, no payment verification, creates auth users from public internet (FIX 3)
+- **send-email** — open email relay from `team@vyvehealth.co.uk` (FIX 4)
+- **employer-dashboard** — API key secret not set, unauthenticated fallback active (FIX 5)
+
+### Additional Findings
+- `send-email` has invalid model name (`claude-sonnet-4-5`) — will cause re-engagement failures
+- `session_chat` INSERT policy allows impersonation (`with_check: true` instead of `auth.email() = member_email`)
+- 6 tables have duplicate RLS policies (ALL + per-operation) from previous security audit debugging
+- Duplicate indexes on `weekly_scores` and `exercise_notes`
+- `ai_decisions` INSERT policy overly permissive
+
+### What's Good (Confirmed)
+- All 39 tables have RLS enabled ✅
+- Brain repo accurate against live state ✅
+- Onboarding v48 well-built (stress scale, FK race, decision logging) ✅
+- Auth.js consent gate working correctly ✅
+- Database indexes well-placed for current query patterns ✅
+
+### Outputs
+- `VYVE_Full_System_Audit_2026-04-11.md` — complete audit report
+- `VYVE_Remediation_Plan_2026-04-11.md` — step-by-step implementation for 11 fixes
+- `tasks/backlog.md` — updated with security section at top
+
+### Brain Updates
+- `tasks/backlog.md` updated with 🔴 Security section
+
+### Rules Added
+- github-proxy requires `GITHUB_PROXY_SECRET` header (after fix deployed)
+- member-dashboard: JWT-only auth, no `?email=` fallback (after fix deployed)
+- onboarding: CORS restricted to `www.vyvehealth.co.uk` + `ONBOARDING_SECRET` header (after fix deployed)
+
 ## 2026-04-11 (Daily Sync)
 
 ### Summary
