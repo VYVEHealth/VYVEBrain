@@ -1,3 +1,52 @@
+## 11 April 2026 — Platform Alert Fixes + Full Portal Auth Audit
+
+### Context
+Platform monitoring (deployed yesterday) began firing alerts. Three distinct issues identified from live alerts plus one discovered during the subsequent full 38-page portal audit.
+
+### Fix 1: index.html — PostHog SyntaxError (CRITICAL)
+- **Alert:** `js_error` — `SyntaxError: Unexpected token ','` at `index.html:305`
+- **Root cause:** PostHog init on line 305 had literal `+ POSTHOG_KEY +` placeholder instead of the real key — invalid JS syntax
+- **Impact:** Entire dashboard JavaScript blocked for all members on every page load
+- **Fix:** Replaced `posthog.init( + POSTHOG_KEY + ,{...})` with real key `phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl`
+- **Commit:** `0d66099`
+
+### Fix 2: tracking.js — Session views using anon key as Bearer (CRITICAL)
+- **Alert:** `auth_401_session_views` on `/yoga-live.html` for `stuwatts09@gmail.com`
+- **Root cause:** `tracking.js` built headers with `Authorization: Bearer SUPABASE_ANON` (anon key). RLS on `session_views` and `replay_views` requires authenticated JWT — anon key rejected with 401
+- **Impact:** All 13 live and replay pages (yoga-live, mindfulness-live, workouts-live, checkin-live, therapy-live, education-live, events-live, podcast-live + all -rp equivalents) failing to log session views
+- **Fix:** Replaced static headers constant with `async getHeaders()` function that fetches real user JWT via `window.vyveSupabase.auth.getSession()`, falls back to anon only if session unavailable
+- **Commit:** `5adf652`
+
+### Fix 3: nutrition-setup.html — Auth race condition (CRITICAL)
+- **Alert:** `auth_401_members` on `/nutrition-setup.html` for Dean and Stuart
+- **Root cause:** `window.addEventListener('load', () => { if (window.vyveCurrentUser) init(); })` fired before `vyveSupabase` was confirmed set — `supa()` helper fell back to anon key, which has no RLS permission to read/write `members`
+- **Fix:** Removed the racing `window.load` fallback. `init()` now fires exclusively via `document.addEventListener('vyveAuthReady', ...)` which fires only after session confirmed
+- **Commit:** `43319306`
+
+### Fix 4: running-plan.html — anthropic-proxy rejecting anon key (HIGH — discovered in audit)
+- **No alert fired** (EF silently rejected, no DB write to trigger alert)
+- **Root cause:** `running-plan.html` called `anthropic-proxy` with `Authorization: Bearer SUPA_KEY` (anon key). `anthropic-proxy` has `verify_jwt: true` — rejects anon key
+- **Impact:** Running plan generation broken for all members since `verify_jwt: true` was added to anthropic-proxy during security audit
+- **Fix:** PROXY_URL fetch now uses async IIFE to get real JWT from `window.vyveSupabase.auth.getSession()` before sending request
+- **Commit:** `a09a5a5`
+
+### sw.js cache bumps
+- `vyve-cache-v2026-04-11s` — after first three fixes
+- `vyve-cache-v2026-04-11t` — after running-plan fix
+
+### Full 38-page portal audit results
+- **38 files audited** (36 HTML pages + auth.js + sw.js)
+- **0 remaining issues** after today's fixes
+- **32 pages clean** — correct auth patterns confirmed
+- **6 informational** — public/infrastructure files (login, set-password, consent-gate, offline, auth.js, sw.js)
+- Leaderboard warning was false positive — `getJWT()` correctly used in `loadLeaderboard()`
+- nutrition-setup.html still shows minor flag (window.load present alongside vyveAuthReady) — resolved by Fix 3
+
+### Hard rules added (28, 29, 30)
+See master.md section 8 for full rules.
+
+---
+
 ## 11 April 2026 — Nutrition Setup Flow + Full Onboarding Data Completeness
 
 ### New: nutrition-setup.html
