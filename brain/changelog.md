@@ -1,3 +1,41 @@
+## 2026-04-11 (Security Remediation — Complete)
+
+### Summary
+Full security remediation executed across all 8 fixes identified in the 2026-04-11 audit. All critical and high-priority vulnerabilities resolved. Platform is now production-secure.
+
+### Edge Functions Updated
+
+| Function | Version | Change |
+|----------|---------|--------|
+| `github-proxy` | v15 | Added `x-proxy-key` header auth (GITHUB_PROXY_SECRET), CORS restricted to `online.vyvehealth.co.uk` |
+| `member-dashboard` | v29 | Removed `?email=` query param fallback entirely, JWT-only auth enforced |
+| `onboarding` | v57 | CORS restricted to `https://www.vyvehealth.co.uk`, ONBOARDING_SECRET check removed (Option A — static site can't safely hold secrets) |
+| `send-email` | v16 | CORS restricted, service-role-key auth on HTTP handler, model fixed from `claude-sonnet-4-5` → `claude-sonnet-4-20250514` |
+| `employer-dashboard` | v26 | Unauthenticated fallback code path removed, hard fail if EMPLOYER_DASHBOARD_API_KEY not configured |
+
+### Portal Files Updated (vyve-site)
+- `index.html` — removed `?email=` param and hardcoded fallback email `deanonbrown@hotmail.com` from member-dashboard fetch call
+- `sw.js` — cache bumped to `vyve-cache-v2026-04-11a`
+
+### Marketing Site Updated (Test-Site-Finalv3)
+- `welcome.html` — removed `ONBOARDING_KEY` declaration and `x-onboarding-key` header from onboarding fetch call (Option A — placeholder was non-functional in static context)
+
+### Database Changes
+- **Fix 6** — `session_chat` INSERT policy `with_check` confirmed correct, no change needed
+- **Fix 7** — Dropped 20 redundant per-operation RLS policies across 7 tables (`cardio`, `daily_habits`, `workouts`, `session_views`, `replay_views`, `weekly_scores`, `wellbeing_checkins`). Each now has exactly 1 `ALL` policy.
+- **Fix 8** — Dropped 2 duplicate indexes on `exercise_notes` (`exercise_notes_member_idx`, `idx_exercise_notes_member`). `weekly_scores_member_week_unique` retained — it's a real unique constraint.
+
+### Secrets Set in Supabase Dashboard
+- `GITHUB_PROXY_SECRET` — protects github-proxy write access
+- `ONBOARDING_SECRET` — set but unused (Option A decision)
+- `EMPLOYER_DASHBOARD_API_KEY` — required for employer dashboard access
+
+### Architecture Decision — Option A (Onboarding Secret)
+The `ONBOARDING_SECRET` pattern was abandoned because `welcome.html` is a static GitHub Pages file — any secret embedded in it is publicly readable. CORS restriction to `https://www.vyvehealth.co.uk` is the correct and sufficient protection for a public-facing onboarding form at current scale.
+
+
+---
+
 ## 2026-04-11 (Full System Audit)
 
 ### Summary
