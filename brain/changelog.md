@@ -1,3 +1,28 @@
+## 2026-04-11 (Critical Bug Fix — Dashboard Stats Not Rendering)
+
+### Summary
+Fixed a JavaScript scoping bug in `index.html` that prevented dashboard stats from rendering for all users. Caused by the security audit refactor on the same day.
+
+### Root Cause
+The security audit refactor changed `email` from a script-level variable to `const email` inside `onAuthReady()`. The `loadDashboard()` function (defined at script scope) still referenced `email` on the `writeHomeCache(email, data)` call. Since `const` is block-scoped, `email` was undefined in `loadDashboard()`, causing a `ReferenceError`. The try/catch caught it and displayed "Could not connect. Please refresh." instead of rendering the dashboard data.
+
+The edge function (`member-dashboard` v34) was returning 200 with correct data — the bug was purely frontend.
+
+### Fix Applied
+- `index.html` — changed `writeHomeCache(email,data)` to `writeHomeCache((window.vyveCurrentUser&&window.vyveCurrentUser.email)||'',data)` (commit 3b5dedf5)
+- `sw.js` — cache bumped to `vyve-cache-v2026-04-11g` to force PWA refresh
+
+### Files Changed
+| File | Change |
+|------|--------|
+| `index.html` | Fixed email variable scope in `loadDashboard()` |
+| `sw.js` | Cache bumped `v2026-04-11f` → `v2026-04-11g` |
+
+### Rule Added
+- When refactoring variable scope (var/let/const), always check all functions that reference the variable — not just the function where it's declared. `const` and `let` are block-scoped; `var` is function-scoped.
+
+---
+
 ## 2026-04-11 (Security Remediation — Complete)
 
 ### Summary
