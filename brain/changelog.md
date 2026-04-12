@@ -1,3 +1,13 @@
+## 13 April 2026 — iOS App Store: Build 2 Submitted (Correct VYVE Icon)
+
+### Fix: Replaced placeholder Capacitor icon with correct VYVE logo
+- **What:** Generated correct app icon from `logo512.png` using `@capacitor/assets generate --ios`
+- **Icon source:** `resources/icon.png` (1024x1024px, VYVE teal V logo)
+- **Build 2** archived and uploaded to App Store Connect
+- **Status:** App is "Waiting for Review" with Build 1 (placeholder icon). Build 2 is uploaded and ready.
+- **Next:** If Apple approves Build 1, submit 1.0.1 update immediately with Build 2 icon. If rejected, resubmit with Build 2.
+- **Note:** Cannot swap builds once "Waiting for Review" — Apple has locked the submission.
+
 ## 13 April 2026 — iOS App Submitted to App Store
 
 ### Feat: VYVE Health iOS app built and submitted
