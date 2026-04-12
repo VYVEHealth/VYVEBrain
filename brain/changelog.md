@@ -1,3 +1,14 @@
+## 12 April 2026 — member-dashboard v31: Server-Side Aggregation
+
+### Change: member-dashboard EF v31 + index.html frontend update
+- **What:** All streak, score, count, and goal-progress calculations moved server-side into the Edge Function
+- **Why:** Response payload was growing linearly with activity history (~5KB for current members, unbounded at scale). Now fixed ~2KB regardless of history size.
+- **EF changes (v31):** Ported `calcStreaks`, `calcWeekStreaks`, `calcDayStats`, `calcVariety7d`, `computeEngagementScore` from frontend JS into TypeScript. Same 11 parallel DB queries unchanged. New response shape includes `counts`, `streaks`, `checkinStreak`, `score`, `habitStrip`, `habitDatesThisWeek`, `goals`, `charity`, `daysInactive`, `daysActive30`.
+- **Frontend changes (index.html):** Removed client-side calc functions. `renderDashboardData` now maps pre-computed values directly to DOM. `renderDailyCheckinStrip` updated to accept `habitStrip` + `habitDatesThisWeek` + `habitStreakCurrent`. `renderGoals` updated to accept pre-computed `goals` object.
+- **Cache key bumped:** `vyve_home_cache_` → `vyve_home_v2_` to force invalidation of old-shape cache on all devices.
+- **sw.js:** Bumped to `vyve-cache-v2026-04-12a`
+- **Commit:** 8ef469cde210e65cff6eb9bc49b33c3b04cadb3c
+
 ## 11 April 2026 — Food Log, Settings, Weight Unit, Running Plan (Evening Session)
 
 ### Fix 5: log-food.html — JWT auth error + LOG FOOD button behind nav

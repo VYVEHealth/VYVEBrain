@@ -99,7 +99,7 @@ Key files: index.html (dashboard), habits.html, workouts.html, nutrition.html, l
 | Function | Supabase Ver | Purpose | Auth |
 |----------|-------------|---------|------|
 | onboarding | v58 | Persona + habits + programme overview + 8-week workout (background) | CORS www.vyvehealth.co.uk |
-| member-dashboard | v34 | Full dashboard data — JWT-only, no ?email= fallback | JWT required |
+| member-dashboard | v35 | Full dashboard data — server-side aggregation, JWT-only | JWT required |
 | wellbeing-checkin | v32 | Weekly check-in + AI | JWT |
 | monthly-checkin | v12 | Monthly check-in | JWT |
 | log-activity | v18 | PWA activity logging | JWT |
