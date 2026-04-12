@@ -3,10 +3,13 @@
 > Prioritised list of outstanding work. Updated 12 April 2026.
 ## 🟡 In Progress
 
-- **Capacitor wrap for iOS + Android** — Pre-Mac setup complete (12 Apr). Firebase ✅, APNs key ✅, Supabase table ✅, all config files generated. Waiting for Mac. Next: `npx cap add ios/android`, add plugin bridge to portal, Xcode + Android Studio builds.
-  - Key ID: `4WSJ4XSZ58` | Team ID: `VPW62W696B`
-  - Files on Desktop: `google-services.json`, `GoogleService-Info.plist`, APNs `.p8`
-  - Health disclaimer checkbox — pending Lewis sign-off before App Store submission
+- **Capacitor wrap — Android submitted ✅, iOS pending Mac**
+  - Android: `app-release.aab` built + submitted to Google Play (12 Apr). Awaiting review (1-3 days).
+  - iOS: Pre-requisites all done. Waiting for Mac. ~2.5 hours once Xcode installed.
+  - Key ID: `4WSJ4XSZ58` | Team ID: `VPW62W696B` | Project: `C:\Users\DeanO\vyve-capacitor\`
+  - Keystore: `vyve-release-key.jks` on Dean's Desktop (OneDrive)
+  - Next: `capacitor-plugins.js` → add to portal; health disclaimer checkbox → Lewis sign-off
+  - Old Kahunas app (`com.kahunas.io.VYVE`) still on Play Store — deprecate after new app approved
 
 
 
