@@ -1,6 +1,7 @@
 # VYVE Health — Task Backlog
 
 > Prioritised list of outstanding work. Updated 12 April 2026.
+
 ## 🟡 In Progress
 
 - **Capacitor wrap — Android submitted ✅, iOS pending Mac**
@@ -8,86 +9,72 @@
   - iOS: Pre-requisites all done. Waiting for Mac. ~2.5 hours once Xcode installed.
   - Key ID: `4WSJ4XSZ58` | Team ID: `VPW62W696B` | Project: `C:\Users\DeanO\vyve-capacitor\`
   - Keystore: `vyve-release-key.jks` on Dean's Desktop (OneDrive)
-  - Next: `capacitor-plugins.js` → add to portal; health disclaimer checkbox → Lewis sign-off
+  - Next: `capacitor-plugins.js` → add to portal; iOS build on Mac
   - Old Kahunas app (`com.kahunas.io.VYVE`) still on Play Store — deprecate after new app approved
 
+---
 
+## 🔴 Do Now
 
-## ~~🔴 Security — Do Immediately (Before Enterprise Demo)~~ ✅ Complete
-
-- ~~Secure `github-proxy`~~ ✅ — v15, `x-proxy-key` header auth
-- ~~Fix `member-dashboard` auth~~ ✅ — v34, JWT-only, `?email=` removed
-- ~~Secure `onboarding` endpoint~~ ✅ — v57, CORS restricted (Option A)
-- ~~Secure `send-email`~~ ✅ — v16, service-role-key auth + model fix
-- ~~Set `EMPLOYER_DASHBOARD_API_KEY`~~ ✅ — v26, fallback removed
-
-## Do Now
-
-- Health disclaimer — Lewis sign-off needed (Capacitor blocker)
+- ~~Health disclaimer~~ ✅ — Lewis signed off
+- **Improve dashboard skeleton loading screen** — slim skeleton + instant name from auth + cache
 - Add monthly-checkin link to portal nav / dashboard
 - Weekly check-in slider questions — Lewis to confirm wording
-- ~~Fix `send-email` model name~~ ✅ — fixed to `claude-sonnet-4-20250514`
-- ~~Fix `session_chat` INSERT policy~~ ✅ — already correct (confirmed in audit)
-- ~~Tighten CORS~~ ✅ — all EFs CORS-restricted
-- ~~Delete 89 dead Edge Functions~~ ✅ — 12 April 2026
-- ~~VAPID_PRIVATE_KEY secret set in Supabase~~ ✅ — Dean set this session
-- **Improve dashboard skeleton loading screen** — current skeleton shows large grey blocks that fill the viewport and push real content below the fold. Options: slim down skeleton to subtle placeholders, show member name instantly from auth data (`window.vyveCurrentUser`), use home cache for instant repeat loads (now working after email scope fix). Recommended: Option C (slim skeleton + instant name + cache).
+- Add VYVE logo image to all Brevo email templates (currently text-only "VYVE" header)
 
-## This Week
+---
+
+## 🟡 This Week
 
 - `certificate-checker` — add `certificate_earned` notification write + push
 - Load `vapid.js` on other portal pages (currently index.html only)
-- ~~Consolidate duplicate RLS policies~~ ✅ — 20 per-operation policies dropped across 7 tables
-- ~~Drop duplicate indexes~~ ✅ — `exercise_notes_member_idx` + `idx_exercise_notes_member` dropped, `weekly_scores_member_week_unique` retained (unique constraint)
-- Brevo logo removal (~$12/month)
-- Facebook Make connection refresh — EXPIRES 22 MAY 2026
 - Re-engagement automations x3 — blocked on Lewis email copy
 - Live viewer count on session pages (20+ viewers)
 - AI weekly goals system — blocked on Lewis copy approval
-- B2B volume discount tiers — define before first contract
-- Fix Make social publisher (Scenario 4950386) — 133 posts stuck
-- Stuart Watts old account (`swatts@geoffreyrobinson.co.uk`) — decide whether to migrate 12 legacy workout logs
 - Suppress portrait lock overlay during active workout session (iOS only)
 
-## Later
+---
 
-- ~~Capacitor wrap for iOS + Android~~ → moved to In Progress (see above)
-- Aggregate member-dashboard response server-side (currently returns raw activity rows — won't scale past ~100 active members)
-- Add retry/circuit-breaker logic to AI calls in Edge Functions (onboarding, wellbeing-checkin)
+## 🔵 Later
+
+- Aggregate member-dashboard server-side (won't scale past ~100 active members)
+- Add retry/circuit-breaker logic to AI calls in Edge Functions
 - Add Content-Security-Policy headers to portal pages
-- Add session timeout to Supabase Auth (currently persists indefinitely)
-- Exercise page redesign — umbrella page with gym / cardio / walking plans (product decision pending)
+- Add session timeout to Supabase Auth
+- Exercise page redesign — umbrella page (product decision pending)
 - Build process / bundler
 - ARIA labels
 - Sentry, PostHog events, TypeScript
-- Move pg_net to extensions schema
 - HAVEN professional review
 - Google Workspace migration
-- External DPO service
-- Grant applications (National Lottery, The Fore)
+- External DPO service (required before 500 members)
+- Grant applications (National Lottery, The Fore — June/July 2026)
 - WHISPA research partnership — monitor May 2026 launch
-- Document PostHog as data processor in privacy policy (sends member emails)
+- Document PostHog as data processor in privacy policy
+- Brevo logo removal (~$12/month) — before enterprise demo
 
-## Completed This Week
+---
+
+## 🔒 Security — Deferred
+
+- A4: Service-role-key refactor for member-scoped EF queries (~1 hr)
+- A5: XSS audit on `.innerHTML` rendering of AI content (~30 min)
+- C2: Onboarding race condition ordering (~1 hr)
+- C4: PostHog raw email PII — hash before sending (~30 min)
+- B1: 13 one-shot migration EFs still to delete
+
+---
+
+## ✅ Completed
+
+- ~~Health disclaimer — Lewis sign-off~~ ✅ — 12 April 2026
+- ~~Android app submitted to Google Play~~ ✅ — 12 April 2026
 - ~~Delete 89 dead Edge Functions~~ ✅ — 12 April 2026
-
-
 - ~~Security remediation (all 8 audit fixes)~~ ✅ — 11 April 2026
-- ~~Fix dashboard stats not rendering~~ ✅ — email scoping bug in `index.html` `loadDashboard()` (writeHomeCache used undefined `email` const)
-- ~~Fix certificates.html auth~~ ✅ — added `getJWT()`, JWT auth header to member-dashboard call
-- ~~Fix engagement.html auth~~ ✅ — same fix as certificates
-- ~~Fix leaderboard.html auth~~ ✅ — `window._supabase` → `window.vyveSupabase` in `getJWT()`
-- ~~SW cache bumped to `vyve-cache-v2026-04-11i`~~ ✅
-
-- ~~Delete `results-preview.html` from Test-Site-Finalv3~~ ✅
-- ~~Push notification permission request (Layer 1 + Layer 2)~~ ✅ — both layers fully live
-- ~~Layer 2 VAPID Web Push~~ ✅ — vapid.js, sw.js push handler, habit-reminder v4, streak-reminder v4, confirmed on iOS
-- ~~Notifications full-screen page~~ ✅ — back arrow, clear-all bell, bottom nav, themed background
+- ~~Push notification permission request (Layer 1 + Layer 2)~~ ✅
+- ~~Layer 2 VAPID Web Push~~ ✅
 - ~~Settings: persona selector, habit manager, goals, units~~ ✅
 - ~~Leaderboard: live data, Sage/team tabs~~ ✅
-- ~~Running plan truncation fix~~ ✅
 - ~~workouts.html: multiple fixes~~ ✅
-- ~~settings.html: mailto + privacy link fixes~~ ✅
-- ~~how-to pages: auth gate + nav~~ ✅
 - ~~Modularise workouts.html~~ ✅
-- ~~Full system audit~~ ✅ — 11 April 2026. Audit report + remediation plan produced.
+- ~~Full system audit~~ ✅ — 11 April 2026
