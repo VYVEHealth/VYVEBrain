@@ -1,3 +1,36 @@
+## 12 April 2026 — Android App Submitted to Google Play
+
+### Feat: VYVE Health Android app built and submitted
+- **What:** Full Capacitor Android build completed and submitted to Google Play Store for review
+- **Package ID:** `co.uk.vyvehealth.app`
+- **Build:** `app-release.aab` (5.77MB, 3s download time)
+- **Keystore:** `vyve-release-key.jks` saved to Dean's Desktop (OneDrive). Password stored securely.
+- **Key alias:** `vyve-key`
+- **google-services.json:** Placed in `android/app/` ✅
+- **Project location:** `C:\Users\DeanO\vyve-capacitor\`
+- **Plugins (15):** app, browser, camera, filesystem, haptics, keyboard, local-notifications, network, preferences, push-notifications, screen-orientation, share, splash-screen, status-bar, capacitor-native-biometric
+- **Countries targeted:** United Kingdom
+- **Google Play listing:** Full description written, 4 screenshots processed, feature graphic generated (1024x500), 512px icon uploaded
+- **Status:** Submitted for review — Google will email on approval (typically 1-3 days)
+- **Architecture:** Remote URL loading (`https://online.vyvehealth.co.uk`) — portal updates live instantly, no resubmission needed
+
+### Google Play Store listing content
+- **Short description:** Proactive workplace wellbeing — Physical, Mental & Social health
+- **App category:** Health & Fitness
+- **Content rating:** All other app types — PEGI Everyone
+- **Health features ticked:** Activity & fitness, Nutrition & weight management, Period tracking, Sleep management, Stress management/relaxation/mental acuity
+- **Target audience:** 18+
+- **Countries:** United Kingdom
+
+### iOS — Pending Mac
+- All pre-requisites complete. When Mac arrives: install Xcode, run `npx cap add ios && npx cap sync ios`, open in Xcode, configure signing + capabilities, build + submit.
+- Estimated time once Mac available: ~2.5 hours
+
+### Notes
+- Old Kahunas app (`com.kahunas.io.VYVE`) still live on Play Store with 1 install — leave alone, deprecate after new app approved
+- `capacitor-plugins.js` not yet added to portal — do this next session ("add plugins to portal")
+- Health disclaimer checkbox on welcome.html — pending Lewis sign-off
+
 ## 12 April 2026 — Capacitor App Store Wrap: Pre-Mac Setup Complete
 
 ### Planning: Full Capacitor wrap mapped and config files generated
