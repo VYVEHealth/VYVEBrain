@@ -1,3 +1,19 @@
+## 12 April 2026 — Browse Library: Your Programmes + Resume
+
+### Feat: Paused plans section in Browse Library
+- **What:** Added "Your Programmes" section at the top of the Browse Library tab showing all paused plans with a Resume button.
+- **UI:** Deduplicated by programme name (shows most recently paused). Shows week progress ("Week 2 of 8") and source label ("Your bespoke plan" / "From library" / "Shared"). Confirmation modal before resuming.
+- **Backend:** `workout-library` EF v3 — added `action: resume` POST handler. Pauses current active plan, reactivates the selected paused plan preserving `current_week` and `current_session` progress.
+- **Frontend:** `workouts-library.js` — new `loadPausedPlans()`, `confirmResume()`, `resumeProgramme()` functions. Paused plans fetched via REST API from `workout_plan_cache` with `is_active=false`.
+- **sw.js:** Bumped to `vyve-cache-v2026-04-12ab`
+- **Commit:** `3fd4b23727c3fa822b84c69454d0b1b8af15f966`
+
+### Data: PPL Power & Size Builder — Push B → Upper
+- **What:** Updated `cbudzski3@gmail.com`'s active programme in `workout_plan_cache`
+- **Push A** renamed to **Push** (dropped the "A") across all 8 weeks
+- **Push B** replaced with **Upper — Chest, Back, Shoulders & Arms** across all 8 weeks
+- Upper sessions designed as proper balanced upper body: chest pressing + back pulling + shoulders + biceps (hammer curls) + triceps. Exercises vary across periodisation phases. Avoids duplicating Pull day movements.
+
 ## 12 April 2026 — Browse Library visibility fix
 
 ### Fix: workouts.html #tab-library outside .wrap
