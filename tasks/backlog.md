@@ -7,6 +7,7 @@
 - ~~**Capacitor wrap — Android submitted ✅, iOS submitted ✅**~~
   - Android: `app-release.aab` built + submitted to Google Play (12 Apr). Awaiting review (1-3 days).
   - iOS: Submitted to App Store 13 April 2026. Awaiting review (24-48 hours).
+  - Build 2 (correct VYVE icon) uploaded and ready — swap on approval or rejection.
   - Key ID: `4WSJ4XSZ58` | Team ID: `VPW62W696B` | Project: `C:\Users\DeanO\vyve-capacitor\`
   - Keystore: `vyve-release-key.jks` on Dean's Desktop (OneDrive)
   - Next: `capacitor-plugins.js` → add to portal; iOS build on Mac
