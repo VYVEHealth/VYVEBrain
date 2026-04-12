@@ -1,6 +1,14 @@
 # VYVE Health — Task Backlog
 
 > Prioritised list of outstanding work. Updated 12 April 2026.
+## 🟡 In Progress
+
+- **Capacitor wrap for iOS + Android** — Pre-Mac setup complete (12 Apr). Firebase ✅, APNs key ✅, Supabase table ✅, all config files generated. Waiting for Mac. Next: `npx cap add ios/android`, add plugin bridge to portal, Xcode + Android Studio builds.
+  - Key ID: `4WSJ4XSZ58` | Team ID: `VPW62W696B`
+  - Files on Desktop: `google-services.json`, `GoogleService-Info.plist`, APNs `.p8`
+  - Health disclaimer checkbox — pending Lewis sign-off before App Store submission
+
+
 
 ## ~~🔴 Security — Do Immediately (Before Enterprise Demo)~~ ✅ Complete
 
@@ -40,7 +48,7 @@
 
 ## Later
 
-- Capacitor wrap for iOS + Android
+- ~~Capacitor wrap for iOS + Android~~ → moved to In Progress (see above)
 - Aggregate member-dashboard response server-side (currently returns raw activity rows — won't scale past ~100 active members)
 - Add retry/circuit-breaker logic to AI calls in Edge Functions (onboarding, wellbeing-checkin)
 - Add Content-Security-Policy headers to portal pages
