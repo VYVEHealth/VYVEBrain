@@ -1,3 +1,25 @@
+## 12 April 2026 — Capacitor App Store Wrap: Pre-Mac Setup Complete
+
+### Planning: Full Capacitor wrap mapped and config files generated
+- **What:** Complete Capacitor wrap plan created for iOS App Store + Android Play Store submission
+- **Plugins selected (all added now):** Push Notifications, Status Bar, Splash Screen, App, Keyboard, Haptics, Network, Browser, Share, App Launcher, Local Notifications, Preferences, HealthKit/Google Fit, Camera, Filesystem, Biometrics, Screen Orientation. RevenueCat deferred (keep payments on Stripe web).
+- **Files generated:** `capacitor.config.ts`, `package.json`, `capacitor-plugins.js` (full native bridge exposing `window.VYVENative`), `ios-info-plist-additions.xml`, `android-manifest-additions.xml`, `supabase-migration-push-native.sql`, `SETUP-GUIDE.md`
+- **Architecture decision:** Remote URL loading (`server.url: https://online.vyvehealth.co.uk`) — portal updates go live instantly without App Store resubmission
+
+### Infrastructure: Pre-Mac setup completed
+- **Supabase:** `push_subscriptions_native` table created with RLS, unique index on `(member_email, platform)`, updated_at trigger
+- **Firebase:** Project "VYVE Health" created. Android app registered (`co.uk.vyvehealth.app`). `google-services.json` downloaded. iOS app registered. `GoogleService-Info.plist` downloaded.
+- **Apple Developer Portal:** APNs key created ("VYVE Push Key"). Key ID: `4WSJ4XSZ58`. Team ID: `VPW62W696B`. `.p8` file downloaded. App ID `co.uk.vyvehealth.co.uk.vyvehealth.app` registered with HealthKit, Push Notifications, Associated Domains capabilities.
+- **Health disclaimer:** Confirmed Section 6 of terms.html covers App Store requirements. No new page needed. Onboarding checkbox to be added (pending Lewis sign-off on wording).
+
+### Pending: Mac required for build steps
+- Install Xcode + Node.js
+- `npx cap add ios && npx cap add android && npx cap sync`
+- Add `capacitor-plugins.js` to vyve-site portal (Claude to commit)
+- iOS build in Xcode + App Store Connect submission
+- Android build in Android Studio + Google Play submission
+- Estimated time once Mac arrives: ~4 hours, both platforms submitted same day
+
 ## 12 April 2026 — Browse Library: Your Programmes + Resume
 
 ### Feat: Paused plans section in Browse Library
