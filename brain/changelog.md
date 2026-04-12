@@ -1,3 +1,30 @@
+## 13 April 2026 — iOS App Submitted to App Store
+
+### Feat: VYVE Health iOS app built and submitted
+- **What:** Full Capacitor iOS build completed and submitted to Apple App Store for review
+- **Bundle ID:** `co.uk.vyvehealth.app`
+- **Team:** VYVE Health CIC (VPW62W696B)
+- **Signing:** Manual signing with Apple Distribution certificate + VYVE Health App Store provisioning profile
+- **Project location:** `~/Projects/vyve-capacitor/` on Dean's MacBook Pro
+- **Xcode version:** 16 on macOS Sequoia 15.7.4
+- **Capabilities:** Push Notifications + HealthKit
+- **Info.plist permissions added:** Camera, Photo Library, Health Share, Health Update, User Notifications
+- **App Store listing:** Full description, 5 iPhone screenshots (1242x2688), 1 iPad screenshot (2064x2752), keywords, pricing (free), privacy labels, age rating, content rights, MRDP, medical device declaration all complete
+- **Status:** Submitted for review — Apple will email on approval (typically 24-48 hours)
+- **Architecture:** Remote URL loading (`https://online.vyvehealth.co.uk`) — portal updates live instantly, no resubmission needed
+
+### App Store listing content
+- **Subtitle:** Proactive Wellbeing Platform
+- **Primary Category:** Health & Fitness
+- **Secondary Category:** Lifestyle
+- **Price:** Free
+- **Countries:** All regions
+- **Apple ID:** 6762100652
+
+### Both platforms now submitted
+- Android: `app-release.aab` submitted to Google Play (12 Apr) ✅
+- iOS: Submitted to App Store (13 Apr) ✅
+
 ## 12 April 2026 — Android App Submitted to Google Play
 
 ### Feat: VYVE Health Android app built and submitted
