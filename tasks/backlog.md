@@ -4,9 +4,9 @@
 
 ## 🟡 In Progress
 
-- **Capacitor wrap — Android submitted ✅, iOS pending Mac**
+- ~~**Capacitor wrap — Android submitted ✅, iOS submitted ✅**~~
   - Android: `app-release.aab` built + submitted to Google Play (12 Apr). Awaiting review (1-3 days).
-  - iOS: Pre-requisites all done. Waiting for Mac. ~2.5 hours once Xcode installed.
+  - iOS: Submitted to App Store 13 April 2026. Awaiting review (24-48 hours).
   - Key ID: `4WSJ4XSZ58` | Team ID: `VPW62W696B` | Project: `C:\Users\DeanO\vyve-capacitor\`
   - Keystore: `vyve-release-key.jks` on Dean's Desktop (OneDrive)
   - Next: `capacitor-plugins.js` → add to portal; iOS build on Mac
