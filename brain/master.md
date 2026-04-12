@@ -86,7 +86,7 @@ Key files: index.html (dashboard), habits.html, workouts.html, nutrition.html, l
 - Any page-level sticky element must use `top:56px` on mobile, not `top:0`
 - Modals must use `z-index:10001` minimum to render above the bottom nav
 
-**sw.js cache version:** `vyve-cache-v2026-04-11x` (bump letter after every portal push)
+**sw.js cache version:** `vyve-cache-v2026-04-12aa` (bump letter after every portal push)
 
 **settings.html:** Cache-first load via `vyve_settings_cache` (localStorage, 10-min TTL). UI populates instantly from cache; Supabase refreshes in background. Both modals (coach, habits) use `z-index:10001`, `stopPropagation` on sheet, sticky CTA footer.
 
@@ -251,7 +251,7 @@ AI selects 5 habits from 30 in habit_library using member's profile:
 2. Auth0 is dead. Never reference it.
 3. Kahunas/PAD are dead. Product is "VYVE Health app".
 4. Never say "Corporate Wellness" as tagline.
-5. sw.js cache must be bumped after every portal push. Pattern: vyve-cache-v2026-04-11x[letter].
+5. sw.js cache must be bumped after every portal push. Pattern: vyve-cache-v2026-04-12aa[letter].
 6. EF deploys require full index.ts.
 7. Dual dark/light CSS blocks. theme.js before </head>.
 8. Employer dashboard = aggregate only. No PII.

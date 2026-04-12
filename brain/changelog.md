@@ -1,3 +1,12 @@
+## 12 April 2026 — Browse Library visibility fix
+
+### Fix: workouts.html #tab-library outside .wrap
+- **Root cause:** `#tab-library` div was positioned outside `<main>` and `.wrap` in the HTML (line 545), after all the fixed-position overlays. Content rendered into DOM but was invisible — it sat below the fold with no scroll context, especially when `body.style.overflow` was stuck as `'hidden'` from a previous workout session.
+- **Fix 1 (HTML):** Moved `#tab-library` inside `.wrap`, directly after `#tab-custom` where it belongs. Library content now inherits `.wrap` padding and participates in normal body scroll.
+- **Fix 2 (JS):** Added `document.body.style.overflow = ''` at start of `init()` in `workouts-config.js`. Belt-and-braces: clears stuck overflow even when no saved session state exists to restore.
+- **sw.js:** Bumped to `vyve-cache-v2026-04-12aa`
+- **Commit:** `4474936db1f9ac4a5f80101390a41177e6fc4f9b`
+
 ## 12 April 2026 — member-dashboard v31: Server-Side Aggregation
 
 ### Change: member-dashboard EF v31 + index.html frontend update
