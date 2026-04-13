@@ -16,9 +16,6 @@
 
 ## 🔴 Do Now
 
-- **Improve dashboard skeleton loading screen** — slim skeleton + instant name from auth + cache
-- Weekly check-in slider questions — Lewis to confirm wording
-- Add VYVE logo image to all Brevo email templates (currently text-only "VYVE" header)
 
 ---
 
@@ -78,7 +75,6 @@
 - Grant applications (National Lottery, The Fore — June/July 2026)
 - WHISPA research partnership — monitor May 2026 launch
 - Document PostHog as data processor in privacy policy
-- Brevo logo removal (~$12/month) — before enterprise demo
 - **React Native evaluation** — revisit when: 500+ active members, enterprise client makes it a contract requirement, or dedicated mobile developer hired. No action until then.
 - **Command Centre — Supabase data connection** — replace localStorage with Supabase (same DB `ixjfklpckgxrwjlfsaaz`, tables prefixed `cc_`). Separate auth accounts for Dean and Lewis.
 - **Command Centre — Native AI features** — wire Claude API key field in Settings to actual on-demand AI calls (Morning Brief summarisation, OKR coaching, competitor analysis). Server-side via Edge Function.
