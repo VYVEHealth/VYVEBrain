@@ -27,6 +27,7 @@
 - Live viewer count on session pages (20+ viewers)
 - AI weekly goals system — blocked on Lewis copy approval
 - Suppress portrait lock overlay during active workout session (iOS only)
+- **Onboarding resilience: save-answers-first** - lightweight `save-answers` EF + `onboarding_answers` table. Saves form data per section so failed onboarding can be re-run from saved answers. Friendly error screen instead of crash. ~2-3 hrs.
 - **Dashboard widget customisation** — members choose which widgets appear on their home screen and in what order. DB: `dashboard_widgets JSONB` on members table. Settings: toggle on/off + reorder. No new EF needed — member-dashboard already returns all data. ~4-5 hrs.
 
 ---
@@ -94,6 +95,7 @@
 
 ## ✅ Completed
 
+- ~~Onboarding EF recovered from Composio wipe (5 fixes)~~ ✅ — 13 April 2026
 - ~~Monthly check-in link added to portal nav~~ ✅ — 13 April 2026
 - ~~Weekly check-in habit count fixed (max 1/day, max 7/week)~~ ✅ — 13 April 2026
 - ~~VYVE Command Centre: live at admin.vyvehealth.co.uk~~ ✅ — 13 April 2026

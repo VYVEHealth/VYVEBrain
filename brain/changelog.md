@@ -22,6 +22,33 @@
 ### sw.js (vyve-site)
 - Cache version bumped: `vyve-cache-v2026-04-13e` → `vyve-cache-v2026-04-13f`
 
+## 2026-04-13 (evening session)
+
+### CRITICAL - Onboarding EF Recovery
+- Composio workbench overwrote onboarding EF with `CONTENT_FROM_WORKBENCH` placeholder - wiped all code
+- Recovered from `VYVEBrain/staging/onboarding_v67.ts` backup
+- **5 fixes applied during recovery:**
+  1. Missing `}` in `sendWelcomeEmail` - fetch options object wasn't closed (`]}));` -> `]})});`)
+  2. `workout_plan_cache` schema mismatch - `plan_data` column renamed to `programme_json`, added `plan_duration_weeks`, `current_week`, `current_session`, `is_active`, `source`
+  3. Two-phase flow restored - workout plan generation moved back to `EdgeRuntime.waitUntil()` background task (v67 had inlined it synchronously, causing slow onboarding)
+  4. `workoutPlanResult` reference error - removed from success response JSON (no longer exists after waitUntil change)
+  5. UTF-8 em-dash encoding - replaced all `—` (em-dash) characters with `-` to prevent `a€“` garbled text in persona reason strings
+- Onboarding EF now at v71 (Supabase version counter)
+- `staging/onboarding_v67.ts` confirmed to have the missing brace bug - was never a clean backup
+
+### Lesson Learned
+- **Never trust Composio workbench for EF deploys** - it can overwrite with placeholder content
+- **Always keep a verified backup** of critical EFs in VYVEBrain staging
+- `workout_plan_cache` table was restructured (columns renamed) after v67 was written - staging backups can go stale
+
+### Data Changes
+- Wiped TDEE data for deanonbrown@hotmail.com (testing nutrition-skipped flow)
+- Deleted deanonbrown2@gmail.com test account (all tables + auth.users)
+
+### Backlog Addition
+- **Onboarding resilience: save-answers-first pattern** - save questionnaire answers to `onboarding_answers` table per section via lightweight `save-answers` EF, so if main onboarding fails the answers are preserved and can be re-run manually. Friendly error: "Your answers have been saved, your bespoke setup will be with you soon."
+
+
 ## 13 April 2026 — Light mode contrast audit + full fix across portal
 
 ### Fix: 84 hardcoded dark-theme colors converted to CSS vars across 13 pages + nav.js
