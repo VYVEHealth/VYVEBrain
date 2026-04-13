@@ -1,3 +1,39 @@
+## 13 April 2026 — Light mode contrast audit + full fix across portal
+
+### Fix: 84 hardcoded dark-theme colors converted to CSS vars across 13 pages + nav.js
+
+**Root cause:** Pages used hardcoded `rgba(255,255,255,...)`, `#fff`, `rgba(10,31,31,...)`, and `#0A1F1F` colors instead of CSS variables from `theme.css`. These were designed for dark backgrounds and became invisible/unreadable when the light theme was active.
+
+**Architecture finding:** `theme.css` correctly defines both light and dark variable sets. The problem was individual pages bypassing the system with inline hardcoded values.
+
+### Files updated (15 total):
+| File | Issues Fixed | Key Changes |
+|------|-------------|-------------|
+| `nav.js` | 15 | Entire nav component — desktop nav, mobile header, bottom nav, More menu. Affects ALL pages. |
+| `log-food.html` | 18 | Borders, meal icons, search tabs, sheet UI, barcode scanner hints |
+| `shared-workout.html` | 10 + infra | Added `theme.css` + `theme.js` links (was completely unthemed) |
+| `nutrition.html` | 9 | Weight chart labels (SVG), progress bars, sheet UI, history rows, sliders |
+| `index.html` | 8 | Score ring, day strips, goal checkboxes, PWA banner, track streaks |
+| `habits.html` | 8 | Hero gradient, habit prompt text, buttons, spinner, submit button |
+| `engagement.html` | 8 | Borders, bold text, activity log dividers |
+| `settings.html` | 6 | Spinner, modal close button |
+| `running-plan.html` | 6 | Spinner, info box background |
+| `sessions.html` | 5 | Desktop nav bg, offline badge border |
+| `nutrition-setup.html` | 3 + infra | Added `theme.css` link, toast background |
+| `monthly-checkin.html` | 1 + infra | Added `theme.css` link, nav background |
+| `wellbeing-checkin.html` | 1 | Nav background |
+| `workouts.html` | 1 | Rest timer dismiss border |
+| `sw.js` | — | Cache bumped to `vyve-cache-v2026-04-13d` |
+
+### Design decisions:
+- `#fff` on `var(--teal)` backgrounds (buttons, avatars) left as-is — white on teal has good contrast in both themes
+- Barcode scanner overlay kept dark with white text — it's a camera UI, not page content
+- Skeleton shimmer animations converted to `var(--surface)` / `var(--surface-hover)`
+- SVG chart label `setAttribute('fill',...)` calls in nutrition.html converted to CSS vars
+
+### Rule added:
+**Never use hardcoded `#fff`, `rgba(255,255,255,...)`, `#0A1F1F`, or `rgba(10,31,31,...)` in portal CSS.** Always use CSS variables from `theme.css`: `var(--text)`, `var(--text-muted)`, `var(--text-faint)`, `var(--border)`, `var(--surface)`, `var(--nav-bg)`, etc. Exception: `#fff` is acceptable for text on fixed-colour backgrounds like `var(--teal)` buttons or camera overlays.
+
 ## 13 April 2026 — Careers page added to marketing site
 
 ### Feat: careers.html live at www.vyvehealth.co.uk/careers.html
