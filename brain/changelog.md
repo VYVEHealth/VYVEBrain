@@ -1,3 +1,17 @@
+## 13 April 2026 — running_plan_cache RLS fix (401 on PATCH/POST)
+
+### Fix: Added INSERT + UPDATE RLS policies to `running_plan_cache`
+- **Root cause:** Table had only a public SELECT policy. The page (`running-plan.html`) uses the anon key (`SUPA_HDR`) for all cache operations. Reads worked, but PATCH (use_count bump) and POST (save new plan) returned 401.
+- **Alert:** `auth_401_running_plan_cache` — Calum Denham, 14:55, running-plan.html
+- **Fix:** Migration `running_plan_cache_insert_update_policies` — added `running_plan_cache_public_insert` (INSERT) and `running_plan_cache_public_update` (UPDATE) policies, both `TO public WITH CHECK (true)`. Appropriate because this is a shared cache (not user-specific data).
+- **No portal code change needed** — the page already sends the correct requests, they were just being rejected by RLS.
+
+### Triage: 4 alerts dismissed (Dean, 13:33, transient network blip)
+- `network_error_member-dashboard` (CRITICAL) — "Failed to fetch" on dashboard `/`
+- `network_error_notifications` (CRITICAL) — "Failed to fetch" on dashboard `/`
+- `js_error` (HIGH) × 2 — "Script error. at :0" on `/` and `/workouts.html`
+- All 4 fired within 14 seconds for the same user (Dean). Classic connectivity blip — downstream JS errors are cross-origin error masking from the failed fetches. No code bug.
+
 ## 13 April 2026 — Command Centre: Full Supabase Wiring
 
 ### Feat: Command Centre data now persists in Supabase
