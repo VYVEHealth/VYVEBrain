@@ -1,3 +1,27 @@
+## 13 April 2026 — Onboarding v67 + portal fixes
+
+### onboarding v67 (Supabase Edge Function)
+- Workout plan generation moved inline (was `EdgeRuntime.waitUntil` → external `generate-workout-plan` EF)
+- Two parallel Anthropic calls for weeks 1-4 and 5-8 (16K tokens each via `callAnthropicFull`)
+- `callAnthropicFull` added — returns `{text, stopReason}` for max_tokens detection
+- Exercise library fetched from `workout_plans` table in Batch 1 alongside persona/overview
+- `generateWorkoutPlan` + `writeWorkoutPlan` added inline
+- Anti-hallucination instructions added to `generateProgrammeOverview` and `generateRecommendations`
+- `workout_plan` stats in response JSON: `{programme_name, weeks_generated, videos_matched, videos_unmatched}`
+- Decision log version tag updated to v67
+
+### welcome.html (Test-Site-Finalv3)
+- AbortController timeout: 90s → 150s in both `submitQuestionnaire` and `retrySubmit`
+- Slow timer: 30s → 45s in both locations
+- Slow timer text: "up to a minute" → "up to two minutes"
+
+### nutrition.html (vyve-site)
+- Empty state title: "Your nutrition plan is not set up yet" → "Your nutrition targets aren't set up yet"
+- Empty state text: "Complete your onboarding..." → "Add your height, weight, and activity level..."
+
+### sw.js (vyve-site)
+- Cache version bumped: `vyve-cache-v2026-04-13e` → `vyve-cache-v2026-04-13f`
+
 ## 13 April 2026 — Light mode contrast audit + full fix across portal
 
 ### Fix: 84 hardcoded dark-theme colors converted to CSS vars across 13 pages + nav.js
