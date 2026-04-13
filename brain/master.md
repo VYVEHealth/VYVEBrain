@@ -1,7 +1,7 @@
 # VYVE Health — Master Brain Document
 
 > This document gives any AI everything it needs to understand and operate on the VYVE Health platform.
-> Last verified: 13 April 2026 (second session: monthly checkin wiring, wellbeing habit count fix) (full session: alert fixes, food log JWT, log-food nav overlap, settings cleanup, weight unit persistence, running-plan model fix) against live Supabase project ixjfklpckgxrwjlfsaaz.
+> Last verified: 13 April 2026 (third session: Command Centre Supabase wiring) (full session: alert fixes, food log JWT, log-food nav overlap, settings cleanup, weight unit persistence, running-plan model fix) against live Supabase project ixjfklpckgxrwjlfsaaz.
 
 ---
 
@@ -123,6 +123,11 @@ Key files: index.html (dashboard), habits.html, workouts.html, nutrition.html, l
 weekly-report, monthly-report, ops-brief, send-test-push, send-test-welcome, resend-welcome, send-session-recap, send-journey-recap, send-stuart-reset, re-engagement-test-sender, github-proxy-marketing, internal-dashboard, storage-cleanup, delete-housekeeping, thumbnail-audit, thumbnail-upload, thumbnail-batch-upload, generate-stuart-plan, trigger-owen-workout, trigger-callum-workout, create-ai-decisions-table, setup-ai-decisions, setup-member-units, run-monthly-checkins-migration, run-migration-monthly-checkins, monthly-checkin-test.
 
 > **Backlog:** Delete ~24 dead/one-off utility functions (deletion script in audit doc).
+
+#### Command Centre Functions
+| Function | Version | Purpose | Auth |
+|----------|---------|---------|------|
+| cc-data | v1 | All Command Centre CRUD + file uploads + signed URLs | JWT (team@vyvehealth.co.uk only) |
 
 ---
 
@@ -297,10 +302,12 @@ A standalone internal ops dashboard for the VYVE leadership team. Browser-based 
 - **Login:** Real Supabase email/password (not hard-coded)
 
 ### Architecture
-- Single `index.html` file (~120KB), vanilla JS, Chart.js, Google Fonts
+- Single `index.html` file (~135KB), vanilla JS, Chart.js, Google Fonts
 - GitHub Pages hosting with custom domain via GoDaddy CNAME → `vyvehealth.github.io`
 - Supabase Auth for login (same project: `ixjfklpckgxrwjlfsaaz`, same anon key)
-- Data currently in `localStorage` — Supabase data connection planned
+- **Data in Supabase** — 18 `cc_` tables, all RLS locked to `team@vyvehealth.co.uk`
+- Files in **Supabase Storage** — `cc-documents` bucket (private, 50MB limit)
+- `cc-data` Edge Function v1 — handles all CRUD + file uploads + signed URL generation
 - No build process, no bundler — same philosophy as member portal
 
 ### Pages (27 total across 5 sidebar sections)
@@ -321,11 +328,22 @@ Lewis's 24 AI skills run inside Claude.ai Projects (subscription — no API cost
 - Claude API key field in Settings exists but is NOT wired up — placeholder only
 - No AI calls currently made from this tool
 
+### Supabase Tables (18 — all prefixed `cc_`)
+`cc_clients`, `cc_leads`, `cc_investors`, `cc_partners`, `cc_tasks`, `cc_decisions`, `cc_okrs`, `cc_finance`, `cc_revenue`, `cc_grants`, `cc_posts`, `cc_invoices`, `cc_sessions`, `cc_intel`, `cc_knowledge`, `cc_documents`, `cc_swot`, `cc_episodes`
+
+### cc-data Edge Function
+- `GET /cc-data/{table}` — list records (with optional ?type=, ?stage=, ?status= filters)
+- `GET /cc-data/{table}/{id}` — get single record
+- `POST /cc-data/{table}` — create record
+- `PATCH /cc-data/{table}/{id}` — update record
+- `DELETE /cc-data/{table}/{id}` — delete record (also removes Storage file for cc_documents)
+- `POST /cc-data/upload` — multipart file upload → Supabase Storage → cc_documents metadata
+- `GET /cc-data/signed-url/{id}` — generate 1-hour signed URL for secure file access
+
 ### Planned
-- Connect Supabase for data persistence (same DB: `ixjfklpckgxrwjlfsaaz`, prefix tables `cc_`)
 - Separate auth accounts for Dean and Lewis
 - Native AI features via Anthropic API (on-demand, not automatic)
-- Make repo private once Supabase data connection is live
+- Make repo private
 
 ## 9. Key URLs
 
