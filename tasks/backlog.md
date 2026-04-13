@@ -28,6 +28,7 @@
 - AI weekly goals system — blocked on Lewis copy approval
 - Suppress portrait lock overlay during active workout session (iOS only)
 - **Onboarding resilience: save-answers-first** - lightweight `save-answers` EF + `onboarding_answers` table. Saves form data per section so failed onboarding can be re-run from saved answers. Friendly error screen instead of crash. ~2-3 hrs.
+- **In-app onboarding fallback** - if a member has no `workout_plan_cache` row (or `is_active = false` and no plan), show a simplified questionnaire inside the portal (training goals, experience, days/week, location, equipment, injuries). Submits to `generate-workout-plan` EF directly. Covers: failed onboarding, plan expired, plan deleted, member wants fresh plan. ~3-4 hrs.
 - **Dashboard widget customisation** — members choose which widgets appear on their home screen and in what order. DB: `dashboard_widgets JSONB` on members table. Settings: toggle on/off + reorder. No new EF needed — member-dashboard already returns all data. ~4-5 hrs.
 
 ---
