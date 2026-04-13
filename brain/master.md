@@ -1,7 +1,7 @@
 # VYVE Health — Master Brain Document
 
 > This document gives any AI everything it needs to understand and operate on the VYVE Health platform.
-> Last verified: 11 April 2026 (full session: alert fixes, food log JWT, log-food nav overlap, settings cleanup, weight unit persistence, running-plan model fix) against live Supabase project ixjfklpckgxrwjlfsaaz.
+> Last verified: 13 April 2026 (full session: alert fixes, food log JWT, log-food nav overlap, settings cleanup, weight unit persistence, running-plan model fix) against live Supabase project ixjfklpckgxrwjlfsaaz.
 
 ---
 
@@ -283,6 +283,49 @@ AI selects 5 habits from 30 in habit_library using member's profile:
 34. **settings.html no longer has height/weight unit toggles** — unit preference is set within nutrition.html TDEE recalculator only. Privacy link points to `https://www.vyvehealth.co.uk/privacy-policy.html`.
 
 ---
+
+
+## 11. VYVE Command Centre
+
+### What It Is
+A standalone internal ops dashboard for the VYVE leadership team. Browser-based SPA, hosted on GitHub Pages at `admin.vyvehealth.co.uk`. Separate from the member portal — this is for internal business operations.
+
+### Access
+- **URL:** `admin.vyvehealth.co.uk`
+- **Repo:** `VYVEHealth/vyve-command-centre` (public)
+- **Auth:** Supabase Auth — `team@vyvehealth.co.uk`
+- **Login:** Real Supabase email/password (not hard-coded)
+
+### Architecture
+- Single `index.html` file (~120KB), vanilla JS, Chart.js, Google Fonts
+- GitHub Pages hosting with custom domain via GoDaddy CNAME → `vyvehealth.github.io`
+- Supabase Auth for login (same project: `ixjfklpckgxrwjlfsaaz`, same anon key)
+- Data currently in `localStorage` — Supabase data connection planned
+- No build process, no bundler — same philosophy as member portal
+
+### Pages (27 total across 5 sidebar sections)
+**Intelligence:** Morning Brief, Research & Grants, Competitor Watch
+**Business:** Dashboard, Finance & Funding, Clients, Sales Pipeline, Investor Relations, Partner Network, Invoicing, Sessions, Tasks, Compliance
+**Content & Growth:** Content, Performance, Podcast, Brand & Voice
+**Strategy:** Strategy Room (OKRs/Decisions/Learnings/SWOT), Documents, Knowledge Base
+**Team:** Team Hub (Lewis, Dean, Alan Bird, Calum Denham, Phil Hurwood)
+**System:** Settings (Agent Sync, API keys, company info)
+
+### Agent Sync
+Lewis's 24 AI skills run inside Claude.ai Projects (subscription — no API cost). He copies JSON output and pastes into the Command Centre via the Agent Sync import modal. This feeds the Intelligence section (grants, competitors, legislation, market signals).
+
+### Known Rules
+- Data is localStorage only until Supabase connection is built — clearing browser cache loses all data
+- Repo is public — anon key visible in source (acceptable, same pattern as portal)
+- One shared auth account for now (`team@vyvehealth.co.uk`) — separate accounts for Dean/Lewis planned
+- Claude API key field in Settings exists but is NOT wired up — placeholder only
+- No AI calls currently made from this tool
+
+### Planned
+- Connect Supabase for data persistence (same DB: `ixjfklpckgxrwjlfsaaz`, prefix tables `cc_`)
+- Separate auth accounts for Dean and Lewis
+- Native AI features via Anthropic API (on-demand, not automatic)
+- Make repo private once Supabase data connection is live
 
 ## 9. Key URLs
 
