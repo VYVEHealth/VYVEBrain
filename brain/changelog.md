@@ -1,3 +1,16 @@
+## 13 April 2026 — Brevo Email Logo + Backlog Cleanup
+
+### Feat: VYVE logo added to all Brevo email templates
+- **send-email** v20 — `wrap()` header updated: text "VYVE" replaced with `<img>` tag loading `https://online.vyvehealth.co.uk/logo.png` (height 36px)
+- **re-engagement-scheduler** v20 — same `wrap()` logo update
+- **certificate-checker** v18 — same `wrap()` logo update (notification emails only; certificate HTML documents unchanged)
+- All three EFs now show the VYVE logo image in the dark header bar of every outbound email
+
+### Backlog: Items dropped
+- **Dashboard skeleton loading screen** — dropped (not needed now)
+- **Weekly check-in slider questions** — dropped (monthly check-in covers this instead)
+- **Brevo logo in emails** — completed ✅
+
 ## 13 April 2026 — Monthly Check-In Wiring + Habit Count Fix
 
 ### Feat: Monthly Check-In wired into portal nav
