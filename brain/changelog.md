@@ -1,3 +1,64 @@
+## 13 April 2026 — Command Centre: Full Supabase Wiring
+
+### Feat: Command Centre data now persists in Supabase
+Lewis's Command Centre (`admin.vyvehealth.co.uk`) was previously localStorage-only — clearing the browser lost all data, and Lewis and Dean couldn't share data. Now fully wired to Supabase.
+
+### Database — 18 new `cc_` tables created
+All tables: RLS enabled, locked to `team@vyvehealth.co.uk`, `created_by` column, `updated_at` triggers.
+
+| Table | Module |
+|-------|--------|
+| `cc_clients` | Clients kanban |
+| `cc_leads` | Sales Pipeline CRM |
+| `cc_investors` | Investor Relations |
+| `cc_partners` | Partner Network |
+| `cc_tasks` | Tasks kanban |
+| `cc_decisions` | Strategy Room — Decisions log |
+| `cc_okrs` | Team OKRs |
+| `cc_finance` | Finance & Funding metrics |
+| `cc_revenue` | Revenue entries |
+| `cc_grants` | Grants pipeline |
+| `cc_posts` | Content planner |
+| `cc_invoices` | Invoicing |
+| `cc_sessions` | Sessions / Delivery |
+| `cc_intel` | Intelligence (Agent Sync output) |
+| `cc_knowledge` | Knowledge Base (SOPs, playbooks, templates) |
+| `cc_documents` | Document metadata (files in Storage) |
+| `cc_swot` | SWOT analysis items |
+| `cc_episodes` | Podcast episodes |
+
+### Storage — `cc-documents` bucket created
+- Private bucket, 50MB file limit
+- Allowed types: PDF, DOCX, XLSX, PPTX, TXT, CSV, images
+- RLS: team@vyvehealth.co.uk only (SELECT, INSERT, DELETE)
+- Files stored with UUID filename, metadata in `cc_documents` table
+
+### Edge Function — `cc-data` v1 deployed
+Single function handles all Command Centre data operations:
+- `GET /cc-data/{table}` — list with optional filters (?type, ?stage, ?status, ?owner, ?quadrant)
+- `POST /cc-data/{table}` — create record
+- `PATCH /cc-data/{table}/{id}` — update record  
+- `DELETE /cc-data/{table}/{id}` — delete (also removes Storage file for documents)
+- `POST /cc-data/upload` — multipart upload → Storage → cc_documents metadata
+- `GET /cc-data/signed-url/{id}` — 1-hour signed URL for secure file viewing
+- Auth: JWT required, `team@vyvehealth.co.uk` only
+
+### index.html — fully rewired (commit `eb2dc09`)
+- Added `CC_API` helper functions: `ccFetch`, `ccList`, `ccCreate`, `ccUpdate`, `ccDelete`, `ccUploadFile`, `ccSignedUrl`
+- Added `ccLoadAll()` — fetches all 18 tables in parallel on login, populates every data array
+- `initApp()` converted to async — calls `ccLoadAll()` after auth, re-renders current page
+- 20 save/delete functions converted to async Supabase calls: `saveClient`, `saveLead`, `saveInvestor`, `saveDecision`, `saveCompanyOkr`, `saveGrant`, `savePost`, `saveKbItem`, `saveFinance`, `saveRevenue`, `updateOkrPct`, `addSwot`, `removeSwot`, `removeIntelItem`, `doImportModal`, `processDocFile`, `deleteDoc`, `clearAgentData`, `removeKbItem`, `openTaskModal`
+- `processDocFile()` — files now upload to Supabase Storage via `ccUploadFile()`, no longer stored in localStorage
+- `viewDoc()` — now async, generates signed URL for secure file viewing/download
+- `persist()` / `load()` — retained for UI preferences only (dark mode, Claude API key, per-member todos)
+- Zero business data `persist()` calls remaining
+
+### Result
+- Lewis and Dean now share the same data — any record entered by either is instantly visible to the other
+- Clearing browser cache no longer loses any business data
+- Files uploaded to the Documents section go to Supabase Storage automatically
+- Lewis can now populate clients, pipeline, OKRs, decisions etc. with confidence data won't be lost
+
 ## 13 April 2026 — anthropic-proxy auth fix (running-plan.html JS error)
 
 ### Fix: anthropic-proxy v14 — verify_jwt: false + internal JWT validation
