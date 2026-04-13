@@ -1,3 +1,17 @@
+## 13 April 2026 — Careers page added to marketing site
+
+### Feat: careers.html live at www.vyvehealth.co.uk/careers.html
+- **Page:** 11 active roles across Advisory, Podcast, Marketing, Community, Clinical departments
+- **Jobs managed via JS array** — Lewis can add/remove/hide roles by editing the `JOBS` array in the `<script>` block. `active: false` hides a role without deleting it.
+- **Apply flow:** "Apply Now" opens candidate's email client with pre-filled subject line → all applications land in `team@vyvehealth.co.uk`
+- **Repo:** `VYVEHealth/Test-Site-Finalv3` — `careers.html` committed to main
+- **Note:** Original uploaded file was truncated (missing IntersectionObserver init + closing HTML tags). Reconstructed tail appended before push.
+
+### Feat: Careers link added to footer across 8 marketing pages
+- Pages updated: `index.html`, `individual.html`, `individual-platform.html`, `give-back.html`, `give-back-employers.html`, `corporate.html`, `platform.html`, `about-individual.html`
+- Link added under Company column after "Terms of Service"
+- 7 other pages (employers, contact, about, etc.) have different footer structures — Careers link not added (would need separate pass)
+
 ## 13 April 2026 — running_plan_cache RLS fix (401 on PATCH/POST)
 
 ### Fix: Added INSERT + UPDATE RLS policies to `running_plan_cache`
