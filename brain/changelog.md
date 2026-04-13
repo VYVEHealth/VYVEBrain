@@ -1,3 +1,33 @@
+## 13 April 2026 — VYVE Command Centre: Setup, Auth & Fixes
+
+### New: Command Centre live at admin.vyvehealth.co.uk
+- **What:** Lewis's internal ops dashboard (`vyve-command-centre` repo) identified, deep-dived, and brought to production-ready state
+- **URL:** `admin.vyvehealth.co.uk` — custom domain via GoDaddy CNAME → GitHub Pages
+- **Auth:** Replaced hard-coded login (`admin@vyve.co.uk` / `vyve2026`) with real Supabase Auth. `team@vyvehealth.co.uk` auth account activated, password set via SQL.
+- **Repo:** `VYVEHealth/vyve-command-centre` (public). CNAME file committed for custom domain.
+
+### Fixes applied to Command Centre index.html
+| Fix | Detail |
+|-----|--------|
+| SyntaxError: doLogin undefined | HTML modal markup injected inside TEAM JS array — removed |
+| Binary garbage blob (~750 chars) | Corrupted OKR renderer — removed and reconstructed |
+| Missing `</script>` tag | Data script block unclosed — fixed |
+| 8 duplicate modal blocks | All modals appeared twice — deduplicated |
+| `¾(` × 3 | Corrupted `v()` helper calls — fixed |
+| `justify-conte"` | Truncated CSS — fixed to `justify-content:space-between` |
+| OKR slider `oninput` | Control char + `his.value` — fixed to `this.value` |
+| Missing amber ternary × 3 | OKR progress bar colour — fixed |
+| Stray `2 ` before `el2.innerHTML` | SyntaxError on line 1566 — removed |
+| Duplicate h1 headings on all pages | Page title showed in topbar AND as h1 — all h1s removed from page-headers |
+| Tasks page corrupt | Contained stray THREATS/SWOT/Decisions/Learnings content — replaced with correct kanban layout |
+
+### Architecture notes (Command Centre)
+- Single `index.html` ~120KB, vanilla JS + Chart.js, GitHub Pages
+- Data in `localStorage` — Supabase connection planned (same DB `ixjfklpckgxrwjlfsaaz`, tables prefixed `cc_`)
+- Lewis's 24 AI skills run in Claude.ai Projects (subscription) — Agent Sync JSON paste is the intended workflow
+- Claude API key field in Settings is a placeholder — no API calls wired yet
+- `send-password-reset` Edge Function deployed and neutered after use
+
 ## 13 April 2026 — iOS App Store: Build 2 Submitted (Correct VYVE Icon)
 
 ### Fix: Replaced placeholder Capacitor icon with correct VYVE logo
