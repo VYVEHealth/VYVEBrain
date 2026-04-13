@@ -1,7 +1,7 @@
 # VYVE Health — Master Brain Document
 
 > This document gives any AI everything it needs to understand and operate on the VYVE Health platform.
-> Last verified: 13 April 2026 (full session: alert fixes, food log JWT, log-food nav overlap, settings cleanup, weight unit persistence, running-plan model fix) against live Supabase project ixjfklpckgxrwjlfsaaz.
+> Last verified: 13 April 2026 (second session: monthly checkin wiring, wellbeing habit count fix) (full session: alert fixes, food log JWT, log-food nav overlap, settings cleanup, weight unit persistence, running-plan model fix) against live Supabase project ixjfklpckgxrwjlfsaaz.
 
 ---
 
@@ -86,7 +86,7 @@ Key files: index.html (dashboard), habits.html, workouts.html, nutrition.html, l
 - Any page-level sticky element must use `top:56px` on mobile, not `top:0`
 - Modals must use `z-index:10001` minimum to render above the bottom nav
 
-**sw.js cache version:** `vyve-cache-v2026-04-12ab` (bump letter after every portal push)
+**sw.js cache version:** `vyve-cache-v2026-04-13b` (bump letter after every portal push)
 
 **settings.html:** Cache-first load via `vyve_settings_cache` (localStorage, 10-min TTL). UI populates instantly from cache; Supabase refreshes in background. Both modals (coach, habits) use `z-index:10001`, `stopPropagation` on sheet, sticky CTA footer.
 
@@ -101,7 +101,7 @@ Key files: index.html (dashboard), habits.html, workouts.html, nutrition.html, l
 | onboarding | v58 | Persona + habits + programme overview + 8-week workout (background) | CORS www.vyvehealth.co.uk |
 | member-dashboard | v35 | Full dashboard data — server-side aggregation, JWT-only | JWT required |
 | wellbeing-checkin | v32 | Weekly check-in + AI | JWT |
-| monthly-checkin | v12 | Monthly check-in | JWT |
+| monthly-checkin | v13 | Monthly check-in — new-member lock, model fix | JWT |
 | log-activity | v18 | PWA activity logging | JWT |
 | employer-dashboard | v29 | Aggregate, API key auth, no PII | EMPLOYER_DASHBOARD_API_KEY |
 | leaderboard | v7 | Leaderboard rankings — all members, current month | JWT |
@@ -251,7 +251,7 @@ AI selects 5 habits from 30 in habit_library using member's profile:
 2. Auth0 is dead. Never reference it.
 3. Kahunas/PAD are dead. Product is "VYVE Health app".
 4. Never say "Corporate Wellness" as tagline.
-5. sw.js cache must be bumped after every portal push. Pattern: vyve-cache-v2026-04-12ab[letter].
+5. sw.js cache must be bumped after every portal push. Pattern: vyve-cache-v2026-04-13b[letter].
 6. EF deploys require full index.ts.
 7. Dual dark/light CSS blocks. theme.js before </head>.
 8. Employer dashboard = aggregate only. No PII.
@@ -367,4 +367,6 @@ Lewis's 24 AI skills run inside Claude.ai Projects (subscription — no API cost
 - Do NOT hardcode `padding-bottom:env(safe-area-inset-bottom,0px)` on bottom sheets — always use `calc(80px + env(safe-area-inset-bottom,0px))` to clear the nav bar
 - Do NOT add height/weight unit toggles to settings.html — unit preference is managed in nutrition.html only
 - Do NOT use `privacy.html` as the privacy link — correct URL is `https://www.vyvehealth.co.uk/privacy-policy.html`
-- Do NOT hardcode POSTHOG_KEY as a literal string — always use the real key `phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl` inline
+- Do NOT hardcode POSTHOG_KEY as a literal string
+- Do NOT count raw daily_habits rows for weekly habit totals — use distinct activity_date values capped at 7 (max 1 per day, max 7 per week)
+- Do NOT allow new members to submit monthly check-in in their first calendar month — show "available from 1st [Month Year]" message — always use the real key `phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl` inline
