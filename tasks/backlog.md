@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Prioritised list of outstanding work. Updated 13 April 2026.
+> Prioritised list of outstanding work. Updated 13 April 2026 (Apple Health extended vision added).
 
 ## 🟡 In Progress
 
@@ -42,6 +42,25 @@
 - **Apple Health — Nutrition sync** — read dietary data (calories, protein, carbs, fat, water) from Apple Health where member uses a food tracking app (MyFitnessPal, Cronometer etc.) that writes to Health. Also write VYVE food log entries back to Apple Health (two-way sync). Medium value — depends on member using a compatible app. Bundle with workout feed.
 
 ---
+
+
+## 🍎 Apple Health — Extended Vision (pick from these)
+
+> These are identified opportunities from Apple Health integration. Not all will be built — select based on member value and enterprise story. All depend on `capacitor-plugins.js` being live first.
+
+- **AI-Scaled Weight Training** — read actual weights lifted from Apple Health, compare to previous sessions, AI suggests progressive overload specific to the member. "Last week 60kg x 3 sets of 8 — this week aim for 62.5kg." Replaces generic programmes with truly adaptive ones.
+- **Recovery Scoring via HRV** — Heart Rate Variability read each morning, workout intensity auto-adjusted. "Your HRV is down 18% — today's session has been switched to a recovery workout." High impact, differentiated.
+- **Resting Heart Rate Trend** — surface as a fitness progress metric. Declining RHR = improving cardio fitness. Compelling evidence for members and enterprise ROI.
+- **Sleep Stage Analysis** — deep sleep, REM, light sleep from compatible devices. Weekly sleep quality score feeds into monthly check-in context.
+- **Sleep + Performance Correlation** — cross-reference sleep quality with workout performance and wellbeing scores. "On weeks under 6.5hrs sleep your wellbeing score averages 4.2. Over 7.5hrs it averages 7.1." Unique and genuinely powerful.
+- **VO2 Max Tracking** — Apple Watch estimates VO2 Max. Track over time, show as fitness age. Strong enterprise ROI metric.
+- **Mindful Minutes Auto-tick** — read mindfulness data from Headspace, Calm, Apple Breathe. Auto-tick mindfulness habits.
+- **Dynamic TDEE** — use actual Active Energy burned (not static onboarding estimate) to adjust daily calorie target in real time. "You burned 2,847 kcal today — your target adjusts to 3,047."
+- **Weight Trend Prediction** — combine weight logs + calories + activity. AI projects goal weight arrival date. "At your current pace you'll reach your goal in ~11 weeks."
+- **Personal Records from Apple Health** — pull longest run, fastest 5k, most active day automatically rather than relying on manual logging.
+- **Workforce Wellbeing Index (Enterprise)** — aggregate anonymised Apple Health trends across an employer's workforce (avg RHR, sleep, activity). Shown in employer dashboard. No individual data. Differentiating enterprise feature.
+- **Absence Prediction (Enterprise — ambitious)** — declining HRV + poor sleep + low activity + dropping wellbeing scores = early burnout signal. Anonymised aggregate risk flag for HR. Wins enterprise contracts.
+- **Nutrition Sync** — two-way: read dietary data from MyFitnessPal/Cronometer etc., write VYVE food logs back to Apple Health. Medium priority — depends on member using a compatible food app.
 
 ## 🔵 Later
 
