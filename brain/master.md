@@ -106,7 +106,7 @@ Key files: index.html (dashboard), habits.html, workouts.html, nutrition.html, l
 | employer-dashboard | v29 | Aggregate, API key auth, no PII | EMPLOYER_DASHBOARD_API_KEY |
 | leaderboard | v7 | Leaderboard rankings — all members, current month | JWT |
 | notifications | v7 | In-app notification feed + badge count | JWT |
-| anthropic-proxy | v13 | Running plans | verify_jwt: true |
+| anthropic-proxy | v14 | Running plans | JWT (internal) |
 | send-email | v19 | Brevo transactional | service-role-key |
 | re-engagement-scheduler | v19 | Cron 8:00 UTC | Cron/service-role |
 | daily-report | v21 | Cron 8:05 UTC | Cron/service-role |
