@@ -1,3 +1,20 @@
+## 13 April 2026 — Monthly Check-In Wiring + Habit Count Fix
+
+### Feat: Monthly Check-In wired into portal nav
+- **nav.js** — Monthly Check-In added to More menu (below Weekly Check-In), calendar icon
+- **monthly-checkin.html** — new `#new-member-banner` div + `newMemberLocked` handler in init()
+- **monthly-checkin EF v13** — `isNewMember()` function: checks `members.created_at`, blocks if member joined < 1 full calendar month ago. Returns `newMemberLocked: true` + `availableFrom: "1st May 2026"` on GET. Also guards POST submit.
+- **New-member message:** "Your monthly check-in will be available from 1st [Month Year]. Complete your first full month with VYVE and we'll have your personalised report ready."
+- **Model fix:** `claude-haiku-4-5-20251001` (invalid) → `claude-haiku-4-5` in monthly-checkin EF
+
+### Fix: Weekly check-in habit count
+- **wellbeing-checkin.html** — `habitsThisWeek` was counting every raw `daily_habits` row (e.g. 5 habits logged Monday = counted as 5). Fixed to count distinct `activity_date` values capped at 7 — max 1 per day, max 7 per week.
+- Query updated: `select=id` → `select=activity_date`
+- Count: `habits?.length` → `Math.min([...new Set(habits.map(h=>h.activity_date))].length, 7)`
+
+### sw.js cache
+- Bumped: `vyve-cache-v2026-04-13a` → `vyve-cache-v2026-04-13b`
+
 ## 13 April 2026 — VYVE Command Centre: Setup, Auth & Fixes
 
 ### New: Command Centre live at admin.vyvehealth.co.uk
