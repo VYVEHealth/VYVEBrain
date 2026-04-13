@@ -1,3 +1,11 @@
+## 13 April 2026 — anthropic-proxy auth fix (running-plan.html JS error)
+
+### Fix: anthropic-proxy v14 — verify_jwt: false + internal JWT validation
+- **Root cause:** `anthropic-proxy` had `verify_jwt: true` (Supabase gateway-level). Running-plan.html uses the old `waitForAuth` pattern — if auth session hadn't initialised before the user hit Generate, the fetch fell back to the anon key, which was rejected by the gateway. Browser showed `Script error. at :0` (cross-origin error masking).
+- **Fix:** Switched to `verify_jwt: false` with internal JWT validation via `supabase.auth.getUser()` — matches the pattern used by all other VYVE Edge Functions.
+- **Also added:** CORS restriction to `online.vyvehealth.co.uk` and `www.vyvehealth.co.uk` (was `*`).
+- **running-plan.html:** No change needed — the page already tries to get a JWT from `window.vyveSupabase.auth.getSession()` and sends it. The EF now validates internally instead of at the gateway.
+
 ## 13 April 2026 — Brevo Email Logo + Backlog Cleanup
 
 ### Feat: VYVE logo added to all Brevo email templates
