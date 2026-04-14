@@ -1,3 +1,23 @@
+## 14 April 2026 - Operational Report Suite (11 reports)
+
+### Reports committed to VYVEBrain/reports/
+- Complete platform audit: 11 standalone reports covering Security, Backup & DR, System Health, Performance, GDPR, Onboarding Pipeline, Engagement & Retention, Financial, Enterprise Readiness, Code Quality, and Master Action Plan
+- All findings grounded in live Supabase queries (61 tables, 68 RLS policies, 30 triggers, 8 crons), Edge Function code review (20 core EFs), platform_alerts (31 error records), and GitHub repo tree (67 files)
+- Interactive React artifact versions created in Claude conversation for browsable UI
+- Markdown versions committed to VYVEBrain/reports/ for permanent reference
+
+### Key findings discovered during audit
+- **ACTIVE INCIDENT:** Push notification crons (habit-reminder + streak-reminder) failing since 11 April - app.service_role_key JSON error
+- **ACTIVE INCIDENT:** 4 JS bugs live (workouts-library.js syntax, switchTab, getTimeGreeting, showToast)
+- **DISCOVERY:** platform_alerts table exists with 31 error records but has ZERO RLS policies - data invisible
+- **DISCOVERY:** check-cron EF overwritten with Stuart lookup query - not checking crons
+- 10 tables missing member_email indexes (workouts: 3,654 seq scans)
+- Calum Denham has no workout plan (background generation failed silently)
+- 19/20 core EFs have no external backup
+- 4 data categories are GDPR Article 9 special category
+- Both Sage members (Lewis, Kelly) are 10-11 days inactive
+- 34 prioritised actions across 5 phases, 82-114 hrs total effort
+
 ## 13 April 2026 — Onboarding v67 + portal fixes
 
 ### onboarding v67 (Supabase Edge Function)
