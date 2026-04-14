@@ -1,3 +1,16 @@
+## 14 April 2026 (evening) — App Store rejection fixes
+
+### Apple App Store Review Response
+- **Guideline 2.3.8 (Accurate Metadata):** Capacitor placeholder icon submitted by mistake. Generated full iOS icon set (15 sizes, 1024×1024 source) from VYVE logo. Zip provided to Dean for Xcode replacement.
+- **Guideline 2.5.1 (HealthKit UI disclosure):** Added "Apple Health" section to settings.html between Notifications and About sections.
+  - Toggle to sync with Apple Health (reads: workouts, steps, heart rate/HRV, sleep; writes: workout completions, mindful minutes)
+  - Expandable detail panel shows what data VYVE reads and writes
+  - Privacy notice: "Your health data stays on your device and is never shared with your employer"
+  - Wired to `window.VYVENative.requestHealthKit()` for when capacitor-plugins.js lands
+  - `handleAppleHealthToggle()` JS function added
+- sw.js cache bumped: `vyve-cache-v2026-04-13f` → `vyve-cache-v2026-04-14a`
+- Commit: `9fad685` on vyve-site main
+
 ## 14 April 2026 - Operational Report Suite (11 reports)
 
 ### Reports committed to VYVEBrain/reports/
