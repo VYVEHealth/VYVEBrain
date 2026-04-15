@@ -1,3 +1,31 @@
+## 15 April 2026 (cont.) — Capacitor safe area + back button fix
+
+### Problem
+After wrapping the PWA in Capacitor for iOS/Android, three issues surfaced:
+1. Mobile header (back button, logo, page label) sat behind the iOS status bar / notch — couldn't tap back
+2. Back button showed on primary nav pages (Workouts, Nutrition, Sessions) where it shouldn't
+3. Exercise search overlay and history view header were also behind the status bar
+
+### Root cause
+No page had `viewport-fit=cover` in the viewport meta, so `env(safe-area-inset-top)` returned 0. The Capacitor web view extends behind the status bar by default.
+
+### Fixes (nav.js)
+- Inject `viewport-fit=cover` into the viewport meta tag at runtime — covers all 39+ portal pages without touching each file
+- Added `padding-top: env(safe-area-inset-top, 0px)` to `.mobile-page-header` CSS
+- Changed `isHome` to `isNavPage` — primary nav pages (Home, Workouts, Nutrition, Sessions) now show the VYVE logo; all sub-pages show the back button
+
+### Fixes (workouts.html)
+- `.es-header` (exercise search overlay): added `padding-top: calc(14px + env(safe-area-inset-top, 0px))`
+- `.hist-header` (exercise history overlay): same fix
+
+### New rule for brain/master.md
+- **Capacitor safe area:** Any new full-screen overlay (`position:fixed;inset:0`) must add `padding-top: calc(original + env(safe-area-inset-top, 0px))` to its sticky header. nav.js handles the main page header globally.
+
+### sw.js bumped to `vyve-cache-v2026-04-15g`
+
+### Commit: 65d8ffeab0c7c91e68b8196ad1f8d168d96688a1
+
+
 ## 15 April 2026 (cont.) — 401 redirect handling added to 6 portal pages
 
 ### Defense-in-depth: 401 redirect on auth failure
