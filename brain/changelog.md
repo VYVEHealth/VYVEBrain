@@ -1,3 +1,25 @@
+## 15 April 2026 (cont.) — 401 redirect handling added to 6 portal pages
+
+### Defense-in-depth: 401 redirect on auth failure
+auth.js already gates pages on load (no session = redirect to login). These patches add a second safety net for the edge case where a JWT expires between auth.js checking and the page's EF fetch firing.
+
+| Page | Patch |
+|------|-------|
+| certificates.html | JWT empty check + 401 redirect on member-dashboard fetch |
+| index.html | 401 redirect on member-dashboard fetch (JWT check already existed) |
+| leaderboard.html | JWT empty check + 401 redirect on leaderboard EF fetch |
+| monthly-checkin.html | JWT empty check + 401 redirect on both POST and GET EF calls |
+| running-plan.html | 401 redirect on anthropic-proxy fetch |
+| wellbeing-checkin.html | 401 redirect on wellbeing-checkin EF submit |
+
+### sw.js bumped to `vyve-cache-v2026-04-15f`
+
+### Commit: 37784bbb5f8ead4d5b462b3f015eec53246c52bb
+
+### Audit note
+Full portal audit confirmed NO other pages have the `async async` syntax error or any other script-killing bugs. The engagement.html fix from earlier today was the only critical issue. workouts.html was a false positive — its only inline EF call is platform-alert (skeleton monitor); all data loading lives in external JS modules.
+
+
 ## 15 April 2026 — engagement.html critical fix + cleanup
 
 ### Bug: `async async function loadPage()` syntax error
