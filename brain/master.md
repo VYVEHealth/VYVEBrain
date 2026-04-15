@@ -1,4 +1,4 @@
-# VYVE Health — Master Brain Document
+# VYVE Health â Master Brain Document
 
 > This document gives any AI everything it needs to understand and operate on the VYVE Health platform.
 > Last verified: 13 April 2026 (third session: Command Centre Supabase wiring) (full session: alert fixes, food log JWT, log-food nav overlap, settings cleanup, weight unit persistence, running-plan model fix) against live Supabase project ixjfklpckgxrwjlfsaaz.
@@ -44,14 +44,14 @@ Business email: team@vyvehealth.co.uk (never use personal emails for business).
 ### Priority #1
 Capacitor wrap for iOS App Store + Android Play Store. PWA ready. Blocker: health disclaimer (Lewis sign-off needed).
 
-### Web Push (VAPID) — Live
-- `vapid.js` loaded on `index.html` — subscribes on bell tap (iOS requires user gesture), saves to `push_subscriptions` table
-- `sw.js` — `push` event listener + `notificationclick` listener live
-- `habit-reminder` v4 + `streak-reminder` v4 — full RFC 8291 AES-GCM encryption via Deno Web Crypto
-- `send-test-push` v4 — test tool (Supabase Dashboard → Edge Functions → Test)
-- `VAPID_PRIVATE_KEY` secret set in Supabase ✅
+### Web Push (VAPID) â Live
+- `vapid.js` loaded on `index.html` â subscribes on bell tap (iOS requires user gesture), saves to `push_subscriptions` table
+- `sw.js` â `push` event listener + `notificationclick` listener live
+- `habit-reminder` v4 + `streak-reminder` v4 â full RFC 8291 AES-GCM encryption via Deno Web Crypto
+- `send-test-push` v4 â test tool (Supabase Dashboard â Edge Functions â Test)
+- `VAPID_PRIVATE_KEY` secret set in Supabase â
 - VAPID public key: `BDbz2-0k3JcqRWKyasr3MNgEZrXhKsVvjS-otCyyV7Ya4Pi2xXOxXGETUpVoE56VorKzSNy7uyep53gOzNEMTu4`
-- **Rule:** Apple push requires RFC 8291 encryption. `esm.sh` imports fail in Supabase EFs — always use Deno Web Crypto only.
+- **Rule:** Apple push requires RFC 8291 encryption. `esm.sh` imports fail in Supabase EFs â always use Deno Web Crypto only.
 - **Rule:** iOS push only works from home screen installed PWA (Safari 16.4+)
 
 ---
@@ -61,15 +61,15 @@ Capacitor wrap for iOS App Store + Android Play Store. PWA ready. Blocker: healt
 ### Hosting
 | Component | Where |
 |-----------|-------|
-| Member portal (PWA) | GitHub Pages -> online.vyvehealth.co.uk — repo: VYVEHealth/vyve-site (PRIVATE) |
-| Marketing site | GitHub Pages -> www.vyvehealth.co.uk — repo: VYVEHealth/Test-Site-Finalv3 |
-| Backend / DB | Supabase Pro (West EU/Ireland) — project ixjfklpckgxrwjlfsaaz |
-| AI | Anthropic API (Claude Sonnet 4 + Haiku 4.5) — server-side Edge Functions ONLY |
+| Member portal (PWA) | GitHub Pages -> online.vyvehealth.co.uk â repo: VYVEHealth/vyve-site (PRIVATE) |
+| Marketing site | GitHub Pages -> www.vyvehealth.co.uk â repo: VYVEHealth/Test-Site-Finalv3 |
+| Backend / DB | Supabase Pro (West EU/Ireland) â project ixjfklpckgxrwjlfsaaz |
+| AI | Anthropic API (Claude Sonnet 4 + Haiku 4.5) â server-side Edge Functions ONLY |
 | Email | Brevo (free tier, 300/day) |
 | Payments | Stripe |
 | Analytics | PostHog (EU endpoint, identity wired to Supabase Auth) |
 | CRM | HubSpot (Hub ID: 148106724) |
-| Automation | Make (Lewis only — social media) |
+| Automation | Make (Lewis only â social media) |
 
 ### Authentication
 Supabase Auth with auth.js v2.3. All portal pages gated. Auth0 is FULLY RETIRED.
@@ -79,7 +79,7 @@ Single-file HTML pages. Self-contained inline CSS/JS. No build process, no bundl
 
 Key files: index.html (dashboard), habits.html, workouts.html, nutrition.html, log-food.html, wellbeing-checkin.html, monthly-checkin.html, sessions.html, running-plan.html, settings.html, certificates.html, engagement.html, leaderboard.html, login.html, set-password.html, strategy.html (password: vyve2026), sw.js, auth.js, theme.js, nav.js.
 
-**nav.js injection heights (mobile ≤768px):**
+**nav.js injection heights (mobile â¤768px):**
 - Mobile top header: `position:sticky; top:0; height:56px`
 - Bottom nav: `position:fixed; bottom:0; z-index:9999; ~80px tall`
 - Body gets `padding-bottom: calc(80px + env(safe-area-inset-bottom,0px)) !important`
@@ -93,18 +93,18 @@ Key files: index.html (dashboard), habits.html, workouts.html, nutrition.html, l
 ### Onboarding Form
 `www.vyvehealth.co.uk/welcome` = `welcome.html` in `Test-Site-Finalv3` repo. This calls the onboarding Edge Function. NOT onboarding_v8.html (old name).
 
-### Edge Functions (44 deployed — 20 core, 24 utilities/one-off)
+### Edge Functions (44 deployed â 20 core, 24 utilities/one-off)
 
 #### Core Functions
 | Function | Supabase Ver | Purpose | Auth |
 |----------|-------------|---------|------|
 | onboarding | v67 | Persona + habits + programme overview + 8-week workout (inline, parallel) | CORS www.vyvehealth.co.uk |
-| member-dashboard | v35 | Full dashboard data — server-side aggregation, JWT-only | JWT required |
+| member-dashboard | v35 | Full dashboard data â server-side aggregation, JWT-only | JWT required |
 | wellbeing-checkin | v32 | Weekly check-in + AI | JWT |
-| monthly-checkin | v13 | Monthly check-in — new-member lock, model fix | JWT |
+| monthly-checkin | v13 | Monthly check-in â new-member lock, model fix | JWT |
 | log-activity | v18 | PWA activity logging | JWT |
 | employer-dashboard | v29 | Aggregate, API key auth, no PII | EMPLOYER_DASHBOARD_API_KEY |
-| leaderboard | v7 | Leaderboard rankings — all members, current month | JWT |
+| leaderboard | v7 | Leaderboard rankings â all members, current month | JWT |
 | notifications | v7 | In-app notification feed + badge count | JWT |
 | anthropic-proxy | v14 | Running plans | JWT (internal) |
 | send-email | v19 | Brevo transactional | service-role-key |
@@ -131,7 +131,7 @@ weekly-report, monthly-report, ops-brief, send-test-push, send-test-welcome, res
 
 ---
 
-## 4. Database (Supabase — 39 Tables)
+## 4. Database (Supabase â 39 Tables)
 
 All RLS enabled. Email = primary key across all member tables.
 
@@ -151,13 +151,13 @@ Other: service_catalogue (21), certificates, employer_members, engagement_emails
 
 **Activity caps:** habits 1/day, workouts/cardio/sessions 2/day, check-ins 1/ISO week. Over-cap -> activity_dedupe.
 
-**New columns added 11 April 2026:** `dob` (date), `training_goals`, `barriers`, `sleep_hours_range`, `sleep_help`, `social_help`, `nutrition_guidance`, `location` — all onboarding questionnaire fields now fully persisted.
+**New columns added 11 April 2026:** `dob` (date), `training_goals`, `barriers`, `sleep_hours_range`, `sleep_help`, `social_help`, `nutrition_guidance`, `location` â all onboarding questionnaire fields now fully persisted.
 
-**DOB / Age:** `dob date` is stored. Age is computed live using `member_age(dob)` SQL function — never stored statically. `age integer` column kept for legacy fallback only.
+**DOB / Age:** `dob date` is stored. Age is computed live using `member_age(dob)` SQL function â never stored statically. `age integer` column kept for legacy fallback only.
 
-**member_habits.assigned_by constraint:** Only allows: `'onboarding'`, `'ai'`, `'theme_update'`, `'self'`. Never use `'onboarding_ai'` — constraint violation.
+**member_habits.assigned_by constraint:** Only allows: `'onboarding'`, `'ai'`, `'theme_update'`, `'self'`. Never use `'onboarding_ai'` â constraint violation.
 
-**daily_habits unique constraint:** `(member_email, activity_date, habit_id)` — one row per habit per day. Cap is 10/day (raised from 1).
+**daily_habits unique constraint:** `(member_email, activity_date, habit_id)` â one row per habit per day. Cap is 10/day (raised from 1).
 
 ---
 
@@ -172,11 +172,11 @@ Other: service_catalogue (21), certificates, employer_members, engagement_emails
 
 **This caused a major bug until v45.** All persona and habit logic was backwards for stress. High stress score = calm, positive. Low stress score = person is struggling.
 
-### Persona Assignment (Hard Rules — in order)
-1. **HAVEN** — life context includes Bereavement or Struggling with mental health
-2. **RIVER** — stress <= 3 (actually stressed) OR wellbeing <= 4 OR energy <= 3
-3. **NOVA** — wellbeing >= 7 AND energy >= 7 AND stress >= 7 (calm) AND **1-2 goals max where strength/performance/muscle is dominant**. Members with 3+ mixed goals always go to AI path, even if scores qualify.
-4. **AI decides** — everything else. SPARK is default for mixed goals, lifestyle/consistency focus, or demanding life context.
+### Persona Assignment (Hard Rules â in order)
+1. **HAVEN** â life context includes Bereavement or Struggling with mental health
+2. **RIVER** â stress <= 3 (actually stressed) OR wellbeing <= 4 OR energy <= 3
+3. **NOVA** â wellbeing >= 7 AND energy >= 7 AND stress >= 7 (calm) AND **1-2 goals max where strength/performance/muscle is dominant**. Members with 3+ mixed goals always go to AI path, even if scores qualify.
+4. **AI decides** â everything else. SPARK is default for mixed goals, lifestyle/consistency focus, or demanding life context.
 
 ### Persona Characters
 | Persona | Character |
@@ -185,7 +185,7 @@ Other: service_catalogue (21), certificates, employer_members, engagement_emails
 | RIVER | Mindful guide. Calm, empathetic. For people who are stressed (low stress score), low energy, or struggling. |
 | SPARK | Motivational powerhouse. Energetic accountability. For mixed goals, consistency focus, busy lifestyles. |
 | SAGE | Knowledge-first mentor. Evidence-based. |
-| HAVEN | Mental health companion. NOT LIVE — needs professional review. |
+| HAVEN | Mental health companion. NOT LIVE â needs professional review. |
 
 NEVER assign NOVA or SPARK if serious life context in Section G.
 
@@ -193,7 +193,7 @@ NEVER assign NOVA or SPARK if serious life context in Section G.
 Previously wrong due to inverted stress scale:
 - Stuart Watts: RIVER -> **NOVA** (stress 7, wellbeing 8, energy 8, gym 4x, holiday goal)
 - Alan Bird: RIVER -> **SPARK** (stress 10/very calm, but energy 5 and mixed lifestyle goals)
-- Dean Brown: NOVA -> **SPARK** (stress 8/calm but 5 mixed goals — strength one of many, 1-2 days/week, demanding work)
+- Dean Brown: NOVA -> **SPARK** (stress 8/calm but 5 mixed goals â strength one of many, 1-2 days/week, demanding work)
 
 ---
 
@@ -203,10 +203,10 @@ Previously wrong due to inverted stress scale:
 **EF:** onboarding v58 (code comment says v54)
 
 ### What fires on submit
-1. `selectPersona()` — hard rules then AI fallback (correct stress scale v45+)
-2. `generateProgrammeOverview()` — AI names the 8-week programme
-3. `selectHabits()` — AI selects 5 habits from library (stress scale reminder in prompt)
-4. `generateRecommendations()` — AI writes 3 first-week recs in persona voice
+1. `selectPersona()` â hard rules then AI fallback (correct stress scale v45+)
+2. `generateProgrammeOverview()` â AI names the 8-week programme
+3. `selectHabits()` â AI selects 5 habits from library (stress scale reminder in prompt)
+4. `generateRecommendations()` â AI writes 3 first-week recs in persona voice
 5. Stage 1: `writeMember()` + `createAuthUser()` in parallel (member row MUST commit first)
 6. Stage 2: `writeHabits()` + `writeAiInteraction()` + `writeWeeklyGoals()` + Make webhook
 7. `sendWelcomeEmail()` via Brevo
@@ -215,8 +215,8 @@ Previously wrong due to inverted stress scale:
 ### Bugs fixed (10 Apr 2026)
 | Bug | Impact | Fix |
 |-----|--------|-----|
-| FK race condition (v44) | writeHabits fired before member row committed → FK violation → no habits assigned | Two-stage Promise.all |
-| `assigned_by: 'onboarding_ai'` (v46) | Check constraint violation on member_habits → no habits assigned | Changed to `'onboarding'` |
+| FK race condition (v44) | writeHabits fired before member row committed â FK violation â no habits assigned | Two-stage Promise.all |
+| `assigned_by: 'onboarding_ai'` (v46) | Check constraint violation on member_habits â no habits assigned | Changed to `'onboarding'` |
 | Stress scale inverted (v45) | All persona + habit selections wrong for stress dimension | Corrected all logic + AI prompts |
 | NOVA hard rule too broad (v47) | Any member ticking 'strength' among 5 goals got NOVA | Rule now requires 1-2 goals max, performance dominant |
 | Silent catch with fake results (welcome.html) | EF timeout/failure showed fake RIVER results, member thought they'd onboarded | 90s AbortController + error screen + retry button |
@@ -235,18 +235,18 @@ Previously wrong due to inverted stress scale:
 ### member_habits table
 - 5 habits per member assigned at onboarding
 - `assigned_by` constraint: `'onboarding'`, `'ai'`, `'theme_update'`, `'self'`
-- `(member_email, habit_id)` unique — no duplicate habits per member
+- `(member_email, habit_id)` unique â no duplicate habits per member
 
 ### daily_habits table
 - One row per habit per day per member (`member_email, activity_date, habit_id` unique)
-- Cap: 10/day (generous — allows all 5 habits to log)
-- Over-cap → activity_dedupe (not discarded)
+- Cap: 10/day (generous â allows all 5 habits to log)
+- Over-cap â activity_dedupe (not discarded)
 
 ### Habit selection logic
 AI selects 5 habits from 30 in habit_library using member's profile:
 - Stress scale is explicitly stated in prompt (1=stressed, 10=calm)
-- Low stress score → prioritise sleep/mindfulness/recovery habits
-- High stress score → member is calm, no need for stress-relief habits
+- Low stress score â prioritise sleep/mindfulness/recovery habits
+- High stress score â member is calm, no need for stress-relief habits
 
 ---
 
@@ -275,17 +275,18 @@ AI selects 5 habits from 30 in habit_library using member's profile:
 21. **github-proxy requires `GITHUB_PROXY_SECRET`** header (`x-proxy-key`). CORS restricted to `online.vyvehealth.co.uk`.
 22. **employer-dashboard requires `EMPLOYER_DASHBOARD_API_KEY`** header. Hard fail if key not configured.
 23. **send-email requires service-role-key** on HTTP handler. CORS restricted to portal origins.
-24. **onboarding CORS restricted** to `https://www.vyvehealth.co.uk` (Option A — no secret in static site).
+24. **onboarding CORS restricted** to `https://www.vyvehealth.co.uk` (Option A â no secret in static site).
 25. **Portal auth convention:** All portal pages must use `window.vyveSupabase` for Supabase client access. Never `_supabase`, `_sb`, or other aliases. `getJWT()` pattern: `const{data:{session}}=await window.vyveSupabase.auth.getSession(); return session?.access_token;`
-26. **When changing Edge Function auth, grep ALL portal pages** that call that function. Every caller must be updated — not just the main dashboard.
-27. **Variable scope rule:** When refactoring `var`/`let` → `const`, check ALL functions referencing the variable. `const` is block-scoped — functions at script level cannot access it from an inner function's scope.
-28. **tracking.js uses `async getHeaders()`** — fetches real user JWT via `vyveSupabase.auth.getSession()` for all session_views/replay_views writes. Never revert to static `Authorization: Bearer SUPABASE_ANON`.
-29. **running-plan.html anthropic-proxy call must use real user JWT** — anon key is rejected by `verify_jwt: true`. Use `window.vyveSupabase.auth.getSession()` to get token before calling proxy.
-30. **nutrition-setup.html init() fires via `vyveAuthReady` only** — no `window.load` fallback. The window.load race fires before session is confirmed.
-31. **log-food.html supa() must use real user JWT** — nutrition_logs RLS requires authenticated user. Same pattern as nutrition-setup: getSession() fallback to anon.
-32. **log-food.html sheet padding-bottom must include nav height** — `.sheet` needs `calc(80px + env(safe-area-inset-bottom,0px))` not just `env(safe-area-inset-bottom,0px)` or LOG FOOD button sits behind the nav bar.
+26. **When changing Edge Function auth, grep ALL portal pages** that call that function. Every caller must be updated â not just the main dashboard.
+27. **Variable scope rule:** When refactoring `var`/`let` â `const`, check ALL functions referencing the variable. `const` is block-scoped â functions at script level cannot access it from an inner function's scope.
+28. **tracking.js uses `async getHeaders()`** â fetches real user JWT via `vyveSupabase.auth.getSession()` for all session_views/replay_views writes. Never revert to static `Authorization: Bearer SUPABASE_ANON`.
+29. **running-plan.html anthropic-proxy call must use real user JWT** â anon key is rejected by `verify_jwt: true`. Use `window.vyveSupabase.auth.getSession()` to get token before calling proxy.
+30. **nutrition-setup.html init() fires via `vyveAuthReady` only** â no `window.load` fallback. The window.load race fires before session is confirmed.
+31. **log-food.html supa() must use real user JWT** â nutrition_logs RLS requires authenticated user. Same pattern as nutrition-setup: getSession() fallback to anon.
+32. **log-food.html sheet padding-bottom must include nav height** â `.sheet` needs `calc(80px + env(safe-area-inset-bottom,0px))` not just `env(safe-area-inset-bottom,0px)` or LOG FOOD button sits behind the nav bar.
 33. **weight_unit and height_unit columns exist in members table** (default 'kg' and 'cm'). nutrition.html reads weight_unit on load and uses it to init the weight log sheet unit and TDEE recalculator unit toggle. Saved on every TDEE target save via PATCH.
-34. **settings.html no longer has height/weight unit toggles** — unit preference is set within nutrition.html TDEE recalculator only. Privacy link points to `https://www.vyvehealth.co.uk/privacy-policy.html`.
+34. **settings.html no longer has height/weight unit toggles** â unit preference is set within nutrition.html TDEE recalculator only. Privacy link points to `https://www.vyvehealth.co.uk/privacy-policy.html`.
+35. **Full-screen overlay z-index:** Overlays with `position:fixed;inset:0` that have their own back button (exercise search, history view) must use `z-index:10000` to sit above the nav.js bottom bar (z-index:9999). Their headers do NOT need the `top:56px` mobile offset -- that rule only applies to elements within the nav structure (`.sh-header`, `.prs-header`).
 
 ---
 
@@ -293,22 +294,22 @@ AI selects 5 habits from 30 in habit_library using member's profile:
 ## 11. VYVE Command Centre
 
 ### What It Is
-A standalone internal ops dashboard for the VYVE leadership team. Browser-based SPA, hosted on GitHub Pages at `admin.vyvehealth.co.uk`. Separate from the member portal — this is for internal business operations.
+A standalone internal ops dashboard for the VYVE leadership team. Browser-based SPA, hosted on GitHub Pages at `admin.vyvehealth.co.uk`. Separate from the member portal â this is for internal business operations.
 
 ### Access
 - **URL:** `admin.vyvehealth.co.uk`
 - **Repo:** `VYVEHealth/vyve-command-centre` (public)
-- **Auth:** Supabase Auth — `team@vyvehealth.co.uk`
+- **Auth:** Supabase Auth â `team@vyvehealth.co.uk`
 - **Login:** Real Supabase email/password (not hard-coded)
 
 ### Architecture
 - Single `index.html` file (~135KB), vanilla JS, Chart.js, Google Fonts
-- GitHub Pages hosting with custom domain via GoDaddy CNAME → `vyvehealth.github.io`
+- GitHub Pages hosting with custom domain via GoDaddy CNAME â `vyvehealth.github.io`
 - Supabase Auth for login (same project: `ixjfklpckgxrwjlfsaaz`, same anon key)
-- **Data in Supabase** — 18 `cc_` tables, all RLS locked to `team@vyvehealth.co.uk`
-- Files in **Supabase Storage** — `cc-documents` bucket (private, 50MB limit)
-- `cc-data` Edge Function v1 — handles all CRUD + file uploads + signed URL generation
-- No build process, no bundler — same philosophy as member portal
+- **Data in Supabase** â 18 `cc_` tables, all RLS locked to `team@vyvehealth.co.uk`
+- Files in **Supabase Storage** â `cc-documents` bucket (private, 50MB limit)
+- `cc-data` Edge Function v1 â handles all CRUD + file uploads + signed URL generation
+- No build process, no bundler â same philosophy as member portal
 
 ### Pages (27 total across 5 sidebar sections)
 **Intelligence:** Morning Brief, Research & Grants, Competitor Watch
@@ -319,26 +320,26 @@ A standalone internal ops dashboard for the VYVE leadership team. Browser-based 
 **System:** Settings (Agent Sync, API keys, company info)
 
 ### Agent Sync
-Lewis's 24 AI skills run inside Claude.ai Projects (subscription — no API cost). He copies JSON output and pastes into the Command Centre via the Agent Sync import modal. This feeds the Intelligence section (grants, competitors, legislation, market signals).
+Lewis's 24 AI skills run inside Claude.ai Projects (subscription â no API cost). He copies JSON output and pastes into the Command Centre via the Agent Sync import modal. This feeds the Intelligence section (grants, competitors, legislation, market signals).
 
 ### Known Rules
-- Data is localStorage only until Supabase connection is built — clearing browser cache loses all data
-- Repo is public — anon key visible in source (acceptable, same pattern as portal)
-- One shared auth account for now (`team@vyvehealth.co.uk`) — separate accounts for Dean/Lewis planned
-- Claude API key field in Settings exists but is NOT wired up — placeholder only
+- Data is localStorage only until Supabase connection is built â clearing browser cache loses all data
+- Repo is public â anon key visible in source (acceptable, same pattern as portal)
+- One shared auth account for now (`team@vyvehealth.co.uk`) â separate accounts for Dean/Lewis planned
+- Claude API key field in Settings exists but is NOT wired up â placeholder only
 - No AI calls currently made from this tool
 
-### Supabase Tables (18 — all prefixed `cc_`)
+### Supabase Tables (18 â all prefixed `cc_`)
 `cc_clients`, `cc_leads`, `cc_investors`, `cc_partners`, `cc_tasks`, `cc_decisions`, `cc_okrs`, `cc_finance`, `cc_revenue`, `cc_grants`, `cc_posts`, `cc_invoices`, `cc_sessions`, `cc_intel`, `cc_knowledge`, `cc_documents`, `cc_swot`, `cc_episodes`
 
 ### cc-data Edge Function
-- `GET /cc-data/{table}` — list records (with optional ?type=, ?stage=, ?status= filters)
-- `GET /cc-data/{table}/{id}` — get single record
-- `POST /cc-data/{table}` — create record
-- `PATCH /cc-data/{table}/{id}` — update record
-- `DELETE /cc-data/{table}/{id}` — delete record (also removes Storage file for cc_documents)
-- `POST /cc-data/upload` — multipart file upload → Supabase Storage → cc_documents metadata
-- `GET /cc-data/signed-url/{id}` — generate 1-hour signed URL for secure file access
+- `GET /cc-data/{table}` â list records (with optional ?type=, ?stage=, ?status= filters)
+- `GET /cc-data/{table}/{id}` â get single record
+- `POST /cc-data/{table}` â create record
+- `PATCH /cc-data/{table}/{id}` â update record
+- `DELETE /cc-data/{table}/{id}` â delete record (also removes Storage file for cc_documents)
+- `POST /cc-data/upload` â multipart file upload â Supabase Storage â cc_documents metadata
+- `GET /cc-data/signed-url/{id}` â generate 1-hour signed URL for secure file access
 
 ### Planned
 - Separate auth accounts for Dean and Lewis
@@ -364,7 +365,7 @@ Lewis's 24 AI skills run inside Claude.ai Projects (subscription — no API cost
 | Claude Sonnet 4 | `claude-sonnet-4-20250514` |
 | Claude Haiku 4.5 | `claude-haiku-4-5` |
 
-**Note:** `claude-haiku-4-5-20251001` is INVALID — do not use. The correct Haiku string has no date suffix.
+**Note:** `claude-haiku-4-5-20251001` is INVALID â do not use. The correct Haiku string has no date suffix.
 
 ---
 
@@ -375,16 +376,16 @@ Lewis's 24 AI skills run inside Claude.ai Projects (subscription — no API cost
 - Do NOT put API keys in HTML files
 - Do NOT modify EFs without complete index.ts
 - Do NOT forget to bump sw.js after portal changes
-- Do NOT use `assigned_by: 'onboarding_ai'` — check constraint violation
-- Do NOT treat high stress score as bad — 10 = very calm
+- Do NOT use `assigned_by: 'onboarding_ai'` â check constraint violation
+- Do NOT treat high stress score as bad â 10 = very calm
 - Do NOT assign NOVA just because a member ticked strength among many goals
-- Do NOT create monthly_summaries, activity_patterns, charity_totals, audit_log, milestone_messages — never built
-- Do NOT use `window.load` as auth init fallback alongside `vyveAuthReady` — creates race condition where supa() falls back to anon key
+- Do NOT create monthly_summaries, activity_patterns, charity_totals, audit_log, milestone_messages â never built
+- Do NOT use `window.load` as auth init fallback alongside `vyveAuthReady` â creates race condition where supa() falls back to anon key
 - Do NOT use static anon key as Bearer token in tracking.js or any page making authenticated REST calls
-- Do NOT use `claude-haiku-4-5-20251001` — invalid model string. Correct string is `claude-haiku-4-5`
-- Do NOT hardcode `padding-bottom:env(safe-area-inset-bottom,0px)` on bottom sheets — always use `calc(80px + env(safe-area-inset-bottom,0px))` to clear the nav bar
-- Do NOT add height/weight unit toggles to settings.html — unit preference is managed in nutrition.html only
-- Do NOT use `privacy.html` as the privacy link — correct URL is `https://www.vyvehealth.co.uk/privacy-policy.html`
+- Do NOT use `claude-haiku-4-5-20251001` â invalid model string. Correct string is `claude-haiku-4-5`
+- Do NOT hardcode `padding-bottom:env(safe-area-inset-bottom,0px)` on bottom sheets â always use `calc(80px + env(safe-area-inset-bottom,0px))` to clear the nav bar
+- Do NOT add height/weight unit toggles to settings.html â unit preference is managed in nutrition.html only
+- Do NOT use `privacy.html` as the privacy link â correct URL is `https://www.vyvehealth.co.uk/privacy-policy.html`
 - Do NOT hardcode POSTHOG_KEY as a literal string
-- Do NOT count raw daily_habits rows for weekly habit totals — use distinct activity_date values capped at 7 (max 1 per day, max 7 per week)
-- Do NOT allow new members to submit monthly check-in in their first calendar month — show "available from 1st [Month Year]" message — always use the real key `phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl` inline
+- Do NOT count raw daily_habits rows for weekly habit totals â use distinct activity_date values capped at 7 (max 1 per day, max 7 per week)
+- Do NOT allow new members to submit monthly check-in in their first calendar month â show "available from 1st [Month Year]" message â always use the real key `phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl` inline
