@@ -29,7 +29,9 @@
 - Suppress portrait lock overlay during active workout session (iOS only)
 - **Onboarding resilience: save-answers-first** - lightweight `save-answers` EF + `onboarding_answers` table. Saves form data per section so failed onboarding can be re-run from saved answers. Friendly error screen instead of crash. ~2-3 hrs.
 - **In-app onboarding fallback** - if a member has no `workout_plan_cache` row (or `is_active = false` and no plan), show a simplified questionnaire inside the portal (training goals, experience, days/week, location, equipment, injuries). Submits to `generate-workout-plan` EF directly. Covers: failed onboarding, plan expired, plan deleted, member wants fresh plan. ~3-4 hrs.
-- **Dashboard widget customisation** — members choose which widgets appear on their home screen and in what order. DB: `dashboard_widgets JSONB` on members table. Settings: toggle on/off + reorder. No new EF needed — member-dashboard already returns all data. ~4-5 hrs.
+- **Dashboard widget customisation**
+- **Calendar integration** — connect member calendar (Google/Apple) to show upcoming VYVE sessions, workout schedule, and check-in reminders. Investigate Capacitor calendar plugin. Surface in a calendar view within the portal.
+- **Calendar page in portal** — dedicated calendar/schedule page showing the member's week: planned workouts, live sessions, habit reminders, check-in due dates. Could replace or complement the "Coming Up This Week" section on the dashboard. — members choose which widgets appear on their home screen and in what order. DB: `dashboard_widgets JSONB` on members table. Settings: toggle on/off + reorder. No new EF needed — member-dashboard already returns all data. ~4-5 hrs.
 
 ---
 
