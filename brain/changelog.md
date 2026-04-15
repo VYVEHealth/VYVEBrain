@@ -1,3 +1,34 @@
+## 16 April 2026 — Full Brain Reconciliation (Deep Audit)
+
+### Context
+Full deep audit performed: all project chats reviewed, live Supabase DB inspected (61 tables, RLS policies, indexes, constraints), live repo tree analysed, key Edge Functions source-read, auth.js + sw.js + index.html analysed for security patterns. Brain was found materially outdated — master.md had drifted significantly from reality.
+
+### master.md — Complete Rewrite
+- Rewrote from scratch against live system state
+- Table count corrected: 36 -> 61 (23 undocumented tables found including programme_library, shared_workouts, ai_decisions, member_notifications, push_subscriptions_native, 18 cc_* command centre tables)
+- All Edge Function versions updated to match live deployed versions
+- Documented all features built since last accurate sync: workout library, session sharing, in-app notifications, web push, platform monitoring, monthly check-in, nutrition setup, custom habits, skeleton timeout monitors
+- Added 30 hard rules (was ~19)
+- Added App Store status section
+- Added nav.js injection heights reference
+- Added complete file inventory for vyve-site repo
+- Documented HAVEN being assigned live (Conor Warren, 15 April)
+- Documented all known security issues from deep audit
+- VYVE_Health_Hub.html identified as standalone demo page (182KB, no auth, not part of portal)
+
+### Key Findings from Audit
+- 0 foreign keys across all 61 tables
+- 0 database triggers (activity caps are application-level only in log-activity EF)
+- 5 tables missing index on member_email (workouts, cardio, certificates, shared_workouts, running_plan_cache)
+- running_plan_cache has public UPDATE RLS policy (security hole)
+- XSS risk in index.html via innerHTML + firstName
+- platform_alerts table has RLS enabled but no policies (locked out)
+- PostHog sends raw email PII
+- 89 dead Edge Functions still not deleted
+
+### Process Issue Identified
+Brain drift caused by: (1) master.md getting patched incrementally, never fully rewritten; (2) some sessions updating changelog but not master; (3) new tables/features built without documentation in master; (4) emergency sessions (onboarding v67 across 4 chats) producing partial updates.
+
 ## 15 April 2026 — Android Resubmitted with Correct VYVE Icon
 
 ### Fix: Android icon rejection resolved
