@@ -1,3 +1,13 @@
+## 15 April 2026 — Android Resubmitted with Correct VYVE Icon
+
+### Fix: Android icon rejection resolved
+- **Issue:** Google Play rejected app — icon on device didn't match store listing (placeholder Capacitor X icon)
+- **Fix:** Generated correct icons using `npx capacitor-assets generate --android` from `resources/icon.png` (1024x1024 VYVE logo)
+- **Java:** Installed Microsoft OpenJDK 21 on Windows machine (was missing)
+- **Build:** `gradlew bundleRelease` succeeded, AAB signed with `vyve-release-key.jks`
+- **Submitted:** Resubmitted via Google Play Console Publishing Overview — 9 changes sent for review
+- **Status:** Awaiting Google Play review (1-3 days)
+
 ## 15 April 2026 (cont.) -- Exercise search overlay layout fix
 
 ### Problem
