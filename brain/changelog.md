@@ -1,3 +1,23 @@
+## 15 April 2026 — engagement.html critical fix + cleanup
+
+### Bug: `async async function loadPage()` syntax error
+- **Root cause:** Double `async` keyword on the `loadPage()` function declaration killed the entire `<script>` block at parse time. Every function in the block was undefined — page showed infinite skeleton loading.
+- **Impact:** engagement.html completely broken for all members. Skeleton timeout monitor fired platform_alert but user saw no content.
+- **Fix:** Removed duplicate `async` keyword.
+
+### Cleanup: 5 dead client-side calc functions removed
+- `calcStreaks`, `calcWeekStreaks`, `calcDayStats`, `calcVariety7d`, `computeEngagementScore` were copied from old client-side approach but never called — EF v37 computes everything server-side.
+- Removed ~4,100 chars of dead code.
+
+### Fix: 401 redirect added
+- engagement.html had no auth failure handling — if JWT expired, page showed empty content with no guidance.
+- Added JWT presence check (redirect to login if missing) and 401 status check on fetch response.
+
+### sw.js bumped to `vyve-cache-v2026-04-15e`
+
+### Commit: cce5d358eca4c3166b8e156ea81738ccbaef861e
+
+
 ## 14 April 2026 (evening) — App Store rejection fixes
 
 ### Apple App Store Review Response
