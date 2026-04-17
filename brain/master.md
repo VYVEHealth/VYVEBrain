@@ -366,3 +366,59 @@ HAVEN is live in the onboarding EF and IS being assigned (Conor Warren received 
 
 *Last full reconciliation: 16 April 2026*
 *Source: VYVEHealth/VYVEBrain repo (main branch)*
+
+---
+
+## 12. Design System (Current State — April 2026)
+
+### Status
+Phase A shipped 17 April 2026. Tokens are defined in `theme.css` (additive only). No page migrations performed yet — Phases B-E will migrate pages.
+
+`VYVE_Health_Hub.html` is out of scope for Phase A-E migrations. Planned for future redesign + PWA linking.
+
+### Tokens now in theme.css
+
+**Brand accents (`:root`):** `--teal`, `--teal-lt`, `--teal-xl`, `--teal-dark`, `--green`, `--amber`, `--coral`, `--font-head`, `--font-body`
+
+**Semantic aliases:** `--success` (#2D9E4A), `--success-soft`, `--success-strong`, `--warning` (#E09B3D), `--warning-soft`, `--warning-strong`, `--danger` (#E06060), `--danger-soft`, `--danger-strong`, `--gold` (#C9A84C), `--gold-soft`
+
+**Activity track colours (5-way, each maps 1:1 to an activity):**
+| Token | Hex | Activity |
+|-------|-----|---------|
+| `--track-habits` | #4DAAAA | Daily Habits |
+| `--track-workouts` | #E09B3D | Workouts |
+| `--track-cardio` | #E06060 | Cardio |
+| `--track-sessions` | #9B7AE0 | Sessions |
+| `--track-nutrition` | #2D9E4A | Nutrition |
+
+**Habit pot colours (5-way, each maps 1:1 to a theme):**
+| Token | Hex | Theme | Note |
+|-------|-----|-------|------|
+| `--pot-movement` | #4DAAAA | Movement | Shares with --track-habits (intentional) |
+| `--pot-nutrition` | #2D9E4A | Nutrition | Shares with --track-nutrition (intentional) |
+| `--pot-mindfulness` | #5BA8D9 | Mindfulness | NEW — was wrongly #E09B3D (amber) |
+| `--pot-social` | #E879A3 | Social | NEW — was wrongly #E06060 (coral) |
+| `--pot-sleep` | #6366B8 | Sleep | NEW — was wrongly #9B7AE0 (purple) |
+
+**habits.html POT_CONFIG migration (Phase B):**
+- `mindfulness: '#E09B3D'` → `var(--pot-mindfulness)` = #5BA8D9
+- `social: '#E06060'` → `var(--pot-social)` = #E879A3
+- `sleep: '#9B7AE0'` → `var(--pot-sleep)` = #6366B8
+- `movement` and `nutrition` stay same hex, just point to tokens
+
+**Spacing scale:** `--space-0` (0) through `--space-16` (64px)
+
+**Typography scale:** `--text-2xs` (11px) through `--text-4xl` (40px), `--leading-tight/normal/relaxed`, `--weight-regular/medium/semibold/bold`
+
+**Radius scale:** `--radius-sm` (6px), `--radius` (10px), `--radius-lg` (14px), `--radius-xl` (20px), `--radius-pill` (999px), `--radius-circle` (50%)
+
+**Shadow scale:** `--shadow-sm/md/lg`, `--shadow-glow-teal`
+
+**Per-theme aliases (in both dark + light blocks):** `--muted: var(--text-muted)`, `--on-accent: var(--white)`
+
+### Phase sequencing
+- **A** ✅ Token foundation (additive) — shipped 17 April
+- **B** Semantic colour migration — index, settings, workouts, nutrition, habits
+- **C** Session-page template consolidation — 14 pages → 3 files
+- **D** Component primitives — btn/card/input/modal-sheet
+- **E** Typography + spacing scale migration

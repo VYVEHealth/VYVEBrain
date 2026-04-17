@@ -1,3 +1,32 @@
+## 17 April 2026 — Phase A Design System Token Foundation
+
+### Context
+Full UI/UX consistency audit revealed 163 unique hex colours, 118 unique font sizes, 72 unique button class names across 39 HTML pages. Phase A establishes the token foundation in `theme.css` (additive only — no page migrations).
+
+### Changes
+- Added semantic colour aliases: `--success/warning/danger` (+ soft/strong variants), `--gold/gold-soft`, `--teal-dark`
+- Added 5-way activity track tokens: `--track-habits/workouts/cardio/sessions/nutrition`
+- Added 5-way habit pot tokens: `--pot-movement/nutrition/mindfulness/social/sleep` — 3 new colours for mindfulness (#5BA8D9), social (#E879A3), sleep (#6366B8)
+- Added spacing scale: `--space-0` through `--space-16`
+- Added typography scale: `--text-2xs` through `--text-4xl`, `--leading-*`, `--weight-*`
+- Added radius tokens: `--radius-sm/radius/radius-lg/radius-xl/radius-pill/radius-circle` — fixes dangling `var(--radius)` in running-plan.html + internal-dashboard/index.html
+- Added shadow scale: `--shadow-sm/md/lg/glow-teal`
+- Aliased `--muted: var(--text-muted)` in both dark + light theme blocks — fixes 18 dangling references across all session/replay pages
+- Added `--on-accent: var(--white)` alias in both theme blocks
+- Bumped `sw.js` cache version: `vyve-cache-v2026-04-15j` → `vyve-cache-v2026-04-15k`
+- No page migrations performed — tokens are additive only
+
+### Dangling refs resolved
+- `var(--radius)`: running-plan.html, internal-dashboard/index.html — was 0 (sharp corners), now 10px
+- `var(--radius-lg)`: running-plan.html — was 0, now 14px
+- `var(--muted)`: 18 session/replay pages — was inheriting parent colour, now `--text-muted` (intended muted styling)
+
+### Commit
+- vyve-site: `e5be4f594b2ea7cb7a46cb96f92ddf8fb9013885`
+
+### Next: Phase B — Semantic Colour Migration
+Migrate index.html, settings.html, workouts.html, nutrition.html, habits.html from hardcoded hex values to design tokens. Includes `habits.html` POT_CONFIG swap to `--pot-*` tokens.
+
 ## 16 April 2026 — Full Brain Reconciliation (Deep Audit)
 
 ### Context

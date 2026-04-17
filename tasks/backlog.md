@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 16 April 2026 (full reconciliation)
+> Updated: 17 April 2026 (Phase A design system shipped)
 
 ---
 
@@ -32,6 +32,17 @@
 - Delete 89 dead Edge Functions
 
 ---
+
+---
+
+## Design System — Phase Roadmap
+
+- **Phase B: Semantic colour migration** (~1 day) — Migrate index.html, settings.html, workouts.html, nutrition.html, habits.html from hardcoded hex to `--track-*`, `--pot-*`, `--success/warning/danger` tokens. Includes `habits.html` POT_CONFIG swap (mindfulness: #E09B3D→#5BA8D9, social: #E06060→#E879A3, sleep: #9B7AE0→#6366B8).
+- **Phase C: Session-page template consolidation** (~1 day) — 14 `-live.html` and `-rp.html` pages → 3 shared component files. Eliminates per-page `--*` custom property redeclarations.
+- **Phase D: Component primitives** (~2 days) — Shared `.btn`, `.card`, `.input`, `.modal-sheet` classes. Removes 72 unique button class names, 90 unique card class names.
+- **Phase E: Typography + spacing scale migration** (~1 day) — Replace 118 unique font-size values and 264 unique padding values with `--text-*`, `--space-*` tokens.
+- **Future: VYVE_Health_Hub.html redesign + PWA linking** — Out of scope for Phases A-E. Planned for later.
+
 
 ## Soon
 
