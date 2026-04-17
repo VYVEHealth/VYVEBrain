@@ -1,6 +1,22 @@
 ## 17 April 2026 — Phase B Semantic Colour Migration
 
 ### Changes
+- **index.html**: `--track-color2:#7AC8C8` → `var(--teal-xl)` (inline style on tracks grid card)
+- **nutrition.html**: 3x `linear-gradient(135deg,#1B7878,...)` → `var(--teal)` in `.save-btn`, `.empty-cta`, `.log-save-btn`
+- **sw.js**: cache version bumped `k` → `l`
+
+### Audit findings (no changes needed)
+- habits.html POT_CONFIG already has correct new pot colours from a prior session — no change needed
+- settings.html light-mode token overrides are intentional per-page values (not redundant) — left as-is
+- workouts.html — no actionable CSS hex values found
+- JS setAttribute contexts (nutrition chart SVG dots) left as hex — CSS vars cannot be used in JS attribute values
+
+### Commit
+- vyve-site: `e136376fbc7440b1f94e5fa801557bc9cbd7dca6`
+
+## 17 April 2026 — Phase B Semantic Colour Migration
+
+### Changes
 - **index.html:** Track colours (habits/workouts/cardio/sessions) → `var(--track-*)` tokens across all inline styles, SVG stroke/fill, and CSS variable assignments. Score label `#4DAAAA` → `var(--teal-lt)`.
 - **settings.html:** Removed duplicate `:root` brand token block (teal/amber/coral/fonts — already in theme.css). Difficulty colours → semantic tokens: easy `#2D9E4A` → `var(--success)`, medium `#E09B3D` → `var(--warning)`, hard + delete `#E06060` → `var(--danger)`.
 - **nutrition.html:** Macro nutrient colours → brand tokens: protein `#4DAAAA` → `var(--teal-lt)`, fat `#E09B3D` → `var(--amber)`, carbs `#2D9E4A` → `var(--green)`. Applied across macro bars, legend dots, gradients, SVG chart lines.
