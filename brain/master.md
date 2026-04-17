@@ -422,3 +422,44 @@ Phase A shipped 17 April 2026. Tokens are defined in `theme.css` (additive only)
 - **C** Session-page template consolidation — 14 pages → 3 files
 - **D** Component primitives — btn/card/input/modal-sheet
 - **E** Typography + spacing scale migration
+
+---
+
+## 12. Offline Architecture
+
+### Root cause of blank screen (fixed 17 April 2026)
+`vyveInitAuth()` called `await vyveSupabase.auth.getSession()` which attempts a token-refresh network call. With no signal this hangs, `vyveAuthReady` never fires, pages never render — even though the data cache already exists.
+
+### Layer 5 — auth.js offline fast-path (v2.4)
+Inserted after `window.vyveSupabase = vyveSupabase;`, before `getSession()`:
+- If `!navigator.onLine`: read `localStorage.getItem('vyve_auth')` (storageKey used by Supabase client)
+- If valid session found (has `user.email` + `access_token`): build user, `vyveRevealApp()`, dispatch `vyveAuthReady` — no network call
+- If no valid cached session offline: redirect to login as normal
+- Online flow: unchanged — `getSession()` runs as before
+
+### Layer 2 — offline-manager.js
+Stable shared file, in `PRECACHE_ASSETS`. Exports `window.VYVEOffline`:
+- `showBanner(ts)` — fixed banner, z-index 10002, #1B7878, top:0 desktop / top:56px mobile (clears nav header)
+- `hideBanner()`, `disableWriteActions()`, `enableWriteActions()`
+- Write-action targeting: `[data-write-action]` attribute on buttons
+- Auto-inits; listens to `window 'online'`/`'offline'`; dispatches `vyve-back-online` CustomEvent
+
+### Layer 1 — page data caches
+Pattern: `vyve_[page]_cache` → `{ data, ts: Date.now(), email }`. TTL 24h. **Always verify `cached.email === memberEmail`.**
+
+| Page | Cache key | Coverage |
+|------|-----------|----------|
+| index.html | `vyve_home_v2_[email]` | Pre-existing — banner wired |
+| habits.html | `vyve_habits_cache` | Full: read + write + write-action |
+| engagement.html | `vyve_engagement_cache` | Full |
+| certificates.html | `vyve_certs_cache` | Full |
+| leaderboard.html | `vyve_leaderboard_cache` | Full |
+| workouts.html | — (JS modules) | Banner + write-action only |
+| nutrition.html | `vyve_wt_cache_*` (weight only) | Banner + write-action only |
+| sessions.html | — (static data) | Banner only |
+| wellbeing-checkin.html | — (write-heavy) | Disable submit offline |
+| settings.html | `vyve_settings_cache` | Pre-existing |
+
+### Layer 3 — wellbeing-checkin.html
+Sliders shown offline (member fills in). Submit disabled: "Submit when back online". Re-enables on `vyve-back-online`.
+

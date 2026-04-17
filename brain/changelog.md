@@ -1,3 +1,27 @@
+## 17 April 2026 — Offline Mode: Auth Fast-Path + Data Caches
+
+### What shipped
+- **auth.js v2.4** — offline fast-path before `getSession()`: checks `navigator.onLine`, reads cached Supabase session from localStorage key `vyve_auth`, builds user object, fires `vyveAuthReady` immediately without any network call. Fixes blank screen when opening the app in airplane mode. If no cached session exists offline, redirects to login as normal.
+- **offline-manager.js** — new shared file on all portal pages. Exports `window.VYVEOffline`: `showBanner(ts)`, `hideBanner()`, `disableWriteActions()`, `enableWriteActions()`. Auto-inits on load. Banner: fixed, z-index 10002, `#1B7878`, top:0 desktop / top:56px mobile. Dispatches `vyve-back-online` CustomEvent on reconnect.
+- **index.html** — wired to show offline banner with last-updated time from existing `vyve_home_v2_*` cache. Hides on fresh fetch.
+- **habits.html** — full `vyve_habits_cache` pattern + `data-write-action` on submit button.
+- **engagement.html** — full `vyve_engagement_cache` pattern.
+- **certificates.html** — full `vyve_certs_cache` pattern.
+- **leaderboard.html** — full `vyve_leaderboard_cache` pattern.
+- **workouts.html** — `offline-manager.js` loaded + `data-write-action` on completion-done button.
+- **nutrition.html** — `offline-manager.js` loaded + `data-write-action` on 5 write buttons.
+- **sessions.html** — `offline-manager.js` loaded (static data, already works offline).
+- **wellbeing-checkin.html** — `offline-manager.js` loaded + both submit buttons get `data-write-action` + offline state: "Submit when back online", re-enables on `vyve-back-online`.
+- **sw.js** — `offline-manager.js` added to `PRECACHE_ASSETS`, version bumped `p → q`.
+
+### Cache key pattern
+`vyve_[page]_cache` → `{ data, ts: Date.now(), email }`. TTL 24h. Always verify `cached.email === memberEmail`.
+
+### Commit
+`6b988b930d07ccdd1a7fbf414e56112c3cef0e67` — VYVEHealth/vyve-site
+
+---
+
 ## 17 April 2026 — Phase C: Session Page Consolidation
 
 ### What shipped

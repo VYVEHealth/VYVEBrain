@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 17 April 2026 (Phase B design system shipped)
+> Updated: 17 April 2026 (Offline mode shipped)
 
 ---
 
@@ -36,10 +36,11 @@
 ---
 
 
-## Offline Mode Root Cause (confirmed 17 April 2026)
+## Offline Mode — SHIPPED 17 April 2026 ✅
 
-Blank screen when no signal = `member-dashboard` EF call fails silently. Auth works fine offline.
-Primary fix: Layer 1 localStorage data cache on all EF-calling pages (see playbook).
+Auth fast-path (vyve_auth cached session) + localStorage data caches on all EF-calling pages +
+offline-manager.js banner + write-action disabling. Full coverage: index, habits, engagement,
+certificates, leaderboard (full cache), workouts, nutrition, sessions, wellbeing-checkin.
 
 ## Design System — Phase Roadmap
 
