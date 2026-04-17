@@ -35,6 +35,12 @@
 
 ---
 
+
+## Offline Mode Root Cause (confirmed 17 April 2026)
+
+Blank screen when no signal = `member-dashboard` EF call fails silently. Auth works fine offline.
+Primary fix: Layer 1 localStorage data cache on all EF-calling pages (see playbook).
+
 ## Design System — Phase Roadmap
 
 - ~~**Phase B: Semantic colour migration**~~ ✅ Done 17 April 2026

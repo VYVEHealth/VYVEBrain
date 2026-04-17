@@ -1,3 +1,15 @@
+## 17 April 2026 — Offline Root Cause Confirmed
+
+Investigated the blank screen reported when opening the app with no signal.
+
+**Root cause:** Auth works correctly offline (Supabase reads JWT from localStorage, no network call needed). The blank screen is caused by the `member-dashboard` Edge Function POST call failing silently with no network, with zero localStorage fallback. The HTML loads from SW cache, auth resolves, then the EF call fails and the page renders nothing.
+
+**Not the cause:** Auth redirect. The user was NOT sent to the login page — they stayed on the dashboard page but saw no data.
+
+**Fix scope:** Data layer only — add localStorage cache fallback to all pages that call Edge Functions. Auth offline fix is precautionary, lower priority.
+
+**Playbook updated:** `playbooks/phase-c-offline-build.md` corrected with accurate root cause analysis and reprioritised Layer 1 (data cache) as the primary fix.
+
 ## 17 April 2026 — Phase B Semantic Colour Migration
 
 ### Changes
