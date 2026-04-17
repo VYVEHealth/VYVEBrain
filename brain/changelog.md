@@ -1,3 +1,76 @@
+## 18 April 2026 — Admin Dashboard + Aggregation Layer Reconciliation
+
+### What shipped
+
+**Admin dashboard** — Single-file HTML (`apps/admin-dashboard/admin.html`, ~1000 lines)
+delivered. Supabase Auth login, six views (Overview, Trends, Activity Feed, Alerts,
+Members, Companies) plus a five-tab member deep-dive modal (Overview / Timeline /
+Programme / Emails / Raw). Chart.js for 30d and 60d trends. Dark+light theme. All
+data access goes through a new `admin-dashboard` Edge Function (verify_jwt=false,
+internal JWT validation, `admin_users` allowlist). No service key on the client.
+
+**Aggregation layer — schema extension.** The prior session's skeleton tables
+(`member_stats`, `member_activity_daily`, `company_summary`, `platform_metrics_daily`)
+extended with missing columns:
+
+- `member_stats`: added `activity_score`, `consistency_score`, `variety_score`,
+  `wellbeing_score_component`, `latest_stress_score`, `latest_energy_score`,
+  `programme_active`, `programme_paused_at`
+- `member_activity_daily`: added `replays_count` (previously merged with sessions)
+- `company_summary`: added `company_slug`, `activities_30d`
+- `platform_metrics_daily`: added `total_members`, `active_users_7d`,
+  `active_users_30d`, `habits_count`, `workouts_count`, `cardio_count`,
+  `sessions_count`, `checkins_count`, `unresolved_alerts`
+- `admin_users`: added `active` flag + `notes`; seeded Dean + Lewis.
+
+**Aggregation functions — upgraded** (same names, backward-compatible):
+
+- New `compute_engagement_components()` returns the 4 component sub-scores as jsonb
+- `recompute_member_stats(email)` — populates all new columns; `needs_support` now
+  also flags `stress <= 3` (inverted scale: 3 = very stressed)
+- `recompute_company_summary()` — adds slug + 30d activities
+- `recompute_platform_metrics(date)` — adds totals + per-type breakdown + alerts
+- `rebuild_member_activity_daily()` — splits sessions from replays
+
+**Source-table indexes** (16 April audit quick-wins, now done): `workouts(member_email)`,
+`cardio(member_email)`, `certificates(member_email)`, `ai_interactions(member_email)`,
+plus `logged_at DESC` on every activity table and `member_activity_log`.
+
+**Backfill run:** 17 member_stats rows, 99 member_activity_daily rows,
+3 company_summary rows, 91 days of platform_metrics_daily.
+
+### Why
+
+The admin dashboard needs sub-ms list views at 5,000+ members, which is impossible
+if we scan raw tables for every query. The aggregation layer shifts list views to
+pre-computed tables and reserves raw scans for the 30-day hot window on member
+deep-dive only.
+
+### Brain corrections (master.md out of date)
+
+1. **Aggregation layer already existed** before today. A prior Claude session had
+   built `member_stats`, `member_activity_daily`, `company_summary`,
+   `platform_metrics_daily`, `member_activity_log` (view), six `recompute_*`
+   functions, and four pg_cron schedules. None of this was in master.md, the
+   changelog, or the brain at all. Today's work extended rather than recreated.
+2. **"Zero triggers" rule is wrong.** master.md §4 says "activity caps enforced by
+   application code only (log-activity EF)" — in reality, five `enforce_cap_*` DB
+   triggers and five `counter_*` DB triggers have been running for months, along
+   with `auto_time_fields_*`, `auto_iso_week_*`, and ten `cc_*_updated_at` triggers.
+   14 triggers on public-schema tables, not zero. Needs a master.md pass.
+3. **Foreign keys exist.** master.md §4 says "No foreign keys" — there are 24.
+4. `admin_users` table already existed — we extended it with `active` + `notes`.
+
+### Rule addition
+
+**Rule 33: Aggregation layer is app-wide.** `member_stats`, `member_activity_daily`,
+`company_summary`, `platform_metrics_daily`, `admin_users` are EF-service-role only.
+RLS enabled with no policies — locked out via direct-client access. Any page or
+script that needs them must go through the `admin-dashboard` EF or another
+service-role EF.
+
+---
+
 ## 17 April 2026 — Desktop Nav Parity, Script Injection Fixes, SW Cache Fix
 
 ### What shipped

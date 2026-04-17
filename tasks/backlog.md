@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 17 April 2026 (Session 2: desktop nav, script injection fixes)
+> Updated: 18 April 2026 (Session: Admin dashboard + aggregation layer reconciliation)
 
 ---
 
@@ -19,29 +19,41 @@
 - **HealthKit / Health Connect integration** — Capacitor plugin, habits linking with activity, weight from smart scales. Needs scoping session.
 - **Calendar integration** — connect Google/Apple calendar, show VYVE sessions and workout schedule
 - **Calendar page in portal** — dedicated schedule view
+- **Deploy admin.html to a hosting target** — recommend `admin.vyvehealth.co.uk` (GitHub Pages from vyve-command-centre repo, or new sub-repo). File committed at `apps/admin-dashboard/admin.html`.
 
 ---
 
-## Security Quick Wins (from 16 April audit)
+## Security Quick Wins (from 16 April audit — status after 18 April)
 
-- Add indexes on workouts(member_email), cardio(member_email), certificates(member_email), shared_workouts(shared_by), running_plan_cache(member_email)
+- ~~Add indexes on workouts(member_email), cardio(member_email), certificates(member_email), ai_interactions(member_email)~~ **DONE 18 April**
+- ~~Add `logged_at DESC` indexes across activity tables~~ **DONE 18 April**
 - Fix XSS: escape firstName before innerHTML rendering
 - Fix running_plan_cache RLS: change public_update to member_email = auth.email()
 - Fix INSERT policies on session_chat, shared_workouts, monthly_checkins
 - Remove 3 redundant RLS policies on members table
 - Delete 89 dead Edge Functions
-- Add `<meta name="mobile-web-app-capable" content="yes"/>` to remaining portal pages (habits, workouts, nutrition, log-food, wellbeing-checkin, sessions, running-plan, settings, leaderboard, monthly-checkin, shared-workout, login, set-password — 13 pages still need it)
+- Add `<meta name="mobile-web-app-capable" content="yes"/>` to remaining portal pages (13 pages still need it)
 
 ---
 
----
+## Brain Reconciliation (from 18 April)
 
+- master.md §4: correct the "No triggers" / "No foreign keys" claims (14 triggers + 24 FKs live)
+- master.md §4: document the aggregation layer (5 tables + 1 view + 6 functions + 4 cron jobs)
+- master.md §10: add Rule 33 — aggregation tables are EF-service-role only
+
+---
 
 ## Offline Mode — SHIPPED 17 April 2026 ✅
 
 Auth fast-path (vyve_auth cached session) + localStorage data caches on all EF-calling pages +
 offline-manager.js banner + write-action disabling. Full coverage: index, habits, engagement,
 certificates, leaderboard (full cache), workouts, nutrition, sessions, wellbeing-checkin.
+
+## Admin Dashboard — SHIPPED 18 April 2026 ✅
+
+Single-file HTML dashboard (`apps/admin-dashboard/admin.html`), `admin-dashboard` Edge Function
+(v2), aggregation layer extended, source-table indexes added. See plans/admin-dashboard.md.
 
 ## Design System — Phase Roadmap
 
@@ -60,7 +72,6 @@ certificates, leaderboard (full cache), workouts, nutrition, sessions, wellbeing
 - **certificate-checker push notification** — send push when cert earned
 - **HAVEN clinical sign-off** — formally decide: approve as-is or gate pending professional review
 - **Dashboard data date-range filter** — member-dashboard EF fetches ALL historical data, needs 90-day limit
-- **Add foreign keys** to core relationships (daily_habits.member_email -> members.email, etc.)
 - **Hash emails before sending to PostHog**
 
 ---
@@ -96,11 +107,13 @@ certificates, leaderboard (full cache), workouts, nutrition, sessions, wellbeing
 - Brevo logo removal (~$12/month)
 - Annual pricing discount % decision
 - 5 disabled Make tasks — keep or remove
+- Add Dean + Lewis to admin_users table for admin.html access (already seeded — just needs to test login)
 
 ---
 
 ## Completed (Recent)
 
+- Admin dashboard + aggregation layer reconciliation (18 April 2026)
 - Desktop nav More dropdown + avatar profile panel (17 April 2026)
 - engagement.html, certificates.html, index.html script injection corruption fix (17 April 2026)
 - sw.js cache migration removed from activate handler (17 April 2026)
