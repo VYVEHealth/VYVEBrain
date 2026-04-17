@@ -44,7 +44,7 @@ Primary fix: Layer 1 localStorage data cache on all EF-calling pages (see playbo
 ## Design System — Phase Roadmap
 
 - ~~**Phase B: Semantic colour migration**~~ ✅ Done 17 April 2026
-- **Phase C: Session-page template consolidation** (~1 day) — 14 `-live.html` and `-rp.html` pages → 3 shared component files. Eliminates per-page `--*` custom property redeclarations.
+- ~~**Phase C: Session-page template consolidation**~~ ✅ Done 17 April 2026 — 14 stubs + 4 shared files. See changelog.
 - **Phase D: Component primitives** (~2 days) — Shared `.btn`, `.card`, `.input`, `.modal-sheet` classes. Removes 72 unique button class names, 90 unique card class names.
 - **Phase E: Typography + spacing scale migration** (~1 day) — Replace 118 unique font-size values and 264 unique padding values with `--text-*`, `--space-*` tokens.
 - **Future: VYVE_Health_Hub.html redesign + PWA linking** — Out of scope for Phases A-E. Planned for later.

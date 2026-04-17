@@ -1,3 +1,33 @@
+## 17 April 2026 — Phase C: Session Page Consolidation
+
+### What shipped
+- 14 session pages (7 live + 7 replay) consolidated from ~22KB each to ~1.2KB stubs
+- 4 new shared files: `session-live.css`, `session-rp.css`, `session-live.js`, `session-rp.js`
+- Each stub sets `window.VYVE_SESSION` config object; shared JS builds full DOM into `#session-app`
+- Auth gate: `window.addEventListener('vyveAuthReady', ...)` — correct pattern from auth.js
+- All VYVE brand hex replaced with CSS var tokens in both CSS files
+- `podcast-live.html`: correct live stub with empty `videoId` — renders "Not streaming live" placeholder
+- `sw.js`: PRECACHE_ASSETS and PORTAL_PAGES updated; session shared JS/CSS removed from PRECACHE (network-fetch always); skipWaiting made unconditional to prevent SW update stalls
+- Cache bumped `l` → `p` across multiple fix commits
+
+### Bugs fixed during rollout
+| Bug | Root cause | Fix |
+|-----|-----------|-----|
+| Blank session pages | `vyveAuthReady` dispatched on `window` (not `document`) in auth.js | Changed to `window.addEventListener` |
+| Fix not propagating on normal refresh | `skipWaiting()` chained to `cache.addAll()` — any precache failure blocked SW activation indefinitely | `skipWaiting()` now fires unconditionally |
+| Fix not propagating on normal refresh (2) | session-live.js in PRECACHE_ASSETS (cache-first, no revalidation) | Removed from PRECACHE — always network-fetch |
+
+### Key learnings
+- `vyveAuthReady` is dispatched on `window`, not `document`. All pages that listen for it must use `window.addEventListener`.
+- `skipWaiting()` must never be chained to precache success — a single 404 in PRECACHE_ASSETS silently blocks all future SW updates.
+- Shared JS files that are actively developed should NOT be in PRECACHE_ASSETS. Use network-fetch or stale-while-revalidate instead.
+
+### Commits (vyve-site)
+- `d1aa68c` — Phase C: 14 stubs + 4 shared files
+- `339f560` — Fix: window.addEventListener for vyveAuthReady
+- `b5a8bdb` — Fix: remove session files from PRECACHE_ASSETS
+- `74e80f7` — Fix: unconditional skipWaiting
+
 ## 17 April 2026 — Offline Root Cause Confirmed
 
 Investigated the blank screen reported when opening the app with no signal.
