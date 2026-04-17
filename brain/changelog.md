@@ -1,136 +1,167 @@
-## 17 April 2026 — Offline Mode: Auth Fast-Path + Data Caches
+## 17 April 2026 — Desktop Nav Parity, Script Injection Fixes, SW Cache Fix
 
 ### What shipped
-- **auth.js v2.4** — offline fast-path before `getSession()`: checks `navigator.onLine`, reads cached Supabase session from localStorage key `vyve_auth`, builds user object, fires `vyveAuthReady` immediately without any network call. Fixes blank screen when opening the app in airplane mode. If no cached session exists offline, redirects to login as normal.
-- **offline-manager.js** — new shared file on all portal pages. Exports `window.VYVEOffline`: `showBanner(ts)`, `hideBanner()`, `disableWriteActions()`, `enableWriteActions()`. Auto-inits on load. Banner: fixed, z-index 10002, `#1B7878`, top:0 desktop / top:56px mobile. Dispatches `vyve-back-online` CustomEvent on reconnect.
-- **index.html** — wired to show offline banner with last-updated time from existing `vyve_home_v2_*` cache. Hides on fresh fetch.
-- **habits.html** — full `vyve_habits_cache` pattern + `data-write-action` on submit button.
-- **engagement.html** — full `vyve_engagement_cache` pattern.
-- **certificates.html** — full `vyve_certs_cache` pattern.
-- **leaderboard.html** — full `vyve_leaderboard_cache` pattern.
-- **workouts.html** — `offline-manager.js` loaded + `data-write-action` on completion-done button.
-- **nutrition.html** — `offline-manager.js` loaded + `data-write-action` on 5 write buttons.
-- **sessions.html** — `offline-manager.js` loaded (static data, already works offline).
-- **wellbeing-checkin.html** — `offline-manager.js` loaded + both submit buttons get `data-write-action` + offline state: "Submit when back online", re-enables on `vyve-back-online`.
-- **sw.js** — `offline-manager.js` added to `PRECACHE_ASSETS`, version bumped `p → q`.
 
-### Cache key pattern
-`vyve_[page]_cache` → `{ data, ts: Date.now(), email }`. TTL 24h. Always verify `cached.email === memberEmail`.
+**nav.js — Desktop More dropdown + avatar profile panel**
+- Desktop nav (>768px) now has a "More ▾" dropdown button in the nav links bar. Reveals all secondary features grouped into: Check-Ins (Weekly, Monthly), Progress (Certificates, Leaderboard, Activity Score), Tools (Running Plan, Guides & PDFs, How-to Videos, Catch-Up).
+- Avatar (top right) is now a clickable profile panel showing member name, email, Settings link, and Sign Out. Replaced the bare "Sign out" button.
+- New globals: `vyveToggleNavMore(e)`, `vyveToggleAvatarMenu(e)`, `vyveCloseAllDesktop()`. Desktop overlay (#navDesktopOverlay, z-index:99) closes both panels on outside click. Escape key closes both.
+- Mobile completely unchanged — still bottom nav + More bottom sheet.
+- CSS rule: `@media(max-width:768px)` hides all new desktop dropdown CSS from mobile.
 
-### Commit
-`6b988b930d07ccdd1a7fbf414e56112c3cef0e67` — VYVEHealth/vyve-site
+**Script injection corruption fixed — engagement.html, certificates.html, index.html**
+- Root cause: An old `patch-*` series Edge Function (now deleted) used naive text injection to add `<script src="/offline-manager.js"></script>` to portal pages. It landed inside `<script>` blocks rather than in the `<head>`. The browser's HTML parser terminates a script block at `</script>`, silently breaking all JS after that point.
+- `engagement.html`: injection was at `const [injected]avatarEl` — the auth trigger (loadPage call, 1299 bytes later) never executed. Data never loaded. Appeared as a blank/loading state.
+- `certificates.html`: injection was inside the `/login.html` string — the fetch chain broke entirely. Page showed eternal loading state.
+- `index.html`: injection was inside `'Content-Type'` header string in the platform-alert section — inside try/catch, so dashboard functioned normally.
+- Fix: removed all three bad injections, restored correct JS, added `<script src="/offline-manager.js"></script>` in correct position before `</body>`.
+- `mobile-web-app-capable` meta tag added to all three pages (was previously only `apple-mobile-web-app-capable`).
+
+**sw.js — Cache migration removed from activate handler**
+- Root cause of "loads after hard reset" bug: the sw.js activate handler was copying portal pages from old caches into the new cache during version bumps. This migrated stale/broken files forward — a hard reset bypassed the service worker entirely and fetched fresh from the network.
+- Fix: activate handler now simply deletes old caches. Portal pages that are not yet in the new cache fetch from network on first visit, then are cached normally. No more stale file carryover.
+- Cache version: bumped to `vyve-cache-v2026-04-17u`.
+
+**Certificate status check (deanonbrown@hotmail.com)**
+- cert_sessions_count: 27/30. cert_habits_count: 27/30. cert_workouts_count: 20/30. cert_checkins_count: 7/30. cert_cardio_count: 9/30.
+- No certificates in DB yet for this account. certificates table confirmed empty. certificate-checker reads the pre-computed `cert_*_count` columns on the members table (not live session_views count).
+- 3 more live session views needed to trigger The Explorer certificate.
 
 ---
 
-## 17 April 2026 — Phase C: Session Page Consolidation
+## 17 April 2026 â Offline Mode: Auth Fast-Path + Data Caches
+
+### What shipped
+- **auth.js v2.4** â offline fast-path before `getSession()`: checks `navigator.onLine`, reads cached Supabase session from localStorage key `vyve_auth`, builds user object, fires `vyveAuthReady` immediately without any network call. Fixes blank screen when opening the app in airplane mode. If no cached session exists offline, redirects to login as normal.
+- **offline-manager.js** â new shared file on all portal pages. Exports `window.VYVEOffline`: `showBanner(ts)`, `hideBanner()`, `disableWriteActions()`, `enableWriteActions()`. Auto-inits on load. Banner: fixed, z-index 10002, `#1B7878`, top:0 desktop / top:56px mobile. Dispatches `vyve-back-online` CustomEvent on reconnect.
+- **index.html** â wired to show offline banner with last-updated time from existing `vyve_home_v2_*` cache. Hides on fresh fetch.
+- **habits.html** â full `vyve_habits_cache` pattern + `data-write-action` on submit button.
+- **engagement.html** â full `vyve_engagement_cache` pattern.
+- **certificates.html** â full `vyve_certs_cache` pattern.
+- **leaderboard.html** â full `vyve_leaderboard_cache` pattern.
+- **workouts.html** â `offline-manager.js` loaded + `data-write-action` on completion-done button.
+- **nutrition.html** â `offline-manager.js` loaded + `data-write-action` on 5 write buttons.
+- **sessions.html** â `offline-manager.js` loaded (static data, already works offline).
+- **wellbeing-checkin.html** â `offline-manager.js` loaded + both submit buttons get `data-write-action` + offline state: "Submit when back online", re-enables on `vyve-back-online`.
+- **sw.js** â `offline-manager.js` added to `PRECACHE_ASSETS`, version bumped `p â q`.
+
+### Cache key pattern
+`vyve_[page]_cache` â `{ data, ts: Date.now(), email }`. TTL 24h. Always verify `cached.email === memberEmail`.
+
+### Commit
+`6b988b930d07ccdd1a7fbf414e56112c3cef0e67` â VYVEHealth/vyve-site
+
+---
+
+## 17 April 2026 â Phase C: Session Page Consolidation
 
 ### What shipped
 - 14 session pages (7 live + 7 replay) consolidated from ~22KB each to ~1.2KB stubs
 - 4 new shared files: `session-live.css`, `session-rp.css`, `session-live.js`, `session-rp.js`
 - Each stub sets `window.VYVE_SESSION` config object; shared JS builds full DOM into `#session-app`
-- Auth gate: `window.addEventListener('vyveAuthReady', ...)` — correct pattern from auth.js
+- Auth gate: `window.addEventListener('vyveAuthReady', ...)` â correct pattern from auth.js
 - All VYVE brand hex replaced with CSS var tokens in both CSS files
-- `podcast-live.html`: correct live stub with empty `videoId` — renders "Not streaming live" placeholder
+- `podcast-live.html`: correct live stub with empty `videoId` â renders "Not streaming live" placeholder
 - `sw.js`: PRECACHE_ASSETS and PORTAL_PAGES updated; session shared JS/CSS removed from PRECACHE (network-fetch always); skipWaiting made unconditional to prevent SW update stalls
-- Cache bumped `l` → `p` across multiple fix commits
+- Cache bumped `l` â `p` across multiple fix commits
 
 ### Bugs fixed during rollout
 | Bug | Root cause | Fix |
 |-----|-----------|-----|
 | Blank session pages | `vyveAuthReady` dispatched on `window` (not `document`) in auth.js | Changed to `window.addEventListener` |
-| Fix not propagating on normal refresh | `skipWaiting()` chained to `cache.addAll()` — any precache failure blocked SW activation indefinitely | `skipWaiting()` now fires unconditionally |
-| Fix not propagating on normal refresh (2) | session-live.js in PRECACHE_ASSETS (cache-first, no revalidation) | Removed from PRECACHE — always network-fetch |
+| Fix not propagating on normal refresh | `skipWaiting()` chained to `cache.addAll()` â any precache failure blocked SW activation indefinitely | `skipWaiting()` now fires unconditionally |
+| Fix not propagating on normal refresh (2) | session-live.js in PRECACHE_ASSETS (cache-first, no revalidation) | Removed from PRECACHE â always network-fetch |
 
 ### Key learnings
 - `vyveAuthReady` is dispatched on `window`, not `document`. All pages that listen for it must use `window.addEventListener`.
-- `skipWaiting()` must never be chained to precache success — a single 404 in PRECACHE_ASSETS silently blocks all future SW updates.
+- `skipWaiting()` must never be chained to precache success â a single 404 in PRECACHE_ASSETS silently blocks all future SW updates.
 - Shared JS files that are actively developed should NOT be in PRECACHE_ASSETS. Use network-fetch or stale-while-revalidate instead.
 
 ### Commits (vyve-site)
-- `d1aa68c` — Phase C: 14 stubs + 4 shared files
-- `339f560` — Fix: window.addEventListener for vyveAuthReady
-- `b5a8bdb` — Fix: remove session files from PRECACHE_ASSETS
-- `74e80f7` — Fix: unconditional skipWaiting
+- `d1aa68c` â Phase C: 14 stubs + 4 shared files
+- `339f560` â Fix: window.addEventListener for vyveAuthReady
+- `b5a8bdb` â Fix: remove session files from PRECACHE_ASSETS
+- `74e80f7` â Fix: unconditional skipWaiting
 
-## 17 April 2026 — Offline Root Cause Confirmed
+## 17 April 2026 â Offline Root Cause Confirmed
 
 Investigated the blank screen reported when opening the app with no signal.
 
 **Root cause:** Auth works correctly offline (Supabase reads JWT from localStorage, no network call needed). The blank screen is caused by the `member-dashboard` Edge Function POST call failing silently with no network, with zero localStorage fallback. The HTML loads from SW cache, auth resolves, then the EF call fails and the page renders nothing.
 
-**Not the cause:** Auth redirect. The user was NOT sent to the login page — they stayed on the dashboard page but saw no data.
+**Not the cause:** Auth redirect. The user was NOT sent to the login page â they stayed on the dashboard page but saw no data.
 
-**Fix scope:** Data layer only — add localStorage cache fallback to all pages that call Edge Functions. Auth offline fix is precautionary, lower priority.
+**Fix scope:** Data layer only â add localStorage cache fallback to all pages that call Edge Functions. Auth offline fix is precautionary, lower priority.
 
 **Playbook updated:** `playbooks/phase-c-offline-build.md` corrected with accurate root cause analysis and reprioritised Layer 1 (data cache) as the primary fix.
 
-## 17 April 2026 — Phase B Semantic Colour Migration
+## 17 April 2026 â Phase B Semantic Colour Migration
 
 ### Changes
-- **index.html**: `--track-color2:#7AC8C8` → `var(--teal-xl)` (inline style on tracks grid card)
-- **nutrition.html**: 3x `linear-gradient(135deg,#1B7878,...)` → `var(--teal)` in `.save-btn`, `.empty-cta`, `.log-save-btn`
-- **sw.js**: cache version bumped `k` → `l`
+- **index.html**: `--track-color2:#7AC8C8` â `var(--teal-xl)` (inline style on tracks grid card)
+- **nutrition.html**: 3x `linear-gradient(135deg,#1B7878,...)` â `var(--teal)` in `.save-btn`, `.empty-cta`, `.log-save-btn`
+- **sw.js**: cache version bumped `k` â `l`
 
 ### Audit findings (no changes needed)
-- habits.html POT_CONFIG already has correct new pot colours from a prior session — no change needed
-- settings.html light-mode token overrides are intentional per-page values (not redundant) — left as-is
-- workouts.html — no actionable CSS hex values found
-- JS setAttribute contexts (nutrition chart SVG dots) left as hex — CSS vars cannot be used in JS attribute values
+- habits.html POT_CONFIG already has correct new pot colours from a prior session â no change needed
+- settings.html light-mode token overrides are intentional per-page values (not redundant) â left as-is
+- workouts.html â no actionable CSS hex values found
+- JS setAttribute contexts (nutrition chart SVG dots) left as hex â CSS vars cannot be used in JS attribute values
 
 ### Commit
 - vyve-site: `e136376fbc7440b1f94e5fa801557bc9cbd7dca6`
 
-## 17 April 2026 — Phase B Semantic Colour Migration
+## 17 April 2026 â Phase B Semantic Colour Migration
 
 ### Changes
-- **index.html:** Track colours (habits/workouts/cardio/sessions) → `var(--track-*)` tokens across all inline styles, SVG stroke/fill, and CSS variable assignments. Score label `#4DAAAA` → `var(--teal-lt)`.
-- **settings.html:** Removed duplicate `:root` brand token block (teal/amber/coral/fonts — already in theme.css). Difficulty colours → semantic tokens: easy `#2D9E4A` → `var(--success)`, medium `#E09B3D` → `var(--warning)`, hard + delete `#E06060` → `var(--danger)`.
-- **nutrition.html:** Macro nutrient colours → brand tokens: protein `#4DAAAA` → `var(--teal-lt)`, fat `#E09B3D` → `var(--amber)`, carbs `#2D9E4A` → `var(--green)`. Applied across macro bars, legend dots, gradients, SVG chart lines.
-- **habits.html:** POT_CONFIG updated with correct pot colours: mindfulness `#E09B3D` → `#5BA8D9` (`--pot-mindfulness`), social `#E06060` → `#E879A3` (`--pot-social`), sleep `#9B7AE0` → `#6366B8` (`--pot-sleep`).
+- **index.html:** Track colours (habits/workouts/cardio/sessions) â `var(--track-*)` tokens across all inline styles, SVG stroke/fill, and CSS variable assignments. Score label `#4DAAAA` â `var(--teal-lt)`.
+- **settings.html:** Removed duplicate `:root` brand token block (teal/amber/coral/fonts â already in theme.css). Difficulty colours â semantic tokens: easy `#2D9E4A` â `var(--success)`, medium `#E09B3D` â `var(--warning)`, hard + delete `#E06060` â `var(--danger)`.
+- **nutrition.html:** Macro nutrient colours â brand tokens: protein `#4DAAAA` â `var(--teal-lt)`, fat `#E09B3D` â `var(--amber)`, carbs `#2D9E4A` â `var(--green)`. Applied across macro bars, legend dots, gradients, SVG chart lines.
+- **habits.html:** POT_CONFIG updated with correct pot colours: mindfulness `#E09B3D` â `#5BA8D9` (`--pot-mindfulness`), social `#E06060` â `#E879A3` (`--pot-social`), sleep `#9B7AE0` â `#6366B8` (`--pot-sleep`).
 - **workouts.html:** No changes (no track colour hits).
-- `sw.js` cache version: k → l
+- `sw.js` cache version: k â l
 
 ### Commit
 - vyve-site: `c998db430ac5232c0b09abc28444ebadea0f0905`
 
-### Next: Phase C — Session-page template consolidation
-14 `-live.html` and `-rp.html` pages → 3 shared component files.
+### Next: Phase C â Session-page template consolidation
+14 `-live.html` and `-rp.html` pages â 3 shared component files.
 
-## 17 April 2026 — Phase A Design System Token Foundation
+## 17 April 2026 â Phase A Design System Token Foundation
 
 ### Context
-Full UI/UX consistency audit revealed 163 unique hex colours, 118 unique font sizes, 72 unique button class names across 39 HTML pages. Phase A establishes the token foundation in `theme.css` (additive only — no page migrations).
+Full UI/UX consistency audit revealed 163 unique hex colours, 118 unique font sizes, 72 unique button class names across 39 HTML pages. Phase A establishes the token foundation in `theme.css` (additive only â no page migrations).
 
 ### Changes
 - Added semantic colour aliases: `--success/warning/danger` (+ soft/strong variants), `--gold/gold-soft`, `--teal-dark`
 - Added 5-way activity track tokens: `--track-habits/workouts/cardio/sessions/nutrition`
-- Added 5-way habit pot tokens: `--pot-movement/nutrition/mindfulness/social/sleep` — 3 new colours for mindfulness (#5BA8D9), social (#E879A3), sleep (#6366B8)
+- Added 5-way habit pot tokens: `--pot-movement/nutrition/mindfulness/social/sleep` â 3 new colours for mindfulness (#5BA8D9), social (#E879A3), sleep (#6366B8)
 - Added spacing scale: `--space-0` through `--space-16`
 - Added typography scale: `--text-2xs` through `--text-4xl`, `--leading-*`, `--weight-*`
-- Added radius tokens: `--radius-sm/radius/radius-lg/radius-xl/radius-pill/radius-circle` — fixes dangling `var(--radius)` in running-plan.html + internal-dashboard/index.html
+- Added radius tokens: `--radius-sm/radius/radius-lg/radius-xl/radius-pill/radius-circle` â fixes dangling `var(--radius)` in running-plan.html + internal-dashboard/index.html
 - Added shadow scale: `--shadow-sm/md/lg/glow-teal`
-- Aliased `--muted: var(--text-muted)` in both dark + light theme blocks — fixes 18 dangling references across all session/replay pages
+- Aliased `--muted: var(--text-muted)` in both dark + light theme blocks â fixes 18 dangling references across all session/replay pages
 - Added `--on-accent: var(--white)` alias in both theme blocks
-- Bumped `sw.js` cache version: `vyve-cache-v2026-04-15j` → `vyve-cache-v2026-04-15k`
-- No page migrations performed — tokens are additive only
+- Bumped `sw.js` cache version: `vyve-cache-v2026-04-15j` â `vyve-cache-v2026-04-15k`
+- No page migrations performed â tokens are additive only
 
 ### Dangling refs resolved
-- `var(--radius)`: running-plan.html, internal-dashboard/index.html — was 0 (sharp corners), now 10px
-- `var(--radius-lg)`: running-plan.html — was 0, now 14px
-- `var(--muted)`: 18 session/replay pages — was inheriting parent colour, now `--text-muted` (intended muted styling)
+- `var(--radius)`: running-plan.html, internal-dashboard/index.html â was 0 (sharp corners), now 10px
+- `var(--radius-lg)`: running-plan.html â was 0, now 14px
+- `var(--muted)`: 18 session/replay pages â was inheriting parent colour, now `--text-muted` (intended muted styling)
 
 ### Commit
 - vyve-site: `e5be4f594b2ea7cb7a46cb96f92ddf8fb9013885`
 
-### Next: Phase B — Semantic Colour Migration
+### Next: Phase B â Semantic Colour Migration
 Migrate index.html, settings.html, workouts.html, nutrition.html, habits.html from hardcoded hex values to design tokens. Includes `habits.html` POT_CONFIG swap to `--pot-*` tokens.
 
-## 16 April 2026 — Full Brain Reconciliation (Deep Audit)
+## 16 April 2026 â Full Brain Reconciliation (Deep Audit)
 
 ### Context
-Full deep audit performed: all project chats reviewed, live Supabase DB inspected (61 tables, RLS policies, indexes, constraints), live repo tree analysed, key Edge Functions source-read, auth.js + sw.js + index.html analysed for security patterns. Brain was found materially outdated — master.md had drifted significantly from reality.
+Full deep audit performed: all project chats reviewed, live Supabase DB inspected (61 tables, RLS policies, indexes, constraints), live repo tree analysed, key Edge Functions source-read, auth.js + sw.js + index.html analysed for security patterns. Brain was found materially outdated â master.md had drifted significantly from reality.
 
-### master.md — Complete Rewrite
+### master.md â Complete Rewrite
 - Rewrote from scratch against live system state
 - Table count corrected: 36 -> 61 (23 undocumented tables found including programme_library, shared_workouts, ai_decisions, member_notifications, push_subscriptions_native, 18 cc_* command centre tables)
 - All Edge Function versions updated to match live deployed versions
@@ -156,14 +187,14 @@ Full deep audit performed: all project chats reviewed, live Supabase DB inspecte
 ### Process Issue Identified
 Brain drift caused by: (1) master.md getting patched incrementally, never fully rewritten; (2) some sessions updating changelog but not master; (3) new tables/features built without documentation in master; (4) emergency sessions (onboarding v67 across 4 chats) producing partial updates.
 
-## 15 April 2026 — Android Resubmitted with Correct VYVE Icon
+## 15 April 2026 â Android Resubmitted with Correct VYVE Icon
 
 ### Fix: Android icon rejection resolved
-- **Issue:** Google Play rejected app — icon on device didn't match store listing (placeholder Capacitor X icon)
+- **Issue:** Google Play rejected app â icon on device didn't match store listing (placeholder Capacitor X icon)
 - **Fix:** Generated correct icons using `npx capacitor-assets generate --android` from `resources/icon.png` (1024x1024 VYVE logo)
 - **Java:** Installed Microsoft OpenJDK 21 on Windows machine (was missing)
 - **Build:** `gradlew bundleRelease` succeeded, AAB signed with `vyve-release-key.jks`
-- **Submitted:** Resubmitted via Google Play Console Publishing Overview — 9 changes sent for review
+- **Submitted:** Resubmitted via Google Play Console Publishing Overview â 9 changes sent for review
 - **Status:** Awaiting Google Play review (1-3 days)
 
 ## 15 April 2026 (cont.) -- Exercise search overlay layout fix
@@ -192,11 +223,11 @@ Full-screen overlays with their own back button must use z-index:10000+ to sit a
 ### sw.js bumped to `vyve-cache-v2026-04-15i`
 ### Commit: 049c2441a315d23aa789f201e8cd1a28b6863c20
 
-## 15 April 2026 (cont.) â Capacitor safe area + back button fix
+## 15 April 2026 (cont.) Ã¢ÂÂ Capacitor safe area + back button fix
 
 ### Problem
 After wrapping the PWA in Capacitor for iOS/Android, three issues surfaced:
-1. Mobile header (back button, logo, page label) sat behind the iOS status bar / notch â couldn't tap back
+1. Mobile header (back button, logo, page label) sat behind the iOS status bar / notch Ã¢ÂÂ couldn't tap back
 2. Back button showed on primary nav pages (Workouts, Nutrition, Sessions) where it shouldn't
 3. Exercise search overlay and history view header were also behind the status bar
 
@@ -204,9 +235,9 @@ After wrapping the PWA in Capacitor for iOS/Android, three issues surfaced:
 No page had `viewport-fit=cover` in the viewport meta, so `env(safe-area-inset-top)` returned 0. The Capacitor web view extends behind the status bar by default.
 
 ### Fixes (nav.js)
-- Inject `viewport-fit=cover` into the viewport meta tag at runtime â covers all 39+ portal pages without touching each file
+- Inject `viewport-fit=cover` into the viewport meta tag at runtime Ã¢ÂÂ covers all 39+ portal pages without touching each file
 - Added `padding-top: env(safe-area-inset-top, 0px)` to `.mobile-page-header` CSS
-- Changed `isHome` to `isNavPage` â primary nav pages (Home, Workouts, Nutrition, Sessions) now show the VYVE logo; all sub-pages show the back button
+- Changed `isHome` to `isNavPage` Ã¢ÂÂ primary nav pages (Home, Workouts, Nutrition, Sessions) now show the VYVE logo; all sub-pages show the back button
 
 ### Fixes (workouts.html)
 - `.es-header` (exercise search overlay): added `padding-top: calc(14px + env(safe-area-inset-top, 0px))`
@@ -220,7 +251,7 @@ No page had `viewport-fit=cover` in the viewport meta, so `env(safe-area-inset-t
 ### Commit: 65d8ffeab0c7c91e68b8196ad1f8d168d96688a1
 
 
-## 15 April 2026 (cont.) â 401 redirect handling added to 6 portal pages
+## 15 April 2026 (cont.) Ã¢ÂÂ 401 redirect handling added to 6 portal pages
 
 ### Defense-in-depth: 401 redirect on auth failure
 auth.js already gates pages on load (no session = redirect to login). These patches add a second safety net for the edge case where a JWT expires between auth.js checking and the page's EF fetch firing.
@@ -239,22 +270,22 @@ auth.js already gates pages on load (no session = redirect to login). These patc
 ### Commit: 37784bbb5f8ead4d5b462b3f015eec53246c52bb
 
 ### Audit note
-Full portal audit confirmed NO other pages have the `async async` syntax error or any other script-killing bugs. The engagement.html fix from earlier today was the only critical issue. workouts.html was a false positive â its only inline EF call is platform-alert (skeleton monitor); all data loading lives in external JS modules.
+Full portal audit confirmed NO other pages have the `async async` syntax error or any other script-killing bugs. The engagement.html fix from earlier today was the only critical issue. workouts.html was a false positive Ã¢ÂÂ its only inline EF call is platform-alert (skeleton monitor); all data loading lives in external JS modules.
 
 
-## 15 April 2026 â engagement.html critical fix + cleanup
+## 15 April 2026 Ã¢ÂÂ engagement.html critical fix + cleanup
 
 ### Bug: `async async function loadPage()` syntax error
-- **Root cause:** Double `async` keyword on the `loadPage()` function declaration killed the entire `<script>` block at parse time. Every function in the block was undefined â page showed infinite skeleton loading.
+- **Root cause:** Double `async` keyword on the `loadPage()` function declaration killed the entire `<script>` block at parse time. Every function in the block was undefined Ã¢ÂÂ page showed infinite skeleton loading.
 - **Impact:** engagement.html completely broken for all members. Skeleton timeout monitor fired platform_alert but user saw no content.
 - **Fix:** Removed duplicate `async` keyword.
 
 ### Cleanup: 5 dead client-side calc functions removed
-- `calcStreaks`, `calcWeekStreaks`, `calcDayStats`, `calcVariety7d`, `computeEngagementScore` were copied from old client-side approach but never called â EF v37 computes everything server-side.
+- `calcStreaks`, `calcWeekStreaks`, `calcDayStats`, `calcVariety7d`, `computeEngagementScore` were copied from old client-side approach but never called Ã¢ÂÂ EF v37 computes everything server-side.
 - Removed ~4,100 chars of dead code.
 
 ### Fix: 401 redirect added
-- engagement.html had no auth failure handling â if JWT expired, page showed empty content with no guidance.
+- engagement.html had no auth failure handling Ã¢ÂÂ if JWT expired, page showed empty content with no guidance.
 - Added JWT presence check (redirect to login if missing) and 401 status check on fetch response.
 
 ### sw.js bumped to `vyve-cache-v2026-04-15e`
@@ -262,17 +293,17 @@ Full portal audit confirmed NO other pages have the `async async` syntax error o
 ### Commit: cce5d358eca4c3166b8e156ea81738ccbaef861e
 
 
-## 14 April 2026 (evening) â App Store rejection fixes
+## 14 April 2026 (evening) Ã¢ÂÂ App Store rejection fixes
 
 ### Apple App Store Review Response
-- **Guideline 2.3.8 (Accurate Metadata):** Capacitor placeholder icon submitted by mistake. Generated full iOS icon set (15 sizes, 1024Ã1024 source) from VYVE logo. Zip provided to Dean for Xcode replacement.
+- **Guideline 2.3.8 (Accurate Metadata):** Capacitor placeholder icon submitted by mistake. Generated full iOS icon set (15 sizes, 1024ÃÂ1024 source) from VYVE logo. Zip provided to Dean for Xcode replacement.
 - **Guideline 2.5.1 (HealthKit UI disclosure):** Added "Apple Health" section to settings.html between Notifications and About sections.
   - Toggle to sync with Apple Health (reads: workouts, steps, heart rate/HRV, sleep; writes: workout completions, mindful minutes)
   - Expandable detail panel shows what data VYVE reads and writes
   - Privacy notice: "Your health data stays on your device and is never shared with your employer"
   - Wired to `window.VYVENative.requestHealthKit()` for when capacitor-plugins.js lands
   - `handleAppleHealthToggle()` JS function added
-- sw.js cache bumped: `vyve-cache-v2026-04-13f` â `vyve-cache-v2026-04-14a`
+- sw.js cache bumped: `vyve-cache-v2026-04-13f` Ã¢ÂÂ `vyve-cache-v2026-04-14a`
 - Commit: `9fad685` on vyve-site main
 
 ## 14 April 2026 - Operational Report Suite (11 reports)
@@ -295,12 +326,12 @@ Full portal audit confirmed NO other pages have the `async async` syntax error o
 - Both Sage members (Lewis, Kelly) are 10-11 days inactive
 - 34 prioritised actions across 5 phases, 82-114 hrs total effort
 
-## 13 April 2026 â Onboarding v67 + portal fixes
+## 13 April 2026 Ã¢ÂÂ Onboarding v67 + portal fixes
 
 ### onboarding v67 (Supabase Edge Function)
-- Workout plan generation moved inline (was `EdgeRuntime.waitUntil` â external `generate-workout-plan` EF)
+- Workout plan generation moved inline (was `EdgeRuntime.waitUntil` Ã¢ÂÂ external `generate-workout-plan` EF)
 - Two parallel Anthropic calls for weeks 1-4 and 5-8 (16K tokens each via `callAnthropicFull`)
-- `callAnthropicFull` added â returns `{text, stopReason}` for max_tokens detection
+- `callAnthropicFull` added Ã¢ÂÂ returns `{text, stopReason}` for max_tokens detection
 - Exercise library fetched from `workout_plans` table in Batch 1 alongside persona/overview
 - `generateWorkoutPlan` + `writeWorkoutPlan` added inline
 - Anti-hallucination instructions added to `generateProgrammeOverview` and `generateRecommendations`
@@ -308,16 +339,16 @@ Full portal audit confirmed NO other pages have the `async async` syntax error o
 - Decision log version tag updated to v67
 
 ### welcome.html (Test-Site-Finalv3)
-- AbortController timeout: 90s â 150s in both `submitQuestionnaire` and `retrySubmit`
-- Slow timer: 30s â 45s in both locations
-- Slow timer text: "up to a minute" â "up to two minutes"
+- AbortController timeout: 90s Ã¢ÂÂ 150s in both `submitQuestionnaire` and `retrySubmit`
+- Slow timer: 30s Ã¢ÂÂ 45s in both locations
+- Slow timer text: "up to a minute" Ã¢ÂÂ "up to two minutes"
 
 ### nutrition.html (vyve-site)
-- Empty state title: "Your nutrition plan is not set up yet" â "Your nutrition targets aren't set up yet"
-- Empty state text: "Complete your onboarding..." â "Add your height, weight, and activity level..."
+- Empty state title: "Your nutrition plan is not set up yet" Ã¢ÂÂ "Your nutrition targets aren't set up yet"
+- Empty state text: "Complete your onboarding..." Ã¢ÂÂ "Add your height, weight, and activity level..."
 
 ### sw.js (vyve-site)
-- Cache version bumped: `vyve-cache-v2026-04-13e` â `vyve-cache-v2026-04-13f`
+- Cache version bumped: `vyve-cache-v2026-04-13e` Ã¢ÂÂ `vyve-cache-v2026-04-13f`
 
 ## 2026-04-13 (evening session)
 
@@ -329,7 +360,7 @@ Full portal audit confirmed NO other pages have the `async async` syntax error o
   2. `workout_plan_cache` schema mismatch - `plan_data` column renamed to `programme_json`, added `plan_duration_weeks`, `current_week`, `current_session`, `is_active`, `source`
   3. Two-phase flow restored - workout plan generation moved back to `EdgeRuntime.waitUntil()` background task (v67 had inlined it synchronously, causing slow onboarding)
   4. `workoutPlanResult` reference error - removed from success response JSON (no longer exists after waitUntil change)
-  5. UTF-8 em-dash encoding - replaced all `â` (em-dash) characters with `-` to prevent `aâ¬â` garbled text in persona reason strings
+  5. UTF-8 em-dash encoding - replaced all `Ã¢ÂÂ` (em-dash) characters with `-` to prevent `aÃ¢ÂÂ¬Ã¢ÂÂ` garbled text in persona reason strings
 - Onboarding EF now at v71 (Supabase version counter)
 - `staging/onboarding_v67.ts` confirmed to have the missing brace bug - was never a clean backup
 
@@ -346,7 +377,7 @@ Full portal audit confirmed NO other pages have the `async async` syntax error o
 - **Onboarding resilience: save-answers-first pattern** - save questionnaire answers to `onboarding_answers` table per section via lightweight `save-answers` EF, so if main onboarding fails the answers are preserved and can be re-run manually. Friendly error: "Your answers have been saved, your bespoke setup will be with you soon."
 
 
-## 13 April 2026 â Light mode contrast audit + full fix across portal
+## 13 April 2026 Ã¢ÂÂ Light mode contrast audit + full fix across portal
 
 ### Fix: 84 hardcoded dark-theme colors converted to CSS vars across 13 pages + nav.js
 
@@ -357,7 +388,7 @@ Full portal audit confirmed NO other pages have the `async async` syntax error o
 ### Files updated (15 total):
 | File | Issues Fixed | Key Changes |
 |------|-------------|-------------|
-| `nav.js` | 15 | Entire nav component â desktop nav, mobile header, bottom nav, More menu. Affects ALL pages. |
+| `nav.js` | 15 | Entire nav component Ã¢ÂÂ desktop nav, mobile header, bottom nav, More menu. Affects ALL pages. |
 | `log-food.html` | 18 | Borders, meal icons, search tabs, sheet UI, barcode scanner hints |
 | `shared-workout.html` | 10 + infra | Added `theme.css` + `theme.js` links (was completely unthemed) |
 | `nutrition.html` | 9 | Weight chart labels (SVG), progress bars, sheet UI, history rows, sliders |
@@ -371,51 +402,51 @@ Full portal audit confirmed NO other pages have the `async async` syntax error o
 | `monthly-checkin.html` | 1 + infra | Added `theme.css` link, nav background |
 | `wellbeing-checkin.html` | 1 | Nav background |
 | `workouts.html` | 1 | Rest timer dismiss border |
-| `sw.js` | â | Cache bumped to `vyve-cache-v2026-04-13d` |
+| `sw.js` | Ã¢ÂÂ | Cache bumped to `vyve-cache-v2026-04-13d` |
 
 ### Design decisions:
-- `#fff` on `var(--teal)` backgrounds (buttons, avatars) left as-is â white on teal has good contrast in both themes
-- Barcode scanner overlay kept dark with white text â it's a camera UI, not page content
+- `#fff` on `var(--teal)` backgrounds (buttons, avatars) left as-is Ã¢ÂÂ white on teal has good contrast in both themes
+- Barcode scanner overlay kept dark with white text Ã¢ÂÂ it's a camera UI, not page content
 - Skeleton shimmer animations converted to `var(--surface)` / `var(--surface-hover)`
 - SVG chart label `setAttribute('fill',...)` calls in nutrition.html converted to CSS vars
 
 ### Rule added:
 **Never use hardcoded `#fff`, `rgba(255,255,255,...)`, `#0A1F1F`, or `rgba(10,31,31,...)` in portal CSS.** Always use CSS variables from `theme.css`: `var(--text)`, `var(--text-muted)`, `var(--text-faint)`, `var(--border)`, `var(--surface)`, `var(--nav-bg)`, etc. Exception: `#fff` is acceptable for text on fixed-colour backgrounds like `var(--teal)` buttons or camera overlays.
 
-## 13 April 2026 â Careers page added to marketing site
+## 13 April 2026 Ã¢ÂÂ Careers page added to marketing site
 
 ### Feat: careers.html live at www.vyvehealth.co.uk/careers.html
 - **Page:** 11 active roles across Advisory, Podcast, Marketing, Community, Clinical departments
-- **Jobs managed via JS array** â Lewis can add/remove/hide roles by editing the `JOBS` array in the `<script>` block. `active: false` hides a role without deleting it.
-- **Apply flow:** "Apply Now" opens candidate's email client with pre-filled subject line â all applications land in `team@vyvehealth.co.uk`
-- **Repo:** `VYVEHealth/Test-Site-Finalv3` â `careers.html` committed to main
+- **Jobs managed via JS array** Ã¢ÂÂ Lewis can add/remove/hide roles by editing the `JOBS` array in the `<script>` block. `active: false` hides a role without deleting it.
+- **Apply flow:** "Apply Now" opens candidate's email client with pre-filled subject line Ã¢ÂÂ all applications land in `team@vyvehealth.co.uk`
+- **Repo:** `VYVEHealth/Test-Site-Finalv3` Ã¢ÂÂ `careers.html` committed to main
 - **Note:** Original uploaded file was truncated (missing IntersectionObserver init + closing HTML tags). Reconstructed tail appended before push.
 
 ### Feat: Careers link added to footer across 8 marketing pages
 - Pages updated: `index.html`, `individual.html`, `individual-platform.html`, `give-back.html`, `give-back-employers.html`, `corporate.html`, `platform.html`, `about-individual.html`
 - Link added under Company column after "Terms of Service"
-- 7 other pages (employers, contact, about, etc.) have different footer structures â Careers link not added (would need separate pass)
+- 7 other pages (employers, contact, about, etc.) have different footer structures Ã¢ÂÂ Careers link not added (would need separate pass)
 
-## 13 April 2026 â running_plan_cache RLS fix (401 on PATCH/POST)
+## 13 April 2026 Ã¢ÂÂ running_plan_cache RLS fix (401 on PATCH/POST)
 
 ### Fix: Added INSERT + UPDATE RLS policies to `running_plan_cache`
 - **Root cause:** Table had only a public SELECT policy. The page (`running-plan.html`) uses the anon key (`SUPA_HDR`) for all cache operations. Reads worked, but PATCH (use_count bump) and POST (save new plan) returned 401.
-- **Alert:** `auth_401_running_plan_cache` â Calum Denham, 14:55, running-plan.html
-- **Fix:** Migration `running_plan_cache_insert_update_policies` â added `running_plan_cache_public_insert` (INSERT) and `running_plan_cache_public_update` (UPDATE) policies, both `TO public WITH CHECK (true)`. Appropriate because this is a shared cache (not user-specific data).
-- **No portal code change needed** â the page already sends the correct requests, they were just being rejected by RLS.
+- **Alert:** `auth_401_running_plan_cache` Ã¢ÂÂ Calum Denham, 14:55, running-plan.html
+- **Fix:** Migration `running_plan_cache_insert_update_policies` Ã¢ÂÂ added `running_plan_cache_public_insert` (INSERT) and `running_plan_cache_public_update` (UPDATE) policies, both `TO public WITH CHECK (true)`. Appropriate because this is a shared cache (not user-specific data).
+- **No portal code change needed** Ã¢ÂÂ the page already sends the correct requests, they were just being rejected by RLS.
 
 ### Triage: 4 alerts dismissed (Dean, 13:33, transient network blip)
-- `network_error_member-dashboard` (CRITICAL) â "Failed to fetch" on dashboard `/`
-- `network_error_notifications` (CRITICAL) â "Failed to fetch" on dashboard `/`
-- `js_error` (HIGH) Ã 2 â "Script error. at :0" on `/` and `/workouts.html`
-- All 4 fired within 14 seconds for the same user (Dean). Classic connectivity blip â downstream JS errors are cross-origin error masking from the failed fetches. No code bug.
+- `network_error_member-dashboard` (CRITICAL) Ã¢ÂÂ "Failed to fetch" on dashboard `/`
+- `network_error_notifications` (CRITICAL) Ã¢ÂÂ "Failed to fetch" on dashboard `/`
+- `js_error` (HIGH) ÃÂ 2 Ã¢ÂÂ "Script error. at :0" on `/` and `/workouts.html`
+- All 4 fired within 14 seconds for the same user (Dean). Classic connectivity blip Ã¢ÂÂ downstream JS errors are cross-origin error masking from the failed fetches. No code bug.
 
-## 13 April 2026 â Command Centre: Full Supabase Wiring
+## 13 April 2026 Ã¢ÂÂ Command Centre: Full Supabase Wiring
 
 ### Feat: Command Centre data now persists in Supabase
-Lewis's Command Centre (`admin.vyvehealth.co.uk`) was previously localStorage-only â clearing the browser lost all data, and Lewis and Dean couldn't share data. Now fully wired to Supabase.
+Lewis's Command Centre (`admin.vyvehealth.co.uk`) was previously localStorage-only Ã¢ÂÂ clearing the browser lost all data, and Lewis and Dean couldn't share data. Now fully wired to Supabase.
 
-### Database â 18 new `cc_` tables created
+### Database Ã¢ÂÂ 18 new `cc_` tables created
 All tables: RLS enabled, locked to `team@vyvehealth.co.uk`, `created_by` column, `updated_at` triggers.
 
 | Table | Module |
@@ -425,7 +456,7 @@ All tables: RLS enabled, locked to `team@vyvehealth.co.uk`, `created_by` column,
 | `cc_investors` | Investor Relations |
 | `cc_partners` | Partner Network |
 | `cc_tasks` | Tasks kanban |
-| `cc_decisions` | Strategy Room â Decisions log |
+| `cc_decisions` | Strategy Room Ã¢ÂÂ Decisions log |
 | `cc_okrs` | Team OKRs |
 | `cc_finance` | Finance & Funding metrics |
 | `cc_revenue` | Revenue entries |
@@ -439,107 +470,107 @@ All tables: RLS enabled, locked to `team@vyvehealth.co.uk`, `created_by` column,
 | `cc_swot` | SWOT analysis items |
 | `cc_episodes` | Podcast episodes |
 
-### Storage â `cc-documents` bucket created
+### Storage Ã¢ÂÂ `cc-documents` bucket created
 - Private bucket, 50MB file limit
 - Allowed types: PDF, DOCX, XLSX, PPTX, TXT, CSV, images
 - RLS: team@vyvehealth.co.uk only (SELECT, INSERT, DELETE)
 - Files stored with UUID filename, metadata in `cc_documents` table
 
-### Edge Function â `cc-data` v1 deployed
+### Edge Function Ã¢ÂÂ `cc-data` v1 deployed
 Single function handles all Command Centre data operations:
-- `GET /cc-data/{table}` â list with optional filters (?type, ?stage, ?status, ?owner, ?quadrant)
-- `POST /cc-data/{table}` â create record
-- `PATCH /cc-data/{table}/{id}` â update record  
-- `DELETE /cc-data/{table}/{id}` â delete (also removes Storage file for documents)
-- `POST /cc-data/upload` â multipart upload â Storage â cc_documents metadata
-- `GET /cc-data/signed-url/{id}` â 1-hour signed URL for secure file viewing
+- `GET /cc-data/{table}` Ã¢ÂÂ list with optional filters (?type, ?stage, ?status, ?owner, ?quadrant)
+- `POST /cc-data/{table}` Ã¢ÂÂ create record
+- `PATCH /cc-data/{table}/{id}` Ã¢ÂÂ update record  
+- `DELETE /cc-data/{table}/{id}` Ã¢ÂÂ delete (also removes Storage file for documents)
+- `POST /cc-data/upload` Ã¢ÂÂ multipart upload Ã¢ÂÂ Storage Ã¢ÂÂ cc_documents metadata
+- `GET /cc-data/signed-url/{id}` Ã¢ÂÂ 1-hour signed URL for secure file viewing
 - Auth: JWT required, `team@vyvehealth.co.uk` only
 
-### index.html â fully rewired (commit `eb2dc09`)
+### index.html Ã¢ÂÂ fully rewired (commit `eb2dc09`)
 - Added `CC_API` helper functions: `ccFetch`, `ccList`, `ccCreate`, `ccUpdate`, `ccDelete`, `ccUploadFile`, `ccSignedUrl`
-- Added `ccLoadAll()` â fetches all 18 tables in parallel on login, populates every data array
-- `initApp()` converted to async â calls `ccLoadAll()` after auth, re-renders current page
+- Added `ccLoadAll()` Ã¢ÂÂ fetches all 18 tables in parallel on login, populates every data array
+- `initApp()` converted to async Ã¢ÂÂ calls `ccLoadAll()` after auth, re-renders current page
 - 20 save/delete functions converted to async Supabase calls: `saveClient`, `saveLead`, `saveInvestor`, `saveDecision`, `saveCompanyOkr`, `saveGrant`, `savePost`, `saveKbItem`, `saveFinance`, `saveRevenue`, `updateOkrPct`, `addSwot`, `removeSwot`, `removeIntelItem`, `doImportModal`, `processDocFile`, `deleteDoc`, `clearAgentData`, `removeKbItem`, `openTaskModal`
-- `processDocFile()` â files now upload to Supabase Storage via `ccUploadFile()`, no longer stored in localStorage
-- `viewDoc()` â now async, generates signed URL for secure file viewing/download
-- `persist()` / `load()` â retained for UI preferences only (dark mode, Claude API key, per-member todos)
+- `processDocFile()` Ã¢ÂÂ files now upload to Supabase Storage via `ccUploadFile()`, no longer stored in localStorage
+- `viewDoc()` Ã¢ÂÂ now async, generates signed URL for secure file viewing/download
+- `persist()` / `load()` Ã¢ÂÂ retained for UI preferences only (dark mode, Claude API key, per-member todos)
 - Zero business data `persist()` calls remaining
 
 ### Result
-- Lewis and Dean now share the same data â any record entered by either is instantly visible to the other
+- Lewis and Dean now share the same data Ã¢ÂÂ any record entered by either is instantly visible to the other
 - Clearing browser cache no longer loses any business data
 - Files uploaded to the Documents section go to Supabase Storage automatically
 - Lewis can now populate clients, pipeline, OKRs, decisions etc. with confidence data won't be lost
 
-## 13 April 2026 â anthropic-proxy auth fix (running-plan.html JS error)
+## 13 April 2026 Ã¢ÂÂ anthropic-proxy auth fix (running-plan.html JS error)
 
-### Fix: anthropic-proxy v14 â verify_jwt: false + internal JWT validation
-- **Root cause:** `anthropic-proxy` had `verify_jwt: true` (Supabase gateway-level). Running-plan.html uses the old `waitForAuth` pattern â if auth session hadn't initialised before the user hit Generate, the fetch fell back to the anon key, which was rejected by the gateway. Browser showed `Script error. at :0` (cross-origin error masking).
-- **Fix:** Switched to `verify_jwt: false` with internal JWT validation via `supabase.auth.getUser()` â matches the pattern used by all other VYVE Edge Functions.
+### Fix: anthropic-proxy v14 Ã¢ÂÂ verify_jwt: false + internal JWT validation
+- **Root cause:** `anthropic-proxy` had `verify_jwt: true` (Supabase gateway-level). Running-plan.html uses the old `waitForAuth` pattern Ã¢ÂÂ if auth session hadn't initialised before the user hit Generate, the fetch fell back to the anon key, which was rejected by the gateway. Browser showed `Script error. at :0` (cross-origin error masking).
+- **Fix:** Switched to `verify_jwt: false` with internal JWT validation via `supabase.auth.getUser()` Ã¢ÂÂ matches the pattern used by all other VYVE Edge Functions.
 - **Also added:** CORS restriction to `online.vyvehealth.co.uk` and `www.vyvehealth.co.uk` (was `*`).
-- **running-plan.html:** No change needed â the page already tries to get a JWT from `window.vyveSupabase.auth.getSession()` and sends it. The EF now validates internally instead of at the gateway.
+- **running-plan.html:** No change needed Ã¢ÂÂ the page already tries to get a JWT from `window.vyveSupabase.auth.getSession()` and sends it. The EF now validates internally instead of at the gateway.
 
-## 13 April 2026 â Brevo Email Logo + Backlog Cleanup
+## 13 April 2026 Ã¢ÂÂ Brevo Email Logo + Backlog Cleanup
 
 ### Feat: VYVE logo added to all Brevo email templates
-- **send-email** v20 â `wrap()` header updated: text "VYVE" replaced with `<img>` tag loading `https://online.vyvehealth.co.uk/logo.png` (height 36px)
-- **re-engagement-scheduler** v20 â same `wrap()` logo update
-- **certificate-checker** v18 â same `wrap()` logo update (notification emails only; certificate HTML documents unchanged)
+- **send-email** v20 Ã¢ÂÂ `wrap()` header updated: text "VYVE" replaced with `<img>` tag loading `https://online.vyvehealth.co.uk/logo.png` (height 36px)
+- **re-engagement-scheduler** v20 Ã¢ÂÂ same `wrap()` logo update
+- **certificate-checker** v18 Ã¢ÂÂ same `wrap()` logo update (notification emails only; certificate HTML documents unchanged)
 - All three EFs now show the VYVE logo image in the dark header bar of every outbound email
 
 ### Backlog: Items dropped
-- **Dashboard skeleton loading screen** â dropped (not needed now)
-- **Weekly check-in slider questions** â dropped (monthly check-in covers this instead)
-- **Brevo logo in emails** â completed â
+- **Dashboard skeleton loading screen** Ã¢ÂÂ dropped (not needed now)
+- **Weekly check-in slider questions** Ã¢ÂÂ dropped (monthly check-in covers this instead)
+- **Brevo logo in emails** Ã¢ÂÂ completed Ã¢ÂÂ
 
-## 13 April 2026 â Monthly Check-In Wiring + Habit Count Fix
+## 13 April 2026 Ã¢ÂÂ Monthly Check-In Wiring + Habit Count Fix
 
 ### Feat: Monthly Check-In wired into portal nav
-- **nav.js** â Monthly Check-In added to More menu (below Weekly Check-In), calendar icon
-- **monthly-checkin.html** â new `#new-member-banner` div + `newMemberLocked` handler in init()
-- **monthly-checkin EF v13** â `isNewMember()` function: checks `members.created_at`, blocks if member joined < 1 full calendar month ago. Returns `newMemberLocked: true` + `availableFrom: "1st May 2026"` on GET. Also guards POST submit.
+- **nav.js** Ã¢ÂÂ Monthly Check-In added to More menu (below Weekly Check-In), calendar icon
+- **monthly-checkin.html** Ã¢ÂÂ new `#new-member-banner` div + `newMemberLocked` handler in init()
+- **monthly-checkin EF v13** Ã¢ÂÂ `isNewMember()` function: checks `members.created_at`, blocks if member joined < 1 full calendar month ago. Returns `newMemberLocked: true` + `availableFrom: "1st May 2026"` on GET. Also guards POST submit.
 - **New-member message:** "Your monthly check-in will be available from 1st [Month Year]. Complete your first full month with VYVE and we'll have your personalised report ready."
-- **Model fix:** `claude-haiku-4-5-20251001` (invalid) â `claude-haiku-4-5` in monthly-checkin EF
+- **Model fix:** `claude-haiku-4-5-20251001` (invalid) Ã¢ÂÂ `claude-haiku-4-5` in monthly-checkin EF
 
 ### Fix: Weekly check-in habit count
-- **wellbeing-checkin.html** â `habitsThisWeek` was counting every raw `daily_habits` row (e.g. 5 habits logged Monday = counted as 5). Fixed to count distinct `activity_date` values capped at 7 â max 1 per day, max 7 per week.
-- Query updated: `select=id` â `select=activity_date`
-- Count: `habits?.length` â `Math.min([...new Set(habits.map(h=>h.activity_date))].length, 7)`
+- **wellbeing-checkin.html** Ã¢ÂÂ `habitsThisWeek` was counting every raw `daily_habits` row (e.g. 5 habits logged Monday = counted as 5). Fixed to count distinct `activity_date` values capped at 7 Ã¢ÂÂ max 1 per day, max 7 per week.
+- Query updated: `select=id` Ã¢ÂÂ `select=activity_date`
+- Count: `habits?.length` Ã¢ÂÂ `Math.min([...new Set(habits.map(h=>h.activity_date))].length, 7)`
 
 ### sw.js cache
-- Bumped: `vyve-cache-v2026-04-13a` â `vyve-cache-v2026-04-13b`
+- Bumped: `vyve-cache-v2026-04-13a` Ã¢ÂÂ `vyve-cache-v2026-04-13b`
 
-## 13 April 2026 â VYVE Command Centre: Setup, Auth & Fixes
+## 13 April 2026 Ã¢ÂÂ VYVE Command Centre: Setup, Auth & Fixes
 
 ### New: Command Centre live at admin.vyvehealth.co.uk
 - **What:** Lewis's internal ops dashboard (`vyve-command-centre` repo) identified, deep-dived, and brought to production-ready state
-- **URL:** `admin.vyvehealth.co.uk` â custom domain via GoDaddy CNAME â GitHub Pages
+- **URL:** `admin.vyvehealth.co.uk` Ã¢ÂÂ custom domain via GoDaddy CNAME Ã¢ÂÂ GitHub Pages
 - **Auth:** Replaced hard-coded login (`admin@vyve.co.uk` / `vyve2026`) with real Supabase Auth. `team@vyvehealth.co.uk` auth account activated, password set via SQL.
 - **Repo:** `VYVEHealth/vyve-command-centre` (public). CNAME file committed for custom domain.
 
 ### Fixes applied to Command Centre index.html
 | Fix | Detail |
 |-----|--------|
-| SyntaxError: doLogin undefined | HTML modal markup injected inside TEAM JS array â removed |
-| Binary garbage blob (~750 chars) | Corrupted OKR renderer â removed and reconstructed |
-| Missing `</script>` tag | Data script block unclosed â fixed |
-| 8 duplicate modal blocks | All modals appeared twice â deduplicated |
-| `Â¾(` Ã 3 | Corrupted `v()` helper calls â fixed |
-| `justify-conte"` | Truncated CSS â fixed to `justify-content:space-between` |
-| OKR slider `oninput` | Control char + `his.value` â fixed to `this.value` |
-| Missing amber ternary Ã 3 | OKR progress bar colour â fixed |
-| Stray `2 ` before `el2.innerHTML` | SyntaxError on line 1566 â removed |
-| Duplicate h1 headings on all pages | Page title showed in topbar AND as h1 â all h1s removed from page-headers |
-| Tasks page corrupt | Contained stray THREATS/SWOT/Decisions/Learnings content â replaced with correct kanban layout |
+| SyntaxError: doLogin undefined | HTML modal markup injected inside TEAM JS array Ã¢ÂÂ removed |
+| Binary garbage blob (~750 chars) | Corrupted OKR renderer Ã¢ÂÂ removed and reconstructed |
+| Missing `</script>` tag | Data script block unclosed Ã¢ÂÂ fixed |
+| 8 duplicate modal blocks | All modals appeared twice Ã¢ÂÂ deduplicated |
+| `ÃÂ¾(` ÃÂ 3 | Corrupted `v()` helper calls Ã¢ÂÂ fixed |
+| `justify-conte"` | Truncated CSS Ã¢ÂÂ fixed to `justify-content:space-between` |
+| OKR slider `oninput` | Control char + `his.value` Ã¢ÂÂ fixed to `this.value` |
+| Missing amber ternary ÃÂ 3 | OKR progress bar colour Ã¢ÂÂ fixed |
+| Stray `2 ` before `el2.innerHTML` | SyntaxError on line 1566 Ã¢ÂÂ removed |
+| Duplicate h1 headings on all pages | Page title showed in topbar AND as h1 Ã¢ÂÂ all h1s removed from page-headers |
+| Tasks page corrupt | Contained stray THREATS/SWOT/Decisions/Learnings content Ã¢ÂÂ replaced with correct kanban layout |
 
 ### Architecture notes (Command Centre)
 - Single `index.html` ~120KB, vanilla JS + Chart.js, GitHub Pages
-- Data in `localStorage` â Supabase connection planned (same DB `ixjfklpckgxrwjlfsaaz`, tables prefixed `cc_`)
-- Lewis's 24 AI skills run in Claude.ai Projects (subscription) â Agent Sync JSON paste is the intended workflow
-- Claude API key field in Settings is a placeholder â no API calls wired yet
+- Data in `localStorage` Ã¢ÂÂ Supabase connection planned (same DB `ixjfklpckgxrwjlfsaaz`, tables prefixed `cc_`)
+- Lewis's 24 AI skills run in Claude.ai Projects (subscription) Ã¢ÂÂ Agent Sync JSON paste is the intended workflow
+- Claude API key field in Settings is a placeholder Ã¢ÂÂ no API calls wired yet
 - `send-password-reset` Edge Function deployed and neutered after use
 
-## 13 April 2026 â iOS App Store: Build 2 Submitted (Correct VYVE Icon)
+## 13 April 2026 Ã¢ÂÂ iOS App Store: Build 2 Submitted (Correct VYVE Icon)
 
 ### Fix: Replaced placeholder Capacitor icon with correct VYVE logo
 - **What:** Generated correct app icon from `logo512.png` using `@capacitor/assets generate --ios`
@@ -547,9 +578,9 @@ Single function handles all Command Centre data operations:
 - **Build 2** archived and uploaded to App Store Connect
 - **Status:** App is "Waiting for Review" with Build 1 (placeholder icon). Build 2 is uploaded and ready.
 - **Next:** If Apple approves Build 1, submit 1.0.1 update immediately with Build 2 icon. If rejected, resubmit with Build 2.
-- **Note:** Cannot swap builds once "Waiting for Review" â Apple has locked the submission.
+- **Note:** Cannot swap builds once "Waiting for Review" Ã¢ÂÂ Apple has locked the submission.
 
-## 13 April 2026 â iOS App Submitted to App Store
+## 13 April 2026 Ã¢ÂÂ iOS App Submitted to App Store
 
 ### Feat: VYVE Health iOS app built and submitted
 - **What:** Full Capacitor iOS build completed and submitted to Apple App Store for review
@@ -561,8 +592,8 @@ Single function handles all Command Centre data operations:
 - **Capabilities:** Push Notifications + HealthKit
 - **Info.plist permissions added:** Camera, Photo Library, Health Share, Health Update, User Notifications
 - **App Store listing:** Full description, 5 iPhone screenshots (1242x2688), 1 iPad screenshot (2064x2752), keywords, pricing (free), privacy labels, age rating, content rights, MRDP, medical device declaration all complete
-- **Status:** Submitted for review â Apple will email on approval (typically 24-48 hours)
-- **Architecture:** Remote URL loading (`https://online.vyvehealth.co.uk`) â portal updates live instantly, no resubmission needed
+- **Status:** Submitted for review Ã¢ÂÂ Apple will email on approval (typically 24-48 hours)
+- **Architecture:** Remote URL loading (`https://online.vyvehealth.co.uk`) Ã¢ÂÂ portal updates live instantly, no resubmission needed
 
 ### App Store listing content
 - **Subtitle:** Proactive Wellbeing Platform
@@ -573,10 +604,10 @@ Single function handles all Command Centre data operations:
 - **Apple ID:** 6762100652
 
 ### Both platforms now submitted
-- Android: `app-release.aab` submitted to Google Play (12 Apr) â
-- iOS: Submitted to App Store (13 Apr) â
+- Android: `app-release.aab` submitted to Google Play (12 Apr) Ã¢ÂÂ
+- iOS: Submitted to App Store (13 Apr) Ã¢ÂÂ
 
-## 12 April 2026 â Android App Submitted to Google Play
+## 12 April 2026 Ã¢ÂÂ Android App Submitted to Google Play
 
 ### Feat: VYVE Health Android app built and submitted
 - **What:** Full Capacitor Android build completed and submitted to Google Play Store for review
@@ -584,38 +615,38 @@ Single function handles all Command Centre data operations:
 - **Build:** `app-release.aab` (5.77MB, 3s download time)
 - **Keystore:** `vyve-release-key.jks` saved to Dean's Desktop (OneDrive). Password stored securely.
 - **Key alias:** `vyve-key`
-- **google-services.json:** Placed in `android/app/` â
+- **google-services.json:** Placed in `android/app/` Ã¢ÂÂ
 - **Project location:** `C:\Users\DeanO\vyve-capacitor\`
 - **Plugins (15):** app, browser, camera, filesystem, haptics, keyboard, local-notifications, network, preferences, push-notifications, screen-orientation, share, splash-screen, status-bar, capacitor-native-biometric
 - **Countries targeted:** United Kingdom
 - **Google Play listing:** Full description written, 4 screenshots processed, feature graphic generated (1024x500), 512px icon uploaded
-- **Status:** Submitted for review â Google will email on approval (typically 1-3 days)
-- **Architecture:** Remote URL loading (`https://online.vyvehealth.co.uk`) â portal updates live instantly, no resubmission needed
+- **Status:** Submitted for review Ã¢ÂÂ Google will email on approval (typically 1-3 days)
+- **Architecture:** Remote URL loading (`https://online.vyvehealth.co.uk`) Ã¢ÂÂ portal updates live instantly, no resubmission needed
 
 ### Google Play Store listing content
-- **Short description:** Proactive workplace wellbeing â Physical, Mental & Social health
+- **Short description:** Proactive workplace wellbeing Ã¢ÂÂ Physical, Mental & Social health
 - **App category:** Health & Fitness
-- **Content rating:** All other app types â PEGI Everyone
+- **Content rating:** All other app types Ã¢ÂÂ PEGI Everyone
 - **Health features ticked:** Activity & fitness, Nutrition & weight management, Period tracking, Sleep management, Stress management/relaxation/mental acuity
 - **Target audience:** 18+
 - **Countries:** United Kingdom
 
-### iOS â Pending Mac
+### iOS Ã¢ÂÂ Pending Mac
 - All pre-requisites complete. When Mac arrives: install Xcode, run `npx cap add ios && npx cap sync ios`, open in Xcode, configure signing + capabilities, build + submit.
 - Estimated time once Mac available: ~2.5 hours
 
 ### Notes
-- Old Kahunas app (`com.kahunas.io.VYVE`) still live on Play Store with 1 install â leave alone, deprecate after new app approved
-- `capacitor-plugins.js` not yet added to portal â do this next session ("add plugins to portal")
-- Health disclaimer checkbox on welcome.html â pending Lewis sign-off
+- Old Kahunas app (`com.kahunas.io.VYVE`) still live on Play Store with 1 install Ã¢ÂÂ leave alone, deprecate after new app approved
+- `capacitor-plugins.js` not yet added to portal Ã¢ÂÂ do this next session ("add plugins to portal")
+- Health disclaimer checkbox on welcome.html Ã¢ÂÂ pending Lewis sign-off
 
-## 12 April 2026 â Capacitor App Store Wrap: Pre-Mac Setup Complete
+## 12 April 2026 Ã¢ÂÂ Capacitor App Store Wrap: Pre-Mac Setup Complete
 
 ### Planning: Full Capacitor wrap mapped and config files generated
 - **What:** Complete Capacitor wrap plan created for iOS App Store + Android Play Store submission
 - **Plugins selected (all added now):** Push Notifications, Status Bar, Splash Screen, App, Keyboard, Haptics, Network, Browser, Share, App Launcher, Local Notifications, Preferences, HealthKit/Google Fit, Camera, Filesystem, Biometrics, Screen Orientation. RevenueCat deferred (keep payments on Stripe web).
 - **Files generated:** `capacitor.config.ts`, `package.json`, `capacitor-plugins.js` (full native bridge exposing `window.VYVENative`), `ios-info-plist-additions.xml`, `android-manifest-additions.xml`, `supabase-migration-push-native.sql`, `SETUP-GUIDE.md`
-- **Architecture decision:** Remote URL loading (`server.url: https://online.vyvehealth.co.uk`) â portal updates go live instantly without App Store resubmission
+- **Architecture decision:** Remote URL loading (`server.url: https://online.vyvehealth.co.uk`) Ã¢ÂÂ portal updates go live instantly without App Store resubmission
 
 ### Infrastructure: Pre-Mac setup completed
 - **Supabase:** `push_subscriptions_native` table created with RLS, unique index on `(member_email, platform)`, updated_at trigger
@@ -631,134 +662,134 @@ Single function handles all Command Centre data operations:
 - Android build in Android Studio + Google Play submission
 - Estimated time once Mac arrives: ~4 hours, both platforms submitted same day
 
-## 12 April 2026 â Browse Library: Your Programmes + Resume
+## 12 April 2026 Ã¢ÂÂ Browse Library: Your Programmes + Resume
 
 ### Feat: Paused plans section in Browse Library
 - **What:** Added "Your Programmes" section at the top of the Browse Library tab showing all paused plans with a Resume button.
 - **UI:** Deduplicated by programme name (shows most recently paused). Shows week progress ("Week 2 of 8") and source label ("Your bespoke plan" / "From library" / "Shared"). Confirmation modal before resuming.
-- **Backend:** `workout-library` EF v3 â added `action: resume` POST handler. Pauses current active plan, reactivates the selected paused plan preserving `current_week` and `current_session` progress.
-- **Frontend:** `workouts-library.js` â new `loadPausedPlans()`, `confirmResume()`, `resumeProgramme()` functions. Paused plans fetched via REST API from `workout_plan_cache` with `is_active=false`.
+- **Backend:** `workout-library` EF v3 Ã¢ÂÂ added `action: resume` POST handler. Pauses current active plan, reactivates the selected paused plan preserving `current_week` and `current_session` progress.
+- **Frontend:** `workouts-library.js` Ã¢ÂÂ new `loadPausedPlans()`, `confirmResume()`, `resumeProgramme()` functions. Paused plans fetched via REST API from `workout_plan_cache` with `is_active=false`.
 - **sw.js:** Bumped to `vyve-cache-v2026-04-12ab`
 - **Commit:** `3fd4b23727c3fa822b84c69454d0b1b8af15f966`
 
-### Data: PPL Power & Size Builder â Push B â Upper
+### Data: PPL Power & Size Builder Ã¢ÂÂ Push B Ã¢ÂÂ Upper
 - **What:** Updated `cbudzski3@gmail.com`'s active programme in `workout_plan_cache`
 - **Push A** renamed to **Push** (dropped the "A") across all 8 weeks
-- **Push B** replaced with **Upper â Chest, Back, Shoulders & Arms** across all 8 weeks
+- **Push B** replaced with **Upper Ã¢ÂÂ Chest, Back, Shoulders & Arms** across all 8 weeks
 - Upper sessions designed as proper balanced upper body: chest pressing + back pulling + shoulders + biceps (hammer curls) + triceps. Exercises vary across periodisation phases. Avoids duplicating Pull day movements.
 
-## 12 April 2026 â Browse Library visibility fix
+## 12 April 2026 Ã¢ÂÂ Browse Library visibility fix
 
 ### Fix: workouts.html #tab-library outside .wrap
-- **Root cause:** `#tab-library` div was positioned outside `<main>` and `.wrap` in the HTML (line 545), after all the fixed-position overlays. Content rendered into DOM but was invisible â it sat below the fold with no scroll context, especially when `body.style.overflow` was stuck as `'hidden'` from a previous workout session.
+- **Root cause:** `#tab-library` div was positioned outside `<main>` and `.wrap` in the HTML (line 545), after all the fixed-position overlays. Content rendered into DOM but was invisible Ã¢ÂÂ it sat below the fold with no scroll context, especially when `body.style.overflow` was stuck as `'hidden'` from a previous workout session.
 - **Fix 1 (HTML):** Moved `#tab-library` inside `.wrap`, directly after `#tab-custom` where it belongs. Library content now inherits `.wrap` padding and participates in normal body scroll.
 - **Fix 2 (JS):** Added `document.body.style.overflow = ''` at start of `init()` in `workouts-config.js`. Belt-and-braces: clears stuck overflow even when no saved session state exists to restore.
 - **sw.js:** Bumped to `vyve-cache-v2026-04-12aa`
 - **Commit:** `4474936db1f9ac4a5f80101390a41177e6fc4f9b`
 
-## 12 April 2026 â member-dashboard v31: Server-Side Aggregation
+## 12 April 2026 Ã¢ÂÂ member-dashboard v31: Server-Side Aggregation
 
 ### Change: member-dashboard EF v31 + index.html frontend update
 - **What:** All streak, score, count, and goal-progress calculations moved server-side into the Edge Function
 - **Why:** Response payload was growing linearly with activity history (~5KB for current members, unbounded at scale). Now fixed ~2KB regardless of history size.
 - **EF changes (v31):** Ported `calcStreaks`, `calcWeekStreaks`, `calcDayStats`, `calcVariety7d`, `computeEngagementScore` from frontend JS into TypeScript. Same 11 parallel DB queries unchanged. New response shape includes `counts`, `streaks`, `checkinStreak`, `score`, `habitStrip`, `habitDatesThisWeek`, `goals`, `charity`, `daysInactive`, `daysActive30`.
 - **Frontend changes (index.html):** Removed client-side calc functions. `renderDashboardData` now maps pre-computed values directly to DOM. `renderDailyCheckinStrip` updated to accept `habitStrip` + `habitDatesThisWeek` + `habitStreakCurrent`. `renderGoals` updated to accept pre-computed `goals` object.
-- **Cache key bumped:** `vyve_home_cache_` â `vyve_home_v2_` to force invalidation of old-shape cache on all devices.
+- **Cache key bumped:** `vyve_home_cache_` Ã¢ÂÂ `vyve_home_v2_` to force invalidation of old-shape cache on all devices.
 - **sw.js:** Bumped to `vyve-cache-v2026-04-12a`
 - **Commit:** 8ef469cde210e65cff6eb9bc49b33c3b04cadb3c
 
-## 11 April 2026 â Food Log, Settings, Weight Unit, Running Plan (Evening Session)
+## 11 April 2026 Ã¢ÂÂ Food Log, Settings, Weight Unit, Running Plan (Evening Session)
 
-### Fix 5: log-food.html â JWT auth error + LOG FOOD button behind nav
-- **Issue:** "Error logging â try again" on all food log entries + LOG FOOD button hidden behind bottom nav
-- **Root cause 1:** `supa()` helper used `SUPA_ANON` as Bearer token â `nutrition_logs` RLS rejected with 401
-- **Root cause 2:** `.sheet` CSS had `padding-bottom:env(safe-area-inset-bottom,0px)` â only accounts for iPhone notch, not the 80px nav bar
+### Fix 5: log-food.html Ã¢ÂÂ JWT auth error + LOG FOOD button behind nav
+- **Issue:** "Error logging Ã¢ÂÂ try again" on all food log entries + LOG FOOD button hidden behind bottom nav
+- **Root cause 1:** `supa()` helper used `SUPA_ANON` as Bearer token Ã¢ÂÂ `nutrition_logs` RLS rejected with 401
+- **Root cause 2:** `.sheet` CSS had `padding-bottom:env(safe-area-inset-bottom,0px)` Ã¢ÂÂ only accounts for iPhone notch, not the 80px nav bar
 - **Fix:** `supa()` now uses `vyveSupabase.auth.getSession()` for real JWT; `.sheet` padding-bottom changed to `calc(80px + env(safe-area-inset-bottom,0px))`
 - **Commit:** `e138f2e`
 
-### Fix 6: running-plan.html â wrong Haiku model string
-- **Issue:** Running plan generation silently failing â showing "Plan was too large" for all plans including small ones
-- **Root cause:** Model string `claude-haiku-4-5-20251001` is invalid. Correct string is `claude-haiku-4-5` (no date suffix). Anthropic returns error object â no `data.error` check â falls through as blank â TRUNCATED error message fires
-- **Additional:** No `response.ok` check â HTTP errors from proxy were silently swallowed
+### Fix 6: running-plan.html Ã¢ÂÂ wrong Haiku model string
+- **Issue:** Running plan generation silently failing Ã¢ÂÂ showing "Plan was too large" for all plans including small ones
+- **Root cause:** Model string `claude-haiku-4-5-20251001` is invalid. Correct string is `claude-haiku-4-5` (no date suffix). Anthropic returns error object Ã¢ÂÂ no `data.error` check Ã¢ÂÂ falls through as blank Ã¢ÂÂ TRUNCATED error message fires
+- **Additional:** No `response.ok` check Ã¢ÂÂ HTTP errors from proxy were silently swallowed
 - **Fix:** Model corrected to `claude-haiku-4-5`; added `response.ok` check and `data.error` check so real errors surface
 - **Commit:** `1b86b43`
 - **Brain update:** Correct Anthropic model strings table added to master.md (section 9)
 
-### Fix 7: settings.html â remove height/weight unit toggles + fix privacy link
-- **Removed:** Entire "Units" section (Weight kg/lbs/stone + Height cm/ft toggles), `setUnits()` JS function, both `data-units-weight`/`data-units-height` init blocks, `.units-group` + `.units-btn` CSS â 3,929 chars total
+### Fix 7: settings.html Ã¢ÂÂ remove height/weight unit toggles + fix privacy link
+- **Removed:** Entire "Units" section (Weight kg/lbs/stone + Height cm/ft toggles), `setUnits()` JS function, both `data-units-weight`/`data-units-height` init blocks, `.units-group` + `.units-btn` CSS Ã¢ÂÂ 3,929 chars total
 - **Why:** Unit toggles were saving to `members.weight_unit`/`members.height_unit` but nothing was reading those values. Unit preference is now managed within `nutrition.html` TDEE recalculator only.
-- **Privacy link fixed:** `privacy.html` â `privacy-policy.html`
+- **Privacy link fixed:** `privacy.html` Ã¢ÂÂ `privacy-policy.html`
 - **Commit:** `73dc197`
 
-### Feat: nutrition.html â weight log unit follows member onboarding preference
+### Feat: nutrition.html Ã¢ÂÂ weight log unit follows member onboarding preference
 - **Issue:** Weight log sheet hardcoded to 'kg' regardless of member's unit preference. TDEE recalculator unit choice not persisted between sessions.
 - **Fix (6 changes):**
   1. `weight_unit` added to members SELECT query
   2. `saveTargets()` PATCH now includes `weight_unit: rcState.wtUnit`
   3. `memberData` in-memory object updated with `weight_unit` after save
-  4. `openSheet()` inits `sheetWtUnit` from `memberData.weight_unit` â localStorage fallback â 'kg'
+  4. `openSheet()` inits `sheetWtUnit` from `memberData.weight_unit` Ã¢ÂÂ localStorage fallback Ã¢ÂÂ 'kg'
   5. `localStorage.setItem('vyve_weight_unit')` written on TDEE save
   6. `prefillRecalc()` calls `setWtUnit(savedWtUnit)` so recalculator opens in saved unit
 - **Commit:** `7cfbe91`
 
 ### sw.js cache progression today
-`r` â `s` â `t` â `u` â `v` â `w` â `x` (final: `vyve-cache-v2026-04-11x`)
+`r` Ã¢ÂÂ `s` Ã¢ÂÂ `t` Ã¢ÂÂ `u` Ã¢ÂÂ `v` Ã¢ÂÂ `w` Ã¢ÂÂ `x` (final: `vyve-cache-v2026-04-11x`)
 
-### Hard rules added (31â34)
+### Hard rules added (31Ã¢ÂÂ34)
 See master.md section 8 for full rules.
 
 ---
 
-## 11 April 2026 â Platform Alert Fixes + Full Portal Auth Audit
+## 11 April 2026 Ã¢ÂÂ Platform Alert Fixes + Full Portal Auth Audit
 
 ### Context
 Platform monitoring (deployed yesterday) began firing alerts. Three distinct issues identified from live alerts plus one discovered during the subsequent full 38-page portal audit.
 
-### Fix 1: index.html â PostHog SyntaxError (CRITICAL)
-- **Alert:** `js_error` â `SyntaxError: Unexpected token ','` at `index.html:305`
-- **Root cause:** PostHog init on line 305 had literal `+ POSTHOG_KEY +` placeholder instead of the real key â invalid JS syntax
+### Fix 1: index.html Ã¢ÂÂ PostHog SyntaxError (CRITICAL)
+- **Alert:** `js_error` Ã¢ÂÂ `SyntaxError: Unexpected token ','` at `index.html:305`
+- **Root cause:** PostHog init on line 305 had literal `+ POSTHOG_KEY +` placeholder instead of the real key Ã¢ÂÂ invalid JS syntax
 - **Impact:** Entire dashboard JavaScript blocked for all members on every page load
 - **Fix:** Replaced `posthog.init( + POSTHOG_KEY + ,{...})` with real key `phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl`
 - **Commit:** `0d66099`
 
-### Fix 2: tracking.js â Session views using anon key as Bearer (CRITICAL)
+### Fix 2: tracking.js Ã¢ÂÂ Session views using anon key as Bearer (CRITICAL)
 - **Alert:** `auth_401_session_views` on `/yoga-live.html` for `stuwatts09@gmail.com`
-- **Root cause:** `tracking.js` built headers with `Authorization: Bearer SUPABASE_ANON` (anon key). RLS on `session_views` and `replay_views` requires authenticated JWT â anon key rejected with 401
+- **Root cause:** `tracking.js` built headers with `Authorization: Bearer SUPABASE_ANON` (anon key). RLS on `session_views` and `replay_views` requires authenticated JWT Ã¢ÂÂ anon key rejected with 401
 - **Impact:** All 13 live and replay pages (yoga-live, mindfulness-live, workouts-live, checkin-live, therapy-live, education-live, events-live, podcast-live + all -rp equivalents) failing to log session views
 - **Fix:** Replaced static headers constant with `async getHeaders()` function that fetches real user JWT via `window.vyveSupabase.auth.getSession()`, falls back to anon only if session unavailable
 - **Commit:** `5adf652`
 
-### Fix 3: nutrition-setup.html â Auth race condition (CRITICAL)
+### Fix 3: nutrition-setup.html Ã¢ÂÂ Auth race condition (CRITICAL)
 - **Alert:** `auth_401_members` on `/nutrition-setup.html` for Dean and Stuart
-- **Root cause:** `window.addEventListener('load', () => { if (window.vyveCurrentUser) init(); })` fired before `vyveSupabase` was confirmed set â `supa()` helper fell back to anon key, which has no RLS permission to read/write `members`
+- **Root cause:** `window.addEventListener('load', () => { if (window.vyveCurrentUser) init(); })` fired before `vyveSupabase` was confirmed set Ã¢ÂÂ `supa()` helper fell back to anon key, which has no RLS permission to read/write `members`
 - **Fix:** Removed the racing `window.load` fallback. `init()` now fires exclusively via `document.addEventListener('vyveAuthReady', ...)` which fires only after session confirmed
 - **Commit:** `43319306`
 
-### Fix 4: running-plan.html â anthropic-proxy rejecting anon key (HIGH â discovered in audit)
+### Fix 4: running-plan.html Ã¢ÂÂ anthropic-proxy rejecting anon key (HIGH Ã¢ÂÂ discovered in audit)
 - **No alert fired** (EF silently rejected, no DB write to trigger alert)
-- **Root cause:** `running-plan.html` called `anthropic-proxy` with `Authorization: Bearer SUPA_KEY` (anon key). `anthropic-proxy` has `verify_jwt: true` â rejects anon key
+- **Root cause:** `running-plan.html` called `anthropic-proxy` with `Authorization: Bearer SUPA_KEY` (anon key). `anthropic-proxy` has `verify_jwt: true` Ã¢ÂÂ rejects anon key
 - **Impact:** Running plan generation broken for all members since `verify_jwt: true` was added to anthropic-proxy during security audit
 - **Fix:** PROXY_URL fetch now uses async IIFE to get real JWT from `window.vyveSupabase.auth.getSession()` before sending request
 - **Commit:** `a09a5a5`
 
 ### sw.js cache bumps
-- `vyve-cache-v2026-04-11s` â after first three fixes
-- `vyve-cache-v2026-04-11t` â after running-plan fix
+- `vyve-cache-v2026-04-11s` Ã¢ÂÂ after first three fixes
+- `vyve-cache-v2026-04-11t` Ã¢ÂÂ after running-plan fix
 
 ### Full 38-page portal audit results
 - **38 files audited** (36 HTML pages + auth.js + sw.js)
 - **0 remaining issues** after today's fixes
-- **32 pages clean** â correct auth patterns confirmed
-- **6 informational** â public/infrastructure files (login, set-password, consent-gate, offline, auth.js, sw.js)
-- Leaderboard warning was false positive â `getJWT()` correctly used in `loadLeaderboard()`
-- nutrition-setup.html still shows minor flag (window.load present alongside vyveAuthReady) â resolved by Fix 3
+- **32 pages clean** Ã¢ÂÂ correct auth patterns confirmed
+- **6 informational** Ã¢ÂÂ public/infrastructure files (login, set-password, consent-gate, offline, auth.js, sw.js)
+- Leaderboard warning was false positive Ã¢ÂÂ `getJWT()` correctly used in `loadLeaderboard()`
+- nutrition-setup.html still shows minor flag (window.load present alongside vyveAuthReady) Ã¢ÂÂ resolved by Fix 3
 
 ### Hard rules added (28, 29, 30)
 See master.md section 8 for full rules.
 
 ---
 
-## 11 April 2026 â Nutrition Setup Flow + Full Onboarding Data Completeness
+## 11 April 2026 Ã¢ÂÂ Nutrition Setup Flow + Full Onboarding Data Completeness
 
 ### New: nutrition-setup.html
 - Created standalone portal page for members who selected "Maybe later" on nutrition during onboarding
@@ -785,21 +816,21 @@ See master.md section 8 for full rules.
 
 ### New: DOB stored, age computed dynamically
 - Added `dob date` column to `members` table
-- Created `member_age(dob date)` SQL function â computes current age from DOB in any query
+- Created `member_age(dob date)` SQL function Ã¢ÂÂ computes current age from DOB in any query
 - Onboarding EF v57 now stores `dob` from form submission; removed static `age` write
 - Age in TDEE calculation is now always accurate and updates automatically on birthdays without cron jobs
 - Backfilled `age` integer for all 11 existing members manually
 - Set Dean's DOB: 1991-02-06
 
-### New: All onboarding questionnaire fields now persisted (onboarding EF v56 â v57)
+### New: All onboarding questionnaire fields now persisted (onboarding EF v56 Ã¢ÂÂ v57)
 DB migration added 7 new columns to `members`:
-- `training_goals` text â comma-separated training goals array
-- `barriers` text â barriers to exercise
-- `sleep_hours_range` text â sleep duration choice (e.g. "7-8 hours")
-- `sleep_help` text â sleep help preferences
-- `social_help` text â social help preferences
-- `nutrition_guidance` text â guidance level preference
-- `location` text â member city/area
+- `training_goals` text Ã¢ÂÂ comma-separated training goals array
+- `barriers` text Ã¢ÂÂ barriers to exercise
+- `sleep_hours_range` text Ã¢ÂÂ sleep duration choice (e.g. "7-8 hours")
+- `sleep_help` text Ã¢ÂÂ sleep help preferences
+- `social_help` text Ã¢ÂÂ social help preferences
+- `nutrition_guidance` text Ã¢ÂÂ guidance level preference
+- `location` text Ã¢ÂÂ member city/area
 
 welcome.html payload updated to include 3 previously missing fields:
 - `sleepHours`, `bedtime`, `heightUnit`
@@ -815,7 +846,7 @@ Previously fixed in v55/v56: `age`, `goal_focus`, `tdee_maintenance`, `deficit_p
 - v57: Replaced static age write with dob date storage; computeAge() function added to EF
 
 ### SW cache
-- Bumped through `j` â `r` during this session. Current: `vyve-cache-v2026-04-11r`
+- Bumped through `j` Ã¢ÂÂ `r` during this session. Current: `vyve-cache-v2026-04-11r`
 
 ---
 
@@ -825,20 +856,20 @@ Previously fixed in v55/v56: `age`, `goal_focus`, `tdee_maintenance`, `deficit_p
 `leaderboard.html` had `getJWT()` referencing `window._supabase` which doesn't exist. Auth.js exposes the Supabase client as `window.vyveSupabase`. The JWT call silently failed (caught by try/catch returning null), so the leaderboard edge function received no valid authentication and couldn't identify the caller for ranking.
 
 ### Fix
-- `leaderboard.html` â changed `window._supabase` to `window.vyveSupabase` in `getJWT()`
-- `sw.js` â cache bumped to `vyve-cache-v2026-04-11i`
+- `leaderboard.html` Ã¢ÂÂ changed `window._supabase` to `window.vyveSupabase` in `getJWT()`
+- `sw.js` Ã¢ÂÂ cache bumped to `vyve-cache-v2026-04-11i`
 
 ### Rule Added
-- All portal pages must use `window.vyveSupabase` for auth â never `_supabase`, `_sb`, or other aliases. grep for non-standard Supabase client references after any auth refactor.
+- All portal pages must use `window.vyveSupabase` for auth Ã¢ÂÂ never `_supabase`, `_sb`, or other aliases. grep for non-standard Supabase client references after any auth refactor.
 
 ---
 
-## 11 April 2026 â Platform Monitoring System
+## 11 April 2026 Ã¢ÂÂ Platform Monitoring System
 
 ### Built
-- **`platform_alerts` table** â central alert storage (severity, type, source, member, dedup indexes, RLS service-role only)
-- **`platform-alert` Edge Function v1** â receives alerts, deduplicates (same type + member within 1hr), sends Brevo email to Dean + Lewis, sends VAPID push to subscribed devices
-- **Client-side Platform Monitor** (added to `auth.js`) â catches:
+- **`platform_alerts` table** Ã¢ÂÂ central alert storage (severity, type, source, member, dedup indexes, RLS service-role only)
+- **`platform-alert` Edge Function v1** Ã¢ÂÂ receives alerts, deduplicates (same type + member within 1hr), sends Brevo email to Dean + Lewis, sends VAPID push to subscribed devices
+- **Client-side Platform Monitor** (added to `auth.js`) Ã¢ÂÂ catches:
   - JS runtime errors (`window.onerror`)
   - Unhandled promise rejections
   - API 401s and 500s (fetch interceptor on all Supabase calls)
@@ -846,47 +877,47 @@ Previously fixed in v55/v56: `age`, `goal_focus`, `tdee_maintenance`, `deficit_p
   - Page load timeouts (app container not visible after 15s)
   - PWA not installed after 7 days of use
   - Exposes `window.vyveAlert(type, severity, details)` for manual reporting from page code
-- **sw.js cache bumped** `v2026-04-11i` â `v2026-04-11j`
+- **sw.js cache bumped** `v2026-04-11i` Ã¢ÂÂ `v2026-04-11j`
 
 ### Commits
-- `vyve-site` 16eeb3e â auth.js monitor + sw.js cache bump
+- `vyve-site` 16eeb3e Ã¢ÂÂ auth.js monitor + sw.js cache bump
 
 ### Architecture decisions
 - Monitor added to `auth.js` (not a separate file) since it's already loaded on every portal page
-- `fetch()` interceptor pattern â wraps native fetch to monitor all Supabase API calls without modifying individual pages
+- `fetch()` interceptor pattern Ã¢ÂÂ wraps native fetch to monitor all Supabase API calls without modifying individual pages
 - Deduplication both client-side (per session) and server-side (per type+member per hour) to prevent alert fatigue
-- `platform-alert` EF is `verify_jwt: false` with CORS restriction â client-side can't send API keys, CORS is sufficient protection
+- `platform-alert` EF is `verify_jwt: false` with CORS restriction Ã¢ÂÂ client-side can't send API keys, CORS is sufficient protection
 
 ### Outstanding monitoring items
-- Health check cron EF (proactive service monitoring every 30 min) â not yet built
-- Server-side error reporting in critical EFs (member-dashboard, wellbeing-checkin, log-activity, onboarding) â not yet wired
-- Alert dashboard page (alerts.html or section on strategy.html) â not yet built
+- Health check cron EF (proactive service monitoring every 30 min) Ã¢ÂÂ not yet built
+- Server-side error reporting in critical EFs (member-dashboard, wellbeing-checkin, log-activity, onboarding) Ã¢ÂÂ not yet wired
+- Alert dashboard page (alerts.html or section on strategy.html) Ã¢ÂÂ not yet built
 
 
-## 2026-04-11 (Audit Collateral â Certificates + Engagement Pages Fixed)
+## 2026-04-11 (Audit Collateral Ã¢ÂÂ Certificates + Engagement Pages Fixed)
 
 ### Summary
-Two more portal pages were broken by the security audit's removal of the `?email=` fallback from `member-dashboard`. Both `certificates.html` and `engagement.html` were calling the edge function with NO auth header at all â no `getJWT()` function existed on either page. After the audit enforced JWT-only auth on `member-dashboard`, both pages returned 401 on every load.
+Two more portal pages were broken by the security audit's removal of the `?email=` fallback from `member-dashboard`. Both `certificates.html` and `engagement.html` were calling the edge function with NO auth header at all Ã¢ÂÂ no `getJWT()` function existed on either page. After the audit enforced JWT-only auth on `member-dashboard`, both pages returned 401 on every load.
 
 ### Root Cause
 When `member-dashboard` v29 removed the `?email=` fallback (Fix 2 in the audit), `index.html` was updated to use JWT auth. But `certificates.html` and `engagement.html` also call the same edge function and were NOT updated. They had no `getJWT()` helper and no `vyveSupabase` reference.
 
 ### Fixes Applied
-- `certificates.html` â added `getJWT()` helper, replaced unauthenticated fetch with JWT-authenticated fetch
-- `engagement.html` â same fix
-- `sw.js` â cache bumped to `vyve-cache-v2026-04-11h`
+- `certificates.html` Ã¢ÂÂ added `getJWT()` helper, replaced unauthenticated fetch with JWT-authenticated fetch
+- `engagement.html` Ã¢ÂÂ same fix
+- `sw.js` Ã¢ÂÂ cache bumped to `vyve-cache-v2026-04-11h`
 
 ### Pages Verified Safe
-- `monthly-checkin.html` â already sends JWT â
-- `nutrition.html`, `settings.html`, `log-food.html` â use `?email=` as REST API filter (PostgREST WHERE clause), not as EF auth. JWT sent correctly â
-- `running-plan.html` â uses ANON key but `running_plan_cache` has `public_read` RLS policy â
+- `monthly-checkin.html` Ã¢ÂÂ already sends JWT Ã¢ÂÂ
+- `nutrition.html`, `settings.html`, `log-food.html` Ã¢ÂÂ use `?email=` as REST API filter (PostgREST WHERE clause), not as EF auth. JWT sent correctly Ã¢ÂÂ
+- `running-plan.html` Ã¢ÂÂ uses ANON key but `running_plan_cache` has `public_read` RLS policy Ã¢ÂÂ
 
 ### Rule Added
 - When changing auth on an Edge Function, **grep all portal pages** for calls to that function. Every caller must be updated, not just the main dashboard.
 
 ---
 
-## 2026-04-11 (Critical Bug Fix â Dashboard Stats Not Rendering)
+## 2026-04-11 (Critical Bug Fix Ã¢ÂÂ Dashboard Stats Not Rendering)
 
 ### Summary
 Fixed a JavaScript scoping bug in `index.html` that prevented dashboard stats from rendering for all users. Caused by the security audit refactor on the same day.
@@ -894,24 +925,24 @@ Fixed a JavaScript scoping bug in `index.html` that prevented dashboard stats fr
 ### Root Cause
 The security audit refactor changed `email` from a script-level variable to `const email` inside `onAuthReady()`. The `loadDashboard()` function (defined at script scope) still referenced `email` on the `writeHomeCache(email, data)` call. Since `const` is block-scoped, `email` was undefined in `loadDashboard()`, causing a `ReferenceError`. The try/catch caught it and displayed "Could not connect. Please refresh." instead of rendering the dashboard data.
 
-The edge function (`member-dashboard` v34) was returning 200 with correct data â the bug was purely frontend.
+The edge function (`member-dashboard` v34) was returning 200 with correct data Ã¢ÂÂ the bug was purely frontend.
 
 ### Fix Applied
-- `index.html` â changed `writeHomeCache(email,data)` to `writeHomeCache((window.vyveCurrentUser&&window.vyveCurrentUser.email)||'',data)` (commit 3b5dedf5)
-- `sw.js` â cache bumped to `vyve-cache-v2026-04-11g` to force PWA refresh
+- `index.html` Ã¢ÂÂ changed `writeHomeCache(email,data)` to `writeHomeCache((window.vyveCurrentUser&&window.vyveCurrentUser.email)||'',data)` (commit 3b5dedf5)
+- `sw.js` Ã¢ÂÂ cache bumped to `vyve-cache-v2026-04-11g` to force PWA refresh
 
 ### Files Changed
 | File | Change |
 |------|--------|
 | `index.html` | Fixed email variable scope in `loadDashboard()` |
-| `sw.js` | Cache bumped `v2026-04-11f` â `v2026-04-11g` |
+| `sw.js` | Cache bumped `v2026-04-11f` Ã¢ÂÂ `v2026-04-11g` |
 
 ### Rule Added
-- When refactoring variable scope (var/let/const), always check all functions that reference the variable â not just the function where it's declared. `const` and `let` are block-scoped; `var` is function-scoped.
+- When refactoring variable scope (var/let/const), always check all functions that reference the variable Ã¢ÂÂ not just the function where it's declared. `const` and `let` are block-scoped; `var` is function-scoped.
 
 ---
 
-## 2026-04-11 (Security Remediation â Complete)
+## 2026-04-11 (Security Remediation Ã¢ÂÂ Complete)
 
 ### Summary
 Full security remediation executed across all 8 fixes identified in the 2026-04-11 audit. All critical and high-priority vulnerabilities resolved. Platform is now production-secure.
@@ -922,29 +953,29 @@ Full security remediation executed across all 8 fixes identified in the 2026-04-
 |----------|---------|--------|
 | `github-proxy` | v15 | Added `x-proxy-key` header auth (GITHUB_PROXY_SECRET), CORS restricted to `online.vyvehealth.co.uk` |
 | `member-dashboard` | v29 | Removed `?email=` query param fallback entirely, JWT-only auth enforced |
-| `onboarding` | v57 | CORS restricted to `https://www.vyvehealth.co.uk`, ONBOARDING_SECRET check removed (Option A â static site can't safely hold secrets) |
-| `send-email` | v16 | CORS restricted, service-role-key auth on HTTP handler, model fixed from `claude-sonnet-4-5` â `claude-sonnet-4-20250514` |
+| `onboarding` | v57 | CORS restricted to `https://www.vyvehealth.co.uk`, ONBOARDING_SECRET check removed (Option A Ã¢ÂÂ static site can't safely hold secrets) |
+| `send-email` | v16 | CORS restricted, service-role-key auth on HTTP handler, model fixed from `claude-sonnet-4-5` Ã¢ÂÂ `claude-sonnet-4-20250514` |
 | `employer-dashboard` | v26 | Unauthenticated fallback code path removed, hard fail if EMPLOYER_DASHBOARD_API_KEY not configured |
 
 ### Portal Files Updated (vyve-site)
-- `index.html` â removed `?email=` param and hardcoded fallback email `deanonbrown@hotmail.com` from member-dashboard fetch call
-- `sw.js` â cache bumped to `vyve-cache-v2026-04-11a`
+- `index.html` Ã¢ÂÂ removed `?email=` param and hardcoded fallback email `deanonbrown@hotmail.com` from member-dashboard fetch call
+- `sw.js` Ã¢ÂÂ cache bumped to `vyve-cache-v2026-04-11a`
 
 ### Marketing Site Updated (Test-Site-Finalv3)
-- `welcome.html` â removed `ONBOARDING_KEY` declaration and `x-onboarding-key` header from onboarding fetch call (Option A â placeholder was non-functional in static context)
+- `welcome.html` Ã¢ÂÂ removed `ONBOARDING_KEY` declaration and `x-onboarding-key` header from onboarding fetch call (Option A Ã¢ÂÂ placeholder was non-functional in static context)
 
 ### Database Changes
-- **Fix 6** â `session_chat` INSERT policy `with_check` confirmed correct, no change needed
-- **Fix 7** â Dropped 20 redundant per-operation RLS policies across 7 tables (`cardio`, `daily_habits`, `workouts`, `session_views`, `replay_views`, `weekly_scores`, `wellbeing_checkins`). Each now has exactly 1 `ALL` policy.
-- **Fix 8** â Dropped 2 duplicate indexes on `exercise_notes` (`exercise_notes_member_idx`, `idx_exercise_notes_member`). `weekly_scores_member_week_unique` retained â it's a real unique constraint.
+- **Fix 6** Ã¢ÂÂ `session_chat` INSERT policy `with_check` confirmed correct, no change needed
+- **Fix 7** Ã¢ÂÂ Dropped 20 redundant per-operation RLS policies across 7 tables (`cardio`, `daily_habits`, `workouts`, `session_views`, `replay_views`, `weekly_scores`, `wellbeing_checkins`). Each now has exactly 1 `ALL` policy.
+- **Fix 8** Ã¢ÂÂ Dropped 2 duplicate indexes on `exercise_notes` (`exercise_notes_member_idx`, `idx_exercise_notes_member`). `weekly_scores_member_week_unique` retained Ã¢ÂÂ it's a real unique constraint.
 
 ### Secrets Set in Supabase Dashboard
-- `GITHUB_PROXY_SECRET` â protects github-proxy write access
-- `ONBOARDING_SECRET` â set but unused (Option A decision)
-- `EMPLOYER_DASHBOARD_API_KEY` â required for employer dashboard access
+- `GITHUB_PROXY_SECRET` Ã¢ÂÂ protects github-proxy write access
+- `ONBOARDING_SECRET` Ã¢ÂÂ set but unused (Option A decision)
+- `EMPLOYER_DASHBOARD_API_KEY` Ã¢ÂÂ required for employer dashboard access
 
-### Architecture Decision â Option A (Onboarding Secret)
-The `ONBOARDING_SECRET` pattern was abandoned because `welcome.html` is a static GitHub Pages file â any secret embedded in it is publicly readable. CORS restriction to `https://www.vyvehealth.co.uk` is the correct and sufficient protection for a public-facing onboarding form at current scale.
+### Architecture Decision Ã¢ÂÂ Option A (Onboarding Secret)
+The `ONBOARDING_SECRET` pattern was abandoned because `welcome.html` is a static GitHub Pages file Ã¢ÂÂ any secret embedded in it is publicly readable. CORS restriction to `https://www.vyvehealth.co.uk` is the correct and sufficient protection for a public-facing onboarding form at current scale.
 
 
 ---
@@ -955,33 +986,33 @@ The `ONBOARDING_SECRET` pattern was abandoned because `welcome.html` is a static
 Full system audit completed across all layers: architecture, Supabase, Edge Functions, frontend, security, performance. 5 critical vulnerabilities identified, remediation plan created, backlog updated.
 
 ### Critical Findings
-- **github-proxy** â zero authentication, allows unauthenticated read/write to private repo (FIX 1)
-- **member-dashboard** â `?email=` fallback exposes member data without JWT (FIX 2)
-- **onboarding** â CORS `*`, no payment verification, creates auth users from public internet (FIX 3)
-- **send-email** â open email relay from `team@vyvehealth.co.uk` (FIX 4)
-- **employer-dashboard** â API key secret not set, unauthenticated fallback active (FIX 5)
+- **github-proxy** Ã¢ÂÂ zero authentication, allows unauthenticated read/write to private repo (FIX 1)
+- **member-dashboard** Ã¢ÂÂ `?email=` fallback exposes member data without JWT (FIX 2)
+- **onboarding** Ã¢ÂÂ CORS `*`, no payment verification, creates auth users from public internet (FIX 3)
+- **send-email** Ã¢ÂÂ open email relay from `team@vyvehealth.co.uk` (FIX 4)
+- **employer-dashboard** Ã¢ÂÂ API key secret not set, unauthenticated fallback active (FIX 5)
 
 ### Additional Findings
-- `send-email` has invalid model name (`claude-sonnet-4-5`) â will cause re-engagement failures
+- `send-email` has invalid model name (`claude-sonnet-4-5`) Ã¢ÂÂ will cause re-engagement failures
 - `session_chat` INSERT policy allows impersonation (`with_check: true` instead of `auth.email() = member_email`)
 - 6 tables have duplicate RLS policies (ALL + per-operation) from previous security audit debugging
 - Duplicate indexes on `weekly_scores` and `exercise_notes`
 - `ai_decisions` INSERT policy overly permissive
 
 ### What's Good (Confirmed)
-- All 39 tables have RLS enabled â
-- Brain repo accurate against live state â
-- Onboarding v48 well-built (stress scale, FK race, decision logging) â
-- Auth.js consent gate working correctly â
-- Database indexes well-placed for current query patterns â
+- All 39 tables have RLS enabled Ã¢ÂÂ
+- Brain repo accurate against live state Ã¢ÂÂ
+- Onboarding v48 well-built (stress scale, FK race, decision logging) Ã¢ÂÂ
+- Auth.js consent gate working correctly Ã¢ÂÂ
+- Database indexes well-placed for current query patterns Ã¢ÂÂ
 
 ### Outputs
-- `VYVE_Full_System_Audit_2026-04-11.md` â complete audit report
-- `VYVE_Remediation_Plan_2026-04-11.md` â step-by-step implementation for 11 fixes
-- `tasks/backlog.md` â updated with security section at top
+- `VYVE_Full_System_Audit_2026-04-11.md` Ã¢ÂÂ complete audit report
+- `VYVE_Remediation_Plan_2026-04-11.md` Ã¢ÂÂ step-by-step implementation for 11 fixes
+- `tasks/backlog.md` Ã¢ÂÂ updated with security section at top
 
 ### Brain Updates
-- `tasks/backlog.md` updated with ð´ Security section
+- `tasks/backlog.md` updated with Ã°ÂÂÂ´ Security section
 
 ### Rules Added
 - github-proxy requires `GITHUB_PROXY_SECRET` header (after fix deployed)
@@ -994,24 +1025,24 @@ Full system audit completed across all layers: architecture, Supabase, Edge Func
 Full session: Layer 2 Web Push (VAPID) implemented end-to-end and confirmed working on iOS. Notifications redesigned from slide-up sheet to full-screen themed page.
 
 ### Completed
-- **VAPID Web Push (Layer 2)** â P-256 key pair generated, `vapid.js` created (triggers on bell tap for iOS gesture compliance), `sw.js` push + notificationclick handlers added, `habit-reminder` v4 + `streak-reminder` v4 updated with RFC 8291 AES-GCM encryption using Deno Web Crypto only. `send-test-push` v4 confirmed working on iOS.
+- **VAPID Web Push (Layer 2)** Ã¢ÂÂ P-256 key pair generated, `vapid.js` created (triggers on bell tap for iOS gesture compliance), `sw.js` push + notificationclick handlers added, `habit-reminder` v4 + `streak-reminder` v4 updated with RFC 8291 AES-GCM encryption using Deno Web Crypto only. `send-test-push` v4 confirmed working on iOS.
 - **`VAPID_PRIVATE_KEY` secret** set in Supabase by Dean.
-- **Notifications full-screen page** â replaced slide-up sheet with solid full-screen page: back arrow top left, clear-all bell top right, bottom nav bar, `var(--bg)` background (theme-aware), unread items highlighted.
+- **Notifications full-screen page** Ã¢ÂÂ replaced slide-up sheet with solid full-screen page: back arrow top left, clear-all bell top right, bottom nav bar, `var(--bg)` background (theme-aware), unread items highlighted.
 - **Daily report** run manually for Friday 10 April: 5 activities, 2 new members.
 - **sw.js cache** bumped to `vyve-cache-v2026-04-10aa`.
 
 ### Key Architecture Decisions
-- iOS push permission must be triggered from a user gesture (bell tap) â not page load
-- `esm.sh` library imports fail in Supabase Edge Functions â use Deno built-in Web Crypto only for RFC 8291 encryption
+- iOS push permission must be triggered from a user gesture (bell tap) Ã¢ÂÂ not page load
+- `esm.sh` library imports fail in Supabase Edge Functions Ã¢ÂÂ use Deno built-in Web Crypto only for RFC 8291 encryption
 - `vapid.js` loaded on `index.html` only for now; expand to other pages when Capacitor wrap is underway
 
 ### Secrets
-- `VAPID_PRIVATE_KEY` â set â
+- `VAPID_PRIVATE_KEY` Ã¢ÂÂ set Ã¢ÂÂ
 - VAPID public key: `BDbz2-0k3JcqRWKyasr3MNgEZrXhKsVvjS-otCyyV7Ya4Pi2xXOxXGETUpVoE56VorKzSNy7uyep53gOzNEMTu4`
 
 ## 2026-04-11 (Web Push encryption fix)
 
-### fix: RFC 8291 full AES-GCM encryption â habit-reminder v4, streak-reminder v4, send-test-push v4
+### fix: RFC 8291 full AES-GCM encryption Ã¢ÂÂ habit-reminder v4, streak-reminder v4, send-test-push v4
 
 Apple's push service requires fully encrypted payloads (RFC 8291). Previous versions sent unencrypted JSON which Apple rejected with status 0. Rewrote `sendPush()` and `encryptPayload()` using Deno built-in Web Crypto only (no external libraries). Confirmed working on iOS PWA.
 
@@ -1021,59 +1052,59 @@ Apple's push service requires fully encrypted payloads (RFC 8291). Previous vers
 | `habit-reminder` | v4 |
 | `streak-reminder` | v4 |
 
-## 2026-04-11 (Notifications â Layer 2 Web Push / VAPID)
+## 2026-04-11 (Notifications Ã¢ÂÂ Layer 2 Web Push / VAPID)
 
-### feat: VAPID Web Push â push handler in sw.js, vapid.js subscriber, EFs updated
+### feat: VAPID Web Push Ã¢ÂÂ push handler in sw.js, vapid.js subscriber, EFs updated
 
 **Commit:** d5937b957c63f3770bc4faa3ddbc24bb369cb904 (vyve-site)
-**sw.js cache bumped:** `vyve-cache-v2026-04-10y` â `vyve-cache-v2026-04-10z`
+**sw.js cache bumped:** `vyve-cache-v2026-04-10y` Ã¢ÂÂ `vyve-cache-v2026-04-10z`
 
 #### Portal changes
-- `vapid.js` (new) â requests push permission on auth, subscribes via `pushManager.subscribe()`, saves `{endpoint, p256dh, auth_key}` to `push_subscriptions` table. Loaded on `index.html` only.
-- `sw.js` â added `push` event listener (shows native OS notification with icon/badge) and `notificationclick` listener (focuses or opens portal). Cache bumped to `vyve-cache-v2026-04-10z`.
-- `index.html` â `<script src="/vapid.js"></script>` added before `nav.js`.
+- `vapid.js` (new) Ã¢ÂÂ requests push permission on auth, subscribes via `pushManager.subscribe()`, saves `{endpoint, p256dh, auth_key}` to `push_subscriptions` table. Loaded on `index.html` only.
+- `sw.js` Ã¢ÂÂ added `push` event listener (shows native OS notification with icon/badge) and `notificationclick` listener (focuses or opens portal). Cache bumped to `vyve-cache-v2026-04-10z`.
+- `index.html` Ã¢ÂÂ `<script src="/vapid.js"></script>` added before `nav.js`.
 
 #### Edge Functions updated
 | Function | Version | Change |
 |----------|---------|--------|
-| `habit-reminder` | v2 | After in-app write, fetches `push_subscriptions` for member â fires VAPID push if present. VAPID JWT signed with P-256 + VAPID_PRIVATE_KEY secret. |
+| `habit-reminder` | v2 | After in-app write, fetches `push_subscriptions` for member Ã¢ÂÂ fires VAPID push if present. VAPID JWT signed with P-256 + VAPID_PRIVATE_KEY secret. |
 | `streak-reminder` | v2 | Same VAPID dispatch pattern added. |
 
 #### VAPID keys
 - **Public key** (embedded in `vapid.js` and EFs): `BDbz2-0k3JcqRWKyasr3MNgEZrXhKsVvjS-otCyyV7Ya4Pi2xXOxXGETUpVoE56VorKzSNy7uyep53gOzNEMTu4`
-- **Private key** â must be set as Supabase secret: `VAPID_PRIVATE_KEY` = `nlaC3bzFXVUOGj1lq46Uu94LzDZGJh6MA0ObeaPIU74` â ï¸ **Dean: set this secret before push will work**
+- **Private key** Ã¢ÂÂ must be set as Supabase secret: `VAPID_PRIVATE_KEY` = `nlaC3bzFXVUOGj1lq46Uu94LzDZGJh6MA0ObeaPIU74` Ã¢ÂÂ Ã¯Â¸Â **Dean: set this secret before push will work**
 
 #### iOS note
 Web Push requires PWA installed to home screen on iOS (Safari 16.4+). Android Chrome works with no install required.
 
-## 2026-04-11 (Notifications system â Layer 1)
+## 2026-04-11 (Notifications system Ã¢ÂÂ Layer 1)
 
-### feat: in-app notifications â bell badge, slide-up sheet, 5 Edge Functions
+### feat: in-app notifications Ã¢ÂÂ bell badge, slide-up sheet, 5 Edge Functions
 
 **Commit:** f0f252f1c6421626a86135c77755cf42045aed9f
-**sw.js cache bumped:** `vyve-cache-v2026-04-10x` â `vyve-cache-v2026-04-10y`
+**sw.js cache bumped:** `vyve-cache-v2026-04-10x` Ã¢ÂÂ `vyve-cache-v2026-04-10y`
 
 #### Supabase
 - New table: `member_notifications` (id, member_email, type, title, body, read, created_at) + RLS (auth.email() = member_email) + lookup index
-- New table: `push_subscriptions` (id, member_email, endpoint, p256dh, auth_key) + RLS â Layer 2 scaffold, no logic yet
+- New table: `push_subscriptions` (id, member_email, endpoint, p256dh, auth_key) + RLS Ã¢ÂÂ Layer 2 scaffold, no logic yet
 
 #### Edge Functions deployed
 | Function | Version | Change |
 |----------|---------|--------|
-| `notifications` | v1 (new) | GET â unread count + list (last 50). POST mark_read (one or all). JWT-verified. |
+| `notifications` | v1 (new) | GET Ã¢ÂÂ unread count + list (last 50). POST mark_read (one or all). JWT-verified. |
 | `log-activity` | v12 | Writes streak milestone notifications (7/14/30/60/100 days) after successful insert via waitUntil(). Per-milestone dedup (fires once ever per milestone value). |
 | `wellbeing-checkin` | v26 | Writes check-in confirmation notification after submission via waitUntil(). Deduped per day. |
-| `habit-reminder` | v1 (new) | Cron 20:00 UTC daily. Finds members with no habit logged today â writes in-app notification. Layer 2 push extension point. |
-| `streak-reminder` | v1 (new) | Cron 18:00 UTC daily. Finds members with streak â¥ 7 and no activity today â writes in-app notification. Layer 2 push extension point. |
+| `habit-reminder` | v1 (new) | Cron 20:00 UTC daily. Finds members with no habit logged today Ã¢ÂÂ writes in-app notification. Layer 2 push extension point. |
+| `streak-reminder` | v1 (new) | Cron 18:00 UTC daily. Finds members with streak Ã¢ÂÂ¥ 7 and no activity today Ã¢ÂÂ writes in-app notification. Layer 2 push extension point. |
 
 #### Cron schedules registered
-- `habit-reminder-daily` â `0 20 * * *` (8pm UTC)
-- `streak-reminder-daily` â `0 18 * * *` (6pm UTC)
+- `habit-reminder-daily` Ã¢ÂÂ `0 20 * * *` (8pm UTC)
+- `streak-reminder-daily` Ã¢ÂÂ `0 18 * * *` (6pm UTC)
 
-#### Portal â index.html
+#### Portal Ã¢ÂÂ index.html
 - Bell button (`#mob-bell-btn`): added `position:relative` to CSS, replaced `href='#notifications'` with `onclick="openNotifSheet()"`
 - Badge span (`#notif-badge`): absolutely positioned on bell, `var(--accent,#e84393)` background, hidden when count = 0
-- Notification sheet: slide-up overlay, `var(--card-bg)` background, `var(--text)`/`var(--text-muted)` text â fully theme-aware light/dark
+- Notification sheet: slide-up overlay, `var(--card-bg)` background, `var(--text)`/`var(--text-muted)` text Ã¢ÂÂ fully theme-aware light/dark
 - Unread dot per item: `var(--accent)` colour, fades out on read
 - Mark-all-read fires on sheet open (non-blocking fetch)
 - Count polls on `vyveAuthReady` event + every 5 minutes
@@ -1090,70 +1121,70 @@ Web Push requires PWA installed to home screen on iOS (Safari 16.4+). Android Ch
 ### fix: content hidden under nav on 3 portal pages
 
 **Files:** `workouts.html`, `log-food.html`, `sessions.html`, `sw.js`
-`sw.js` cache bumped: `vyve-cache-v2026-04-10n` â `vyve-cache-v2026-04-10o`
+`sw.js` cache bumped: `vyve-cache-v2026-04-10n` Ã¢ÂÂ `vyve-cache-v2026-04-10o`
 
 Full audit of all 15 portal pages against nav.js injection (56px mobile header, 80px bottom nav, z-index 9999).
 
-**workouts.html** â sticky sub-view headers (`.es-header`, `.sh-header`, `.prs-header`, `.hist-header`) had `top:0`, sitting under the 56px mobile nav on scroll. Added:
+**workouts.html** Ã¢ÂÂ sticky sub-view headers (`.es-header`, `.sh-header`, `.prs-header`, `.hist-header`) had `top:0`, sitting under the 56px mobile nav on scroll. Added:
 ```css
 @media(max-width:768px){ .es-header,.sh-header,.prs-header,.hist-header{top:56px} }
 ```
 
-**log-food.html** â internal `.top-bar` (`position:sticky;top:0`) clipped under mobile nav. Added:
+**log-food.html** Ã¢ÂÂ internal `.top-bar` (`position:sticky;top:0`) clipped under mobile nav. Added:
 ```css
 @media(max-width:768px){ .top-bar{top:56px} }
 ```
 
-**sessions.html** â duplicate `.mob-page-header` CSS block (`position:sticky;top:0`) was dead code; nav.js injects the real element. Removed the block entirely.
+**sessions.html** Ã¢ÂÂ duplicate `.mob-page-header` CSS block (`position:sticky;top:0`) was dead code; nav.js injects the real element. Removed the block entirely.
 
 **Clean pages (no changes needed):** `index`, `habits`, `nutrition`, `settings`, `wellbeing-checkin`, `certificates`, `engagement`, `leaderboard`, `running-plan`, `login`, `set-password`.
 
 ---
 
-### fix(settings): habits modal â save button buried under bottom nav + no close button
+### fix(settings): habits modal Ã¢ÂÂ save button buried under bottom nav + no close button
 
 **Files:** `settings.html`, `sw.js`
-`sw.js` cache bumped: `vyve-cache-v2026-04-10o` â `vyve-cache-v2026-04-10p`
+`sw.js` cache bumped: `vyve-cache-v2026-04-10o` Ã¢ÂÂ `vyve-cache-v2026-04-10p`
 
 **Root cause:** `.modal-overlay` had `z-index:1000`; bottom nav is `z-index:9999`. Modal rendered *under* the nav.
 
-- `.modal-overlay` z-index: `1000 â 10001` (above nav) â applied to both habits and persona modals
-- `.modal-sheet` converted to `display:flex; flex-direction:column` â enables sticky footer
-- `.modal-cta` (Cancel / Save buttons) now `position:sticky; bottom:0` â always visible regardless of list length
-- Habits list wrapped in `.modal-body` (`flex:1; overflow-y:auto`) â scrollable content area
-- Added â close button to header of both habits modal and persona modal
+- `.modal-overlay` z-index: `1000 Ã¢ÂÂ 10001` (above nav) Ã¢ÂÂ applied to both habits and persona modals
+- `.modal-sheet` converted to `display:flex; flex-direction:column` Ã¢ÂÂ enables sticky footer
+- `.modal-cta` (Cancel / Save buttons) now `position:sticky; bottom:0` Ã¢ÂÂ always visible regardless of list length
+- Habits list wrapped in `.modal-body` (`flex:1; overflow-y:auto`) Ã¢ÂÂ scrollable content area
+- Added Ã¢ÂÂ close button to header of both habits modal and persona modal
 - Sheet padding moved from shorthand to `padding:20px 20px 0` with CTA handling its own bottom safe-area
 
 ---
 
-### fix(settings): persona modal closes before save + AI reasoning â clean bestFor snippets + cache-first load
+### fix(settings): persona modal closes before save + AI reasoning Ã¢ÂÂ clean bestFor snippets + cache-first load
 
 **Files:** `settings.html`, `sw.js`
-`sw.js` cache bumped: `vyve-cache-v2026-04-10p` â `vyve-cache-v2026-04-10q`
+`sw.js` cache bumped: `vyve-cache-v2026-04-10p` Ã¢ÂÂ `vyve-cache-v2026-04-10q`
 
-**Bug 1 â modal closes on tap inside sheet:**
+**Bug 1 Ã¢ÂÂ modal closes on tap inside sheet:**
 Added `onclick="event.stopPropagation()"` to `.modal-sheet` on both modals. Touch events no longer bubble up to the overlay, so only tapping the dark backdrop closes the modal.
 
-**Bug 2 â verbose AI reasoning replaced with clean "Best for" snippet:**
+**Bug 2 Ã¢ÂÂ verbose AI reasoning replaced with clean "Best for" snippet:**
 - Removed `ai_decisions` Supabase fetch from page load (one fewer round trip)
-- "Why this coach was chosen" label â "Best for"
+- "Why this coach was chosen" label Ã¢ÂÂ "Best for"
 - Box is now always visible (was `display:none` until DB returned)
 - Each persona now has a `bestFor` field in the JS `PERSONAS` object:
-  - **NOVA** â People driven by targets who want every session to count
-  - **RIVER** â Anyone managing stress, burnout, or poor sleep
-  - **SPARK** â People who struggle with consistency and need an energetic nudge
-  - **SAGE** â Members who want to understand the science behind their choices
-  - **HAVEN** â Anyone needing a safe, non-judgmental space for mental health
+  - **NOVA** Ã¢ÂÂ People driven by targets who want every session to count
+  - **RIVER** Ã¢ÂÂ Anyone managing stress, burnout, or poor sleep
+  - **SPARK** Ã¢ÂÂ People who struggle with consistency and need an energetic nudge
+  - **SAGE** Ã¢ÂÂ Members who want to understand the science behind their choices
+  - **HAVEN** Ã¢ÂÂ Anyone needing a safe, non-judgmental space for mental health
 
-**Feature â settings cache-first load:**
+**Feature Ã¢ÂÂ settings cache-first load:**
 - `populateFromCache(cache)` function fills UI instantly from `localStorage` (`vyve_settings_cache`)
 - Cache TTL: 10 minutes; keyed to user email
-- `waitForAuth` reads cache first â shows full UI immediately â Supabase refreshes in background
+- `waitForAuth` reads cache first Ã¢ÂÂ shows full UI immediately Ã¢ÂÂ Supabase refreshes in background
 - Cache written at end of `loadProfile`; updated on persona save
 
 ---
 
-## 2026-04-10 (leaderboard â live data)
+## 2026-04-10 (leaderboard Ã¢ÂÂ live data)
 
 ### feat: leaderboard wired to live Supabase data
 
@@ -1165,26 +1196,26 @@ Added `onclick="event.stopPropagation()"` to `.modal-sheet` on both modals. Touc
 - Per-member counts: all activities, habits only, workouts only, streak
 - **Streak:** consecutive days back from today where any activity of any type was logged
 - Returns: `first_name`, plus per-metric objects (`all`, `habits`, `workouts`, `streak`) each containing `your_rank`, `total_members`, `your_count`, `above` (anonymous), `below_count`, `gap`
-- All members above caller returned as anonymous â no names, no emails exposed
+- All members above caller returned as anonymous Ã¢ÂÂ no names, no emails exposed
 
-**leaderboard.html** â full rewrite
-- Removed Sage and My team scope tabs â All members only
-- All 4 metric tabs (All / Habits / Workouts / Streak) now live â switch client-side from single EF response
+**leaderboard.html** Ã¢ÂÂ full rewrite
+- Removed Sage and My team scope tabs Ã¢ÂÂ All members only
+- All 4 metric tabs (All / Habits / Workouts / Streak) now live Ã¢ÂÂ switch client-side from single EF response
 - Your position card, above board, gap nudge all rendered from live data
 - Zero hardcoded mock data remaining
 - Dynamic month label in pill (JS, not hardcoded)
 - Streak tab gap nudge uses "days" unit not "activities"
 - Loading state shown while EF responds; error state if EF fails
 
-`sw.js` cache bumped: `vyve-cache-v2026-04-10m` â `vyve-cache-v2026-04-10n`
+`sw.js` cache bumped: `vyve-cache-v2026-04-10m` Ã¢ÂÂ `vyve-cache-v2026-04-10n`
 
 ## 2026-04-10 (workouts modularisation)
 
-### refactor: workouts.html â split inline JS into 6 modules
+### refactor: workouts.html Ã¢ÂÂ split inline JS into 6 modules
 
 **Commit:** b28c2b79b6754b58bf1dda79873f94b903bae851
 
-workouts.html was 2,117 lines / 131KB with a single 1,575-line inline `<script>` block. Every future edit had the large-file deployment problem (>10KB Composio inline limit). Split into named `<script src="...">` files â no bundler, no `type="module"`, no behaviour changes.
+workouts.html was 2,117 lines / 131KB with a single 1,575-line inline `<script>` block. Every future edit had the large-file deployment problem (>10KB Composio inline limit). Split into named `<script src="...">` files Ã¢ÂÂ no bundler, no `type="module"`, no behaviour changes.
 
 | File | Lines | Responsibility |
 |------|-------|----------------|
@@ -1195,59 +1226,59 @@ workouts.html was 2,117 lines / 131KB with a single 1,575-line inline `<script>`
 | `workouts-builder.js` | 153 | Custom workout builder, rest settings |
 | `workouts-notes-prs.js` | 235 | Notes, PRs, sessions history, MutationObserver boot |
 
-`workouts.html` reduced from 2,117 â 548 lines (CSS + HTML shell + 6 `<script src>` tags).
+`workouts.html` reduced from 2,117 Ã¢ÂÂ 548 lines (CSS + HTML shell + 6 `<script src>` tags).
 
 **Verification:** 89/89 functions present across modules. Zero missing, zero extra.
 
-**Load order:** config â programme â session â exercise-menu â builder â notes-prs â nav.js
+**Load order:** config Ã¢ÂÂ programme Ã¢ÂÂ session Ã¢ÂÂ exercise-menu Ã¢ÂÂ builder Ã¢ÂÂ notes-prs Ã¢ÂÂ nav.js
 
-`sw.js` cache bumped: `vyve-cache-v2026-04-10l` â `vyve-cache-v2026-04-10m`
+`sw.js` cache bumped: `vyve-cache-v2026-04-10l` Ã¢ÂÂ `vyve-cache-v2026-04-10m`
 
-## 2026-04-10 (settings page â persona selector, habit manager, goals, units, ai_decisions)
+## 2026-04-10 (settings page Ã¢ÂÂ persona selector, habit manager, goals, units, ai_decisions)
 
 ### New features deployed
 
-**settings.html** â major update with 4 new sections:
+**settings.html** Ã¢ÂÂ major update with 4 new sections:
 
-1. **AI Coach section** â shows current persona name + description. Displays why the coach was chosen, pulled from new `ai_decisions` table (falls back to `members.persona_reason`). "Change coach" bottom sheet shows all 5 personas with descriptions. HAVEN shown as coming soon. Change takes effect immediately, writes to `persona_switches` + `ai_decisions` with `triggered_by: 'self'`.
+1. **AI Coach section** Ã¢ÂÂ shows current persona name + description. Displays why the coach was chosen, pulled from new `ai_decisions` table (falls back to `members.persona_reason`). "Change coach" bottom sheet shows all 5 personas with descriptions. HAVEN shown as coming soon. Change takes effect immediately, writes to `persona_switches` + `ai_decisions` with `triggered_by: 'self'`.
 
-2. **Daily Habits section** â shows current habits as tags. "Manage habits" bottom sheet shows all 30 habits from `habit_library` grouped by pot (Sleep, Movement, Nutrition, Mindfulness, Social). Max 10 selectable. Saves to `member_habits` with `assigned_by: 'self'`. Logs to `ai_decisions`.
+2. **Daily Habits section** Ã¢ÂÂ shows current habits as tags. "Manage habits" bottom sheet shows all 30 habits from `habit_library` grouped by pot (Sleep, Movement, Nutrition, Mindfulness, Social). Max 10 selectable. Saves to `member_habits` with `assigned_by: 'self'`. Logs to `ai_decisions`.
 
-3. **Your Goals section** â 8-button grid (Lose weight, Build muscle, Improve fitness, Reduce stress, Better sleep, Build consistency, More energy, General health). Saves immediately to `members.specific_goal`. Logs to `ai_decisions`.
+3. **Your Goals section** Ã¢ÂÂ 8-button grid (Lose weight, Build muscle, Improve fitness, Reduce stress, Better sleep, Build consistency, More energy, General health). Saves immediately to `members.specific_goal`. Logs to `ai_decisions`.
 
-4. **Units section** â weight (kg/lbs/stone) and height (cm/ft) toggles. Saves to new `members.weight_unit` and `members.height_unit` columns.
+4. **Units section** Ã¢ÂÂ weight (kg/lbs/stone) and height (cm/ft) toggles. Saves to new `members.weight_unit` and `members.height_unit` columns.
 
 ### New infrastructure
 
-- **`ai_decisions` table** â created with RLS. Columns: `id`, `member_email`, `decision_type` (persona_assigned/habit_assigned/goal_updated/persona_changed), `decision_value`, `reasoning`, `triggered_by`, `created_at`. Members can read their own rows. Service role inserts.
+- **`ai_decisions` table** Ã¢ÂÂ created with RLS. Columns: `id`, `member_email`, `decision_type` (persona_assigned/habit_assigned/goal_updated/persona_changed), `decision_value`, `reasoning`, `triggered_by`, `created_at`. Members can read their own rows. Service role inserts.
 
-- **`members.weight_unit` + `members.height_unit`** â new columns, default 'kg' and 'cm'.
+- **`members.weight_unit` + `members.height_unit`** Ã¢ÂÂ new columns, default 'kg' and 'cm'.
 
 ### onboarding v48 (EF version 51)
 
-- `selectPersona()` now calls Claude to generate a specific, member-facing reasoning paragraph for every assignment â hard-rule or AI path. Format: "Based on your onboarding responses: [specific signals]. [Coach] is [reason]."
-- `selectHabits()` now returns both `ids` and `reasoning` â Claude explains which profile signals drove the habit selection.
+- `selectPersona()` now calls Claude to generate a specific, member-facing reasoning paragraph for every assignment Ã¢ÂÂ hard-rule or AI path. Format: "Based on your onboarding responses: [specific signals]. [Coach] is [reason]."
+- `selectHabits()` now returns both `ids` and `reasoning` Ã¢ÂÂ Claude explains which profile signals drove the habit selection.
 - New `writeAiDecisions()` function writes two rows to `ai_decisions` at onboarding: one for persona, one for habits.
 - Response now includes `ai_reasoning` and `habit_reasoning` fields.
 
 ### sw.js
-Cache bumped: `vyve-cache-v2026-04-10k` â `vyve-cache-v2026-04-10l`
+Cache bumped: `vyve-cache-v2026-04-10k` Ã¢ÂÂ `vyve-cache-v2026-04-10l`
 
-## 2026-04-10 (onboarding â major bug fixes & persona logic corrections)
+## 2026-04-10 (onboarding Ã¢ÂÂ major bug fixes & persona logic corrections)
 
 ### Root causes fixed
 Three separate bugs were silently preventing habit assignment for every new member since v44:
-1. **FK race condition** â `writeHabits` fired in parallel with `writeMember`. When `writeHabits` beat the DB, the FK on `member_email` failed. Fixed in v44: two-stage Promise.all, `writeMember` commits first.
-2. **`assigned_by: 'onboarding_ai'`** â check constraint on `member_habits` only allows `'onboarding'`, `'ai'`, `'theme_update'`, `'self'`. Fixed in v46: changed to `'onboarding'`.
-3. **Stress scale inverted** â onboarding questionnaire labels stress 1=very stressed, 10=very calm. All code treated high stress as negative. Fixed in v45: flipped all hard rules, added scale reminders to all AI prompts.
+1. **FK race condition** Ã¢ÂÂ `writeHabits` fired in parallel with `writeMember`. When `writeHabits` beat the DB, the FK on `member_email` failed. Fixed in v44: two-stage Promise.all, `writeMember` commits first.
+2. **`assigned_by: 'onboarding_ai'`** Ã¢ÂÂ check constraint on `member_habits` only allows `'onboarding'`, `'ai'`, `'theme_update'`, `'self'`. Fixed in v46: changed to `'onboarding'`.
+3. **Stress scale inverted** Ã¢ÂÂ onboarding questionnaire labels stress 1=very stressed, 10=very calm. All code treated high stress as negative. Fixed in v45: flipped all hard rules, added scale reminders to all AI prompts.
 
-### onboarding v47 (deployed as EF version 50) â cumulative fixes
-- **v44**: Two-stage Promise.all â `writeMember` then FK-safe writes
-- **v45**: Corrected stress scale throughout â RIVER hard rule: `stress <= 3` (not `>= 7`), NOVA: `stress >= 7` (not `<= 4`)
-- **v46**: `assigned_by: 'onboarding'` (was `'onboarding_ai'` â check constraint violation)
+### onboarding v47 (deployed as EF version 50) Ã¢ÂÂ cumulative fixes
+- **v44**: Two-stage Promise.all Ã¢ÂÂ `writeMember` then FK-safe writes
+- **v45**: Corrected stress scale throughout Ã¢ÂÂ RIVER hard rule: `stress <= 3` (not `>= 7`), NOVA: `stress >= 7` (not `<= 4`)
+- **v46**: `assigned_by: 'onboarding'` (was `'onboarding_ai'` Ã¢ÂÂ check constraint violation)
 - **v47**: NOVA hard rule now requires 1-2 goals max where performance is dominant. Members with 3+ mixed goals go to AI path.
 
-### welcome.html â fix: silent failure with fake results
+### welcome.html Ã¢ÂÂ fix: silent failure with fake results
 - Previously: any EF failure (timeout, error) showed fake hardcoded RIVER results. Member thought they'd onboarded. Nothing wrote to DB.
 - Now: 90s `AbortController` timeout. At 30s loading text updates. On failure: error screen with retry button. Stored form data allows retry without re-filling questionnaire. Up to 3 retries.
 - Commit: `9fb62ad5890b` in Test-Site-Finalv3
@@ -1259,7 +1290,7 @@ Three separate bugs were silently preventing habit assignment for every new memb
 | Alan Bird | RIVER | SPARK | stress 10=very calm but energy 5, mixed lifestyle goals |
 | Dean Brown | NOVA | SPARK | stress 8=calm but 5 mixed goals, 1-2 days/week, demanding work context |
 
-### Alan Bird â habits corrected
+### Alan Bird Ã¢ÂÂ habits corrected
 Previous habits were based on wrong assumption he was stressed. Replaced stress-relief set with goal-aligned set:
 - Removed: Consistent bedtime, Pre-sleep wind-down routine, Daily breathing exercise
 - Added: Drink 2 litres of water, Eat breakfast, Move every hour
@@ -1271,243 +1302,243 @@ Previous habits were based on wrong assumption he was stressed. Replaced stress-
 - Kelly Bestford, Lewis Vines, Callum Budzinski: habits manually inserted
 
 ### daily_habits table fixes
-- Unique constraint added: `(member_email, activity_date, habit_id)` â one row per habit per day
-- Cap trigger raised from 1/day to 10/day â allows all 5 habits to log
+- Unique constraint added: `(member_email, activity_date, habit_id)` Ã¢ÂÂ one row per habit per day
+- Cap trigger raised from 1/day to 10/day Ã¢ÂÂ allows all 5 habits to log
 - On conflict key in portal updated to `member_email,activity_date,habit_id`
 
 ### habits.html fixes
-- Bottom bar: removed `position:fixed` â now flows inline below habits list (was overlapping)
+- Bottom bar: removed `position:fixed` Ã¢ÂÂ now flows inline below habits list (was overlapping)
 - Auth: upgraded from polling `waitForAuth` to event-driven `vyveAuthReady`
 - sw.js bumped to `vyve-cache-v2026-04-10k`
 
 
 ---
 
-## 2026-04-10 (performance â caching & loading)
+## 2026-04-10 (performance Ã¢ÂÂ caching & loading)
 
-### sw.js â perf: cache-first portal HTML + Supabase thumbnail caching
-- Added `PORTAL_PAGES` array â all portal HTML pages now served cache-first with background revalidation (previously network-first, required round-trip on every visit)
-- Added stale-while-revalidate handler for Supabase storage URLs (`/storage/`) â thumbnails cached in `RUNTIME_CACHE` after first load
-- Cache version bumped: `vyve-cache-v2026-04-10h` â `vyve-cache-v2026-04-10i`
+### sw.js Ã¢ÂÂ perf: cache-first portal HTML + Supabase thumbnail caching
+- Added `PORTAL_PAGES` array Ã¢ÂÂ all portal HTML pages now served cache-first with background revalidation (previously network-first, required round-trip on every visit)
+- Added stale-while-revalidate handler for Supabase storage URLs (`/storage/`) Ã¢ÂÂ thumbnails cached in `RUNTIME_CACHE` after first load
+- Cache version bumped: `vyve-cache-v2026-04-10h` Ã¢ÂÂ `vyve-cache-v2026-04-10i`
 
-### auth.js â perf: dispatch vyveAuthReady event
+### auth.js Ã¢ÂÂ perf: dispatch vyveAuthReady event
 - Added `window.dispatchEvent(new CustomEvent('vyveAuthReady'))` immediately after `vyveRevealApp()` is called
 - Pages listening for this event now proceed instantly when auth resolves rather than waiting for a polling tick
 
-### index.html â perf: replace waitForAuth polling with event-driven pattern
+### index.html Ã¢ÂÂ perf: replace waitForAuth polling with event-driven pattern
 - `waitForAuth(attempts)` polling loop (100ms interval, 20 retries max) replaced with `waitForAuth()` event listener
-- Listens for `vyveAuthReady` custom event â fires immediately when auth.js resolves the session
+- Listens for `vyveAuthReady` custom event Ã¢ÂÂ fires immediately when auth.js resolves the session
 - Falls back to `setTimeout(3000)` hard fallback if event never fires
 - Eliminates up to 100ms artificial lag per poll cycle on cold loads
 
-### workouts.html â perf: exercise library localStorage cache + lazy thumbnails
+### workouts.html Ã¢ÂÂ perf: exercise library localStorage cache + lazy thumbnails
 - `loadAllExercises()` now checks `localStorage` key `vyve_exercise_library_v1` before hitting Supabase
 - Cache TTL: 24 hours. Cache hit = zero network request, instant exercise search
 - On cache miss/expiry: fetches from Supabase and writes to cache for next visit
 - Thumbnail `<img>` tags in exercise search list now use `data-src` + `class="es-lazy-thumb"` instead of eager `src`
-- `renderExerciseList()` now attaches an `IntersectionObserver` after rendering â images only load when scrolled into view (`rootMargin: 100px` pre-load buffer)
+- `renderExerciseList()` now attaches an `IntersectionObserver` after rendering Ã¢ÂÂ images only load when scrolled into view (`rootMargin: 100px` pre-load buffer)
 - Fallback for browsers without IntersectionObserver: all images load immediately (same as before)
 
 # VYVE Brain Changelog
 
-## 2026-04-10 (onboarding QA â welcome.html)
+## 2026-04-10 (onboarding QA Ã¢ÂÂ welcome.html)
 
-### welcome.html â fix: text contrast across full questionnaire (light mode)
+### welcome.html Ã¢ÂÂ fix: text contrast across full questionnaire (light mode)
 - `--text-2` bumped from `#3A5A5A` to `#1E3C3C` in light theme block
 - `--text-3` bumped from `#7A9A9A` to `#4A7272` in light theme block
 - Affects all question labels, hints, slider end labels, and sub-text. welcome.html has its own inline CSS block so change is isolated to onboarding only.
 
-### welcome.html â feat: city/town searchable dropdown for location field
+### welcome.html Ã¢ÂÂ feat: city/town searchable dropdown for location field
 - Replaced plain text input with type-ahead dropdown backed by static JS array of ~100 UK cities and towns
 - Filters on 2+ characters, shows max 8 results, click/tap to select, closes on blur
-- Hint updated: "Start typing your city or town â if it doesn't appear, just type it in and continue"
-- No external API dependency â fully self-contained
+- Hint updated: "Start typing your city or town Ã¢ÂÂ if it doesn't appear, just type it in and continue"
+- No external API dependency Ã¢ÂÂ fully self-contained
 
-### welcome.html â fix: email sender address in results screen
+### welcome.html Ã¢ÂÂ fix: email sender address in results screen
 - "What happens next" paragraph now explicitly names `team@vyvehealth.co.uk` as the sender
 - Copy: "Keep an eye out for a welcome email from team@vyvehealth.co.uk"
 
-### welcome.html â feat: persona card â coach explanation line
+### welcome.html Ã¢ÂÂ feat: persona card Ã¢ÂÂ coach explanation line
 - Static line added below AI-generated persona reason on results screen
 - Copy: "Your coach shapes every recommendation, check-in, and message you receive. You can change them anytime in your settings."
 
-### welcome.html â feat: "What's inside VYVE" feature showcase on results screen
+### welcome.html Ã¢ÂÂ feat: "What's inside VYVE" feature showcase on results screen
 - New section below "What happens next" card
 - 7 features: 8-week programme, AI coaching, daily habits, live sessions, nutrition, weekly check-ins, certificates/leaderboards/charity
 - Each item has bold title + 1-sentence description emphasising personalisation and ability to update anytime
-- No emojis (Lewis preference â applied globally to welcome.html)
+- No emojis (Lewis preference Ã¢ÂÂ applied globally to welcome.html)
 
-### results-preview.html â added to Test-Site-Finalv3
+### results-preview.html Ã¢ÂÂ added to Test-Site-Finalv3
 - Standalone QA preview page at www.vyvehealth.co.uk/results-preview.html
 - Shows mocked results screen with realistic data for review
-- Temporary file â delete once QA sign-off complete
+- Temporary file Ã¢ÂÂ delete once QA sign-off complete
 
-## 2026-04-10 (evening â bug fixes session)
+## 2026-04-10 (evening Ã¢ÂÂ bug fixes session)
 
-### workouts.html â fix: reorder wipes in-progress sets
+### workouts.html Ã¢ÂÂ fix: reorder wipes in-progress sets
 - `saveReorder()` now snapshots kg/reps/ticked/bw/notes per exercise name before calling `renderSessionBody()`, then restores after. Mid-session reorder no longer wipes workout progress.
 - commit b93fd175
 
-### theme.css + auth.js â feat: portrait orientation lock
-- CSS `#vyve-rotate-overlay` shown via `@media (orientation: landscape) and (max-height: 430px)` â phone-only, not tablets.
-- `vyvePortraitLock()` IIFE in auth.js: calls `screen.orientation.lock('portrait')` (Android) and injects the overlay div into every portal page automatically â no per-page changes needed.
+### theme.css + auth.js Ã¢ÂÂ feat: portrait orientation lock
+- CSS `#vyve-rotate-overlay` shown via `@media (orientation: landscape) and (max-height: 430px)` Ã¢ÂÂ phone-only, not tablets.
+- `vyvePortraitLock()` IIFE in auth.js: calls `screen.orientation.lock('portrait')` (Android) and injects the overlay div into every portal page automatically Ã¢ÂÂ no per-page changes needed.
 - iOS Safari ignores the API; CSS overlay handles iOS.
 - Decision: overlay kept post-Capacitor as safety net for browser access. Suppress during active workout session is a known backlog item.
 - sw.js bumped to vyve-cache-v2026-04-10f
 
-### workouts.html â fix: PR/history scroll lock + content hidden under nav
+### workouts.html Ã¢ÂÂ fix: PR/history scroll lock + content hidden under nav
 - `openPrsView()` / `openSessionsHistory()` now clear `body.overflow` so fixed overlay scrolls on iOS (body:hidden was blocking touch events).
 - `closePrsView()` / `closeSessionsHistory()` re-apply body lock if session still active.
 - Both views reset `scrollTop = 0` on open.
-- `.prs-body` and `.sh-body` bottom padding now `calc(80px + env(safe-area-inset-bottom,0px))` â last items no longer hidden under nav.
+- `.prs-body` and `.sh-body` bottom padding now `calc(80px + env(safe-area-inset-bottom,0px))` Ã¢ÂÂ last items no longer hidden under nav.
 - Both fixed views get `-webkit-overflow-scrolling:touch` + `overscroll-behavior:contain`.
 - sw.js bumped to vyve-cache-v2026-04-10g
 
-### workouts.html â feat: persist active session across navigation
+### workouts.html Ã¢ÂÂ feat: persist active session across navigation
 - Navigating away (e.g. Sessions tab) and back no longer resets a workout.
 - `saveSessionState()` serialises currentSessionData, sessionExercises, sessionLog, completedSetsCount, all DOM state (kg/reps/ticked/bw/notes), and timer to `localStorage` key `vyve_active_session`.
 - Called on session start and every set tick.
-- `restoreSessionState()` called at end of `init()` â reopens session view with all progress and timer intact if saved state exists and is under 4 hours old.
+- `restoreSessionState()` called at end of `init()` Ã¢ÂÂ reopens session view with all progress and timer intact if saved state exists and is under 4 hours old.
 - Cleared on `closeSessionView()` (explicit exit) and `completeWorkout()` (done).
 - sw.js bumped to vyve-cache-v2026-04-10h
 
 
-## 2026-04-10 (evening â portrait lock)
+## 2026-04-10 (evening Ã¢ÂÂ portrait lock)
 
-### theme.css + auth.js â feat: portrait orientation lock
-- **Problem:** Portal pages rotated freely to landscape on phone rotation. VYVE is portrait-only â landscape is always accidental on a phone.
-- **CSS (theme.css):** Added `#vyve-rotate-overlay` â a fixed full-screen overlay with a rotating phone icon and message. Shown via `@media (orientation: landscape) and (max-height: 430px)` so it only triggers on phone-sized landscape, not tablets. Overlay sits above `#app` but does not unmount it â no state loss.
-- **JS (auth.js):** `vyvePortraitLock()` IIFE injected at bottom of auth.js. Calls `screen.orientation.lock('portrait')` (Android Chrome). Also injects the `#vyve-rotate-overlay` div into the DOM on every portal page at load â no per-page changes needed.
+### theme.css + auth.js Ã¢ÂÂ feat: portrait orientation lock
+- **Problem:** Portal pages rotated freely to landscape on phone rotation. VYVE is portrait-only Ã¢ÂÂ landscape is always accidental on a phone.
+- **CSS (theme.css):** Added `#vyve-rotate-overlay` Ã¢ÂÂ a fixed full-screen overlay with a rotating phone icon and message. Shown via `@media (orientation: landscape) and (max-height: 430px)` so it only triggers on phone-sized landscape, not tablets. Overlay sits above `#app` but does not unmount it Ã¢ÂÂ no state loss.
+- **JS (auth.js):** `vyvePortraitLock()` IIFE injected at bottom of auth.js. Calls `screen.orientation.lock('portrait')` (Android Chrome). Also injects the `#vyve-rotate-overlay` div into the DOM on every portal page at load Ã¢ÂÂ no per-page changes needed.
 - iOS Safari ignores the API lock; CSS overlay handles iOS.
-- sw.js bumped vyve-cache-v2026-04-10e â vyve-cache-v2026-04-10f
+- sw.js bumped vyve-cache-v2026-04-10e Ã¢ÂÂ vyve-cache-v2026-04-10f
 
 
 ## 2026-04-10 (evening)
 
-### workouts.html â fix: reorder wipes in-progress sets
+### workouts.html Ã¢ÂÂ fix: reorder wipes in-progress sets
 - **Bug:** Opening the reorder modal mid-session and saving the new order called `renderSessionBody()`, which rebuilt the entire DOM from scratch. All ticked sets, kg/reps values, and bodyweight toggles were lost.
 - **Fix:** `saveReorder()` now captures a snapshot of all per-exercise DOM state (kg, reps, ticked, bodyweight, notes) keyed by exercise name before reordering. After `renderSessionBody()` re-renders, the snapshot is replayed back into the new DOM positions.
-- Exercise name is the stable key â this works correctly because reorder doesn't change the exercises, only their positions.
+- Exercise name is the stable key Ã¢ÂÂ this works correctly because reorder doesn't change the exercises, only their positions.
 - commit b93fd175
 
-### sw.js â cache bump vyve-cache-v2026-04-10d â vyve-cache-v2026-04-10e
+### sw.js Ã¢ÂÂ cache bump vyve-cache-v2026-04-10d Ã¢ÂÂ vyve-cache-v2026-04-10e
 
 
 ## 2026-04-10 (late evening session)
 
-### settings.html â 3 fixes
-- `<!--email_off-->` tags stripped from `mailto:team@vyvehealth.co.uk` href â Cloudflare was injecting them literally, breaking iOS Mail â commit 737fadd
-- Privacy Policy link corrected from `/privacy` (404) to `/privacy.html` â commit c8d7d40
+### settings.html Ã¢ÂÂ 3 fixes
+- `<!--email_off-->` tags stripped from `mailto:team@vyvehealth.co.uk` href Ã¢ÂÂ Cloudflare was injecting them literally, breaking iOS Mail Ã¢ÂÂ commit 737fadd
+- Privacy Policy link corrected from `/privacy` (404) to `/privacy.html` Ã¢ÂÂ commit c8d7d40
 - Both fixes atomic, settings.html is clean
 
-### how-to-videos.html + how-to-pdfs.html â replaced with placeholders
+### how-to-videos.html + how-to-pdfs.html Ã¢ÂÂ replaced with placeholders
 - Both pages had custom nav markup, no theme.js, no nav.js, no auth gate, no SW registration
 - Replaced entirely with clean placeholder pages (coming soon)
 - Each now has: theme.js, nav.js, auth gate IIFE, SW registration, proper `data-theme="dark"` default
-- Back button and standard VYVE nav now work on both pages â commit 32461c3
-- sw.js cache bumped vyve-cache-v2026-04-10c â vyve-cache-v2026-04-10d
+- Back button and standard VYVE nav now work on both pages Ã¢ÂÂ commit 32461c3
+- sw.js cache bumped vyve-cache-v2026-04-10c Ã¢ÂÂ vyve-cache-v2026-04-10d
 
-### running-plan.html â max_tokens fix
+### running-plan.html Ã¢ÂÂ max_tokens fix
 - `max_tokens` was hard-coded to `4096` when Haiku was switched in on 6 April (commit 758b572)
-- Original code had `getMaxTokens(goal)` â marathon was 10,000, half was 7,000
+- Original code had `getMaxTokens(goal)` Ã¢ÂÂ marathon was 10,000, half was 7,000
 - 20-week marathon plan (Stuart Watts) was being truncated mid-JSON every time
-- Fixed: `max_tokens` raised to `16000` â covers all plan combinations with headroom
-- Bonus: stripped `<!--email_off-->` Cloudflare tags from monthly limit mailto link â commit cb729bb
+- Fixed: `max_tokens` raised to `16000` Ã¢ÂÂ covers all plan combinations with headroom
+- Bonus: stripped `<!--email_off-->` Cloudflare tags from monthly limit mailto link Ã¢ÂÂ commit cb729bb
 
 ## 2026-04-10 (late evening session)
 
-### generate-workout-plan â Full Restoration + Video Fix
+### generate-workout-plan Ã¢ÂÂ Full Restoration + Video Fix
 - Discovered v4 had two unintentional regressions vs original onboarding v42:
   1. `programme_name` was hardcoded template instead of AI-generated
   2. `programme_rationale` was hardcoded template instead of AI-generated
 - Root cause of Stuart's missing videos/thumbnails identified:
   - AI-generated plans invent exercise names (e.g. "Barbell Bench Press")
-  - `workout_plans` library uses different format (e.g. "Bench Press â Barbell")
-  - `workouts.html` uses strict equality match (`===`) â no fuzzy matching
+  - `workout_plans` library uses different format (e.g. "Bench Press Ã¢ÂÂ Barbell")
+  - `workouts.html` uses strict equality match (`===`) Ã¢ÂÂ no fuzzy matching
   - This was always the case for AI plans; videos only worked when Stuart was on the static fallback library
 - Deployed `generate-workout-plan` v5 with full restoration:
-  - Step 1: `generateProgrammeOverview()` restored â AI generates personalised programme name and rationale (matches original onboarding v42 behaviour)
-  - Step 2: Exercise library fetched from `workout_plans` table at runtime and injected into prompt â AI MUST use only approved exercise names
+  - Step 1: `generateProgrammeOverview()` restored Ã¢ÂÂ AI generates personalised programme name and rationale (matches original onboarding v42 behaviour)
+  - Step 2: Exercise library fetched from `workout_plans` table at runtime and injected into prompt Ã¢ÂÂ AI MUST use only approved exercise names
   - Step 3: After plan generation, each exercise enriched with `video_url` + `thumbnail_url` via direct lookup against library
   - Plan generation still uses two parallel calls (weeks 1-4, weeks 5-8) to avoid 16k token limit
-- Stuart's plan regenerated with v5: "PPL Holiday Shred" â 8 weeks, 32 sessions, 212/212 exercises matched to videos
-- `generate-workout-plan` is now the canonical plan generation path â onboarding v43 calls it as fire-and-forget
+- Stuart's plan regenerated with v5: "PPL Holiday Shred" Ã¢ÂÂ 8 weeks, 32 sessions, 212/212 exercises matched to videos
+- `generate-workout-plan` is now the canonical plan generation path Ã¢ÂÂ onboarding v43 calls it as fire-and-forget
 
 ### Known Architecture Note
-- `workouts.html` `getVideoUrl()` / `getThumbnailUrl()` use strict name equality â this is fine now that the EF constrains AI to library names
+- `workouts.html` `getVideoUrl()` / `getThumbnailUrl()` use strict name equality Ã¢ÂÂ this is fine now that the EF constrains AI to library names
 - If any future plan has unmatched exercises (v5 logs warnings), the issue will be in the prompt constraint, not the frontend
 
 
 ## 2026-04-10 (evening session)
 
-### Password Reset Flow â Full Fix
+### Password Reset Flow Ã¢ÂÂ Full Fix
 - Root cause: `login.html` had `redirectTo` pointing to `login.html` instead of `set-password.html`
 - Fixed `redirectTo` in `login.html` to `https://online.vyvehealth.co.uk/set-password.html`
 - Fixed `set-password.html` to call `signOut(scope: global)` after password update, then redirect to `login.html?reset=success`
 - Added success banner on `login.html` when `?reset=success` param present
-- Added "Link already used" card to `set-password.html` with inline resend form â user can request new link without navigating away
+- Added "Link already used" card to `set-password.html` with inline resend form Ã¢ÂÂ user can request new link without navigating away
 - Increased invalid link timeout from 3s to 5s for slow mobile connections
-- Supabase SMTP configured to send via Brevo (`smtp-relay.brevo.com:587`) â emails now send from VYVE Health <team@vyvehealth.co.uk> not Supabase Auth
+- Supabase SMTP configured to send via Brevo (`smtp-relay.brevo.com:587`) Ã¢ÂÂ emails now send from VYVE Health <team@vyvehealth.co.uk> not Supabase Auth
 - Brevo domain `vyvehealth.co.uk` verified (DKIM + DMARC green) via GoDaddy DNS
 - Reset email template updated to table-based HTML button (renders correctly in all email clients)
-- cache bumped: `vyve-cache-v2026-04-10a` â `b` â `c`
+- cache bumped: `vyve-cache-v2026-04-10a` Ã¢ÂÂ `b` Ã¢ÂÂ `c`
 
-### Workouts.html â Nav Overlap Fixes
+### Workouts.html Ã¢ÂÂ Nav Overlap Fixes
 - Rest timer sheet and reorder exercises sheet were rendering behind the bottom nav bar
 - Fixed `ex-menu-sheet` padding-bottom: `calc(72px + env(safe-area-inset-bottom))`
 - Fixed `reorder-sheet` padding-bottom: `calc(84px + env(safe-area-inset-bottom))` and max-height: `calc(80vh - 65px)`
 - Fixed `reorder-save-btn` bottom margin
 - cache bumped: `vyve-cache-v2026-04-10c`
 
-### Workout Plan Generation â Architecture Fix
+### Workout Plan Generation Ã¢ÂÂ Architecture Fix
 - Root cause: `waitUntil` in onboarding EF has a hard timeout; advanced PPL plans (~14k tokens output) were silently failing
-- Stuart Watts (`stuwatts09@gmail.com`) had no plan in `workout_plan_cache` â was seeing static fallback library
+- Stuart Watts (`stuwatts09@gmail.com`) had no plan in `workout_plan_cache` Ã¢ÂÂ was seeing static fallback library
 - Deployed new `generate-workout-plan` Edge Function (v4) as standalone dedicated EF
   - Generates weeks 1-4 and weeks 5-8 in two parallel API calls, stitches together
-  - `max_tokens: 16000` per call â handles largest possible plans
+  - `max_tokens: 16000` per call Ã¢ÂÂ handles largest possible plans
   - `stop_reason` guard: fails loudly if output truncated, never writes corrupt data
 - Updated `onboarding` EF to v43: replaces inline `waitUntil(generateWorkoutPlan)` with fire-and-forget fetch to `generate-workout-plan` EF
 - Stuart's plan generated manually and written to `workout_plan_cache`: 8 weeks, 32 sessions, 36,521 chars
-- Plan join verified â week 4â5 transition seamless (same exercises, correct progressive overload step)
+- Plan join verified Ã¢ÂÂ week 4Ã¢ÂÂ5 transition seamless (same exercises, correct progressive overload step)
 
-### Stuart Watts â Account Notes
+### Stuart Watts Ã¢ÂÂ Account Notes
 - Two accounts exist: `swatts@geoffreyrobinson.co.uk` (Feb 2026, old/legacy) and `stuwatts09@gmail.com` (10 Apr 2026, active)
-- Active account is `stuwatts09@gmail.com` â RIVER persona, 4-day PPL, Advanced, Gym
+- Active account is `stuwatts09@gmail.com` Ã¢ÂÂ RIVER persona, 4-day PPL, Advanced, Gym
 - Old account has 12 workout logs with null plan/name (logged via legacy flow)
-- All workout data safe â nothing deleted
+- All workout data safe Ã¢ÂÂ nothing deleted
 
 
 ## 2026-04-10
 
 ### External Brain System Created
-- brain/master.md â complete business + technical context
-- brain/how-to-use.md â human operator guide
-- brain/schema-snapshot.md â all 36 tables from live Supabase
-- brain/startup-prompt.md â trigger prompt for any AI session
-- brain/changelog.md â this file
+- brain/master.md Ã¢ÂÂ complete business + technical context
+- brain/how-to-use.md Ã¢ÂÂ human operator guide
+- brain/schema-snapshot.md Ã¢ÂÂ all 36 tables from live Supabase
+- brain/startup-prompt.md Ã¢ÂÂ trigger prompt for any AI session
+- brain/changelog.md Ã¢ÂÂ this file
 
 ### Playbooks Created
-- playbooks/brain-sync.md â session/daily/recovery sync system
-- playbooks/debug.md â diagnose and fix issues
-- playbooks/build.md â implement new features
-- playbooks/research.md â deep understanding before action
-- playbooks/review.md â code quality review
-- playbooks/optimise.md â performance and readability
-- playbooks/refactor.md â structural improvements
-- playbooks/repo-audit.md â comprehensive system audit
-- playbooks/execution.md â execute predefined plans
-- playbooks/architect.md â system architecture design
-- playbooks/github-operator.md â repo read/write operations
-- playbooks/feature-build.md â end-to-end feature delivery
-- playbooks/bug-fix.md â bug diagnosis and fix
+- playbooks/brain-sync.md Ã¢ÂÂ session/daily/recovery sync system
+- playbooks/debug.md Ã¢ÂÂ diagnose and fix issues
+- playbooks/build.md Ã¢ÂÂ implement new features
+- playbooks/research.md Ã¢ÂÂ deep understanding before action
+- playbooks/review.md Ã¢ÂÂ code quality review
+- playbooks/optimise.md Ã¢ÂÂ performance and readability
+- playbooks/refactor.md Ã¢ÂÂ structural improvements
+- playbooks/repo-audit.md Ã¢ÂÂ comprehensive system audit
+- playbooks/execution.md Ã¢ÂÂ execute predefined plans
+- playbooks/architect.md Ã¢ÂÂ system architecture design
+- playbooks/github-operator.md Ã¢ÂÂ repo read/write operations
+- playbooks/feature-build.md Ã¢ÂÂ end-to-end feature delivery
+- playbooks/bug-fix.md Ã¢ÂÂ bug diagnosis and fix
 
 ### Tasks
-- tasks/backlog.md â prioritised work queue
-- tasks/task-template.md â reusable task card
+- tasks/backlog.md Ã¢ÂÂ prioritised work queue
+- tasks/task-template.md Ã¢ÂÂ reusable task card
 
 ### Infrastructure
-- README.md â quick start guide
-- prompts/cold-start.md â paste into any AI to begin
+- README.md Ã¢ÂÂ quick start guide
+- prompts/cold-start.md Ã¢ÂÂ paste into any AI to begin
 
 ### Data Source
 All verified against live Supabase project ixjfklpckgxrwjlfsaaz on 10 April 2026.
@@ -1515,20 +1546,20 @@ All verified against live Supabase project ixjfklpckgxrwjlfsaaz on 10 April 2026
 ## 2026-04-10 (evening)
 
 ### Repo Hygiene
-- `VYVEHealth/VYVEBrain` set to private â contains Supabase IDs, API keys references, commercial pipeline
+- `VYVEHealth/VYVEBrain` set to private Ã¢ÂÂ contains Supabase IDs, API keys references, commercial pipeline
 - Removed duplicate `brain-sync.md` from repo root (canonical copy is `playbooks/brain-sync.md`)
 
 ### vyve-site Actions Cleanup
-- Deleted dead `.github/workflows/inject-key.yml` â legacy workflow from before `anthropic-proxy` EF existed
+- Deleted dead `.github/workflows/inject-key.yml` Ã¢ÂÂ legacy workflow from before `anthropic-proxy` EF existed
 - Verified `running-plan.html` already uses `anthropic-proxy` EF v5 (no placeholder, no key in HTML)
-- `static.yml` (GitHub Pages deploy) retained â only workflow now running on vyve-site
+- `static.yml` (GitHub Pages deploy) retained Ã¢ÂÂ only workflow now running on vyve-site
 - Commit: f557dae
 
 ## 2026-04-10 (morning/afternoon session)
 
 ### Daily Report Fixed
-- `BREVO_API_KEY` secret was missing/wrong in Supabase â renamed to correct value
-- `daily-report` v16 deployed â added full activity detail table (member name, type, specific activity, time)
+- `BREVO_API_KEY` secret was missing/wrong in Supabase Ã¢ÂÂ renamed to correct value
+- `daily-report` v16 deployed Ã¢ÂÂ added full activity detail table (member name, type, specific activity, time)
 - Report manually triggered and confirmed sending to team@vyvehealth.co.uk
 
 ### Password Reset Flow Fixed
@@ -1538,16 +1569,16 @@ All verified against live Supabase project ixjfklpckgxrwjlfsaaz on 10 April 2026
 
 ### Welcome Emails Resent
 - Alan Bird and Owen Barrett identified as missing welcome emails (onboarded while Brevo key was absent)
-- `resend-welcome` one-shot EF deployed â resent branded welcome with fresh set-password links
+- `resend-welcome` one-shot EF deployed Ã¢ÂÂ resent branded welcome with fresh set-password links
 - BCC to team@vyvehealth.co.uk confirmed working on all future onboarding emails
 
 ### Backlog Updated
 - Added: password reset email template (desktop task)
-- Added: Exercise page redesign (product idea â gym / cardio / walking plan umbrella)
+- Added: Exercise page redesign (product idea Ã¢ÂÂ gym / cardio / walking plan umbrella)
 
 ### Product Thinking
 - Discussed replacing "Workouts" nav item with "Exercise" umbrella page
 - Members choose path at onboarding: gym programme, running plan, walking/activity plan, or mix
-- Each path generates an 8-week personalised plan (Sandra use case â non-gym corporate members)
+- Each path generates an 8-week personalised plan (Sandra use case Ã¢ÂÂ non-gym corporate members)
 - Key open question: do non-gym plans use same `workout_plan_cache` structure or simpler format?
-- Decision deferred â parked in backlog under Later
+- Decision deferred Ã¢ÂÂ parked in backlog under Later

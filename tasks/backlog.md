@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 17 April 2026 (Offline mode shipped)
+> Updated: 17 April 2026 (Session 2: desktop nav, script injection fixes)
 
 ---
 
@@ -30,6 +30,7 @@
 - Fix INSERT policies on session_chat, shared_workouts, monthly_checkins
 - Remove 3 redundant RLS policies on members table
 - Delete 89 dead Edge Functions
+- Add `<meta name="mobile-web-app-capable" content="yes"/>` to remaining portal pages (habits, workouts, nutrition, log-food, wellbeing-checkin, sessions, running-plan, settings, leaderboard, monthly-checkin, shared-workout, login, set-password — 13 pages still need it)
 
 ---
 
@@ -100,6 +101,9 @@ certificates, leaderboard (full cache), workouts, nutrition, sessions, wellbeing
 
 ## Completed (Recent)
 
+- Desktop nav More dropdown + avatar profile panel (17 April 2026)
+- engagement.html, certificates.html, index.html script injection corruption fix (17 April 2026)
+- sw.js cache migration removed from activate handler (17 April 2026)
 - Full brain reconciliation (16 April 2026)
 - Android resubmitted with correct icon (15 April)
 - iOS submitted to App Store (13 April)

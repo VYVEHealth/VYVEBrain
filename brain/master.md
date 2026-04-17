@@ -1,7 +1,7 @@
 # VYVE Health — Master Brain Document
 
 > Single source of truth for the VYVE Health platform. Any AI session starts here.
-> Last full reconciliation: 16 April 2026 (deep audit against live DB, repo, and all project chats).
+> Last full reconciliation: 17 April 2026 (desktop nav parity, script injection fixes, SW cache fix).
 
 ---
 
@@ -96,11 +96,30 @@ Single-file HTML pages. Self-contained inline CSS/JS. No build process, no bundl
 - Any page-level sticky element must use top:56px on mobile, not top:0
 - Modals must use z-index:10001 minimum to render above the bottom nav
 
+### nav.js Desktop Nav (>768px)
+Desktop shows a "More ▾" dropdown in the nav links bar and a profile dropdown on the avatar. Mobile (≤768px) is unchanged — still bottom nav + More bottom sheet.
+
+**More dropdown** — three grouped sections:
+- Check-Ins: Weekly Check-In, Monthly Check-In
+- Progress: My Certificates, Leaderboard, Activity Score
+- Tools: Running Plan, Guides & PDFs, How-to Videos, Catch-Up Replays
+
+**Avatar panel** — shows member full name + email. Links: Settings, Sign Out. (Replaces the old bare "Sign out" button.)
+
+**Globals:** `vyveToggleNavMore(e)`, `vyveToggleAvatarMenu(e)`, `vyveCloseAllDesktop()`
+
+**Desktop overlay:** `#navDesktopOverlay` (invisible fixed div, z-index:99) closes both panels on outside click. Only one panel can be open at a time. Escape key closes both.
+
+**CSS rule:** `@media(max-width:768px)` hides all desktop dropdown CSS so mobile is unaffected.
+
+### PWA Meta Tags
+All portal pages include `<meta name="apple-mobile-web-app-capable" content="yes"/>` for iOS Safari PWA behaviour. Three pages (`engagement.html`, `certificates.html`, `index.html`) also have `<meta name="mobile-web-app-capable" content="yes"/>` (added 17 April). Remaining portal pages still need this second tag — tracked in backlog.
+
 ### Onboarding Form
 www.vyvehealth.co.uk/welcome = welcome.html in Test-Site-Finalv3 repo. 150s timeout, 45s slow timer. Calls onboarding Edge Function.
 
 ### sw.js Cache Version
-`vyve-cache-v2026-04-15j` (bump letter after every portal push — read current version first)
+`vyve-cache-v2026-04-17u` (bump letter after every portal push — read current version first)
 
 ### Web Push (VAPID) — Live
 - vapid.js loaded on index.html — subscribes on bell tap, saves to push_subscriptions table
@@ -290,6 +309,8 @@ HAVEN is live in the onboarding EF and IS being assigned (Conor Warren received 
 28. Build speed: "1 week" = 1-2 focused days, "2-3 weeks" = 3-5 days.
 29. GDPR/UK compliance by default: RLS on all user/employer data, anonymisation for workforce insights.
 30. For Supabase EF deploys of large files (>10KB): always read from GitHub, store in variable, pass to deploy. Never inline 46KB files in tool calls.
+31. **SW activate: NO page migration.** The activate handler deletes old caches only — it MUST NOT copy pages from old caches into new ones. Migration causes stale/broken pages to persist even after a cache version bump. Users then need a hard reset to get the fix. Removed 17 April 2026.
+32. **Never inject `<script>` tags via naive string search.** Injecting `<script src="..."></script>` into HTML using blind text matching can land inside a JS `<script>` block. The browser's HTML parser terminates the block at `</script>`, breaking all JS after that point. Always use targeted `str_replace` with unique surrounding context.
 
 ---
 
@@ -304,6 +325,8 @@ HAVEN is live in the onboarding EF and IS being assigned (Conor Warren received 
 - Do NOT treat high stress score as bad — 10 = very calm
 - Do NOT assign NOVA just because a member ticked strength among many goals
 - Do NOT use exec_sql RPC — it doesn't work on this project. Use postgres Deno driver.
+- Do NOT add page migration logic to the sw.js activate handler — causes stale broken files to persist after version bumps.
+- Do NOT use naive string injection to add `<script>` tags to HTML — the `</script>` in the injected tag will terminate any `<script>` block it lands inside, breaking JS execution silently.
 
 ---
 
@@ -329,6 +352,19 @@ HAVEN is live in the onboarding EF and IS being assigned (Conor Warren received 
 - XSS risk: index.html renders firstName via innerHTML without escaping
 - PostHog sends raw email PII (deferred fix)
 - 89 dead Edge Functions still not deleted
+
+### Portal Page Corruption Fixed (17 April 2026)
+Three portal pages had `<script src="/offline-manager.js"></script>` injected mid-JavaScript inside their `<script>` blocks by an old patch Edge Function (from the `patch-*` series, now deleted). The `</script>` terminated the block early:
+
+| Page | Where | Effect |
+|------|-------|--------|
+| `engagement.html` | Inside `const avatarEl` variable declaration | Auth trigger (loadPage call) at line 36098 — never fired. Data never loaded. |
+| `certificates.html` | Inside `'/login.html'` string in fetch handler | Entire fetch chain broken. Page showed eternal loading state. |
+| `index.html` | Inside `'Content-Type'` header string in platform-alert | Inside try/catch — silent fail. Dashboard unaffected. |
+
+**Fix:** Removed the bad `<script>` tags, restored correct JS, added `<script src="/offline-manager.js"></script>` before `</body>`. All three pages now load correctly.
+
+**Root cause lesson:** Rule 32 above.
 
 ### Pre-Sage / Business Actions (Lewis)
 - Brevo logo removal (~$12/month) — Lewis
@@ -364,7 +400,7 @@ HAVEN is live in the onboarding EF and IS being assigned (Conor Warren received 
 
 ---
 
-*Last full reconciliation: 16 April 2026*
+*Last full reconciliation: 17 April 2026*
 *Source: VYVEHealth/VYVEBrain repo (main branch)*
 
 ---
