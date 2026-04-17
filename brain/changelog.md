@@ -1,3 +1,19 @@
+## 17 April 2026 — Phase B Semantic Colour Migration
+
+### Changes
+- **index.html:** Track colours (habits/workouts/cardio/sessions) → `var(--track-*)` tokens across all inline styles, SVG stroke/fill, and CSS variable assignments. Score label `#4DAAAA` → `var(--teal-lt)`.
+- **settings.html:** Removed duplicate `:root` brand token block (teal/amber/coral/fonts — already in theme.css). Difficulty colours → semantic tokens: easy `#2D9E4A` → `var(--success)`, medium `#E09B3D` → `var(--warning)`, hard + delete `#E06060` → `var(--danger)`.
+- **nutrition.html:** Macro nutrient colours → brand tokens: protein `#4DAAAA` → `var(--teal-lt)`, fat `#E09B3D` → `var(--amber)`, carbs `#2D9E4A` → `var(--green)`. Applied across macro bars, legend dots, gradients, SVG chart lines.
+- **habits.html:** POT_CONFIG updated with correct pot colours: mindfulness `#E09B3D` → `#5BA8D9` (`--pot-mindfulness`), social `#E06060` → `#E879A3` (`--pot-social`), sleep `#9B7AE0` → `#6366B8` (`--pot-sleep`).
+- **workouts.html:** No changes (no track colour hits).
+- `sw.js` cache version: k → l
+
+### Commit
+- vyve-site: `c998db430ac5232c0b09abc28444ebadea0f0905`
+
+### Next: Phase C — Session-page template consolidation
+14 `-live.html` and `-rp.html` pages → 3 shared component files.
+
 ## 17 April 2026 — Phase A Design System Token Foundation
 
 ### Context
