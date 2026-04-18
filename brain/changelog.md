@@ -1,3 +1,59 @@
+## 18 April 2026 — Three-issue fix session (monthly-checkin 500, weekly check-in zoom, notifications safe-area)
+
+### Issues reported by Dean
+
+1. Monthly check-in threw 500 critical alert (`api_500_monthly-checkin`, /monthly-checkin.html, 02:42 BST)
+2. Weekly check-in page rendered visibly zoomed inside the iOS app — content cropped on both sides
+3. Notifications page back button overlapped the iOS status bar; bottom nav looked inconsistent with the rest of the portal
+
+### Root causes
+
+**Issue 1 — `monthly-checkin` EF schema drift.** Live table `public.wellbeing_checkins` has `score_wellbeing` (not `wellbeing_score`) and does **not** have `band` or `answer` columns at all. EF v15 queried all three. The error was surfaced via function_logs: `42703 column wellbeing_checkins.wellbeing_score does not exist` (thrown from `q()` inside `Promise.all`). GET worked for Dean because GET doesn't touch this table; POST fails immediately on submit.
+
+**Issue 2 — `wellbeing-checkin.html` nav scoping + viewport.** The file declared a bare `nav { position:fixed; ... }` CSS selector instead of the `nav.desktop-nav { ... }` pattern used by the rest of the portal. Result: the inline desktop nav was **not** hidden on mobile (nav.js's `@media(max-width:768px){nav.desktop-nav{display:none!important}}` rule only targets `.desktop-nav`). On mobile we rendered both the page's own `<nav>` and nav.js's injected `.mobile-page-header` simultaneously, pushing the layout beyond 100vw. The viewport meta also lacked `user-scalable=no, maximum-scale=1.0` (other portal pages have it), so any accidental pinch-zoom persisted across reloads.
+
+**Issue 3 — `.notif-topbar` missing safe-area-inset-top.** Inline notifications overlay in `index.html` uses `position:fixed; inset:0; z-index:10002` and a top bar with `padding:14px 16px 14px` — no allowance for the iOS status bar / notch. Back button renders directly under the clock. Bottom `.notif-nav` also used different paddings, height, icon size, and font weight than the sitewide `.vyve-bottom-nav`, producing the visible inconsistency Dean flagged.
+
+### What shipped
+
+**`monthly-checkin` EF v16** (ixjfklpckgxrwjlfsaaz)
+- `wellbeing_checkins` SELECT: `wellbeing_score,band,answer,activity_date` → `score_wellbeing,activity_date`
+- `wbSummary` now reads `c.score_wellbeing` and derives band inline via new `scoreBand(score)` helper (1-3 struggling, 4-5 getting by, 6-7 solid, 8-10 strong)
+- `avgWellbeing` now reads `r.score_wellbeing`
+- `verify_jwt: false` preserved (Rule 21 — internal JWT validation pattern)
+
+**`vyve-site` portal** — single atomic commit [dec290d](https://github.com/VYVEHealth/vyve-site/commit/dec290d31c552e4e164d17cd902b4e382585153e)
+- `wellbeing-checkin.html`
+  - Viewport meta now matches `index.html`: `width=device-width, initial-scale=1.0, interactive-widget=resizes-content, user-scalable=no, maximum-scale=1.0`
+  - Added `<meta name="mobile-web-app-capable" content="yes"/>` (was in the 13-page backlog list)
+  - Bare `nav { ... }` CSS selector → `nav.desktop-nav { ... }`
+  - `<nav>` tag → `<nav class="desktop-nav">`
+  - Added `@media (max-width:768px) { main { padding-top:0 !important } }` so the 64px top pad is desktop-only
+- `index.html`
+  - `.notif-topbar` padding: `14px 16px 14px` → `calc(14px + env(safe-area-inset-top,0px)) 16px 14px`
+  - `.notif-nav` + `.notif-nav-item`: restyled to match `.vyve-bottom-nav` metrics (padding `4px 4px 0` + safe-area bottom, no fixed height, `min-height:42px` on items, `font-family:'DM Sans'`, `font-size:10px; font-weight:600`, svg 24px, `flex:1` items)
+- `sw.js` cache: `vyve-cache-v2026-04-17v` → `vyve-cache-v2026-04-18a`
+
+### Drift discovered
+
+- **`monthly-checkin` EF version** — master.md said v13, live was v15 (now v16). Noted for next brain reconciliation.
+- **`sw.js` cache version** — master.md said `vyve-cache-v2026-04-17u`, live was `-17v` at session start (now `-18a`).
+- **onboarding EF** — not touched this session but worth re-checking on next full reconciliation given the pattern of undocumented version bumps.
+
+### Lessons + rule implications
+
+- **Rule candidate:** Any portal page with a page-level `<nav>` must use `class="desktop-nav"` so nav.js's mobile-hide rule applies. Bare `nav { }` selectors are a hidden-overlap trap. Adding as Rule 36 candidate — pending audit of other portal pages for the same pattern before codifying.
+- Schema drift in EFs is caught by the real system at POST time, not at deploy time. The monthly-checkin EF hadn't been exercised end-to-end on the live schema since the `wellbeing_checkins` refactor. Consider adding a lightweight integration smoke test before onboarding Sage.
+- Backlog item closed: notif-topbar safe-area was not previously tracked — add it to the "mobile polish" class of issues.
+
+### Source of truth used
+
+- Live Supabase project `ixjfklpckgxrwjlfsaaz`: `function_edge_logs`, `function_logs`, `information_schema.columns` for `wellbeing_checkins` / `weekly_scores` / `monthly_checkins` / `platform_alerts`
+- `VYVEHealth/vyve-site` main: `wellbeing-checkin.html` (SHA 6be48c8), `index.html` (via s3url — 82KB), `nav.js` (SHA ba26124), `sw.js` (SHA 9cdcc9e)
+- `platform_alerts` row `8b8f15d2-81e3-4c87-8884-ec65df9e311a`
+
+---
+
 ## 18 April 2026 — Full System Reconciliation (Brain vs Live)
 
 ### Why

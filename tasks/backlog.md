@@ -35,7 +35,7 @@
 - Fix INSERT policies on `session_chat`, `shared_workouts`, `monthly_checkins`
 - Remove 3 redundant RLS policies on `members` table
 - Add explicit service-role-only policies to the 7 aggregation/admin tables (document intent)
-- Add `<meta name="mobile-web-app-capable" content="yes"/>` to remaining 13 portal pages
+- Add `<meta name="mobile-web-app-capable" content="yes"/>` to remaining 12 portal pages (was 13; `wellbeing-checkin.html` added 18 April)
 - **Clean up one-shot migration EFs** — ~9 remain (was "89 dead" before most were deleted in the 9 April / 11 April cleanups). Candidates for deletion: `seed-library-1`, `seed-library-2`, `seed-b1`, `create-ai-decisions-table`, `setup-ai-decisions`, `setup-member-units`, `trigger-owen-workout`, `trigger-callum-workout`, `thumbnail-batch-upload`, `generate-stuart-plan`, `send-stuart-reset`. Keep `ban-user-anthony` if ban workflow still in use.
 
 ---
@@ -51,6 +51,8 @@
 - ~~Resolve `generate-workout-plan` EF ambiguity~~ **DONE 18 April — un-retired. Kept as canonical standalone plan generator. Onboarding v74 duplicates logic inline; refactor task added below.**
 
 ### Open
+- **Audit portal pages for bare `<nav>` tags** — `wellbeing-checkin.html` shipped with a bare `nav { }` selector instead of `nav.desktop-nav`, causing mobile overlap + zoom. Grep the remaining portal HTML files for the same pattern so we can codify Rule 36 (all page-level navs must use `.desktop-nav` class) rather than waiting for user reports.
+- **Add `monthly-checkin` integration smoke test** — the column drift that caused the 500 would have been caught by a single POST test against the live schema. Consider a Deno test that runs against a throwaway test member before each deploy. Surfaced by 18 April fix session.
 - **Delete `staging/onboarding_v67.ts`** — stale by 7 versions (live is v74). Misleads future AI sessions.
 - **Resolve `auth.js` version disagreement** inside master.md (§3 says v2.3, §12 says v2.4 — pick one)
 - **Archive pre-April changelog entries** into `changelog-archive/2026-Q1.md` — current changelog is 114KB / 1,658 lines and growing unboundedly
@@ -126,6 +128,7 @@ Single-file HTML dashboard (`apps/admin-dashboard/admin.html`), `admin-dashboard
 
 ## Completed (Recent)
 
+- **Three-issue fix session** (18 April 2026) — `monthly-checkin` EF v16 (column drift fix), `wellbeing-checkin.html` nav scoping + viewport zoom fix, `index.html` notif-topbar safe-area + bottom nav style match, sw cache bump to 18a
 - **Brain full system reconciliation** (18 April 2026) — master.md rewritten, triggers/FKs/aggregation documented, EF inventory rebuilt
 - Admin dashboard + aggregation layer shipped (18 April 2026)
 - Desktop nav More dropdown + avatar profile panel (17 April 2026)
