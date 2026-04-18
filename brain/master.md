@@ -1,7 +1,7 @@
 # VYVE Health — Master Brain Document
 
 > Single source of truth for the VYVE Health platform. Any AI session starts here.
-> Last full reconciliation: **18 April 2026** (triggers/FKs/aggregation layer corrected, admin dashboard documented, EF inventory rebuilt, `schema-snapshot-refresh` EF + weekly cron added, `generate-workout-plan` un-retired).
+> Last full reconciliation: **19 April 2026** (SECURITY DEFINER trigger fix on aggregation triggers; engagement.html v40 response mapping; 3 new bookkeeping tables documented).
 
 ---
 
@@ -410,6 +410,8 @@ HAVEN is live and IS being assigned (first assignment: Conor Warren, 15 April 20
 33. **Aggregation tables are service-role only.** `member_stats`, `member_activity_daily`, `member_activity_log`, `company_summary`, `platform_metrics_daily`, `admin_users`, `vyve_job_runs` have RLS enabled with NO policies — readable only from Edge Functions running as service role. Any client-side direct access will silently return zero rows.
 34. **Activity caps are DB-level.** `enforce_cap_*` triggers on `workouts`, `cardio`, `daily_habits`, `kahunas_checkins`, `session_views` block over-cap inserts and route them to `activity_dedupe`. Do not duplicate cap logic in the application layer.
 35. **Email lowercasing is automatic.** `zz_lc_email` triggers on 42 tables lowercase `member_email` on every INSERT/UPDATE. Application code does not need to `.toLowerCase()` before writing.
+36. **Aggregation trigger functions must be SECURITY DEFINER.** `vyve_sync_activity_log`, `increment_habit_counter`, `vyve_refresh_daily`, and any other trigger function that writes to internal bookkeeping tables (`member_activity_log`, `member_activity_daily`, `member_notifications`, `member_stats`) must be `SECURITY DEFINER`. Without this, the trigger runs as the authenticated user, RLS on those tables blocks the write, and the entire INSERT on the source table rolls back silently. This took down all activity logging platform-wide on 19 April 2026.
+37. **engagement.html expects member-dashboard response shape.** The page uses `data.counts`, `data.streaks`, `data.score.total`, `data.activityLog` (with `types[]`). Any refactor of the member-dashboard EF response shape must also update the translation layer in `loadPage()` in engagement.html. Mismatches are silent — score shows blank or NaN.
 
 ---
 
