@@ -1,3 +1,22 @@
+## 19 April 2026 — engagement.html component bars crashing (renderScoreHero shape mismatch)
+
+### Issue
+Score ring rendered (97) but component bars showed "--/12.5" with JS error: `TypeError: Cannot read properties of undefined (reading 'pts')` at renderScoreHero:370.
+
+### Root cause
+`renderScoreHero(score)` expected each component as `{ pts: number }` (v35 shape) and referenced `c.activity` specifically. The v40 EF returns components as flat numbers (`recency`, `consistency`, `variety`, `wellbeing`). Two mismatches: (1) flat number vs object, (2) `recency` vs `activity` key name.
+
+### Fix
+Made `renderScoreHero` self-normalising — accepts both shapes via `toPts()` helper and maps `recency → activity`. Covers fresh fetch, offline cache, and any future stale localStorage data.
+
+### Data was NOT lost
+All 30 days of activity data is intact in the raw tables. The 97 score was correct. Only 1 day (April 18) had a partial gap from the trigger bug. The 24 active days in the last 30 days are all present.
+
+### What shipped
+- `engagement.html` — renderScoreHero normalises component shape
+- `sw.js` — bumped to `vyve-cache-v2026-04-19d`
+- Commit: 0926e456fae7d3f5fc48b4a1992ace26b1ea7914
+
 ## 19 April 2026 — member-dashboard EF 500 error (wrong column names)
 
 ### Root cause
