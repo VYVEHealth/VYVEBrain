@@ -1,3 +1,28 @@
+## 19 April 2026 — Platform-wide activity logging broken + engagement score broken
+
+### Root cause 1: SECURITY INVOKER triggers blocking all activity writes
+New triggers (`zz_sync_activity_log`, `increment_habit_counter`) were added to all 6 activity tables (daily_habits, workouts, cardio, session_views, replay_views, wellbeing_checkins). These are SECURITY INVOKER — they run as the authenticated user. They write to 3 new tables (`member_activity_log`, `member_activity_daily`, `member_notifications`) which had RLS enabled with zero policies (default deny). Every activity INSERT was rolling back silently. No data landed from ~18 April onwards.
+
+### Fix: SECURITY DEFINER on trigger functions (Supabase migration)
+Rebuilt `vyve_sync_activity_log`, `increment_habit_counter`, and `vyve_refresh_daily` as SECURITY DEFINER so they run as the table owner and bypass RLS on the internal bookkeeping tables. Verified with authenticated INSERT test — all triggers fire correctly.
+
+### Root cause 2: engagement.html expecting old member-dashboard v35 response shape
+engagement.html was destructuring `data.score`, `data.counts`, `data.streaks`, `data.activityLog` (v35 shape). member-dashboard is now v40 which returns `data.engagement.score`, `data.progress.x.count`, `data.engagement.streak`, `data.activity_log` with `activities[]` not `types[]`. All render functions received undefined, score showed as NaN/blank.
+
+### Fix: translation layer in loadPage() (engagement.html)
+Added a mapping block after the fetch that translates the v40 response into the v35 shape expected by renderScoreHero, renderActivityGridFromPrecomputed, renderLogFromPrecomputed, renderStreaksFromPrecomputed. No render functions changed — only the data mapping.
+
+### What shipped
+- Supabase migration: `fix_trigger_security_definer`
+- `engagement.html` — v40 response mapping
+- `sw.js` — bumped to `vyve-cache-v2026-04-19a`
+- Commit: 131bf2a14bfbacc150e6f0186aac56949e1fbc2c
+
+### New tables discovered (not in brain)
+- `member_activity_log` — audit log of all activity events (source_table, source_id, member_email, activity_type, activity_date, logged_at, metadata)
+- `member_activity_daily` — aggregated daily activity counts per member
+- `member_notifications` — streak milestone notifications
+
 ## 18 April 2026 — Certificates page stuck on loading spinner (auth polling pattern removed from certificates.html + settings.html)
 
 ### Issue reported by Dean
