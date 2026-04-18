@@ -1,3 +1,93 @@
+## 18 April 2026 — Full System Reconciliation (Brain vs Live)
+
+### Why
+
+Per Rule: "VYVEBrain drift happens incrementally — root cause of past audit failures was patching master.md rather than periodically rewriting it." This session was a scheduled full rewrite: every claim in `brain/master.md` was checked against the live Supabase project (`ixjfklpckgxrwjlfsaaz`) and the live Edge Function inventory. Four material drifts were found.
+
+### Drift fixed in this session
+
+**1. Database triggers — 119 live, Brain said 0.**
+
+The Brain has been telling every session that activity caps are "application-level only (log-activity EF)". This is materially untrue. The DB enforces caps, derives time fields, lowercases emails, and fans out to the activity log via triggers. Full inventory now documented in master §4:
+
+| Family | Tables | Purpose |
+|---|---|---|
+| `zz_lc_email` BEFORE INS/UPD (via `vyve_lc_email()`) | 42 tables | Email canonicalisation |
+| `enforce_cap_*` BEFORE INS | workouts, cardio, daily_habits, kahunas_checkins, session_views | Cap enforcement → over-cap → `activity_dedupe` |
+| `counter_*` AFTER INS | same 5 | Increment per-member counters on `members` |
+| `auto_time_fields_*` BEFORE INS | 6 activity tables | Derive `day_of_week`, `time_of_day` |
+| `auto_iso_week_*` BEFORE INS | kahunas_checkins, wellbeing_checkins | Derive `iso_week`, `iso_year` |
+| `zz_sync_activity_log` AFTER INS/UPD/DEL | 7 activity tables | Fan-out to `member_activity_log` |
+| `*_updated_at` BEFORE UPD | 11 cc_* tables + push_subscriptions_native | Maintain `updated_at` |
+
+**2. Foreign keys — 25 live, Brain said 0.**
+
+All 25 FKs target `public.members.email` (plus 2 on `habit_library.id`). Every member-scoped table has referential integrity. Inventory now in master §4.
+
+**3. Aggregation / admin layer — 7 tables + 11 functions + 4 cron jobs undocumented in master.**
+
+Added 18 April (earlier session today), but not yet merged into `master.md §4`. Now fully documented, including:
+
+- Tables: `member_stats` (17), `member_activity_daily` (99), `member_activity_log` (243), `company_summary` (3), `platform_metrics_daily` (92), `admin_users` (3), `vyve_job_runs` (1) — all **RLS-enabled with zero policies → service-role only via EFs** (now codified as Rule 33)
+- Functions: `compute_engagement_score`, `compute_engagement_components`, `recompute_member_stats`, `recompute_all_member_stats`, `recompute_company_summary`, `recompute_platform_metrics`, `rebuild_member_activity_daily`, `rebuild_member_activity_daily_incremental`, `backfill_platform_metrics`, `bump_member_activity`, `vyve_refresh_daily`
+- Cron jobs: `vyve_recompute_member_stats` (*/15m), `vyve_rebuild_mad_incremental` (*/30m), `vyve_recompute_company_summary` (02:00 UTC), `vyve_platform_metrics` (02:15 UTC)
+- Plus `warm-ping-every-5min` keep-warm cron (previously undocumented)
+
+**4. Edge Function inventory — 58 active, Brain master listed ~22 with stale versions.**
+
+Version drift updated for every production EF. Missing EFs added to master §5: `admin-dashboard` v6, `cc-data` v2, `send-password-reset` v2, `warm-ping` v1, `leaderboard` v7 (plus corrected versions for `notifications` v7, `share-workout` v6, `workout-library` v4, `onboarding` v74, `wellbeing-checkin` v32, `monthly-checkin` v13, `off-proxy` v16, `certificate-serve` v15, `github-proxy` v19, `habit-reminder` v8, `streak-reminder` v8, `send-test-push` v7, `daily-report` v21, `weekly-report` v14, `monthly-report` v14, `employer-dashboard` v29, `log-activity` v19).
+
+### New rules added to master §10
+
+- **Rule 33:** Aggregation tables are service-role only. `member_stats`, `member_activity_daily`, `member_activity_log`, `company_summary`, `platform_metrics_daily`, `admin_users`, `vyve_job_runs` have RLS enabled with NO policies — readable only from Edge Functions running as service role. Any client-side direct access will silently return zero rows.
+- **Rule 34:** Activity caps are DB-level. `enforce_cap_*` triggers block over-cap inserts and route them to `activity_dedupe`. Do not duplicate cap logic in `log-activity` EF.
+- **Rule 35:** Email lowercasing is automatic. `zz_lc_email` triggers on 42 tables lowercase `member_email` on every write. Application code does not need to `.toLowerCase()` before inserting.
+
+### Section numbering fixed
+
+Master had three `## 12.` sections (Security, Design System, Offline). Renumbered 12/13/14, with Section 15 "On the Horizon" and Section 16 "Key URLs" shifted accordingly.
+
+### Other corrections
+
+- Member count: 16 → 17 (one new member since last snapshot)
+- Table count: "Supabase — 61 Tables" → **68 tables**
+- Function count: schema-snapshot's "15" → **31 functions in public**
+- Cron count: "4 jobs" → **12 jobs**
+- `generate-workout-plan` EF: Brain said "RETIRED v5" but live is v9, active — flagged for decision (delete or un-retire)
+- `staging/onboarding_v67.ts` flagged as stale (live is v74) — deletion pending Dean sign-off
+- `brain/schema-snapshot.md` flagged as 8 days stale (lists 36 tables) — automate or delete pending Dean sign-off
+- `auth.js` version disagreement inside master.md (§3 v2.3, §12 v2.4) — flagged for reconciliation
+
+### Items closed in `tasks/backlog.md`
+
+- "master.md §4: correct the 'No triggers' / 'No FKs' claims (14 triggers + 24 FKs live)" — closed (actual counts 119/25, now documented)
+- "master.md §4: document the aggregation layer" — closed
+- "master.md §10: add Rule 33" — closed (plus Rules 34, 35)
+- "Add Dean + Lewis to admin_users" — closed (3 rows present, no action needed)
+
+### Items added to `tasks/backlog.md`
+
+- Resolve `generate-workout-plan` EF ambiguity
+- Delete `staging/onboarding_v67.ts` (or refresh)
+- Refresh/automate/delete `schema-snapshot.md`
+- Reconcile `auth.js` version inside master.md
+- Document user-ban workflow (anthony.clickit@gmail.com orphan in auth.users)
+- Archive pre-April changelog into `changelog-archive/2026-Q1.md`
+- Clarified "89 dead EFs" → now ~9 one-shot migrations remaining (most were deleted in earlier cleanups)
+
+### Artefacts
+
+- `audits/Reconciliation report` — full drift report, action plan, and true-system-state summary
+- `brain/master.md` — rewritten
+- `tasks/backlog.md` — rewritten
+
+### Source of truth used
+
+- Live Supabase project `ixjfklpckgxrwjlfsaaz`: `list_tables`, `list_edge_functions`, `execute_sql` against `information_schema`, `pg_catalog`, `pg_policies`, `pg_indexes`, `cron.job`, `auth.users`
+- `VYVEHealth/VYVEBrain` main: `brain/master.md`, `brain/changelog.md`, `brain/schema-snapshot.md`, `brain/audit_updates.md`, `tasks/backlog.md`, tree listing
+
+---
+
 ## 18 April 2026 — Admin Dashboard + Aggregation Layer Reconciliation
 
 ### What shipped
