@@ -1,7 +1,7 @@
 # VYVE Health — Master Brain Document
 
 > Single source of truth for the VYVE Health platform. Any AI session starts here.
-> Last full reconciliation: **18 April 2026** (triggers/FKs/aggregation layer corrected, admin dashboard documented, EF inventory rebuilt).
+> Last full reconciliation: **18 April 2026** (triggers/FKs/aggregation layer corrected, admin dashboard documented, EF inventory rebuilt, `schema-snapshot-refresh` EF + weekly cron added, `generate-workout-plan` un-retired).
 
 ---
 
@@ -166,7 +166,7 @@ Plus `daily_habits.habit_id → habit_library.id` and `member_habits.habit_id �
 
 **Utility (6):** `get_charity_total()`, `get_capped_activity_count(email, activity_type)`, `next_certificate_number()`, `member_age(birth_date)`, `update_cc_updated_at`, `update_push_native_updated_at`.
 
-### Cron Jobs (12)
+### Cron Jobs (13)
 
 | Name | Schedule (UTC) | Runs |
 |---|---|---|
@@ -182,6 +182,7 @@ Plus `daily_habits.habit_id → habit_library.id` and `member_habits.habit_id �
 | `vyve_rebuild_mad_incremental` | */30 * * * * | SQL `rebuild_member_activity_daily_incremental()` |
 | `vyve_recompute_company_summary` | 0 2 * * * | SQL `recompute_company_summary()` |
 | `vyve_platform_metrics` | 15 2 * * * | SQL `recompute_platform_metrics()` |
+| `vyve_schema_snapshot` | 0 3 * * 0 | `schema-snapshot-refresh` EF (weekly, Sunday 03:00 UTC) |
 
 ### Tables — Full Inventory (68)
 
@@ -246,11 +247,11 @@ Over-cap inserts route to `activity_dedupe` via the cap functions. Not discarded
 
 ---
 
-## 5. Edge Functions (58 active)
+## 5. Edge Functions (59 active)
 
 All EFs use `verify_jwt: false` with internal JWT validation. Never set `verify_jwt: true` without updating every calling page.
 
-### Production-critical (23)
+### Production-critical (25)
 
 | Function | Version | Purpose | Auth |
 |---|---|---|---|
@@ -280,6 +281,8 @@ All EFs use `verify_jwt: false` with internal JWT validation. Never set `verify_
 | `warm-ping` | v1 | Keep-warm (cron every 5 min) | Cron |
 | `leaderboard` | v7 | Leaderboard data | JWT |
 | `share-workout` | v6 | Create + read shared workouts | JWT/Public |
+| `generate-workout-plan` | v9 | Standalone 8-week plan generator. Used for regeneration/fallback flows. Onboarding v74 currently duplicates ~120 lines of this inline (refactor candidate — see backlog) | CORS (public) |
+| `schema-snapshot-refresh` | v2 | Weekly snapshot of live DB schema, committed to `brain/schema-snapshot.md` via `GITHUB_PAT_BRAIN`. Cron: Sunday 03:00 UTC | Cron |
 | `workout-library` | v4 | Browse/activate/pause library programmes | JWT |
 | `send-password-reset` | v2 | Password reset email | Public (rate-limited) |
 | `send-session-recap` | v11 | Session recap emails | Internal |
@@ -296,10 +299,6 @@ All EFs use `verify_jwt: false` with internal JWT validation. Never set `verify_
 ### One-shot migrations still deployed — safe to delete
 
 `seed-library-1` v3, `seed-library-2` v1, `seed-b1` v1, `create-ai-decisions-table` v6, `setup-ai-decisions` v7, `setup-member-units` v6, `run-monthly-checkins-migration` v8, `run-migration-monthly-checkins` v13, `trigger-owen-workout` v6, `trigger-callum-workout` v6, `thumbnail-audit` v9, `thumbnail-upload` v8, `thumbnail-batch-upload` v6, `generate-stuart-plan` v6, `send-stuart-reset` v8, `ban-user-anthony` v8 (keep if ban workflow still needed).
-
-### Ambiguous
-
-`generate-workout-plan` v9 — master.md previously said "RETIRED, logic now inline in onboarding v67". EF is still active. Decide: delete or un-retire.
 
 ---
 

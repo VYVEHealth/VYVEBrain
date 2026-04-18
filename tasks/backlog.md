@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 18 April 2026 (Session: Full system reconciliation — Brain vs live Supabase + EFs)
+> Updated: 18 April 2026 (Session: Full reconciliation + `schema-snapshot-refresh` EF/cron + `generate-workout-plan` un-retire)
 
 ---
 
@@ -20,7 +20,6 @@
 - **HealthKit / Health Connect integration** — Capacitor plugin; habits linked to activity; weight from smart scales. Needs scoping session.
 - **Calendar integration** — connect Google/Apple calendar, show VYVE sessions and workout schedule
 - **Calendar page in portal** — dedicated schedule view
-- **Resolve `generate-workout-plan` EF** — Brain master previously said "RETIRED". Live: v9 still active. Decide: delete or un-retire as standalone utility. (Surfaced by 18 April reconciliation.)
 
 ---
 
@@ -48,10 +47,11 @@
 - ~~master.md §4: document the aggregation layer~~ **DONE 18 April — 7 tables + 11 functions + 4 cron jobs documented, Rule 33 added**
 - ~~master.md §10: add Rule 33 — aggregation tables are EF-service-role only~~ **DONE 18 April** (+ Rule 34 DB-level caps, Rule 35 email auto-lowercasing)
 - ~~Brain reconciliation: update EF inventory~~ **DONE 18 April — all 58 active EFs documented with live versions, missing ones added (admin-dashboard, cc-data, send-password-reset, warm-ping, leaderboard)**
+- ~~Automate or delete `brain/schema-snapshot.md`~~ **DONE 18 April — automated via `schema-snapshot-refresh` EF v2 + `vyve_schema_snapshot` cron (Sunday 03:00 UTC). GitHub writes via new fine-grained `GITHUB_PAT_BRAIN` secret (VYVEBrain contents:write only). First auto-commit: [36384af](https://github.com/VYVEHealth/VYVEBrain/commit/36384afa58c9b8381a4d37d6e65545f714ea7229).**
+- ~~Resolve `generate-workout-plan` EF ambiguity~~ **DONE 18 April — un-retired. Kept as canonical standalone plan generator. Onboarding v74 duplicates logic inline; refactor task added below.**
 
 ### Open
 - **Delete `staging/onboarding_v67.ts`** — stale by 7 versions (live is v74). Misleads future AI sessions.
-- **Refresh or delete `brain/schema-snapshot.md`** — dated 10 April, lists 36 tables (live has 68). Either automate via a scheduled EF that dumps `information_schema` and commits via `github-proxy`, or delete and rely on `master.md §4` as the canonical inventory.
 - **Resolve `auth.js` version disagreement** inside master.md (§3 says v2.3, §12 says v2.4 — pick one)
 - **Archive pre-April changelog entries** into `changelog-archive/2026-Q1.md` — current changelog is 114KB / 1,658 lines and growing unboundedly
 - **Document user-ban workflow** — `ban-user-anthony` v8 exists; anthony.clickit@gmail.com is in `auth.users` with no `public.members` row (orphan). Decide on a reusable pattern if bans will happen again.
@@ -79,6 +79,7 @@ Single-file HTML dashboard (`apps/admin-dashboard/admin.html`), `admin-dashboard
 
 ## Soon
 
+- **Refactor onboarding v74 to call `generate-workout-plan` EF** — remove ~120 lines of inline duplicated logic. EF has a richer implementation (dedicated programme-overview step, better prompts, cleaner video enrichment) than onboarding's inline copy. ~2 hrs, zero-risk if deployed atomically. Surfaced by 18 April reconciliation.
 - **In-app onboarding fallback** — simplified questionnaire inside portal for members with no workout plan (~3-4 hrs)
 - **Onboarding resilience: save-answers-first** — progressive answer saving + error screen (~2-3 hrs)
 - **Load `vapid.js` on other portal pages** — currently only `index.html` has push subscription
