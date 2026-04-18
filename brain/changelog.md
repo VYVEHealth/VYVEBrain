@@ -1,3 +1,24 @@
+## 19 April 2026 — index.html habit strip not showing today as complete
+
+### Issue
+Sunday not checked off on the 7-day habit pill strip on the dashboard, even after logging all 5 habits. Streaks, counts, and score were also silently broken on index.html.
+
+### Root cause
+Same v35 → v40 response shape mismatch as engagement.html (fixed same session). `renderDashboardData()` destructures `data.habitStrip`, `data.habitDatesThisWeek`, `data.counts`, `data.streaks`, `data.score`, `data.wbScore`, `data.daysInactive` — none of which exist in the member-dashboard v40 response. All rendered as undefined/blank.
+
+### Fix
+Injected a v40→v35 translation block at the top of `renderDashboardData()`, inside the guard `if(data.engagement && !data.score)`. Derives:
+- `habitStrip` — Mon–Sun dates of current week computed from local time
+- `habitDatesThisWeek` — filtered from `data.activity_log` where `activities` includes `'habits'` and date is in this week
+- `counts`, `streaks`, `score`, `wbScore`, `daysInactive`, `charity`, `goals` — mapped from v40 nested structure
+
+Translation runs for both fresh fetch and cache read paths since it lives inside `renderDashboardData`.
+
+### What shipped
+- `index.html` — v40 translation in renderDashboardData
+- `sw.js` — bumped to `vyve-cache-v2026-04-19b`
+- Commit: 7bfbff28bd7419c42f247369a91b1a48d36eef9c
+
 ## 19 April 2026 — Platform-wide activity logging broken + engagement score broken
 
 ### Root cause 1: SECURITY INVOKER triggers blocking all activity writes
