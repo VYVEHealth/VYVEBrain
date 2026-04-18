@@ -1,3 +1,20 @@
+## 19 April 2026 — member-dashboard EF 500 error (wrong column names)
+
+### Root cause
+member-dashboard v40 queried two tables with wrong column names — PostgREST returned 400 on both, the `q()` helper threw, Promise.all rejected, catch block returned 500. This was the actual reason engagement score showed "--" — the EF was crashing before returning any data.
+
+Wrong columns:
+- `wellbeing_checkins`: queried `checkin_week` (→ `iso_week`) and `wellbeing_score` (→ `score_wellbeing`)
+- `weekly_scores`: ordered by `week_start` (→ `iso_week`)
+- Response: `wbCheckins.checkin_week` (→ `wbCheckins.iso_week`)
+
+### Fix
+Deployed member-dashboard **v41** with correct column names. No other logic changed.
+
+### Correct column names (for future reference)
+- `wellbeing_checkins`: `iso_week`, `score_wellbeing`, `score_energy`, `score_stress`, `composite_score`
+- `weekly_scores`: `iso_week`, `iso_year`, `wellbeing_score`, `engagement_score`, `logged_at`
+
 ## 19 April 2026 — index.html habit strip not showing today as complete
 
 ### Issue
