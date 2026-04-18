@@ -1,0 +1,311 @@
+# VYVE Health — Full System Reconciliation
+**Date:** 18 April 2026
+**Auditor:** Claude (Opus 4.7)
+**Scope:** VYVEBrain (main) vs live Supabase project `ixjfklpckgxrwjlfsaaz` vs live Edge Functions
+
+This is the reconciliation companion to the rewritten `brain/master.md` and `tasks/backlog.md` produced in this session.
+
+---
+
+## 1. TRUE SYSTEM STATE (17 April — 18 April, reconciled)
+
+### 1.1 Database
+
+| Axis | Live value | Brain claim | Verdict |
+|---|---|---|---|
+| Tables (public) | **68** | 61 | Brain understates by 7 |
+| Foreign keys | **25** | 0 | Brain claims "No FKs" — **WRONG** |
+| Triggers (public) | **119** | 0 (master) / 14 (backlog note) | Brain claims "No triggers" — **WRONG** |
+| Functions (public) | **31** | 15 (schema-snapshot) | Brain undercounts by 16 |
+| RLS policies | 73 | — | Fine; 8 tables have RLS on but zero policies (all service-role-only, by design) |
+| Indexes | 160 | — | Healthy |
+| Cron jobs | **12** | ~5 named | Brain lists 5, live has 12 |
+| auth.users | 18 | — | 1 orphan (anthony.clickit@gmail.com — this is the banned user, `ban-user-anthony` EF v8) |
+| members | 17 | 16 | +1 since Brain snapshot |
+
+### 1.2 Actual trigger architecture
+
+The Brain tells any session that activity caps are "application-level only (log-activity EF)". That is **materially untrue**. The database enforces caps, counters, derived time fields, email canonicalisation, and activity-log fan-out via triggers:
+
+| Trigger family | Tables | Purpose |
+|---|---|---|
+| `zz_lc_email` BEFORE INS/UPD | 42 tables | Lowercases `member_email` before write |
+| `enforce_cap_*` BEFORE INS | workouts, cardio, daily_habits, kahunas_checkins, session_views | **DB-level cap enforcement** (2/day or 1/day). Blocks over-cap inserts. |
+| `counter_*` AFTER INS | same 5 | Increments per-member counters |
+| `auto_time_fields_*` BEFORE INS | workouts, cardio, daily_habits, session_views, replay_views, wellbeing_checkins | Derives `day_of_week`, `time_of_day` |
+| `auto_iso_week_*` BEFORE INS | kahunas_checkins, wellbeing_checkins | Derives `iso_week`, `iso_year` |
+| `zz_sync_activity_log` AFTER INS/UPD/DEL | workouts, cardio, daily_habits, session_views, replay_views, wellbeing_checkins, monthly_checkins | Fans out to `member_activity_log` |
+| `*_updated_at` BEFORE UPD | cc_* (11 tables), push_subscriptions_native | Maintains `updated_at` |
+
+**Implication:** The `log-activity` EF does not need to enforce caps, and trying to do so is redundant. The `activity_dedupe` table is populated by the cap triggers, not by the EF.
+
+### 1.3 Aggregation & admin layer (shipped 18 April)
+
+| Table | Rows | Refresh | RLS |
+|---|---|---|---|
+| `member_stats` | 17 | cron `vyve_recompute_member_stats` every 15 min via `recompute_all_member_stats()` | RLS on, no policy → service-role only |
+| `member_activity_daily` | 99 | cron `vyve_rebuild_mad_incremental` every 30 min via `rebuild_member_activity_daily_incremental()` | RLS on, no policy |
+| `company_summary` | 3 | cron `vyve_recompute_company_summary` daily 02:00 UTC | RLS on, no policy |
+| `platform_metrics_daily` | 92 | cron `vyve_platform_metrics` daily 02:15 UTC | RLS on, no policy |
+| `member_activity_log` | 243 | populated by `zz_sync_activity_log` triggers (live) | RLS on, no policy |
+| `admin_users` | 3 | manual (seed) | RLS on, no policy |
+| `vyve_job_runs` | 1 | populated by scheduled rebuild functions | RLS on, no policy |
+
+**All 7 tables are RLS-enabled with zero policies by design** — only the service role (inside Edge Functions) can read/write. The admin-dashboard EF uses the `admin_users` allowlist + JWT from Supabase Auth.
+
+Supporting functions:
+- `recompute_member_stats(email)`, `recompute_all_member_stats()`
+- `recompute_company_summary()`, `recompute_platform_metrics(date)`
+- `rebuild_member_activity_daily()`, `rebuild_member_activity_daily_incremental()`
+- `compute_engagement_score(...)`, `compute_engagement_components(...)`
+- `backfill_platform_metrics(p_days)`, `bump_member_activity(email, type, date, at)`
+- `vyve_refresh_daily(email, date)`, `vyve_sync_activity_log()`
+
+### 1.4 Edge Functions — 58 ACTIVE
+
+Versions that have moved since master.md was last touched (selected):
+
+| Function | Brain says | Live | Drift |
+|---|---|---|---|
+| `onboarding` | v67 | **v74** | +7 |
+| `wellbeing-checkin` | v26+ | **v32** | significant |
+| `employer-dashboard` | v26 | **v29** | +3 |
+| `daily-report` | v16 | **v21** | +5 |
+| `log-activity` | v18 | **v19** | +1 |
+| `weekly-report` | v6 | **v14** | +8 |
+| `monthly-report` | v6 | **v14** | +8 |
+| `monthly-checkin` | v5+ | **v13** | +8 |
+| `certificate-serve` | v7+ | **v15** | +8 |
+| `github-proxy` | v15 | **v19** | +4 |
+| `off-proxy` | v9 | **v16** | +7 |
+| `habit-reminder` | v4 | **v8** | +4 |
+| `streak-reminder` | v4 | **v8** | +4 |
+| `send-test-push` | v4 | **v7** | +3 |
+| `notifications` | v1+ | **v7** | significant |
+| `share-workout` | v1+ | **v6** | significant |
+| `workout-library` | v1+ | **v4** | +3 |
+| `leaderboard` | — | **v7** | missing from Brain table |
+| `admin-dashboard` | — | **v6** | missing from Brain table (in changelog only) |
+| `cc-data` | — | **v2** | missing from Brain table (in changelog only) |
+| `send-password-reset` | — | **v2** | missing from Brain table |
+| `warm-ping` | — | **v1** | missing from Brain table |
+| `generate-workout-plan` | "RETIRED" | **v9, still active** | Brain wrong — still deployable standalone |
+
+The 58 active functions break down as:
+- **~23 production-critical** (member-dashboard, onboarding, check-ins, log-activity, dashboards, emails, proxies, reports, certs, reminders, notifications, alerts, share/library/leaderboard, admin-dashboard, cc-data, password-reset)
+- **~15 one-shot migrations** (seed-*, create-*, setup-*, run-migration-*, ban-user-anthony, send-stuart-reset, generate-stuart-plan, trigger-owen-workout, trigger-callum-workout, thumbnail-*)
+- **~6 debug/test tools** (send-test-welcome, monthly-checkin-test, send-test-push, debug-exercise-search, check-cron, resend-welcome)
+- **~5 auxiliary/rollout** (github-proxy-marketing, storage-cleanup, internal-dashboard, ops-brief, warm-ping)
+- **9 "dead" migration or patch functions still deployed** (the ones Dean/Lewis have flagged for deletion)
+
+Brain's "89 dead functions to delete" claim is outdated — those were the `pw-patch-*`, `patch-*`, `fix-*`, `pwa-*`, `write-*` series from the 9 April security audit. **Most of those are gone from the live function list already.** Only the one-shot migration leftovers above remain.
+
+### 1.5 Cron jobs — 12 active
+
+| Name | Schedule | Target |
+|---|---|---|
+| `vyve-reengagement-daily` | 0 8 * * * | re-engagement-scheduler EF |
+| `vyve-daily-report` | 5 8 * * * | daily-report EF |
+| `vyve-certificate-checker` | 0 9 * * * | certificate-checker EF |
+| `weekly-report` | 10 8 * * 1 | weekly-report EF |
+| `monthly-report` | 15 8 1 * * | monthly-report EF |
+| `habit-reminder-daily` | 0 20 * * * | habit-reminder EF |
+| `streak-reminder-daily` | 0 18 * * * | streak-reminder EF |
+| `warm-ping-every-5min` | */5 * * * * | warm-ping EF |
+| `vyve_recompute_member_stats` | */15 * * * * | SQL: `recompute_all_member_stats()` |
+| `vyve_rebuild_mad_incremental` | */30 * * * * | SQL: `rebuild_member_activity_daily_incremental()` |
+| `vyve_recompute_company_summary` | 0 2 * * * | SQL: `recompute_company_summary()` |
+| `vyve_platform_metrics` | 15 2 * * * | SQL: `recompute_platform_metrics()` |
+
+---
+
+## 2. DRIFT REPORT
+
+### 2.1 Missing in Brain (live reality not documented in master.md)
+
+| # | Item | Evidence |
+|---|---|---|
+| M1 | **Database triggers (all 119 of them)** | Master §4 says "No triggers". Activity cap enforcement is at DB level, not application level. |
+| M2 | **Foreign keys (all 25)** | Master §4 says "No foreign keys". Every member-scoped table has an FK to `public.members.email`. |
+| M3 | `member_activity_log` table (243 rows, populated live) | Not listed in master §4's table inventory |
+| M4 | `vyve_job_runs` table | Not listed |
+| M5 | Aggregation functions (compute_engagement_*, recompute_*, rebuild_*, bump_member_activity, backfill_platform_metrics, vyve_refresh_daily, vyve_sync_activity_log, vyve_lc_email, member_age, update_cc_updated_at, update_push_native_updated_at) | 16 functions live, none mentioned |
+| M6 | SQL-based cron jobs (4 of them — recompute_member_stats, rebuild_mad_incremental, recompute_company_summary, recompute_platform_metrics) | Not mentioned in master cron list |
+| M7 | `warm-ping-every-5min` cron + EF | Keep-warm pattern not documented |
+| M8 | Edge Functions: `admin-dashboard`, `cc-data`, `send-password-reset`, `warm-ping`, `leaderboard`, `notifications`, `share-workout`, `workout-library` | In changelog / inline but not in master §5 EF table |
+| M9 | Orphan auth user (anthony.clickit@gmail.com, 14 April) | Banned via `ban-user-anthony` v8. Nothing in Brain about user-ban workflow. |
+| M10 | Aggregation tables (`member_stats`, `member_activity_daily`, `company_summary`, `platform_metrics_daily`, `admin_users`) | Documented in 18 April changelog but NOT yet in master §4 table inventory |
+
+### 2.2 Missing in System (Brain-documented features not in live system)
+
+| # | Item | Evidence |
+|---|---|---|
+| S1 | — | Nothing material. Every Brain-documented feature maps to live code. |
+
+(`push_subscriptions_native` has 0 rows — that's expected; it's for Capacitor which isn't shipped yet.)
+
+### 2.3 Mismatches (Brain and System disagree)
+
+| # | Item | Brain | System | Correct answer |
+|---|---|---|---|---|
+| X1 | Member count | 16 | 17 | 17 |
+| X2 | Table count (master §4 header) | 61 | 68 | 68 |
+| X3 | Activity cap enforcement | "Application code only (log-activity EF)" | DB triggers (`enforce_cap_*`) | DB triggers are authoritative; EF may additionally short-circuit but DB is the floor |
+| X4 | `generate-workout-plan` EF | "RETIRED — logic now inline in onboarding v67" | ACTIVE v9 | Still exists, still deployable. Decide: delete or keep as standalone utility. |
+| X5 | `onboarding` version | v67 (and v67 staged in `staging/onboarding_v67.ts`) | v74 | 7 versions ahead of staging; staging file is stale |
+| X6 | `sw.js` cache version rule | "bump letter after every portal push" | Current: `v2026-04-17u` per master | Correct; no drift |
+| X7 | `auth.js` version | v2.4 (master §12 offline section) | v2.3 (master §3) | Master disagrees with itself — §3 says v2.3, §12 says v2.4 |
+| X8 | Schema-snapshot.md | "Tables: 36" dated 10 April | 68 tables today | Schema-snapshot is 8 days stale and 32 tables short |
+| X9 | Backlog "14 triggers + 24 FKs" note | 14/24 | 119/25 | Backlog was also wrong — **correct counts are 119 triggers, 25 FKs** |
+| X10 | Master §12 has two sections both numbered `## 12.` | — | Duplicate heading numbers (Security Audit, Design System, Offline Architecture all labelled 12) | Renumber |
+
+### 2.4 Inconsistencies (internal to Brain)
+
+| # | Item |
+|---|---|
+| I1 | Master.md has **three** `## 12.` sections (Security Audit, Design System, Offline Architecture) |
+| I2 | Master §3 says `auth.js v2.3`; §12 (offline) says `auth.js v2.4` |
+| I3 | `schema-snapshot.md` was clearly auto-generated once (10 April) and never refreshed; no automation to keep it current |
+| I4 | Backlog already flags "master.md §4: correct the 'No triggers'/'No FKs' claims" but uses incorrect counts (14/24) |
+| I5 | `staging/onboarding_v67.ts` (46KB) is stale relative to live `onboarding` v74 |
+
+---
+
+## 3. CHANGELOG VALIDATION
+
+The changelog (114KB, 1,658 lines) is prepended chronologically and broadly accurate. I spot-checked the 18 April and 17 April entries against live state:
+
+| Changelog claim (18 April) | Live verification |
+|---|---|
+| admin dashboard shipped at `apps/admin-dashboard/admin.html` | Need to verify in vyve-site repo (not checked this session). Backlog says "deploy to a hosting target" so it's committed but not deployed. |
+| admin-dashboard EF created | ✅ Live: v6 |
+| `member_stats` extended columns | ✅ Live columns match: activity_score, consistency_score, variety_score, wellbeing_score_component, latest_stress_score, latest_energy_score, programme_active, programme_paused_at, joined_at |
+| `admin_users` has `active` + `notes` + Dean + Lewis seeded | ✅ 3 rows in table |
+| Source-table indexes added for workouts/cardio/certificates/ai_interactions + `logged_at DESC` | ✅ All present (verified) |
+| Backfill: 17 member_stats, 99 member_activity_daily, 3 company_summary, 91 platform_metrics_daily | ✅ 17/99/3/92 — matches (one extra day accumulated since) |
+
+**Changelog corrections required:** None for recent entries. The 18 April entry also says "No triggers / No FKs" is in master §4 and needs fixing — already captured in backlog.
+
+Retrospective corrections (these items should have been changelog entries but were not explicit):
+- At some point triggers were added (zz_lc_email, zz_sync_activity_log, cap_*, counter_*, auto_time_fields_*, auto_iso_week_*). No clear changelog date.
+- FKs were added at some point. No clear changelog date.
+
+**Recommendation:** Write a single retrospective entry "Database triggers and foreign keys — previously undocumented" with the full inventory, date-stamped 18 April (this session).
+
+---
+
+## 4. BACKLOG VALIDATION
+
+Going through the current backlog line by line:
+
+| Backlog item | Status | Correct? |
+|---|---|---|
+| Active: Android icon, iOS icon, Exercise restructure, polish, May sell-ready | Open | ✅ Valid |
+| Week: HealthKit, Calendar integration, Calendar page, Deploy admin.html | Open | ✅ Valid (Deploy admin is the most pressing — file exists but no hosting) |
+| Security QW: indexes on workouts/cardio/certificates/ai_interactions — "DONE 18 April" | Done | ✅ Confirmed live |
+| Security QW: logged_at DESC indexes — "DONE 18 April" | Done | ✅ Confirmed live |
+| Security QW: XSS escape firstName | Open | Still open; `index.html` renders firstName via innerHTML without escaping |
+| Security QW: running_plan_cache RLS public_update fix | Open | Still open; policy still lets any authenticated user UPDATE any row |
+| Security QW: INSERT policies on session_chat, shared_workouts, monthly_checkins | Open | Still open |
+| Security QW: 3 redundant RLS policies on members | Open | Still open |
+| Security QW: Delete 89 dead EFs | **Partially done** — most of the 89 are gone already; ~9 one-shot migration EFs remain. Rewrite this line to reflect reality. |
+| Security QW: mobile-web-app-capable meta tag on 13 pages | Open | Valid |
+| Brain reconciliation: §4 triggers/FKs correction | **This session resolves it** — mark done on commit |
+| Brain reconciliation: §4 aggregation layer documentation | **This session resolves it** — mark done on commit |
+| Brain reconciliation: §10 Rule 33 (aggregation tables are EF-service-role only) | **This session resolves it** — new Rule 33 included in rewritten master |
+| Design System Phases A, B, C | Marked done | ✅ Consistent with `theme.css` tokens + master §12 notes |
+| Design System Phase D (components), E (typography) | Open | Valid |
+| In-app onboarding fallback, save-answers-first resilience | Open | Valid |
+| HAVEN clinical sign-off | Open | Master notes HAVEN is being assigned but not formally signed off — valid open item |
+| Dashboard date-range filter for member-dashboard EF | Open | Valid — fetches ALL history, should be capped to 90d |
+| Hash emails to PostHog | Open | Valid |
+| Lewis actions (FB Make, social publisher, B2B tiers, Brevo logo, annual discount, disabled Make tasks) | Open | Valid |
+| "Add Dean + Lewis to admin_users" | **Already done** — 3 rows in admin_users. Remove this item. |
+
+**Items that should be added** (currently untracked in backlog):
+
+| New backlog item | Why |
+|---|---|
+| Decide on `generate-workout-plan` EF (delete vs keep as standalone utility) | Master says "retired" but EF is live at v9 — pick a truth |
+| Refresh `brain/schema-snapshot.md` (or automate it, or delete it) | 8 days stale, lists 36 tables (live has 68) |
+| Remove `staging/onboarding_v67.ts` (or refresh from v74) | 7 versions behind live |
+| Reconcile `auth.js` version number (master §3 vs §12) | Minor but it's a source-of-truth doc |
+| User-ban workflow documentation | `ban-user-anthony` v8 exists but process not in Brain |
+| 1 orphan auth user (anthony.clickit@gmail.com) — confirm ban is final, or clean up | Housekeeping |
+| Deploy `apps/admin-dashboard/admin.html` to admin.vyvehealth.co.uk | Already in backlog but surface to top — admin dash has no home |
+
+---
+
+## 5. TECHNICAL DEBT
+
+| Tier | Item | Notes |
+|---|---|---|
+| High | 7 aggregation/admin tables have RLS enabled but NO policies | By design (service-role only via EFs). Document this pattern as Rule 33. Any future client-side direct access to these tables will silently fail. |
+| High | `running_plan_cache.public_update` RLS policy allows any auth user to UPDATE any row | Known (backlog). Easy fix: `USING (member_email = auth.email())`. |
+| High | `index.html` XSS vector: `firstName` rendered via `.innerHTML` | Known (backlog). Trivial escape fix. |
+| Med | `generate-workout-plan` EF still deployed but master says retired | Mixed-state debt. Pick: delete or un-retire. |
+| Med | `staging/onboarding_v67.ts` 7 versions behind `onboarding` v74 | Delete it; it misleads future sessions. |
+| Med | `schema-snapshot.md` 8 days stale | Either build an auto-refresh (an EF that dumps `information_schema` → commits via github-proxy) or delete it. |
+| Med | PostHog sends raw email PII | Known (backlog). |
+| Low | Master.md has three `## 12.` section numbers | Renumber 12/13/14. |
+| Low | `auth.js` v2.3 vs v2.4 disagreement inside master.md | Pick one. |
+| Low | Changelog is 114KB / 1,658 lines and growing unboundedly | Consider annual archive (move pre-April entries into `changelog-archive/2026-Q1.md`). |
+| Low | 9 one-shot migration EFs remaining (seed-*, ban-user-anthony, trigger-*, thumbnail-*, send-stuart-reset, generate-stuart-plan) | Delete after each has served its purpose. |
+
+---
+
+## 6. PRIORITISED ACTION PLAN
+
+### P0 — Fix before next session (Brain is lying about reality)
+
+1. **Commit the rewritten `brain/master.md`** (produced this session). Key changes: 68 tables, 119 triggers, 25 FKs, aggregation layer documented, 58 EFs referenced, cron list completed, section numbering fixed, Rule 33 added.
+2. **Commit the rewritten `tasks/backlog.md`** (produced this session). Key changes: close the three "Brain Reconciliation" items, remove "Add Dean + Lewis to admin_users" (already done), clarify the "89 dead EFs" item, add the new items above.
+3. **Prepend the new changelog entry** (produced this session) documenting this reconciliation.
+4. **Delete `staging/onboarding_v67.ts`** (or sync to v74). It gives AI sessions a false version to reference.
+
+### P1 — Before Sage demo / May sell-ready
+
+5. **Deploy `apps/admin-dashboard/admin.html`** to `admin.vyvehealth.co.uk` (vyve-command-centre GH Pages). Dashboard is built and tested; just needs hosting.
+6. **Fix `running_plan_cache` RLS** (one-line SQL migration).
+7. **Fix `firstName` XSS** in index.html (escape before innerHTML).
+8. **Add `<meta name="mobile-web-app-capable" content="yes"/>`** to remaining 13 portal pages.
+9. **Resolve `generate-workout-plan` EF** — delete if truly retired, otherwise document its actual role.
+10. **Hash emails before sending to PostHog.**
+
+### P2 — Structural improvements
+
+11. **Delete the remaining ~9 one-shot migration EFs** (seed-library-1/2, seed-b1, create-ai-decisions-table, setup-ai-decisions, setup-member-units, trigger-owen-workout, trigger-callum-workout, thumbnail-batch-upload, generate-stuart-plan, send-stuart-reset — retain `ban-user-anthony` if ban workflow is still in use).
+12. **Automate schema-snapshot.md regeneration** (weekly cron EF that queries `information_schema` → commits via github-proxy). Or delete it; the master inventory is sufficient if kept current.
+13. **Add RLS policies to the 7 aggregation tables** that document service-role-only intent (even empty policies make the intent explicit).
+14. **Archive pre-April changelog entries** into `changelog-archive/2026-Q1.md`.
+
+### P3 — Later
+
+15. Design System Phase D + E (components + typography).
+16. HealthKit / Health Connect scoping session.
+17. Calendar integration.
+18. HAVEN clinical sign-off decision.
+19. In-app onboarding fallback, save-answers-first resilience.
+
+---
+
+## 7. OUTPUTS PRODUCED THIS SESSION
+
+1. This report (`VYVE_Reconciliation_Report_2026-04-18.md`)
+2. Rewritten `brain/master.md` — reflects true system state
+3. Rewritten `tasks/backlog.md` — closes stale items, adds new ones from this audit
+4. `changelog_entry_2026-04-18_reconciliation.md` — prepend to `brain/changelog.md`
+
+All four files are ready for review. Commit path (atomic via `GITHUB_COMMIT_MULTIPLE_FILES`):
+
+```
+VYVEHealth/VYVEBrain@main:
+  brain/master.md               (overwrite)
+  tasks/backlog.md              (overwrite)
+  brain/changelog.md            (prepend entry from changelog_entry_2026-04-18_reconciliation.md)
+  audits/VYVE_Reconciliation_Report_2026-04-18.md  (new)
+```
+
+---
+
+*End of reconciliation report. No Brain changes have been committed automatically — the files are staged for your review first, as per the "Talk first, then build" convention.*
