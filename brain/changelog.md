@@ -1,3 +1,62 @@
+## 18 April 2026 — Certificates page stuck on loading spinner (auth polling pattern removed from certificates.html + settings.html)
+
+### Issue reported by Dean
+
+Certificates page hung on the loading spinner in both Chrome and Safari. Dean had one legitimate certificate in the DB (sessions track, 30 milestone, global cert No. 0001, earned 18 Apr 20:35 UTC) but could not see it anywhere. Initial hypothesis was a `member-dashboard` EF outage; diagnosis proved otherwise.
+
+### Root cause
+
+Two portal pages still used the legacy `waitForAuth(n)` polling pattern — explicitly flagged as a bug in master.md Rule 22 ("Any page still using the polling pattern is a bug"). Pattern:
+
+```js
+function waitForAuth(n) {
+  if (window.vyveCurrentUser) { loadPage(); return; }
+  if (n > 50) { loadPage(); return; }      // gives up after 5s
+  setTimeout(() => waitForAuth(n + 1), 100);
+}
+async function loadPage() {
+  const user = window.vyveCurrentUser;
+  if (!user?.email) return;                 // ← silent return, spinner hangs forever
+  ...
+}
+```
+
+When `auth.js` took longer than 5 seconds to set `window.vyveCurrentUser` — which became more likely after the 11 Apr security audit tightened JWT handling and CORS on the JWT-gated EFs — polling timed out, `loadPage()` was called anyway, returned silently on the no-user branch, and left the skeleton spinner up with no console error, no failed fetch, no unhandled rejection. This matches the "silent failures" pattern called out in master.md: the platform monitor has no signal because nothing fails loudly.
+
+`settings.html` had the same pattern. Its n>50 branch showed an empty `#app` div instead of the spinner, which is why it hadn't yet surfaced as a user-visible bug, but it would have on a cold load.
+
+Portal-wide scan confirmed only these two pages carried the bug. `index.html`, `habits.html`, `engagement.html` already use the correct event-driven pattern. `workouts.html` uses MutationObserver per Rule 12. Everything else either doesn't call member-dashboard or uses a different init path.
+
+### What shipped
+
+**`vyve-site` portal** — single atomic commit
+
+- `certificates.html`
+  - Replaced `waitForAuth(n)` polling with event-driven pattern (listens on `vyveAuthReady`, immediate-fire if `window.vyveCurrentUser` already set, hard 8s fallback that redirects to `/login.html`)
+  - `loadPage()` no-user branch: silent `return` → `window.location.href = '/login.html'` so auth failure is visible, not silent
+- `settings.html`
+  - Same auth pattern swap, preserving the cache-first fast path (populateFromCache → loadProfile in background)
+  - n>50 silent "show empty app" branch also replaced with login redirect
+- `sw.js` cache: `vyve-cache-v2026-04-18d` → `vyve-cache-v2026-04-18e`
+
+### Why the fix makes the certificate visible
+
+Dean's one certificate row is intact in `public.certificates` (id `2391eb97-82c6-4952-addd-0ae6c80b6210`, activity_type `sessions`, milestone_count 30, global_cert_number 1, certificate_url populated, charity_moment_triggered true). `member-dashboard` v25 returns `data.certificates[]`, and `certificates.html`'s `render()` reads those columns directly into a cert card. The only thing blocking render was the auth-timeout silent hang. With the event-driven pattern, `loadPage()` runs as soon as auth.js dispatches `vyveAuthReady`, the fetch completes, and the "Live Sessions / The Explorer / 30 completed / No. 0001 / 18 Apr 2026" card renders.
+
+### Follow-ups
+
+- That sessions certificate was issued earlier today — worth a sanity check on whether Dean's actual `session_views` count is ≥ 30 or whether certificate-checker fired on a test insert. Not a blocker.
+- Rule 22 candidate upgrade: consider a CI grep for `function waitForAuth(n)` to fail builds if the polling pattern ever reappears.
+- Outstanding items from 11 Apr audit (A4 service-role refactor, A5 XSS audit on innerHTML, C2 onboarding race ordering, C3 dashboard over-fetching, C4 PostHog email hashing, B1 one-shot EF deletions) remain open.
+
+### Source of truth used
+
+- `VYVEHealth/vyve-site` main: `certificates.html` (SHA 310d1d1), `settings.html` (SHA 194dcfb), `auth.js` (SHA dda1103), `index.html` (SHA 29348cf for reference pattern), `sw.js` (SHA 00d957c)
+- Live Supabase project `ixjfklpckgxrwjlfsaaz`: `public.certificates` row for deanonbrown@hotmail.com, `public.members`, activity count queries
+- Portal-wide scan across 12 pages to confirm only certificates.html and settings.html carried the polling pattern
+
+---
+
 ## 18 April 2026 — Three-issue fix session (monthly-checkin 500, weekly check-in zoom, notifications safe-area)
 
 ### Issues reported by Dean
