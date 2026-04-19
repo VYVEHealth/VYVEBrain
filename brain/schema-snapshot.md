@@ -2,9 +2,9 @@
 
 > Auto-generated from live Supabase project `ixjfklpckgxrwjlfsaaz`.
 > DO NOT EDIT — overwritten weekly by the `schema-snapshot-refresh` Edge Function.
-> Last refresh: 2026-04-18T02:05:41.690Z
+> Last refresh: 2026-04-19T03:00:13.213Z
 
-**Totals:** 68 tables (68 with RLS) · 785 columns · 25 FKs · 119 triggers · 31 public functions · 73 RLS policies · 160 indexes · 12 cron jobs
+**Totals:** 68 tables (68 with RLS) · 786 columns · 25 FKs · 125 triggers · 32 public functions · 73 RLS policies · 160 indexes · 13 cron jobs
 
 ---
 
@@ -1208,6 +1208,7 @@
 | `nutrition_guidance` | text | YES |  |  |  |
 | `location` | text | YES |  |  |  |
 | `dob` | date | YES |  |  |  |
+| `exercise_stream` | character varying | YES | 'workouts'::character varying |  |  |
 
 **Check constraints:**
 - `members_baseline_diet_check`: CHECK (((baseline_diet >= 1) AND (baseline_diet <= 10)))
@@ -1218,6 +1219,7 @@
 - `members_baseline_social_check`: CHECK (((baseline_social >= 1) AND (baseline_social <= 10)))
 - `members_baseline_stress_check`: CHECK (((baseline_stress >= 1) AND (baseline_stress <= 10)))
 - `members_baseline_wellbeing_check`: CHECK (((baseline_wellbeing >= 1) AND (baseline_wellbeing <= 10)))
+- `members_exercise_stream_check`: CHECK (((exercise_stream)::text = ANY ((ARRAY['workouts'::character varying, 'movement'::character varying, 'cardio'::character varying])::text[])))
 - `members_persona_check`: CHECK ((persona = ANY (ARRAY['NOVA'::text, 'RIVER'::text, 'SPARK'::text, 'SAGE'::text, 'HAVEN'::text])))
 - `members_session_duration_preference_check`: CHECK ((session_duration_preference = ANY (ARRAY[20, 30, 45, 60])))
 - `members_theme_preference_check`: CHECK ((theme_preference = ANY (ARRAY['light'::text, 'dark'::text, 'system'::text])))
@@ -1621,6 +1623,7 @@
 
 **Triggers:**
 - `auto_time_fields_replay_views` — BEFORE INSERT
+- `replay_views_cert_count_trigger` — AFTER DELETE/INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
 
@@ -1735,6 +1738,7 @@
 - `auto_time_fields_session_views` — BEFORE INSERT
 - `counter_sessions` — AFTER INSERT
 - `enforce_cap_session_views` — BEFORE INSERT
+- `session_views_cert_count_trigger` — AFTER DELETE/INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
 
@@ -2028,7 +2032,7 @@
 
 ---
 
-## Public Functions (31)
+## Public Functions (32)
 
 - `backfill_platform_metrics(p_days integer)` — func
 - `bump_member_activity(p_email text, p_type text, p_date date, p_at timestamp with time zone)` — func
@@ -2057,6 +2061,7 @@
 - `set_activity_time_fields()` — func
 - `set_checkin_iso_week()` — func
 - `update_cc_updated_at()` — func
+- `update_cert_sessions_count()` — func
 - `update_push_native_updated_at()` — func
 - `vyve_lc_email()` — func
 - `vyve_refresh_daily(p_email text, p_date date)` — func
@@ -2064,7 +2069,7 @@
 
 ---
 
-## Cron Jobs (12)
+## Cron Jobs (13)
 
 | Job | Schedule | Active | Command preview |
 |---|---|---|---|
@@ -2075,6 +2080,7 @@
 | `vyve_rebuild_mad_incremental` | `*/30 * * * *` | ✓ | `SELECT public.rebuild_member_activity_daily_incremental();` |
 | `vyve_recompute_company_summary` | `0 2 * * *` | ✓ | `SELECT public.recompute_company_summary();` |
 | `vyve_recompute_member_stats` | `*/15 * * * *` | ✓ | `SELECT public.recompute_all_member_stats();` |
+| `vyve_schema_snapshot` | `0 3 * * 0` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-certificate-checker` | `0 9 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-daily-report` | `5 8 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-reengagement-daily` | `0 8 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
