@@ -1,3 +1,48 @@
+## 19 April 2026 — BST date consistency audit: bstToday() across portal + wellbeing-checkin EF
+
+### Audit scope
+Full audit of all portal pages calling Edge Functions: EF response shape contracts and BST date handling.
+
+### EF response shape mismatches
+None found. All pages correctly consume their EF responses:
+- `wellbeing-checkin.html` reads `data.ack`, `data.recs` — correct
+- `monthly-checkin.html` reads `data.aiReport`, `status.alreadyDone`, `status.newMemberLocked`, `activity.*` — correct
+- `running-plan.html` reads `data.content?.[0]?.text` from anthropic-proxy — correct
+- `certificates.html` uses iframe following 302 redirect from certificate-serve — correct
+
+### BST date bugs fixed
+
+**`workouts-session.js`** (commit 22aa348)
+- Exercise_logs insert was using `new Date().toISOString().slice(0,10)` (UTC) — fixed to `bstToday()`
+- Workout completion `today` variable was UTC — fixed to `bstToday()`
+- Added `isDST()` + `bstToday()` helpers at top of file (same pattern as habits.html)
+
+**`wellbeing-checkin.html`** (commit 22aa348)
+- Client-side `activity_date` was UTC — fixed to `bstToday()` (hygiene; EF was ignoring client date anyway)
+- Added `isDST()` + `bstToday()` helpers
+
+**`wellbeing-checkin` EF** (deployed as Supabase v35, code v25)
+- Server-side `activity_date = today.toISOString().slice(0, 10)` was UTC — this was the real bug: check-ins stored on the wrong date after midnight BST
+- Added `ukToday()` helper (Deno-compatible BST detection using UTC date math, not `getTimezoneOffset()`)
+- Also fixed `writeNotification` dedup check to use `ukToday()` for the `created_at` cutoff
+
+**`monthly-checkin.html`** (commit 22aa348)
+- Calendar `todayStr` was UTC — cosmetic fix, now uses `bstToday()` so "today" cell highlights correctly after midnight BST
+- Added `isDST()` + `bstToday()` helpers
+
+**`sw.js`** (commit 22aa348)
+- Cache bumped: `vyve-cache-v2026-04-19d` → `vyve-cache-v2026-04-19e`
+
+### Confirmed unaffected
+- `habits.html` — already uses `bstToday()` (was the reference implementation)
+- `sessions.html` — no log-activity calls (session logging happens on live session pages)
+- `log-activity` EF — trusts client-sent `activity_date`; cap check + DB write use whatever date the client sends
+
+### Commit
+vyve-site main: [22aa348](https://github.com/VYVEHealth/vyve-site/commit/22aa348577aafdcf34dd756ad0403f81cef340ea)
+
+---
+
 ## 19 April 2026 — engagement.html component bars crashing (renderScoreHero shape mismatch)
 
 ### Issue
