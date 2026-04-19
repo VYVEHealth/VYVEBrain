@@ -1,3 +1,48 @@
+## 19 April 2026 — member-dashboard EF v43: counts from source tables, per-type streaks, full 30-day activity_log
+
+### Issue
+User reported three bugs: (1) index.html totals tallied wrong, (2) engagement.html per-type streaks not loading, (3) engagement.html 30-day activity calendar not loading.
+
+### Root causes
+1. **Totals drift.** member-dashboard v42 pulled counts from `members.cert_*_count` (trigger-maintained counters). These drift: the counter trigger exists on `session_views` but NOT on `replay_views`, so replay views never increment `cert_sessions_count`. Confirmed on Dean's row — stored 30 vs actual 45 (15 replay views missing). Same class of bug as the aggregation-trigger SECURITY DEFINER issue fixed earlier on 19 April, just a different mechanism.
+2. **Calendar empty.** Earlier 19 April fix changed the calendar filter side from `r.types` → `r.activities` (4 places in `renderLogFromPrecomputed`), but missed the translation layer at `loadPage()` line 664 which still renamed `activities` → `types`. Flow: EF returns `{date,activities}` → translation rewrites to `{date,types}` → render reads `r.activities` → never matches → calendar empty.
+3. **Only 14 days returned.** EF v42 used `activity_log: activityLog.slice(-14)`. Calendar expected 30.
+
+### What shipped
+
+**member-dashboard v43** (deployed, verify_jwt: false, internal JWT validation unchanged)
+- Lifetime counts computed from source tables, not `cert_*_count`:
+  - `habits` = distinct `activity_date` from `daily_habits` (Rule 20)
+  - `workouts`, `cardio` = row count on respective tables
+  - `sessions` = `session_views` + `replay_views` row count combined
+  - `checkins` = `kahunas_checkins` row count
+- Returns full 30-day `activity_log` (removed `.slice(-14)`)
+- Returns new `engagement.streak_by_type` with `{current,best}` for habits/workouts/cardio/sessions (daily streaks) and `checkins` (weekly streak, computed from `iso_year`+`iso_week`)
+- `progress.*.best_streak` now populated (was hardcoded 0)
+
+**index.html**
+- Translation layer wires per-type streaks from `engagement.streak_by_type`, maps `best` → `longest` for legacy client shape
+- Charity normalised to `{total,months,progress}` object (was raw number — latent render bug: `ch.total.toLocaleString()` called on number)
+- Fixed workout key mismatch: `applyStreak('workout', streaks.workout...)` → `streaks.workouts` (prefix 'workout' stays for DOM ids)
+
+**engagement.html**
+- Translation layer passes `data.activity_log` through unchanged (keeps `activities` key; drops the `activities` → `types` rename)
+- Per-type streaks wired from `engagement.streak_by_type` via same `mapS` helper
+
+**sw.js** — cache bumped: `vyve-cache-v2026-04-19l` → `vyve-cache-v2026-04-19m`
+
+### Commit
+vyve-site main: [d3dc138](https://github.com/VYVEHealth/vyve-site/commit/d3dc13826b2ba15d8977121d232a9aaf989c485d)
+
+### Architecture note (proposed Rule addition)
+`cert_*_count` counters on `members` are redundant with source-table queries. The `increment_*_counter` triggers are drift-prone (missed replay_views case above). Recommend deprecating these columns in a future pass; any read-path should compute from source tables. Not blocking; leaving counters in place for now.
+
+### Deferred
+- Backfilling `cert_*_count` to match source tables (cosmetic only now that the EF reads source tables; no user-facing impact)
+- Auditing whether any other EF/report reads `cert_*_count` directly (daily-report, weekly-report, monthly-report, certificate-checker all candidates — a grep pass is cheap but out of scope for this commit)
+
+---
+
 ## 19 April 2026 — Exercise restructure Round 4: movement.html
 
 ### New file: movement.html
