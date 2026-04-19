@@ -1,3 +1,50 @@
+## 19 April 2026 — Exercise restructure Round 4: movement.html
+
+### New file: movement.html
+Commit: [b7e19ba](https://github.com/VYVEHealth/vyve-site/commit/b7e19ba12726a25a5a94aef8641043494fb7da94)
+
+**Features:**
+- Programme header card: name, week X of Y, progress bar from workout_plan_cache
+- Activity list: name, duration, tip, optional `video_url` per activity
+- Video modal: YouTube auto-embed, direct video file fallback, open-link fallback. Closes on Escape or overlay tap. Clears video on close (stops playback).
+- "Mark as Done" button: writes to `workouts` table (BST date, day_of_week, time_of_day, plan_name, session_name, duration_mins). Then PATCH to `workout_plan_cache` to advance current_session/current_week.
+- Clears `vyve_movement_cache` after completion so next load shows the new session.
+- No-plan state: shown when no active plan with `category = 'movement'` exists. Clean message + back to Exercise link.
+- 10-second skeleton watchdog, 30-minute localStorage cache (`vyve_movement_cache`, email-keyed).
+- No emojis, XSS-escaped activity content, bstToday() date helpers.
+
+**Data contract (expected programme_json structure for movement plans):**
+```json
+{
+  "programme_name": "4-Week Gentle Movement",
+  "category": "movement",
+  "plan_duration_weeks": 4,
+  "sessions_per_week": 3,
+  "weeks": [{
+    "sessions": [{
+      "session_name": "Walk & Stretch — Day 1",
+      "activities": [{
+        "name": "Brisk walk",
+        "duration": "20 mins",
+        "tip": "Aim for a conversational pace",
+        "video_url": null
+      }]
+    }]
+  }]
+}
+```
+
+**sw.js** — cache bumped: `vyve-cache-v2026-04-19i` → `vyve-cache-v2026-04-19j`
+
+**Current state:** All members see no-plan state (correct — no movement plans in programme_library yet). Page is ready for content.
+
+### Still to build
+- Round 5: welcome.html onboarding question + onboarding EF routing for exercise_stream
+- programme_library: movement plan content (walking plans, yoga, stretching programmes)
+- programme_library: add `category` column to distinguish movement vs gym plans
+
+---
+
 ## 19 April 2026 — Exercise restructure Round 3: exercise.html hub page
 
 ### New file: exercise.html
