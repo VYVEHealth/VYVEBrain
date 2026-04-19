@@ -1,3 +1,46 @@
+## 19 April 2026 — Sessions cap: 2/day combined live + replay (DB trigger + backfill)
+
+### Issue
+`session_views` had a DB-level 2/day cap trigger, `replay_views` had none. Combined daily totals could exceed 2 whenever a member mixed live and replay views. User confirmed intent: max 2 sessions per day total, any mix (2 live + 0 replay, 1+1, 0+2 all OK; 2 live + 1 replay should reject).
+
+### Audit before fix (across all members)
+6 over-cap days, 3 members affected:
+
+| Member | Date | Live | Replays | Total |
+|---|---|---|---|---|
+| Dean | 17 Apr | 2 | 4 | 6 |
+| Paige | 17 Apr | 2 | 1 | 3 |
+| Calum | 13 Apr | 2 | 1 | 3 |
+| Dean | 6 Apr | 2 | 3 | 5 |
+| Dean | 28 Mar | 1 | 3 | 4 |
+| Dean | 18 Mar | 1 | 5 | 6 |
+
+15 replay rows total.
+
+### What shipped (SQL migration, single transaction)
+
+1. **`cap_session_views()` updated** — now counts `session_views + replay_views` for the day, not just `session_views`.
+2. **`cap_replay_views()` created** — mirrors `cap_session_views`; routes over-cap to `activity_dedupe` with `source_table='replay_views'`.
+3. **Trigger `enforce_cap_replay_views` (BEFORE INSERT on replay_views)** created, calls `cap_replay_views()`.
+4. **Backfill:** 15 over-cap replay rows moved from `replay_views` to `activity_dedupe`. Ranking per day by `logged_at ASC NULLS LAST, id ASC`; keep the earliest `GREATEST(0, 2 - live_count)` replays, move the rest. Atomic CTE chain (INSERT + DELETE).
+
+### Result
+- `rows_inserted_to_dedupe = 15`, `rows_deleted_from_replays = 15`
+- Post-backfill verification: 0 days remain with live+replay > 2 across any member
+- Affected member totals (sessions = session_views + replay_views):
+  - Dean: 45 → **32** (−13)
+  - Paige: 6 → **5** (−1)
+  - Calum: 4 → **3** (−1)
+
+### Brain doc updates
+- `master.md §4` trigger table: added `replay_views` to the `enforce_cap_*` row; note the combined cap
+- `master.md §4` trigger-support function list: bumped 14 → 15, added `cap_replay_views`, annotated `cap_session_views` as combined
+- `master.md §4` header: 119 → 120 triggers; 31 → 32 public functions
+- `master.md §4` Activity Caps subsection: documents the combined cap explicitly
+- `master.md` reconciliation timestamp
+
+---
+
 ## 19 April 2026 — member-dashboard EF v43: counts from source tables, per-type streaks, full 30-day activity_log
 
 ### Issue
