@@ -1,3 +1,34 @@
+## 19 April 2026 — Exercise restructure Round 3: exercise.html hub page
+
+### New file: exercise.html
+Commit: [c5216ca](https://github.com/VYVEHealth/vyve-site/commit/c5216caf774b2a3aeef8d10e569fc093b0e93b19)
+
+**Layout decisions (confirmed):**
+- Hero card: detailed (programme name, week X of Y, progress bar, "Up next" session pill, "View Programme" CTA)
+- CTA: links to workouts.html — 2 taps (hub → programme view → active session). No deep-link.
+- Stream cards: all 3 always visible regardless of exercise_stream (Option A). No Classes card.
+- 3 streams: Movement (movement.html), Workouts (workouts.html), Cardio (running-plan.html)
+
+**Data source:**
+- Direct REST to `workout_plan_cache` (member_email, is_active=true)
+- Fields used: `programme_json.programme_name`, `current_week`, `plan_duration_weeks`, `current_session`, `programme_json.weeks[n].sessions[n].session_name`
+- 1-hour localStorage cache keyed by email: `vyve_exercise_cache`
+
+**Patterns:**
+- Auth: `if (window.vyveCurrentUser) onAuthReady()` + `vyveAuthReady` listener
+- Skeleton watchdog: 10 seconds
+- NULL plan fallback: "Your programme is on its way" state — no crash
+- offline-manager.js wired
+
+**sw.js** — cache bumped: `vyve-cache-v2026-04-19h` → `vyve-cache-v2026-04-19i`
+
+### Still to build
+- movement.html (Round 4) — Movement plan display + completion logging
+- welcome.html onboarding question update (Round 5)
+- onboarding EF routing for exercise_stream (Round 5)
+
+---
+
 ## 19 April 2026 — Exercise restructure Round 1 & 2
 
 ### Round 1 — DB: exercise_stream column
