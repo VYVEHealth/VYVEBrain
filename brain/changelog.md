@@ -1,3 +1,52 @@
+## 19 April 2026 — Exercise restructure Round 1 & 2
+
+### Round 1 — DB: exercise_stream column
+- Added `exercise_stream VARCHAR(20)` to `public.members` with CHECK constraint ('workouts', 'movement', 'cardio'), DEFAULT 'workouts'
+- Backfilled all 18 existing members to 'workouts'
+- Migration applied via Supabase MCP apply_migration
+
+### Round 2 — Label changes: Workouts → Exercise (portal UI)
+Commit: [5fe6929](https://github.com/VYVEHealth/vyve-site/commit/5fe69294e0d9965c4e56938986fe8f0212a53a13)
+
+**nav.js**
+- Active page detection: `workouts` → `exercise` tab key; both `/workouts.html` and `/exercise.html` paths resolve to 'exercise' tab (keeps Exercise tab highlighted on workouts sub-page)
+- Bottom nav: href `/workouts.html` → `/exercise.html`, label 'Workouts' → 'Exercise', tab key updated
+- Desktop nav More dropdown: same href/label/tab update
+
+**index.html**
+- Mobile track name label: 'Workouts' → 'Exercise'
+- Progress track label: 'Workouts' → 'Exercise'
+- Weekly goal copy: 'Complete X workout/s' → 'Complete X exercise session/s'
+- Notification nav link: href + aria-label + span text updated
+
+**engagement.html**
+- Activity card label: 'Workouts' → 'Exercise'
+- Calendar legend label: 'Workouts' → 'Exercise' (key: 'workouts' unchanged — DB key)
+- Variety description copy updated
+
+**certificates.html**
+- Workouts track label: 'Workouts' → 'Exercise' (subtitle 'The Warrior' pending decision)
+- Empty state copy updated
+
+**leaderboard.html**
+- Metric tab display text: 'Workouts' → 'Exercise' (data-metric="workouts" unchanged — EF key)
+
+**sw.js** — cache bumped: `vyve-cache-v2026-04-19g` → `vyve-cache-v2026-04-19h`
+
+### What did NOT change
+- DB tables: `workouts`, `workout_plans`, `workout_plan_cache` — unchanged
+- EF response keys: `prog.workouts`, `counts.workouts` — unchanged
+- Internal JS variables in workout JS modules — unchanged
+- workouts.html — still exists as sub-page, accessed from hub
+
+### Still to build (Round 3+)
+- exercise.html hub page
+- movement.html sub-page
+- welcome.html onboarding question update
+- onboarding EF routing for exercise_stream
+
+---
+
 ## 19 April 2026 — BST date consistency audit: bstToday() across portal + wellbeing-checkin EF
 
 ### Audit scope
