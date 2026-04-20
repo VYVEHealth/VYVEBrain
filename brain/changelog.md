@@ -1,3 +1,43 @@
+## 2026-04-21e | nav.js: fix mobile-page-header disappearing on #skeleton pages
+
+**Context.** After shipping 21d (padding + checkin pages), Dean reported exercise.html and movement.html STILL had no dark sticky mobile header, while weekly/monthly checkin worked perfectly. Initial diagnosis was wrong (I thought the header was just too tight — it wasn't, it was entirely missing).
+
+**Root cause.** nav.js selects its insertion point with `document.querySelector('main')`, which returns the FIRST `<main>` in document order. Pages structured as:
+
+```
+<div id="skeleton"><main>...loading UI...</main></div>
+<div id="app" style="display:none"><main>...real content...</main></div>
+```
+
+(exercise.html, movement.html, and any other page with a skeleton-first pattern) have their FIRST `<main>` inside `#skeleton`. nav.js then inserts the mobile-page-header as a SIBLING of that skeleton `<main>` — meaning the header ends up INSIDE `#skeleton`. When the page JS later runs `document.getElementById('skeleton').style.display = 'none'`, the mobile header gets hidden along with the skeleton. The bottom nav and desktop nav still appear because they're injected into `document.body` directly.
+
+**Why weekly/monthly checkin worked.** Those pages do `#app { display:none }` and swap via `display:block` rather than having a separate `#skeleton` wrapper. Their first `<main>` is inside `#app` from the start. When `#app` is eventually shown, the mobile header (sibling of app's `<main>`) is shown too.
+
+**Fix shipped** ([18d2cb0](https://github.com/VYVEHealth/vyve-site/commit/18d2cb00693a4f48dd31f4140513dd4c29d5c671)).
+
+New insertion selection in nav.js:
+```js
+const app = document.getElementById('app');
+const main = (app && app.querySelector('main'))
+          || document.body.querySelector('main:not(#skeleton main)')
+          || document.querySelector('main');
+const insertBefore = main || (app ? app.firstChild : null);
+```
+
+Priority order:
+1. If `#app` exists, use the `<main>` inside it — always the right choice for pages with the standard skeleton→app pattern
+2. Fall back to any `<main>` not inside `#skeleton` — covers edge cases where someone has a different wrapper id
+3. Final fallback: the original `document.querySelector('main')` behaviour — covers simple pages without `#app` or `#skeleton` (like login, set-password)
+
+sw.js cache bumped to `vyve-cache-v2026-04-21e-navjs-skeleton-fix`.
+
+**Key learnings.**
+- When a utility script (like nav.js) uses broad DOM selectors like `document.querySelector('main')`, it will pick whichever matching element appears first in document order. In a codebase with multiple acceptable page structures (some with #skeleton wrappers, some without), this selector behaviour is inconsistent. Explicit selectors scoped to a known parent (`#app main`) produce reliable results.
+- Visual debugging is unreliable for "is the element there?" questions. I initially assumed the header was present but positioned wrongly. Checking via `document.querySelector('.mobile-page-header').offsetParent` in DevTools would have immediately shown it was `null` (element hidden because ancestor is display:none). Future sessions: when "element doesn't appear" and CSS looks correct, check ancestor visibility first, not layout.
+- Pages with a `#skeleton` + `#app` two-phase loading pattern should probably migrate to a single `#app` that internally toggles a skeleton state. This would remove the dual-main DOM structure entirely. Backlog candidate.
+
+---
+
 ## 2026-04-21d | four-page header unification (exercise, movement, wellbeing/monthly checkins)
 
 **Context.** After nav-dark shipped, Dean reported headers still broken on exercise.html and movement.html — eyebrow text rendering behind the iOS status bar. Also flagged that wellbeing-checkin.html and monthly-checkin.html have no bottom nav or back button at all. Required: bring all four pages in line with the standard sub-page pattern used by habits/workouts/sessions/leaderboard etc.
