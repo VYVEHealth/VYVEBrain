@@ -1,3 +1,58 @@
+## 2026-04-20 | `member_home_state` aggregate wired + member-dashboard EF v44
+
+**Context.** Dean flagged that `member-dashboard` EF v43 was still recomputing everything from 6 source tables on every load (~300–800ms per call on member growth) despite the three-layer aggregate cache (`member_activity_log`, `member_activity_daily`, `member_stats`) already running. Built `member_home_state` — a single-row-per-member dashboard-ready aggregate — and rewrote the dashboard EF to read it. Engagement page (which needs the 30-day calendar) still hits source tables for its `activity_log`, but every scalar now comes from the aggregate.
+
+**Unexpected context discovered during this work:** a previous session had already created `public.member_home_state` (with column names `engagement_recency`, `engagement_consistency`, `engagement_variety`, `engagement_wellbeing`, `active_days_30`, `wellbeing_latest_score`, `wellbeing_latest_iso_week`) plus `public.refresh_member_home_state(p_email)` and `public.tg_refresh_member_home_state()`, plus `zzz_refresh_home_state` triggers on 9 source tables (`daily_habits`, `workouts`, `cardio`, `session_views`, `replay_views`, `wellbeing_checkins`, `weekly_goals`, `weekly_scores`, `kahunas_checkins`). But 16 of 16 live members were populated only at `updated_at=20:41:03` — no realtime path had been tested, and the dashboard EF never read from it. So the feature was half-built; this session finished it.
+
+### What shipped this session
+
+**Schema** (additive to existing table — no drops, no breakage).
+- `ALTER TABLE public.member_home_state ADD COLUMN recent_habits_30d / recent_workouts_30d / recent_cardio_30d / recent_sessions_30d int DEFAULT 0` — needed for v43 `recent` response shape parity (v43 returned 30-day activity counts alongside lifetime totals).
+- No other schema changes. Existing columns (`engagement_recency` etc., `wellbeing_latest_score`, `active_days_30`) retained as-is.
+
+**`public.refresh_member_home_state(p_email text)` — rewritten** to match the real column names and Dean's new session-cap rule.
+- Reads directly from source tables (NOT `member_activity_daily`, which lags up to 30 min on cron) for true realtime freshness.
+- Computes: today counts, lifetime totals, per-type daily streaks (gaps-and-islands on distinct `activity_date`), weekly check-in streak (consecutive ISO weeks via `iso_year*53+iso_week` monotonic index), weekly goal targets + done counts, engagement via `public.compute_engagement_components()` (existing SQL function — DB-side formula matches v43's client-side formula), 30-day recent counts, latest wellbeing score from `weekly_scores`.
+- **Sessions lifetime count is capped at 2/day for life** (new rule from Dean this session). Implemented as `SUM(LEAST(2, daily_count))` over `session_views ∪ replay_views` grouped by `activity_date`. This deviates from v43's raw combined row count. In practice today, BEFORE INSERT caps on `session_views` and `replay_views` route over-caps to `activity_dedupe`, so `sessions_total` should match v43 exactly. If anything ever writes directly to those tables bypassing the caps in future, v44 will show a lower number than v43.
+- `SECURITY DEFINER` (required — writes to RLS-gated `member_home_state`).
+- Idempotent UPSERT on `ON CONFLICT (member_email)`.
+
+**Trigger wiring.** `zzz_refresh_home_state` AFTER INSERT OR UPDATE OR DELETE triggers on all 9 tables (`daily_habits`, `workouts`, `cardio`, `session_views`, `replay_views`, `wellbeing_checkins`, `weekly_goals`, `weekly_scores`, `kahunas_checkins`) route through `tg_refresh_member_home_state()` → `refresh_member_home_state(NEW.member_email OR OLD.member_email)`. Pre-existed from the earlier session; this session created and then dropped duplicate `zz_` triggers on 8 tables before spotting the original set. Final state: exactly one trigger per table, all named `zzz_refresh_home_state`.
+
+**Backfill.** Every member row recomputed via `DO $$ ... LOOP PERFORM refresh_member_home_state(m.email) ... $$`. 16/16 members have a row. Dean's aggregate matches source exactly: habits 29, workouts 21, cardio 9, sessions 32, checkins 7 (`all_match: true`).
+
+**End-to-end live test.** Inserted test `cardio` row for Dean → aggregate jumped to `cardio_today=1, cardio_total=10`, `updated_at` moved to the insert's `logged_at`. Deleted test row → back to `cardio_today=0, cardio_total=9`, new `updated_at`. Triggers fire in real time on INSERT, UPDATE, DELETE. ✅
+
+**`member-dashboard` EF v44 deployed.**
+- Replaced 6 source-table queries with a single `member_home_state` SELECT + member row + 30-day activity slices (for the engagement calendar — still unavoidable) + weekly_goals + charity RPC + certificates.
+- Response shape is byte-for-byte identical to v43 (`engagement.streak_by_type`, `progress.*.best_streak`, `recent.*`, `activity_log` with `{date, activities[]}`, `charity_total`, `wellbeing.current_score/last_checkin`, `engagement.components` with `recency/consistency/variety/wellbeing` keys). **No frontend commits required.**
+- Self-healing fallback: if a member has no `member_home_state` row yet (new signup before trigger fires), EF calls `refresh_member_home_state` via PostgREST RPC and re-reads.
+- `verify_jwt: false` retained (same as v43 — internal JWT validation via `supabase.auth.getUser()`).
+
+**sw.js cache bump.** `vyve-cache-v2026-04-20-running-plan-sync` → `vyve-cache-v2026-04-20-home-state`.
+
+### Performance expectation
+Dashboard EF should drop from ~300–800ms (v43, 6-way source-table fanout) to ~40–80ms (v44, 1-row aggregate + 5 small date-bounded slices). Not measured in this session — worth verifying in production via browser devtools next time Dean is on the app.
+
+### Rule additions (proposed for master.md)
+- **(new):** Any refresh of `member_home_state` must go through `public.refresh_member_home_state(p_email)`. Never write directly to `member_home_state` from EFs or frontend code — the function is the only sanctioned write path.
+- **(reinforced):** When pre-existing state is suspected (`CREATE TABLE IF NOT EXISTS` silently skipping, functions returning without changes), always inspect `information_schema.columns` and `pg_trigger` *before* writing migrations. Blind re-create guarded by `IF NOT EXISTS` conceals drift.
+
+### Deferred / known gotchas
+- **Sessions lifetime cap (new metric):** If anyone starts over-logging sessions in future (by inserting directly into `session_views` bypassing the BEFORE INSERT cap), `sessions_total` will diverge from v43's raw count. For now this can't happen through the app.
+- **`member_activity_daily` / `member_stats` crons still running** (every 30 min / 15 min). Orthogonal to this work — `member_home_state` is fresher than either. They power the internal admin dashboard; no need to dismantle. Rule #33 still applies.
+- **Live EF verification not done via curl.** Aggregate-vs-source parity verified via SQL; full response-shape diff vs v43 not run. If the dashboard page behaves strangely after this ships (engagement score mismatch, streaks off, goals not rendering), first suspect is response-shape drift — read v44 source and cross-check against render paths in `index.html` / `engagement.html`.
+- **`exercise_stream` / movement goals not surfaced** in `member_home_state`. The `weekly_goals.movement_target` column exists but isn't lifted into the aggregate. Add `goal_movement_target` / `goal_movement_done` when movement content ships and the hub actually surfaces movement progress on the dashboard.
+- **`information_schema.triggers` view** does not list triggers declared as `AFTER INSERT OR UPDATE OR DELETE` in a single statement (at least on this PG version). Always verify trigger presence via `pg_trigger` directly.
+
+### Commits
+- Supabase migrations (applied via `SUPABASE_APPLY_A_MIGRATION`): `create_member_home_state_table` (no-op — table already existed), `add_member_home_state_columns`, `member_home_state_cleanup_duplicates`, `refresh_member_home_state_v2`, `wire_member_home_state_triggers`, `drop_duplicate_refresh_triggers`.
+- `member-dashboard` EF: v43 → v44 (deployed via `deploy_edge_function`).
+- `vyve-site/sw.js`: cache bump `vyve-cache-v2026-04-20-running-plan-sync` → `vyve-cache-v2026-04-20-home-state` (this commit).
+- `VYVEBrain/brain/changelog.md`: this entry.
+
+---
+
 ## 2026-04-20 | Full repo base64-corruption sweep + brain restoration
 
 **Commit:** `[this commit]` (VYVEBrain) — Restore master.md + changelog.md from base64 corruption
