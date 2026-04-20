@@ -102,7 +102,7 @@ Single-file HTML dashboard (`apps/admin-dashboard/admin.html`), `admin-dashboard
 - **Load `vapid.js` on other portal pages** — currently only `index.html` has push subscription
 - **`certificate-checker` push notification** — send push when cert earned
 - **HAVEN clinical sign-off** — formally decide: approve as-is or gate pending professional review. HAVEN is actively being assigned (Conor Warren, 15 April 2026).
-- **Dashboard data date-range filter** — `member-dashboard` EF fetches ALL historical data, needs 90-day limit
+- ~~**Dashboard data date-range filter** — `member-dashboard` EF fetches ALL historical data, needs 90-day limit~~ **DONE differently 20 April 2026** — member-dashboard v44 now reads from `member_home_state` aggregate (1 row) + only 30-day slices for the engagement calendar. Fanout is fundamentally solved; no blanket limit needed.
 - **Hash emails before sending to PostHog**
 
 ---

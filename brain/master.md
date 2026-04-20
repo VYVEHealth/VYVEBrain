@@ -1,7 +1,7 @@
 # VYVE Health — Master Brain Document
 
 > Single source of truth for the VYVE Health platform. Any AI session starts here.
-> Last full reconciliation: **19 April 2026** (cap_replay_views trigger + combined 2/day cap; member-dashboard EF v43 reads counts from source tables; SECURITY DEFINER trigger fix on aggregation triggers; engagement.html v40 response mapping).
+> Last full reconciliation: **20 April 2026** (`member_home_state` single-row aggregate + `zzz_refresh_home_state` triggers on 10 tables including `members`; member-dashboard EF v44 reads from aggregate with identical v43 response shape; `refresh_member_home_state(p_email)` is the sole sanctioned write path). Previous (19 April 2026): cap_replay_views trigger + combined 2/day cap; member-dashboard EF v43 reads counts from source tables; SECURITY DEFINER trigger fix on aggregation triggers; engagement.html v40 response mapping.
 
 ---
 
@@ -213,6 +213,7 @@ Plus `daily_habits.habit_id → habit_library.id` and `member_habits.habit_id �
 | `member_stats` | 17 | `recompute_all_member_stats()` every 15m | Per-member rollups + engagement components |
 | `member_activity_daily` | 99 | `rebuild_member_activity_daily_incremental()` every 30m | Daily per-member counts |
 | `member_activity_log` | 243 | `zz_sync_activity_log` triggers (live) | Unified timeline feed |
+| `member_home_state` | 16 | `refresh_member_home_state(email)` fired from `zzz_refresh_home_state` triggers on 10 source tables (live) | Dashboard-ready per-member aggregate (read by member-dashboard EF v44+) |
 | `company_summary` | 3 | `recompute_company_summary()` daily 02:00 | Per-company rollups |
 | `platform_metrics_daily` | 92 | `recompute_platform_metrics()` daily 02:15 | Platform-wide daily KPIs |
 | `admin_users` | 3 | Manual seed (Dean + Lewis) | Allowlist for `admin-dashboard` EF |
@@ -257,7 +258,7 @@ All EFs use `verify_jwt: false` with internal JWT validation. Never set `verify_
 | Function | Version | Purpose | Auth |
 |---|---|---|---|
 | `onboarding` | v77 | Persona + habits + stream-aware routing (workouts/movement/cardio) + inline workout plan (workouts only) + welcome email | CORS (public) |
-| `member-dashboard` | v37 | Full dashboard data | JWT (internal) |
+| `member-dashboard` | v44 | Full dashboard data — reads `member_home_state` aggregate | JWT (internal) |
 | `wellbeing-checkin` | v32 | Weekly check-in + AI | JWT (internal) |
 | `monthly-checkin` | v13 | Monthly 8-pillar check-in + AI report | JWT (internal) |
 | `log-activity` | v19 | PWA activity logging + streak notifications | JWT (internal) |
@@ -408,11 +409,12 @@ HAVEN is live and IS being assigned (first assignment: Conor Warren, 15 April 20
 30. For Supabase EF deploys of large files (>10KB): always read from GitHub, store in variable, pass to deploy. Never inline.
 31. **`sw.js` activate: NO page migration.** The activate handler deletes old caches only. Migration causes stale/broken pages to persist.
 32. **Never inject `<script>` tags via naive string search.** The `</script>` in the injected tag will terminate any `<script>` block it lands inside.
-33. **Aggregation tables are service-role only.** `member_stats`, `member_activity_daily`, `member_activity_log`, `company_summary`, `platform_metrics_daily`, `admin_users`, `vyve_job_runs` have RLS enabled with NO policies — readable only from Edge Functions running as service role. Any client-side direct access will silently return zero rows.
+33. **Most aggregation tables are service-role only.** `member_stats`, `member_activity_daily`, `member_activity_log`, `company_summary`, `platform_metrics_daily`, `admin_users`, `vyve_job_runs` have RLS enabled with NO policies — readable only from Edge Functions running as service role. Any client-side direct access will silently return zero rows. **Exception:** `member_home_state` has RLS enabled *with* a policy (`member_home_state_own_data`) allowing `auth.email() = member_email` read — so individual members can read their own aggregate row directly if a future frontend wants to bypass the EF. All writes still go through `refresh_member_home_state(p_email)` only.
 34. **Activity caps are DB-level.** `enforce_cap_*` triggers on `workouts`, `cardio`, `daily_habits`, `kahunas_checkins`, `session_views` block over-cap inserts and route them to `activity_dedupe`. Do not duplicate cap logic in the application layer.
 35. **Email lowercasing is automatic.** `zz_lc_email` triggers on 42 tables lowercase `member_email` on every INSERT/UPDATE. Application code does not need to `.toLowerCase()` before writing.
 36. **Aggregation trigger functions must be SECURITY DEFINER.** `vyve_sync_activity_log`, `increment_habit_counter`, `vyve_refresh_daily`, and any other trigger function that writes to internal bookkeeping tables (`member_activity_log`, `member_activity_daily`, `member_notifications`, `member_stats`) must be `SECURITY DEFINER`. Without this, the trigger runs as the authenticated user, RLS on those tables blocks the write, and the entire INSERT on the source table rolls back silently. This took down all activity logging platform-wide on 19 April 2026.
 37. **engagement.html expects member-dashboard response shape.** The page uses `data.counts`, `data.streaks`, `data.score.total`, `data.activityLog` (with `types[]`). Any refactor of the member-dashboard EF response shape must also update the translation layer in `loadPage()` in engagement.html. Mismatches are silent — score shows blank or NaN.
+38. **`member_home_state` write path is `refresh_member_home_state(p_email)` ONLY.** Never `INSERT`/`UPDATE`/`DELETE` directly on `member_home_state` from an Edge Function, a trigger function, or the frontend. The function is `SECURITY DEFINER` and reads every source table to produce a single consistent row; it is also the canonical place where Dean's "sessions lifetime capped at 2/day" rule is enforced. Direct writes will drift from source truth and from the cap rule within minutes. `zzz_refresh_home_state` triggers on `members` (INSERT/UPDATE/DELETE) + 9 activity/score tables ensure the aggregate is always fresh — no cron is needed.
 
 ---
 

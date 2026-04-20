@@ -1,3 +1,41 @@
+## 2026-04-20 | member_home_state continuation — triggers verified live + members trigger + EXECUTE grants
+
+**Context.** Continuing from the previous 20 April session (see entry below). That session built the schema, rewrote the refresh function, backfilled, and deployed EF v44, but left three things unresolved:
+1. Trigger wiring status was unverified (`information_schema.triggers` returned empty for these AFTER INSERT OR UPDATE OR DELETE triggers, which created false doubt — this session proved they were already live the whole time).
+2. No `members` AFTER INSERT trigger, so a brand-new member's `member_home_state` row only appeared after they logged their first activity. The EF v44 fallback papered over this, but only fragilely (the RPC call relied on `SECURITY DEFINER` defaults rather than explicit grants).
+3. `public.refresh_member_home_state(text)` had no EXECUTE privileges granted to `service_role` or `authenticated`.
+
+### What shipped this continuation
+
+**Trigger verification (no changes needed to the 9 existing triggers).**
+- `pg_trigger` confirmed `zzz_refresh_home_state` triggers are live on all 9 of `daily_habits`, `workouts`, `cardio`, `session_views`, `replay_views`, `wellbeing_checkins`, `weekly_goals`, `weekly_scores`, `kahunas_checkins`. (`information_schema.triggers` silently hides these for the read-only user — future rule: always use `pg_trigger` directly to check trigger presence.)
+- **Real-time test passed (fresh, this session):** inserted a test `daily_habits` row for Stuart Watts → `member_home_state` row jumped from `habits_today=0, habits_total=0, streak=0, updated_at=20:51:19` → `habits_today=1, habits_total=1, streak=1, updated_at=21:03:42` on the same transaction. Deleted test row → back to `0/0/0, updated_at=21:03:53`. **DELETE + INSERT triggers both fire and the aggregate reacts in real time on this session's database state.**
+- Spurious duplicate `zz_refresh_home_state` (two z's) triggers that were briefly created during the previous session's re-verification attempt were dropped. Final state: exactly one trigger per source table, all named `zzz_refresh_home_state`.
+
+**New: `public.tg_refresh_home_state_from_members()` trigger function** (`SECURITY DEFINER`). Thin wrapper around `refresh_member_home_state` for the `members` table, which uses `email` not `member_email`. Handles INSERT (creates a state row on first save of the member), UPDATE (refreshes for any downstream-affecting change; if the email changed, refreshes both old and new), and DELETE (deletes the state row — complements the existing `ON DELETE CASCADE` FK).
+
+**New: `zzz_refresh_home_state` trigger on `public.members`** (AFTER INSERT OR UPDATE OR DELETE). New signups now get a `member_home_state` row the moment their member row is written. The EF v44 fallback is still there as belt-and-braces but will almost never fire.
+
+**EXECUTE grants.** `GRANT EXECUTE ON FUNCTION public.refresh_member_home_state(text) TO service_role, authenticated`. Confirmed via `pg_proc.proacl`: `service_role=X/postgres` and `authenticated=X/postgres` both present. Makes the EF fallback path bulletproof regardless of whether the EF uses service-role or a user JWT.
+
+**Shape diff vs v43.** Code-level comparison of v43 and v44 `index.ts` response bodies — 9 key sets at every level (top-level / engagement / components / streak / streak_by_type / progress rows / recent / wellbeing / member) all match exactly. No frontend changes required. Not tested via live `curl` (would require a valid user session token).
+
+**sw.js.** No change this continuation — was already bumped to `vyve-cache-v2026-04-20-home-state` by commit `459f3cbc` on `vyve-site` main at 20:59:37Z.
+
+### Commits
+- Supabase DDL (applied via `SUPABASE_BETA_RUN_SQL_QUERY`): `GRANT EXECUTE`, `CREATE FUNCTION tg_refresh_home_state_from_members`, `CREATE TRIGGER zzz_refresh_home_state ON public.members`, plus cleanup `DROP TRIGGER zz_refresh_home_state ON {8 tables}`.
+- `VYVEBrain/brain/master.md`: rule #33 amended to include `member_home_state` (with note that unlike the other aggregation tables, it IS directly readable by the owning member via its own RLS policy); rule #38 added about the canonical write path; EF version bumped to v44 in section 3.
+- `VYVEBrain/tasks/backlog.md`: "Dashboard data date-range filter — member-dashboard EF fetches ALL historical data, needs 90-day limit" struck through (the data-fanout concern is now fundamentally solved by the aggregate).
+- `VYVEBrain/brain/changelog.md`: this entry.
+
+### Known follow-ups
+- **`exercise_stream` / movement goals still not surfaced** in `member_home_state`. `weekly_goals.movement_target` exists but isn't lifted into the aggregate. Add `goal_movement_target` / `goal_movement_done` when movement content ships and the hub surfaces movement progress on the home dashboard.
+- **Live curl verification of v44** — not done this session. Worth running a full-response diff vs v43 next time Dean is signed in, to catch any null-handling or numeric-coercion drift the code-level diff could miss.
+- **Performance measurement** (v43 ~300-800ms → v44 target ~40-80ms) not captured. Easy to measure via browser devtools on next session load.
+- **Movement / Classes** stream still has no plan content in `programme_library` — orthogonal to this work but blocks Movement members seeing anything useful on the hub.
+
+---
+
 ## 2026-04-20 | `member_home_state` aggregate wired + member-dashboard EF v44
 
 **Context.** Dean flagged that `member-dashboard` EF v43 was still recomputing everything from 6 source tables on every load (~300–800ms per call on member growth) despite the three-layer aggregate cache (`member_activity_log`, `member_activity_daily`, `member_stats`) already running. Built `member_home_state` — a single-row-per-member dashboard-ready aggregate — and rewrote the dashboard EF to read it. Engagement page (which needs the 30-day calendar) still hits source tables for its `activity_log`, but every scalar now comes from the aggregate.
