@@ -1,3 +1,50 @@
+## 2026-04-20 | Exercise-section nav: back button + correct headers on sub-pages
+
+**Commits:**
+- `d4b7171b` (vyve-site) — Fix exercise-section nav: back button + correct header labels on sub-pages
+
+**Problem:**
+After Option A (Exercise Hub) shipped, the sub-pages under the Exercise tab had inconsistent headers and no back buttons:
+- `workouts.html` → showed the VYVE logo + "Exercise" label (treated as hub)
+- `movement.html` and `cardio.html` → showed **no header and no bottom nav at all** (nav.js not loaded)
+- Only `exercise.html` rendered correctly
+
+**Root causes:**
+1. `nav.js` `getActiveTab()` classified any URL string-containing "exercise" or "workouts" as a top-level nav page, so workouts.html was getting `isNavPage=true` → logo instead of back button.
+2. `nav.js` `pageLabels` map only covered the 4 hub pages — no entries for Workouts, Movement, Cardio, or any other sub-page.
+3. `movement.html` and `cardio.html` were missing `<script src="/nav.js">`, `sw.js` registration, and `offline-manager.js` entirely — orphaned from the shared header/bottom-nav infrastructure.
+4. Both pages had duplicate `<script src="/theme.js">` and `<script src="auth.js">` tags (in `<head>` and again at end of `<body>`) and used relative `auth.js` instead of `/auth.js`.
+
+**Solution:**
+- **`nav.js`**: `isNavPage` now matches only the 4 exact hub paths (`/`, `/index.html`, `/exercise.html`, `/nutrition.html`, `/sessions.html`) instead of doing string-containment. Sub-pages still highlight the correct bottom-nav tab (Exercise tab stays active on workouts/movement/cardio), but now render a back button (history.back → `/index.html`) in the mobile header.
+- **`nav.js`**: Added `subPageLabels` map keyed by filename stem. Covers `workouts`, `movement`, `cardio`, `running-plan`, `shared-workout`, `log-food`, `habits`, `wellbeing-checkin`, `monthly-checkin`, `certificates`, `leaderboard`, `engagement`, `settings`, `nutrition-setup`. Every portal sub-page now has a proper title in the header.
+- **`movement.html`** & **`cardio.html`**: added `<script src="/nav.js">`, sw.js registration, `offline-manager.js`; removed duplicate theme.js/auth.js tags at bottom; normalised `auth.js` → `/auth.js`.
+- **`sw.js`**: cache bumped `vyve-cache-v2026-04-19-header-fix` → `vyve-cache-v2026-04-20-exercise-nav`.
+
+**Effect:**
+- `exercise.html` → Logo + "Exercise" (unchanged)
+- `workouts.html` → **Back button + "Workouts"** ✅
+- `movement.html` → **Back button + "Movement"** + full bottom nav ✅
+- `cardio.html` → **Back button + "Cardio"** + full bottom nav ✅
+
+**Files Changed:**
+- `vyve-site/nav.js`
+- `vyve-site/movement.html`
+- `vyve-site/cardio.html`
+- `vyve-site/sw.js`
+
+**Deferred (tracked on backlog under Exercise restructure):**
+- `movement.html` / `cardio.html` still use 100% hardcoded mock data — no Supabase wiring yet.
+- Skeleton-timeout watchdog (`platform-alert` ping) not yet added to movement/cardio.
+- No `vyveAuthReady` event-driven gating on movement/cardio (no `#app` show/hide flow).
+- AI routing at onboarding to assign Movement/Cardio primary plans (per exercise-restructure.md).
+
+**Testing notes for Dean:**
+- Visit `online.vyvehealth.co.uk/workouts.html`, `/movement.html`, `/cardio.html` on mobile — all three should now show the back button + correct title at the top, and the Exercise tab should be highlighted in the bottom nav.
+- On first load after cache bump, hard refresh may be needed to pick up new sw.js.
+
+---
+
 ## 2026-04-19 | Color Fix - Blue to Teal Goal Cards
 
 **Commits:**

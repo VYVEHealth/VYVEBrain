@@ -8,7 +8,13 @@
 
 1. **Android icon fix** — resubmitted 15 April, awaiting Google review
 2. **iOS icon fix** — app live but icon wrong, Build 2 uploaded
-3. **Exercise restructure** — Option A (Exercise Hub). Plan at `VYVEBrain/plans/exercise-restructure.md`. Includes `welcome.html` onboarding questionnaire update.
+3. **Exercise restructure** — Option A (Exercise Hub). Plan at `VYVEBrain/plans/exercise-restructure.md`.
+   - ~~Hub page shipped (`exercise.html`)~~
+   - ~~Sub-page headers & back buttons (`nav.js`, `workouts.html`, `movement.html`, `cardio.html`) — 20 April~~
+   - `movement.html` / `cardio.html` Supabase data wiring — currently static mock data only
+   - Skeleton-timeout watchdog + `vyveAuthReady` gating on `movement.html` / `cardio.html`
+   - `welcome.html` onboarding questionnaire update (exercise-type question)
+   - Onboarding EF: AI routing to assign Movement/Cardio as primary plan
 4. **Deploy `admin.html` to `admin.vyvehealth.co.uk`** — file committed at `apps/admin-dashboard/admin.html` in `vyve-command-centre`, needs GitHub Pages hosting. Admin users already seeded (Dean + Lewis).
 5. **Polish and bug-fix pass** — test all flows, fix on-the-fly issues
 6. **Target: sell-ready by May 2026**
