@@ -1,3 +1,43 @@
+## 2026-04-21c | sw.js overhaul — skipWaiting, clients.claim, network-first HTML
+
+**Context.** After shipping the nav-dark + exercise/movement header changes ([5010fda](https://github.com/VYVEHealth/vyve-site/commit/5010fdac8a90d5ee10e7ffffef82b0fb3422a0bd)), Dean reported not seeing the changes. Verified commits were live on main and on the GitHub Pages CDN (`https://online.vyvehealth.co.uk/theme.css` returned the new content with `nav-lock present: True`). The issue was the service worker — old sw.js was still serving cached files.
+
+**Root cause identified in the old sw.js:**
+1. No `self.skipWaiting()` call — new SW parked in 'waiting' state until every tab of the site was closed
+2. No `self.clients.claim()` — even after activation, already-open tabs stayed on the old SW
+3. Pure cache-first fetch for everything including HTML — users got stale HTML even on hard reload unless the SW was manually unregistered
+
+**Fix shipped.** ([d323d11](https://github.com/VYVEHealth/vyve-site/commit/d323d1129210991406c9d0b014b5e249437c4cb2))
+
+New `sw.js`:
+- `install` handler now calls `self.skipWaiting()` after pre-cache completes
+- `activate` handler now calls `self.clients.claim()` alongside old-cache purging
+- `fetch` handler split by request type:
+  - **HTML navigations** (`req.mode === 'navigate'` or `.html` path): **network-first** with cache fallback. Always fresh when online; cached version served offline.
+  - **Static assets** (CSS/JS/images): cache-first (fast, versioned via cache bump)
+  - **Cross-origin** and `/functions/*` / `/auth/*` paths: bypass SW entirely (let browser handle normally — previously these could get unexpectedly cached)
+- New `message` handler accepts `{type: 'SKIP_WAITING'}` so future update-prompt UI can trigger immediate SW update
+
+Cache bumped to `vyve-cache-v2026-04-21c-sw-network-first`.
+
+**Impact from next install onwards.**
+- sw.js bumps take effect on the very next page load (no tab-closing required)
+- HTML-only changes don't require an sw.js bump at all — network-first means users always see the latest HTML when online
+- Only asset-only changes (CSS/JS) need the cache bump ritual from now on
+- One-time migration pain: users still on the old SW need to either force-quit the PWA twice or manually clear SW to pick up the new sw.js. After that, future deploys are painless.
+
+**Key learnings.**
+- PWA cache-first fetch strategies require extreme care. If HTML is cached-first with no skipWaiting, a site is essentially immutable until every tab closes.
+- The correct pattern for SPAs / PWAs is: network-first for HTML (freshness wins, cache is backup), cache-first for versioned assets (speed wins, cache-bust on version change).
+- Always pair `skipWaiting()` (in install) with `clients.claim()` (in activate) — they work as a matched pair. One without the other is almost never what you want.
+
+**Debugging pattern that worked:**
+1. Verify commit landed on `main` via GitHub API
+2. Verify file is live on CDN via direct `urllib.urlopen()` from workbench (no browser cache involved)
+3. When both are green but user says "I don't see it", the issue is client-side — 99% of the time it's SW cache
+
+---
+
 ## 2026-04-21b | nav chrome locked dark on light theme + exercise/movement headers
 
 **Context.** Follow-up to the light-mode sweep earlier today. Dean's feedback after reviewing the live result:
