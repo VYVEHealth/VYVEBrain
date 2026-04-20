@@ -1,3 +1,42 @@
+## 2026-04-20 | Movement/Cardio unstyled content fix (follow-up)
+
+**Commits:**
+- `0a469a11` (vyve-site) — Fix Movement/Cardio unstyled content: rebuild with proper brand CSS
+
+**Problem:**
+After the earlier commit (`d4b7171b`) wired `nav.js` into `movement.html` and `cardio.html`, Dean tested on mobile and reported both pages rendered as unstyled plain text below the tabs row. Header, bottom nav, and tab pills looked correct; everything else didn't.
+
+**Root cause (pre-existing, not introduced today):**
+The inline `<style>` blocks on `movement.html` and `cardio.html` were copy-pastes of `workouts.html`'s CSS — same 31,276 chars, same 173 class definitions — but NONE of those class names matched what the movement/cardio HTML actually used. `.goal-card`, `.tip-card`, `.stats-grid`, `.stat-card`, `.activity-card`, `.activity-icon`, `.hr-card`, `.cardio-grid`, `.cardio-option`, `.session-controls`, `.timer-display`, `.control-btn` etc. — zero rules defined. Only `.wrap`, `.tabs`, `.tab-btn` happened to be shared, which is why the top of the page looked OK.
+
+This was already broken before today's work; wiring `nav.js` simply made it visible.
+
+**Solution:**
+- Rebuilt both pages end-to-end with proper inline CSS that uses only `theme.css` tokens (`--teal`, `--surface`, `--border`, `--text-muted`, `--radius-*`, `--space-*`, `--shadow-*`, `--font-head`, `--font-body`, etc). No hardcoded colours.
+- Matched visual language to `habits.html` / `workouts.html` — same card patterns, same spacing system, same radius scale.
+- Kept all existing mock-data content intact (7,200 / 8,000 steps, Morning stretch routine, Afternoon energizer walk on Movement; HR zone 142 bpm, 6-activity grid, session controls on Cardio).
+- Added on-brand empty-state cards for the previously-empty Progress / Insights / Plans / Zones tabs.
+- Added client-side `switchTab()` JS so the tab row actually switches between panels (previously non-functional).
+- Stubbed `startActivity()` / `toggleSession()` / `pauseSession()` on Cardio so `onclick` handlers don't throw — real handlers ship with the Supabase wiring work.
+
+**Files Changed:**
+- `vyve-site/movement.html` (full rewrite, 15,676 chars)
+- `vyve-site/cardio.html` (full rewrite, 17,164 chars)
+- `vyve-site/sw.js` (cache bumped to `vyve-cache-v2026-04-20-exercise-nav-b`)
+
+**Lessons / rules:**
+- When a page imports `nav.js` for the first time, always view it on mobile before calling the work done — wiring shared infra can unmask latent styling bugs that were previously hidden by the absence of a rendered header.
+- Do not copy an unrelated page's inline `<style>` block wholesale as a placeholder. Empty `<style>` + `theme.css` is safer than a mismatched block, because at least it fails obviously.
+- Inline CSS should reference `theme.css` tokens only. If a token doesn't exist for what you need, add it to `theme.css` once, not inline per page.
+
+**Still open on Exercise restructure backlog item:**
+- Movement/Cardio Supabase data wiring (pages are styled now, but content is still hardcoded mock data)
+- Skeleton-timeout watchdog + `vyveAuthReady` gating on both pages
+- `welcome.html` onboarding questionnaire update (exercise-type question)
+- Onboarding EF: AI routing to assign Movement/Cardio as primary plan
+
+---
+
 ## 2026-04-20 | Exercise-section nav: back button + correct headers on sub-pages
 
 **Commits:**
