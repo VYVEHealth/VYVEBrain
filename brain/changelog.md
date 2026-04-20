@@ -1,3 +1,32 @@
+## 2026-04-21b | nav chrome locked dark on light theme + exercise/movement headers
+
+**Context.** Follow-up to the light-mode sweep earlier today. Dean's feedback after reviewing the live result:
+1. Top desktop nav + bottom mobile nav should STAY DARK even when page content flips to light. The dark teal nav is part of the VYVE brand identity.
+2. Mobile page header (the sticky bar with logo + back button) should also stay dark.
+3. `exercise.html` and `movement.html` — headers exist in code but render as bare text with no visual weight; should match the `.page-header` pattern used by habits/sessions/engagement.
+
+**What shipped.** ([5010fda](https://github.com/VYVEHealth/vyve-site/commit/5010fdac8a90d5ee10e7ffffef82b0fb3422a0bd))
+
+**theme.css — nav locked dark:**
+- Under `[data-theme="light"]`, rewrote `--nav-bg`, `--nav-bg-mob`, `--nav-border`, `--nav-text`, `--nav-active`, `--more-bg` to the dark-mode values instead of the light translucent whites.
+- Appended scoped rule: `[data-theme="light"] nav.desktop-nav, .mobile-page-header, .vyve-bottom-nav, .vyve-more-menu, .nav-more-panel, .nav-avatar-panel { /* dark-valued text/border/surface tokens */ }`. This is needed because nav.js internally references generic tokens (`--text`, `--surface-teal`, `--label-accent` etc.) that would otherwise flip to the light values and produce dark-on-dark inside the nav containers.
+- No changes to nav.js itself — all done via CSS scoping.
+
+**exercise.html + movement.html — headers upgraded:**
+- Wrapped existing `.page-eyebrow` + `.page-title` + `.page-sub` in a `.page-header` container with `margin-bottom:28px` and `fadeUp` animation.
+- Enhanced `.page-title` CSS: explicit `color:var(--text)`, bumped to `2rem`, added `.page-title em { color: var(--label-heading-em); font-style: italic }` for future accent-word use (not currently applied but available).
+- Added `@media(max-width:480px){.page-title{font-size:1.6rem}}` breakpoint.
+- Added local `@keyframes fadeUp` (was already defined in other pages).
+- Reduced `.hero-card`/`.prog-card` top margin from 24/22 → 8px since `.page-header` now carries bottom spacing.
+
+**sw.js cache bumped:** `vyve-cache-v2026-04-21b-nav-dark-headers`.
+
+**Key learnings.**
+- When locking nav chrome dark in light mode, you can't just change the nav-scoped bg tokens — the internals (text, icons, borders) reference generic tokens that would flip. Solution: scoped `[data-theme="light"] <nav-container> { --text: #FFF; ... }` override at the container level so CSS cascade does the rest without nav.js changes.
+- `exercise.html` and `movement.html` already had `.page-eyebrow/.page-title/.page-sub` CSS and markup — what was missing was the container wrapper and visual weight. Pattern to apply when adding future pages: always wrap in `.page-header`, use the standard CSS block, include the `fadeUp` animation for consistency.
+
+---
+
 ## 2026-04-21 | light-mode sweep — semantic token layer + 12-page HTML pass
 
 **Context.** Deep-dive audit of `online.vyvehealth.co.uk` for light-mode readability. Dean flagged that the italic "leaderboard" word on `leaderboard.html` renders too-teal on light bg and wants it as the darker VYVE green. Audit surfaced the same pattern everywhere — `--teal-lt` (#4DAAAA) was being used as primary text/eyebrow colour across all portal pages, which fails WCAG on the light `#F0FAF8` background (2.58:1 contrast).
