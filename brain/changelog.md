@@ -1,3 +1,83 @@
+## 2026-04-20 | Server-side running plan storage (member_running_plans)
+
+**Commits:**
+- Supabase migration `create_member_running_plans` (applied via SUPABASE_APPLY_A_MIGRATION)
+- `ce3f1af` (vyve-site) — Server-side running plan storage (member_running_plans table)
+
+**Background:**
+Dean asked: "And then running plans are stored in the db as well?" during testing of the earlier `eeda75e` commit. Answer was no — running plans lived only in `localStorage` (`vyve_autosave_plan` + `vyve_saved_plans`), making them per-device and invisible across the PWA / Capacitor native app / second devices / browser clears. `running_plan_cache` is a separate shared cache keyed by plan parameters (not per-member). Dean opted to ship proper server-side persistence today rather than backlog it.
+
+**Decisions locked in before build:**
+- Multiple plans per member, one marked `is_active` (history preserved)
+- Hybrid persistence: Supabase is source of truth, localStorage is offline cache (write-through pattern)
+- Backfill on next visit to `running-plan.html` (not other pages)
+
+**Schema — new table `public.member_running_plans`:**
+- `id uuid PK DEFAULT gen_random_uuid()`
+- `member_email text NOT NULL REFERENCES members(email) ON DELETE CASCADE`
+- `plan_name, goal, level, long_run_day text`
+- `days_per_week, timeframe_weeks integer`
+- `start_date date`
+- `plan_json jsonb NOT NULL` (full plan structure from running-plan.html)
+- `completions jsonb NOT NULL DEFAULT '[]'` (array of day_id strings like `day_0_3_Mon`)
+- `is_active boolean NOT NULL DEFAULT false`
+- `source text NOT NULL DEFAULT 'portal'` (portal | backfill | api)
+- `created_at, updated_at, last_used_at timestamptz`
+
+**Indexes:**
+- `member_running_plans_pkey`
+- `member_running_plans_one_active_idx` — UNIQUE partial `(member_email) WHERE is_active = true` (enforces one active plan per member at DB level)
+- `member_running_plans_email_idx` on `(member_email, last_used_at DESC)`
+
+**Triggers:**
+- `zz_lc_email` — BEFORE INSERT/UPDATE, lowercases member_email (matches portal convention)
+- `mrp_touch_updated_at` — BEFORE UPDATE, refreshes updated_at
+
+**RLS:**
+- `member_running_plans_own_data` — ALL ops, `(member_email = auth.email())` both USING and WITH CHECK
+
+**running-plan.html — new sync module (`MRP`):**
+- `mrpJwtHeaders()` — builds fresh auth headers (JWT from `window.vyveSupabase` session if available, falls back to anon)
+- `mrpMemberEmail()` — grabs email from `window.vyveCurrentUser`
+- `mrpRowFromSaved(saved, source)` — normalises localStorage plan shape (strings like `'8weeks'`, `'3days'`) into member_running_plans row format
+- `mrpUpsertActive(saved, source)` — PATCH existing `is_active=true` rows for this member to `false`, then POST new row with `is_active=true`. Partial unique index enforces one-at-a-time
+- `mrpSetCompletion(dayId, done)` — GET current completions array, mutate, PATCH back with updated `last_used_at`. Race-unsafe in multi-tab edit (acceptable for MVP)
+- `mrpBackfillFromLocalStorage()` — on page load after auth, checks if member has any rows. If not AND localStorage has plans, uploads them all with `source='backfill'`. Autosave plan becomes active; otherwise highest-id saved plan. Active row also harvests existing `day_0_*` localStorage completion keys into its completions array
+
+**running-plan.html — existing functions hooked:**
+- `autoSavePlan(plan, meta)` — after localStorage write, calls `mrpUpsertActive(saved, 'portal')`
+- `savePlan()` — after localStorage write, calls `mrpUpsertActive(saved, 'portal')`
+- `toggleDay(dayId, weekNum)` — after localStorage toggle, calls `mrpSetCompletion(dayId, nowDone)`
+- `waitForAuth()` — after auth succeeds, calls `mrpBackfillFromLocalStorage()`
+
+All Supabase writes are fire-and-forget relative to UI. localStorage write gives instant UX. Supabase write runs in background. Failures only log to console — offline → localStorage wins.
+
+**cardio.html — switched to Supabase-first read:**
+- `getActiveRunningPlan()` is now async. Primary: GET `member_running_plans?member_email=eq.X&is_active=eq.true&select=...`. Normalises server shape into unified `{ planName, goal, level, days, timeframe, startdate, plan, completions }` shape
+- Fallback: reads `vyve_autosave_plan` / `vyve_saved_plans` from localStorage (first visit before backfill completes, or offline)
+- `renderRunningPlan()` is now async and awaits `getActiveRunningPlan`
+- `findNextSession(saved)` honours BOTH server `saved.completions` array AND legacy `day_0_*` localStorage keys — correct during transition window
+
+**Known follow-ups:**
+- `schema-snapshot.md` will pick up `member_running_plans` on next Sunday 03:00 UTC `schema-snapshot-refresh` EF cron run (no manual refresh needed)
+- `mrpSetCompletion` GET-then-PATCH is race-unsafe in multi-tab scenarios. Acceptable for MVP. Future fix: Supabase RPC wrapping `array_append`/`array_remove` atomics
+- `loadSavedPlan(saved)` in running-plan.html still only sets localStorage prefs + re-renders — doesn't mark that plan as active in Supabase. Intended: loading a historical saved plan in the UI doesn't change the active plan. Revisit if members expect "load = activate" semantics
+
+**sw.js**: cache bumped to `vyve-cache-v2026-04-20-running-plan-sync`
+
+**Files Changed:**
+- Supabase migration: `public.member_running_plans` (created)
+- `vyve-site/cardio.html` (32615 → 33950 chars)
+- `vyve-site/running-plan.html` (60329 → 68712 chars)
+- `vyve-site/sw.js`
+
+**Lessons:**
+- When a member-facing feature is built MVP-style (localStorage only), flag the cross-device implication at build time rather than waiting for the user to notice. Saved a cycle here because Dean asked directly — but next time put "platform limitation: per-device only" into the commit message up front
+- PostgREST doesn't expose atomic JSONB array append/remove without a custom RPC. For MVP, GET-then-PATCH is fine. Note it as tech debt rather than doing it "properly" the first time
+- Partial unique indexes (`WHERE is_active = true`) are the cleanest way to enforce "one active per member" — simpler than triggers or app-layer checks
+
+---
+
 ## 2026-04-20 | Movement quick-log + Cardio running-plan hero
 
 **Commit:** `eeda75e` (vyve-site) — Movement quick-log + cardio active running-plan hero

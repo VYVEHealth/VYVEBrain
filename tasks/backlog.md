@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 18 April 2026 (Session: Full reconciliation + `schema-snapshot-refresh` EF/cron + `generate-workout-plan` un-retire)
+> Updated: 20 April 2026 (Session: Exercise restructure audit + Movement restore + Cardio rebuild + server-side running plan storage)
 
 ---
 
@@ -16,11 +16,13 @@
    - ~~Round 5: `welcome.html` stream picker + onboarding EF v77 (stream-aware weekly goals, prog overview, recs, welcome email; workout plan gen wrapped in `if stream==='workouts'`) — 19 April (`0c6de36`)~~
    - ~~Sub-page headers & back buttons (`nav.js`, `workouts.html`, `movement.html`, `cardio.html`) — 20 April (`d4b7171`)~~
    - ~~`cardio.html` data-wired (weekly progress + quick-log + recent history) — 20 April (`93092de`)~~
+   - ~~Server-side running plan storage: `member_running_plans` table + `running-plan.html` write-through + `cardio.html` Supabase-first read + localStorage backfill — 20 April (`ce3f1af`)~~
    - **Still open:** Movement plan **content** in `programme_library` (no rows with `category='movement'` yet — all Movement members see no-plan state)
    - **Still open:** `programme_library.category` column to distinguish movement vs gym plans
    - **Still open:** Backfill decision for existing 18 members (all currently default 'workouts')
    - **Still open:** Classes stream on the hub (plan says cross-cutting, not yet built)
    - **Still open:** Hub progress across all streams vs just the primary (open plan-doc question)
+   - **Still open:** `mrpSetCompletion` in running-plan.html uses GET-then-PATCH (race-unsafe in multi-tab edit scenarios). Future fix: Supabase RPC wrapping `array_append`/`array_remove` atomics. Acceptable for MVP.
    - **Still open:** Brain hygiene — base64-encoded historical blob in `brain/changelog.md` (~152K decoded chars) needs dedicated cleanup session
 4. **Deploy `admin.html` to `admin.vyvehealth.co.uk`** — file committed at `apps/admin-dashboard/admin.html` in `vyve-command-centre`, needs GitHub Pages hosting. Admin users already seeded (Dean + Lewis).
 5. **Polish and bug-fix pass** — test all flows, fix on-the-fly issues
