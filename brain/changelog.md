@@ -1,3 +1,40 @@
+## 2026-04-20 | Fix welcome.html base64 corruption (onboarding broken since 19 April)
+
+**Commit:** `bc4cca4` (Test-Site-Finalv3) — Fix welcome.html: decode base64 corruption from commit 0c6de362
+
+**Impact:** CRITICAL. New members using Stripe → welcome redirect have been seeing a base64 text blob instead of the onboarding questionnaire for approximately 30 hours (19 April 13:50 UTC → 20 April 19:55 UTC). Any member who paid via Stripe in this window would have been blocked from onboarding.
+
+**Root cause:** Commit `0c6de362` ("Round 5: Exercise stream picker in onboarding (Section C)") committed `welcome.html` with the file's bytes base64-encoded instead of as plain HTML. The previous commit `8dc6454e` had plain HTML; Round 5 broke it. The file on disk went from 402,267 bytes of HTML → 555,804 bytes of base64 text starting with `PCFET0NUWVBFIGh0bWw+` (which decodes to `<!DOCTYPE html>`).
+
+This is the same "base64 corruption" pattern documented in earlier changelog entries. The cause is calling `GITHUB_COMMIT_MULTIPLE_FILES` via direct MCP rather than through `run_composio_tool` in the workbench on large text payloads. Direct MCP calls sometimes double-encode the payload before sending to GitHub API.
+
+**Fix:**
+- Fetched current corrupted content via `GITHUB_GET_RAW_REPOSITORY_CONTENT`
+- Decoded base64: `base64.b64decode(re.sub(r'\s+', '', content))` after padding
+- Verified decoded content is the correct Round 5 version (has `exerciseStream`, Workouts/Movement/Cardio stream cards, Section C updated)
+- Recommitted via `run_composio_tool("GITHUB_COMMIT_MULTIPLE_FILES", ...)` from the workbench (the pattern that avoids the bug)
+- Verified post-fix: `GITHUB_GET_REPOSITORY_CONTENT` at the new commit shows 416,852-byte file that decodes once (via the API's standard base64 wrapping) to plain HTML
+
+**What's on disk now (commit `bc4cca4`):**
+- `welcome.html`: 413,409 bytes of plain HTML
+- Starts with `<!DOCTYPE html>\n<html lang="en" data-theme="light">`
+- Contains the Round 5 stream picker (Workouts / Movement / Cardio cards + follow-ups)
+- `exerciseStream` field wired into the onboarding payload
+- No functional changes from what Round 5 intended — just un-corrupted
+
+**Verification plan after deploy (1-3 min GitHub Pages propagation):**
+- Visit `www.vyvehealth.co.uk/welcome` in incognito — should render the onboarding form, not a base64 blob
+- If still base64 after 5 min: purge Cloudflare cache (if CDN is in front of GitHub Pages)
+
+**Lessons reinforced (already in master.md Hard Rule 11):**
+- `GITHUB_WRITES`: large file commits MUST use `run_composio_tool` through the workbench, NEVER direct MCP. Committing `welcome.html` (413K chars) via direct MCP causes base64 double-encoding.
+- Mitigation already in master.md: `github-proxy` EF PUT endpoint is a known-safe fallback for large files.
+
+**New rule to add to master.md:**
+- Post-commit verification for any file larger than ~100K chars: immediately re-fetch via `GITHUB_GET_REPOSITORY_CONTENT` (Contents API), decode once, confirm the first 100 chars look like the intended file type. Catches the base64-corruption bug within seconds rather than 30 hours.
+
+---
+
 ## 2026-04-20 | Server-side running plan storage (member_running_plans)
 
 **Commits:**
