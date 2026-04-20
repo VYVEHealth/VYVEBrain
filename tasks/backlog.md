@@ -109,6 +109,7 @@ Single-file HTML dashboard (`apps/admin-dashboard/admin.html`), `admin-dashboard
 
 ## Later
 
+- **Accessibility — large text + WCAG pass** (flagged by Alan 21 April — struggles to read portal at his large-text iOS setting). Four-option plan at `plans/accessibility-large-text.md`. Option 1 (restore pinch-zoom) is 10 min; Option 2 (in-app text-size toggle in Settings) is ~half a day. Full WCAG 2.1 AA pass needed before public sector / Sage procurement.
 - Social activity feed (spec at VYVEBrain, pending Lewis sign-off on 7 product decisions)
 - Dashboard widget customisation
 - Persona context modifier system
