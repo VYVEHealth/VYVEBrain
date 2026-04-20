@@ -1,3 +1,38 @@
+## 2026-04-21d | four-page header unification (exercise, movement, wellbeing/monthly checkins)
+
+**Context.** After nav-dark shipped, Dean reported headers still broken on exercise.html and movement.html — eyebrow text rendering behind the iOS status bar. Also flagged that wellbeing-checkin.html and monthly-checkin.html have no bottom nav or back button at all. Required: bring all four pages in line with the standard sub-page pattern used by habits/workouts/sessions/leaderboard etc.
+
+**Root causes.**
+1. `exercise.html` + `movement.html` had mobile `.wrap` top padding of only `8px`. The nav.js sticky mobile header is `min-height:56px` plus safe-area-inset-top, so page content was jamming up against it / rendering behind the status bar. Working pages use `24px` top.
+2. `wellbeing-checkin.html` shipped with a bespoke `<nav class="desktop-nav">` and no nav.js script include, so it had zero bottom nav on mobile.
+3. `monthly-checkin.html` shipped with a custom `<nav>` (back button + logo only) in the body, no nav.js, no bottom nav.
+
+**What shipped.** ([f78a7ba](https://github.com/VYVEHealth/vyve-site/commit/f78a7ba7e17a84217eee99c341ed899a450b50c6))
+
+**exercise.html + movement.html:**
+- Mobile `.wrap` top padding `8px → 24px` in the `@media(max-width:768px)` rule. Matches habits/workouts reference implementation. No other changes — the existing page-header markup from commit `5010fda` was correct, just jammed by the tight padding.
+
+**wellbeing-checkin.html:**
+- Added `<script src="/nav.js"></script>` to `<head>` alongside existing theme.js and auth.js.
+- Removed the bespoke `<nav class="desktop-nav">` block (logo, "← Dashboard" link, "Weekly Check-In" badge).
+- Removed the now-orphaned CSS rules: `nav.desktop-nav`, `.nav-logo-v`, `.nav-logo-text`, `.nav-right`, `.nav-link`, `.nav-badge`, `.nav-logo`. Also cleared a stray `nav` keyword artifact left by the regex cleanup.
+- Bumped mobile `.wrap` bottom padding `60px → 100px` to clear the newly-injected bottom nav (80px tall + safe-area-inset-bottom).
+
+**monthly-checkin.html:**
+- Added `<script src="/nav.js"></script>` and `<script src="/offline-manager.js"></script>`.
+- Removed the bespoke `<nav>` block (custom `<button class="nav-back">` with history.back logic, plus inline logo).
+- Removed the `/* NAV */` CSS block (`nav {}`, `.nav-logo img {}`, `.nav-back {}`).
+- Changed `.page-eyebrow color` from `var(--gold)` → `var(--label-eyebrow)` for consistency with other pages.
+
+**sw.js cache bumped** to `vyve-cache-v2026-04-21d-header-fixes`.
+
+**Key learnings.**
+- nav.js injects the mobile sticky header into `document.body` on page load. Its internal height is `min-height:56px + env(safe-area-inset-top)`. Any page that wants page content to appear *below* the nav needs at least `24px` of top padding on its main content wrapper at mobile breakpoints. Less than that on iOS (where the status bar eats ~47px into the viewport) causes content to render behind the clock.
+- When retrofitting nav.js onto pages with their own bespoke nav markup, it's not enough to just add the script tag — the existing `<nav>` markup AND its CSS must be removed, otherwise the two compete. Watch for orphaned class names (`.nav-logo`, `.nav-badge` etc) that may collide with nav.js's own class naming.
+- `wellbeing-checkin.html` and `monthly-checkin.html` were built independently of the nav.js system. Any future new pages should start by including the standard 4 script tags (`theme.js`, `auth.js`, `nav.js`, `offline-manager.js`) and NOT roll their own top-bar markup.
+
+---
+
 ## 2026-04-21c | sw.js overhaul — skipWaiting, clients.claim, network-first HTML
 
 **Context.** After shipping the nav-dark + exercise/movement header changes ([5010fda](https://github.com/VYVEHealth/vyve-site/commit/5010fdac8a90d5ee10e7ffffef82b0fb3422a0bd)), Dean reported not seeing the changes. Verified commits were live on main and on the GitHub Pages CDN (`https://online.vyvehealth.co.uk/theme.css` returned the new content with `nav-lock present: True`). The issue was the service worker — old sw.js was still serving cached files.
