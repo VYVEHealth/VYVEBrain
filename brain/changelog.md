@@ -1,3 +1,35 @@
+## 2026-04-21 | light-mode sweep — semantic token layer + 12-page HTML pass
+
+**Context.** Deep-dive audit of `online.vyvehealth.co.uk` for light-mode readability. Dean flagged that the italic "leaderboard" word on `leaderboard.html` renders too-teal on light bg and wants it as the darker VYVE green. Audit surfaced the same pattern everywhere — `--teal-lt` (#4DAAAA) was being used as primary text/eyebrow colour across all portal pages, which fails WCAG on the light `#F0FAF8` background (2.58:1 contrast).
+
+**What shipped.**
+- `theme.css` ([2560dd3](https://github.com/VYVEHealth/vyve-site/commit/2560dd3ee7cc09ba1b2dfbeebeba45191458a635)): introduced full semantic token layer. `--label-*` for text purposes, `--fill-*` for surfaces, `--line-*` for borders. All tokens flip correctly between dark and light themes with WCAG AA verified on both. Legacy tokens (`--text`, `--surface`, `--border`, `--surface-teal`, `--border-teal`) kept as aliases for back-compat.
+- All 12 portal HTML pages + sw.js ([b4fbfc8](https://github.com/VYVEHealth/vyve-site/commit/b4fbfc8556159f2cbf9d45c739e70014e9193492)): 242 find-and-replace edits across `index.html`, `habits.html`, `workouts.html`, `sessions.html`, `leaderboard.html`, `engagement.html`, `nutrition.html`, `settings.html`, `certificates.html`, `wellbeing-checkin.html`, `exercise.html`, `movement.html`. All `var(--teal-lt)` text → `var(--label-accent)` or `var(--label-eyebrow)`. All `var(--teal-xl)` text → `var(--label-accent-strong)`. All `.page-title em` / `.hero-title em` → `var(--label-heading-em)` (#0D2B2B dark green on light, teal-lt on dark).
+- sw.js cache bumped to `vyve-cache-v2026-04-21-light-mode-sweep`.
+
+**Bug caught mid-sweep.** Initial blanket replacement of `color:#fff` → `var(--label-strong)` would have broken filled-button text on light mode (dark text on teal button). Added second pass: any rule with accent background (teal/green/danger) keeps `--label-on-accent` (always white). 10 fixes across habits, nutrition, settings, exercise, movement.
+
+**Contrast verification (light mode on #F0FAF8):**
+- `--label-strong` #0A1F1F: 16.06:1 (AA body)
+- `--label-medium` rgba(10,31,31,0.65): 5.20:1 (AA body)
+- `--label-accent` #1B7878 (teal): 4.93:1 (AA body) — was 2.58:1 with teal-lt
+- `--label-accent-strong` #006D6F (teal-dark): 5.78:1 (AA body) — was 1.81:1 with teal-xl
+- `--label-eyebrow` #006D6F: 5.78:1 (AA body)
+- `--label-heading-em` #0D2B2B (dark green): 14.12:1 — Dean's specific callout
+
+**Contrast verification (dark mode on #0A1F1F):** unchanged, all pass 6:1+.
+
+**Key learnings.**
+- `--teal-lt` is fine as a graphical token (dots, fills, borders, gradients — only need 3:1) but fails as a text colour on light backgrounds. New rule: use `--label-*` tokens for all text; reserve `--teal-lt`/`--teal-xl` for graphical use only.
+- When swapping hardcoded `#fff` to a variable, always check if the rule also sets a filled accent background. White on accent button must be `--label-on-accent`, not `--label-strong`.
+- Eyebrow labels need `--label-eyebrow` (#006D6F teal-dark) specifically — they're tiny all-caps so need higher contrast than regular accent text.
+
+**Related files in VYVEBrain.**
+- `brain/master.md` §3 (Architecture) — theme system section to update with semantic layer note
+- Migration map for future page additions in this entry (above)
+
+---
+
 ## 2026-04-20 | member_home_state continuation — triggers verified live + members trigger + EXECUTE grants
 
 **Context.** Continuing from the previous 20 April session (see entry below). That session built the schema, rewrote the refresh function, backfilled, and deployed EF v44, but left three things unresolved:
