@@ -1,3 +1,39 @@
+## 2026-04-20 | Movement quick-log + Cardio running-plan hero
+
+**Commit:** `eeda75e` (vyve-site) — Movement quick-log + cardio active running-plan hero
+
+**Feedback from Dean after testing 93092de:**
+1. Movement's "No movement plan assigned yet" state was a dead-end. Members without an assigned plan had nothing to do on the page — just a link back to the hub. He wants members to still be able to use Movement even without a structured programme, because many movement activities (walks, stretches) don't need a plan to log.
+2. Cardio didn't show his active running plan even though he had one saved. Investigation revealed `running-plan.html` persists plans in `localStorage` only (`vyve_autosave_plan` for last-generated + `vyve_saved_plans` array for explicit saves) — there's no server-side record — and Cardio had no code to read either key.
+
+**What shipped:**
+
+**`movement.html` — quick-log in the no-plan branch:**
+- When `workout_plan_cache` returns a plan for the member (primary path), the Round 4 UI renders unchanged: programme header, today's session card, activity list with video modal, Mark as Done button writing to `workouts` table and advancing `current_session/current_week`. This path is untouched.
+- When no plan exists, the no-plan state now shows an activity pill picker (Walk / Stretch / Yoga / Mobility / Pilates / Other) + duration (1-600 mins, required) + optional short note, with a Log session button that POSTs to `/rest/v1/workouts` (`plan_name='Movement'`, `session_name` from note or pretty-cased activity type, `duration_mins`). Inline error on invalid duration. "Logged" confirmation + form reset on success.
+- New CSS: `.no-plan-intro`, `.quick-log-card`, `.ql-title`, `.ql-sub`, `.ql-section-label`, `.pill-row`, `.pill`, `.input-grid`, `.input-field`, `.btn-log`, `.log-note`. All theme-token-based.
+
+**`cardio.html` — active running-plan hero:**
+- Replaced the static `.rp-card` callout with a JS-filled `#rp-slot` div.
+- New `getActiveRunningPlan()` reads `vyve_autosave_plan` first; falls back to the most recent entry in `vyve_saved_plans` (sorted by `id` descending, since `id = Date.now()` at save time). Returns null if no plan is stored.
+- New `renderRunningPlan()` renders either:
+  - **Active plan hero** (teal gradient, matches programme-card pattern from movement.html): active-plan label + programme name + goal/timeframe meta + next-session callout with chevron linking to `/running-plan.html`
+  - **Fallback callout** (compact card inviting the member to generate a plan) when no plan exists
+- New `findNextSession(saved)` walks `plan.phases[].weeks[].days[]`, skips days marked complete via `day_0_<weekNumber>_<sanitizedDayName>` localStorage keys (same mechanism `running-plan.html` uses), computes each run-day's date from `saved.startdate` + week offset + day-of-week offset, and picks the first upcoming run. Labels it "Today" if it falls on today, "Missed" if in the past, or "Week N — DayName" otherwise. If no plan has `startdate`, labels by week+day position.
+- Called from `onAuthReady()` immediately after memberEmail resolution (no DB dependency — runs off localStorage only).
+
+**Known limitation (platform-level, not in this commit):**
+Running plans live only in `localStorage`. A member logging in on a second device or the Capacitor native app won't see their plan there. Server-side persistence of running plans is a separate task — should land with the wider HealthKit / Health Connect integration work per backlog "This Week" priorities.
+
+**`sw.js`** — cache bumped to `vyve-cache-v2026-04-20-exercise-quicklog`.
+
+**Files Changed:**
+- `vyve-site/movement.html` (23800 → 30281 chars)
+- `vyve-site/cardio.html` (25444 → 32615 chars)
+- `vyve-site/sw.js`
+
+---
+
 ## 2026-04-20 | Restore real movement.html + ship data-wired cardio.html + brain drift fix
 
 **Commits:**
