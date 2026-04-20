@@ -8,13 +8,20 @@
 
 1. **Android icon fix** — resubmitted 15 April, awaiting Google review
 2. **iOS icon fix** — app live but icon wrong, Build 2 uploaded
-3. **Exercise restructure** — Option A (Exercise Hub). Plan at `VYVEBrain/plans/exercise-restructure.md`.
-   - ~~Hub page shipped (`exercise.html`)~~
-   - ~~Sub-page headers & back buttons (`nav.js`, `workouts.html`, `movement.html`, `cardio.html`) — 20 April~~
-   - `movement.html` / `cardio.html` Supabase data wiring — currently static mock data only
-   - Skeleton-timeout watchdog + `vyveAuthReady` gating on `movement.html` / `cardio.html`
-   - `welcome.html` onboarding questionnaire update (exercise-type question)
-   - Onboarding EF: AI routing to assign Movement/Cardio as primary plan
+3. **Exercise restructure** — Option A (Exercise Hub). Plan at `VYVEBrain/plans/exercise-restructure.md`. **Rounds 1–5 shipped 19 April; movement.html restored 20 April after mock-drift incident.**
+   - ~~Round 1: `members.exercise_stream` DB column (workouts/movement/cardio, default workouts, 18 members backfilled) — 19 April~~
+   - ~~Round 2: "Workouts" → "Exercise" label rename across nav.js, index, engagement, certificates, leaderboard — 19 April (`5fe6929`)~~
+   - ~~Round 3: `exercise.html` hub page with hero card + 3 stream cards — 19 April (`c5216ca`)~~
+   - ~~Round 4: `movement.html` with workout_plan_cache read, activity list, video modal, Mark as Done — 19 April (`b7e19ba1`), restored 20 April (`93092de`) after drift~~
+   - ~~Round 5: `welcome.html` stream picker + onboarding EF v77 (stream-aware weekly goals, prog overview, recs, welcome email; workout plan gen wrapped in `if stream==='workouts'`) — 19 April (`0c6de36`)~~
+   - ~~Sub-page headers & back buttons (`nav.js`, `workouts.html`, `movement.html`, `cardio.html`) — 20 April (`d4b7171`)~~
+   - ~~`cardio.html` data-wired (weekly progress + quick-log + recent history) — 20 April (`93092de`)~~
+   - **Still open:** Movement plan **content** in `programme_library` (no rows with `category='movement'` yet — all Movement members see no-plan state)
+   - **Still open:** `programme_library.category` column to distinguish movement vs gym plans
+   - **Still open:** Backfill decision for existing 18 members (all currently default 'workouts')
+   - **Still open:** Classes stream on the hub (plan says cross-cutting, not yet built)
+   - **Still open:** Hub progress across all streams vs just the primary (open plan-doc question)
+   - **Still open:** Brain hygiene — base64-encoded historical blob in `brain/changelog.md` (~152K decoded chars) needs dedicated cleanup session
 4. **Deploy `admin.html` to `admin.vyvehealth.co.uk`** — file committed at `apps/admin-dashboard/admin.html` in `vyve-command-centre`, needs GitHub Pages hosting. Admin users already seeded (Dean + Lewis).
 5. **Polish and bug-fix pass** — test all flows, fix on-the-fly issues
 6. **Target: sell-ready by May 2026**

@@ -1,7 +1,7 @@
 # Exercise Restructure — Option A: Exercise Hub
 
 > Decision: 13 April 2026. Dean selected Option A after reviewing all three architectures.
-> Status: Planning — not yet in build.
+> Status: **Rounds 1–5 shipped 19 April 2026. Movement.html restored 20 April after mock-drift. Cardio.html data-wiring shipped 20 April (deviation from original plan which routed Cardio directly to running-plan.html). Open items tracked at bottom of this doc.**
 
 ---
 
@@ -107,3 +107,25 @@ This answer, combined with goals, age, stress, energy, and persona assignment, t
 ---
 
 *Created: 13 April 2026*
+
+
+---
+
+## Shipped (as of 20 April 2026)
+
+- ✅ **Round 1 (19 April)** — `members.exercise_stream` column (VARCHAR(20), CHECK: `workouts`/`movement`/`cardio`, DEFAULT `'workouts'`). 18 existing members backfilled.
+- ✅ **Round 2 (19 April, commit `5fe6929`)** — "Workouts" → "Exercise" label rename across `nav.js`, `index.html`, `engagement.html`, `certificates.html`, `leaderboard.html`. DB keys and internal JS variables kept unchanged.
+- ✅ **Round 3 (19 April, commit `c5216ca`)** — `exercise.html` hub page: hero card from `workout_plan_cache` (programme name, week X of Y, progress, next session, View Programme CTA) + 3 stream cards below.
+- ✅ **Round 4 (19 April, commit `b7e19ba1`; restored 20 April, commit `93092de`)** — `movement.html`: reads `workout_plan_cache` filtered by `category='movement'`, shows activity list with video modal, Mark as Done writes to `workouts` table + advances `current_session/current_week`.
+- ✅ **Round 5 (19 April, commit `0c6de36` + onboarding EF v77)** — `welcome.html` stream picker (3 cards, pick-once-reveal follow-ups); onboarding EF writes `exercise_stream`, stream-aware weekly goals / programme overview / recommendations / welcome email; workout plan generation wrapped in `if (stream === 'workouts')`.
+- ✅ **20 April (commit `93092de`)** — Cardio deviation from original plan. Original plan routed Cardio card directly to `running-plan.html`. Dean chose instead to build `cardio.html` as a dedicated page: weekly progress hero (reads `weekly_goals.cardio_target` + this-week count from `cardio` table), running plan callout linking to `/running-plan.html`, quick-log form (activity pill picker + duration + optional distance → POST to `cardio` table), last-10 recent sessions.
+- ✅ **20 April (commit `d4b7171`)** — Sub-page nav: `nav.js` `isNavPage` restricted to 4 exact hub paths; sub-pages now render back button + correct title in mobile header. `subPageLabels` map added for all portal sub-pages.
+
+## Still open
+
+- **Movement plan content** — `programme_library` has no rows with `category='movement'` yet. All Movement-stream members currently see the no-plan state. Needs: walking plans, gentle stretching, yoga programmes.
+- **`programme_library.category` column** — needed to distinguish movement vs gym plans cleanly.
+- **Classes stream** — plan calls this "cross-cutting, available to all" but it's not built as a hub card. Decision: link to `sessions.html` or build dedicated `classes.html`?
+- **Hub progress** — open plan-doc question: does `exercise.html` show progress across all 3 streams, or just the primary? Currently shows primary only (the workout plan).
+- **Backfill** — all 18 existing members are defaulted to `'workouts'`. Some may fit better as `'movement'` or `'cardio'` based on their current data. Decision needed: manual review, AI classifier, or leave until members self-update via settings?
+- **Brain hygiene** — `brain/changelog.md` has a base64-encoded blob (~152K decoded chars) from an earlier session that needs decoding and re-integrating as plain text.

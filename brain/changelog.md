@@ -1,3 +1,68 @@
+## 2026-04-20 | Restore real movement.html + ship data-wired cardio.html + brain drift fix
+
+**Commits:**
+- `93092de` (vyve-site) — Restore real Round 4 movement.html + build data-wired cardio.html
+- `[this commit]` (VYVEBrain) — Fix backlog drift, update plan doc status, log restoration
+
+**Context:**
+Deep-dive audit of the Exercise section revealed that between Round 4 (`b7e19ba1`, 19 April) and 20 April, the real data-wired `movement.html` — the one with `workout_plan_cache` integration, activity list, video modal, Mark as Done, etc — had been overwritten by a static step-tracker mockup ("Option 3 Personal Dashboard"). 13 subsequent commits tried to fix visual issues with that mock. My earlier commits today (`d4b7171` and `0a469a1`) compounded the problem by applying nav/header + brand CSS fixes to the mock, cementing it further.
+
+Additionally: the backlog update I did earlier this morning wrongly listed Round 5 items (`welcome.html` stream picker, onboarding EF AI routing) as still-open, despite Round 5 having shipped on 19 April (commit `0c6de36` + onboarding EF v77). The `plans/exercise-restructure.md` doc also still said "Status: Planning — not yet in build" despite Rounds 1–5 all being live.
+
+**What shipped:**
+
+**`movement.html`** — restored from git sha `b7e19ba1` (the real Round 4 page):
+- Reads member's active plan from `workout_plan_cache` (filtered by member_email)
+- Programme header card (name, Week X of Y, progress bar)
+- Today's session card with activity list: each activity has name, duration, tip, optional `video_url`
+- Video modal: YouTube auto-embed + direct video fallback + open-link fallback, closes on Escape/overlay tap
+- Mark as Done button: POSTs to `workouts` table (BST date, day_of_week, time_of_day, plan_name, session_name, duration_mins) + PATCHes `workout_plan_cache` to advance `current_session/current_week`
+- No-plan fallback state with link back to Exercise hub
+- 30-min localStorage cache (`vyve_movement_cache`, email-keyed)
+- 10-second skeleton watchdog, XSS escaping, BST date helpers (`bstToday()`), event-driven `vyveAuthReady` auth
+- Only change from `b7e19ba1`: `auth.js` → `/auth.js` path hygiene
+
+**`cardio.html`** — brand new data-wired page (not a mockup):
+- Weekly progress hero: reads `weekly_goals.cardio_target` + counts this ISO-week's rows from `cardio` table
+- Running plan callout: links to `/running-plan.html` so members can still generate/view AI running plans
+- Quick-log card: activity pill picker (Running / Cycling / Walking / Swimming / Rowing / Other) + duration (required, 1–600 mins) + optional distance in km, with inline validation; POSTs to `/rest/v1/cardio` with correct schema (`member_email`, `activity_date`, `day_of_week`, `cardio_type`, `duration_minutes`, `distance_km`) — DB triggers handle `time_of_day`, `session_number`, `logged_at`
+- Recent sessions: last 10 rows from `cardio` table, with friendly dates ("Today", "Yesterday", "N days ago", then DD Mon)
+- Same patterns as `movement.html`: `vyveAuthReady` event listener, 10-min localStorage cache, 10s skeleton watchdog, BST helpers, theme tokens throughout
+
+**`exercise.html`** — hub Cardio card updated:
+- `href: 'running-plan.html'` → `href: 'cardio.html'`
+- Description: "Running plans, cycling & cardio tracking" → "Running, cycling, walking & more"
+- Colour & icon unchanged
+
+**`sw.js`** — cache bumped to `vyve-cache-v2026-04-20-exercise-restore`
+
+**Architectural reality (post-audit):**
+The Exercise Restructure plan is more complete than the tracking docs suggest. All five planned rounds shipped on 19 April:
+- Round 1 — DB: `members.exercise_stream` column added (CHECK: workouts/movement/cardio; DEFAULT 'workouts'), 18 existing members backfilled
+- Round 2 — "Workouts" → "Exercise" labels across nav.js, index.html, engagement.html, certificates.html, leaderboard.html (commit `5fe6929`)
+- Round 3 — `exercise.html` hub page (commit `c5216ca`)
+- Round 4 — `movement.html` (commit `b7e19ba1` — this is what today's commit restored)
+- Round 5 — `welcome.html` stream picker + onboarding EF v77 (commit `0c6de36`): exerciseStream + 8 stream-specific fields, stream-aware weekly goals / programme overview / recommendations / welcome email, workout plan gen wrapped in `if (stream === 'workouts')`
+
+**What's genuinely still open (real Exercise-restructure backlog):**
+- Movement plan **content** in `programme_library` (walking / stretching / yoga programmes) — currently zero rows with `category='movement'`, so all Movement-stream members see no-plan state
+- `programme_library.category` column to distinguish movement vs gym plans
+- Classes stream on the hub (plan says cross-cutting, not built)
+- Hub progress across all streams vs just the primary (open question from plan doc)
+- Backfill decision for existing 18 members (all currently default 'workouts' regardless of actual fit)
+- Brain hygiene: base64-encoded blob in this changelog file (~152K decoded chars of historical entries) needs decoding in a dedicated session
+
+**Files Changed:**
+- `vyve-site/movement.html`, `cardio.html`, `exercise.html`, `sw.js` (commit `93092de`)
+- `VYVEBrain/brain/changelog.md`, `tasks/backlog.md`, `plans/exercise-restructure.md` (this commit)
+
+**Lessons:**
+- When a task produces multiple follow-ups from panic-fixing, always git log the file first to check whether a known-good earlier version exists. Would have saved today's whole cycle.
+- Backlog updates must cross-reference the changelog — my morning update re-opened items that had shipped weeks before.
+- Plan docs need a "Status: shipped on [date]" line when done, not "Planning" forever.
+
+---
+
 ## 2026-04-20 | Movement/Cardio unstyled content fix (follow-up)
 
 **Commits:**
