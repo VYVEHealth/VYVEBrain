@@ -1,3 +1,64 @@
+## 2026-04-21 SESSION SUMMARY | Leaderboard UI upgrade — classic 1→N board, time ranges, scope tabs, anon banner
+
+**Span.** 2026-04-21 22:24 UTC → 23:15 UTC (~50 min, Dean-approved plan before build, execute-through).
+
+**Context.** Prior session (same date) landed the 4-phase aggregation-layer refactor (EF v9 → v10, monthly buckets, display-name preferences). The UI side was deliberately left: members still only saw rank + above[] + locked "N below" teaser. This session ships the classic 1-to-N board, time-range selector, scope tabs (future-proofed), and the anonymous-default nudge.
+
+**Decision made pre-build.** Last-30d "All" metric needed check-ins to rank consistently with this_month and all_time (both of which sum 5 components incl. checkins). Chose option (B) — add `member_home_state.recent_checkins_30d` column + refresh function — over option (A) excluding checkins from 30d All. Clean and consistent over quick-and-lossy.
+
+**Phase 1 — DB migration.** Two migrations:
+1. `member_home_state_checkins_recent_30d` — `ALTER TABLE public.member_home_state ADD COLUMN recent_checkins_30d integer NOT NULL DEFAULT 0`. 17 existing rows defaulted.
+2. `refresh_member_home_state_with_checkins_30d` — full `CREATE OR REPLACE` of `refresh_member_home_state(p_email)`, identical to prior body with one added population block (`COUNT(*) FROM kahunas_checkins WHERE member_email=e AND activity_date > v_today - 30`) and matching columns in the INSERT + ON CONFLICT DO UPDATE. Check-ins are already capped at 1/ISO-week so plain `COUNT(*)` is correct — no `SUM(LEAST(cap, daily_count))` needed.
+Then `SELECT refresh_member_home_state(email) FROM members` across all 17. Verified: Dean = 5 (out of 7 total, 4 this month), which matches expected. Other 16 members all 0 this range. No anomalies.
+
+**Phase 2 — leaderboard EF v10 → v11.** Full rewrite, additive contract (v10 callers still work). Per-metric response gains:
+- `ranked[]` — top-100 of active-on-metric members, each with `rank`, `medal`, `count`, `cats`, `bar`, `display_name`, `is_caller`. Caller is highlighted wherever they fall inside ranked[] (no separate caller row needed).
+- `overflow_count` — active members past rank 100 (0 today at 17 members, structurally correct at 100+).
+- `zero_count` — scope members with 0 on this metric for this range (collapsed into footer, not individual rows).
+- `new_members_count` — all_time-only: scope members with `members.created_at > now() - 7 days` excluded from ranked[] to avoid demoralising brand-new members.
+
+Top-level additions: `range` (echoed), `scope_available: boolean` (true iff caller has `employer_members` row with non-null `employer_name`). Query params: `?range=this_month|last_30d|all_time` (default this_month). `?scope=` already in v10. Backwards-compat fields preserved: `above[]`, `below_count`, `gap`, `your_rank`, `your_count`, `total_members`.
+
+**Metric × range mapping:**
+- this_month → `*_this_month` (5 comps incl. checkins); streak uses `overall_streak_current`
+- last_30d → `recent_*_30d` (5 comps incl. new `recent_checkins_30d`); streak uses `overall_streak_current`
+- all_time → `*_total` (5 comps incl. checkins); streak uses `overall_streak_best` ("best streak ever" framing reads better for all-time than current streak)
+
+Active/zero split: ranked[] only includes members with `metric > 0` this range. Zeros roll into `zero_count` footer. `your_rank` still computed against the full in-scope member list so callers in the zero bucket still see their true rank against everyone.
+
+**Phase 3 — frontend.** `leaderboard.html` full rewrite + `settings.html` single-line anchor, atomic commit `d49ef95` to vyve-site@main:
+
+- `leaderboard.html`: Range tabs (This month / Last 30 days / All-time), scope tabs (All members / Company / My team, hidden unless `scope_available`), dismissible anonymous banner at top-of-page linking to `/settings.html#privacy` (banner only shows when caller's `display_name_preference === 'anonymous'` per `vyve_settings_cache`, with localStorage dismiss flag keyed to email). Board renders ranked[] 1→N with caller highlighted in-board via `is_caller`. Zero footer: "+ N members getting started" (or personalised "You haven't logged X yet — jump in" if caller is the only zero). Overflow footer: "+ N members below top 100" (structural, inert today). All-time-only new-member footer: "+ N new members getting started (joined this week)". Range-aware copy throughout ("this month" / "last 30 days" / "all-time" / "best streak ever"). Cache key expanded to include range+scope so tab-switching doesn't serve wrong cached data. Optimistic cache-first render on load when range+scope match.
+- `formatName()` helper: title-cases names that are entirely uppercase or entirely lowercase (LEWIS → Lewis, paige → Paige); preserves mixed case (McDonald, Dean). Applied after `escapeHTML` is NOT a risk — applied BEFORE, so XSS guard still runs last. Applied to caller's `first_name` and every ranked[] `display_name`.
+- `settings.html`: added `id="privacy"` to the Privacy settings-section div so the banner's "Show my name" CTA scroll-jumps to the display-name picker. Single char-range replacement, zero risk to surrounding markup.
+
+**Verification.**
+- EF v11 smoke-tested live across 3 ranges × 4 metrics as Dean (`deanonbrown@hotmail.com`): rank 1/17 on all this_month metrics, count=61; last_30d count=76 (matches: adds the extra March days beyond month-start, plus 5 checkins_30d); all_time count=104 with 5 members excluded as `new_members_count` (tenure < 7d), rank 1/12. Streak metric on all_time uses overall_streak_best=9 as designed.
+- As Lewis: rank 6/17 on all this_month, count=4. `caller_in_ranked` correctly TRUE on `all` and `workouts` (non-zero); correctly FALSE on `habits` and `streak` (he's in the zero bucket on both — renders via zero footer, not a wasted ranked slot).
+- Byte-equality check post-push: live `leaderboard.html` and `settings.html` on main match local versions exactly.
+- `settings.html` `id="privacy"` anchor confirmed present.
+
+**Deferred / not done this session.**
+- Test-account filtering (deanonbrown dupes + team@vyvehealth.co.uk) — product decision, still counted under scope=all.
+- Lewis's `first_name` uppercase at source — display fixed via `formatName()`, DB untouched per brief.
+- Cardio / sessions as new metric tabs — per brief, stays at 4 metrics.
+- sw.js cache bump not needed (network-first for HTML since d323d11, JS untouched this session).
+- Scope tabs render inert for all 17 members today (0 rows in employer_members). Automatically activates for Sage users once their rows land.
+
+**Key learnings.**
+- Additive EF contract pays off — above[] and below_count stay intact so any cached v10 response on a stale client still renders something sane, rather than blowing up on missing fields.
+- Zero-bucket collapse is the right default for a small-member board (17 today). A 1→N board with 12 zero rows would be 70% noise; footer-collapsed, it's honest and compact.
+- Frontend title-casing via "all-upper or all-lower" detection is safer than the alternative (always title-casing) because it preserves names that are already mixed-case correctly (McDonald, O'Brien). Mixed-case DB data is assumed to be intentional.
+- Cache key must include every param that changes the response — range+scope added to localStorage key to prevent stale-data bleed across tab switches.
+
+**Commits.**
+- vyve-site: `d49ef95` (leaderboard.html + settings.html, atomic)
+- Supabase migrations: `member_home_state_checkins_recent_30d`, `refresh_member_home_state_with_checkins_30d`
+- Supabase EF: `leaderboard` v10 → v11
+
+
+---
+
 ## 2026-04-21 SESSION SUMMARY | Leaderboard 4-phase refactor
 
 **Span.** 2026-04-21 21:41 UTC → 22:07 UTC (26 min, Dean-led review between phases)
