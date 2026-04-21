@@ -82,7 +82,7 @@ Single-file HTML pages. Self-contained inline CSS/JS. No build process, no bundl
 
 **Core pages:** index.html (dashboard, 81KB), habits.html, workouts.html (51KB), nutrition.html (74KB), nutrition-setup.html, log-food.html, wellbeing-checkin.html, monthly-checkin.html, sessions.html, running-plan.html, settings.html (66KB), certificates.html, engagement.html, leaderboard.html, shared-workout.html, login.html, set-password.html, consent-gate.html, strategy.html (password: vyve2026).
 
-**Shared JS:** auth.js (17KB, v2.4), nav.js (18KB), theme.js (4.4KB), theme.css (4.5KB), sw.js (4KB, cache `vyve-cache-v2026-04-17u`), vapid.js (2.6KB), tracking.js (8.5KB), offline-manager.js, supabase.min.js.
+**Shared JS:** auth.js (17KB, v2.4), nav.js (18KB — injects all nav chrome via `document.body.prepend` so it's independent of page `#app`/`#skeleton` state), theme.js (4.4KB), theme.css (4.5KB), sw.js (4KB, cache `vyve-cache-v2026-04-21f-navjs-body-prepend`) — **network-first for HTML navigations, cache-first for static assets, with `skipWaiting()` + `clients.claim()` so updates take effect on the next reload rather than requiring tab-close** (since 21 April 2026), vapid.js (2.6KB), tracking.js (8.5KB), offline-manager.js, supabase.min.js.
 
 **Workout JS modules** (loaded by workouts.html): workouts-config.js, workouts-programme.js, workouts-session.js, workouts-builder.js, workouts-exercise-menu.js, workouts-notes-prs.js, workouts-library.js.
 
@@ -416,6 +416,14 @@ HAVEN is live and IS being assigned (first assignment: Conor Warren, 15 April 20
 37. **engagement.html expects member-dashboard response shape.** The page uses `data.counts`, `data.streaks`, `data.score.total`, `data.activityLog` (with `types[]`). Any refactor of the member-dashboard EF response shape must also update the translation layer in `loadPage()` in engagement.html. Mismatches are silent — score shows blank or NaN.
 38. **`member_home_state` write path is `refresh_member_home_state(p_email)` ONLY.** Never `INSERT`/`UPDATE`/`DELETE` directly on `member_home_state` from an Edge Function, a trigger function, or the frontend. The function is `SECURITY DEFINER` and reads every source table to produce a single consistent row; it is also the canonical place where Dean's "sessions lifetime capped at 2/day" rule is enforced. Direct writes will drift from source truth and from the cap rule within minutes. `zzz_refresh_home_state` triggers on `members` (INSERT/UPDATE/DELETE) + 9 activity/score tables ensure the aggregate is always fresh — no cron is needed.
 
+39. **Nav chrome stays dark on both themes.** `[data-theme="light"]` in `theme.css` overrides `--nav-bg`, `--nav-bg-mob`, `--nav-border`, `--nav-text`, `--nav-active`, `--more-bg` back to dark values. A scoped container rule also pins generic tokens (`--text`, `--border`, `--surface-teal`, `--label-accent`) inside `nav.desktop-nav`, `.mobile-page-header`, `.vyve-bottom-nav`, `.vyve-more-menu`, `.nav-more-panel`, `.nav-avatar-panel`. Do not remove this scoping — nav.js's injected markup uses generic tokens that would otherwise flip on the light theme.
+
+40. **nav.js injects all nav chrome into `document.body.prepend`.** The mobile-page-header, desktop nav, bottom nav, overlay, more-menu and avatar panel ALL attach to `document.body` directly — never to `#app`, `#skeleton`, or any `<main>`. This makes the nav independent of any page's loading state (skeleton→app swap, error recovery, etc.). Any refactor that injects nav chrome inside a page container WILL break on pages with the `#skeleton` + `#app` dual-main pattern (exercise.html, movement.html).
+
+41. **Use semantic tokens for new CSS, not brand tokens, for text/fills/borders.** Primary text → `--label-strong`/`--label-medium`/`--label-weak`. Accent text → `--label-accent`/`--label-accent-strong`. Italic accent words (e.g. `.page-title em`) → `--label-heading-em` (dark green on light, teal-lt on dark). Buttons with accent background → `--label-on-accent` for foreground (always white, theme-invariant). Success/warning/danger → `--label-success`/`-warning`/`-danger`. Backgrounds → `--fill-*`. Borders → `--line-*`. Brand tokens (`--teal`, `--teal-lt`, `--teal-xl`, `--amber`, `--coral`) remain in the system but are for graphical/decorative use only (icons, glows, progress bars, track colours) — never as primary text colour. `--teal-xl` on light background was 1.81:1 contrast, fails WCAG.
+
+42. **New portal sub-pages must use the standard 4 head scripts and no bespoke `<nav>`.** Required order: `theme.js`, `auth.js`, `nav.js`, `offline-manager.js`. No page-level `<nav>` markup. No page-level `.desktop-nav` / `.nav-logo-v` / `.nav-badge` CSS. Mobile `.wrap` padding must be `24px 16px 100px` (top clears sticky nav header + iOS status bar; bottom clears bottom nav). This was broken on `wellbeing-checkin.html` and `monthly-checkin.html` until 21 April 2026 — both had rolled their own nav markup and had no bottom nav on mobile.
+
 ---
 
 ## 11. What NOT to Do
@@ -499,6 +507,36 @@ Phase A (tokens) and Phase B (semantic colour migration) shipped 17 April 2026. 
 | `--pot-sleep` | #6366B8 | Sleep |
 
 **Scales:** spacing `--space-0` → `--space-16`; typography `--text-2xs` → `--text-4xl` + weights; radius `--radius-sm` / `--radius` / `--radius-lg` / `--radius-xl` / `--radius-pill` / `--radius-circle`; shadow `--shadow-sm/md/lg` + `--shadow-glow-teal`.
+
+### Semantic token layer (added 21 April 2026)
+
+On top of the brand/activity/semantic-alias palette above, `theme.css` now ships a component-primitive token layer grouped by role. These are the tokens new CSS should reach for. Brand tokens remain for graphical/decorative use. Every token below is WCAG-compliant on both themes.
+
+**Text (`--label-*`):**
+| Token | Role | Light | Dark |
+|---|---|---|---|
+| `--label-strong` | Primary text | #0A1F1F (16:1) | #EAF2EF |
+| `--label-medium` | Secondary text / metadata | #3A5555 | #C4CDCD |
+| `--label-weak` | Muted / captions | #6B8585 | #8A9B9B |
+| `--label-accent` | Accent text (teal) | #1B7878 (4.93:1) | #4DAAAA |
+| `--label-accent-strong` | Strong accent (eyebrow, active states) | #006D6F | #7AC8C8 |
+| `--label-eyebrow` | Eyebrow text above page titles | #006D6F | #7AC8C8 |
+| `--label-heading-em` | Italic accent word inside `.page-title em` | #0D2B2B (dark green) | #4DAAAA |
+| `--label-on-accent` | Foreground on accent-filled buttons | #FFFFFF | #FFFFFF |
+| `--label-success` | Success text (completed, passed) | #127939 | #6DD99A |
+| `--label-warning` | Warning text | #B86A00 | #F4B550 |
+| `--label-danger` | Danger text (errors, overdue) | #C41E3A | #F48095 |
+
+**Fills (`--fill-*`):** `--fill-subtle`, `--fill-subtle-hover`, `--fill-accent`, `--fill-accent-hover`, `--fill-accent-strong`, `--fill-success`, `--fill-warning`, `--fill-danger`.
+
+**Lines (`--line-*`):** `--line-subtle`, `--line-accent`, `--line-accent-strong`, `--line-success`, `--line-warning`, `--line-danger`.
+
+**Legacy aliases retained:** `--text`, `--surface`, `--border`, `--border-teal`, `--surface-hover`, `--surface-teal`, `--muted`, `--on-accent`, `--white` all exist as `var()` aliases pointing into the semantic layer so existing CSS continues to work. New CSS should use the semantic names directly.
+
+**Nav chrome scoping:** nav.js's generic-token use is locked to dark-theme values via a scoped container rule inside `.desktop-nav`, `.mobile-page-header`, `.vyve-bottom-nav`, `.vyve-more-menu`, `.nav-more-panel`, `.nav-avatar-panel`. Nav chrome is dark on both themes; only page content flips.
+
+### Phase B completion note
+Phase B (semantic colour migration) was shipped 17 April as the first `--success`/`--warning`/`--danger` aliases. The 21 April work extends Phase B with full component-primitive coverage (`--label-*`, `--fill-*`, `--line-*`) across 12 portal HTML pages (242 replacements). Phase D (component primitives: `.btn`, `.card`, `.input`, `.modal-sheet`) and Phase E (typography/spacing migration) should reference these tokens as their colour foundation rather than adding new ones.
 
 ---
 

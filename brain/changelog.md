@@ -1,3 +1,74 @@
+## 2026-04-21 session summary | light-mode readability, nav chrome unification, sw.js overhaul (4 hours, 7 portal commits)
+
+One long session covering a light-mode audit, a semantic token layer, dark nav chrome on light theme, exercise/movement/checkin header unification, a sw.js overhaul, and two rounds of nav.js DOM-injection bug fixing. Indexed per-commit entries follow below (2026-04-21, 21b, 21c, 21d, 21e, 21f). This top entry is the single-read summary.
+
+### What triggered it
+Dean reported light-mode readability was broken across the portal: teal text (`--teal-lt` #4DAAAA) rendered at 2.58:1 contrast on the `#F0FAF8` light background (fails WCAG), and `--teal-xl` (#7AC8C8) at 1.81:1 was effectively invisible. Additionally: on `leaderboard.html` the italic "leaderboard" accent word needed to be a darker green, not teal.
+
+### What shipped (7 portal commits + 6 brain commits)
+
+**1. `2560dd3e` theme.css — semantic token layer.** Introduced three token families on top of the existing brand/activity palette:
+- **Text layer:** `--label-strong` / `--label-medium` / `--label-weak` / `--label-accent` / `--label-accent-strong` / `--label-eyebrow` / `--label-heading-em` / `--label-on-accent` / `--label-success` / `--label-warning` / `--label-danger`
+- **Fill layer:** `--fill-subtle` / `--fill-subtle-hover` / `--fill-accent` / `--fill-accent-hover` / `--fill-accent-strong` / `--fill-success` / `--fill-warning` / `--fill-danger`
+- **Line layer:** `--line-subtle` / `--line-accent` / `--line-accent-strong` / `--line-success` / `--line-warning` / `--line-danger`
+
+All tokens verified WCAG AA compliant on both themes. Legacy `--text`, `--surface`, `--border`, `--border-teal`, `--surface-hover`, `--surface-teal`, `--muted`, `--on-accent`, `--white` retained as `var()` aliases pointing to the semantic layer so no existing CSS breaks.
+
+**Key light-mode values:** `--label-accent`=#1B7878 (teal), `--label-accent-strong`=#006D6F, `--label-eyebrow`=#006D6F, `--label-heading-em`=#0D2B2B (dark green, Dean's pick for italic accent words), `--label-success`=#127939, `--label-warning`=#B86A00, `--label-danger`=#C41E3A.
+
+**2. `b4fbfc85` light-mode sweep — 242 replacements across 12 HTML pages** (index:50, nutrition:43, workouts:41, settings:29, wellbeing-checkin:19, habits:18, sessions:18, movement:10, engagement:8, exercise:4, leaderboard:1, certificates:1). Mid-sweep bug caught: a blanket `#fff → var(--label-strong)` would have broken filled teal/green buttons (dark text on teal = unreadable on light). Added a second pass to preserve `--label-on-accent` (always white) on any rule whose background is an accent token. 10 button rules fixed.
+
+**3. `5010fdac` nav chrome locked dark + exercise/movement header upgrade.**
+- `[data-theme="light"]` rewrites `--nav-bg`, `--nav-bg-mob`, `--nav-border`, `--nav-text`, `--nav-active`, `--more-bg` back to dark-theme values.
+- Scoped container rule pins generic tokens (`--text`, `--border`, `--surface-teal`, `--label-accent` etc.) to dark values inside `nav.desktop-nav`, `.mobile-page-header`, `.vyve-bottom-nav`, `.vyve-more-menu`, `.nav-more-panel`, `.nav-avatar-panel` — because nav.js's injected markup uses generic tokens that would otherwise flip on the light theme.
+- `exercise.html` + `movement.html`: wrapped eyebrow+title+sub in a `.page-header` container (`margin-bottom:28px`, `fadeUp 0.4s`), bumped `.page-title` to 2rem, added `.page-title em { color:var(--label-heading-em); font-style:italic }`, reduced `.hero-card` / `.prog-card` top margins to 8px.
+
+**4. `d323d112` sw.js — network-first HTML + skipWaiting/clients.claim.** Root cause: after the theme.css + exercise.html ship, Dean reloaded and saw stale content. Old sw.js was pure cache-first (including for HTML) and lacked `skipWaiting()` / `clients.claim()`, so updates required closing every tab. New behaviour:
+- `install` handler calls `self.skipWaiting()` after `cache.addAll`
+- `activate` handler calls `self.clients.claim()` alongside old-cache purging
+- Network-first for HTML navigations (`req.mode === 'navigate'` or `.html` or `/`), cache-first for static assets
+- Cross-origin + `/functions/*` + `/auth/*` bypass the SW entirely
+- Message handler for `{type:'SKIP_WAITING'}` (ready for a future update-prompt UI)
+
+After this commit, HTML-only changes take effect on the very next navigation without a cache bump.
+
+**5. `f78a7ba7` four-page header unification** — brought exercise.html, movement.html, wellbeing-checkin.html, monthly-checkin.html in line with the standard sub-page pattern (habits/workouts etc.):
+- `exercise.html` + `movement.html`: mobile `.wrap` top padding `8px → 24px` so page content clears the 56px + safe-area-inset-top nav.js sticky header on iOS.
+- `wellbeing-checkin.html`: removed bespoke `<nav class="desktop-nav">` + its CSS (`.nav-logo-v`, `.nav-logo-text`, `.nav-right`, `.nav-link`, `.nav-badge`, `.nav-logo`), added `<script src="/nav.js">`, bumped mobile `.wrap` bottom padding `60 → 100px`.
+- `monthly-checkin.html`: removed bespoke `<nav>` (custom back-button + logo markup) + its `/* NAV */` CSS block, added `/nav.js` + `/offline-manager.js`, changed `.page-eyebrow` colour from `var(--gold)` → `var(--label-eyebrow)`.
+
+**6. `18d2cb00` nav.js — prefer #app main over first-in-DOM main** (first attempt at fixing exercise/movement). Bug: `document.querySelector('main')` returned the `<main>` inside `<div id="skeleton">` on exercise/movement (skeleton sits before `#app` in DOM). nav.js inserted the mobile-page-header as a sibling of the skeleton `<main>`, so the header lived inside `#skeleton` — and disappeared whenever the page's loader set `#skeleton.style.display = 'none'`. First fix changed the selector to `(app && app.querySelector('main')) || body.querySelector('main:not(#skeleton main)') || document.querySelector('main')`. This stopped the skeleton capture, but the header was now inserted INSIDE `#app` (which starts `display:none` until data loads), causing a flash-and-disappear on transitions.
+
+**7. `c4b90feb` nav.js — always inject chrome into document.body** (the real fix). Replaced the conditional insertBefore logic entirely with `document.body.prepend(mobileHeader); document.body.prepend(desktopNav);` so the nav chrome is completely independent of any page's skeleton/app state. Bottom nav, overlays, more-menu and avatar panel already used `document.body.appendChild` — they were never affected. Dean confirmed fixed.
+
+### Cache bumps (all tonight)
+`vyve-cache-v2026-04-21-light-mode-sweep` → `...-21b-nav-dark-headers` → `...-21c-sw-network-first` → `...-21d-header-fixes` → `...-21e-navjs-skeleton-fix` → `...-21f-navjs-body-prepend`.
+
+### Side output: accessibility backlog
+During the session Alan Bird (COO) flagged that he struggles to read the portal at his iOS Large Text setting. Full four-option plan parked at `plans/accessibility-large-text.md`, summarised as a "Later" backlog entry. Not being built this session. Options: (1) restore pinch-zoom via viewport meta, 10 min; (2) in-app text-size toggle in Settings using `--text-scale` multiplier, ~half day; (3) OS Dynamic Type bridge via Capacitor, 2-3 days; (4) full WCAG 2.1 AA pass, 1-2 weeks. Blocked on prioritisation vs Capacitor store push.
+
+### Top-level architecture changes
+1. **Semantic token layer** on top of Phase A/B tokens — `--label-*`, `--fill-*`, `--line-*` are now the canonical way to style text/fills/borders. Brand tokens (`--teal`, `--teal-lt`, `--teal-xl`) remain for graphical use (icons, glows, decorative elements) but should no longer be used as primary text colour.
+2. **Nav chrome is dark on both themes.** The light theme no longer "flips" the top/bottom nav — only page content flips.
+3. **nav.js injection point is `document.body.prepend`** — independent of `#app` / `#skeleton` / `<main>` positioning. Future page structures that nest skeletons or alternate main elements will not break the nav.
+4. **sw.js is network-first for HTML.** Cache bumps are now only strictly required for asset-only changes (JS, CSS, images). HTML updates reach users on the next navigation automatically. Cache bumps for HTML remain a nice-to-have for version auditing but are no longer load-bearing.
+
+### Key learnings
+- **When a script uses `document.querySelector('main')`, in a codebase with multiple acceptable page structures** (some with `#skeleton` wrappers, some without), that selector is inconsistent across pages. Prefer explicit container-scoped selectors or — when the injected element should be viewport-sticky — inject into `document.body` directly.
+- **Visual debugging is unreliable for "is the element there?"** On tonight's nav.js bug, I initially assumed the header was present but positioned wrongly. Checking `document.querySelector('.mobile-page-header').offsetParent` in DevTools would have immediately shown `null` (hidden because ancestor is `display:none`). Future: when "element doesn't appear" and CSS looks correct, check ancestor visibility before layout.
+- **Light-mode readability can be caught statically with WCAG ratios on every CSS variable.** A one-off contrast check script would have caught `--teal-lt` at 2.58:1 on `#F0FAF8` months ago. Worth scripting as a CI step.
+- **Blanket `#fff → token` replacements are dangerous.** Buttons with accent backgrounds depend on white foreground for contrast; replacing `#fff` with a theme-aware `--label-strong` silently breaks them on one theme. Any sweep of colour-literals needs a second pass that preserves `--label-on-accent` inside accent-backgrounded rules.
+- **Pages with `#skeleton` + `#app` dual-main structure are fragile.** Any utility that queries for `<main>` can accidentally target the skeleton one. Candidate for future cleanup: migrate to a single `#app` with an internal skeleton state.
+
+### Migration guide for future sub-pages
+New portal sub-pages must:
+1. Include the standard 4 head scripts in this order: `theme.js`, `auth.js`, `nav.js`, `offline-manager.js` (nav.js position in the file doesn't matter, but all four must be present).
+2. NOT roll their own `<nav>` markup or CSS. nav.js handles desktop nav + mobile-page-header + bottom nav + overlay + more-menu + avatar panel.
+3. Use semantic tokens for all new CSS: `--label-*` for text, `--fill-*` for backgrounds, `--line-*` for borders. Brand tokens (`--teal*`, `--green`, `--amber`, `--coral`) are for graphical/decorative use only.
+4. Have `.wrap { padding: 40px 24px 120px }` desktop + `@media(max-width:768px){.wrap{padding:24px 16px 100px}}` mobile (top padding ≥24px to clear the nav.js sticky mobile header, bottom padding ≥100px to clear the bottom nav).
+
+---
+
 ## 2026-04-21e | nav.js: fix mobile-page-header disappearing on #skeleton pages
 
 **Context.** After shipping 21d (padding + checkin pages), Dean reported exercise.html and movement.html STILL had no dark sticky mobile header, while weekly/monthly checkin worked perfectly. Initial diagnosis was wrong (I thought the header was just too tight — it wasn't, it was entirely missing).
