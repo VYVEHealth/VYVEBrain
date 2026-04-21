@@ -1,71 +1,130 @@
-## 2026-04-21 session summary | light-mode readability, nav chrome unification, sw.js overhaul (4 hours, 7 portal commits)
+## 2026-04-21 SESSION SUMMARY | Full day: Exercise restructure polish → light-mode sweep → nav unification
 
-One long session covering a light-mode audit, a semantic token layer, dark nav chrome on light theme, exercise/movement/checkin header unification, a sw.js overhaul, and two rounds of nav.js DOM-injection bug fixing. Indexed per-commit entries follow below (2026-04-21, 21b, 21c, 21d, 21e, 21f). This top entry is the single-read summary.
+**Span.** 2026-04-20 17:24 UTC → 2026-04-20 23:52 UTC (~6.5 hours across multiple chats).
 
-### What triggered it
-Dean reported light-mode readability was broken across the portal: teal text (`--teal-lt` #4DAAAA) rendered at 2.58:1 contrast on the `#F0FAF8` light background (fails WCAG), and `--teal-xl` (#7AC8C8) at 1.81:1 was effectively invisible. Additionally: on `leaderboard.html` the italic "leaderboard" accent word needed to be a darker green, not teal.
+**Commits shipped today.**
 
-### What shipped (7 portal commits + 6 brain commits)
+**vyve-site** (15 commits, all on main branch):
+| Time UTC | SHA | Subject |
+|----------|-----|---------|
+| 17:24 | [4309c24](https://github.com/VYVEHealth/vyve-site/commit/4309c2437afdac79eae0a28d4dcc2c53636eabd5) | movement.html brand-consistent styling |
+| 17:24 | [627f951](https://github.com/VYVEHealth/vyve-site/commit/627f9518...) | cardio.html brand-consistent styling |
+| 17:48 | [d4b7171](https://github.com/VYVEHealth/vyve-site/commit/d4b7171b...) | Sub-page nav: back button + correct header labels |
+| 18:00 | [0a469a1](https://github.com/VYVEHealth/vyve-site/commit/0a469a11...) | Movement/Cardio brand CSS rebuild |
+| 18:58 | [93092de](https://github.com/VYVEHealth/vyve-site/commit/93092dea...) | Restore Round 4 movement.html + data-wired cardio.html |
+| 19:16 | [eeda75e](https://github.com/VYVEHealth/vyve-site/commit/eeda75e5...) | Movement quick-log + cardio running-plan hero |
+| 19:48 | [ce3f1af](https://github.com/VYVEHealth/vyve-site/commit/ce3f1af8...) | Server-side running plan storage (member_running_plans) |
+| 20:59 | [459f3cb](https://github.com/VYVEHealth/vyve-site/commit/459f3cbc...) | sw.js bump for member-dashboard v44 (home-state aggregate) |
+| 23:00 | [2560dd3](https://github.com/VYVEHealth/vyve-site/commit/2560dd3e...) | theme.css: semantic token layer |
+| 23:04 | [b4fbfc8](https://github.com/VYVEHealth/vyve-site/commit/b4fbfc85...) | Light-mode sweep: 12 portal pages, 242 edits |
+| 23:21 | [5010fda](https://github.com/VYVEHealth/vyve-site/commit/5010fdac...) | Lock nav chrome dark + exercise/movement header upgrade |
+| 23:26 | [d323d11](https://github.com/VYVEHealth/vyve-site/commit/d323d112...) | sw.js: network-first HTML + skipWaiting/clients.claim |
+| 23:40 | [f78a7ba](https://github.com/VYVEHealth/vyve-site/commit/f78a7ba7...) | Exercise/movement padding + nav.js on checkin pages |
+| 23:48 | [18d2cb0](https://github.com/VYVEHealth/vyve-site/commit/18d2cb00...) | nav.js: prefer `#app main` (superseded by 21f) |
+| 23:51 | [c4b90fe](https://github.com/VYVEHealth/vyve-site/commit/c4b90feb...) | nav.js: always inject at document.body (final) |
 
-**1. `2560dd3e` theme.css — semantic token layer.** Introduced three token families on top of the existing brand/activity palette:
-- **Text layer:** `--label-strong` / `--label-medium` / `--label-weak` / `--label-accent` / `--label-accent-strong` / `--label-eyebrow` / `--label-heading-em` / `--label-on-accent` / `--label-success` / `--label-warning` / `--label-danger`
-- **Fill layer:** `--fill-subtle` / `--fill-subtle-hover` / `--fill-accent` / `--fill-accent-hover` / `--fill-accent-strong` / `--fill-success` / `--fill-warning` / `--fill-danger`
-- **Line layer:** `--line-subtle` / `--line-accent` / `--line-accent-strong` / `--line-success` / `--line-warning` / `--line-danger`
+**VYVEBrain** (15 commits): per-change changelog entries plus base64 corruption recovery at 20:07 UTC ([f08c48a](https://github.com/VYVEHealth/VYVEBrain/commit/f08c48ac)).
 
-All tokens verified WCAG AA compliant on both themes. Legacy `--text`, `--surface`, `--border`, `--border-teal`, `--surface-hover`, `--surface-teal`, `--muted`, `--on-accent`, `--white` retained as `var()` aliases pointing to the semantic layer so no existing CSS breaks.
+---
 
-**Key light-mode values:** `--label-accent`=#1B7878 (teal), `--label-accent-strong`=#006D6F, `--label-eyebrow`=#006D6F, `--label-heading-em`=#0D2B2B (dark green, Dean's pick for italic accent words), `--label-success`=#127939, `--label-warning`=#B86A00, `--label-danger`=#C41E3A.
+### Workstream 1 — Exercise Restructure Polish (17:24 → 19:50 UTC)
 
-**2. `b4fbfc85` light-mode sweep — 242 replacements across 12 HTML pages** (index:50, nutrition:43, workouts:41, settings:29, wellbeing-checkin:19, habits:18, sessions:18, movement:10, engagement:8, exercise:4, leaderboard:1, certificates:1). Mid-sweep bug caught: a blanket `#fff → var(--label-strong)` would have broken filled teal/green buttons (dark text on teal = unreadable on light). Added a second pass to preserve `--label-on-accent` (always white) on any rule whose background is an accent token. 10 button rules fixed.
+Followed on from the Exercise Hub work shipped 19 April. Today's session closed the loose ends:
 
-**3. `5010fdac` nav chrome locked dark + exercise/movement header upgrade.**
-- `[data-theme="light"]` rewrites `--nav-bg`, `--nav-bg-mob`, `--nav-border`, `--nav-text`, `--nav-active`, `--more-bg` back to dark-theme values.
-- Scoped container rule pins generic tokens (`--text`, `--border`, `--surface-teal`, `--label-accent` etc.) to dark values inside `nav.desktop-nav`, `.mobile-page-header`, `.vyve-bottom-nav`, `.vyve-more-menu`, `.nav-more-panel`, `.nav-avatar-panel` — because nav.js's injected markup uses generic tokens that would otherwise flip on the light theme.
-- `exercise.html` + `movement.html`: wrapped eyebrow+title+sub in a `.page-header` container (`margin-bottom:28px`, `fadeUp 0.4s`), bumped `.page-title` to 2rem, added `.page-title em { color:var(--label-heading-em); font-style:italic }`, reduced `.hero-card` / `.prog-card` top margins to 8px.
+**movement.html and cardio.html brand rebuild.** Both pages initially landed with Inter fonts and wrong colour scheme (commits 4309c24 / 627f951). Follow-up commit 0a469a1 rebuilt them with proper VYVE brand CSS (Playfair Display + DM Sans, #1E8F8F teal) when it emerged that both pages had copy-pasted workouts.html's inline `<style>` block wholesale — with zero rules for their own content classes (`.goal-card`, `.tip-card`, `.stats-grid`, `.activity-card`, `.hr-card`, `.cardio-grid`, `.session-controls`, etc). Tabs and bottom nav rendered fine; page body was unstyled plain text until this was caught.
 
-**4. `d323d112` sw.js — network-first HTML + skipWaiting/clients.claim.** Root cause: after the theme.css + exercise.html ship, Dean reloaded and saw stale content. Old sw.js was pure cache-first (including for HTML) and lacked `skipWaiting()` / `clients.claim()`, so updates required closing every tab. New behaviour:
-- `install` handler calls `self.skipWaiting()` after `cache.addAll`
-- `activate` handler calls `self.clients.claim()` alongside old-cache purging
-- Network-first for HTML navigations (`req.mode === 'navigate'` or `.html` or `/`), cache-first for static assets
-- Cross-origin + `/functions/*` + `/auth/*` bypass the SW entirely
-- Message handler for `{type:'SKIP_WAITING'}` (ready for a future update-prompt UI)
+**Mock drift incident.** Between 19 April (b7e19ba1) and 20 April (d4b7171), movement.html was silently replaced with a static step-tracker mockup labelled "Option 3 Personal Dashboard" — probably during a prior session's exploration. Commit 93092de restored the real Round 4 version (workout_plan_cache read, activity list, video modal, Mark as Done) and simultaneously shipped a proper cardio page. Lesson logged in tasks/backlog: exploratory UI mocks need to be kept in a separate directory, never committed over real pages.
 
-After this commit, HTML-only changes take effect on the very next navigation without a cache bump.
+**Sub-page navigation.** nav.js was updated so `isNavPage` matches only the 4 hub paths (`/`, `/index`, `/exercise`, `/nutrition`, `/sessions`) instead of loose string-containment. Sub-pages now get a back button in the mobile header while still highlighting the correct bottom-nav tab. Added `subPageLabels` map for proper titles on workouts/movement/cardio/running-plan/habits/certificates/leaderboard/engagement/check-ins/settings.
 
-**5. `f78a7ba7` four-page header unification** — brought exercise.html, movement.html, wellbeing-checkin.html, monthly-checkin.html in line with the standard sub-page pattern (habits/workouts etc.):
-- `exercise.html` + `movement.html`: mobile `.wrap` top padding `8px → 24px` so page content clears the 56px + safe-area-inset-top nav.js sticky header on iOS.
-- `wellbeing-checkin.html`: removed bespoke `<nav class="desktop-nav">` + its CSS (`.nav-logo-v`, `.nav-logo-text`, `.nav-right`, `.nav-link`, `.nav-badge`, `.nav-logo`), added `<script src="/nav.js">`, bumped mobile `.wrap` bottom padding `60 → 100px`.
-- `monthly-checkin.html`: removed bespoke `<nav>` (custom back-button + logo markup) + its `/* NAV */` CSS block, added `/nav.js` + `/offline-manager.js`, changed `.page-eyebrow` colour from `var(--gold)` → `var(--label-eyebrow)`.
+**Movement quick-log + cardio active running-plan hero.** Commit eeda75e addressed Dean's feedback: members without a movement plan now see a quick-log form (Walk/Stretch/Yoga/Mobility/Pilates/Other + duration + optional note) that writes straight to the `movement` table. Cardio page shows an active-programme hero card when the member has a running plan, mirroring the exercise hub.
 
-**6. `18d2cb00` nav.js — prefer #app main over first-in-DOM main** (first attempt at fixing exercise/movement). Bug: `document.querySelector('main')` returned the `<main>` inside `<div id="skeleton">` on exercise/movement (skeleton sits before `#app` in DOM). nav.js inserted the mobile-page-header as a sibling of the skeleton `<main>`, so the header lived inside `#skeleton` — and disappeared whenever the page's loader set `#skeleton.style.display = 'none'`. First fix changed the selector to `(app && app.querySelector('main')) || body.querySelector('main:not(#skeleton main)') || document.querySelector('main')`. This stopped the skeleton capture, but the header was now inserted INSIDE `#app` (which starts `display:none` until data loads), causing a flash-and-disappear on transitions.
+**Server-side running plan storage.** Commit ce3f1af shipped `member_running_plans` table migration and rewrote running-plan.html and cardio.html to use Supabase as source of truth with localStorage as offline cache (write-through). Backfill logic on first visit to running-plan.html post-deploy: any plan found in localStorage with no server equivalent is pushed to Supabase. Resolves the "plan only on my phone" issue and sets up Capacitor multi-device sync.
 
-**7. `c4b90feb` nav.js — always inject chrome into document.body** (the real fix). Replaced the conditional insertBefore logic entirely with `document.body.prepend(mobileHeader); document.body.prepend(desktopNav);` so the nav chrome is completely independent of any page's skeleton/app state. Bottom nav, overlays, more-menu and avatar panel already used `document.body.appendChild` — they were never affected. Dean confirmed fixed.
+### Workstream 2 — member_home_state Wire-up (20:59 → 21:16 UTC)
 
-### Cache bumps (all tonight)
-`vyve-cache-v2026-04-21-light-mode-sweep` → `...-21b-nav-dark-headers` → `...-21c-sw-network-first` → `...-21d-header-fixes` → `...-21e-navjs-skeleton-fix` → `...-21f-navjs-body-prepend`.
+Continuation of yesterday's backend work: member-dashboard v44 now reads from the `member_home_state` aggregate table, with trigger on `members` table to refresh on INSERT. `EXECUTE` grants on `refresh_member_home_state(p_email)` tightened to service_role + authenticated. sw.js cache bumped in commit 459f3cb. Brain synced ([7af68f8](https://github.com/VYVEHealth/VYVEBrain/commit/7af68f80)).
 
-### Side output: accessibility backlog
-During the session Alan Bird (COO) flagged that he struggles to read the portal at his iOS Large Text setting. Full four-option plan parked at `plans/accessibility-large-text.md`, summarised as a "Later" backlog entry. Not being built this session. Options: (1) restore pinch-zoom via viewport meta, 10 min; (2) in-app text-size toggle in Settings using `--text-scale` multiplier, ~half day; (3) OS Dynamic Type bridge via Capacitor, 2-3 days; (4) full WCAG 2.1 AA pass, 1-2 weeks. Blocked on prioritisation vs Capacitor store push.
+### Workstream 3 — Light-Mode Sweep (23:00 → 23:21 UTC)
 
-### Top-level architecture changes
-1. **Semantic token layer** on top of Phase A/B tokens — `--label-*`, `--fill-*`, `--line-*` are now the canonical way to style text/fills/borders. Brand tokens (`--teal`, `--teal-lt`, `--teal-xl`) remain for graphical use (icons, glows, decorative elements) but should no longer be used as primary text colour.
-2. **Nav chrome is dark on both themes.** The light theme no longer "flips" the top/bottom nav — only page content flips.
-3. **nav.js injection point is `document.body.prepend`** — independent of `#app` / `#skeleton` / `<main>` positioning. Future page structures that nest skeletons or alternate main elements will not break the nav.
-4. **sw.js is network-first for HTML.** Cache bumps are now only strictly required for asset-only changes (JS, CSS, images). HTML updates reach users on the next navigation automatically. Cache bumps for HTML remain a nice-to-have for version auditing but are no longer load-bearing.
+Dean asked for a light-mode readability audit of the portal. 5 screenshots analysed. Root cause: `--teal-lt` (#4DAAAA) was being used as primary text colour on all 12 portal pages. On the light background `#F0FAF8`, its contrast ratio is 2.58:1 — failing WCAG AA (needs 4.5:1). 9 of 12 pages had zero light-mode overrides. Total: 242 problem instances.
 
-### Key learnings
-- **When a script uses `document.querySelector('main')`, in a codebase with multiple acceptable page structures** (some with `#skeleton` wrappers, some without), that selector is inconsistent across pages. Prefer explicit container-scoped selectors or — when the injected element should be viewport-sticky — inject into `document.body` directly.
-- **Visual debugging is unreliable for "is the element there?"** On tonight's nav.js bug, I initially assumed the header was present but positioned wrongly. Checking `document.querySelector('.mobile-page-header').offsetParent` in DevTools would have immediately shown `null` (hidden because ancestor is `display:none`). Future: when "element doesn't appear" and CSS looks correct, check ancestor visibility before layout.
-- **Light-mode readability can be caught statically with WCAG ratios on every CSS variable.** A one-off contrast check script would have caught `--teal-lt` at 2.58:1 on `#F0FAF8` months ago. Worth scripting as a CI step.
-- **Blanket `#fff → token` replacements are dangerous.** Buttons with accent backgrounds depend on white foreground for contrast; replacing `#fff` with a theme-aware `--label-strong` silently breaks them on one theme. Any sweep of colour-literals needs a second pass that preserves `--label-on-accent` inside accent-backgrounded rules.
-- **Pages with `#skeleton` + `#app` dual-main structure are fragile.** Any utility that queries for `<main>` can accidentally target the skeleton one. Candidate for future cleanup: migrate to a single `#app` with an internal skeleton state.
+**Fix shipped.** [2560dd3](https://github.com/VYVEHealth/vyve-site/commit/2560dd3e) introduced the semantic token layer in theme.css with three families (label, fill, line) and legacy-alias back-compat. All tokens verified WCAG AA compliant on both themes. [b4fbfc8](https://github.com/VYVEHealth/vyve-site/commit/b4fbfc85) then applied 242 find-and-replace edits across 12 HTML pages. Mid-sweep bug caught: blanket `#fff → var(--label-strong)` would have broken filled teal/green buttons; second pass added 10 button fixes preserving `--label-on-accent` for accent-background text.
 
-### Migration guide for future sub-pages
-New portal sub-pages must:
-1. Include the standard 4 head scripts in this order: `theme.js`, `auth.js`, `nav.js`, `offline-manager.js` (nav.js position in the file doesn't matter, but all four must be present).
-2. NOT roll their own `<nav>` markup or CSS. nav.js handles desktop nav + mobile-page-header + bottom nav + overlay + more-menu + avatar panel.
-3. Use semantic tokens for all new CSS: `--label-*` for text, `--fill-*` for backgrounds, `--line-*` for borders. Brand tokens (`--teal*`, `--green`, `--amber`, `--coral`) are for graphical/decorative use only.
-4. Have `.wrap { padding: 40px 24px 120px }` desktop + `@media(max-width:768px){.wrap{padding:24px 16px 100px}}` mobile (top padding ≥24px to clear the nav.js sticky mobile header, bottom padding ≥100px to clear the bottom nav).
+**Follow-up:** [5010fda](https://github.com/VYVEHealth/vyve-site/commit/5010fdac) locked all nav chrome (desktop, mobile header, bottom nav, more-menu, avatar panel) to dark-theme values regardless of active theme. Also upgraded exercise.html and movement.html page headers to use the standard `.page-header` container with eyebrow + italic-accent title + subtitle, matching other pages.
+
+### Workstream 4 — Service Worker Overhaul (23:26 UTC)
+
+After shipping the light-mode changes, Dean couldn't see them because old sw.js was pure cache-first for everything including HTML. [d323d11](https://github.com/VYVEHealth/vyve-site/commit/d323d112) rewrote sw.js:
+- `install` → `self.skipWaiting()` after `cache.addAll`
+- `activate` → `self.clients.claim()` + old-cache purge
+- HTML navigations → network-first with cache fallback
+- Static assets → cache-first (unchanged)
+- Cross-origin and `/functions/*` / `/auth/*` → bypass SW
+
+**Implication:** HTML-only changes now reach users on the very next reload. No more force-quit or hard-refresh required. See Hard Rule #44 and Section 3 of master.md.
+
+### Workstream 5 — Header Unification (23:40 → 23:51 UTC)
+
+Three commits to bring exercise.html, movement.html, wellbeing-checkin.html, and monthly-checkin.html in line with the standard sub-page pattern.
+
+- [f78a7ba](https://github.com/VYVEHealth/vyve-site/commit/f78a7ba7): exercise/movement mobile `.wrap` top padding 8px → 24px; wellbeing-checkin and monthly-checkin had nav.js added and bespoke nav markup removed.
+- [18d2cb0](https://github.com/VYVEHealth/vyve-site/commit/18d2cb00): nav.js selector updated to prefer `#app main` (superseded, kept for git history).
+- [c4b90fe](https://github.com/VYVEHealth/vyve-site/commit/c4b90feb): **final fix** — nav.js now always injects nav chrome at `document.body.prepend()`, completely independent of `#app` or `#skeleton` loading state.
+
+### Workstream 6 — Accessibility Backlog (23:15 UTC)
+
+Parked Alan Bird's feedback on iOS Large Text struggle. Four-option plan at [plans/accessibility-large-text.md](https://github.com/VYVEHealth/VYVEBrain/blob/main/plans/accessibility-large-text.md):
+1. Restore pinch-zoom (10 min) — remove `user-scalable=no` from viewport meta
+2. In-app text-size toggle (~half day) — Settings > Accessibility, `--text-scale` multiplier via `html { font-size: calc(16px * var(--text-scale)) }`
+3. OS Dynamic Type bridge via Capacitor (2–3 days) — listen to iOS contentSizeCategory + Android font scale
+4. Full WCAG 2.1 AA pass (1–2 weeks) — audit 50+ pages
+
+Added to `tasks/backlog.md` "Later" section. Not being built now.
+
+---
+
+**Files touched today across vyve-site:**
+
+- `theme.css` — complete rewrite, semantic token layer
+- `nav.js` — sub-page detection + body-prepend injection
+- `sw.js` — network-first rewrite, 3 cache bumps
+- `index.html`, `habits.html`, `workouts.html`, `sessions.html`, `leaderboard.html`, `engagement.html`, `nutrition.html`, `settings.html`, `certificates.html`, `wellbeing-checkin.html`, `exercise.html`, `movement.html`, `cardio.html`, `monthly-checkin.html`, `running-plan.html` — light-mode token migration and/or nav unification
+
+**Master document updates (this session end):**
+
+- Section 3 (Architecture): new Service Worker subsection; updated Shared JS list; updated nav.js injection heights with body-prepend rule.
+- Section 10 (Hard Rules): +6 rules (#39 through #44) covering nav-dark-in-light, body-prepend injection, standard script order, mobile padding template, semantic tokens, optional HTML cache-bumps.
+- Section 13 (Design System): Phase B refinement noted; new Semantic Token Layer subsection documenting `--label-*` / `--fill-*` / `--line-*` families.
+
+---
+
+## 2026-04-21f | nav.js: always inject nav chrome at document.body (final fix)
+
+**Context.** The 21e fix (prefer `#app main` over skeleton main) stopped the header being hidden inside `#skeleton` — but broke differently. Dean reported "tries to load the header for 0.1s then goes away" — because the header was now injected INSIDE `#app`, which starts with `style="display:none"` on exercise.html and movement.html. The header briefly flashed during app-state transitions then vanished.
+
+**Root cause.** Both 21e and the original logic tried to be clever about *where* to insert the nav chrome — as a sibling of some `<main>`, scoped to either `#app` or `#skeleton`. Any of those approaches ties nav visibility to the visibility of its parent container. When page JS toggles `#app` / `#skeleton` display state (which exercise.html and movement.html both do during data load and error recovery), the nav flickers or disappears.
+
+**Final fix shipped.** ([c4b90fe](https://github.com/VYVEHealth/vyve-site/commit/c4b90feb6c8d8d80e7cde8b4ae83506cb4639063))
+
+Nav chrome now ALWAYS injects at `document.body` top:
+```js
+// Inject into page
+// ALWAYS inject nav chrome at document.body top (not inside #app/#main/#skeleton).
+document.body.prepend(mobileHeader);
+document.body.prepend(desktopNav);
+```
+
+The `insertBefore(main)` branch and all of its conditional logic is gone. Bottom nav, overlays, more-menu and avatar panel already used `document.body.appendChild()` — they weren't affected by the bug but now follow the same pattern consistently.
+
+sw.js cache bumped to `vyve-cache-v2026-04-21f-navjs-body-prepend`.
+
+**Dean confirmed:** "That worked."
+
+**Key learnings.**
+- Global UI chrome should live at `document.body` level, full stop. Injecting it inside page-specific containers creates visibility dependencies on those containers' loading states. This rule now lives in Hard Rule #40 and Section 3 (nav.js injection heights) in the master doc.
+- Debugging "flashing element" bugs: when something appears briefly then disappears, the culprit is almost always a parent container's `display:none` being applied after the element rendered. Checking `element.offsetParent` in DevTools reveals ancestor visibility issues immediately.
+- Three iterations to get nav.js right (21d padding fix → 21e skeleton-main selection → 21f body-prepend) — should have gone straight to body-prepend. Lesson: when a utility script needs to be independent of page state, inject at `document.body` and don't overthink it.
 
 ---
 
