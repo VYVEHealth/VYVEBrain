@@ -1,1314 +1,1160 @@
 # VYVE Health — Master Document
 
-> **The single definitive reference for VYVE Health CIC.**
-> Layered so different readers can skim to what they need: executives and investors stay in Part 1, commercial roles stay in Parts 1–2, product and operations in Parts 1–3, engineers across the whole document.
->
-> **Last updated:** 21 April 2026
-> **Maintainer:** Dean Brown (CTO)
-> **Supersedes:** `brain/master.md` (previous technical-only version), `VYVE Complete Knowledge Base` (early April), any informally circulated master docs.
+> **Single source of truth for the whole business.** One document, layered for different readers.
+> **Last verified:** 21 April 2026 against live Supabase project `ixjfklpckgxrwjlfsaaz` and the `vyve-site` + `VYVEBrain` repos.
+> **Primary audience:** Dean (CTO), Lewis (CEO), Alan (COO), Phil, Vicki, Cole, Calum. Secondary: investors, partners, enterprise prospects who sign an NDA.
 
 ---
 
-## Contents
+## How to read this document
 
-**PART 1 — EXECUTIVE** *(read this if nothing else; ~3 pages)*
-- 1.1 Elevator pitch
-- 1.2 Company snapshot
-- 1.3 Current state (members, revenue, stage)
-- 1.4 Team
-- 1.5 Mission, vision, values
-- 1.6 Top priorities to May 2026
+This document is **layered** — you don't have to read it all.
 
-**PART 2 — COMMERCIAL**
-- 2.1 The three pillars (investor/enterprise framing)
-- 2.2 The five pillars (website/member framing)
-- 2.3 Market positioning and the VYVE difference
-- 2.4 Business model and pricing
-- 2.5 Target market and enterprise pipeline
-- 2.6 Competitive landscape
-- 2.7 Sales enablement (skills, playbooks, assessment tool)
-- 2.8 Marketing, brand and content
-- 2.9 Lewis's origin story and The Everyman / VYVE Podcast
-- 2.10 Charity mechanic and partner categories
-- 2.11 CIC advantage and public sector route
-- 2.12 Unit economics and cost structure
-- 2.13 Compliance and legal posture
-
-**PART 3 — PRODUCT**
-- 3.1 What members get
-- 3.2 Member journey
-- 3.3 Portal pages (page-by-page)
-- 3.4 AI coaching personas
-- 3.5 The Exercise Hub (Movement, Workouts, Cardio, Running Plan)
-- 3.6 Nutrition, habits and check-ins
-- 3.7 Live and replay sessions
-- 3.8 Certificates and engagement scoring
-- 3.9 Employer dashboard
-- 3.10 Admin dashboard (internal)
-- 3.11 Mobile apps (iOS + Android)
-
-**PART 4 — TECHNICAL** *(detailed reference for engineers)*
-- 4.1 Architecture overview
-- 4.2 Hosting and repositories
-- 4.3 Authentication
-- 4.4 Database (Supabase, 70 tables)
-- 4.5 Edge Functions
-- 4.6 Service Worker and offline architecture
-- 4.7 Design system (tokens, theme layer)
-- 4.8 Navigation system
-- 4.9 AI integration rules
-- 4.10 Security state
-- 4.11 Hard rules (never break)
-- 4.12 Known technical debt
-
-**APPENDICES**
-- A. Key URLs, credentials and identifiers
-- B. Team contacts
-- C. Outstanding decisions needing owner sign-off
-- D. Glossary
+- **Part 1 (Executive Summary)** — 3-page snapshot. Read this first. Tells you who we are, where we are, what the next move is.
+- **Part 2 (Commercial)** — business model, pricing, market, sales pipeline, charity mechanic, marketing. For Lewis, Vicki, Alan, investors.
+- **Part 3 (Product)** — what the app does, the five pillars, AI personas, onboarding flow, content. For Lewis, Phil, Calum, Cole, enterprise demos.
+- **Part 4 (Technical)** — architecture, databases, edge functions, security, known issues. For Dean and any engineer picking the product up.
+- **Appendices** — team roles, glossary, compliance detail, known bugs, open decisions, useful URLs.
 
 ---
----
 
-# PART 1 — EXECUTIVE
+# PART 1 — Executive Summary
 
-## 1.1 Elevator pitch
+## 1.1 What VYVE Health is
 
-VYVE Health is a UK workplace wellbeing platform that helps people build proactive physical, mental and social health habits before they break. Members get a personalised 8-week programme, daily habit tracking, weekly and monthly AI check-ins, five AI coaching personas, a full nutrition tracker and access to live and on-demand sessions — all wrapped in a mobile app that works across iOS, Android and the web.
+VYVE Health is a UK-based Community Interest Company building a **proactive workplace wellbeing platform** for individuals and employers. We are a direct alternative to reactive EAPs and single-pillar wellbeing vendors. Our product spans three pillars — **Physical, Mental, and Social health** — unified by five AI coaching personas that personalise the member experience.
 
-We sell direct to individuals at £20/month and to employers at £10 per user per month. We are built as a UK Community Interest Company (CIC), which gives us a structural advantage in public sector procurement, and every 30 activities that members or companies complete funds one free month of the platform for someone in need through our charity partner network.
+**Our tagline:** *Help yourself. Help others. Change the world.*
 
-Our edge is threefold: proactive versus reactive (we build health before it breaks, not after), three-pillar versus single-pillar (physical, mental and social wellbeing, not just one), and social-impact-native versus commercial-first (the CIC structure and charity mechanic are built into the product, not bolted on).
+**The core idea in one sentence:** prevention over cure — build health before it breaks — and when people do build it, their engagement funds free access for people who can't afford it via our charity mechanic.
 
-## 1.2 Company snapshot
+## 1.2 Where we are, today (21 April 2026)
 
-| Field | Detail |
+| Dimension | State |
 |---|---|
-| **Legal name** | VYVE Health CIC (Community Interest Company) |
-| **Registered office** | United Kingdom |
-| **ICO registration** | 00013608608 (registered March 2026, £52/year renewal) |
-| **Stage** | Pre-revenue, MVP, active validation |
-| **Founded** | 2026 (CIC); Lewis has run The Everyman Podcast since February 2023 |
-| **Business email** | team@vyvehealth.co.uk |
-| **Marketing site** | www.vyvehealth.co.uk |
-| **Portal** | online.vyvehealth.co.uk |
-| **Podcast** | www.vyvehealth.co.uk/vyve-podcast.html (rebranding from The Everyman) |
+| **Legal** | VYVE Health CIC. Registered with Companies House. ICO registered (00013608608). |
+| **Stage** | Pre-revenue · MVP live · Validation phase |
+| **Members** | 17 on the platform (verified live from Supabase today). 9 have logged at least one activity. 13 joined in April 2026 — growth is accelerating off a small base. |
+| **Revenue** | £0 MRR. No paying customers yet. |
+| **Team** | 7 people (see section 1.6). Dean part-time until MRR hits £6K. |
+| **Apps** | iOS live in the App Store. Android Build 1.0.2 awaiting Google confirmation. |
+| **Pipeline** | Sage (warm, via Lewis's internal contact). HubSpot deal 495586118853 at Initial Contact. No second prospect currently. |
+| **Top priority** | Ship a polished, sell-ready product by **end of May 2026**. |
+| **Cash position** | Self-funded. No external capital. No grants yet. |
 
-## 1.3 Current state
+## 1.3 What we sell
 
-**Members:** 17 total in Supabase as of 21 April 2026. Of these, 9 have logged activity; the rest are test accounts, onboarded-but-not-yet-active accounts, or legacy Kahunas imports. Most recent cohort: 13 members joined in April 2026.
+**B2C — £20/month per individual.** Direct payment via Stripe.
+**B2B — £10/user/month for employers.** Volume tiers above 200 seats still to be formally defined.
+**Annual option:** 10–15% discount, pending Lewis sign-off.
 
-**Engagement (last 30 days):**
-- 45 workouts logged
-- 12 cardio sessions
-- 100 daily habits
-- 14 weekly check-ins
-- 48 live/replay session views
-- 15 personalised workout programmes generated
-- 0 running plans generated (table exists, feature recently shipped, adoption pending)
-- 0 monthly check-ins (table exists, feature recently shipped)
+The same platform serves both routes. Employers get a privacy-respecting aggregate dashboard of their members' engagement. Individual members never appear by name in employer-facing views.
 
-**Revenue:** £0. We are pre-revenue. Stripe is wired, coupons exist (`VYVE15`, `VYVE10`), the payment link is live, but we are not yet actively converting paying customers. Revenue target: **£6,000 MRR** (the threshold at which Dean goes full-time on VYVE).
+## 1.4 What makes us different
 
-**Company breakdown:** 2 members labelled as Sage, 1 as BT, 1 as Individual, 13 unlabelled. This is trial/testing state — no live employer contracts yet.
+1. **Proactive not reactive.** Most competitors (Unmind, Spectrum.Life, YuLife, Headspace for Work) are built around crisis support or single-discipline fitness. We build wellbeing *before* the crisis.
+2. **Three pillars, one product.** Physical + Mental + Social in one membership. Most rivals are pillar-single.
+3. **Community Interest Company (CIC).** In UK public-sector procurement, CIC status delivers 6–8 points of social-value scoring — real pipeline advantage for NHS, council, and government tenders.
+4. **Charity mechanic.** Every 30 qualifying activities by a member or an employer's team funds one free month for someone who can't afford the platform. Your engagement has external impact. No competitor does this.
+5. **Lewis Vines's story.** Authentic lived-experience founder — addiction recovery, now CEO. Built originally on top of The Everyman Podcast (35+ episodes, rebranding to The VYVE Podcast). This is a marketing moat many VCs would kill for.
+6. **Economics.** 95%+ contribution margin. Break-even at around 4–5 paying members. At 100 B2C members, ~£1,930 profit/month.
 
-**Apps:** iOS app is **live on the App Store**. Android app is **awaiting Google confirmation** (resubmitted 15 April; icon issue identified and resolved).
+## 1.5 Where we're going (next 6 weeks)
 
-## 1.4 Team
+**Target: sell-ready by end of May 2026.**
 
-**Core team (6 people):**
+Three parallel tracks:
 
-| Name | Role | Scope | Email |
-|---|---|---|---|
-| **Lewis Vines** | CEO / Founder | Commercial, sales, content, AI ops, brand, product sign-off | lewisvines@hotmail.com |
-| **Dean Brown** | CTO / Co-Founder | All technical work (part-time until £6K MRR); architecture, builds, data, security | deanonbrown@hotmail.com |
-| **Alan Bird** | COO | Operations, process, go-to-market execution, compliance | (internal) |
-| **Phil** | Mental Health Lead | Mental health content, HAVEN persona review and clinical sign-off | (to be added) |
-| **Calum Denham** | Performance / Fitness Content | Exercise and workout content, performance expertise | (internal) |
-| **Vicki** | Sales | Enterprise outbound, pipeline, demos | (to be added) |
-| **Cole** | Community | Community engagement, member support, retention | (to be added) |
+- **Track A — Enterprise readiness.** Close the remaining gaps for Sage demo: per-employer dashboard auth, GDPR export/delete tooling, Brevo logo removal, finalised B2B pricing tiers. Lewis owns the commercial side; Dean owns the technical.
+- **Track B — Platform polish.** Last readability, navigation, and performance issues being closed out (four shipped last night — see changelog for detail). Android icon fix. HAVEN clinical sign-off. Movement plan content. A push-notification cron needs a 30-minute fix.
+- **Track C — Sales and content motion.** Lewis re-engaging existing enterprise warm leads. Vicki ramping outbound. Cole standing up community rituals for retention. Content queue restoration (133 social posts stuck since 23 March — Make scenario 4950386 broken).
 
-**Business email:** All outbound business communication uses `team@vyvehealth.co.uk` — never personal emails.
+If all three tracks hit, we enter June 2026 with a demo-ready product, Sage in active negotiation, and a content engine running again.
 
-## 1.5 Mission, vision, values
+## 1.6 The team
 
-**Tagline:** *Help yourself. Help others. Change the world.*
+Full details in Appendix A. Headline:
 
-**Mission:** Proactive workplace wellbeing across three pillars — Physical, Mental, Social — so people and organisations build health before it breaks.
-
-**Core values** (derived from about page, used in hiring and product decisions):
-1. **Proactive, not reactive** — act before problems arise
-2. **Evidence over assumption** — claims backed by research (Deloitte, RAND Europe, Gallup, The Lancet, WHO)
-3. **People first, always** — product and policies designed around the user
-4. **Radical transparency** — open communication, no hidden agendas
-5. **Long-term thinking** — sustainable health practices, not fads
-6. **Health for everyone** — equitable access, which is why we are a CIC and why the charity mechanic exists
-
-**Positioning line:** *Prevention over cure — build health before it breaks.*
-
-## 1.6 Top priorities to May 2026
-
-**Sell-ready by end of May 2026** — meaning: enterprise-demo-ready for Sage, iOS and Android both live in their respective stores with no known blockers, all critical audit findings remediated, and a polished demo environment.
-
-In order of priority:
-
-1. **Android app launch confirmed** — waiting on Google review of the resubmission
-2. **Facebook Make connection renewal before 22 May 2026** — critical, Lewis
-3. **Sage demo readiness** — per-employer dashboard auth, volume pricing tiers, GDPR tooling (export + delete)
-4. **Active members re-engagement** — Lewis and Kelly (both Sage contacts) have not logged activity in over a week; they must be live in the platform before the Sage demo
-5. **Brevo logo removal** (~$12/month upgrade) before the Sage demo goes out on branded email
-6. **Movement content backfill** — members choosing the Movement exercise stream currently see an empty-state page; we need at least 4–6 movement plans in the library
-7. **HAVEN persona clinical review** — built and technically live, but should not be actively promoted until Phil signs off
-8. **Fix push notifications** (broken since 11 April, affects daily habit and streak reminders)
-
----
----
-
-# PART 2 — COMMERCIAL
-
-## 2.1 The three pillars (investor / enterprise framing)
-
-At the board, investor and enterprise level, VYVE speaks in three pillars. This is the strategic framing — it's how we describe what we do in pitch decks, procurement conversations, and top-of-funnel marketing.
-
-| Pillar | What it covers | Evidence anchor |
+| Person | Role | Scope |
 |---|---|---|
-| **Physical** | Workout programmes, cardio, movement, nutrition, daily habits, wearable integration | ROI of physical wellbeing from Deloitte + RAND Europe; £150bn UK economic cost of ill health (CIPD 2025) |
-| **Mental** | Weekly and monthly wellbeing check-ins, five AI coaching personas, mindfulness content, the HAVEN safe-space persona, group therapy sessions | 41% of UK long-term absence driven by mental ill health (CIPD 2025); 2.8m economically inactive due to long-term health conditions |
-| **Social** | Live sessions with chat, community leaderboards, charity mechanic, peer accountability, upcoming employer team dashboards | Gallup research on workplace connection; Warwick and UCL research on social health outcomes |
+| **Lewis Vines** | CEO / Founder | Commercial, sales, content, AI ops, founder story |
+| **Dean Brown** | CTO / Co-Founder | All technical, part-time until £6K MRR |
+| **Alan Bird** | COO | Operations, governance, accessibility feedback |
+| **Phil** | Mental Health Lead | HAVEN persona clinical review, mental-health content |
+| **Vicki** | Sales | Outbound pipeline, enterprise prospecting |
+| **Cole** | Community | Member engagement, community rituals |
+| **Calum Denham** | Fitness Content | Exercise content, programme curation |
 
-The three-pillar framing is deliberately simple because enterprise buyers and boards think in simple frameworks. When someone asks "what is VYVE?", this is the answer.
+Business email: **team@vyvehealth.co.uk** — always use this for outbound business communications.
 
-## 2.2 The five pillars (website / member framing)
+## 1.7 Top risks, worth knowing
 
-At the website and member-experience level, VYVE presents five pillars. This is the feature-detail framing — it gives individuals browsing the marketing site a clearer picture of what they actually get day-to-day.
+- **Single-founder technical risk.** Dean is a lone CTO. No off-platform backup of most Edge Functions (fix in progress). The 13 April Composio wipe incident was a warning.
+- **Pre-revenue runway.** Self-funded. No external capital. First contract matters.
+- **Facebook Make connection expires 22 May 2026.** Lewis action item; social publisher dependency.
+- **Push notifications broken since 11 April.** Known fix; 30-minute task; hasn't been prioritised.
+- **HAVEN persona live but not clinically reviewed.** At least one member has been assigned HAVEN (from a serious life-context signal) without Phil's clinical sign-off yet.
+- **Sage is our only live enterprise lead.** No second prospect to de-risk Sage timing.
 
-| Pillar | What it is on the page |
+## 1.8 The ask (implicit)
+
+This document exists to make sure everyone on the team (and any AI we brief) can skim straight to what they need. If you're picking VYVE up for the first time, the next sensible read is **Part 2 (Commercial)** if you're revenue-facing, or **Part 4 (Technical)** if you're engineering-facing.
+
+---
+
+# PART 2 — Commercial
+
+## 2.1 Mission, vision, values
+
+**Mission.** Proactive workplace wellbeing across three pillars — Physical, Mental, Social — making measurable prevention accessible to anyone, at individual or employer level, backed by an evidence-based product and a charity mechanic that extends access to people priced out of wellbeing.
+
+**Vision.** Become the default UK platform for proactive workplace wellbeing — the one every mid-to-large employer considers before Unmind, Spectrum.Life, YuLife, or Headspace for Work — and the one the NHS, councils, and government use to run preventative programmes at scale.
+
+**Values (six).**
+
+1. **Proactive, not reactive.** Act before the crisis.
+2. **Evidence over assumption.** Claims backed by research. We cite Deloitte, RAND Europe, Gallup, The Lancet, University of Warwick, UCL, WHO, CIPD.
+3. **People first, always.** Product and policies designed around the member, not the metric.
+4. **Radical transparency.** Open communication, no hidden agendas.
+5. **Long-term thinking.** Build sustainable practices, not quick wins.
+6. **Health for everyone.** The charity mechanic is built-in, not bolted on.
+
+## 2.2 Business model and pricing
+
+### B2C — individuals
+- **£20/month**, direct payment via Stripe.
+- Coupons: `VYVE15` and `VYVE10` for promotional campaigns.
+- Stripe payment link: `buy.stripe.com/00wfZicla1Em0NnaIB93y00` → redirects to `onboarding_v8.html` (now `welcome.html`).
+- No free tier. 7-day-no-login, questionnaire-incomplete, and registered-no-activity re-engagement streams (A / B / C1 / C2 / C3) are live.
+
+### B2B — employers
+- **£10/user/month per seat.** Advertised as £20 with £10 discount so the employer's employees can see the headline price.
+- **Volume tiers above 200 seats: TBD** (open decision — Lewis to finalise before the first enterprise contract). Indicative working model: 50–200 full rate, 201–500 negotiable, 500+ bespoke.
+- Contact-first sales, not self-serve. HubSpot CRM tracks every prospect.
+- Employer sees aggregate-only dashboard — no PII, ever.
+
+### Annual option
+- 10–15% discount under discussion. Lewis decision pending. Dean will add to Stripe once the number is confirmed.
+
+### Revenue positioning
+VYVE is positioned as a **performance investment, not a cost centre**. We use ROI framing backed by:
+- **UK total cost of work-related ill health: £150 billion/year** (RAND Europe, CIPD).
+- **9.4 days average sickness absence per employee, 2025** — 24-year high (CIPD).
+- **41% of long-term absence driven by mental ill health** (CIPD).
+- **2.8 million people economically inactive due to long-term health conditions** (ONS).
+- **37% of UK employers are still purely reactive** — the TAM for proactive solutions is the remaining 63% waking up to the problem.
+- **5–8% average EAP utilisation.** Even where employers already pay for wellbeing support, most staff never engage. VYVE's gamification and charity mechanic directly attack this engagement gap.
+- **The Employment Rights Act SSP changes (effective 6 April 2026)** are the strongest current economic argument for preventative wellbeing.
+
+### Series A targets (when we get there)
+- £1–2 million ARR
+- 10%+ month-on-month growth
+- Under 8% churn
+- Over 100% net revenue retention
+
+## 2.3 Unit economics
+
+| Line | Value |
 |---|---|
-| **Mental** | Group therapy sessions, stress management, sleep support, AI coaching (NOVA, RIVER, SPARK, SAGE, HAVEN) |
-| **Physical** | 40+ tailored workout plans, cardio programmes, movement tracking, custom exercise creation, wearable integration |
-| **Nutrition** | Evidence-based guidance, no fad diets, meal planning, nutrition logging, TDEE and macro tracking |
-| **Education** | Expert speakers, live podcast episodes, growing content library, CIPD research, thought leadership |
-| **Purpose** | Meaningful goals, lasting habits, accountability, charity mechanic, community leaderboards |
+| Variable cost per member | ~£0.45/month (Anthropic AI + infra share) |
+| Fixed infrastructure | ~£81/month (Supabase, Anthropic cap, domain, ICO, Make, Brevo free tier) |
+| B2C contribution margin | ~97.5% |
+| B2B contribution margin | ~95.5% |
+| Break-even | 4–5 paying members |
+| 100 B2C members scenario | £2,000 MRR → ~£1,930 profit/month (96.5% margin) |
+| Sage 200 members scenario | £2,000 MRR → ~£1,850 profit/month (92.5% margin) |
+| Target (Dean full-time) | ~300 paying → £6,000 MRR |
+| Series A (£1.5M ARR) | ~6,250 paying → £125,000 MRR, ~£119,000 profit/month |
 
-**How the two framings reconcile:** Nutrition rolls up under Physical in the three-pillar view. Education and Purpose roll up under Social. Mental is the same in both. The website gets five pillars so individuals can see specific features; the boardroom gets three pillars because that's the strategic story.
+**Scaling cost thresholds to know about.**
+- **80 members:** Brevo upgrade needed (~£19/month) to cross the free-tier 300/day cap.
+- **100 members:** Anthropic spend monitoring — current cap is £50/month, real usage is lower but trending up.
+- **500 members:** Dedicated DPO service required (~£2–5K/year).
+- **1,000 members:** Supabase compute tier upgrade likely.
 
-## 2.3 Market positioning and the VYVE difference
+All above figures from the 14 April financial report (Report 8 of 11 in `/reports/`).
 
-The UK wellbeing market is crowded but the vast majority of incumbents are reactive, single-pillar, or both. Employee Assistance Programmes activate when something breaks. Gym-style apps only address physical. Meditation apps only address mental. Nobody in the UK does proactive, three-pillar wellbeing with a social-impact structure — that's the gap VYVE fills.
+## 2.4 Target market
 
-**Positioning phrases we use consistently:**
-- *Prevention over cure*
-- *Build health before it breaks*
-- *A performance investment, not a cost centre*
-- *Evidence over assumption*
+### Three target segments
 
-**Evidence base cited in sales conversations:**
-Deloitte · RAND Europe · Gallup · The Lancet · University of Warwick · University College London · World Health Organization · CIPD (UK wellbeing annual report).
+1. **Private sector enterprise.** Mid-to-large UK employers with visible wellbeing pain. Warmest targets: Sage (warm — internal contact), BT (members already on trial), Barclays, Balfour Beatty.
+2. **Public sector.** NHS, local councils, government departments. CIC status is a structural advantage (6–8 extra points in social-value scoring). A full Public Sector Sales Playbook with five procurement routes is maintained in Lewis's workspace.
+3. **Individuals (B2C).** Direct purchases at £20/month. Separate journey on the marketing site. Smaller revenue contribution per head, but valuable for validation, content traffic, and word-of-mouth.
 
-**Economic context for sales conversations (CIPD 2025 figures):**
-- £150bn annual cost of UK ill health to the economy
-- 9.4 days average sickness absence per employee (24-year record high)
-- 41% of long-term absence driven by mental ill health
-- 2.8m economically inactive due to long-term health conditions
-- 37% of UK employers still purely reactive — a massive market opportunity
-- 5–8% average EAP utilisation — the engagement gap VYVE's gamification model directly addresses
-
-The **Employment Rights Act SSP changes effective 6 April 2026** is the strongest current economic argument for preventative workplace wellbeing. We lead with it in enterprise conversations.
-
-## 2.4 Business model and pricing
-
-**B2C (individual):** £20 per month. Paid directly via Stripe. Onboarding is self-serve: pay → redirected to the questionnaire → account created → portal access within minutes. Coupons `VYVE15` and `VYVE10` are live.
-
-**B2B (enterprise):** £10 per user per month — half the B2C rate, which is positioned as the bulk discount. Contact-first sales, so Vicki qualifies and Lewis handles the close. Volume tiers above 200 seats are not formally defined yet (open decision, Lewis). Indicative working tiers:
-- 50–200 seats: full £10 rate
-- 201–500 seats: negotiable
-- 500+ seats: bespoke
-
-**Annual billing:** Open question. Lewis to decide on a 10–15% annual discount, Dean to configure in Stripe once confirmed.
-
-**Revenue model framing:** We sell VYVE as a performance investment, not a cost centre. In enterprise pitches we anchor against the ROI studies above and the CIPD crisis statistics. Contribution margin is 97.5% at B2C and 95.5% at B2B (see 2.12 Unit economics), so the product is built to scale profitably.
-
-**Milestone targets:**
-- **£6,000 MRR** — Dean goes full-time on VYVE (approximately 300 paying individuals, or 600 B2B seats, or a blended mix).
-- **Series A readiness** — £1–2M ARR, 10%+ month-on-month growth, under 8% churn, over 100% net revenue retention.
-
-## 2.5 Target market and enterprise pipeline
-
-**Target segments, ranked by strategic fit:**
-
-1. **Private sector enterprise (primary)** — Sage, BT, Barclays, Balfour Beatty and similar. These are our priority outbound targets. Lewis has warm contacts at several.
-2. **Public sector (secondary but high-leverage)** — NHS, councils, government departments. Our CIC status gives us 6–8 extra points in social value scoring in tenders, which is often decisive. Full playbook built.
-3. **Individuals (steady state)** — Direct B2C via the website, £20/month. Not the growth engine but pays for infrastructure and generates product validation.
-
-**Current enterprise pipeline:**
+### Enterprise pipeline (live state, 21 April 2026)
 
 | Prospect | Status | Notes |
 |---|---|---|
-| **Sage** | Warm — most likely first enterprise client | Lewis has an internal contact at senior wellbeing lead level. Two Sage employees already in the system (Lewis Vines, Kelly Bestford) as test accounts. HubSpot deal ID 495586118853, Initial Contact stage. |
-| **BT** | Target — identified priority | Test accounts already in system (Danielle Akin, Callum Budzinski, Liam Carr, Logan Vines, Gary Vines, Colin White) |
-| **Barclays** | Target — identified priority | No contact yet |
-| **Balfour Beatty** | Target — identified priority | No contact yet |
-| **NHS / councils / government** | Target — public sector playbook ready | Requires full procurement response; CIC status is a real edge |
+| **Sage** | Warm lead | Lewis has an internal contact (senior wellbeing lead). Most likely first enterprise client. HubSpot deal ID: 495586118853, Initial Contact stage. Two Sage members (Lewis, Kelly) are on the platform as pilot users — both currently quiet (10-11 days inactive). Lewis must re-engage both before any Sage demo. |
+| **BT** | Target | Members already on trial (Callum Budzinski, Liam Carr, Logan Vines, Gary Vines, Colin White, Danielle Akin). |
+| **Barclays, Balfour Beatty** | Identified | No active conversation yet. |
+| **Public sector** | Ready | Playbook exists, no active tender being responded to. |
 
-## 2.6 Competitive landscape
+### The competitive landscape
 
-**Primary threats:**
+| Category | Notable players |
+|---|---|
+| **Primary threats** | Unmind (£61M raised), Spectrum.Life (won AXA Health EAP, launching 'Cara' Q2 2026), YuLife (new CEO + Bupa partnership) |
+| **Unstable** | Headspace for Work (15% layoffs — opportunity to approach their UK clients), Spring Health (£6–7B Alma acquisition — validates market size) |
+| **Secondary** | Wellhub, BetterUp, Virgin Pulse, Champion Health, Heka, Vitality, Calm, Koa Health, Lyra Health, Thrive Global |
 
-| Competitor | Threat level | Notes |
-|---|---|---|
-| **Unmind** | High | £61M capital raised, established enterprise presence |
-| **Spectrum.Life** | High | Recently won AXA Health EAP contract, launching 'Cara' Q2 2026 |
-| **YuLife** | Medium-high | New CEO + Bupa partnership; insurance-linked angle |
+Lewis maintains weekly competitor deep-dive skills (one of 24 custom AI skills in his Claude workspace — see section 2.7). They produce a threat/opportunity matrix and countermeasure recommendations.
 
-**Unstable players / opportunity windows:**
-- **Headspace** — 15% layoffs creating an opportunity to approach UK clients
-- **Spring Health** — £6–7B Alma acquisition validates the market size
+### Why we win vs the competitive set
 
-**Also tracked:** Wellhub, BetterUp, Virgin Pulse, Champion Health, Heka, Vitality, Calm, Koa Health, Lyra Health, Thrive Global.
+- **Three-pillar breadth.** Most rivals are mental-only (Unmind, Headspace) or fitness-only (Wellhub, Virgin Pulse). We do both in one product.
+- **CIC status.** Non-replicable procurement edge.
+- **Charity mechanic.** No direct competitor has this.
+- **Lewis's founder story.** Cuts through in a category dominated by clinical voices and venture-founder archetypes.
+- **Economics.** Near-pure-margin business. Pricing flexibility most rivals don't have.
+- **Engagement model.** Gamified five-track certificate system + leaderboards + monthly themes. Attacks the 5–8% EAP utilisation problem directly.
 
-**How we win against each category:**
-- Against reactive EAPs: the prevention narrative and CIPD data
-- Against single-pillar apps (meditation only, fitness only): three-pillar breadth
-- Against large incumbents (Unmind, Spectrum): agility, CIC social-value scoring, proactive positioning
-- Against US-heavy players (Calm, Headspace, BetterUp): UK-first GDPR and NHS familiarity
+## 2.5 Charity mechanic
 
-Our Sales Intelligence skill runs a weekly deep-dive across 20+ competitors with a threat/opportunity matrix and displacement-pitch prep. The displacement table lives in Lewis's sales kit.
+This is central to brand positioning and must not be diluted.
 
-## 2.7 Sales enablement
+### Individual track
+Every 30 completions of a specific activity type (30 workouts, 30 habits, 30 cardio sessions, 30 check-ins, 30 live sessions watched) unlocks one free month donated to a charity partner recipient.
 
-Four structured assets Lewis uses on every enterprise conversation:
+### Enterprise track
+Every 30 activities by a company's employees collectively funds one free month for someone in need.
 
-**Sales Intelligence pre-call briefs** — 8-step deep dive on any prospect, including ROI calculator and displacement table against the 20 tracked competitors. Objection-handling scripts for common procurement pushback.
+### Framing
+Collective impact — the team's effort funds access for someone priced out. Not a personal referral reward.
 
-**Three Pillar Assessment Guide** — employer-facing prospect tool. Prospect answers a short structured assessment, we score them against the three pillars and suggest a tier (starter, standard, premium). Useful qualifying tool — also builds trust because it's genuinely diagnostic, not a sales-theatre gimmick.
+### Charity partners (five categories)
+- Addiction recovery
+- Homelessness and reintegration
+- Mental health organisations
+- Social mobility programmes
+- Physical health access for underserved populations
 
-**Public Sector Sales Playbook** — five procurement routes mapped out (framework agreements, direct award, competitive tender, Dynamic Purchasing System, Innovation Partnership), social value scoring guidance, tender response template, 90-day action plan.
+**Status:** All five categories are documented and will take referrals. Specific named partners within each category are still to be nominated. Counters reset after each 30 activities — unlimited donations possible. Recipients pay £0. Partners pay £0 to refer.
 
-**Research Library + Stat Bank** — 20+ indexed studies, each distilled into copy-paste-ready statistics for sales decks and cold outreach. Updated weekly by the Research Radar automation.
+### Why it matters commercially
+- Public sector procurement advantage (social value scoring).
+- Employer-side story for ESG reporting.
+- Individual-member motivator that differentiates VYVE from pure fitness apps.
+- Press and thought-leadership material.
 
-## 2.8 Marketing, brand and content
+## 2.6 Marketing and brand
 
-**Brand identity:**
-- **Palette:** `#0D2B2B` (dark green-teal), `#1B7878` (teal), `#4DAAAA` (teal light, graphical use only), `#C9A84C` (gold accent)
-- **Fonts:** Playfair Display (headings), DM Sans / Inter (body)
-- **Tone:** Evidence-led, warm, grounded. No exclamation marks, no fitness-bro energy, no wellness-industry cliché. Lewis dislikes emojis — we strip all emojis from member-facing and marketing copy.
+### Brand identity
 
-**Marketing site** (`www.vyvehealth.co.uk`, hosted on GitHub Pages in the `Test-Site-Finalv3` repo):
+| Element | Value |
+|---|---|
+| Marketing site | `www.vyvehealth.co.uk` — GitHub Pages (`Test-Site-Finalv3` repo) |
+| Portal | `online.vyvehealth.co.uk` — GitHub Pages (`vyve-site` repo) |
+| Palette | `#0D2B2B` (dark), `#1B7878` (teal), `#4DAAAA` (teal-lt), `#C9A84C` (gold) |
+| Fonts | Playfair Display (headings), DM Sans / Inter (body) |
+| Tagline | Help yourself. Help others. Change the world. |
+| Key message | Prevention over cure. Build health before it breaks. |
 
-| Page | Status | Purpose |
-|---|---|---|
-| `index.html` | Live | Three audience paths: Individual, Employer, Members |
-| `individual.html` | Live | Five pillars, pricing, features, Give Back explainer |
-| `about.html` | Live | Origin story, values, CIPD statistics, founding team |
-| `give-back.html` | Live | Charity mechanic, partner categories, FAQ |
-| `roi-calculator.html` | Live | Interactive ROI calculator with CIPD 2025 benchmarks |
-| `vyve-podcast.html` | Live | Podcast hub, 35+ episodes, platform links, guest expression of interest |
-| `privacy.html` | Live | Privacy Policy |
-| `terms.html` | Live | Terms of Service |
-| `welcome.html` | Live | Post-Stripe-payment onboarding questionnaire |
-| `vyve-dashboard-live.html` | Live | Employer dashboard (aggregate only, no PII) |
-| `employer.html` | **404, needs building** | Employer sign-up; currently not a live page |
+**Brand Brain** is a 16-section comprehensive brand knowledge base maintained in Lewis's Claude project. **Do not ship member-facing copy without stripping emojis first** (Lewis's hard rule). A Member Welcome Pack (8-page PowerPoint covering mission, features, app, live sessions, six monthly themes, podcast, charity, getting started) is used in enterprise pitches.
 
-**Content production:**
-- **Target:** 10–14 social posts per week across LinkedIn, Instagram, Facebook
-- **Current output:** 6/week (publishing pipeline broken since 23 March — Lewis to fix)
-- **Backlog:** 133 posts queued and waiting (Make scenario 4950386 broken)
-- **Quality:** Strong (4.4/5 average) even at reduced volume
-- **Pre-recorded sessions target:** 30 videos before hiring external instructors
-- **Workflow:** Claude script → ElevenLabs voice → Audacity post → stock footage → CapCut edit → Castr scheduled publish
+### The Everyman Podcast → The VYVE Podcast
 
-**24 custom AI skills for Lewis** run daily, weekly and monthly intelligence, content, sales and monitoring workflows. Highlights:
-- **Daily Intelligence** — weekday morning 6-area intelligence scan with top 3 actions
-- **Content Engine** — converts a single podcast into 5+ platform-specific assets
-- **Sales Intelligence** — pre-call briefs, displacement tables, objection handling
-- **Research Radar** — 4 credibility tiers, 20+ indexed studies, weekly Stat Bank refresh
-- **Competitor Deep Dive** — weekly tracking of 20+ competitors
-- **Client Health Monitor** — green/amber/red scoring, 15+ early warning signals, retention playbooks
-- **Investor & Growth Tracker** — UK health-tech funding, monthly KPIs, grant calendar, Series A prep
+Lewis's men's health podcast, launched February 2023, with one founding rule: no topic off limits. 35+ episodes, built around honest conversations about mental health, addiction, purpose, performance, and living well — the same territory the platform covers.
 
-**Automation layer:**
-- **Daily:** Morning brief, 3 social posts, engagement ritual (30 min playbook)
-- **Weekly:** Strategic digest (Mon 8am, synthesised from 9 JSON data sources), competitor deep dive, research radar, analytics feedback, content intelligence
-- **Monthly:** 25-piece content calendar (4 themed weeks), thought leadership macro-trend report
-
-**Make scenarios (Lewis only):**
-- 4950386 — Social publisher (**BROKEN since 23 March, Lewis to fix**)
-- 4993944 — Instagram analytics collector
-- 4993948 — Facebook analytics collector
-- 4993949 — LinkedIn analytics collector
-
-All analytics feed Make Data Store 107716.
-
-## 2.9 Lewis's origin story and the VYVE Podcast
-
-**The turning point** — Lewis Vines nearly lost his life to addiction. Standing on a train platform, he realised honest conversations — first with himself, then with the people who mattered — saved his life. This lived experience is the authentic foundation of VYVE's mission around mental health, proactive support, and the power of community.
-
-**The Everyman Podcast** — launched February 2023, men's health podcast with one founding rule: no topic off limits. Candid conversations about mental health, addiction recovery, purpose, performance, and living well — exactly what VYVE enables digitally.
-
-**35+ episodes** with guests including:
+**Notable guests include:**
 - Matthew Jarvis (England and Premier League footballer)
-- Calum Denham (performance expert, now VYVE fitness lead)
-- Luke Ambler (founder, Andy's Man Club suicide prevention charity)
-- Ray Winstone (actor, prostate cancer awareness)
+- Calum Denham (performance expert, now VYVE's fitness content lead)
+- Luke Ambler (founder, Andy's Man Club — suicide prevention)
+- Ray Winstone (actor, prostate cancer awareness advocate)
 - Dr Tamara Russell (mindfulness researcher)
 - David Wetherill (Paralympic champion)
-- 3 Dads Walking (suicide prevention)
+- 3 Dads Walking (suicide prevention advocates)
 
-**Platforms:** Spotify, Apple Podcasts, Amazon Music.
+Available on Spotify, Apple Podcasts, Amazon Music. Page live at `vyvehealth.co.uk/vyve-podcast.html` with a guest expression-of-interest form.
 
-**Rebrand:** The Everyman Podcast is being rebranded to **The VYVE Podcast** in 2026. Timing of full switchover is an open decision (Lewis).
+**Rebrand timing** is an open decision — full switch to "The VYVE Podcast" branding pending.
 
-**Guest expression of interest form** live on the podcast page — pipeline for thought leadership, PR and partnership conversations.
+### Content production
 
-## 2.10 Charity mechanic and partner categories
+- **Social queue:** 133 posts authored and queued.
+- **Publishing pipeline:** Make scenario 4950386 is **broken since 23 March 2026.** 133 posts stuck. Lewis decision to fix has been deferred — Vicki's outbound effort partially compensates for this but the lost compounding of organic content is real.
+- **Content target:** 10–14 posts/week.
+- **Current output:** 6/week, below target because of the Make outage.
+- **Content quality:** 4.4/5 internal average.
+- **Pre-recorded sessions workflow:** Claude script → ElevenLabs → Audacity → stock footage → CapCut → Castr. Target 30 videos before hiring live instructors.
 
-**Individual track:** Every 30 completions of a specific activity type (30 workouts, or 30 habits, or 30 cardio sessions, etc.) donates one free month of VYVE to a recipient through our charity partner network.
+### Sales intelligence infrastructure (Lewis's 24 custom skills)
 
-**Enterprise track:** Every 30 activities collectively logged by a company's members donates one free month. Collective impact — an employer's engagement directly funds access for people in need.
+Lewis runs 24 custom AI skills in his Claude workspace, producing daily, weekly, and monthly intelligence. The most important:
 
-**Framing:** This is social impact, not a referral reward. It's central to the CIC positioning and lives in every marketing touchpoint.
+- **Daily Intelligence** — 6-area scan, structured brief + top 3 actions, 7-day dedup cache.
+- **Content Engine** — generates Lewis's voice across 6 platforms; one podcast becomes 5+ assets.
+- **Sales Intelligence** — 8-step pre-call brief, ROI calculator, 20-competitor displacement table, objection handling.
+- **Research Radar** — 4 credibility tiers, 20+ indexed studies, Stat Bank of copy-paste research lines.
+- **Competitor Deep Dive** — weekly, 20+ competitors, threat/opportunity matrix, countermeasures.
+- **Client Health Monitor** — green/amber/red scoring, 15+ early warning signals, tiered retention playbooks.
+- **Investor & Growth Tracker** — UK health tech funding, monthly KPIs, 5 UK grants calendar, Series A prep.
 
-**Five partner categories** (specific charity names to be confirmed, still open):
+Plus 17 more reusable frameworks (Personal Brand Architect, Partnership Finder, Regulatory Compliance Watch, Weekly Strategic Digest, Quality Monitor, etc).
 
-1. **Addiction Recovery** — recovery programmes and rehabilitation
-2. **Homelessness & Reintegration** — housing-first approaches and reintegration services
-3. **Mental Health** — crisis support, counselling, wellbeing services
-4. **Social Mobility** — education, skills training, economic opportunity
-5. **Physical Health Access** — enabling fitness, nutrition and wellness for underserved populations
+### Other key marketing assets
+- **Three Pillar Assessment Guide** — employer-facing prospect tool with scoring, maturity bands, VYVE package recommendations.
+- **Public Sector Playbook** — 5 procurement routes, social value scoring, tender response template, 90-day action plan.
+- **Research Library** — 20+ indexed studies + Stat Bank of copy-paste-ready statistics.
 
-**Partner economics:**
-- £0 cost to charity partners to refer recipients
-- £0 cost to recipients to access donated memberships
-- Counters reset after each 30-activity milestone — unlimited donations possible
-- Milestone certificates generated automatically on donation events
+### Operational AI automations (live today)
 
-This zero-cost model is deliberate: it removes friction for charity partners signing up and makes the donation engine truly unlimited.
-
-## 2.11 CIC advantage and public sector route
-
-**Why CIC matters:**
-- Social value scoring adds 6–8 extra points in public sector tenders — often the difference between winning and losing
-- Charity mechanic reinforces social impact positioning
-- Eligible for grants and social enterprise funding streams traditional competitors cannot access
-- Procurement teams treat CICs more favourably than pure commercial entities on equal offering
-
-**Public sector playbook (built and ready):**
-- 5 procurement routes mapped
-- Tender response template
-- Social value scoring guidance (how to translate our CIC structure and charity mechanic into tender points)
-- 90-day action plan for post-win implementation
-
-**Funding and grants status (21 April 2026):** Self-funded. No grants applied for or secured. No external capital. When we are ready, the grants on our radar are:
-- **National Lottery Awards for All** — application backlogged
-- **The Fore** — register June/July 2026
-- **WHISPA research programme** (£3.7M launching May 2026) — potential research partnership, monitor
-
-## 2.12 Unit economics and cost structure
-
-**Current monthly costs: ~£81/month**
-
-| Item | Monthly | Notes |
-|---|---|---|
-| Supabase Pro | ~£20 | Database + auth + storage + Edge Functions |
-| Anthropic API | ~£40 | Spend limit £50, actual lower |
-| Domain | ~£1.50 | GoDaddy |
-| ICO registration | ~£4.33 | Annualised £52 |
-| Make (Lewis) | ~£15 | Social automation |
-| Brevo | £0 | Free tier (300/day) — upgrade to ~£12/month before Sage demo |
-| GitHub, PostHog, HubSpot, Cloudflare | £0 | All free tiers |
-
-**Variable cost per member: ~£0.45/month** (mostly AI inference + marginal Supabase usage).
-
-**Contribution margin:**
-- B2C (£20): 97.5%
-- B2B (£10): 95.5%
-
-**Break-even: 4–5 paying members.** Cost structure is almost entirely fixed until approximately 500 members.
-
-**AI cost per member per month: ~£0.13**
-
-| AI feature | Cost per call | Frequency | Monthly per member |
-|---|---|---|---|
-| Onboarding (6 calls) | £0.22 total | Once | ~£0.07 (amortised) |
-| Weekly check-in | £0.008 | Weekly | ~£0.03 |
-| Re-engagement email | £0.004 | Per email | ~£0.01 |
-| Running plan | £0.01 | Cached | ~£0.005 |
-| Monthly check-in | £0.015 | Monthly | £0.015 |
-
-**Scaling thresholds:**
-- **80 members** — Brevo upgrade needed (~£19/month tier)
-- **100 members** — Anthropic spend monitoring required
-- **200 members** — Supabase tier review
-- **500 members** — External DPO service required by UK GDPR (£2–5K/year)
-
-**Revenue scenarios:**
-
-| Scenario | Members | MRR | Profit | Margin |
-|---|---|---|---|---|
-| 100 B2C | 100 × £20 | £2,000 | ~£1,930 | 96.5% |
-| Sage 200 | 200 × £10 | £2,000 | ~£1,850 | 92.5% |
-| Mixed (Sage + 50 B2C) | 250 | £3,000 | ~£2,840 | 94.7% |
-| **Target (Dean full-time)** | **~300+** | **£6,000** | **~£5,700** | **95%** |
-| Series A (£1.5M ARR) | ~6,250 | £125,000 | ~£119,000 | 95.2% |
-
-The economics are, in a word, healthy.
-
-## 2.13 Compliance and legal posture
-
-| Document / item | Status |
+| Cadence | Automation |
 |---|---|
-| **ICO registration** | 00013608608 — registered March 2026, £52/year renewal |
-| **DPA (Data Processing Agreement)** template | Complete. Replace `[CLIENT ORGANISATION NAME]` with client name before sending |
-| **DPIA (Data Protection Impact Assessment)** | Complete. Next review September 2026 |
-| **Data Retention Policy** | Complete |
-| **Breach Notification Procedure** | Complete |
-| **Privacy Policy** | Live at vyvehealth.co.uk/privacy.html |
-| **Terms of Service** | Live at vyvehealth.co.uk/terms.html |
-| **Compliance Calendar** | Live — tracks CIC36 filing, DPIA reviews, insurance renewals, HSE audits |
-| **Google Standard Contractual Clauses** | Not in place (personal Google account). Migrate post-first-enterprise-contract |
-| **External Data Protection Officer** | Required before 500 members; budget £2–5K/year |
-| **Employer reporting** | Aggregate only, no individual names ever visible to employers |
-| **Article 9 special category data handling** | Wellbeing scores, physical measurements, sleep data, injury and medical data all classified as Article 9. Data processor agreements in place with all processors except Google Workspace (migration pending). Consent language under review |
+| Weekday mornings | Morning brief, 6-area intelligence scan, top 3 actions |
+| Daily (3 posts) | LinkedIn, Instagram, Facebook (currently blocked on Make outage) |
+| Weekday noon | Engagement ritual — structured community engagement playbook (30 min) |
+| Daily | Publishing Monitor — error detection on Make.com publisher |
+| Monday 8am | Strategic Digest — synthesis from 9 JSON data sources |
+| Weekly | Competitor Deep Dive, Research Radar, Analytics Feedback, Content Intelligence |
+| Month-end | Content Calendar — 25 pieces across 4 themed weeks |
+| 1st of month | Thought Leadership — macro-trend synthesis report for external distribution |
 
-**Third-party data processors in play:**
+### Make social analytics (Lewis-only)
+- Scenario 4993944 — Instagram analytics collector (last 20 posts)
+- Scenario 4993948 — Facebook analytics collector (last 20 posts)
+- Scenario 4993949 — LinkedIn analytics collector (company page aggregates)
+- All feed into Make Data Store 107716.
 
-| Processor | Location | Data handled | Risk |
-|---|---|---|---|
-| Supabase | EU (Ireland) | All member data | Low |
-| **Anthropic** | **US** | **Full profiles including Article 9 health data** | **High — requires clear consent and SCC** |
-| Brevo | EU (France) | Email, name | Low |
-| Stripe | US / EU (Ireland) | Payment data | Low |
-| PostHog | US (EU endpoint) | Email (currently unhashed — remediation on backlog) | Medium |
-| GitHub | US | Source code | Low |
+## 2.7 Founder story
 
-**Member data rights (GDPR Articles 15, 17, 20):** Request-by-email handling currently; automated export and delete tooling is on the Sage-readiness backlog.
+Lewis Vines nearly lost his life to addiction. In a moment of crisis, standing on a train platform, he realised honest conversations — first with himself, then with the people who mattered to him — saved his life. That lived experience is the authentic foundation of VYVE's mission around mental health, proactive support, and the power of community. It powers the brand, the podcast, and the charity mechanic. It's also a PR and enterprise-pitch asset we use deliberately.
+
+This isn't colour. It's the actual reason the product exists and why it's architected the way it is.
 
 ---
----
 
-# PART 3 — PRODUCT
+# PART 3 — Product
 
 ## 3.1 What members get
 
-A member's experience at a high level:
+A single app — available as a Progressive Web App at `online.vyvehealth.co.uk` and as native iOS / Android apps (Capacitor-wrapped). Once onboarded, each member gets:
 
-- **A personalised 8-week workout programme**, generated by AI at onboarding based on their goals, equipment, experience level and training days available. Lives in the database and the app, regenerates when the member hits the end of a cycle.
-- **Daily habit tracking** — 5 habits chosen at onboarding from a library of 30 across 6 monthly themes (Movement, Nutrition, Mindfulness, Social, Sleep, plus a rotating theme). Yes/no/skip tapping with streak visualisation.
-- **Weekly wellbeing check-in** — 4 sliders (wellbeing, energy, stress, sleep) plus a free-text reflection. AI generates personalised recommendations in the member's assigned persona voice.
-- **Monthly deep check-in** — 8 wellbeing areas scored, activity recap, AI-generated monthly report with trend analysis.
-- **An AI-powered running plan** — members set distance goal, pace target, training days, timeframe; the AI builds a progressive plan stored on the server (now syncs across devices).
-- **Full nutrition tracking** — TDEE calculation, macros, hydration, food log (powered by Open Food Facts API), weight tracking with 7/30/90-day trends.
-- **Live and replay sessions** — yoga, mindfulness, workouts, group therapy, run club, education, podcast. Sessions have real-time chat for the live audience.
-- **Five AI coaching personas** — NOVA, RIVER, SPARK, SAGE, HAVEN. Assigned at onboarding based on goals, life context and wellbeing scores. Personas shape tone across welcome email, check-in responses, re-engagement nudges.
-- **Certificate system with charity donation** — every 30 completions of a specific activity type generates a personalised certificate and donates one free month of VYVE to a charity partner recipient.
-- **Engagement scoring and leaderboards** — 0–100 engagement score across 4 components (activity, consistency, variety, wellbeing), leaderboards with company-scoped and team-scoped views.
-- **PWA on iOS and Android** — installable home-screen app with push notifications (iOS PWA push went live 17 April 2026; requires user-gesture permission grant as per iOS rules).
+- **5 AI coaching personas** — NOVA, RIVER, SPARK, SAGE, HAVEN — one assigned automatically based on onboarding responses. Members can switch manually.
+- **Personalised Exercise programme** — 8-week custom plan built by AI at onboarding, plus an Exercise Hub with sub-pages for Workouts (gym programmes), Movement (walking, stretching, gentle mobility), and Cardio (running, cycling, walking).
+- **Daily habit tracking** — 5 habits assigned from a 30-habit library at onboarding, structured around monthly themes (April 2026 theme: "Move More").
+- **Weekly wellbeing check-ins** — 1-to-10 sliders across wellbeing, energy, and stress, plus free-text. AI generates persona-voice recommendations based on the member's activity that week.
+- **Monthly wellbeing check-in** — deeper 8-area assessment, AI-generated personalised monthly report.
+- **AI running plan generator** — 5,376 cached combinations of goal × fitness level × days × timeframe.
+- **Nutrition logging** — TDEE, macros, hydration, food diary, weight log.
+- **Live sessions** — daily yoga, mindfulness, workouts; weekly check-ins and group therapy; monthly events and podcast.
+- **Certificate + charity mechanic** — five tracks (Architect / Warrior / Relentless / Elite / Explorer), every 30 activities donates one free month to a charity partner recipient.
+- **Community leaderboards** — privacy-protected (only members above you visible, no names or scores visible to others).
 
-## 3.2 Member journey
+## 3.2 The five website pillars (member-facing)
 
-**1. Discovery** — marketing site (www.vyvehealth.co.uk), podcast, social content, word of mouth, enterprise referral.
+The public website presents the product across **five pillars**, giving members more granular feature-level framing than the three-pillar investor/board model.
 
-**2. Conversion** — Stripe payment link (`buy.stripe.com/00wfZicla1Em0NnaIB93y00`) with optional coupon (`VYVE15`, `VYVE10`). On successful payment, Stripe redirects to `welcome.html`.
-
-**3. Onboarding questionnaire** — 10-section form covering:
-- Section A: About you (name, DOB, gender, location)
-- Section B: What you want from VYVE (goals, vision of success)
-- Section C: Physical health (training location, equipment, experience, injuries)
-- Section D: Nutrition (activity level, current weight, TDEE target)
-- Section E: Sleep and mental wellbeing (hours, quality, stress, energy)
-- Section F: Social and accountability (support areas, motivation style)
-- Section G: Life context (bereavement, mental health struggles, new parent, etc. — drives persona assignment)
-- Section H: Communication preferences (contact preference, reminder frequency, tone)
-- Section I: Tech (smartphone, smartwatch)
-- Section J: Consent (terms, privacy, health data processing)
-
-**4. AI processing** (server-side in `onboarding` Edge Function, ~8 seconds for fast path):
-- Persona assignment (hard rules first, then AI for ambiguous cases)
-- Programme name generation (8-week programme titled contextually)
-- Habit selection (5 of 30 from the habit library)
-- Recommendation generation (3 personalised recommendations in persona voice)
-- Welcome email draft
-
-**5. Account creation** — Supabase Auth user created, member row written, habits assigned, weekly goals set.
-
-**6. Welcome email** — sent via Brevo. Includes PWA install steps, programme overview card, 3 first-week recommendations in the assigned persona voice.
-
-**7. Background processing** — 8-week personalised workout programme generated and written to the `workout_plan_cache` table. Takes 1–24 hours depending on complexity; kicked off via `EdgeRuntime.waitUntil()` so the member sees their welcome screen immediately.
-
-**8. First login** — member receives password-set email, lands on the portal, dashboard loads (skeleton first, real content second).
-
-**9. Daily engagement loop:**
-- Log 1+ daily habits → streak maintained
-- Do a workout or cardio session → progress ring moves, programme advances
-- Watch a live session (or replay) → catches up asynchronously
-- End of week: complete the weekly check-in → AI generates recommendations for next week
-- End of month: complete monthly check-in → deeper trend analysis
-
-**10. Milestones:**
-- Every 30 activities in a specific category → certificate unlocked, charity donation triggered
-- Life context changes or persona feels wrong → member can request a persona switch in settings
-
-**11. Re-engagement** — automated streams (A/B/C1/C2/C3) kick in at different inactivity thresholds with personalised AI-written emails via Brevo.
-
-## 3.3 Portal pages
-
-All portal pages are at `online.vyvehealth.co.uk` and sit behind Supabase Auth.
-
-| Page | What it does |
+| Pillar | What it covers in the product |
 |---|---|
-| `index.html` (Home) | Member dashboard. Skeleton-first loading, cache-first return visits. Activity score ring, daily check-in, this-week's goals, live session, next sessions, 5 progress tracks, milestones, collective charity impact banner |
-| `habits.html` | Daily habit logging. Yes/no/skip cards, 7-day pill strip, streak flame, monthly theme badge |
-| `exercise.html` | **Hub** for the Exercise restructure (shipped 19 April 2026). Shows active programme + sub-page cards for Movement, Workouts, Cardio |
-| `workouts.html` | Full workout programme view + session logging. Uses modular JS (6 external files). Exercise logs, custom workouts, swipe-to-delete, PRs, history |
-| `movement.html` | Movement stream — walks, stretching, mobility. Quick-log form for non-planned movement. Plans pending (content backfill) |
-| `cardio.html` | Cardio stream — running, cycling, walking. Active running plan hero card if one exists |
-| `running-plan.html` | AI running plan generator. Server-side storage (new, 20 April). Form + preview mode before full plan generation |
-| `nutrition.html` | TDEE + macros + hydration. Weight tracker with 7/30/90-day charts. Recalculator |
-| `nutrition-setup.html` | Nutrition setup for members who skipped it at onboarding |
+| **Mental** | Group therapy sessions, stress management, sleep support, mental-health resources, AI coaching personas (especially RIVER, SAGE, HAVEN) |
+| **Physical** | 40+ tailored workout plans, cardio, movement, wearable integration (planned), custom exercise creation |
+| **Nutrition** | Evidence-based personalised guidance, no fad diets, meal planning, TDEE + macros, food diary |
+| **Education** | Expert speakers, live podcast episodes, growing content library, CIPD research, Research Library, thought leadership |
+| **Purpose** | Meaningful goals, lasting habits, accountability, charity mechanic, community leaderboards |
+
+## 3.3 The three pillars (internal / investor / enterprise framing)
+
+For board, investor, and enterprise conversations, we use the simpler three-pillar model because it maps cleanly to the Physical/Mental/Social health research canon:
+
+| Pillar | In product terms |
+|---|---|
+| **Physical Health** | Exercise, Workouts, Movement, Cardio, Nutrition, wearable integration (planned) |
+| **Mental Health** | Wellbeing check-ins, monthly check-ins, mindfulness, AI coaching personas, HAVEN for sensitive mental-health support |
+| **Social Health** | Live sessions with chat, leaderboards, community engagement, charity mechanic, employer team features |
+
+Both models are valid. The mapping is:
+- **Nutrition** and **Physical** (website) → **Physical Health** (3-pillar)
+- **Mental** (website) → **Mental Health** (3-pillar)
+- **Education** and **Purpose** (website) → **Social Health** (3-pillar)
+
+## 3.4 AI personas — the five coaches
+
+Every member is assigned one of five AI personas during onboarding, which then sets the voice of all AI-generated content for that member (weekly check-in recommendations, monthly report, running plan AI, persona-aware weekly goals).
+
+| Persona | Character | Typical member |
+|---|---|---|
+| **NOVA** | High-performance coach. Driven, data-led, precision-focused. Metrics and measurable progress. | Members with clear performance goals, high current fitness, calm baseline. |
+| **RIVER** | Mindful wellness guide. Calm, empathetic, holistic. Stress, sleep, emotional balance. | Members who are stressed (low stress score), low energy, or struggling. |
+| **SPARK** | Motivational powerhouse. Energetic, warm, challenge-driven. Accountability. | Mixed goals, lifestyle/consistency focus, busy lives. |
+| **SAGE** | Knowledge-first mentor. Thoughtful, evidence-based. Understands the *why*. | Analytical members who want to understand the science. |
+| **HAVEN** | Gentle mental-health companion. Non-judgmental, trauma-informed. | Members flagged via life-context signal (bereavement, mental-health struggle). |
+
+### Persona assignment rules (hard rules, executed in order)
+1. **HAVEN** — life-context includes "Bereavement" or "Struggling with mental health".
+2. **RIVER** — stress ≤ 3 (actually stressed) OR wellbeing ≤ 4 OR energy ≤ 3.
+3. **NOVA** — wellbeing ≥ 7 AND energy ≥ 7 AND stress ≥ 7 (calm) AND 1–2 goals maximum where strength/performance/muscle is dominant. Members with 3+ mixed goals always go to AI path even if scores qualify.
+4. **AI decides** — everything else. SPARK is the default for mixed goals, lifestyle focus, or demanding life contexts.
+5. **NEVER assign NOVA or SPARK if serious life context is flagged in Section G.**
+
+### Critical note: the stress scale is inverted from intuition
+- **1 = very stressed, 10 = very calm.** High stress score = calm, positive.
+- This caused a major assignment bug (up to onboarding v45) where all persona and habit logic was backwards for stress.
+- All prompts, hard rules, and reference docs now explicitly state the direction.
+
+### Current persona distribution (live from Supabase, 21 April 2026)
+Of 17 members:
+- SPARK: 11
+- NOVA: 3
+- RIVER: 2
+- HAVEN: 1 (Calum Denham — assigned by hard rule on a sensitive life-context signal; live despite the "not yet promoted" status because the rules hierarchy correctly routed it)
+- SAGE: 0 yet
+
+### HAVEN clinical status (IMPORTANT)
+HAVEN is built, live, and currently assigned to one member. The persona is **not yet clinically reviewed for promotion**. Phil (Mental Health Lead) is the owner of this sign-off. Until Phil signs off, we do not promote HAVEN in marketing or enterprise pitches as a flagship capability — it's a real feature, used where the rules place it, but the copy and positioning around it is conservative.
+
+## 3.5 Onboarding flow
+
+The happy path end-to-end:
+
+1. **Member pays via Stripe** (or hits the marketing site's signup link for individual paths not yet gated by payment).
+2. **Redirected to `www.vyvehealth.co.uk/welcome`** (`welcome.html` in `Test-Site-Finalv3` repo). This is the 10-section questionnaire.
+3. **On submit → `onboarding` Edge Function (currently v57+).** Two-phase execution:
+   - **Phase 1 (fast return):** Persona assignment, habit selection (5 from library of 30), programme overview card, 3 first-week recommendations, member row written, auth user created, welcome email sent via Brevo with PWA install steps.
+   - **Phase 2 (background via `EdgeRuntime.waitUntil`):** Full 8-week personalised workout JSON generated and written to `workout_plan_cache`. This can take anywhere from 4 seconds to 24 hours depending on AI path.
+4. **Member logs into the portal** with the email + password they've just set.
+
+### Known onboarding issues (from the 14 April engagement report)
+- **45% activation failure rate.** Of 11 recent onboardees, 5 never logged any activity. Owen Barrett, Alan Bird — both 4–5 days post-onboarding with zero activity.
+- **Workout plan generation timing is inconsistent.** Plans have been observed completing in 4 seconds, 1 minute, 80 minutes, 117 minutes, 24 hours, and (at least once, for Calum Denham) never — background generation failed silently. Plan-status tracking is on the backlog.
+- **First-activity nudge (24-hour reminder) is on the backlog** — currently nothing happens if a new member doesn't log day-1.
+
+### Onboarding error handling (shipped 10 April 2026)
+The `welcome.html` form has a 90-second AbortController with an error screen and up to 3 retries — previous silent failures where timed-out submissions showed fake RIVER results (making the member think they'd onboarded when they hadn't) are resolved.
+
+## 3.6 Habit system
+
+- 30 habits in the library, grouped into monthly themes.
+- **April 2026 theme: "Move More."**
+- AI selects 5 habits per member at onboarding, weighted by persona, goals, stress score (remembering inverted scale), and life context.
+- `member_habits.assigned_by` is constrained to: `'onboarding'`, `'ai'`, `'theme_update'`, `'self'`. Any other value causes a check-constraint violation and habits fail to write. (This was a live bug in onboarding v46.)
+- `daily_habits` table uses `(member_email, activity_date, habit_id)` uniqueness. Cap is 10/day, generous enough to let all 5 habits log plus margin. Over-cap inserts route to `activity_dedupe` — never discarded.
+
+## 3.7 Exercise Hub (restructured 19 April 2026)
+
+The "Workouts" tab was renamed "Exercise" and rebuilt as a **hub page** showing the member's active plan prominently, with cards linking to three sub-streams:
+
+| Stream | Who it's for | Page |
+|---|---|---|
+| **Movement** | Low activity, returning from injury, desk workers, older adults, new to exercise. Walking, stretching, gentle mobility. | `movement.html` |
+| **Workouts** | Active gym-goers, strength-focused. PPL, Upper/Lower, Full Body, Home programmes. Exercise logging, custom workouts. | `workouts.html` |
+| **Cardio** | Running, cycling, walking-as-cardio. AI running plan generator lives here. | `cardio.html` |
+
+### Status (21 April 2026)
+- All five rounds of the restructure shipped (19 April).
+- Movement and Cardio rebuilds shipped 20 April.
+- Sub-page headers and back buttons shipped 20 April.
+- All 17 current members are on `exercise_stream = 'workouts'` (default). **Movement and Cardio streams are live but no member has yet picked them** — onboarding questionnaire stream picker was added 19 April so new members will start adopting.
+
+### Open on Exercise Hub
+- **Movement plan content** — `programme_library` has no rows yet with `category='movement'`. Movement-stream members see a "no plan yet" quick-log state (with manual session logging of Walk/Stretch/Yoga/Mobility/Pilates) until content lands.
+- **Backfill decision** — 18 existing members default to 'workouts'. No backfill plan yet.
+- **Classes stream** on the hub — planned as cross-cutting, not yet built.
+
+### Workout library
+| Programme | Sessions |
+|---|---|
+| Push/Pull/Legs (PPL) | 11 workout days including Legs A + B variants |
+| Upper/Lower | 8 workout days |
+| Full Body | 7 workout days |
+| Home Workouts | 7 workout days |
+| Movement & Wellbeing | 7 content tabs |
+| **Total in DB** | 244 rows across 39 workout plan days |
+
+All 5 programmes are assigned to every member; AI recommends the weekly schedule, not the plan selection.
+
+## 3.8 Wellbeing check-ins
+
+### Weekly
+- Accessed from the portal, typically encouraged for Monday 9am.
+- Pulls the member's activity from the preceding 7 days plus their persona.
+- 3 sliders (wellbeing, energy, stress — remember stress is inverted) + free-text field.
+- AI generates 2–3 recommendations in the assigned persona's voice.
+- Results lock on re-submit within the same week.
+
+### Monthly
+- Deeper 8-area assessment shipping end-to-end.
+- AI generates a personalised monthly report.
+- Shipped with `monthly-checkin.html`, `monthly_checkins` table, `monthly-checkin` Edge Function.
+- Currently 0 monthly check-ins completed — expected, given cadence.
+
+## 3.9 Certificates and charity
+
+Five tracks, each linked to a colour and an achievement title:
+
+| Track | Title | Colour | Milestone |
+|---|---|---|---|
+| Daily Habits | The Architect | `#3DB89F` | Every 30 habit completions |
+| Workouts | The Warrior | `#3DB89F` | Every 30 workouts |
+| Cardio | The Relentless | `#E8834A` | Every 30 cardio sessions |
+| Weekly Check-ins | The Elite | `#C9A84C` | Every 30 check-ins |
+| Live Sessions | The Explorer | `#3DB89F` | Every 30 sessions watched |
+
+Each milestone:
+1. Generates an HTML certificate with a **globally sequential number** (starting No. 0001) stored in Supabase Storage.
+2. Triggers one free month donated to a charity partner recipient (the charity mechanic in section 2.5).
+3. Sends a Brevo email to the member.
+
+**Caps to prevent gaming:**
+- Daily habits: 1 per day, per habit
+- Workouts: 2 per day
+- Cardio: 2 per day
+- Live sessions: 2 per day
+- Kahunas-style Q&A check-ins: 1 per ISO week
+
+Over-cap inserts go to `activity_dedupe` — visible internally, not counted toward milestones.
+
+## 3.10 Portal pages
+
+All at `online.vyvehealth.co.uk`. Every page is gated behind Supabase Auth.
+
+| Page | Purpose |
+|---|---|
+| `index.html` | Member dashboard — activity score, streaks, goals, live session, progress tracks, charity banner |
+| `exercise.html` | Exercise Hub — active plan + stream cards |
+| `movement.html` | Movement stream — quick-log, plan, content (content pending) |
+| `workouts.html` | Gym workout programme, session logging, custom workouts, swipe-to-delete, 6 external JS modules |
+| `cardio.html` | Cardio stream + running-plan hero |
+| `running-plan.html` | AI running plan generator, saved plans |
+| `nutrition.html` | TDEE + macros + hydration, weight log, link to food log |
 | `log-food.html` | Food logging via Open Food Facts API |
-| `wellbeing-checkin.html` | Weekly check-in. 4 sliders + free text. AI recommendations in persona voice. Locks after submission |
-| `monthly-checkin.html` | Monthly deep check-in. 8 wellbeing areas + activity recap + AI report. Locks after submission |
-| `certificates.html` | Certificate display. 5 tracks (Architect / Warrior / Relentless / Elite / Explorer). Progress bars, PDF download, full-screen view |
-| `engagement.html` | Activity score breakdown. 4 components explained, activity history, streak and PBs |
-| `leaderboard.html` | Leaderboard. 3 scopes (All members / Company / Team). 4 metrics. Privacy-first: only sees above, never below |
-| `sessions.html` | Live session listings with filters. Live chat on active sessions (last 50 messages) |
-| `settings.html` | Theme toggle (dark/light), persona change, notification prefs, goal focus, privacy toggle. Cache-first load |
-| `login.html` | Supabase Auth login |
-| `set-password.html` | Password set/reset flow |
-| `consent-gate.html` | Health data consent gate |
+| `nutrition-setup.html` | For members who skipped nutrition onboarding |
+| `habits.html` | Daily habit logging, 7-day pill strip, streak + dot strip |
+| `wellbeing-checkin.html` | Weekly check-in + AI recommendations |
+| `monthly-checkin.html` | Monthly check-in + AI report |
+| `sessions.html` | Live session listings and chat |
+| `leaderboard.html` | Member leaderboard — scopes: all, company, team |
+| `certificates.html` | Member certificate display and download |
+| `engagement.html` | Activity score breakdown (0–100, four weighted components) |
+| `settings.html` | Theme, persona change, goals, notifications, privacy |
+| `login.html`, `set-password.html`, `consent-gate.html` | Auth flows |
 | `strategy.html` | Internal strategy dashboard (password: `vyve2026`) |
+| Live session pages | `yoga-live.html`, `mindfulness-live.html`, etc. with matching `*-rp.html` replays |
 
-Also: `shared-workout.html` (shareable workout preview), plus per-session-type live and replay pages.
+## 3.11 Live sessions
 
-## 3.4 AI coaching personas
+Eight session types, run via Riverside studios (7 permanent links) streamed to YouTube (8 channels) and replayed via Castr for scheduled pre-recorded content:
 
-Five personas live in the `personas` table. Each has a full system prompt defining voice, approach and guardrails. They shape every AI-generated output for that member — welcome email, weekly check-in recommendations, re-engagement emails, monthly reports.
+- Yoga, Pilates & Stretch — Daily 6:00 AM
+- Mindfulness & Mindset — Daily 8:00 AM
+- Workouts — Daily 7:30 AM
+- Weekly Check-In — Mondays 9:00 AM
+- Group Therapy — Wednesdays 12:00 PM
+- Events & Run Club — Monthly (varies)
+- Education & Experts — Monthly (varies)
+- The VYVE Podcast — As scheduled
 
-| Persona | Character | For whom |
+Cap: 2 session views per day (over-cap → `activity_dedupe`).
+
+Live-viewer-count displays only trigger above 20 viewers (to avoid the awkward "2 people watching" state).
+
+## 3.12 Engagement scoring
+
+The activity score on the member dashboard (0–100) is made up of:
+- Base 50 points
+- **Activity** (max 12.5) — recency, full points within 24 hours, zero after 7 days
+- **Consistency** (max 12.5) — distinct active days in last 30 (20+ days = full marks)
+- **Variety** (max 12.5) — distinct activity types in last 7 days
+- **Wellbeing** (max 12.5) — from weekly wellbeing score (1–10)
+
+Everything is computed server-side and cached in `member_home_state` (shipped 20 April 2026). Members see their score, streaks, and personal bests; employer dashboards see only anonymised aggregates.
+
+## 3.13 Employer dashboard
+
+- **URL:** `www.vyvehealth.co.uk/vyve-dashboard-live.html`
+- **Edge Function:** `employer-dashboard` (currently v26+)
+- **Auth:** API key-based (`EMPLOYER_DASHBOARD_API_KEY` Supabase secret). Per-employer auth is on the backlog (6–8 hour task; required before Sage demo).
+- **Data:** Aggregate only — no PII, ever. Active vs quiet vs inactive counts, engagement score aggregates, pillar adoption breakdowns.
+- **Status definitions:** Active (0–7 days inactive), Quiet (8–30), Inactive (30+ or never).
+- **Current data:** Trial/test data only — no live employer accounts yet.
+
+Employer reporting policy is documented in `privacy.html` and the DPA template. Individual names are never visible.
+
+## 3.14 Feature adoption today (live, 14 members of 17 with meaningful history)
+
+Per the 14 April engagement report (most recent full audit):
+
+| Feature | Adoption | Top user |
 |---|---|---|
-| **NOVA** | High-performance coach. Driven, data-led, precision-focused. Metrics and measurable progress. | Performance-focused members with calm baseline. Typically 1–2 goals dominated by strength/performance/muscle, high energy and calm stress scores. |
-| **RIVER** | Mindful wellness guide. Calm, empathetic, holistic. Stress, sleep, emotional balance. | Stressed (low stress score — see stress scale note), low energy, or struggling members. |
-| **SPARK** | Motivational powerhouse. Energetic, warm, challenge-driven. Accountability. | Mixed goals, consistency focus, busy lifestyles, parents, time-poor. Default when signals are ambiguous. |
-| **SAGE** | Knowledge-first mentor. Thoughtful, evidence-based. Understands the why. | Analytical members who want to understand mechanisms. |
-| **HAVEN** | Gentle mental health companion. Non-judgmental, trauma-informed. | Life context including bereavement or "struggling with mental health". **Live in code but should not be actively promoted before Phil's clinical review.** |
+| Workouts | 64% (9/14) | Dean (19 sessions) |
+| Daily Habits | 57% (8/14) | Dean (25 days) |
+| Cardio | 43% (6/14) | Dean (9) |
+| Weight Tracking | 43% (6/14) | Dean (4) |
+| Sessions | 29% (4/14) | Dean (23) |
+| Weekly Check-ins | 21% (3/14) | Dean (11) |
+| Exercise Logging | 14% (2/14) | Dean (151 — prolific exercise-level detail) |
+| Nutrition Logging | 14% (2/14) | Calum |
+| Custom Workouts | 7% (1/14) | Calum |
+| Running Plans | 0% | — |
+| Persona Switches | 0% | — |
 
-**Stress scale — critical:** The stress slider reads `1 = very stressed` and `10 = very calm`. This is inverted from intuition and caused a significant bug earlier in April. High stress score = member is calm; low stress score = member is struggling. All persona assignment and habit-selection logic respects this.
-
-**Current persona distribution (21 April 2026):** SPARK 11, NOVA 3, RIVER 2, HAVEN 1.
-
-**Assignment rules in order:**
-
-1. **HAVEN** — if life context includes "Bereavement" or "Struggling with mental health", assigned immediately regardless of other signals
-2. **RIVER** — if stress ≤ 3 (actually stressed), wellbeing ≤ 4, or energy ≤ 3
-3. **NOVA** — wellbeing ≥ 7 AND energy ≥ 7 AND stress ≥ 7 (calm) AND 1–2 goals max where strength/performance/muscle is dominant. Members with 3+ mixed goals always go to the AI path, even if scores qualify
-4. **AI decides** — everything else. SPARK is the default for mixed goals, consistency focus, or demanding life context
-5. **Never assign NOVA or SPARK** if serious life context is flagged (bereavement / mental health), regardless of other signals
-
-**Persona switching:** Members can request a switch in settings. Handled via `persona_switches` table. No switches triggered to date.
-
-## 3.5 The Exercise Hub
-
-Shipped 19 April 2026 (Rounds 1–5). Full plan at `plans/exercise-restructure.md`.
-
-**Rationale:** The original "Workouts" tab was gym-centric. A 52-year-old menopausal member returning from injury doesn't need a Push/Pull/Legs split — she needs a walking plan and gentle movement. The hub makes space for both without overwhelming either.
-
-**Hub structure (`exercise.html`):**
-- Active programme hero card (shows current stream — Workouts / Movement / Cardio)
-- Sub-page cards for the other streams
-
-**Streams:**
-
-| Stream | Page | For whom | Status |
-|---|---|---|---|
-| **Workouts** | `workouts.html` | Active gym-goers, strength-focused members | Live, fully populated — 5 plans, 244 workout rows, 39 plan-days |
-| **Movement** | `movement.html` | Sandra-type members: low activity, returning from injury, desk workers, older adults, new to exercise | **Live but content backfill pending** — no Movement plans in the library yet. Members see quick-log form as a fallback |
-| **Cardio** | `cardio.html` | Runners, cyclists, walkers | Live. Hero card shows active running plan if one exists |
-| **Running Plan** | `running-plan.html` | Any member with a distance goal | Live. AI-generated progressive plans, server-side storage (shipped 20 April 2026), localStorage cache for offline |
-
-**Open items on the restructure:**
-- Movement plan content in the `programme_library` (no rows with `category='movement'` yet — all Movement members see the no-plan state)
-- `programme_library.category` column to distinguish movement vs gym plans
-- Backfill decision for existing members (all 17 currently default to `exercise_stream='workouts'`)
-- Classes stream on the hub (plan says cross-cutting, not yet built)
-- Hub progress across all streams vs just the primary (open plan-doc question)
-
-**Workout architecture:**
-- 5 plans currently in the library: Push/Pull/Legs (11 workout days), Upper/Lower (8), Full Body (7), Home Workouts (7), Movement & Wellbeing (7 content tabs)
-- 244 total workout rows across 39 plan-days
-- Every member gets all 5 plans assigned; AI recommends weekly schedule, not plan selection
-- Members can create custom workouts
-- Exercise logs (sets/reps/weight) are plan-agnostic — permanent per-member record
-
-## 3.6 Nutrition, habits and check-ins
-
-**Nutrition:**
-- TDEE calculator with 5 activity levels and goal-aware deficit slider (fat loss / maintenance / muscle)
-- Macros split across protein (2g × bodyweight kg default), fat and carbs
-- Food logging via Open Food Facts API (proxied through `off-proxy` Edge Function to avoid CORS)
-- 4 meal slots: Breakfast, Lunch, Dinner, Snacks
-- Daily running totals with per-target indicators
-- Pre-populated food database of 125 common foods
-- Member-saved custom foods
-- Weight log with 7/30/90-day trend chart
-- Water tracker (daily target: 2L default)
-
-**Daily habits:**
-- 30-habit library across 6 monthly themes: Movement, Nutrition, Mindfulness, Social, Sleep, plus rotating seasonal theme (April theme: "Move — Move More")
-- AI selects 5 habits per member at onboarding from the library
-- Yes/no/skip tap on each habit
-- Cap: up to 10/day (distinct habits, not raw rows). Over-cap routed to `activity_dedupe` table
-- Monthly theme refreshes the pool
-
-**Weekly check-in** (`wellbeing-checkin.html`):
-- 4 sliders: wellbeing, energy, stress (inverted scale), sleep
-- Free-text reflection
-- AI generates recommendations in persona voice
-- Activity recap ("here's what you did this week") shown before submission
-- Locks after submission; can re-submit on next ISO week
-- Results stored in `wellbeing_checkins` and `weekly_scores`
-
-**Monthly check-in** (`monthly-checkin.html`) — shipped 18 April 2026:
-- Activity recap (full month across all streams)
-- 8-area wellbeing scoring (physical, mental, sleep, energy, stress, nutrition, social, purpose)
-- AI-generated monthly report in persona voice
-- Locks after submission; re-opens on 1st of next month
-- Stored in `monthly_checkins`. Zero submissions to date (table new).
-
-## 3.7 Live and replay sessions
-
-**Session types** (all listed on `sessions.html`):
-
-| Type | Cadence | Level |
-|---|---|---|
-| Yoga, Pilates & Stretch | Daily 6:00 AM | Movement, All levels |
-| Mindfulness & Mindset | Daily 8:00 AM | Mental Wellbeing, All levels |
-| Workouts | Daily 7:30 AM | Exercise, All levels |
-| Weekly Check-In | Monday 9:00 AM | Check-In, All members |
-| Group Therapy | Wednesday 12:00 PM | Therapy, All members |
-| Events & Run Club | Monthly, varies | Community, All members |
-| Education & Experts | Monthly, varies | Education, All members |
-| The VYVE Podcast | As scheduled | Podcast, All members |
-
-**Technology:**
-- **Riverside** — 7 studios, permanent links, used for recording
-- **YouTube** — 8 channels for live streaming and on-demand hosting
-- **Castr** — scheduled pre-recorded stream publishing
-
-**Live chat:** `session_chat` table, last 50 messages per session, RLS enabled.
-
-**Replays:** Auto-published to replay pages (`yoga-rp.html`, `mindfulness-rp.html`, etc.). On the tech-debt list to consolidate: 8 live pages and 8 replay pages currently duplicate each other with minor parameter differences (~310KB unnecessary payload, 16 files that could be 2 parameterised files).
-
-**Live viewer count:** Not currently displayed. Open decision — display only when 20+ viewers to avoid empty-room awkwardness.
-
-## 3.8 Certificates and engagement scoring
-
-**Certificate tracks:**
-
-| Track | Colour | Activity | Tier name |
-|---|---|---|---|
-| Daily Habits | Teal `#3DB89F` | Daily habit log completions | The Architect |
-| Workouts | Teal `#3DB89F` | Workout completions | The Warrior |
-| Cardio | Orange `#E8834A` | Cardio completions | The Relentless |
-| Weekly Check-ins | Gold `#C9A84C` | Weekly check-ins | The Elite |
-| Sessions | Teal `#3DB89F` | Live session views | The Explorer |
-
-Every 30 activities in a track unlocks a new milestone certificate and triggers a charity donation. HTML certificates stored in Supabase Storage, served by `certificate-serve` Edge Function, PDF-downloadable and globally numbered (No. 0001+).
-
-**Engagement score (0–100):**
-- Base: 50 points
-- 4 weighted components, max 12.5 each:
-  - **Activity** — recency (full points within 24h, zero after 7 days)
-  - **Consistency** — distinct active days in last 30 (20+ days = full marks)
-  - **Variety** — activity types in last 7 days (movement, habits, sessions)
-  - **Wellbeing** — from weekly check-in score (1–10 scale)
-
-**Leaderboard:**
-- Scopes: All members, Company (if employed), Team (if employed)
-- Metrics: All, Habits, Workouts, Streak
-- Privacy-first design: member only sees people ranked above them, never below. Names and scores anonymised from other members — only the position and gap are visible.
-
-## 3.9 Employer dashboard
-
-**Live at:** `www.vyvehealth.co.uk/vyve-dashboard-live.html`
-
-**Data source:** `employer-dashboard` Edge Function. Aggregate only — no individual names or personal data ever visible to employers.
-
-**Member status definitions:**
-- Active: 0–7 days since last activity
-- Quiet: 8–30 days
-- Inactive: 30+ days or never active
-
-**Current state:** Demo / test data only. No live employer contracts yet. Readiness gap for Sage demo:
-- Per-employer authentication (currently shared API key model — needs individual auth)
-- GDPR data export and delete tooling
-- Volume pricing tiers formally defined
-- Brevo logo removal (~£12/month)
-
-**Build time to full Sage readiness:** ~35–45 hours (from the 14 April Enterprise Readiness report).
-
-## 3.10 Admin dashboard (internal)
-
-Single-page admin client at `apps/admin-dashboard/admin.html` in the `vyve-command-centre` repo. Shipped 18 April 2026. Two users: Dean and Lewis. Target deployment: `admin.vyvehealth.co.uk` (file committed, GitHub Pages hosting pending).
-
-**Architecture:** Hot / warm / cold data layers backed by aggregation tables that keep queries sub-millisecond at 5,000+ members.
-
-- **Hot (0–30 days)** — raw activity tables, queried only for member deep-dive timeline
-- **Warm (30–90 days)** — `member_activity_daily` aggregate (one row per member per date, pre-counted)
-- **Cold (90+ days)** — `member_stats`, `company_summary`, `platform_metrics_daily` summary tables
-
-**Refresh cadence:**
-- `recompute_all_member_stats()` every 15 minutes
-- `rebuild_member_activity_daily()` nightly 03:00 UTC
-- Company and platform rollups via triggers on member_stats changes
-
-**Views:**
-- Platform KPIs (total members, MAU, DAU, churn, revenue where applicable)
-- Company rollup (per-employer engagement)
-- Member list (sortable, with risk flags for quiet/inactive)
-- Member deep-dive timeline (hot-data)
-- Onboarding pipeline status
-- Content performance
-- System health
-
-Admin users authenticated via Supabase Auth with an `admin_users` allowlist. Dean and Lewis seeded.
-
-## 3.11 Mobile apps
-
-**iOS** — live on the App Store. Wrapped with Capacitor; loads the PWA via WebView. GitHub Pages pushes deploy to the app automatically — no App Store resubmission needed for content or logic changes, only for native-shell changes (push config, orientation, icons).
-
-**Android** — awaiting Google Play review after 15 April resubmission (icon issue identified and fixed). Same Capacitor architecture.
-
-**Push notifications (iOS PWA):**
-- Web Push (VAPID) live since 17 April 2026
-- RFC 8291 AES-GCM encryption via Deno Web Crypto (Apple push requirement)
-- Permission triggered on user gesture (required for iOS compliance)
-- Subscriptions stored in `push_subscriptions` table
-- Daily habit reminder and streak reminder automations (**currently broken since 11 April — push cron JSON syntax error, fix on priority list**)
-
-**Capacitor native capabilities in use:** Push notifications (via VAPID Web Push), orientation lock via manifest, safe-area insets. HealthKit / Health Connect integration scoped but not yet built.
+**What this tells us:** Dean is the single consistently active member (87 total activities). Feature breadth is being touched, but depth of engagement is low across the board. The 45% activation failure is the biggest engagement problem — members who never log Day 1 are unlikely to convert.
 
 ---
----
 
-# PART 4 — TECHNICAL
+# PART 4 — Technical
 
 ## 4.1 Architecture overview
 
-VYVE is a thin-client PWA hosted on GitHub Pages, backed by Supabase (Postgres + Edge Functions + Auth + Storage), with Anthropic AI called server-side only. Capacitor wraps the PWA for iOS and Android without needing App Store resubmission for most changes.
-
-**Design principles:**
-- Single source of truth for data: Supabase (never Google Sheets or Apps Script)
-- AI stays server-side only: Anthropic API calls happen exclusively inside Edge Functions, never from HTML
-- RLS on all member/employer data at the database level
-- GDPR by default: data minimisation, purpose limitation, anonymisation for employer reporting
-- Cheap at small scale: <£100/month infrastructure for first few hundred members
-- Small team-friendly: single-file HTML pages, no build pipeline, changes ship instantly
-
-## 4.2 Hosting and repositories
-
-| Component | Hosting | Repo |
+| Component | Where | Notes |
 |---|---|---|
-| Member portal (PWA) | GitHub Pages → `online.vyvehealth.co.uk` | `VYVEHealth/vyve-site` (private) |
-| Marketing site | GitHub Pages → `www.vyvehealth.co.uk` | `VYVEHealth/Test-Site-Finalv3` |
-| Admin dashboard (single file) | GitHub Pages → `admin.vyvehealth.co.uk` (target) | `VYVEHealth/vyve-command-centre` |
-| Brain (AI continuity + operational docs) | GitHub | `VYVEHealth/VYVEBrain` (public for AI access) |
-| Backend / DB / Edge Functions | Supabase Pro (West EU / Ireland) | Project ID `ixjfklpckgxrwjlfsaaz` |
+| Member portal (PWA) | GitHub Pages → `online.vyvehealth.co.uk` | Repo `VYVEHealth/vyve-site` (private) |
+| Marketing site | GitHub Pages → `www.vyvehealth.co.uk` | Repo `VYVEHealth/Test-Site-Finalv3` |
+| Admin dashboard | `admin.vyvehealth.co.uk` (target) | Repo `VYVEHealth/vyve-command-centre`, file committed, deployment pending |
+| Backend / DB | Supabase Pro (West EU / Ireland) | Project `ixjfklpckgxrwjlfsaaz` |
+| Authentication | Supabase Auth (Auth0 fully retired) | `auth.js` v2.4 with offline fast-path |
+| AI | Anthropic API (Claude Sonnet 4 + Haiku 4.5) | Server-side Edge Functions ONLY |
+| Email | Brevo | Free tier 300/day — ~£19/month upgrade needed at ~80 members |
+| Payments | Stripe | Coupons `VYVE15`, `VYVE10` |
+| Analytics | PostHog (EU endpoint) | Currently sends raw email PII — hash fix on backlog |
+| CRM | HubSpot | Hub ID 148106724 |
+| Automation | Make (Lewis only, social media) | Facebook connection expires 22 May 2026 — Lewis critical |
+| Streaming | Riverside (7 studios) → YouTube (8 channels) | Castr for scheduled pre-recorded content |
+| Podcast | Spotify, Apple, Amazon Music | `vyvehealth.co.uk/vyve-podcast.html` |
 
-**Portal repo structure:**
+**Capacitor wrap.** The iOS and Android apps are Capacitor wrappers around the live PWA. Pushing to GitHub Pages deploys to native app users without App Store resubmission, because the app is a WebView into `online.vyvehealth.co.uk`. Capacitor handles native-only capabilities (push notifications, future HealthKit / Health Connect, orientation lock via `Info.plist` / `manifest.json`).
 
-Single-file HTML pages with self-contained inline CSS and JavaScript. No build process, no bundler. 39 HTML files totalling ~1,245 KB; 14 JS files (including supabase.min.js at 185 KB). Shared JS: `auth.js` (17 KB, v2.4 with offline fast-path), `nav.js` (18 KB, body-prepend injection), `theme.js` (4.4 KB), `theme.css` (6.8 KB with semantic token layer), `sw.js` (4 KB, network-first HTML), `vapid.js` (2.6 KB), `tracking.js` (8.5 KB), `offline-manager.js`, `supabase.min.js`.
+### Auth current state
+- Supabase Auth, all portal pages gated.
+- `VYVE_RETURN_TO_KEY` in localStorage for deep-link preservation.
+- SSO / OAuth considered for the future, not implemented.
+- Password reset routes through `set-password.html`.
 
-**Retired technologies (do not reintroduce):**
+### Service worker (shipped 21 April 2026)
+Previously cache-first for everything. Now:
+- `install` handler calls `self.skipWaiting()` after `cache.addAll` → new SW activates on the next page load, no tab-close required.
+- `activate` handler calls `self.clients.claim()` alongside old-cache purging → existing open tabs immediately switch.
+- **HTML navigations** (`req.mode === 'navigate'`, `.html`, or `/`) use network-first — every page reload fetches the latest HTML from GitHub Pages and falls back to cache only when offline.
+- Static assets (JS, CSS, images) use cache-first with network fallback.
+- Cross-origin and any `/functions/*` or `/auth/*` call bypass the SW entirely.
 
-| Technology | Replacement |
+**Practical implication:** HTML changes reach users on the next reload without a cache bump. JS/CSS/asset changes still require a cache bump. Current cache version: `vyve-cache-v2026-04-21f-navjs-body-prepend`.
+
+### Navigation injection rules (nav.js)
+- Mobile top header: `position: sticky; top:0; height:56px; injected via document.body.prepend()` — **NOT** inside `#app` or `#skeleton`.
+- Bottom nav: `position: fixed; bottom:0; z-index:9999; ~62px + safe-area-inset-bottom`. Injected via `document.body.appendChild()`.
+- Body gets `padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px)) !important`.
+- Any page-level sticky element must use `top:56px` on mobile, not `top:0`.
+- Modals must use `z-index:10001` minimum.
+- **All nav chrome lives at document.body level** — nav visibility is independent of any page's `#app`/`#skeleton` loading state. Do not revert to `insertBefore(main, ...)` injection — it broke exercise/movement pages on 20 April 2026.
+
+## 4.2 Database (Supabase — 70 tables live)
+
+Project ID: `ixjfklpckgxrwjlfsaaz` (West EU / Ireland, Pro plan). Verified via live SQL, 21 April 2026.
+
+**Email is the primary key across all member-scoped tables.** All RLS enabled.
+
+### Core member and activity tables
+`members`, `daily_habits`, `workouts`, `cardio`, `session_views`, `replay_views`, `kahunas_checkins`, `weekly_scores`, `wellbeing_checkins`, `monthly_checkins`, `ai_interactions`, `ai_decisions`, `activity_dedupe`, `session_chat`
+
+### Exercise and workout tables
+`workout_plans` (244 rows), `workout_plan_cache` (one row per member, JSONB), `exercise_logs`, `exercise_swaps`, `exercise_notes`, `custom_workouts`, `member_running_plans`
+
+### AI and persona tables
+`personas` (5 rows), `persona_switches`, `running_plan_cache` (5,376 cacheable combinations), `weekly_goals`, `knowledge_base`
+
+### Habit and nutrition tables
+`habit_themes` (5 rows), `habit_library` (30 rows), `member_habits`, `nutrition_logs`, `nutrition_my_foods`, `nutrition_common_foods` (125 rows), `weight_logs`
+
+### Aggregation tables (EF service-role only, no client policies)
+`member_stats`, `member_activity_daily`, `member_activity_log`, `member_home_state`, `member_notifications`, `company_summary`, `platform_metrics_daily`, `admin_users`, `vyve_job_runs`
+
+Refreshed by:
+- `refresh_member_home_state(p_email)` — member-triggered or EF-triggered
+- `recompute_all_member_stats()` — every 15 min
+- `rebuild_member_activity_daily()` — nightly 03:00 UTC
+
+### Operational tables
+`service_catalogue` (21 rows), `certificates`, `employer_members`, `engagement_emails` (A/B/C1/C2/C3 streams), `qa_submissions`, `platform_alerts`, `push_subscriptions`
+
+### Activity caps (DB-level, not application-level)
+`enforce_cap_*` triggers on `workouts`, `cardio`, `daily_habits`, `kahunas_checkins`, `session_views` block over-cap inserts and route them to `activity_dedupe`. Do not duplicate cap logic in the application layer.
+
+### Email lowercasing (automatic)
+`zz_lc_email` triggers on 42 tables lowercase `member_email` on every INSERT/UPDATE. Application code does not need to `.toLowerCase()` before writing.
+
+### Live counts (21 April 2026)
+| Table | Rows |
 |---|---|
-| Auth0 | Supabase Auth (fully migrated) |
-| Google Sheets for portal data | Supabase |
-| Apps Script | Retired from portal; only Action Ticks + backup.gs remain as legacy helpers |
-| Typeform | `welcome.html` onboarding questionnaire |
-| Looker Studio | HTML dashboards on GitHub Pages |
-| PAD / Kahunas | Replaced by the VYVE PWA. Never reference "Kahunas" in member-facing copy |
-| Make (Dean) | Dean no longer uses Make for anything. All activity logging via `log-activity` Edge Function |
+| members | 17 |
+| workouts | 45 |
+| cardio | 12 |
+| daily_habits | 100 |
+| wellbeing_checkins | 14 |
+| monthly_checkins | 0 |
+| session_views | 48 |
+| workout_plan_cache | 15 |
+| member_running_plans | 0 |
 
-## 4.3 Authentication
+## 4.3 Edge Functions
 
-Supabase Auth. All portal pages gated via `auth.js` v2.4. Auth0 fully retired. Session JWTs are the single auth mechanism for Edge Function calls.
+~20 core operational Edge Functions in active use. Latest versions:
 
-**Rules:**
-- Every Edge Function handling member data validates JWT internally (via `supabase.auth.getUser()`)
-- `verify_jwt: false` is the deploy-time default — Edge Functions do their own JWT check because this gives better error messages and CORS control
-- `github-proxy` uses a separate shared-secret auth model (`x-proxy-key` header) since it's an internal infra endpoint
-- `employer-dashboard` uses an API key model with per-employer scoping (not full Auth) — readiness gap for Sage
-- Password reset emails route to `set-password.html`
-- `auth.js` has an offline fast-path so members can still see cached content with no network
-
-## 4.4 Database (Supabase, 70 tables)
-
-Project: `ixjfklpckgxrwjlfsaaz`, West EU / Ireland, Pro plan, Postgres 17.6.1. Approximately 20 MB total.
-
-**70 tables verified live on 21 April 2026.** Primary key pattern: `member_email` (lowercased by `zz_lc_email` trigger on 42 tables). RLS enabled on all member/employer/aggregate tables.
-
-**Core member and activity tables:**
-
-| Table | Rows (21 Apr) | Purpose |
+| Function | Version | Purpose |
 |---|---|---|
-| `members` | 17 | Core member profiles |
-| `workouts` | 45 | Workout completions (capped 2/day) |
-| `cardio` | 12 | Cardio completions (capped 2/day) |
-| `daily_habits` | 100 | Habit log entries (capped 10/day distinct) |
-| `session_views` | 48 | Live session views |
-| `replay_views` | — | Replay views |
-| `wellbeing_checkins` | 14 | Weekly check-ins |
-| `monthly_checkins` | 0 | Monthly check-ins (new, no usage yet) |
-| `kahunas_checkins` | — | Legacy Q&A completions (imported from Kahunas) |
-| `weekly_scores` | — | Weekly check-in scores by ISO week |
-| `weekly_goals` | — | AI-generated weekly goals |
-| `ai_interactions` | — | All Anthropic API calls logged |
-| `ai_decisions` | — | AI routing and decision log |
-| `activity_dedupe` | — | Over-cap inserts routed here |
+| `onboarding` | v57+ | New member onboarding (two-phase, persona + habits + programme + welcome) |
+| `member-dashboard` | v30+ | Member dashboard data API — JWT-only, no `?email=` fallback |
+| `wellbeing-checkin` | v22+ | Weekly check-in + AI recommendations |
+| `monthly-checkin` | v5+ | Monthly check-in + AI report |
+| `log-activity` | v8+ | PWA activity logging — replaced Make for all activity writes |
+| `employer-dashboard` | v26+ | Aggregate employer analytics, API-key auth |
+| `anthropic-proxy` | v5+ | Running plan AI calls |
+| `send-email` | v16+ | Brevo transactional sends |
+| `re-engagement-scheduler` | v6+ | Daily cron 08:00 UTC — streams A/B/C1/C2/C3 |
+| `daily-report` | v16+ | Daily cron 08:05 UTC |
+| `weekly-report` | v6+ | Monday 08:10 UTC |
+| `monthly-report` | v6+ | 1st of month 08:15 UTC |
+| `certificate-checker` | v10+ | Daily cron 09:00 UTC — generates HTML certs with global sequential numbers |
+| `certificate-serve` | v7+ | Serves certificate HTML |
+| `github-proxy` | v15+ | GitHub read/write to `vyve-site` — requires `x-proxy-key` header |
+| `off-proxy` | v9+ | Open Food Facts proxy for `log-food.html` |
+| `send-session-recap` | — | Session recap emails |
+| `send-journey-recap` | — | Journey recap emails |
+| `backfill-auth-users` | — | Auth user creation utility |
+| `internal-dashboard` | — | Internal metrics |
+| `ops-brief` | — | Ops brief generation |
+| `habit-reminder` | v4+ | Push notification cron (**currently failing since 11 April**, see section 4.7) |
+| `streak-reminder` | v4+ | Push notification cron (**currently failing since 11 April**) |
+| `send-test-push` | v4+ | Push notification test tool |
+| `warm-ping` | — | Supabase warm-ping every 5 minutes |
 
-**Workout and exercise:**
+### Deployment rules
+- Full `index.ts` required — no partial updates.
+- `verify_jwt: false` is the VYVE pattern; all EFs do internal JWT validation via `supabase.auth.getUser()` where needed.
+- CORS restricted to `https://online.vyvehealth.co.uk` and `https://www.vyvehealth.co.uk` where applicable (since 11 April remediation).
 
-| Table | Purpose |
-|---|---|
-| `workout_plans` | 244 rows — the plan library (PPL, Upper/Lower, Full Body, Home, Movement) |
-| `workout_plan_cache` | 15 rows — per-member 8-week programme JSONB |
-| `exercise_logs` | Plan-agnostic sets/reps/weight log |
-| `exercise_swaps` | Member exercise substitutions |
-| `exercise_notes` | Per-exercise notes |
-| `custom_workouts` | Member-created workouts |
+### ~89 dead one-shot Edge Functions
+Noted in the 9 April security audit. Not causing harm, but clutter. Deletion script exists in `vyve_security_audit_2026-04-09.md` and can be run when convenient.
 
-**AI and persona:**
+## 4.4 Repo structure — `vyve-site`
 
-| Table | Purpose |
-|---|---|
-| `personas` | 5 personas with full system prompts |
-| `persona_switches` | Member persona change requests |
-| `running_plan_cache` | Legacy localStorage-era cache |
-| `member_running_plans` | New server-side running plan storage (shipped 20 April) |
-| `knowledge_base` | Reference content for AI grounding |
+Single-file HTML pages, self-contained inline CSS/JS. No build process, no bundler. Full list of active pages in Part 3 section 3.10.
 
-**Habit and nutrition:**
+**Shared client-side files:**
+- `auth.js` (17KB, v2.4) — Supabase Auth client + offline fast-path
+- `nav.js` (18KB) — desktop nav, mobile header, bottom nav, more-menu, avatar panel (all injected at `document.body` level)
+- `theme.js` (4.4KB) — dark/light theme switching, persisted in `localStorage`, `data-theme` attribute on `<html>`
+- `theme.css` (6.8KB) — token layer (see section 4.8 Design System)
+- `sw.js` (4KB) — service worker (network-first HTML, cache-first assets)
+- `vapid.js` (2.6KB) — Web Push VAPID subscribe on user gesture
+- `tracking.js` (8.5KB) — PostHog wiring
+- `offline-manager.js` — offline state / retry orchestration
+- `supabase.min.js` (185KB) — Supabase JS client
 
-| Table | Rows | Purpose |
+**Workout modules** (loaded by `workouts.html`): `workouts-config.js`, `workouts-programme.js`, `workouts-session.js`, `workouts-builder.js`, `workouts-exercise-menu.js`, `workouts-notes-prs.js`, `workouts-library.js`.
+
+**Legacy:** `VYVE_Health_Hub.html` (183KB standalone demo, not part of portal — candidate for deletion, confirmed unused).
+
+## 4.5 Brain repo structure — `VYVEBrain`
+
+```
+├── README.md
+├── brain/
+│   ├── master.md              ← this document
+│   ├── changelog.md           ← dated session entries
+│   ├── schema-snapshot.md     ← live DB schema (refreshed periodically)
+│   ├── audit_updates.md       ← post-audit remediation log
+│   ├── how-to-use.md          ← human operator guide
+│   ├── startup-prompt.md      ← canonical AI startup prompt
+│   └── sessions/              ← long-form session notes
+├── audits/                     ← 11 April full audit + remediation plan
+├── reports/                    ← 14 April 11-report audit series
+├── plans/                      ← exercise-restructure, admin-dashboard, accessibility, etc
+├── playbooks/                  ← architect, brain-sync, bug-fix, build, debug, execution,
+│                                 feature-build, github-operator, optimise, phase-c-offline-build,
+│                                 refactor, repo-audit, research, review
+├── prompts/                    ← cold-start prompt
+├── staging/                    ← EF source backups (currently only onboarding_v67.ts — not enough)
+└── tasks/
+    ├── backlog.md
+    ├── task-template.md
+    ├── open/, blocked/, completed/
+```
+
+### How the brain is used
+Any AI (Claude, ChatGPT, Gemini, whatever is available) can load this repo and immediately operate on VYVE. Dean pastes `prompts/cold-start.md` as the first message of a new session, or attaches `brain/master.md` if the tool supports file upload. This makes Dean's technical productivity resilient to any single AI tool going down or changing.
+
+## 4.6 Security state (live, 21 April 2026)
+
+Based on the 11 April remediation, the 14 April audit series, and subsequent fixes. All 8 remediation plan fixes are complete.
+
+### What's locked down
+- `github-proxy` v15 — `x-proxy-key` header auth + CORS restricted to `online.vyvehealth.co.uk`.
+- `member-dashboard` v30 — JWT-only, no `?email=` fallback, no hardcoded dev emails.
+- `onboarding` v57+ — CORS restricted to `www.vyvehealth.co.uk`, error alerting, answers backup.
+- `send-email` v16 — auth + CORS + model name fix.
+- `employer-dashboard` v26 — unauthenticated fallback removed, API-key required.
+- `session_chat` RLS — SELECT restricted to authenticated users.
+- 20 duplicate RLS policies dropped from 7 tables.
+- 2 duplicate indexes dropped from `exercise_notes`.
+- `re-engagement-scheduler` v6 — invalid model name fixed.
+
+### What still has open risk
+- **PostHog raw email PII** — emails sent to PostHog unhashed. Should hash client-side before send.
+- **Service-role key refactor** — some member-scoped EF queries use `SUPABASE_SERVICE_ROLE_KEY` where a user JWT would be cleaner (A4 from master action plan, ~1 hour).
+- **XSS audit on AI `innerHTML` rendering** — AI-generated content is rendered via `innerHTML` in places; should be audited for safety (A5, ~30 min).
+- **Onboarding race condition ordering** — documented edge case (C2, ~1 hour).
+- **Dashboard over-fetching** — some dashboards fetch more than they need client-side; server-side aggregation would be cleaner at scale (C3, ~2 hours).
+- **B1** — 13 one-shot migration EFs still to delete.
+
+### Known issue (post-security-audit)
+After the audit shipped, the `member-dashboard` EF now requires a valid user JWT. If the auth session hasn't initialised before the dashboard fetch fires, some users see a blank/error state. Dean investigating as of 11 April — the subsequent home-state wire-up (20 April) should also help.
+
+## 4.7 Current active incidents
+
+From the 14 April system-health report + today's verification:
+
+### 1. Push notifications broken since 11 April (HIGH)
+- `habit-reminder` (20:00 UTC) + `streak-reminder` (18:00 UTC) both failing
+- Root cause: `app.service_role_key` not configured; Bearer token concatenation produces malformed JSON
+- **Fix effort: 30 minutes.** Rewrite cron SQL to remove Authorization header and let the EF handle auth.
+- Impact: members receive zero push notifications for 10+ days.
+
+### 2. Make social publisher broken since 23 March (MEDIUM)
+- Make scenario 4950386 has failed
+- 133 social posts stuck and un-published
+- Lewis decision has deferred the fix
+- **Action:** Lewis to either fix Make or migrate publishing to an alternate path.
+
+### 3. Facebook Make connection expires 22 May 2026 (CRITICAL, time-bound)
+- Lewis action item
+- Hard cutoff — if missed, Facebook posting breaks
+
+### 4. Four client-side JS bugs (LOW-MEDIUM)
+- `workouts-library.js:40` — SyntaxError: Invalid token
+- `yoga-live.html:142` — `switchTab` not defined
+- `index.html:853` — `getTimeGreeting` not defined
+- `workouts.html` — `showToast` not defined
+- **Fix effort: 2–3 hours total.**
+
+## 4.8 Design System
+
+Phase A (tokens) and Phase B (semantic colour migration) shipped 17 April 2026. Phase C (session-page template consolidation — 14 stubs + 4 shared files) also 17 April. **Phase B refinement shipped 21 April 2026** — semantic token layer (`--label-*`, `--fill-*`, `--line-*`) for proper light-mode readability across 12 portal pages. Phases D (components) and E (typography/spacing) are open backlog items.
+
+### Tokens in `theme.css`
+
+**Brand accents** (`:root`):
+`--teal`, `--teal-lt`, `--teal-xl`, `--teal-dark`, `--green`, `--amber`, `--coral`, `--font-head`, `--font-body`
+
+**Semantic aliases:**
+`--success`, `--success-soft`, `--success-strong`, `--warning`, `--warning-soft`, `--warning-strong`, `--danger`, `--danger-soft`, `--danger-strong`, `--gold`, `--gold-soft`
+
+**Activity track colours:**
+| Token | Hex | Activity |
 |---|---|---|
-| `habit_themes` | 5 | Monthly theme definitions |
-| `habit_library` | 30 | All available habits |
-| `member_habits` | — | 5 habits per member |
-| `nutrition_logs` | — | Food log entries |
-| `nutrition_my_foods` | — | Member-saved custom foods |
-| `nutrition_common_foods` | 125 | Pre-populated food database |
-| `weight_logs` | — | Member weight entries (one per day, upsert) |
+| `--track-habits` | `#4DAAAA` | Daily Habits |
+| `--track-workouts` | `#E09B3D` | Workouts |
+| `--track-cardio` | `#E06060` | Cardio |
+| `--track-sessions` | `#9B7AE0` | Sessions |
+| `--track-nutrition` | `#2D9E4A` | Nutrition |
 
-**Infrastructure and monitoring:**
-
-| Table | Purpose |
-|---|---|
-| `platform_alerts` | Error log from client and server. 31 records — **visible only to service role; RLS has no policies. Fix on the list** |
-| `platform_metrics_daily` | Daily rollups for admin dashboard |
-| `member_stats` | Per-member rollup, refreshed every 15 min |
-| `member_activity_daily` | Per-member per-date activity counts |
-| `member_home_state` | Pre-aggregated dashboard data (shipped 20 April) |
-| `company_summary` | Per-employer rollup |
-| `admin_users` | Admin dashboard allowlist (Dean, Lewis) |
-| `push_subscriptions` | VAPID push subscriptions per device |
-| `engagement_emails` | Re-engagement email log (streams A/B/C1/C2/C3) |
-| `session_chat` | Live session chat, last 50 messages per session |
-| `certificates` | Member certificate records |
-| `employer_members` | Member-to-employer relationships |
-| `service_catalogue` | 21 rows — all available sessions and content |
-| `vyve_job_runs` | Cron and job execution log |
-
-**Aggregation rules:**
-- Most aggregation tables are service-role only (RLS enabled, no client policies). Clients read via Edge Function.
-- `member_home_state` is the exception — RLS policy `auth.email() = member_email` allows direct client reads.
-- All aggregation trigger functions must be `SECURITY DEFINER`.
-
-**Activity caps (enforced via `enforce_cap_*` triggers):**
-
-| Activity | Cap |
-|---|---|
-| `daily_habits` | 10 distinct habits/day (raised from 1) |
-| `workouts` | 2/day |
-| `cardio` | 2/day |
-| `session_views` | 2/day |
-| `kahunas_checkins` | 1/ISO week |
-
-**Over-cap inserts:** routed to `activity_dedupe` (not discarded).
-
-**Key SQL functions:**
-- `set_activity_time_fields()` — sets day_of_week, time_of_day, week_start, month from timestamp (BST-aware)
-- `get_charity_total()` — returns capped activity counts for charity milestone calculation
-- `refresh_member_home_state(p_email)` — refreshes the pre-aggregated home dashboard
-- `recompute_all_member_stats()` — refreshes admin dashboard aggregates
-- `rebuild_member_activity_daily()` — nightly job
-
-**Email lowercasing:** The `zz_lc_email` trigger lowercases `member_email` on every INSERT/UPDATE across 42 tables. Application code does not need to `.toLowerCase()` before writing.
-
-**Tables that do NOT exist (despite being referenced in old docs):** `monthly_summaries`, `activity_patterns`, `charity_totals`, `audit_log`, `milestone_messages`. Do not try to reference them.
-
-## 4.5 Edge Functions
-
-**Core operational Edge Functions (24, April 2026):**
-
-| Function | Purpose | JWT |
+**Habit pot colours:**
+| Token | Hex | Theme |
 |---|---|---|
-| `onboarding` | Persona + habits + programme overview + background 8-week workout plan | false (public; validates internally) |
-| `member-dashboard` | Full dashboard data in one call | true |
-| `wellbeing-checkin` | Weekly check-in with AI recommendations | true |
-| `monthly-checkin` | Monthly check-in with AI report | true |
-| `log-activity` | PWA activity logging (replaces Make for all activity writes) | true |
-| `employer-dashboard` | Aggregate employer data; API key auth | Custom API key |
-| `anthropic-proxy` | Running plan AI calls | true |
-| `send-email` | Brevo transactional email | false |
-| `re-engagement-scheduler` | Cron 08:00 UTC daily; streams A/B/C1/C2/C3 | false |
-| `daily-report` | Cron 08:05 UTC daily | false |
-| `weekly-report` | Cron Monday 08:10 UTC | false |
-| `monthly-report` | Cron 1st of month 08:15 UTC | false |
-| `certificate-checker` | Cron 09:00 UTC daily | false |
-| `certificate-serve` | Serves certificate HTML | false |
-| `github-proxy` | GET + PUT to vyve-site via shared-secret auth | Custom header auth |
-| `off-proxy` | Open Food Facts proxy | false |
-| `send-session-recap` | Session recap emails | false |
-| `send-journey-recap` | Journey recap emails | false |
-| `backfill-auth-users` | Auth user creation utility | false |
-| `internal-dashboard` | Internal metrics | false |
-| `ops-brief` | Ops brief generation | false |
-| `habit-reminder` | Daily habit push notification (**broken since 11 April, fix priority**) | false |
-| `streak-reminder` | Streak push notification (**broken since 11 April, fix priority**) | false |
-| `warm-ping` | Every 5 min — keeps service warm | false |
+| `--pot-movement` | `#4DAAAA` | Movement (shared with `--track-habits`, intentional) |
+| `--pot-nutrition` | `#2D9E4A` | Nutrition (shared with `--track-nutrition`, intentional) |
+| `--pot-mindfulness` | `#5BA8D9` | Mindfulness |
+| `--pot-social` | `#E879A3` | Social |
+| `--pot-sleep` | `#6366B8` | Sleep |
 
-**Deploy rule:** Full `index.ts` required — no partial updates. Large EFs (>10 KB) must be read from GitHub into a variable and passed to the deploy call. Never pass inline via `COMPOSIO_MULTI_EXECUTE_TOOL`.
+**Scales:**
+- Spacing: `--space-0` through `--space-16`
+- Typography: `--text-2xs` through `--text-4xl` + weights
+- Radius: `--radius-sm` / `--radius` / `--radius-lg` / `--radius-xl` / `--radius-pill` / `--radius-circle`
+- Shadow: `--shadow-sm/md/lg` + `--shadow-glow-teal`
 
-**Staging backup:** Only `onboarding_v67.ts` is currently in `VYVEBrain/staging/` — and it's 7 versions stale. **All 24 core Edge Functions should be backed up to the Brain — priority P0 from the 14 April audit.**
+### Semantic Token Layer (shipped 21 April 2026)
 
-## 4.6 Service Worker and offline architecture
-
-`sw.js` — network-first for HTML, cache-first for static assets. Shipped 21 April 2026.
-
-**Strategy:**
-- `install` handler calls `self.skipWaiting()` after `cache.addAll` — new SW activates on the next page load, no tab-close needed
-- `activate` handler calls `self.clients.claim()` plus old-cache purge — open tabs immediately adopt the new SW
-- **HTML navigations** (`req.mode === 'navigate'`, `.html`, or `/`) use network-first: every page reload fetches the latest HTML from GitHub Pages, falls back to cache only when offline
-- **Static assets** (JS, CSS, images) use cache-first with network fallback
-- Cross-origin requests and any `/functions/*` or `/auth/*` calls bypass the SW entirely
-- `message` handler responds to `{type:'SKIP_WAITING'}` for future update-prompt UI
-
-**Cache version format:** `vyve-cache-v2026-04-[date][letter]`. Current: `vyve-cache-v2026-04-21f-navjs-body-prepend`.
-
-**Implication:** HTML-only changes reach members on the next reload without a cache bump. Cache bumps are still required for JS, CSS, or other cached-first assets.
-
-**Offline manager:** `offline-manager.js` handles offline-queued actions and replays them when the connection returns. Used by the activity log flow.
-
-## 4.7 Design system
-
-Three phases shipped so far (17 April and 21 April 2026):
-
-**Phase A — Tokens (17 April):** Brand accents (`--teal`, `--teal-lt`, `--teal-xl`, `--teal-dark`, `--green`, `--amber`, `--coral`), fonts (`--font-head`, `--font-body`), scales (spacing `--space-0` → `--space-16`, typography `--text-2xs` → `--text-4xl`, radius scale, shadow scale).
-
-**Phase B — Semantic colour migration (17 April) + semantic token layer refinement (21 April):**
-
-Three families of theme-aware tokens. Values differ for `[data-theme="dark"]` (default) and `[data-theme="light"]`.
+Three families of theme-aware tokens. Values differ for `[data-theme="dark"]` (default) and `[data-theme="light"]`. All legacy tokens (`--text`, `--surface`, `--border`, `--muted`, `--on-accent`, `--white`, `--surface-hover`, `--surface-teal`, `--border-teal`) are kept as back-compat aliases pointing into this layer.
 
 - **Text tokens:** `--label-strong`, `--label-medium`, `--label-weak`, `--label-accent`, `--label-accent-strong`, `--label-eyebrow`, `--label-heading-em`, `--label-on-accent`, `--label-success`, `--label-warning`, `--label-danger`
 - **Fill tokens:** `--fill-subtle`, `--fill-subtle-hover`, `--fill-accent`, `--fill-accent-hover`, `--fill-accent-strong`, `--fill-success`, `--fill-warning`, `--fill-danger`
 - **Line tokens:** `--line-subtle`, `--line-accent`, `--line-accent-strong`, `--line-success`, `--line-warning`, `--line-danger`
 
-**Rules:**
-- New CSS must use semantic tokens. Never use `--teal-lt` or `--teal-xl` as text colours — they fail WCAG AA contrast on the light background. Reserve those for graphical elements (dots, rings, chart lines).
-- For filled accent backgrounds, text must use `--label-on-accent` (always white).
-- Nav chrome is locked dark in both themes — it does not flip with `[data-theme="light"]`. Scoped override block in theme.css.
-- All contrast verified WCAG AA compliant on both themes.
+**Usage rules:**
+- New CSS rules MUST use semantic tokens. Do not reach for `--teal-lt` or `--teal-xl` as text colours — those are graphical accents only and fail WCAG AA contrast on light backgrounds.
+- For filled accent backgrounds (teal/green buttons), text must use `--label-on-accent` (always white).
+- Nav chrome (desktop nav, mobile header, bottom nav, more-menu, avatar panel) is **locked dark** in both themes — it does not flip with `[data-theme="light"]`. `theme.css` has a scoped override block that pins nav containers to dark token values regardless of active theme.
+- All contrast verified WCAG AA compliant on both themes before 21 April ship.
 
-**Activity track colours:**
+## 4.9 Offline architecture (shipped 17 April 2026)
 
-| Token | Hex | Activity |
-|---|---|---|
-| `--track-habits` | #4DAAAA | Daily Habits |
-| `--track-workouts` | #E09B3D | Workouts |
-| `--track-cardio` | #E06060 | Cardio |
-| `--track-sessions` | #9B7AE0 | Sessions |
-| `--track-nutrition` | #2D9E4A | Nutrition |
+- `offline-manager.js` handles retry queues and connection state.
+- Service worker caches static assets.
+- Indexed DB holds pending writes while offline.
+- On reconnect, queued writes flush through.
+- Only critical activity writes (habit completion, workout log, weight log) are queued — analytics and non-essential writes are dropped.
 
-**Habit pot colours:**
+## 4.10 Capacitor mobile apps
 
-| Token | Hex | Theme |
-|---|---|---|
-| `--pot-movement` | #4DAAAA | Movement |
-| `--pot-nutrition` | #2D9E4A | Nutrition |
-| `--pot-mindfulness` | #5BA8D9 | Mindfulness |
-| `--pot-social` | #E879A3 | Social |
-| `--pot-sleep` | #6366B8 | Sleep |
+- iOS: **Live in App Store.** Icon issue resolved (Build 2 uploaded).
+- Android: **Build 1.0.2 submitted, awaiting Google review confirmation.**
+- Both wrap the live PWA via WebView.
+- GitHub Pages push → native app users see the change on next launch (no App Store resubmission needed unless Capacitor config changes).
+- Capacitor handles: push notifications (Web Push VAPID + iOS APNS where native enabled), orientation lock, safe-area handling, icon / splash.
+- HealthKit / Health Connect integration is scoped but not built.
 
-**Phase C — Session template consolidation (17 April):** 14 session-page stubs + 4 shared files.
+### Web Push (VAPID) — live
+- `vapid.js` loaded on `index.html` — subscribes on bell tap (iOS requires user gesture), saves to `push_subscriptions` table.
+- `sw.js` — `push` event listener + `notificationclick` listener live.
+- `habit-reminder` v4 + `streak-reminder` v4 — full RFC 8291 AES-GCM encryption via Deno Web Crypto.
+- VAPID public key: `BDbz2-0k3JcqRWKyasr3MNgEZrXhKsVvjS-otCyyV7Ya4Pi2xXOxXGETUpVoE56VorKzSNy7uyep53gOzNEMTu4`.
+- `VAPID_PRIVATE_KEY` secret set in Supabase.
+- **Rule:** Apple push requires RFC 8291 encryption. `esm.sh` imports fail in Supabase EFs — always use Deno Web Crypto only.
+- **Rule:** iOS push only works from home-screen-installed PWA or the native Capacitor build (Safari 16.4+).
 
-**Phase D (components) and E (typography/spacing)** — open backlog. When they land, they must consume the semantic tokens, not raw brand tokens.
+## 4.11 Hard rules (NEVER BREAK)
 
-## 4.8 Navigation system
+These rules have been earned through shipped bugs. Any AI or engineer working on VYVE must observe them.
 
-`nav.js` owns all navigation chrome. Injected at `document.body` level — outside `#app` and `#skeleton` — to be independent of page loading state.
-
-**Injection heights (mobile ≤768px):**
-- Mobile top header: `position:sticky; top:0; height:56px` (+ safe-area-inset-top). Injected via `document.body.prepend()`.
-- Bottom nav: `position:fixed; bottom:0; z-index:9999; ~62px + safe-area`. Injected via `document.body.appendChild()`.
-- Body gets `padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px)) !important`
-- Page-level sticky elements use `top:56px` on mobile (not `top:0`)
-- Modals use `z-index:10001` minimum
-
-**Standard script order** on every portal page:
-1. `theme.js` (before `</head>`)
-2. `auth.js`
-3. `nav.js`
-4. `offline-manager.js`
-
-New pages must not roll their own top-bar or bottom-nav markup. Do not declare your own CSS for `.desktop-nav`, `.nav-logo`, `.nav-badge`, etc. — those class names belong to nav.js.
-
-**Mobile `.wrap` padding template:** `padding: 24px 16px 100px` at `@media(max-width:768px)`. 24px top clears the nav.js sticky mobile header; 100px bottom clears the bottom nav.
-
-**Sub-page detection:** `isNavPage` matches only the 4 hub paths (`/`, `/index`, `/exercise`, `/nutrition`, `/sessions`). Sub-pages get a back button in the mobile header while still highlighting the correct bottom-nav tab. `subPageLabels` map provides correct titles.
-
-**Desktop (≥768px):** More dropdown and profile avatar dropdown. More dropdown grouped: Check-Ins (Weekly, Monthly), Progress (Certificates, Leaderboard, Activity Score), Content (Guides, How-to Videos, Catch-up), Settings.
-
-## 4.9 AI integration rules
-
-**Anthropic Claude** is the only AI model in use. Split across:
-- **Claude Sonnet 4** for complex reasoning: persona assignment, programme overview generation, check-in recommendations, monthly reports
-- **Claude Haiku 4.5** for faster/cheaper calls: running plan generation, recommendation text
-
-**Rules:**
-1. AI keys NEVER in HTML or committed files. Server-side in Edge Functions only.
-2. AI calls always via Edge Functions with a clear model choice and max_tokens.
-3. All calls logged to `ai_interactions` for cost and debugging.
-4. Outputs sanitised before `innerHTML` render (tech-debt item: XSS audit on AI content).
-5. Stress scale is inverted (1 = stressed, 10 = calm) — every prompt must state this explicitly to avoid model confusion.
-6. Response-shape mismatches between EF versions break frontend pages. Always audit pages when bumping EF versions.
-
-## 4.10 Security state
-
-**Current posture (21 April 2026):**
-
-- All 70 tables have RLS enabled
-- All 24 core Edge Functions use service-role key server-side only
-- All member-data-handling EFs validate JWT internally
-- `github-proxy` has shared-secret auth (`x-proxy-key`)
-- `member-dashboard` is JWT-only (no `?email=` fallback — closed 11 April)
-- `onboarding` CORS restricted to `https://www.vyvehealth.co.uk`
-- All contrast verified WCAG AA on both dark and light themes
-
-**Remaining priorities (from 11 April full system audit + 14 April report pack):**
-
-4 critical items still outstanding:
-1. Fix push notification crons (30 min — the JSON syntax bug since 11 April)
-2. Add `platform_alerts` RLS policy so errors become visible (15 min — the 31 alerts currently trapped)
-3. Back up all 24 core Edge Functions to VYVEBrain staging (1 hour — currently only 1/24 backed up, 7 versions stale)
-4. XSS sanitisation on AI-generated `innerHTML` (1 hour)
-
-Medium-priority follow-ups:
-- Hash PostHog emails before sending (30 min)
-- CSP meta tags on all portal pages (2–3 hrs)
-- Per-employer dashboard auth (6–8 hrs) — required for Sage
-- GDPR data export Edge Function (4–5 hrs) — required for Sage
-- GDPR data delete Edge Function (5–6 hrs) — required for Sage
-- Stripe webhook (3–4 hrs) — needed to track onboarding funnel properly
-- Security questionnaire template (3–4 hrs) — for enterprise procurement
-
-## 4.11 Hard rules (never break)
-
-1. **API keys never in HTML or GitHub.** Server-side Edge Functions only.
-2. **Auth0 is dead.** Never reference it.
-3. **Kahunas / PAD are dead.** Product is "VYVE Health app".
-4. **Never say "Corporate Wellness"** as a tagline.
-5. **sw.js cache must be bumped after every portal push that touches JS/CSS.** Pattern: `vyve-cache-v2026-04-[date][letter]`. HTML-only changes reach users via network-first without a bump.
-6. **EF deploys require full `index.ts`.** No partial updates.
-7. **Dual dark/light CSS blocks.** `theme.js` before `</head>`.
-8. **Employer dashboard is aggregate only.** No PII ever visible to employers.
-9. **HAVEN must signpost professional help** if a member is in crisis. Clinical review by Phil required before active promotion.
+1. **API keys NEVER in HTML or GitHub.** Server-side Edge Functions only.
+2. **Auth0 is dead.** Never reference it in docs or code.
+3. **Kahunas / PAD are dead.** Product is "VYVE Health app" in all member-facing copy.
+4. **Never say "Corporate Wellness"** as tagline or descriptor.
+5. **`sw.js` cache must be bumped after every portal asset push.** Pattern: `vyve-cache-v2026-04-[date][letter]`. HTML-only changes do not require a bump since network-first was shipped 21 April.
+6. **EF deploys require full `index.ts`** — no partial updates.
+7. **Dual dark/light CSS blocks.** `theme.js` must load before `</head>`.
+8. **Employer dashboard = aggregate only.** No PII, ever.
+9. **HAVEN must signpost professional help** if a member is in crisis. Clinical sign-off required before promotion.
 10. **Password reset emails route to `set-password.html`.**
-11. **GitHub writes via `github-proxy` PUT** (with `x-proxy-key`). Composio MCP is READ-ONLY.
+11. **GitHub writes via `github-proxy` EF PUT** (requires `x-proxy-key` auth). Composio MCP is READ-ONLY for `vyve-site`.
 12. **`workouts.html` uses MutationObserver on `#app`.** Never revert to `waitForAuth`.
-13. **Business email: team@vyvehealth.co.uk.** Never personal emails for business.
+13. **Business email: `team@vyvehealth.co.uk`.** Never Dean's or Lewis's personal email.
 14. **Dean does not use Make.** Lewis only.
 15. **Stress scale: 1 = very stressed, 10 = very calm.** Never treat high stress as negative.
-16. **`member_habits.assigned_by`:** only `'onboarding'`, `'ai'`, `'theme_update'`, `'self'` allowed.
-17. **Nav overlap:** sticky elements use `top:56px` on mobile. Bottom nav `z-index:9999`. Modals `z-index:10001+`.
+16. **`member_habits.assigned_by`** only allows `'onboarding'`, `'ai'`, `'theme_update'`, `'self'`.
+17. **Nav overlap:** sticky elements use `top:56px` on mobile (not `top:0`). Bottom nav `z-index:9999`. Modals `z-index:10001+`.
 18. **Modal sheets must `stopPropagation`** on the sheet element.
 19. **Settings cache:** `vyve_settings_cache` in localStorage, 10-min TTL, keyed to user email.
 20. **Habit count = distinct `activity_date` values**, not raw rows. Cap 10/day.
-21. **`verify_jwt: false` is the VYVE deploy default.** All EFs do internal JWT validation.
-22. **AI stays server-side.** All Anthropic calls via Edge Functions only.
-23. **Lewis dislikes emojis.** Strip all emoji from content/copy before final commit.
-24. **Talk first, build second.** Dean prefers to confirm direction before implementation for product/architecture decisions.
-25. **Large HTML files (>50KB): use `github-proxy` PUT**, not inline Composio commits.
-26. **Never pass large file content via inline `COMPOSIO_MULTI_EXECUTE_TOOL`** — use the workbench.
-27. **Dean does not run SQL manually** — deploy DDL via one-shot Edge Functions using the `postgres` Deno driver.
-28. **Build speed heuristic:** "1 week" = 1–2 focused days. "2–3 weeks" = 3–5 days.
-29. **GDPR / UK compliance by default.** RLS on all user/employer data. Anonymisation for workforce insights.
-30. **For Supabase EF deploys of large files (>10KB)** always read from GitHub, store in a variable, pass to deploy. Never inline.
-31. **`sw.js` activate handler: no page migration logic.** Just purge old caches.
+21. **`verify_jwt: false` is the VYVE pattern.** All EFs do internal JWT validation.
+22. **AI stays server-side:** all Anthropic calls via Edge Functions only.
+23. **Lewis dislikes emojis.** Strip all emoji from member-facing content and marketing copy before commit.
+24. **Talk first, build second.** Dean prefers to discuss architecture/product decisions before implementation. Once confirmed, execute fully and autonomously.
+25. **Large HTML files (>50KB):** use `github-proxy` PUT, not inline Composio commits.
+26. **Never pass file content via inline `COMPOSIO_MULTI_EXECUTE_TOOL`** — use the workbench.
+27. **Dean does not run SQL manually.** DDL deploys via one-shot EFs using the `postgres` Deno driver.
+28. **Build speed translation:** "1 week" = 1–2 focused days. "2–3 weeks" = 3–5 days.
+29. **GDPR / UK compliance by default.** RLS on all user / employer data. Anonymisation for workforce insights.
+30. **Large-file EF deploys (>10KB):** always read from GitHub, store in variable, pass to deploy. Never inline.
+31. **`sw.js` activate: NO page migration.** The activate handler deletes old caches only. Migration causes stale/broken pages to persist.
 32. **Never inject `<script>` tags via naive string search.** The `</script>` in the injected tag will terminate any `<script>` block it lands inside.
-33. **Most aggregation tables are service-role only.** Read via Edge Function. `member_home_state` is the exception.
-34. **Activity caps are DB-level** (via `enforce_cap_*` triggers). Do not duplicate in the application layer.
-35. **Email lowercasing is automatic** (via `zz_lc_email` trigger on 42 tables). Application code does not need to `.toLowerCase()` before writing.
+33. **Most aggregation tables are service-role only.** `member_stats`, `member_activity_daily`, `member_activity_log`, `company_summary`, `platform_metrics_daily`, `admin_users`, `vyve_job_runs` have RLS enabled with NO policies — readable only from EFs. `member_home_state` is the exception: RLS-enabled with a policy allowing `auth.email() = member_email` read, so members can read their own aggregate row directly. All writes still go through `refresh_member_home_state(p_email)` only.
+34. **Activity caps are DB-level.** Do not duplicate cap logic in application layer.
+35. **Email lowercasing is automatic.** `zz_lc_email` triggers on 42 tables.
 36. **Aggregation trigger functions must be `SECURITY DEFINER`.**
-37. **Nav chrome stays dark in light theme.** Desktop nav, mobile header, bottom nav, more-menu, avatar panel all on the dark palette regardless of `[data-theme="light"]`.
-38. **nav.js injects nav chrome at `document.body` top** via `prepend()`. Not inside `#app` or `#skeleton`.
-39. **New pages load 4 standard scripts in order:** `theme.js`, `auth.js`, `nav.js`, `offline-manager.js`. Do not roll own top-bar or bottom-nav markup.
-40. **Mobile `.wrap` padding template:** `padding: 24px 16px 100px` at `@media(max-width:768px)`.
-41. **Use the semantic token layer for new CSS** (`--label-*`, `--fill-*`, `--line-*`). Reserve `--teal-lt`/`--teal-xl` for graphical use only.
-42. **HTML cache-bumps are optional** since network-first sw.js shipped 21 April. Still required for JS/CSS/asset changes.
+37. **Nav chrome stays dark in light theme.** Desktop nav, mobile-page-header, bottom nav, more-menu, avatar panel all remain on the dark-theme palette regardless of `[data-theme="light"]`.
+38. **nav.js injects nav chrome at `document.body` top**, not inside `#app` or `#skeleton`. Use `document.body.prepend()`.
+39. **New portal pages must load 4 standard scripts in order:** `theme.js`, `auth.js`, `nav.js`, `offline-manager.js`. Do not roll your own top-bar markup.
+40. **Mobile `.wrap` padding template:** `padding: 24px 16px 100px` at `@media(max-width:768px)`. 24px top clears mobile header; 100px bottom clears bottom nav.
+41. **Use the semantic token layer for new CSS.** Reserve `--teal-lt` and `--teal-xl` for graphical accents only.
+42. **HTML cache-bumps are no longer mandatory** (post-21 April network-first). Still bump for JS/CSS/asset changes.
 
-## 4.12 Known technical debt
+## 4.12 Platform priorities to ship by end of May 2026
 
-**Bugs (4 active in `platform_alerts`, from 14 April audit):**
-1. `workouts-library.js:40` — SyntaxError
-2. `yoga-live.html:142` — `switchTab` not defined
-3. `index.html:853` — `getTimeGreeting` not defined
-4. `workouts.html` — `showToast` not defined
+In rough priority order:
 
-**Missing database indexes** (10 tables, `workouts` has 3,654 seq scans). 2-minute migration ready and tested.
+1. **Per-employer dashboard auth** (6–8 hours) — required before Sage demo.
+2. **Push notification cron fix** (30 min) — 10+ days of missed notifications is a retention hit.
+3. **GDPR export + delete tooling** (9–11 hours) — Article 20 and Article 17 compliance, required for enterprise procurement.
+4. **Brevo logo removal** (~$12/month, Lewis action).
+5. **B2B volume discount tiers** — Lewis decision, Dean adds to Stripe.
+6. **Health disclaimer sign-off** — Lewis, for App Store listing + onboarding checkbox.
+7. **HAVEN clinical review** — Phil, before we promote HAVEN in marketing.
+8. **Movement plan content** — Calum / Lewis, before Movement stream is a meaningful member offering.
+9. **Session recommender** (post-check-in, recommends a session based on mood / energy / time).
+10. **Persona context modifier system** — extra prompt block based on onboarding flags (Age 50+, beginner, time-poor, new parent).
+11. **First-activity nudge** (24-hour reminder) — addresses the 45% activation failure.
+12. **Weekly progress summary email** (Friday, AI-generated, Brevo).
+13. **Facebook Make connection renewal** — before 22 May.
+14. **Make social publisher fix** or alternative — to unstick 133 posts.
+15. **Security follow-ups:** PostHog PII hashing, XSS audit, service-role refactor, onboarding race condition.
+16. **Exercise Hub completion:** Movement content in `programme_library`, Classes stream on hub, backfill decision for existing 18 members.
 
-**Large files and duplication:**
-- `VYVE_Health_Hub.html` (183 KB) — legacy, candidate for deletion
-- 8 live session pages (~22 KB each = 178 KB) — consolidate to 1 parameterised page
-- 8 replay pages (~17 KB each = 131 KB) — same
-- Potential savings: ~280 KB, 14 fewer files
-
-**Architectural debt:**
-- `#skeleton` + `#app` dual-main DOM pattern on `exercise.html` and `movement.html` — fragile for future scripts doing broad selectors. Migrate to single `#app` with internal skeleton state. Pair with Design System Phase E.
-- Legacy `running_plan_cache` table still exists alongside the new `member_running_plans` table. Migrate and drop the old one once the new one has all data.
-- `brain/changelog.md` contains a base64-encoded historical blob (~152K decoded chars). Needs a dedicated cleanup session.
-
-**Zero automated tests.** Tradeoff accepted for now given team size and pace.
-
-**Monitoring blind spots:**
-- `platform_alerts` has no RLS policy so the 31 errors captured since its creation are invisible to both Dean and Lewis without the service role.
-- No real user monitoring beyond the skeleton-timeout watchdog.
-- PostHog captures events but emails are unhashed — privacy debt.
-
----
 ---
 
 # APPENDICES
 
-## A. Key URLs, credentials and identifiers
+## Appendix A — Team
 
-### Primary URLs
-
-| Reference | URL |
-|---|---|
-| Marketing site | https://www.vyvehealth.co.uk |
-| Member portal | https://online.vyvehealth.co.uk |
-| Employer dashboard (demo) | https://www.vyvehealth.co.uk/vyve-dashboard-live.html |
-| Admin dashboard | https://admin.vyvehealth.co.uk (target, not yet deployed) |
-| Podcast | https://www.vyvehealth.co.uk/vyve-podcast.html |
-| ROI calculator | https://www.vyvehealth.co.uk/roi-calculator.html |
-| Give back / charity | https://www.vyvehealth.co.uk/give-back.html |
-| Onboarding form | https://www.vyvehealth.co.uk/welcome |
-| Stripe payment link | https://buy.stripe.com/00wfZicla1Em0NnaIB93y00 |
-
-### Internal tools
-
-| Reference | URL / Value |
-|---|---|
-| Strategy Dashboard | online.vyvehealth.co.uk/strategy.html (password: `vyve2026`) |
-| Demo Reset | online.vyvehealth.co.uk/index.html?reset=checkin |
-| github-proxy PUT | https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/github-proxy?path=filename.html |
-
-### Platform identifiers
-
-| Service | Reference |
-|---|---|
-| Supabase Project ID | `ixjfklpckgxrwjlfsaaz` |
-| Supabase Region | West EU / Ireland (eu-central-1) |
-| PostHog Project Key | `phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl` |
-| HubSpot Hub ID | 148106724 |
-| HubSpot timezone | Europe/London |
-| HubSpot currency | GBP |
-| Sage HubSpot Deal | 495586118853 |
-| VAPID public key | `BDbz2-0k3JcqRWKyasr3MNgEZrXhKsVvjS-otCyyV7Ya4Pi2xXOxXGETUpVoE56VorKzSNy7uyep53gOzNEMTu4` |
-| ICO Registration | 00013608608 |
-
-### Brand assets
-
-| Asset | Location |
-|---|---|
-| Logo | https://online.vyvehealth.co.uk/logo.png |
-| Brand palette | #0D2B2B · #1B7878 · #4DAAAA · #C9A84C |
-| Fonts | Playfair Display (headings), DM Sans / Inter (body) |
-| Gemini image prompt suffix | "Colour grade: deep teals and greens, warm highlights, no text, no logos" |
-
-### Stripe
-
-| Item | Value |
-|---|---|
-| Payment link | buy.stripe.com/00wfZicla1Em0NnaIB93y00 |
-| Coupons | `VYVE15`, `VYVE10` |
-| B2C price | £20/month |
-| B2B price | £10/user/month |
-
-### Make scenarios
-
-| Scenario | ID | Status |
+| Person | Role | Scope |
 |---|---|---|
-| Social publisher | 4950386 | **BROKEN since 23 March, Lewis to fix** |
-| Instagram analytics | 4993944 | Live → Data Store 107716 |
-| Facebook analytics | 4993948 | Live → Data Store 107716 |
-| LinkedIn analytics | 4993949 | Live → Data Store 107716 |
-| Facebook connection | — | **EXPIRES 22 MAY 2026 — critical renewal** |
+| **Lewis Vines** | CEO / Founder | Owns commercial, sales, content, AI operations, brand. Has the founder story. Decision authority on pricing, HAVEN activation, marketing, product copy. Internal contact at Sage. |
+| **Dean Brown** | CTO / Co-Founder | Owns the full technical stack — Supabase, Edge Functions, PWA, Capacitor apps, CI/CD via GitHub Pages, brain repo. Part-time until MRR reaches £6K/month. Uses VYVEBrain + Claude / ChatGPT / Gemini interchangeably. |
+| **Alan Bird** | COO | Operations, governance, daily updates, accessibility feedback (Alan's Large-Text feedback is the reason the Accessibility plan exists). Flagged real member issues during product testing. |
+| **Phil** | Mental Health Lead | Clinical sign-off owner for HAVEN persona. Mental-health content, safe-messaging standards, professional-help signposting quality. Phil's sign-off is the gate to promoting HAVEN in marketing. |
+| **Vicki** | Sales | Outbound sales pipeline, enterprise prospecting, SDR work, top-of-funnel for new logos beyond Sage. |
+| **Cole** | Community | Member engagement, community rituals, retention play, live-session presence, leaderboard / charity narrative inside the community. |
+| **Calum Denham** | Fitness Content | Exercise programme curation, workout library content, PT-reviewed programming. Featured Everyman/VYVE Podcast guest. Current platform member. |
 
-## B. Team contacts
+## Appendix B — Legal and compliance
 
-| Name | Role | Email |
+| Item | Status |
+|---|---|
+| **Legal name** | VYVE Health CIC (Community Interest Company) |
+| **Companies House** | Registered |
+| **Business contact** | team@vyvehealth.co.uk |
+| **ICO Registration** | 00013608608 — registered March 2026, £52/year renewal |
+| **DPA template** | Complete — replace `[CLIENT ORGANISATION NAME]` with client name before sending |
+| **DPIA** | Complete — next review September 2026 |
+| **Data Retention Policy** | Complete |
+| **Breach Notification Procedure** | Complete |
+| **Privacy Policy** | Live at `www.vyvehealth.co.uk/privacy.html` |
+| **Terms of Service** | Live at `www.vyvehealth.co.uk/terms.html` |
+| **Compliance calendar** | CIC36 filings, DPIA reviews, insurance renewals, HSE audits documented |
+| **Google SCCs** | NOT in place — team@vyvehealth.co.uk is a personal Google account. Migrate to Workspace after first enterprise contract. |
+| **External DPO** | Required before 500 members — budget £2–5K/year |
+| **Employer reporting** | Aggregate only — no individual names ever visible to employers |
+| **WHISPA Programme** | £3.7M research programme launching May 2026 — potential research partnership. Lewis monitoring. |
+
+### GDPR data categories and processors
+Four of ten data categories are **Article 9 special category data:** health & wellbeing scores, physical measurements, sleep data, injury & medical. This data is sent to Anthropic (US) for AI processing. The Article 9 consent wording in the member T&Cs needs review and is on the enterprise-readiness checklist.
+
+Third-party processors:
+
+| Processor | Location | Data | Risk |
+|---|---|---|---|
+| Supabase | EU (Ireland) | All member data | Low |
+| Anthropic | US | Full profiles including health data | **High** |
+| Brevo | EU (France) | Email, name | Low |
+| Stripe | US / EU (Ireland) | Payment data | Low |
+| PostHog | US (EU endpoint) | Email (unhashed — fix on backlog) | Medium |
+| GitHub | US | Source code | Low |
+| HubSpot | EU | Sales CRM | Low |
+| Make | EU | Social content metadata | Low |
+
+## Appendix C — Compliance for enterprise procurement
+
+Questions Sage and similar are likely to ask, with pre-drafted answers (the `reports/09-enterprise-readiness.md` file has the full set of 12):
+
+1. **Data hosted:** Supabase Pro, West EU (Ireland).
+2. **Encrypted at rest:** AES-256 via AWS.
+3. **Encrypted in transit:** TLS 1.2+.
+4. **Access control:** RLS on 70 tables; JWT auth; service-role key server-side only.
+5. **Authentication:** Supabase Auth; individual credentials; no shared accounts.
+6. **Backup:** Daily + PITR (7-day retention), WAL archiving active. Off-platform EF backup is on the backlog.
+7. **Uptime target:** 99.5%.
+8. **Breach response:** Documented procedure, ICO notification path in place.
+9. **Data residency:** EU (Ireland) for primary data.
+10. **AI processing:** Anthropic (US) — special category data flagged.
+11. **Member data export:** Article 20 tool on backlog.
+12. **Member deletion:** Article 17 tool on backlog.
+
+## Appendix D — Key URLs and identifiers
+
+| Reference | Value |
+|---|---|
+| Supabase Project ID | `ixjfklpckgxrwjlfsaaz` (West EU / Ireland, Pro plan) |
+| Supabase host | `db.ixjfklpckgxrwjlfsaaz.supabase.co` |
+| Supabase Postgres version | 17.6.1.084 |
+| PostHog key | `phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl` |
+| Stripe payment link | `buy.stripe.com/00wfZicla1Em0NnaIB93y00` → `welcome.html` |
+| Stripe coupons | `VYVE15`, `VYVE10` |
+| HubSpot | `app-eu1.hubspot.com` · Hub ID: 148106724 |
+| Sage deal | HubSpot ID 495586118853 (Initial Contact stage) |
+| Google Drive backups | Folder ID `1h1kUDQiC8UQRrfaZhZNeTQKxcBdcNDSN` |
+| Action Ticks sheet | Google Sheet ID `1QyD_HGDGlDPC6oLaaFUF_9GYvL9hbak-aevxK0F-Hgg` |
+| Credentials reference | Google Sheet ID `1eLZMb7O9D2AdwKf6PDyCwTTHYQbDjrcGUk9PyrGayWs` |
+| Strategy dashboard | `online.vyvehealth.co.uk/strategy.html` (password: `vyve2026`) |
+| Demo reset | `online.vyvehealth.co.uk/index.html?reset=checkin` |
+| VYVE logo | `online.vyvehealth.co.uk/logo.png` |
+| Podcast page | `www.vyvehealth.co.uk/vyve-podcast.html` |
+| github-proxy PUT | `https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/github-proxy?path=FILE.html` (requires `x-proxy-key`) |
+| Make social publisher | Scenario 4950386 — BROKEN since 23 March |
+| Make analytics collectors | Scenarios 4993944, 4993948, 4993949 → Data Store 107716 |
+| Facebook Make connection expiry | **22 MAY 2026** — Lewis to renew urgently |
+| Onboarding form (current) | `www.vyvehealth.co.uk/welcome` (= `welcome.html` in `Test-Site-Finalv3`) |
+
+## Appendix E — Open decisions
+
+Things that are waiting on someone to decide, not on someone to build:
+
+| Decision | Owner | Blocking |
 |---|---|---|
-| Lewis Vines | CEO / Founder | lewisvines@hotmail.com |
-| Dean Brown | CTO / Co-Founder | deanonbrown@hotmail.com |
-| Alan Bird | COO | (to confirm) |
-| Phil | Mental Health Lead | (to confirm) |
-| Calum Denham | Performance / Fitness Content | (to confirm) |
-| Vicki | Sales | (to confirm) |
-| Cole | Community | (to confirm) |
-| Business / all outbound | | team@vyvehealth.co.uk |
+| B2B volume discount tiers (201–500, 501+ seats) | Lewis | First enterprise contract |
+| Annual pricing discount % | Lewis | Stripe setup |
+| Weekly check-in slider wording (mirror onboarding questions) | Lewis | UX consistency |
+| Health disclaimer wording | Lewis (draft ready) | App Store listing, onboarding checkbox |
+| Make social publisher — fix vs replace | Lewis | Content output recovery |
+| Wellbeing Scorecard hosting URL + form submission owner | Lewis + Dean | Lead-capture asset |
+| "Today's Progress" strip copy and framing | Lewis | Dashboard build |
+| Podcast rebrand timing (Everyman → VYVE) | Lewis | Content alignment |
+| HAVEN go-live promotion | Phil (clinical review) | Marketing positioning |
+| Google Workspace migration | Lewis | First enterprise contract (then action) |
+| External DPO service | Dean / Lewis | 500-member threshold |
+| 5 disabled Make tasks — keep or remove | Lewis | Workspace cleanliness (LinkedIn article, podcast brief, LinkedIn newsletter, PR pitch, employee advocacy pack) |
 
-## C. Open decisions (owner and timing)
+## Appendix F — Retired tech (never suggest)
 
-| Decision | Owner | Suggested timing |
-|---|---|---|
-| Volume discount tiers above 200 seats | Lewis | Before first enterprise contract |
-| Annual billing discount percentage | Lewis | Before first enterprise contract |
-| Health disclaimer wording (App Store + onboarding) | Lewis sign-off | Before next App Store submission |
-| HAVEN activation timing | Phil + Lewis | After clinical review |
-| Wellbeing Scorecard hosting (which domain, who builds the form) | Lewis | Not blocking |
-| Today's Progress strip copy | Lewis | Not blocking |
-| Podcast rebrand cutover timing | Lewis | Not blocking |
-| 5 disabled Make tasks — keep or delete | Lewis | Not blocking |
-| Google Workspace migration for team@vyvehealth.co.uk | Dean | Post-first-enterprise-contract |
-| External DPO contracting | Dean | Before 500 members |
-| Phil / Vicki / Cole email addresses on team@ | Lewis | Before public role announcement |
+| Technology | Replacement |
+|---|---|
+| Google Sheets (for portal data) | Supabase |
+| Apps Script (for portal) | Edge Functions (only Action Ticks strategy sheet + backup.gs remain permanently) |
+| Typeform | `welcome.html` questionnaire |
+| Looker Studio | HTML dashboards on GitHub Pages |
+| Auth0 | Supabase Auth (fully retired) |
+| PAD / Kahunas | PWA / Capacitor apps (never reference "Kahunas" in member-facing copy) |
+| Make (for Dean) | Dean no longer uses Make. Lewis only. All activity logging via `log-activity` EF v8. |
 
-## D. Glossary
+## Appendix G — Glossary
 
 | Term | Meaning |
 |---|---|
-| **CIC** | Community Interest Company — UK legal structure for mission-driven organisations. Social value advantage in public sector tenders. |
-| **EF** | Edge Function — Supabase server-side function written in TypeScript / Deno. |
-| **PWA** | Progressive Web App — website that installs to home screen and works offline. |
-| **RLS** | Row-Level Security — Postgres feature that scopes data access per-row. |
-| **JWT** | JSON Web Token — signed token proving a user's identity. |
-| **TDEE** | Total Daily Energy Expenditure — calorie maintenance value based on activity level. |
-| **MRR / ARR** | Monthly / Annual Recurring Revenue. |
-| **NRR** | Net Revenue Retention. |
-| **DPA / DPIA** | Data Processing Agreement / Data Protection Impact Assessment. |
-| **SCC** | Standard Contractual Clauses (for GDPR-compliant data transfers outside the UK/EEA). |
-| **Persona** | One of five AI coach characters (NOVA, RIVER, SPARK, SAGE, HAVEN). Assigned at onboarding. |
-| **Stream** | Exercise stream on the Hub (Workouts / Movement / Cardio). |
-| **Brain** | The `VYVEHealth/VYVEBrain` repo — operational knowledge for AI continuity across sessions. |
-| **Composio** | The tool platform Dean and Claude use to read/write GitHub and Supabase from AI sessions. |
-| **Capacitor** | Framework that wraps a PWA as native iOS and Android apps. |
+| **B2B** | Business-to-business — employer/enterprise contracts |
+| **B2C** | Business-to-consumer — individual £20/month subscriptions |
+| **CIC** | Community Interest Company — UK legal structure with social value / procurement advantages |
+| **CIPD** | Chartered Institute of Personnel and Development — source of the key workplace absence / sickness statistics we cite |
+| **DPA** | Data Processing Agreement |
+| **DPIA** | Data Protection Impact Assessment |
+| **DPO** | Data Protection Officer |
+| **EF** | Supabase Edge Function |
+| **HAVEN** | One of the five AI personas — gentle mental-health companion, non-judgmental, trauma-informed |
+| **ICO** | Information Commissioner's Office — UK data protection regulator |
+| **NOVA** | One of the five AI personas — high-performance coach |
+| **PPL** | Push/Pull/Legs — gym programme format |
+| **PWA** | Progressive Web App |
+| **PostHog** | Analytics platform — EU endpoint |
+| **PSS** | Public Sector Sales |
+| **RAND Europe** | Non-profit research institute — source of NHS / workplace cost research |
+| **RIVER** | One of the five AI personas — mindful wellness guide |
+| **RLS** | Row-Level Security (Postgres feature) |
+| **SAGE** | One of the five AI personas — knowledge-first mentor |
+| **SPARK** | One of the five AI personas — motivational powerhouse |
+| **SSP** | Statutory Sick Pay — UK employer obligation |
+| **TDEE** | Total Daily Energy Expenditure — nutrition calorie target calculation |
+| **VAPID** | Voluntary Application Server Identification — Web Push protocol |
+| **VYVE Brain** | The VYVEBrain GitHub repo — source-of-truth for AI-assisted operations |
+| **WHISPA** | UK Government's £3.7M workplace wellbeing research programme launching May 2026 |
+| **WCAG** | Web Content Accessibility Guidelines |
+| **Stress (inverted)** | VYVE-specific: stress slider is 1 (very stressed) → 10 (very calm). High score = good. |
+
+## Appendix H — Pointers into the brain repo
+
+Where to go for more detail on each topic:
+
+| Topic | Path |
+|---|---|
+| Latest session history | `brain/changelog.md` (223K chars — prepended chronologically) |
+| Live DB schema | `brain/schema-snapshot.md` (cron-refreshed) |
+| Post-audit remediation tracking | `brain/audit_updates.md` |
+| 11 April full system audit | `audits/VYVE_Full_System_Audit_2026-04-11.md` |
+| 11 April remediation plan | `audits/VYVE_Remediation_Plan_2026-04-11.md` |
+| 14 April 11-report audit series | `reports/01-security-audit.md` through `reports/11-master-action-plan.md` |
+| Task backlog | `tasks/backlog.md` |
+| Exercise restructure plan | `plans/exercise-restructure.md` |
+| Admin dashboard plan | `plans/admin-dashboard.md` |
+| Accessibility (Alan's feedback) | `plans/accessibility-large-text.md` |
+| Offline architecture build | `playbooks/phase-c-offline-build.md` |
+| AI cold-start prompt | `prompts/cold-start.md` |
+| Canonical startup prompt | `brain/startup-prompt.md` |
+| Human operator guide | `brain/how-to-use.md` |
+| Playbooks index | `playbooks/` (14 files covering architect, bug-fix, build, debug, execution, feature-build, github-operator, optimise, refactor, repo-audit, research, review, brain-sync, phase-c-offline-build) |
 
 ---
 
-*End of master document.*
+*End of VYVE Health Master Document.*
 
-*This is the single definitive reference for VYVE Health CIC. If the information here conflicts with any other VYVE document, this document takes precedence.*
+*This document is the single source of truth for all VYVE platform, business, and technical knowledge. Verified against live Supabase project `ixjfklpckgxrwjlfsaaz` and VYVEBrain repo main branch on 21 April 2026.*
 
-*For maintenance: update incrementally via PR commits to `VYVEHealth/VYVEBrain/brain/master.md`. Significant restructures should be preceded by questions to Lewis and Dean. Do not let this document go stale — stale master docs are worse than no master doc.*
+*Confidential — VYVE Health CIC — April 2026.*
