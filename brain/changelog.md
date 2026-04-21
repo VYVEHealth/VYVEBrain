@@ -1,3 +1,54 @@
+## 2026-04-22 — Certificate System Refactor
+
+**COMPLETED: Certificate Storage → Database Rendering Architecture**
+
+### Problem Solved
+- Certificates stuck on infinite loading in Safari due to Edge Function redirect to non-existent GitHub Pages URLs
+- Complex three-layer architecture: Supabase Storage → certificate-serve EF → GitHub Pages redirect
+- Modal iframe approach caused cross-origin issues and poor UX
+
+### Solution Implemented
+**Architecture Change:** Moved from pre-rendered storage files to client-side database rendering
+
+### Files Deployed
+- **NEW:** `/certificate.html` - Auth-gated viewer page (14KB, 435 lines)
+  - Fetches certificate by UUID from `member-dashboard` endpoint
+  - Renders using existing design tokens (Playfair Display, gold corners, charity strip)
+  - Download PDF via `window.print()` with A4 landscape CSS
+  - Error states for missing/invalid certificates
+
+- **UPDATED:** `/certificates.html` - Library page refactored (17KB, 491 lines)
+  - Certificate cards now link to viewer (`/certificate.html?id=<uuid>`)
+  - Removed modal/iframe system entirely
+  - Cleaned up orphaned CSS (modal overlay, iframe wrapper)
+
+- **UPDATED:** `sw.js` - Cache bumped to `vyve-cache-v2026-04-21m`
+
+### Edge Functions Deployed
+- **member-dashboard v45:** Added certificate `id` to select query for new viewer
+- **certificate-checker v23:** Removed storage upload/HTML generation, uses insert UUID for certificate_url
+- **certificate-serve v24:** Returns 410 Gone, redirects to certificates library (graceful degradation)
+
+### Database Migration
+- Updated existing certificate URLs to new format: `/certificate.html?id=<uuid>`
+- Dean's certificates migrated:
+  - No. 0001: `id=2391eb97-82c6-4952-addd-0ae6c80b6210` (sessions)
+  - No. 0002: `id=c90d29d2-bbd9-48dc-aaca-b57929e2f999` (habits)
+
+### Architecture Benefits
+- **Single source of truth:** certificates table (no storage sync)
+- **No cross-origin issues:** Same domain rendering
+- **Always current name:** Uses live member data (no snapshot)
+- **Simpler deployment:** No storage upload or GitHub Pages sync
+- **Backward compatibility:** Old Brevo email links redirect gracefully
+
+### Decisions Confirmed
+- **Name rendering:** Always use current member name (no freeze at issue time)
+- **External sharing:** Auth-gated only (download PDF for sharing)
+
+**Result:** Certificate system now loads reliably across all browsers including Safari.
+
+
 ## 2026-04-21 SESSION SUMMARY | Leaderboard UI upgrade — classic 1→N board, time ranges, scope tabs, anon banner
 
 **Span.** 2026-04-21 22:24 UTC → 23:15 UTC (~50 min, Dean-approved plan before build, execute-through).
