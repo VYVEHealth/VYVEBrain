@@ -1,3 +1,33 @@
+## 2026-04-21 SESSION SUMMARY | Check-in pages fix (wellbeing + monthly)
+
+**Span.** 2026-04-21 20:40 UTC → 20:55 UTC (15 min)
+
+**Context.** Lewis reported both wellbeing-checkin and monthly-checkin pages "not loading properly". Two distinct root causes found and fixed.
+
+**Root causes identified (both from platform_alerts evidence, not guesswork):**
+1. **wellbeing-checkin.html** — 4 unterminated `<script>` tags in tail of file (prior partial push had chopped closing tags). Browser threw `SyntaxError: Unexpected token '<'` at line 871, killing all script execution after `init()`. Platform alerts: 6 instances in last 4 days (Lewis hit today 18:18, repeat occurrences 17–21 April).
+2. **monthly-checkin EF** — Frontend sends `GET /monthly-checkin?email=...` in URL. EF only read `email` from JWT (via `sb.auth.getUser(token)`) or POST body — never from URL query string. Result: `400 Missing email` for every user whose JWT didn't resolve (most of them, given the post-audit JWT race condition). Zero successful monthly check-ins ever in the DB.
+
+**Shipped.**
+- `monthly-checkin` EF v16 → v17: added URL searchParams fallback for email (~5 lines of code, surgical change). Live-tested post-deploy: `GET ?email=lewisvines@hotmail.com` with anon token now returns 200 with correct `monthName` and `memberGoal`. ([deployment log](https://supabase.com/dashboard/project/ixjfklpckgxrwjlfsaaz/functions))
+- `wellbeing-checkin.html` — rebuilt tail from line 871 onwards: closed main config/init script, completed truncated SW registration, split offline-handler + skeleton-timeout IIFEs into properly-closed blocks, moved `</div><!-- /app -->` to correct position after `</main>`. Balance verified: 8/8 scripts, 118/118 divs, 1/1 main/body/html. No brace/paren/bracket imbalances.
+- `sw.js` cache bumped to `vyve-cache-v2026-04-21g-checkin-fix` to invalidate the broken cached HTML.
+- Atomic commit: [7522b0f](https://github.com/VYVEHealth/vyve-site/commit/7522b0fe49cf1161385d16adae23730559e024f4)
+
+**Live verification (post-push).**
+- wellbeing-checkin.html: 200 OK, 8/8 script tags balanced, truncated SW string gone, proper `</main></div><!-- /app -->` structure present.
+- sw.js: 200 OK, new cache name live, old cache name absent.
+- monthly-checkin EF: GET with query-only email returns 200 with correct member data.
+
+**Key learnings.**
+- The existing `platform_alerts` + client-side skeleton-timeout watchdog instrumentation was decisive. Both root causes came from reading the alerts table, not from reproducing the bug locally. Keep this instrumentation.
+- **Contract-check rule for future sessions:** when an EF and its calling page go through a security audit, re-verify that the frontend's call shape still matches what the EF reads. The monthly-checkin EF stopped reading `?email=` at some point during the 11 April audit, but the frontend was never updated — and since no one had ever submitted a monthly check-in, the regression went unnoticed for 10+ days.
+- **Structural fragility:** partial HTML pushes (find-replace gone wrong) can leave unterminated tags that pass a visual diff but crash the JS parser. Worth adding a CI-style script-tag balance check before push for .html files.
+
+**Follow-up to schedule.**
+- Monitor `platform_alerts` for 48h for new `skeleton_timeout_monthly-checkin` or wellbeing-checkin `js_error` — if any fire, re-investigate immediately.
+- Consider: move the `window.vyveCurrentUser` auth-ready wait in both pages behind a `vyve-auth-ready` custom event emitted by auth.js, rather than polling. Cleaner, and removes the "init runs before auth" class of bug entirely.
+
 ## 2026-04-21 SESSION SUMMARY | Full day: Exercise restructure polish → light-mode sweep → nav unification
 
 **Span.** 2026-04-20 17:24 UTC → 2026-04-20 23:52 UTC (~6.5 hours across multiple chats).
