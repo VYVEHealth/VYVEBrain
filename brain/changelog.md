@@ -1,3 +1,53 @@
+## 2026-04-21 SESSION SUMMARY | Leaderboard 4-phase refactor
+
+**Span.** 2026-04-21 21:41 UTC → 22:07 UTC (26 min, Dean-led review between phases)
+
+**Context.** The leaderboard showed Dean with "87 activities this month" — wrong. Two root causes, both pre-diagnosed by Dean before the session: (1) the `leaderboard` EF v9 fanned out raw SELECTs across 5 source tables with no per-day cap, and (2) `member_home_state` had no calendar-month buckets AND its `recent_*_30d` columns used raw `COUNT(*)` so `recent_habits_30d = 53` under a 1/day cap (impossible). Dean asked for a 4-phase plan, stop between phases for numbers review.
+
+**Phase 1 — schema migration.** Migration `leaderboard_monthly_buckets_and_display_name_pref`:
+- `members.display_name_preference text NOT NULL DEFAULT 'anonymous'` with `CHECK (... IN ('anonymous','initials','first_name','full_name'))`; 17 existing rows defaulted.
+- `member_home_state.{habits,workouts,cardio,sessions,checkins}_this_month integer NOT NULL DEFAULT 0` — BST calendar-month buckets.
+
+**Phase 2 — refresh_member_home_state rewrite.** Migration `refresh_member_home_state_monthly_buckets_and_monotonic_bests`. Existing body preserved; three targeted changes:
+1. **Dedup fix** on `recent_*_30d`: habits now `COUNT(DISTINCT activity_date)` (1/day cap); workouts, cardio, sessions now `SUM(LEAST(2, daily_count))` per day grouped (2/day cap); sessions still UNIONs `session_views + replay_views`.
+2. **Month buckets** populated from `date_trunc('month', (now() AT TIME ZONE 'Europe/London')::date)` through `v_today` using the same cap-aware dedup as all-time totals.
+3. **Monotonic `*_streak_best`** via `GREATEST(member_home_state.<col>, EXCLUDED.<col>)` on UPDATE — prevents best-streak regression if source data is ever modified.
+Then `SELECT refresh_member_home_state(email) FROM members` across all 17.
+
+**Phase 2b — last_activity_at (called out mid-Phase 3, applied as a scoped migration before touching the EF).** Migration `member_home_state_last_activity_at` + `refresh_member_home_state_persist_last_activity_at`. `v_last_activity_at` was already computed, just never persisted. Added nullable `timestamptz` column, persisted value in INSERT + UPDATE. One-time rebuild again. Needed for the streak tiebreaker — keeps the EF a pure read against the aggregation layer.
+
+**Phase 3 — leaderboard EF v9 → v10.** Full rewrite, response contract backwards-compatible. Reads `member_home_state + members + employer_members` via one `Promise.all`. Cap-aware monthly totals from home-state. Optional `?scope=all|company|my-team` (defaults to `all`). Display-name resolver: `anonymous` → "Member", `initials` → `F+L`, `first_name` → first, `full_name` → `First Last`; caller always sees their own first name. Streak tiebreak = `last_activity_at DESC`, final tiebreak = `email.localeCompare`. Added `display_name` to each `above[]` entry (additive, doesn't break v9 callers). Top-level `scope` echoed for the frontend.
+
+**Phase 4 — frontend.** Single atomic commit `a096c10` to `vyve-site@main`:
+- `leaderboard.html`: renders `row.display_name` (falls back to "Anonymous" italic when EF returns "Member" for anonymous pref); tie-aware gap copy — "You're tied for rank N — next activity breaks it" when the directly-above entry has the same count (detected via `above[above.length-1].count === your_count`); `escapeHTML` helper added and applied to `row.display_name` + `lbData.first_name` everywhere they hit `innerHTML` (closes the XSS audit item flagged in the 16 April security audit for this specific code path).
+- `settings.html`: new **Privacy** section between Notifications and Apple Health with a 4-way `theme-btn`-style picker (Hidden / Initials / First name / Full name) wired to `members.display_name_preference`. `loadProfile` select now includes the new column; `populateFromCache` + cache-write paths updated; `setDisplayNamePref()` PATCHes members, updates the cached `vyve_settings_cache.member.display_name_preference` in place, and busts `vyve_leaderboard_cache` (the member's display name has changed for everyone else seeing them).
+- `sw.js`: cache bumped to `vyve-cache-v2026-04-21l-leaderboard-refactor`.
+
+**Verification.**
+- Dean's row post-rebuild: habits_total/workouts_total/cardio_total/sessions_total/checkins_total = 30/23/9/35/7 (unchanged), habits_this_month/workouts_this_month/cardio_this_month/sessions_this_month/checkins_this_month = 17/16/4/20/4, recent_habits_30d = **21** (was 53 — bug fixed), recent_workouts_30d = 19, overall_streak_current/best = 7/9 (unchanged).
+- Sanity sweep across all 17: zero flags (`habits_this_month` ≤ days-elapsed, `recent_habits_30d` ≤ 30, per-type monthly ≤ 2×days-elapsed, 30d ≤ 60).
+- Live EF call as Dean: `all.your_count = 61`, rank 1/17. Previously ~87 inflated.
+- Live EF call as Lewis (rank 6): `above[]` populates with 5 entries correctly sorted, tied streaks break by last_activity_at DESC (Stuart → Paige → Cole → Calum → Alan matches home-state ordering).
+- Display-name resolver tested live: `first_name`/`initials`/`full_name` all render correctly in `above[]`; reverted test writes afterwards so DB is as-found.
+- Post-push re-read from `main` confirmed all frontend markers landed.
+
+**Out of scope / left open.**
+- Scope tabs (All / Company / My team) in `leaderboard.html` — EF supports it via `?scope=`; frontend UI deferred until live employer rows exist (today: 0 rows in `employer_members`).
+- Test-account filtering (three `deanonbrown*` dupes + `team@vyvehealth.co.uk`) still counted under `scope=all`. Product decision, not an aggregation fix.
+- Lewis's `first_name` stored as `"LEWIS"` uppercase in `members` — cosmetic onboarding bug, affects display everywhere, raise separately.
+- `leaderboard` EF still `verify_jwt: false` — matches v9 and the function does its own JWT parse via `supabase.auth.getUser`. On the open security audit list; not flipped silently.
+
+**Key learnings.**
+- The aggregation-layer pattern already landed for `member-dashboard` (v44, 20 April) — applying it to leaderboard brought the same wins: single read, cap-aware counts, no fan-out. Pattern is now proven across two EFs and should be the default for any member-list read.
+- Dedup dropdown: habits use distinct-days (1/day), workouts/cardio/sessions use `SUM(LEAST(cap, daily_count))` — keep these four patterns in one place, reuse across any future bucket columns.
+- Monotonic best-columns are cheap to add via `GREATEST` in the UPSERT — same trick belongs anywhere a "personal best" lives on a row that gets rewritten.
+- When a function persists a new column, rebuild immediately — keeps home-state consistent before anything downstream (EF, cron, UI) reads the gap.
+
+**Follow-ups to schedule.**
+- When employer_members gets its first row (Sage), wire `leaderboard.html` scope tabs and test the `?scope=company|my-team` code paths. EF is already correct.
+- Phase 4 frontend work surfaced the need for `display_name` in ranked lists elsewhere (e.g. certificates, sessions `session_chat`). Consider a `vyve-name-resolver.js` helper that every client-side ranked-list renderer imports, so the same resolver rules live in one place.
+- Tie copy at rank 1 (when two members share `your_count` and one of them is the caller) currently falls through to the "top of the board" branch — probably fine, but worth a follow-up check once two members actually tie at the top.
+
 ## 2026-04-21 SESSION SUMMARY | Check-in pages fix (wellbeing + monthly)
 
 **Span.** 2026-04-21 20:40 UTC → 20:55 UTC (15 min)

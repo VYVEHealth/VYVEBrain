@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 21 April 2026 (Session: Light-mode semantic token layer + nav chrome unification + sw.js network-first + nav.js body-prepend fix)
+> Updated: 21 April 2026 (Session: Leaderboard 4-phase refactor — aggregation-layer read, monthly buckets, display-name preferences, tie-aware copy)
 
 ---
 
@@ -32,6 +32,7 @@
    - ~~sw.js network-first for HTML + skipWaiting + clients.claim — 21 April (`d323d11`). **Implication:** HTML changes reach users on next reload without cache bumps.~~
    - ~~wellbeing-checkin.html + monthly-checkin.html: removed bespoke nav markup, added nav.js, back button + bottom nav now work — 21 April (`f78a7ba`)~~
    - ~~nav.js injects at `document.body.prepend()` — fixes mobile-page-header disappearing on pages with `#skeleton` wrapper — 21 April (`c4b90fe`)~~
+   - ~~Leaderboard refactor (Phases 1–4): `members.display_name_preference` + `member_home_state` monthly buckets + `last_activity_at`; `refresh_member_home_state` fixed dedup on `recent_*_30d` + monthly columns + monotonic `*_streak_best`; `leaderboard` EF v9→v10 now reads aggregation-layer only (cap-aware counts, display-name resolver, streak tiebreak by `last_activity_at`, optional `scope` param); leaderboard.html + settings.html wired with Privacy section for name preference, tie-aware gap copy, escapeHTML on member-controlled strings — 21 April (`a096c10`)~~
 6. **Target: sell-ready by May 2026**
 
 ---
