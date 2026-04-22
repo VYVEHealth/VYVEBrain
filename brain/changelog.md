@@ -1,3 +1,58 @@
+## 2026-04-23 02:30 — Shell 3 Sub-scope A UI: three admin panels in admin-console.html
+
+### What shipped
+
+**`admin-console.html` extended (+23.7KB, 92.7KB → 116.4KB)** — surgical extension on `vyve-command-centre@f3d3f4f`. No rewrite; five targeted `str_replace`-style edits against the existing 2070-line file.
+
+New member-detail sections (ordered after the existing read-only Programme section):
+
+1. **Programme controls** — current state card + 4 admin actions: Pause / Resume / Advance week… / Swap plan…
+2. **Habits** — lists active + inactive assignments with library join (pot, difficulty, assigned_by); Assign new habit opens a library `<select>` grouped by `habit_pot`
+3. **Weekly goals** — current UK week (EF computes), 5 numeric inputs for targets (0..14), Save button opens the reason modal
+
+### Design decisions
+
+- **One new reason modal**, not field-specific. The existing `openScaryModal` is tightly coupled to `members`-column edits (`BOOL_FIELDS`, `INT_FIELDS`, `FIELD_LABELS` lookups, `.edit-row[data-field=…]` DOM rewriting). Building a generic `openReasonModal({ title, bodyHtml, confirmLabel, onConfirm })` was ~40 lines and gave the three Shell 3 panels a cohesive UX. Dismissal wired for backdrop click and Escape key, mirroring the scary modal exactly.
+- **CSS reused verbatim**. `.modal-backdrop`, `.modal`, `.field`, `.current`, `.warn`, `.actions`, `.btn-primary`, `.btn-cancel`, `.edit-section`, `.edit-row`, `.edit-save`, `.edit-cancel`, `.empty`, `.hint` — all existing classes handle the new markup. Zero CSS added.
+- **Three `apiHabits`/`apiProgramme`/`apiWeeklyGoals` helpers** via a shared `apiShell3(url, action, params)` — mirrors `apiEdit` exactly, but normalises Supabase gateway 401s (the `UNAUTHORIZED_NO_AUTH_HEADER` / `UNAUTHORIZED_INVALID_JWT_FORMAT` responses that aren't our `{success,error}` shape) into the unified return value.
+- **`toggleSection` dispatch ordering**. The new panels use `title.startsWith('programme controls')` etc. checked *before* the existing `title.includes('programme')` dispatch so the new admin panel wins over the read-only one. Order matters.
+- **Swap plan UX compromise**. The v1 `admin-member-programme` EF has no `list_library` action, so the Swap modal currently takes a library-programme UUID as free text with a hint to look it up in Supabase SQL. Good enough for the 3 admins who know what they're doing; UI-only ergonomics improvement worth adding in v1.1 (one-line EF extension, one-line UI change).
+
+### Latent Shell 2 bug caught and fixed this session
+
+`toggleSection` at L1610 previously had dispatches for Profile / Programme / Certificates / Notifications / Emails / Push — but **no dispatch for Audit Log**. The Audit Log accordion section exists in the DOM (`id="audit-content"`) and `loadAuditLog()` is fully implemented, but clicking the accordion header did nothing beyond toggling the open class. Fixed by adding `else if (title.includes('audit log')) loadAuditLog();` to the dispatch.
+
+**This means Test 4 of the Shell 2 smoketest (Audit Log accordion renders) would have failed for reasons unrelated to Shell 2 EF correctness.** Worth knowing before re-running the smoketest — the fix is in the same ship.
+
+### Validation
+
+- `node --check` exits 0 on the extracted 79.8KB JS block — syntactically valid
+- `<script>` / `</script>` tag balance: 2 / 2 ✅ (Hard Rule 43)
+- `<style>` / `</style>` balance: 1 / 1 ✅
+- 21 structural checks green (3 new DOM ids, reason modal DOM, 3 renderers, 3 EF URL consts, 3 api helpers, 4 toggleSection dispatches including the audit log fix, existing Shell 2 markers intact)
+
+### Browser JWT round-trip — still untested
+
+All three Shell 3 EFs and the Shell 2 edit EF have never been hit with a real admin JWT from the browser. The **full end-to-end test requires Dean (or another active admin) to**:
+
+1. Open `https://admin.vyvehealth.co.uk/admin-console.html`
+2. Open any member detail (default: self)
+3. Exercise the three new accordions plus the existing Audit Log accordion
+4. Confirm each action writes an audit row (visible in the Audit Log panel after refresh)
+
+See updated `plans/admin-console-shell2-smoketest.md` for the Shell 2 portion and `plans/admin-console-shell3-ui-smoketest.md` (new file — next commit) for the Shell 3 UI portion.
+
+### Commits
+
+- Frontend: [`f3d3f4f`](https://github.com/VYVEHealth/vyve-command-centre/commit/f3d3f4fda6281dad2b42dc9fbf32a8ba80c58b77) on `vyve-command-centre@main`
+- Brain commit: this entry + smoketest patch + backlog update
+
+### Next session
+
+Browser-side smoketest to close Sub-scope A fully. Then Sub-scope B (`admin-bulk-ops` EF + multi-select in member list). Bulk ops has a clear spec already (plans/admin-console-shell3-spec.md §5) — should be one session for the EF, another for the UI (member-list multi-select is a different kind of surgical edit).
+
+---
+
 ## 2026-04-23 01:40 — Shell 3 Sub-scope A ship: admin-member-weekly-goals v1 (Sub-scope A complete)
 
 ### What shipped

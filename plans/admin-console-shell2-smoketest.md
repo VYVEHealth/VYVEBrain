@@ -77,6 +77,8 @@ LIMIT 1;
 
 ## Test 4 — Audit Log accordion renders
 
+**Prerequisite:** the 23 April Shell 3 UI commit (`vyve-command-centre@f3d3f4f`) fixed a latent `toggleSection` bug where the Audit Log accordion had no dispatch. Pre-fix, clicking the accordion would toggle open but never call `loadAuditLog()`, leaving the "Click to load audit log…" placeholder. If testing against any commit older than `f3d3f4f`, this test will fail for reasons unrelated to Shell 2 EF correctness.
+
 **Goal:** confirm the UI reads back what Tests 1 and 3 just wrote.
 
 1. Scroll to the **Audit Log** accordion section in the member detail.
@@ -84,6 +86,7 @@ LIMIT 1;
 
 **Expected:**
 - At least three rows (Test 1 edit, Test 3 persona edit, Test 3 rollback — or more depending on other testing).
+- Also visible: simulation rows from Sub-scope A DB-layer smoketests (ip_address=`sim`). The UI does not filter these out; they are real audit rows and correctly belong in the log.
 - Each row shows: admin email, action, column, old → new, reason (if present), timestamp.
 - Newest first.
 
