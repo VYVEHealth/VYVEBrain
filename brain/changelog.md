@@ -1,3 +1,73 @@
+## 2026-04-23 01:10 — Shell 3 Sub-scope A ship: admin-member-programme v1
+
+### What shipped
+
+**Edge Function `admin-member-programme` v1** — status ACTIVE, `verify_jwt: true`. Endpoint at `/functions/v1/admin-member-programme`. 516 lines. Same pattern as `admin-member-edit` v4 / `admin-member-habits` v1. Actions:
+
+- `get_programme` — returns cache summary (id, week/session, is_active, source, programme_name, split_type, weeks_count) with optional `include_json: true` to return full programme JSON
+- `pause_programme` — `is_active=false, paused_at=now()`
+- `resume_programme` — `is_active=true, paused_at=null`
+- `advance_week` — set `current_week` to a valid value (1..`plan_duration_weeks`), reset `current_session=1`
+- `swap_plan` — copy `programme_json` from `programme_library`, reset week/session, `source='library'`, `source_id=<library_id>`, full upsert on `member_email`
+
+Shape validation on `swap_plan`: library programme_json must have `weeks[]` as a non-empty array and `weeks[0].sessions[]` non-empty. Malformed library rows return 422, not 500 — guards against corrupting the member's cache with junk.
+
+Hard Rule 44 compliance: `swap_plan` uses `.upsert({...}, { onConflict: 'member_email' })`. All other mutations are `.update()` against the already-existing row.
+
+### Scope decision: `regenerate` cut from v1
+
+Spec §4.2 described `regenerate` as a "fire-and-forget call to `generate-workout-plan`." Inspection of the live `generate-workout-plan` EF (deployed as platform version 11) shows it expects a **rich onboarding-shaped payload** of ~15 fields: `trainingLocation`, `gymExperience`, `trainDays`, `trainingGoals`, `specificGoal`, `injuries`, `scores.{wellbeing,stress,energy}`, `lifeContext`, `equipment`, `avoidExercises`, `lifeContextDetail`, etc. It does not take `{email}` and read the member row itself.
+
+That means a proper `regenerate` implementation needs a field-mapping layer that transmutes `members` columns into the onboarding payload shape, plus handling for: incomplete onboarding data, Anthropic API failures, 40–60s synchronous generation time, and the `max_tokens` trip hazard the EF already guards against.
+
+Decision: ship v1 with 4 mutating actions + `get_programme`. The `regenerate` route responds **HTTP 501** with a clear deferral message pointing to v1.1. `swap_plan` covers the practical admin use case (reset a member's programme to a known-good library plan without AI involvement).
+
+### Source value alignment
+
+Spec §4.2 said `source='admin_swap'` for library-sourced plans. Live DB shows `workout_plan_cache.source` already uses `{onboarding, shared, library}` across the 12 existing rows. Aligned to the existing convention: `swap_plan` writes `source='library'`. `admin_regen` reserved for the future `regenerate` action.
+
+### Smoke test results
+
+Same three-layer pattern as `admin-member-habits` v1. Test target: `deanonbrown@hotmail.com` (own record, safe). Used a persistent backup table (`_admin_programme_smoketest_backup`, since dropped) to guarantee restore since `CREATE TEMP TABLE` doesn't persist across Supabase MCP `execute_sql` calls.
+
+| Layer | Test | Result |
+|-------|------|--------|
+| Deploy | v1 ACTIVE, verify_jwt:true | ✅ |
+| HTTP  | No auth / bad bearer → 401 | ✅ (Supabase gateway) |
+| HTTP  | OPTIONS preflight → 200 + correct CORS headers | ✅ |
+| DB    | pause_programme (is_active true → false, paused_at set) | ✅ |
+| DB    | resume_programme (is_active false → true, paused_at null) | ✅ |
+| DB    | advance_week (week 1 → week 3, session reset to 1) | ✅ |
+| DB    | swap_plan (programme_json fully replaced, source→library, plan_duration_weeks 8 → 6) | ✅ |
+| Restore | Dean's row byte-identical to pre-test state (including programme_json JSONB equality) | ✅ |
+| Audit | 4 rows in `admin_audit_log` with correct action vocabulary (`programme_pause`, `programme_resume`, `programme_advance_week`, `programme_swap`) | ✅ |
+
+Cumulative `admin_audit_log` sim rows: 7 (3 from habits, 4 from programme). Table-level sanity: actions/columns/names all align with spec.
+
+### Pattern lesson surfaced this session
+
+**`CREATE TEMP TABLE` doesn't work across `execute_sql` calls** — each call is a fresh session and temp tables scope to the session. For multi-call DB simulations, use a regular table with a unique name prefix (e.g. `_admin_programme_smoketest_backup`) and explicitly `DROP` it in the cleanup step. Adding this to the migrations log as a testing primitive.
+
+### Still open (blocked on browser-side JWT)
+
+- Full JWT round-trip (code path identical to two already-verified EFs)
+- `get_programme` read action (SELECT-only, safe; DB correctness confirmed by the restore step)
+- Role gating for `viewer`
+- Frontend UI panel
+
+### Commits
+
+- EF deploy: `admin-member-programme` v1, id `3129f5c9-7ccb-41eb-bfe7-6d4361edd36e`
+- Brain commit: this entry + `plans/admin-console-shell3-migrations.sql` addendum
+
+### Next session
+
+Ship `admin-member-weekly-goals` v1 (last EF in Sub-scope A; simpler — just `weekly_goals` upsert on `(member_email, week_start)`, no JSONB, no shape validation beyond Monday-check).
+
+Then: frontend UI panels for all three A-EFs in `admin-console.html`, batched as one UI session.
+
+---
+
 ## 2026-04-23 00:30 — Shell 3 Sub-scope A ship: admin-member-habits v1
 
 ### What shipped

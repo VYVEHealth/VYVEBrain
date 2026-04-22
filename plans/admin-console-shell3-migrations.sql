@@ -50,3 +50,32 @@ Per spec §9:
 - Sub-scope E (audit search): none required
 
 Sub-scope A needs no further migrations beyond §1.
+
+---
+
+## 2. `admin-member-programme` v1 — no migration required (23 April 2026)
+
+Confirmed during smoke-test prep: `workout_plan_cache` already has the `UNIQUE(member_email)` constraint the EF's upsert path needs, and the existing `source` column already accepts `'library'` (no enum/check restricts it). `programme_library.programme_json` shape validated in-EF via `validateProgrammeJson()` helper before write. Zero DDL changes.
+
+## Testing primitive: DB-layer simulation requires a *persistent* backup table
+
+The simulation pattern used for `admin-member-habits` v1 worked because the test was additive (insert a new row, delete it). For `admin-member-programme` v1, the simulation was destructive (`swap_plan` replaces the whole row including `programme_json`), so state needed to be captured and restored.
+
+**Important:** `CREATE TEMP TABLE` does NOT persist across Supabase MCP `execute_sql` calls. Each call is a fresh session. Use a regular (non-temp) table with a clearly-prefixed name and drop it as the final step:
+
+```sql
+-- Start of sim
+DROP TABLE IF EXISTS _admin_programme_smoketest_backup;
+CREATE TABLE _admin_programme_smoketest_backup AS
+SELECT * FROM <target_table> WHERE <predicate>;
+
+-- ... run destructive sims ...
+
+-- End of sim
+UPDATE <target_table> t
+SET <all_columns> = (SELECT ... FROM _admin_programme_smoketest_backup b WHERE ...)
+WHERE <predicate>;
+DROP TABLE _admin_programme_smoketest_backup;
+```
+
+Restore verification should include a JSONB/column-level equality check (`wpc.programme_json = b.programme_json`) — not just spot-checks on individual fields.
