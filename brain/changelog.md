@@ -1,3 +1,56 @@
+## 2026-04-22 16:54 — Admin Console Shell 2 Complete — Inline member edits with audit logging
+
+**Context:** Shell 1 shipped April 22 (read-only admin console at admin.vyvehealth.co.uk/admin-console.html). Database prepped: admin_users role CHECK expanded for coach roles, admin_audit_log table live with RLS + 5 indexes. admin-dashboard EF v9 handles reads.
+
+**Shell 2 scope completed:** Added safe inline editing to member detail page with comprehensive audit trail.
+
+**Backend: admin-member-edit Edge Function v1**
+- JWT verification + admin_users allowlist check
+- Safe field validation (display_name, company, weekly_goal_target, monthly_goal_target, default_programme, notification_preferences, privacy_accepted, health_data_consent)
+- Sensitive field validation with mandatory reason (persona, assigned_habits, workout_programme, weekly_goals)
+- Comprehensive audit logging to admin_audit_log: admin_email, admin_role, member_email, action, table_name, column_name, old_value (jsonb), new_value (jsonb), reason, ip_address, user_agent, created_at
+- CORS headers for admin console domain
+- Deployed as verify_jwt: true
+
+**Frontend: Enhanced admin-console.html**
+- Two edit patterns implemented:
+  - Inline edits (pencil icon): Safe fields become inline input with save/cancel buttons
+  - Confirmation-required edits (warning icon): Modal dialog with mandatory reason field
+- XSS-safe rendering via escapeHtml() function
+- Success/error toast notifications
+- Audit trail timeline per member (displays recent admin_audit_log entries)
+- Member search functionality
+- Responsive design with VYVE brand tokens
+- Dark/light theme support with localStorage persistence
+
+**Security & Audit Features**
+- All edits write to admin_audit_log per existing schema
+- IP address and user agent capture for full GDPR audit trail
+- Field-level validation prevents unauthorized edits
+- Reason requirement for sensitive fields (persona changes, habit assignments, programme switches)
+- Member detail view refresh after successful edits
+- Network error handling with user feedback
+
+**Testing Required**
+- End-to-end edit flow for both safe and sensitive fields
+- JWT auth validation
+- Admin allowlist enforcement
+- Audit log writes and timeline display
+- Responsive layout on mobile
+- Toast notification timing
+
+**Files Created**
+- admin-member-edit Edge Function (Supabase)
+- admin-console-shell2.html (complete frontend)
+
+**Integration Notes**
+- Reuses existing admin-dashboard EF v9 for reads (no changes needed)
+- Compatible with existing admin_users table structure
+- Audit log RLS ensures service-role only access
+- Ready for deployment to admin.vyvehealth.co.uk
+
+---
+
 ## 2026-04-22 23:29 — Admin Console Shell 1 + DB Prep
 
 **Phase 1: Database Preparation (shipped to production `ixjfklpckgxrwjlfsaaz`)**
