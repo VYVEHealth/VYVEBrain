@@ -694,7 +694,7 @@ Refreshed by:
 | Function | Version | Purpose |
 |---|---|---|
 | `onboarding` | v57+ | New member onboarding (two-phase, persona + habits + programme + welcome) |
-| `member-dashboard` | v30+ | Member dashboard data API — JWT-only, no `?email=` fallback |
+| `member-dashboard` | v49+ | Member dashboard data API — **must stay `verify_jwt: false`** (Rule 21). Certificate `id` field included since v48 for viewer page. |
 | `wellbeing-checkin` | v22+ | Weekly check-in + AI recommendations |
 | `monthly-checkin` | v5+ | Monthly check-in + AI report |
 | `log-activity` | v8+ | PWA activity logging — replaced Make for all activity writes |
@@ -705,10 +705,11 @@ Refreshed by:
 | `daily-report` | v16+ | Daily cron 08:05 UTC |
 | `weekly-report` | v6+ | Monday 08:10 UTC |
 | `monthly-report` | v6+ | 1st of month 08:15 UTC |
-| `certificate-checker` | v10+ | Daily cron 09:00 UTC — generates HTML certs with global sequential numbers |
-| `certificate-serve` | v7+ | Serves certificate HTML |
+| `certificate-checker` | v24+ | Daily cron 09:00 UTC — writes DB row only (storage upload dropped in v23 cert refactor). `certificate_url` points to `/certificate.html?id=<uuid>` viewer page. |
+| `certificate-serve` | v26+ | **Retired in cert refactor** — returns 410 Gone with redirect to `/certificates.html` for legacy Brevo email links. |
 | `github-proxy` | v15+ | GitHub read/write to `vyve-site` — requires `x-proxy-key` header |
 | `off-proxy` | v9+ | Open Food Facts proxy for `log-food.html` |
+| `share-workout` | v10+ | Programme/session sharing via 6-char code (`share_code`) + UUID-ish 8-char share `id`. Handles generate, lookup by code, save single session, add full programme (upsert on `workout_plan_cache.member_email`). Has profanity blocklist on generated codes with leet-speak normalisation. |
 | `send-session-recap` | — | Session recap emails |
 | `send-journey-recap` | — | Journey recap emails |
 | `backfill-auth-users` | — | Auth user creation utility |
@@ -950,6 +951,9 @@ These rules have been earned through shipped bugs. Any AI or engineer working on
 40. **Mobile `.wrap` padding template:** `padding: 24px 16px 100px` at `@media(max-width:768px)`. 24px top clears mobile header; 100px bottom clears bottom nav.
 41. **Use the semantic token layer for new CSS.** Reserve `--teal-lt` and `--teal-xl` for graphical accents only.
 42. **HTML cache-bumps are no longer mandatory** (post-21 April network-first). Still bump for JS/CSS/asset changes.
+43. **Script-tag balance in HTML.** Any edit that touches `<script>…</script>` ordering must verify tag counts are balanced before commit. Unbalanced tags cause a `SyntaxError: Unexpected token '<'` at parse time — the **entire inline JS block dies silently** and no logic runs. Sanity: `grep -c '<script' file.html` should equal `grep -c '</script>' file.html`. Class bug: shipped 3 days of cascading "fixes" to `certificates.html` that were all theoretically correct but landed in a script block the browser rejected at parse time. Instrumentation beats theorising when a bug survives multiple fix attempts.
+44. **`workout_plan_cache` has `UNIQUE(member_email)` — one row per member, ever.** Use `.upsert({...}, { onConflict: 'member_email' })` for writes. DO NOT use UPDATE-then-INSERT — INSERT will fail with duplicate-key violation even if you marked the old row `is_active=false`. The partial unique index `_one_active_per_member WHERE is_active=true` exists but is defeated by the full unique constraint.
+45. **iOS PWAs block `blob:` URL navigation.** `pdf.save()` / FileSaver / hidden `<a download>` all fail silently on iOS standalone PWAs. Route downloads through Web Share API (`navigator.share({files: [file]})`) — native share sheet includes "Save to Files". Detection: `/iphone|ipad|ipod/i.test(UA) && (matchMedia('(display-mode: standalone)').matches || navigator.standalone)`. Keep blob-download path as fallback for desktop / Android Chrome / iOS Safari tab.
 
 ## 4.12 Platform priorities to ship by end of May 2026
 

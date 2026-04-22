@@ -1,3 +1,152 @@
+## 2026-04-22 — Certificate fix, password UX, reset-email rebrand, import-plan fix
+
+**Span.** 2026-04-22 23:30 UTC → 2026-04-23 01:30 UTC. Multi-fix session, Dean-led, ship-test-iterate pattern.
+
+**Context.** Session opened investigating the flash/redirect loop on `index.html` (reported by Dean with screenshots of the previous session's cert-refactor chat, which had been terminated by a prompt-injection classifier mid-work). Expanded into a cascade of fixes that exposed a 3-day-old parse bug, then finished with UX polish and an unrelated `share-workout` import failure.
+
+### Fix 1 — `member-dashboard` v48 → v49 (flash loop RCA)
+
+The previous session's cert refactor (ended prematurely by a prompt-injection classifier) shipped `member-dashboard` v48 with `verify_jwt: true` at the **platform** level. Violates Rule 21 (`verify_jwt: false` with internal JWT validation). Platform gateway blocks requests before function body runs → 401 → `index.html` line 806 `if(res.status===401){window.location.href='/login.html';return;}` → `login.html` sees valid session → bounces back to index → loop = visible flash.
+
+Rolled back to `verify_jwt: false`. Preserved all v48 changes including the `id` field on the certs select (needed for the new viewer). v49 deployed. Same EF now correctly returns `{error:'Unauthorized'}` from inside the function body for no-auth / bad-JWT requests — platform gateway off.
+
+**Lesson:** The "verify_jwt: true at platform level" trap has now bitten twice (once during 9 April security audit, once during 21 April cert refactor). Rule 21 exists precisely for this. Any EF the PWA calls must stay `verify_jwt: false`.
+
+### Fix 2 — `certificates.html` 3-day hang (parse error)
+
+After v49 fixed `index.html`, library page at `/certificates.html` remained stuck on "Loading your certificates…". Dean confirmed this bug had been "fixed" 14 times across April (commits `e9bfd08`, `2c1eaf0`, `3778bbb`, `6b988b9`, `136b96d`, `22b6a92`, `621f3d8`, `ca4ebd2`, `0e1fa90`, `4127045`, `3066d6d`, `5fe6929`, `b4fbfc8`, `2f9a4ed`) with no session actually verifying it rendered on-device.
+
+**Stopped guessing. Shipped a visible on-screen debug overlay** (fixed-position black/green terminal-style panel at top of page, timestamped DBG() log lines, wrapped every auth/fetch/render step). First reload surfaced the real bug immediately:
+
+```
+[0.01s] window.error: SyntaxError: Unexpected token '<' at certificates.html:478
+[0.01s] window.error: SyntaxError: Unexpected token '<' at certificates.html:507
+```
+
+Two missing `</script>` closing tags. The main inline `<script>` containing `waitForAuth`, `loadPage`, `render` — everything — was never closed before the next `<script>` tag below (`<script>if('serviceWorker'...)` at line 478, and again before `<script src="/offline-manager.js">` at line 507). Browser parsed `<` of the next tag as raw HTML inside the open script block → SyntaxError → **entire inline JS file died at parse time**. Nothing ran. Ever.
+
+Origin: commits `22b6a92` + `621f3d8` (17 April) which "removed bad `<script>` tag injections" but left dangling close tags missing. Every subsequent fix inherited the broken structure and touched logic the browser was rejecting before reading.
+
+Fixed: added two `</script>` tags at lines 476 and 506. Sanity check: `<script>` open count (8) == `</script>` close count (8) balanced. Shipped. Cert library rendered cleanly on first reload with overlay showing full green trace.
+
+**Post-fix cleanup:** stripped debug overlay from `certificates.html`, preserved the two script-tag fixes. Cache bumped to `v2026-04-22p-script-tag-fix`.
+
+**Lesson:** (1) When the same bug "keeps being fixed", the bug is not what you think it is. Ship instrumentation, not guesses. (2) Violates Rule 32 — a very similar parse-error class as "Never inject `<script>` tags via naive string search". Generalising: any HTML edit that touches the `<script>…</script>` ordering must verify tag-count balance before commit. Adding this as Rule 43.
+
+### Fix 3 — `certificate.html` viewer polish
+
+Viewer page (the auth-gated single-cert renderer) needed four sequential polish passes driven by Dean testing on iOS PWA:
+
+**3a. Rotate-to-portrait overlay** — theme.css `#vyve-rotate-overlay` (global) was firing on the cert page, which is actually designed for landscape preview. Page-level `#vyve-rotate-overlay { display: none !important; }` override.
+
+**3b. Download PDF didn't work** — `pdf.save()` uses FileSaver's blob-URL + invisible `<a download>` trick. **iOS PWAs silently block navigation to `blob:` URLs**. Share sheet worked, download didn't. Rewrote `downloadCert()` to detect iOS-PWA context (`/iphone|ipad|ipod/` UA + `display-mode: standalone`) and route to `navigator.share()` with the PDF as a File (native "Save to Files" via share sheet). Non-iOS-PWA clients (desktop, Android Chrome, iOS Safari tab) still get the real blob-download path.
+
+**3c. Page zoom** — missing `user-scalable=no, maximum-scale=1.0` on viewport meta (I omitted these when rebuilding the page). Restored to match habits.html pattern.
+
+**3d. Theme + nav/header** — viewer was a lone island with no nav chrome and hard-coded dark colours. Rebuilt:
+- Page chrome theme-aware (`var(--bg)`, `var(--label-strong)` — flips with `data-theme` attribute)
+- Certificate panel stays light `#F5F3EE` regardless of theme (cert is a document, not UI — WYSIWYG with the downloaded PDF)
+- Added `nav.js`, `offline-manager.js`, `sw` register — same load order as habits.html per Rule 39
+- Action bar: pill back-link + Share (secondary) + Download (primary filled teal)
+- html2canvas + jsPDF from CDN for PDF generation
+
+**Result:** Share button works (native iOS share sheet, PDF attached). Download button works (iOS PWA → share sheet "Save to Files"; desktop → direct download). Cert renders consistently with the rest of the portal.
+
+### Fix 4 — Password show/hide toggle on auth pages
+
+`login.html` (1 input: pw) and `set-password.html` (2 inputs: pw + pw2) had no way to view typed password. Added eye-icon toggle:
+- Inline CSS injected after `.form-input::placeholder` rule (same block on both pages)
+- Each `<input type="password">` wrapped in `<div class="pw-wrap">` with absolutely-positioned `<button class="pw-toggle" data-target="{id}">` containing both SVG icons (open-eye + slashed-eye, CSS `display:none` swap via `aria-pressed` state)
+- Inline JS (injected before `</body>`) binds click handlers: toggles `input.type` between `'password'` and `'text'`, updates `aria-pressed` / `aria-label` / `title`, preserves cursor position via `setSelectionRange`
+- Kept `autocomplete="current-password"` / `"new-password"` intact (password managers still work)
+- Works on both pages simultaneously and independently (can show New without showing Confirm, or vice versa)
+
+### Fix 5 — Reset password email rebrand
+
+Email sent from `resetPasswordForEmail()` uses Supabase Auth's built-in Recovery template (stored in `mailer_templates_recovery_content` in auth config, NOT in Brevo templates or our code repo). Previous template existed but looked off-brand in iOS Mail (translucent `rgba(255,255,255,0.03)` card became solid mint-green from iOS Mail auto-contrast), used generic Georgia+Arial instead of brand fonts.
+
+**Deployed full rebuild** via Supabase Management API (`PATCH /v1/projects/{ref}/config/auth`):
+- Light-first design with cream `#F5F3EE` page bg, white card with warm `#E8E2D5` border, brand teal `#1B7878` CTA
+- Brand fonts: Playfair Display (headings) + Inter (body) via `@import url()` with Georgia/Arial fallbacks for clients that strip `@import` (Gmail Web)
+- `@media (prefers-color-scheme: dark)` block flips page to `#0A1F1F`, card to `#0D2B2B`, white headings. Honoured by Apple Mail + Outlook.com iOS; ignored by Gmail/Outlook desktop (both show stable light version)
+- MSO VML button fallback for Outlook desktop (rounded corners)
+- Preheader hidden preview text ("Tap the button below to choose a new VYVE Health password…")
+- Logo: 72x72 `<img src="https://online.vyvehealth.co.uk/logo.png">` with `alt="VYVE Health"` + Playfair "VYVE HEALTH" wordmark text below as natural image-blocked fallback
+- Copy-paste URL fallback below divider for corporate inbox / image-blocked scenarios
+
+**Honest technical note on email dark/light:** emails cannot reliably match the user's in-app theme setting. Email is sent once at request time, rendered statically. `@media (prefers-color-scheme)` support is patchy (Apple Mail yes, Gmail no, Outlook contentious). Industry-standard pattern (Stripe, Linear, Airbnb, Notion) ships one clean light-theme email; we do the same with a dark-mode enhancement layer for Apple Mail users (~40% of VYVE audience).
+
+### Fix 6 — `share-workout` v9 → v10 (import plan by code)
+
+Dean reported friend Stuart's "Could not import. Try again." toast when trying to add Stuart's PPL Holiday Shred programme via code. Lookup showed correct preview ("PPL Holiday Shred · Shared by Stuart · 6 exercises · Full programme") — **confirm/add step failed.**
+
+Traced to `add_programme` branch in `share-workout` EF:
+```ts
+// Old flow:
+await adminClient.from('workout_plan_cache').update({ is_active: false, paused_at: ... }).eq('member_email', email).eq('is_active', true);
+await adminClient.from('workout_plan_cache').insert({ member_email: email, ... });
+```
+
+**Bug:** `workout_plan_cache` has **UNIQUE constraint on `member_email`** (full, not partial). Only ONE row per member allowed, active or inactive. INSERT always fails with duplicate-key violation for any member who already had a plan (i.e. everyone past onboarding). The existing partial index `workout_plan_cache_one_active_per_member WHERE is_active=true` is irrelevant because the full-column unique constraint defeats it first.
+
+**Fix:** single `.upsert({...}, { onConflict: 'member_email' })` — overwrite the existing row in place. Deployed v10. Verified with Dean: import worked, `workout_plan_cache` row flipped from `source='library'` to `source='shared'` with new programme_json.
+
+**Related bonus** (v9 already had this, preserved in v10): profanity blocklist on generated share codes with leet-speak normalisation (`FA7TTY` → `FATTTY` → matched by `FAT` substring). Stuart's original code was `FATTY` which got his friends laughing. Rule: 10-attempt retry loop before fallback. 20+ offensive substrings blocked.
+
+### Programme progression mechanic — explained to Dean
+
+Dean asked whether the same session (e.g. Push A) is identical across weeks when a friend imports a programme that's partway through.
+
+Answer, confirmed from actual JSON inspection of PPL Holiday Shred `TWN3UN`:
+- **Session name and exercises are identical across all 8 weeks** (Push A — Bench Press, Shoulder Press, Incline DB Press, Lateral Raise, Tricep Rope Pushdown, Chest Fly; same letter badges A-F)
+- **Sets × reps change by phase:**
+  - Weeks 1-3 (hypertrophy): 3 × 10-12
+  - Weeks 4-6 (strength): 4 × 8-12
+  - Weeks 7-8 (deload/pump): 2-3 × 12-15
+- Coaching notes also evolve per phase
+- On import, member **always starts at week 1, session 1** (`upsert` sets `current_week: 1, current_session: 1`). Friend's progression doesn't carry over — the share is the programme **blueprint**, not progress through it.
+
+**Not implemented:** start-from-week-X on import (would let experienced lifters skip the foundation weeks). Noted as future UX but not urgent.
+
+### Brain update — BIMI (inbox logo) added to backlog
+
+Dean asked about showing VYVE logo next to sender name in inbox clients. Added **BIMI** entry to `tasks/backlog.md` under **Later** section with full staged plan and cost estimate:
+- Audit SPF/DKIM/DMARC now (free, 30 min) — biggest deliverability win anyway, stops our emails hitting spam
+- UKIPO trademark registration pre-Sage contract (~£170–340, 4–6 months lead, protects brand regardless of BIMI)
+- VMC purchase + BIMI DNS deployment post-first-enterprise-contract (~$1.3K/year, Gmail-required)
+- Interim: Gravatar on `team@vyvehealth.co.uk` — free, works in some clients, 5-min setup
+- Commit `8a4386c`
+
+### Commits shipped this session (vyve-site, chronological)
+
+- `f83ec8b` — debug: visible overlay on certificates.html (temporary diagnostic)
+- `634fcc8` — fix: close two open `<script>` tags in certificates.html (3-day parse bug fix)
+- `8476459` — cert viewer: PDF download + share sheet + rotate overlay suppress + library cleanup
+- `8ac2d4d` — cert viewer: theme-aware page chrome, nav + header, always-light cert panel
+- `3493132` — cert viewer: disable zoom + iOS-PWA-aware download (share sheet for Save to Files)
+- `1e05a68` — auth: password show/hide toggle on login + set-password (eye icon)
+
+### Edge Functions deployed
+
+- `member-dashboard` v48 → v49 (revert `verify_jwt` to false, keep cert `id` field)
+- `share-workout` v9 → v10 (upsert for add_programme)
+
+### Supabase Auth config changes
+
+- `mailer_subjects_recovery` — "Reset your VYVE password" → "Reset your VYVE Health password"
+- `mailer_templates_recovery_content` — full rebrand (Playfair + Inter fonts, brand teal, dark-mode @media, logo image + text wordmark, MSO VML button, preheader, copy-paste URL fallback)
+
+### Key learnings
+
+- **Rule 21 trap is recurring.** `verify_jwt: true` at platform level silently breaks any EF the PWA calls. The gateway rejects before function body runs. This has now bitten twice in April. Rule restated in session recap; do not violate.
+- **"Keeps being fixed" = wrong diagnosis.** When a bug survives 14 fix attempts, stop theorising and ship instrumentation. The debug overlay caught a 3-day parse bug in under 10 seconds.
+- **Script-tag balance is a parse-error class.** Any edit touching `<script>…</script>` ordering must verify tag counts. Added as Rule 43.
+- **iOS PWAs break common web patterns.** Blob-URL downloads (jsPDF `save()`, FileSaver) silently fail. Route through Web Share API with File attached. Detection pattern: `/iphone|ipad|ipod/i.test(UA) && (display-mode: standalone || navigator.standalone)`.
+- **Email dark/light = single design that reads in both.** Apple Mail honours `prefers-color-scheme`, Gmail/Outlook don't. Ship light-first with a dark-mode `@media` enhancement for the Apple portion. Don't try to match the in-app theme — impossible, email is static.
+- **UNIQUE constraints defeat partial indexes.** `workout_plan_cache` has both `UNIQUE(member_email)` AND a partial unique index `WHERE is_active=true`. The full constraint wins. Upsert on `onConflict: 'member_email'` is the correct pattern for "one row per member" tables.
+
+---
+
 ## 2026-04-22 — Certificate System Refactor
 
 **COMPLETED: Certificate Storage → Database Rendering Architecture**
