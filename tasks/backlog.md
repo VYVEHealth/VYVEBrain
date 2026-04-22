@@ -130,6 +130,7 @@ Single-file HTML dashboard (`apps/admin-dashboard/admin.html`), `admin-dashboard
 - Today's Progress dot strip (blocked on Lewis copy)
 - Re-engagement automations x3 (blocked on Lewis email copy)
 - Live viewer count on sessions (only display when 20+ viewers)
+- **BIMI — logo in inbox sender avatar** — shows VYVE logo next to sender name in Gmail, Apple Mail, Yahoo. Requires: (1) DMARC at `p=quarantine` or `p=reject` (currently unknown — audit first), (2) SVG Tiny P/S logo hosted on `vyvehealth.co.uk`, square, solid bg, <32KB, (3) UKIPO trademark registration for VYVE logo (~£170–340, 4–6 months), (4) VMC from DigiCert/Entrust (~$1.3K/year — Gmail requires this; CMC is cheaper but only works on Apple Mail). Staged plan: audit SPF/DKIM/DMARC now (free, 30 min) → file UKIPO trademark pre-Sage contract (≈£200, protects brand anyway) → buy VMC + deploy BIMI DNS post first enterprise contract. Interim: set Gravatar on `team@vyvehealth.co.uk` — works in some clients with zero cost. Not priority until post-revenue.
 
 ---
 
