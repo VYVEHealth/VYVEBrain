@@ -1,3 +1,64 @@
+## 2026-04-23 00:30 — Shell 3 Sub-scope A ship: admin-member-habits v1
+
+### What shipped
+
+**Migration** (`extend_member_habits_assigned_by_admin`): `member_habits_assigned_by_check` now accepts `'admin'` in addition to the existing `{onboarding, ai, theme_update, self}`. One-line DROP/ADD, zero rows affected (65 rows all `onboarding`).
+
+**Edge Function `admin-member-habits` v1** — status ACTIVE, `verify_jwt: true`. Endpoint at `/functions/v1/admin-member-habits`. 436 lines. Mirrors `admin-member-edit` v4 patterns verbatim (CORS allowlist, JWT via `anon.auth.getUser`, `admin_users` allowlist with `active=true`, shared audit helper, same JSON envelope). Actions:
+
+- `list_habits` — member's assignments joined to `habit_library` (reads)
+- `list_library` — active library habits, optionally filtered by `habit_pot`
+- `assign_habit` — upsert on `(member_email, habit_id)`, `active=true`, `assigned_by='admin'`, reactivates if was inactive
+- `deactivate_habit` — soft delete (sets `active=false`, preserves history)
+- `reactivate_habit` — flip `active=true`, blocked if library habit itself is deactivated
+
+Every mutating action: reason required (min 5 chars), no-op detection before audit write, per-mutation audit row with `table_name='member_habits'`, role gating (`viewer` rejected, others allowed — `coach_exercise` has no additional restriction on this table per spec).
+
+Hard Rule 44 compliance: `assign_habit` uses `.upsert({...}, { onConflict: 'member_email,habit_id' })`, never UPDATE-then-INSERT.
+
+### Smoke test results
+
+Ran the layered smoke test pattern (platform layer → HTTP auth layer → DB layer).
+
+| Layer | Test | Result |
+|-------|------|--------|
+| Deploy | v1 ACTIVE, verify_jwt:true | ✅ |
+| HTTP  | No auth header → 401 `UNAUTHORIZED_NO_AUTH_HEADER` | ✅ (Supabase gateway) |
+| HTTP  | Garbage bearer → 401 `UNAUTHORIZED_INVALID_JWT_FORMAT` | ✅ (Supabase gateway) |
+| HTTP  | OPTIONS preflight → 200 + correct CORS headers | ✅ |
+| DB    | assign_habit on `deanonbrown@hotmail.com` + unassigned `5-minute morning check-in` habit | ✅ — row created, `assigned_by='admin'` persisted, audit row written |
+| DB    | deactivate_habit | ✅ — `active=false`, audit row written |
+| DB    | reactivate_habit | ✅ — `active=true`, audit row written |
+| Cleanup | Test habit removed, member back to 5 habits | ✅ |
+
+Pre-session `admin_audit_log` contained **zero rows**. Post-session it contains 3 simulation rows (`ip_address='sim'` for filtering). First real audit rows on the table. Confirms shape of audit entries is correct and the table accepts the Shell 3 action vocabulary.
+
+### Still open (blocked on browser-side JWT)
+
+- Full JWT → `admin_users` round-trip against a real admin session (code path is identical to `admin-member-edit` v4's verified auth path, so risk is low)
+- `list_habits` / `list_library` browser-side smoke tests (straightforward SELECTs, no side effects)
+- Role gating for `viewer` (needs a test admin row created with `role='viewer'`)
+- Frontend UI panel in `admin-console.html` to expose these actions (separate commit, next session)
+
+### Pattern lessons surfaced this session
+
+- **Platform-gateway 401 hides our EF's auth message.** When `verify_jwt: true`, Supabase's edge rejects invalid tokens *before* handler code runs. Error codes like `UNAUTHORIZED_NO_AUTH_HEADER` / `UNAUTHORIZED_INVALID_JWT_FORMAT` are Supabase platform errors, not our app errors. This is actually good (saves us handler compute on garbage requests), but worth knowing for frontend error handling: the frontend should not assume every 401 has a `{success:false,error:...}` JSON body shape — it may be a bare platform error.
+- **DB-layer simulation as a smoke-test primitive.** When we can't mint a JWT from the workbench, running the same SQL the EF would run (including the exact upsert/conflict clauses) gives high-confidence validation of the data layer without needing a browser session. Codified in the migrations log.
+
+### Commits
+
+- Live DB migration: `extend_member_habits_assigned_by_admin` (22 April, via `apply_migration`)
+- EF deploy: `admin-member-habits` v1, id `ee5acebc-4a0e-4739-90a0-bdf76bc8cdc1`
+- Brain commit: this entry + `plans/admin-console-shell3-migrations.sql`
+
+### Next session
+
+Frontend: add the habits panel to `admin-console.html` (member detail page, under the existing Quick Edit sections). Once that ships and a real JWT round-trip completes successfully, this EF is fully verified.
+
+Then: `admin-member-programme` v1 (next in Sub-scope A). Similar complexity, but needs careful upsert against `workout_plan_cache` (UNIQUE on `member_email` — Hard Rule 44 applies).
+
+---
+
 ## 2026-04-22 23:55 — Admin Console Shell 3 spec + Shell 2 smoketest runbook
 
 ### What shipped

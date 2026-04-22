@@ -37,7 +37,10 @@
    - **Still open:** Hub progress across all streams vs just the primary (open plan-doc question)
    - **Still open:** `mrpSetCompletion` in running-plan.html uses GET-then-PATCH (race-unsafe in multi-tab edit scenarios). Future fix: Supabase RPC wrapping `array_append`/`array_remove` atomics. Acceptable for MVP.
    - **Still open:** Brain hygiene — base64-encoded historical blob in `brain/changelog.md` (~152K decoded chars) needs dedicated cleanup session
-4. **Admin Console Shell 3** — spec landed 22 April at `plans/admin-console-shell3-spec.md` (cross-table edits / bulk ops / content library / audit search, D deferred). Sub-scope priority: A ⮕ B ⮕ C ⮕ E. Shell 2 E2E smoketest pending — see `plans/admin-console-shell2-smoketest.md` (zero audit rows today). Shell 1 + Shell 2 live at `admin.vyvehealth.co.uk/admin-console.html`.
+4. **Admin Console Shell 3** — spec at `plans/admin-console-shell3-spec.md`, migrations log at `plans/admin-console-shell3-migrations.sql`. Sub-scope priority: A ⮕ B ⮕ C ⮕ E (D deferred).
+   - ~~Sub-scope A, EF 1 of 3: `admin-member-habits` v1 ACTIVE (22 April). Migration `extend_member_habits_assigned_by_admin` applied. DB-layer smoke tests pass; browser JWT round-trip + UI panel still open.~~
+   - **Next:** frontend panel in `admin-console.html` for habits, then `admin-member-programme` v1, then `admin-member-weekly-goals` v1 to close Sub-scope A.
+   - Shell 2 E2E smoketest still pending (see `plans/admin-console-shell2-smoketest.md`; 3 sim audit rows now exist but no real pencil-click edits yet). Shell 1 + Shell 2 live at `admin.vyvehealth.co.uk/admin-console.html`.
 5. **Polish and bug-fix pass** — test all flows, fix on-the-fly issues
    - ~~Light-mode readability sweep (semantic token layer + 242-edit HTML pass across 12 pages) — 21 April (`2560dd3`, `b4fbfc8`)~~
    - ~~Nav chrome locked dark on light theme (desktop nav, mobile header, bottom nav, more-menu, avatar panel) — 21 April (`5010fda`)~~
