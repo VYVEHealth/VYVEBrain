@@ -1,3 +1,79 @@
+## 2026-04-23 01:40 — Shell 3 Sub-scope A ship: admin-member-weekly-goals v1 (Sub-scope A complete)
+
+### What shipped
+
+**Edge Function `admin-member-weekly-goals` v1** — status ACTIVE, `verify_jwt: true`. Endpoint at `/functions/v1/admin-member-weekly-goals`. 370 lines. Same auth/CORS/audit pattern as the other three admin EFs. Two actions:
+
+- `get_weekly_goals` — returns the `weekly_goals` row for a given ISO Monday (defaults to current UK Monday if `week_start` omitted)
+- `upsert_weekly_goals` — upsert on `(member_email, week_start)` with all 5 targets required. Past-week guard: rejects `week_start` earlier than the current UK Monday with `current_uk_monday` echoed back in the error body.
+
+Validation: `week_start` must be YYYY-MM-DD and an ISO Monday (dow=1); all 5 targets (`habits_target`, `workouts_target`, `cardio_target`, `sessions_target`, `checkin_target`) must be present and integer `0..14`.
+
+### BST-aware current-Monday logic
+
+EF computes the current UK ISO Monday using `Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' })` on the EF's `new Date()`, then walks back to Monday. Chosen over a manual `+1` offset because it handles BST ↔ GMT transitions automatically (last Sunday of March / last Sunday of October) — no manual offset tracking required.
+
+Verified against the DB: server UTC `2026-04-22 22:22:15` corresponds to UK `2026-04-22 23:22:15`, and `date_trunc('week', (now() AT TIME ZONE 'Europe/London')::date)` returns `2026-04-20`. That's what the EF returns for a bare `get_weekly_goals` call with no `week_start`.
+
+Past-week guard verified: `'2026-04-13' < '2026-04-20'` ⇒ would be rejected with 400.
+
+### Smoke test results
+
+Same three-layer pattern. Test target: `deanonbrown@hotmail.com` (real Dean, not the `deanonbrown2@*` test accounts which also exist in `weekly_goals`). Used a persistent `_admin_wg_smoketest_backup` table following the pattern codified in the migrations log.
+
+| Layer | Test | Result |
+|-------|------|--------|
+| Deploy | v1 ACTIVE, verify_jwt:true | ✅ |
+| HTTP  | No auth / bad bearer → 401 | ✅ (Supabase gateway) |
+| HTTP  | OPTIONS preflight → 200 + correct CORS headers | ✅ |
+| DB    | Upsert INSERT path (new row for current UK week 2026-04-20) | ✅ |
+| DB    | Upsert UPDATE path (different values on same row) | ✅ |
+| DB    | Upsert INSERT for future week (2026-04-27) | ✅ |
+| Logic | BST-aware current UK Monday matches DB's `date_trunc('week', …)` calc | ✅ |
+| Logic | Past-week guard: `'2026-04-13' < '2026-04-20'` would trigger rejection | ✅ |
+| Restore | Dean's 2 original rows (2026-03-30, 2026-04-06) byte-identical to backup | ✅ |
+| Audit | 3 rows with correct `weekly_goals_upsert` action vocabulary, correct INSERT/UPDATE distinction via `old_value IS NULL` | ✅ |
+
+Cumulative `admin_audit_log` sim rows across the whole of Sub-scope A: **10** (3 habits + 4 programme + 3 weekly_goals). All three Shell 3 tables now have at least one real audit entry.
+
+### Reality check surfaced during smoke-test prep
+
+When sampling `weekly_goals` rows via truncated emails, "deanonbrow***" matched three different accounts: `deanonbrown@hotmail.com` (the real one), `deanonbrown2@hotmail.com`, `deanonbrown1@hotmail.com`, and `deanonbrown2@gmail.com`. These are legacy test accounts in production. Flagged for the UI design so the member picker doesn't display truncated emails — exact-string match is safer.
+
+### Sub-scope A summary: DONE
+
+Three EFs shipped, one migration applied, one pattern lesson codified.
+
+| EF | Actions | Lines | Migration | Audit action vocab |
+|----|---------|-------|-----------|---------------------|
+| `admin-member-habits` v1     | 5 (list_habits, list_library, assign_habit, deactivate_habit, reactivate_habit) | 436 | `extend_member_habits_assigned_by_admin` | `habit_assign`, `habit_deactivate`, `habit_reactivate` |
+| `admin-member-programme` v1  | 5 (get_programme, pause, resume, advance_week, swap_plan) + regenerate 501 | 516 | (none) | `programme_pause`, `programme_resume`, `programme_advance_week`, `programme_swap` |
+| `admin-member-weekly-goals` v1 | 2 (get_weekly_goals, upsert_weekly_goals) | 370 | (none) | `weekly_goals_upsert` |
+
+### Still open for Sub-scope A closure
+
+- Browser JWT round-trip against all three EFs (auth code is identical to verified v4 pattern — low residual risk)
+- Role gating smoketest for `viewer` / `coach_exercise` (needs a test admin row)
+- `get_*` read actions (all three EFs — safe SELECTs, DB-correctness already proven by the restore steps)
+- **Frontend UI panels in `admin-console.html`** — batched as the next session. All three EF APIs are stable enough to build UI against.
+
+### Commits
+
+- EF deploy: `admin-member-weekly-goals` v1, id `c35ece85-edc0-462d-9141-86f5ea27247e`
+- Brain commit: this entry + backlog update (Sub-scope A EFs fully struck)
+
+### Next session
+
+Frontend UI panels for all three A-EFs in `admin-console.html`. Scope:
+
+1. **Habits panel** in member detail — list assignments (with library drill-down for assign), deactivate/reactivate toggles, reason modal
+2. **Programme panel** — show current programme card + pause/resume/advance/swap controls, library picker for swap
+3. **Weekly goals panel** — current-week row with 5 sliders (0..14), save-with-reason for either current or future weeks
+
+UI is batched into one session because the three panels share common primitives: reason modal, audit log display, toast feedback. Once this lands, Sub-scope A is **fully done** and Sub-scope B (bulk ops) can begin.
+
+---
+
 ## 2026-04-23 01:10 — Shell 3 Sub-scope A ship: admin-member-programme v1
 
 ### What shipped
