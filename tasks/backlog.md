@@ -37,7 +37,7 @@
    - **Still open:** Hub progress across all streams vs just the primary (open plan-doc question)
    - **Still open:** `mrpSetCompletion` in running-plan.html uses GET-then-PATCH (race-unsafe in multi-tab edit scenarios). Future fix: Supabase RPC wrapping `array_append`/`array_remove` atomics. Acceptable for MVP.
    - **Still open:** Brain hygiene — base64-encoded historical blob in `brain/changelog.md` (~152K decoded chars) needs dedicated cleanup session
-4. **Admin Console Shell 3 scoping** — cross-table edits (habits, workout programme, weekly goals), bulk ops, content libraries. Shell 1 + Shell 2 live at `admin.vyvehealth.co.uk/admin-console.html`. See `plans/admin-console-spec.md` §8.
+4. **Admin Console Shell 3** — spec landed 22 April at `plans/admin-console-shell3-spec.md` (cross-table edits / bulk ops / content library / audit search, D deferred). Sub-scope priority: A ⮕ B ⮕ C ⮕ E. Shell 2 E2E smoketest pending — see `plans/admin-console-shell2-smoketest.md` (zero audit rows today). Shell 1 + Shell 2 live at `admin.vyvehealth.co.uk/admin-console.html`.
 5. **Polish and bug-fix pass** — test all flows, fix on-the-fly issues
    - ~~Light-mode readability sweep (semantic token layer + 242-edit HTML pass across 12 pages) — 21 April (`2560dd3`, `b4fbfc8`)~~
    - ~~Nav chrome locked dark on light theme (desktop nav, mobile header, bottom nav, more-menu, avatar panel) — 21 April (`5010fda`)~~

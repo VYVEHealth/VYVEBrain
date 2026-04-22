@@ -1,3 +1,47 @@
+## 2026-04-22 23:55 — Admin Console Shell 3 spec + Shell 2 smoketest runbook
+
+### What shipped
+
+**`plans/admin-console-shell3-spec.md`** — 270-line spec for Shell 3, the cross-table edit / bulk ops / content library layer of the admin console. Grounded in live schema (verified this session via `execute_sql` against `ixjfklpckgxrwjlfsaaz`). Lead principle explicitly carried over from this morning's session: *no spec = hallucinated schema* — code for any Shell 3 EF is gated on the relevant section of this spec.
+
+Shell 3 breaks into four sub-scopes (priority order confirmed with Dean):
+
+- **A — Cross-table edits:** three new EFs (`admin-member-habits`, `admin-member-programme`, `admin-member-weekly-goals`) targeting `member_habits` / `workout_plan_cache` / `weekly_goals`. All upserts use `onConflict` (Hard Rule 44). One DDL migration required: extend `member_habits_assigned_by_check` to accept `'admin'`.
+- **B — Bulk ops:** one EF (`admin-bulk-ops`), three fields only (persona, exercise_stream, re_engagement_stream), cap 100 members per call, one audit row per affected member, HAVEN guard at EF level.
+- **C — Content library CRUD:** one EF (`admin-content-library`) over `habit_library` / `programme_library` / `knowledge_base`, per-table column whitelist, JSON shape validation for `programme_json`.
+- **E — Audit search:** thin wrapper EF over `admin_audit_log` with filter/search UI.
+
+Sub-scope **D (impersonation) formally deferred** until post-Sage contract — needs its own threat model.
+
+**`plans/admin-console-shell2-smoketest.md`** — 6-test runbook to close the Shell 2 E2E testing items flagged as open in `admin-console-spec.md` §7. `admin_audit_log` contains zero rows at the time of writing, confirming no admin has exercised the pencil flow end-to-end since this morning's ship. The runbook covers SAFE inline, SCARY modal + reason validation, no-op detection, audit log accordion read-back, modal dismissal, and `coach_exercise` role gating.
+
+### Schema drift caught this session
+
+The 19 April `brain/schema-snapshot.md` is 3 days stale and does not reflect today's Shell 2 Phase 1 DDL. Four claims in the Shell 2 spec were checked against the live DB:
+
+| Claim                                               | Snapshot (19 Apr) | Live DB (22 Apr) |
+|-----------------------------------------------------|-------------------|------------------|
+| `admin_audit_log` table exists                      | ❌ missing         | ✅ exists         |
+| `admin_users_role_check` includes coach roles       | ❌ admin/viewer only | ✅ all 5 roles |
+| `members.display_name_preference` column exists     | ❌ missing         | ✅ exists         |
+| `members_persona_check` enum includes HAVEN         | ✅                 | ✅                |
+
+All four today-session claims verified. Snapshot will catch up on the next Sunday 03:00 UTC `schema-snapshot-refresh` run. No action needed.
+
+### Known Shell 2 gap (not blocking)
+
+`admin_audit_log` has never received a row. Shell 2 is live but has not been proven against the live EF + live UI. The smoketest runbook closes this.
+
+### Commit
+
+- [`5fa8dfe`](https://github.com/VYVEHealth/VYVEBrain/commit/5fa8dfee58f8a5be03d6941f0f2c1c6f8ea4dd5d) — `plans/admin-console-shell3-spec.md`, `plans/admin-console-shell2-smoketest.md`
+
+### Next session
+
+Run the Shell 2 smoketest (~15 minutes). Once all 6 boxes ticked, start Shell 3 Sub-scope A: ship `admin-member-habits` v1 (lowest-risk of the three cross-table EFs; no JSONB, no schema reshaping).
+
+---
+
 ## 2026-04-22 18:00 — Admin Console Shell 2: Field Inventory Correction & True Ship
 
 ### Audit findings (deep dive)
