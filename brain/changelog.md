@@ -1,3 +1,88 @@
+## 2026-04-23 — HealthKit session 4: iOS device validation, 4 plugin debugging iterations, full UX overhaul, end-to-end sync working
+
+First real-device validation of the Capgo HealthKit integration on Dean's iPhone 15 Pro Max, plus one-time Xcode/signing setup, four atomic plugin-taxonomy fixes discovered from Safari Web Inspector on a live WKWebView session, a complete UX pivot to Apple-native consent patterns, and full end-to-end validation of Health data syncing into Supabase.
+
+### One-time Xcode and signing setup
+
+Installed Xcode 26.4.1 from App Store, opened `~/Projects/vyve-capacitor` via `npx cap open ios`, enabled automatic signing against VYVE Health CIC team (VPW62W696B) using Lewis Vines' Apple ID. Generated Apple Development certificate (Lewis Vines: Z6474RNZZB), registered iPhone 15 Pro Max UDID to the dev team, enabled Developer Mode on the phone. Bundle ID `co.uk.vyvehealth.app`, iOS 15.0 min target, HealthKit capability present (Clinical Health Records OFF, Background Delivery OFF — neither needed for MVP). App installed and launched successfully on device. This is a one-time setup — future releases use Product → Archive with the same automatic signing, and the existing App Store distribution profile remains intact.
+
+### Four plugin debugging iterations
+
+On first device launch, the Settings page Apple Health toggle was dead — tapping threw `ReferenceError: handleAppleHealthToggle is not defined`. Four root causes surfaced, each shipped as its own atomic commit against vyve-site.
+
+**[88c69b5] settings.html script-tag scope trap fix.** Session 3.1 had already codified this gotcha in the brain, but the original session 3 push had left the damage in place: the HealthKit JS block (hbInitSettings, hbRefreshStatus, handleAppleHealthToggle, hbSyncNow, waitForHealthBridge IIFE) was injected between `<script src="/nav.js" defer>` and its closing `</script>`. Per HTML spec, inline body of a script tag with a src attribute is discarded entirely — all five symbols silently evaporated. Fix: closed the nav.js tag and opened a fresh `<script>` for the HealthKit block. Script tag balance restored from 6/6 to 7/7. `sw` bumped to `v2026-04-23e-settings-fix`.
+
+**[e127541] healthbridge.js plugin name lookup fix.** Even with JS now defined, `requestAuthorization` still failed silently. A diagnostic `console.log(Object.keys(window.Capacitor.Plugins))` on the live WebView revealed the plugin registers as `window.Capacitor.Plugins.Health` on Capgo 8.4.7 iOS — not `CapacitorHealth` or `CapgoCapacitorHealth` as the Capgo README examples and most community snippets suggest. Fix: `getPlugin()` now defensively checks all three names: `plugins.Health || plugins.CapacitorHealth || plugins.CapgoCapacitorHealth`. `sw` bumped to `v2026-04-23f-plugin-name`.
+
+**[ec0a7b9] Scope rename activeCaloriesBurned → calories.** After plugin resolved, permission sheet requests failed with an unrecognised-type error. Inspected `Cap-go/capacitor-health/ios/Sources/HealthPlugin/Health.swift` source: the iOS `HealthDataType` enum uses `calories` (which the plugin maps internally to `HKQuantityTypeIdentifier.activeEnergyBurned`), not the iOS-native name `activeCaloriesBurned`. Patched both `DEFAULT_READ_SCOPES` and the sample-pull type map in healthbridge.js. `sw` bumped to `v2026-04-23g-scope-rename`.
+
+**[19d0fd1] Drop `workouts` from WRITE scopes + UI copy update.** With reads fixed, writes still threw. Deeper Swift-source inspection showed `requestAuthorization` uses two different parsers: `parseTypesWithWorkouts` for reads (which special-cases "workouts") and `parseMany` for writes (which throws on "workouts" because it is not in the HealthDataType enum at all). The plugin exposes no `saveWorkout` method — only `saveSample` for quantity/category types. Workouts write-back is not supported by Capgo 8.4.7 on iOS, period. Fix: `DEFAULT_WRITE_SCOPES = ['weight']` only. Removed "Workouts you complete in VYVE" from the settings.html UI copy and updated the toggle subtitle from "Read workouts, write back to Health app" → "Read health data, write back your weight". `sw` bumped to `v2026-04-23h-workouts-read-only`.
+
+### End-to-end validation
+
+After the fourth fix deployed, the full flow worked first time. Toggled Apple Health on in Settings → native iOS HealthKit permission sheet appeared listing all 7 data types → Dean approved → `requestAuthorization` succeeded → `connect()` wrote `member_health_connections` row → Settings page updated to "Synced just now" with all 9 UI data-type rows shown (Workouts & exercise sessions, Steps, Activity, Energy, Calories, Heart rate, Weight, Sleep analysis, Distance).
+
+### Capgo plugin 8.4.7 taxonomy (codified — hard reference for session 5+)
+
+Valid `HealthDataType` enum (from `Cap-go/capacitor-health` Swift source): `steps, distance, calories, heartRate, weight, respiratoryRate, oxygenSaturation, restingHeartRate, heartRateVariability, bloodGlucose, bodyTemperature, height, flightsClimbed, exerciseTime, distanceCycling, bodyFat, basalBodyTemperature, basalCalories, totalCalories, sleep, bloodPressure, mindfulness`. Note: `workouts` is NOT in the enum — it is handled specially via `parseTypesWithWorkouts` in the READ path only. Plugin registers as `window.Capacitor.Plugins.Health`. Exposed methods: `isAvailable, requestAuthorization, checkAuthorization, readSamples, saveSample, getPluginVersion, openHealthConnectSettings, showPrivacyPolicy, queryWorkouts, queryAggregated`. No `saveWorkout`. No arbitrary sample types.
+
+### Currently active scopes
+
+Reads (7): `steps, workouts, heartRate, weight, calories, sleep, distance`. Writes (1): `weight` only.
+
+Available-but-not-yet-wired (parked for post-sell session 5+ enhancement): `restingHeartRate, heartRateVariability, exerciseTime, mindfulness`. Simple one-line additions to `DEFAULT_READ_SCOPES` plus the sample-pull mapping in healthbridge.js when we want them.
+
+### Session 4.5: UX overhaul to Apple-native patterns
+
+Mid-session pivot on Dean's direction: the original toggle-based UX (toggle connects / toggle disconnects in-app) was wrong for iOS. Apple's expected pattern is: the app asks once, permission is then sticky and managed exclusively via iPhone Settings → Health → Data Access & Devices. In-app disconnect is discouraged and confusing because iOS permissions can only truly be revoked at the OS level. Also added a re-prompt path for users who declined at onboarding.
+
+Shipped as a single atomic commit **[612459b]** across 4 files:
+
+**consent-gate.html.** Added a new 4th card "Connect Apple Health" shown only when `window.Capacitor.getPlatform() === 'ios'`. State object extended with `applehealth: false`. On Continue: writes consent row as before, then if applehealth was ticked, calls `healthBridge.connect()` — fails silently since consent is already saved (non-fatal). If applehealth was not ticked on native, sets `localStorage.vyve_healthkit_declined_at = Date.now()` to start the 7-day cooldown. Also auto-sets `vyve_healthkit_dev='1'` if not present (future-proofing for server allowlist rollout). healthbridge.js script tag added. 18098 bytes.
+
+**settings.html.** `hbRefreshStatus` and `handleAppleHealthToggle` rewritten connect-only. When connected: `toggle.disabled = true`, `toggle.checked = true`, toggle locks on, new muted `#hb-manage-note` appears: "To disconnect, open iPhone Settings → Health → Data Access & Devices → VYVE Health". When not connected: toggle is interactive to trigger connect, note hidden. `handleAppleHealthToggle(false)` path is now a no-op that just re-snaps the toggle to off — once disabled, this path is unreachable from the UI anyway. 75881 bytes.
+
+**index.html.** Pink gradient re-prompt banner `#hb-reprompt-banner` injected at top of `<main>`. Shown only if: (1) native iOS Capacitor detected, (2) healthBridge feature flag enabled, (3) not currently connected per `getState()`, (4) declined at least 7 days ago (or declined marker absent entirely — shows once for members who never saw consent-gate). "Connect" fires `healthBridge.connect()` and clears the declined marker on success. "Not now" re-stamps `declined_at` to Now, resetting the 7-day window. Guard via `waitForCapacitor` polling so the banner doesn't initialise before the Capacitor bridge is available. 88493 bytes.
+
+**sw.js.** Cache bumped to `v2026-04-23i-apple-health-flow`.
+
+### Validation of settings.html UX fix
+
+First reload after 612459b deploy, the Settings page was still letting Dean toggle Apple Health off. Safari Web Inspector diagnostic from the device showed `getState()` correctly returning `connected: true` with all 7 granted scopes, but `toggle.disabled: false` — the new `hbRefreshStatus` code wasn't running. Cause: service worker was serving stale settings.html from cache despite force-quit. Flushed via console script that unregistered all SW registrations and deleted all caches, then `location.reload(true)`. Post-reload: `hb-manage-note element exists: true`, toggle locked on green, cannot be turned off. Validated.
+
+### State of play
+
+**vyve-site latest: [612459b]** (main). **VYVEBrain latest: this entry.** SW cache: `v2026-04-23i-apple-health-flow`. 7 native iOS scopes reading into Supabase, 1 writing, member_health_connections row verified present for Dean's account, initial 30-day historical pull completed.
+
+### Gotchas codified for Hard Rules
+
+1. **Never inject inline JS between `<script src="...">` and its `</script>`** — body is discarded by spec. Always close the src tag first and open a fresh `<script>` for the inline block. Script tag balance audit after any HTML patch involving scripts.
+2. **Capgo plugin iOS registers as `window.Capacitor.Plugins.Health`** (not CapacitorHealth, not CapgoCapacitorHealth). Always check all three names defensively: `plugins.Health || plugins.CapacitorHealth || plugins.CapgoCapacitorHealth`.
+3. **Capgo 8.4.7 iOS: `workouts` is valid for READS only** (via `parseTypesWithWorkouts`). NOT valid for writes. No `saveWorkout` method exposed at all. Only `saveSample` for quantity/category types.
+4. **iOS Capacitor WebView `navigator.serviceWorker` is often undefined** — `getRegistrations()` throws TypeError on some iOS WKWebView builds. Don't rely on SW unregister on native; if cache-flush needed, force-quit app or offload+reinstall.
+5. **`location.reload()` in WKWebView doesn't always bypass the URL cache** even with `?v=timestamp`. Fresh in-memory JS modules require full app kill+relaunch. When that fails too, the console `caches.keys()` + `caches.delete()` + SW unregister combo works.
+6. **First device-side build requires one-time dev certificate + device UDID registration** to the developer team (separate from App Store distribution profile). App Store distribution profile remains intact. For future releases use Product → Archive with automatic signing.
+
+### Outstanding for session 5
+
+- Verify initial 30-day pull populated `member_health_samples` correctly (spot-check row counts per scope for Dean's account).
+- Full consent-gate + re-prompt banner flow test with a fresh test account (requires new sign-up — parked, not to be done in the same session as other paid testing).
+- Potential addition of 4 extra read scopes: `restingHeartRate, heartRateVariability, exerciseTime, mindfulness`.
+- Android Health Connect parity work.
+- HAVEN clinical sign-off from Phil (separate workstream).
+- Server allowlist auto-populate from member-dashboard v50 so the feature flag can be rolled to real members without requiring `localStorage.vyve_healthkit_dev='1'`.
+
+### Commits this session
+
+- [88c69b5](https://github.com/VYVEHealth/vyve-site/commit/88c69b5) — settings.html script-tag scope trap fix + sw v2026-04-23e
+- [7c1f685](https://github.com/VYVEHealth/VYVEBrain/commit/7c1f685) — brain changelog entry for session 3.1 bugfix
+- [e127541](https://github.com/VYVEHealth/vyve-site/commit/e127541) — healthbridge.js plugin name lookup fix + sw v2026-04-23f
+- [ec0a7b9](https://github.com/VYVEHealth/vyve-site/commit/ec0a7b9) — scope rename activeCaloriesBurned → calories + sw v2026-04-23g
+- [19d0fd1](https://github.com/VYVEHealth/vyve-site/commit/19d0fd1) — drop workouts from WRITE scopes + UI copy update + sw v2026-04-23h
+- [612459b](https://github.com/VYVEHealth/vyve-site/commit/612459b) — Apple Health UX overhaul: consent-gate prompt + connect-only Settings + 7-day re-prompt banner + sw v2026-04-23i
+
+---
+
 ## 2026-04-23 — HealthKit session 3.1 bugfix: script-tag scope trap in settings.html
 
 Mid-preview of session 3's Settings UI (still feature-flagged to Dean's localStorage dev flag only, zero production impact), the Apple Health card stayed `display:none` even with the flag set and — when forced visible — the toggle threw `ReferenceError: handleAppleHealthToggle is not defined`.
