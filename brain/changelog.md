@@ -1,3 +1,63 @@
+## 2026-04-23 — HealthKit session 1: DB foundation + sync-health-data EF v1 ACTIVE
+
+### What shipped
+
+**Supabase migrations (two idempotent applies):**
+- `healthkit_health_connect_foundation` — 3 tables, 11 indexes, `queue_health_write_back()` function, 2 auto-queue triggers on `workouts` + `weight_logs`, 3 RLS policies (self-select only)
+- `healthkit_lc_email_triggers` — `zz_lc_email` triggers on all 3 new tables (initial migration's trigger statements silently failed to apply — the known `SUPABASE_APPLY_A_MIGRATION` partial-success gotcha)
+
+**Edge Function `sync-health-data` v1** — status ACTIVE, `verify_jwt: false` (VYVE Rule 21), CORS locked to `online.vyvehealth.co.uk`, ID `1b0d57b9-cbd2-4d6c-86e8-796bc9b42e4a`. 484 lines. Three actions:
+- `pull_samples` — client POSTs batch of device health samples. EF upserts connection row, filters shadow-reads against confirmed write-ledger, runs outlier gate (workout > 12h, weight outside 20-400kg, HR > 250bpm, steps > 200k/day, distance > 300km/event), rejects samples older than 60 days, batches dedup-insert into `member_health_samples`, promotes to `workouts`/`cardio`/`weight_logs` per mapping table, returns `pending_writes` list for client flush.
+- `confirm_write` — client confirms write-ledger entry succeeded (or failed) with native UUID. Defence-in-depth: only the owning member can confirm.
+- `mark_revoked` — marks `member_health_connections` revoked; turns off auto-queue of writes via the trigger's `revoked_at is null` filter.
+
+### New Supabase tables
+
+| Table | Purpose | Key invariant |
+|---|---|---|
+| `member_health_samples` | Raw samples from device. dedup via `unique (member_email, source, native_uuid)` | Writes only via EF (service role); self-select RLS |
+| `member_health_connections` | Per-member per-platform consent state. `primary key (member_email, platform)` | Platform-level enum; `granted_scopes` text[] |
+| `member_health_write_ledger` | VYVE→native write queue + shadow-read guard | `unique (platform, vyve_source_table, vyve_source_id)`; `native_uuid` populated on client confirm |
+
+### Promotion mapping (implemented inside EF)
+
+- **weight** → `weight_logs` (upsert on `member_email, logged_date`)
+- **workout** + type in strength set (FST/TST/Core/Pilates/Crosstraining/long Yoga ≥30min) → `workouts`
+- **workout** + type in cardio set (Running/Cycling/Walking/Hiking/Rowing/Swimming/HIIT/Elliptical/StairClimbing/MixedCardio) → `cardio`  (extracts `metadata.distance_m` → `distance_km`)
+- **workout** short Yoga (<30min) → raw-only (treat as mobility, future Wearable Insights panel)
+- **steps**, **heart_rate**, **active_energy**, **sleep**, **distance** → raw-only in v1
+
+### Smoketest results (3-layer, same pattern as Shell 3 Sub-scope A)
+
+| Layer | Tests | Passed |
+|---|---|---|
+| Deploy | EF ACTIVE, verify_jwt:false, version=1 | ✅ |
+| HTTP | OPTIONS→200 with CORS, GET→405, unknown action→400, invalid platform→400, no auth→401, bad JWT→401 | ✅ (6/6) |
+| DB | Empty pull upserts connection; 7/10 samples inserted (3 rejected via outlier+too_old); weight→weight_logs promoted; workouts→workouts + cardio→cardio promoted once FK satisfied; re-sending same batch dedups cleanly; confirm_write transitions status to 'confirmed' with native_uuid; shadow-read filter rejects samples whose native_uuid is already in the ledger; confirm_write with error_message → 'failed'; mark_revoked sets revoked_at; ownership guard: confirm_write with random ledger_id → 404 | ✅ (22/24) |
+
+Two nominal "failures" in summary are from the pre-members-row batch — test user existed in `auth.users` but not yet in `public.members`, so workouts/cardio FK-violated and went to `skipped_cap`. In production every `auth.users` row also has a `members` row (set up by `onboarding` EF v57+), so this is a smoketest-setup artefact, not a bug. Re-ran the same batch post-members-insert and all promotions worked.
+
+All smoketest artefacts cleaned up (0 samples, 0 connections, 0 ledger rows, 0 workouts/cardio/weight/members/platform_alerts tied to smoketest email).
+
+### Gotchas found this session (candidates for master.md update)
+
+1. **`SUPABASE_APPLY_A_MIGRATION` silent partial apply** — confirmed brain rule. The `zz_lc_email` triggers in the initial migration statement block didn't land even though the apply returned success. Caught by pg_trigger verification. Fix: always verify multi-statement migrations via pg_class joins (not `tgrelid::regclass::text like …`) after apply.
+2. **`regclass::text` is unreliable for trigger lookup** — returns unqualified name when relation is in search_path, breaks naive LIKE filters. Use `pg_trigger JOIN pg_class JOIN pg_namespace` instead.
+3. **`workouts` and `cardio` have FK to `members.email` ON DELETE CASCADE** (weight_logs does not). Any test account in `auth.users` needs a paired `public.members` row for INSERT paths to work. Not documented in master.md §4 DB inventory.
+4. **`workouts.session_number` and `cardio.session_number` are CHECK-constrained to (1,2)** — matches the 2/day cap. `workouts.time_of_day` is CHECK-constrained to (morning|afternoon|evening|night). EF uses correct values for both.
+5. **`platform_alerts` schema** uses `type` (not `alert_type`), `details` (not `message`), no `metadata` column. Initial EF source had the wrong names; corrected before deploy.
+
+### Next session (session 2)
+
+iOS Capacitor plugin + Info.plist + Xcode HealthKit capability + real-device permission flow. Pre-req confirmed: HealthKit entitlement enabled on App ID, sub-capabilities both OFF, provisioning profile regenerated. Dean has iPhone 15 Pro Max + Apple Watch Ultra for testing.
+
+### Commits
+
+- Supabase: migrations `healthkit_health_connect_foundation` + `healthkit_lc_email_triggers`; EF `sync-health-data` v1 deployed
+- Brain: this entry + backlog update
+
+---
+
 ## 2026-04-23 — Plan mapped: HealthKit + Health Connect integration (iOS-first)
 
 ### Context

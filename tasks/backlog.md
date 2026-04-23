@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 23 April 2026 (Session: HealthKit integration plan mapped)
+> Updated: 23 April 2026 (Session: HealthKit session 1 shipped — DB + EF foundation)
 
 ---
 
@@ -9,7 +9,9 @@
 ### 🔥 **Critical Missing Pieces**
 1. **Native Push Notifications (2-3 sessions)** — APNs (iOS) + FCM (Android) via Capacitor plugins. Daily habit reminders, weekly check-in prompts, milestone celebrations, streak risk alerts. Currently only VAPID web push works on PWA.
 2. **Habits Editing Bug** — Cannot un-skip or change habit answers once submitted. Members accidentally clicking wrong option are locked out until next day.
-3. **HealthKit Integration (6 sessions, iOS-first) + Health Connect (4+ sessions, deferred)** — Full plan mapped 23 April at `plans/healthkit-health-connect.md`. Reads 7 data types (workouts, steps, HR, weight, active energy, sleep, distance), writes workouts + weight. iOS ships first (Dean has iPhone + Apple Watch); Android waits for test device. Pre-req before session 2: HealthKit entitlement on Apple Dev portal + iPhone/Watch model confirmation.
+3. **HealthKit Integration (6 sessions, iOS-first) + Health Connect (4+ sessions, deferred)** — Full plan at `plans/healthkit-health-connect.md`. Reads 7 data types, writes workouts + weight.
+   - ~~Session 1 (DB + EF foundation) shipped 23 April~~: 3 tables, `queue_health_write_back` trigger, `sync-health-data` EF v1 ACTIVE. 22/24 smoketest checks pass (the 2 misses are test-env artefacts). Shadow-read guard verified. Pre-reqs confirmed: HealthKit entitlement ON, provisioning profile regenerated, test devices = iPhone 15 Pro Max + Apple Watch Ultra.
+   - **Session 2 next:** iOS plugin install + Info.plist + Xcode HealthKit capability + real-device permission flow. Dean owns device testing. No pre-reqs outstanding.
 
 ### ⭐ **High-Value Additions**
 4. **Enhanced Content Quality** — Update wellbeing check-in slider questions to match onboarding questionnaire. Add health disclaimer for App Store compliance.
