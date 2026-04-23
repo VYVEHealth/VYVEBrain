@@ -1,3 +1,47 @@
+## 2026-04-23 — Portal outage & recovery: defer-on-auth TypeError, then SDK-before-ready RLS strip (two bugs, one evening)
+
+Fixing a ~500ms blank-screen perf issue this afternoon led to a two-stage portal outage on 17 paying members and ~90 minutes of wrong-hypothesis debugging before the real cause was read directly from the code. Root-causing is captured here so the pattern doesn't repeat.
+
+### Bug A — [14a3540] defer on auth.js broke inline body scripts
+
+The 4:53pm perf commit added `<script src="/theme.js" defer></script>` and `<script src="auth.js" defer></script>` across 14 portal HTML files, plus `<link rel="preconnect">` and `<link rel="preload" as="script" href="/supabase.min.js">` in each head. The intent was to unblock the HTML parser so the page could render faster. The failure mode: inline `<script>` blocks in the body (habits.html, index.html and others) instantiate their own helpers that read from `auth.js` globals — `window.vyveSupabase`, `window.vyveCurrentUser`, the shared `supa()` pattern — and dispatch `vyveAuthReady` listeners. Deferred scripts run **after** the inline body scripts, not before, so every inline block ran against an undefined `auth.js` surface and threw `TypeError`s. Console lit up red on every portal page.
+
+**Fix [25a7859] at 10:36pm:** reverted just the `defer` attribute on `auth.js` across all 14 files. Kept `defer` on `theme.js`, `nav.js`, `offline-manager.js` since nothing inline depends on them before DOMContentLoaded. Kept the `preconnect` and `preload` hints. SW bumped to `v2026-04-23j-authjs-blocking`.
+
+### Bug B — [b7291b9] optimistic fast-path dispatched vyveAuthReady before window.vyveSupabase existed
+
+With Bug A cleared, the console went clean but habits.html and the index dashboard counters stayed empty. 90 minutes were lost chasing missing foreign keys and schema corruption — every hypothesis was wrong because none was grounded in reading the actual code. What the code showed, once properly read: commit b7291b9 (the 5:08pm optimistic-auth-fast-path perf commit) had restructured `vyveInitAuth()` so the fast-path reveal happens BEFORE `await vyveLoadSupabaseSDK()`. Sequence on the live portal was:
+
+1. `DOMContentLoaded` fires → `vyveInitAuth()` starts
+2. Fast-path reads cached session from `localStorage.vyve_auth`, builds user object, sets `window.vyveCurrentUser`, dispatches `vyveAuthReady` — all synchronously
+3. Pages' inline body scripts (attached via `waitForAuth`) fire their load function, which calls `supa('/member_habits?...')`
+4. `supa()` checks `window.vyveSupabase` — still undefined because step 5 has not run yet — falls back to anon key as the Bearer token
+5. `await vyveLoadSupabaseSDK()` finally runs, client created, `window.vyveSupabase` assigned — too late
+
+PostgREST accepted the request (`apikey` header was valid) and returned `200 OK`. But `auth.email()` evaluated to NULL on the DB, so the RLS policy `(member_email = auth.email())` filtered every row out. Response body: `[]` — 2 bytes plus headers, which is exactly the "0.5 kB" seen in the Network tab. Verified empirically from the debug session by firing the same URL with `apikey=ANON`/`Authorization: Bearer ANON` and observing `200 []`.
+
+This bug had been latent since b7291b9 shipped but was masked by Bug A's TypeErrors — the fast-path code never actually executed cleanly until 25a7859 unblocked it.
+
+**Fix [802dd87] at 11:54pm:** moved the SDK load, client creation, `window.vyveSupabase` assignment, sign-out wiring and `onAuthStateChange` listener to BEFORE the fast-path reveal block in `vyveInitAuth`. The fast path still fires synchronously from the cached session, but now `window.vyveSupabase` is guaranteed live when `vyveAuthReady` dispatches. Cost: `await vyveLoadSupabaseSDK()` now runs before app reveal instead of after, adding ~20-50ms to first paint (`supabase.min.js` is preloaded in every page head via the 14a3540 `<link rel=preload>` that survived the revert, so it's near-instant). Well worth it vs silent empty data. SW bumped to `v2026-04-23k-sdk-before-ready`.
+
+### Process lessons
+
+1. **Read the code, don't theorise.** The 90-minute detour on FK/schema hypotheses happened because of pattern-matching ("empty response → broken DB") instead of reading what the `supa()` helper actually does when `window.vyveSupabase` is unset. The full `vyveInitAuth` body + the habits.html `supa()` definition gave the diagnosis in under five minutes once actually looked at.
+2. **A 200 + tiny response body is not proof of a working query.** Under RLS, an empty-filter match returns `200 []` indistinguishable from a successful-but-empty query. Always cross-check with a service-role query against the same predicates — which is how we confirmed Dean had 7 rows in `member_habits` while the PWA saw zero.
+3. **Perf changes that touch script ordering or auth flow must be validated on a RLS-protected query path, not just by "app rendered".** Both b7291b9 and 14a3540 would have failed a habits-renders-data smoketest; neither was run before ship.
+
+### State of play
+
+**vyve-site latest: [802dd87]** (main). SW cache: `v2026-04-23k-sdk-before-ready`. Portal back to working for 17 paying members. Both perf wins from today (preload/preconnect hints + optimistic auth fast-path) are preserved — only the execution order in `vyveInitAuth` was corrected. No HTML changes in the final fix beyond the two patches already landed in 25a7859.
+
+### Gotchas codified for Hard Rules
+
+1. **window.vyveSupabase MUST exist before vyveAuthReady fires.** Any restructuring of `vyveInitAuth` must preserve this invariant. The SDK load is cheap (preloaded) — never trade this invariant for the 20ms it saves.
+2. **Do not add `defer` to `auth.js`.** Inline body scripts across 14 pages depend on auth.js globals being available by the time the parser reaches them. `theme.js`, `nav.js`, `offline-manager.js` are defer-safe; `auth.js` is not without a proper ready-promise refactor (tracked in backlog).
+3. **When debugging an apparently-empty PostgREST response, first check whether the Bearer token is an anon key vs a member JWT.** The anon path is a silent RLS strip, not a visible auth failure.
+
+---
+
 ## 2026-04-23 — HealthKit session 4: iOS device validation, 4 plugin debugging iterations, full UX overhaul, end-to-end sync working
 
 First real-device validation of the Capgo HealthKit integration on Dean's iPhone 15 Pro Max, plus one-time Xcode/signing setup, four atomic plugin-taxonomy fixes discovered from Safari Web Inspector on a live WKWebView session, a complete UX pivot to Apple-native consent patterns, and full end-to-end validation of Health data syncing into Supabase.
