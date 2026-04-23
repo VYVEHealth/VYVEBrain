@@ -1,3 +1,63 @@
+## 2026-04-23 — HealthKit session 3.1 bugfix: script-tag scope trap in settings.html
+
+Mid-preview of session 3's Settings UI (still feature-flagged to Dean's localStorage dev flag only, zero production impact), the Apple Health card stayed `display:none` even with the flag set and — when forced visible — the toggle threw `ReferenceError: handleAppleHealthToggle is not defined`.
+
+### Root cause
+
+In session 3's patch, the HealthKit JS block (hbInitSettings, hbRefreshStatus, handleAppleHealthToggle, hbSyncNow, waitForHealthBridge IIFE) was inserted between the opening `<script src="/nav.js" defer>` and its `</script>`. Per the HTML spec, when a `<script>` element has a `src` attribute, any inline body between the tags is **ignored** — the browser only executes the external file. All five HealthKit symbols were silently dropped at parse time. This single mis-injection unified every symptom:
+- No `hbInitSettings` ran → section stayed hidden on page load
+- No `handleAppleHealthToggle` defined → inline `onchange=` threw ReferenceError
+- `location.reload()` didn't help — the init code never existed to run
+- Manual `style.display = ''` worked cosmetically because the DOM was fine; only the JS was missing
+
+### Fix
+
+One-byte edit in `settings.html`: close the nav.js script tag on the same line, open a fresh `<script>` for the HealthKit block.
+
+Before:
+```
+<script src="/nav.js" defer>
+// ─── HealthKit integration ...
+function hbInitSettings() { ... }
+...
+</script>
+```
+
+After:
+```
+<script src="/nav.js" defer></script>
+<script>
+// ─── HealthKit integration ...
+function hbInitSettings() { ... }
+...
+</script>
+```
+
+Script-tag balance before/after the patch: 6/6 → 7/7. `<script src=...>` tags now self-close.
+
+### Verification
+
+On Chrome web preview (deanonbrown@hotmail.com, localStorage flag set):
+- SW re-registered on `vyve-cache-v2026-04-23e-settings-fix`
+- Apple Health section auto-renders on page load (no manual CSS override)
+- Clicking the toggle fires `handleAppleHealthToggle(true)` → `healthBridge.connect()` → `{ error: 'web_unsupported' }` → alert: "Could not connect to Apple Health: web_unsupported"
+- Expected and correct behaviour for web. Native iOS call path will replace `web_unsupported` with the real HealthKit permission sheet in session 4.
+
+### Gotcha codified (add to Hard Rules)
+
+**Never inject inline JS between `<script src="...">` and its `</script>`.** When a script tag has a `src` attribute, the body is discarded — symptoms look like "functions inexplicably missing at runtime". Always wrap inline code in its own separate `<script>` tag.
+
+### Commits
+
+- vyve-site: [88c69b5](https://github.com/VYVEHealth/vyve-site/commit/88c69b5a4de50cd10dd12998b162b630bc3caaca) — settings.html (fix) + sw.js (cache bump to v2026-04-23e-settings-fix)
+- Brain: this entry
+
+### Session 4 still gated on Xcode
+
+No change — Xcode install in progress on Dean's Mac. Once done: `npx cap open ios`, build to iPhone 15 Pro Max, open Settings via native app, native HealthKit permission sheet should appear on toggle, then plugin → server → sync flow completes the device-side validation of session 1's migration + session 2's plugin install + session 3's client orchestrator.
+
+---
+
 ## 2026-04-23 — HealthKit session 2 partial + session 3 full: plugin installed, client orchestrator live (feature-flagged)
 
 Parallel push: session 2 pre-work on Dean's Mac while Xcode installs, session 3 shipped in full. Xcode install blocks the final device test of session 2; sessions 4–6 wait on that.
