@@ -1,3 +1,46 @@
+## 2026-04-23 — Plan mapped: HealthKit + Health Connect integration (iOS-first)
+
+### Context
+Dean asked to map how we ship HealthKit (iOS) and Health Connect (Android) wearable integration. Scope resolved in conversation; full plan committed to `plans/healthkit-health-connect.md`.
+
+### Scope decisions locked
+- **Read + write workouts and weight. No cardio write** (distance/calorie accuracy not defensible to Apple review when we only capture duration).
+- **All 7 data types in v1:** workouts, steps, heart rate, weight, active energy, sleep, distance. Fallback split-phase plan held in reserve if Apple rejects on scope breadth.
+- **iOS first.** Dean has iPhone + Apple Watch. No Android test device yet — Android becomes a ~4-session follow-up once device acquired. Keeps May sell-ready target intact (Sage will demo on iPhone regardless).
+- **Plugin: `@capgo/capacitor-health`.** Only free unified plugin covering modern HealthKit + Health Connect (not deprecated Google Fit). MIT licensed, active maintenance.
+- **Background delivery on iOS deferred to v2** — needs Swift plugin extension, out of scope.
+
+### Architecture
+- Client-side `healthbridge.js` (~350 lines) orchestrates `@capgo/capacitor-health` + Supabase round-trips
+- Server-side `sync-health-data` EF v1 handles ingest, dedup, promotion, and write-ledger confirmation
+- Three new Supabase tables: `member_health_samples` (raw, dedup by native_uuid), `member_health_connections` (per-platform consent state), `member_health_write_ledger` (solves shadow-read: prevents the "write workout → HK → next sync pulls it back → duplicate promotion" bug)
+- Existing cap triggers (Rule 34) handle over-cap routing to `activity_dedupe` for no extra logic
+- Two DB triggers on `workouts` and `weight_logs` auto-queue write-back when member has write scope
+
+### Session plan (iOS)
+1. DB + EF foundation (smoketest with synthetic data, nothing member-visible)
+2. iOS plugin install + Info.plist + Xcode HealthKit capability — pre-req: HealthKit entitlement on Apple Dev portal
+3. `healthbridge.js` + Settings UI + read-path integration with workouts.html/cardio.html
+4. Write-path integration + ledger dedup validation (round-trip test)
+5. Privacy page update + App Privacy questionnaire + App Store Build 3 submission
+6. Apple review response + launch (3–7 day calendar for review)
+
+Total: 6 sessions, ~2 weeks calendar time.
+
+### Dean's pre-session-2 homework
+- Confirm HealthKit entitlement on Apple Developer portal (`developer.apple.com/account` → Identifiers → VYVE App ID → Capabilities → HealthKit). Regenerate distribution provisioning profile after enabling. Full steps in today's conversation.
+- Confirm iPhone model + iOS version, Apple Watch model + watchOS version for session 2 testing.
+
+### Risks carried
+- Apple broad-scope rejection (mitigation: feature-named Info.plist strings; split-phase fallback ready)
+- Shadow-read duplication (mitigation: ledger native_uuid filter)
+- Capacitor version compatibility (verify in session 1)
+
+### No code shipped this session
+Plan-only. First build lands in session 1 (DB migrations + EF v1).
+
+---
+
 ## 2026-04-23 — Portal perf: three-stage assault on page-load slowness
 
 ### The user-visible problem
