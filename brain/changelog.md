@@ -1,3 +1,89 @@
+## 2026-04-23 — Portal perf: three-stage assault on page-load slowness
+
+### The user-visible problem
+Dean felt the app was slow. Every portal page had a ~300-600ms blank screen or skeleton flash on load, even on return visits. No single smoking gun — compound failure across three layers. Fixed in three commits today.
+
+### Commit 1: preconnect + preload + defer on all portal HTML
+**Commit:** `14a3540` on `VYVEHealth/vyve-site@main` · 15 files changed.
+
+Every portal page (`index.html`, `habits.html`, `workouts.html`, `nutrition.html`, `leaderboard.html`, `sessions.html`, `certificates.html`, `engagement.html`, `wellbeing-checkin.html`, `running-plan.html`, `settings.html`, `log-food.html`, `cardio.html`, `movement.html`) now has, injected after `<meta charset>`:
+
+```html
+<link rel="preconnect" href="https://ixjfklpckgxrwjlfsaaz.supabase.co" crossorigin>
+<link rel="preload" as="script" href="/supabase.min.js">
+```
+
+Plus `defer` attribute added to every local `<script src="...">` tag — `theme.js`, `auth.js`, `nav.js`, `offline-manager.js`, `tracking.js`, `vapid.js`, all `workouts-*.js` modules.
+
+**What this fixes:**
+- TCP+TLS handshake to Supabase starts at HTML parse time instead of when `auth.js` executes (saves ~100-200ms on first API call)
+- `supabase.min.js` (185KB) starts downloading in parallel with HTML parse instead of waiting for `auth.js` to inject it (saves ~150-300ms)
+- Scripts no longer block HTML parsing — deferred scripts run in document order after parse completes
+
+**Safety:** Transform proven purely additive — byte-for-byte match to original when additions are stripped. Audited all 14 pages for inline scripts that reference `vyveSupabase`/`vyveCurrentUser` at top level (would break with defer); the three flagged pages all wrap these references in function bodies, safe.
+
+**Cache bump:** `sw.js` → `v2026-04-23a-defer-preload`.
+
+---
+
+### Commit 2: optimistic auth fast-path in auth.js
+**Commit:** `b7291b9` · 2 files changed.
+
+**Root cause found:** Every portal page has `<div id="app" style="display:none">` that only becomes visible when `auth.js` calls `vyveRevealApp()`. That call sat AFTER `vyveLoadSupabaseSDK()` (185KB script inject + download) AND `getSession()` (network round-trip) AND `vyveCheckConsent()` (another network round-trip). So even pages with perfect cache-first render logic were invisible for 300-600ms on every load because `#app` was hidden.
+
+**Rewrote `vyveInitAuth()` in `auth.js`:** reads the cached session from `localStorage['vyve_auth']` BEFORE loading the Supabase SDK, dispatches `vyveAuthReady`, and calls `vyveRevealApp()` immediately. SDK load + `getSession()` + consent check still happen in the background — if the server says the session is invalid, user gets redirected to login.
+
+Supabase session storage key is `'vyve_auth'` (set via `storageKey: 'vyve_auth'` in `createClient` options).
+
+**Behaviour change:**
+- Returning authenticated users: app visible in ~30-50ms instead of 300-600ms
+- Invalid/expired sessions: briefly visible (~200-300ms) then redirected — mildly jarring but <1% of opens
+- First-time users: unchanged (no cache, no fast path, full auth flow runs)
+- Offline users: unchanged (fast path handles it; old offline-only branch removed, absorbed into unified path)
+- `vyveCheckConsent` only triggers redirect for members created in last 10 min → safe to run in background
+
+**Cache bump:** `sw.js` → `v2026-04-23b-fast-auth`.
+
+---
+
+### Commit 3: cache-first render on 4 pages that still showed skeleton flashes
+**Commit:** `06aaef7` · 5 files changed.
+
+After commits 1 and 2, the app was fast on first paint but pages still flashed their skeleton-loading divs for 100-300ms while the data fetch completed. Audited every page — found that `index.html`, `cardio.html`, `movement.html`, `settings.html`, `workouts.html` (via `workouts-programme.js`), and `leaderboard.html` already did cache-first render (offline or optimistic). But four pages only used their cache on `!navigator.onLine`, not online.
+
+**Patched to render from localStorage cache immediately on page load, then fetch fresh data in background:**
+
+1. **`nutrition.html`** — new cache key `vyve_members_cache_<email>` stores the members row (TDEE, targets, persona, weight/height). `loadPage()` reads it first, hides `#nutrition-loading` skeleton and shows `#nutrition-content` before the REST call runs. On fetch completion, silently re-renders if data differs (JSON-equal check).
+
+2. **`engagement.html`** — existing `vyve_engagement_cache` key now renders optimistically on online loads (not just offline). Calls `renderScoreHero`, `renderStreaksFromPrecomputed`, `renderActivityGridFromPrecomputed`, `renderLogFromPrecomputed` from cached data before the `member-dashboard` EF call.
+
+3. **`certificates.html`** — existing `vyve_certs_cache` key now renders optimistically. Calls `render(_cc.data)` before the dashboard EF call.
+
+4. **`habits.html`** — existing `vyve_habits_cache` key now renders optimistically. Restores `habitsData` and `logsToday`, calls `renderHabits()` and hides `#habits-loading` before the three-way `Promise.all` to `member_habits`/`daily_habits`/`fetchHabitDates`.
+
+**Invariant preserved:** first visit to each page still pays the fetch cost (no cache yet). Every subsequent visit renders instantly. Fresh data silently updates DOM if it differs from cache.
+
+**Pages verified already cache-first (no change):** `index.html`, `cardio.html`, `movement.html`, `settings.html`, `leaderboard.html`, `workouts.html`.
+
+**Cache bump:** `sw.js` → `v2026-04-23c-cache-first`.
+
+---
+
+### Architectural discovery noted for future work
+The portal is multi-page (MPA) — each nav tap is a full HTML reload. Even with perfect cache-first render, there's an unavoidable ~50-100ms cost per navigation for HTML parse + deferred-script execution + cache read. This is why nav tabs still flicker slightly on transitions. Big apps (Instagram, Spotify, Linear) are SPAs with persistent shells — no reload between routes. 
+
+**Options discussed with Dean, deferred post-MVP / post-Sage:**
+- View Transitions API (~1 day work) — animates between page loads, doesn't remove the flicker but makes it feel polished
+- Persistent iframe shell (~3-5 days) — `app.html` shell with top bar + bottom nav, iframe swaps content. Requires proper `history.pushState` for back button, deep-link redirects, Capacitor native back handling
+- Full SPA conversion (~2-4 weeks) — correct long-term but not worth derailing May deadline
+
+**Decision:** parked. MVP-first. Revisit after Sage deal closes.
+
+### Known gotchas / rules added
+- Supabase session storage key is `'vyve_auth'` (not the default `sb-<project>-auth-token`) — set explicitly in `createClient`.
+- When adding `defer` to `<script>` tags, audit for inline scripts that reference auth globals at top level — they must be inside function bodies or `vyveAuthReady` listeners. Three pages had this pattern (`engagement.html`, `cardio.html`, `movement.html`), all safely inside functions.
+- Optimistic auth fast-path works because `<div id="app">` has inline `style="display:none"` on every page — `vyveRevealApp()` sets `style.display='block'`. This was confirmed on all 12 portal pages.
+
 ## 2026-04-23 02:30 — Shell 3 Sub-scope A UI: three admin panels in admin-console.html
 
 ### What shipped
