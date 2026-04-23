@@ -1,3 +1,109 @@
+## 2026-04-23 — HealthKit session 2 partial + session 3 full: plugin installed, client orchestrator live (feature-flagged)
+
+Parallel push: session 2 pre-work on Dean's Mac while Xcode installs, session 3 shipped in full. Xcode install blocks the final device test of session 2; sessions 4–6 wait on that.
+
+### Session 2 progress
+
+**What's done (pre-device-test):**
+- `@capgo/capacitor-health@8.4.7` installed via `npm install @capgo/capacitor-health` in `~/Projects/vyve-capacitor`
+- `npx cap sync ios` wired the plugin into the native iOS Capacitor project via SPM (Package.swift manifest confirms `.package(name: "CapgoCapacitorHealth", path: "../../../node_modules/@capgo/capacitor-health")`)
+- Info.plist upgraded: both `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription` rewritten from generic copy to feature-named, guideline-5.1.3-defensible language. Backup preserved at `ios/App/App/Info.plist.bak.pre-healthkit`
+- `App.entitlements` already had `com.apple.developer.healthkit: true` from a prior setup
+- `capacitor.config.json` confirmed: appId `co.uk.vyvehealth.app`, server URL `https://online.vyvehealth.co.uk`
+
+**What's blocking:**
+- Xcode not installed on Dean's Mac (discovered mid-session). Installing now, ~30–60 min download. Required for the device-side plugin permission/read/write test.
+
+**Pre-reqs fully confirmed:**
+- HealthKit entitlement enabled on App ID (`co.uk.vyvehealth.app`) in Apple Developer portal
+- Sub-capabilities: Clinical Health Records OFF, Background Delivery OFF
+- Distribution provisioning profile regenerated
+- Test devices: iPhone 15 Pro Max + Apple Watch Ultra (highest-fidelity HealthKit combo)
+
+### Session 3 — client orchestrator + Settings UI (SHIPPED)
+
+**Scope decision** — session 3 ran in parallel with Xcode download because the code is platform-agnostic. Feature-flag gate means zero production risk.
+
+**NEW: `healthbridge.js`** (478 lines, 18.4KB at `vyve-site/healthbridge.js`) — the client orchestrator that bridges `@capgo/capacitor-health` ↔ `sync-health-data` EF.
+
+Public API (`window.healthBridge`):
+- `isFeatureEnabled()` — gate; returns true only if `localStorage.vyve_healthkit_dev === '1'` OR `window.__VYVE_HEALTH_FEATURE_ALLOWED__ === true`
+- `isNative()` — Capacitor.getPlatform() === 'ios' | 'android'
+- `connect()` — requests plugin authorization (7 read + 2 write scopes), upserts connection row via EF, pulls initial 30-day window
+- `disconnect()` — marks connection revoked server-side (iOS can't revoke programmatically)
+- `sync(opts)` — chunked pull (batch size 500) + promotion; flushes any pending write-ledger entries via `writeSample` / `writeWorkout` then `confirm_write` action
+- `maybeAutoSync()` — auto-runs on `visibilitychange` if last sync > 60 min ago
+- `flushAfterLocalWrite()` — called from workouts.html / nutrition.html after local activity, flushes write-ledger queue immediately
+
+Default scopes requested: `steps, workouts, heartRate, weight, activeCaloriesBurned, sleep, distance` (reads) + `weight, workouts` (writes).
+
+**Scope-name translation:** plugin's dataType names don't match the server's `granted_scopes` semantics. Write scopes are sent to server as `write_weight` and `write_workouts` specifically because `queue_health_write_back()` in session 1's migration checks `'write_workouts' = any(granted_scopes)` to decide whether to queue.
+
+**Settings UI** — `settings.html` had a stub APPLE HEALTH section calling `window.VYVENative.requestHealthKit()` (undefined). Replaced with:
+- Section wrapped with `id="hb-section" style="display:none"` — invisible until feature flag is on
+- `handleAppleHealthToggle(enabled)` now calls `healthBridge.connect()` / `healthBridge.disconnect()`
+- Added `hbSyncNow()` button for manual resync when connected
+- Added `hbRefreshStatus()` which shows "Synced N min ago" or "Connected — not synced yet"
+- Upgraded data-type copy to match actual 7-read/2-write scopes with revocation instructions (iPhone Settings → Health → Data Access & Devices → VYVE Health)
+
+**Script injection** — `healthbridge.js` loaded after `auth.js` on all 4 relevant pages: settings.html, index.html, workouts.html, nutrition.html. Tag balance verified on each via `<script` vs `</script>` count.
+
+**Service worker cache bump** — `sw.js` v2026-04-23c-cache-first → v2026-04-23d-healthbridge (Hard Rule 5 — JS asset changes still require bump).
+
+**NEW EF: `member-dashboard` v50** — additive patch to v49. One extra parallel query (`member_health_connections`), one allowlist constant (`HEALTH_FEATURE_ALLOWLIST`, currently just `deanonbrown@hotmail.com`), two new response fields: `health_feature_allowed` (boolean) and `health_connections` (array). verify_jwt remains false at platform level (Rule 21 preserved). Smoketest of v50 confirmed 11-key response shape vs v49's 9-key, no breakage of existing fields.
+
+### Feature-flag status and why it's safe
+
+**Dev flag is the only active gate in session 3.** Set via Safari Web Inspector: `localStorage.vyve_healthkit_dev = '1'`, then reload. Nobody else has this set.
+
+**Server allowlist is wired into v50 but NOT yet pushed to `window.__VYVE_HEALTH_FEATURE_ALLOWED__`.** To do so, one of two things is needed and sits in the session 4 scope:
+- Option A: `auth.js` on login reads `health_feature_allowed` from `member-dashboard` and sets the global
+- Option B: Each page that cares (settings.html) fetches the dashboard and sets it inline before `hbInitSettings()` runs
+
+Either way, zero production members currently see any UI change:
+- All 17 production members will fail `isFeatureEnabled()` → `hb-section` stays `display:none`
+- Only Dean can toggle his own localStorage dev flag on his iPhone
+
+### Smoketest results
+
+| Layer | Test | Result |
+|---|---|---|
+| member-dashboard v50 | Deploy: status=ACTIVE version=50 verify_jwt=false | ✅ |
+| member-dashboard v50 | Smoketest with fresh test user returns 11 keys incl. `health_feature_allowed` + `health_connections` | ✅ |
+| member-dashboard v50 | `health_feature_allowed: false` for non-Dean user | ✅ |
+| member-dashboard v50 | `health_connections: []` empty array for user with no connection row | ✅ |
+| member-dashboard v50 | Existing 9 response keys untouched | ✅ |
+| settings.html | Script tag balance 6/6 `<script>` vs `</script>` | ✅ |
+| index.html | Script tag balance 12/12 | ✅ |
+| workouts.html | Script tag balance 13/13 | ✅ |
+| nutrition.html | Script tag balance 8/8 | ✅ |
+| healthbridge.js | Gated on `isFeatureEnabled()` AND `isNative()` — no-op on web | ✅ (by design) |
+
+### Gotchas codified
+
+1. **Plugin exposure name** — under Capacitor 8, the plugin is exposed as `window.Capacitor.Plugins.CapacitorHealth`. Some plugin versions use `CapgoCapacitorHealth`. healthbridge.js checks both. Confirmed at runtime in session 4 with the real plugin build.
+2. **iOS doesn't expose actual granted scopes** — `requestAuthorization()` returns without telling you which scopes the user actually approved. Plugin design decision: we assume all requested scopes granted and let subsequent `querySamples()` / `writeSample()` calls fail naturally for denied ones. Server records requested scopes in `granted_scopes[]`; write-ledger queue will silently fail-to-write for denied scopes (and the `confirm_write` action marks them `failed`).
+3. **iOS has no programmatic disconnect API** — `healthBridge.disconnect()` only updates server state and local cache; to fully revoke, user must go to iPhone Settings → Health → Data Access & Devices → VYVE Health. Settings UI says so explicitly.
+4. **Script-tag injection pattern varies across pages** — settings.html uses `<script src="/auth.js" defer></script>`, index.html / workouts.html / nutrition.html use `<script src="auth.js" defer></script>` (no leading slash). Patch logic tried both variants.
+
+### Commits
+
+- Supabase: `member-dashboard` v50 deployed ACTIVE
+- vyve-site: [e63da07](https://github.com/VYVEHealth/vyve-site/commit/e63da07b54d3b3ec4fdc9ae5eb32c04a6aaee79b) — 6 files
+- Brain: this entry + backlog update + snapshot of EF v50 source
+
+### Next session
+
+**Session 4** — iOS device test + write-path validation (requires Xcode installed).
+- Build to iPhone 15 Pro Max via Xcode
+- Trigger `healthBridge.connect()` via Safari Web Inspector console
+- Confirm permission sheet shows our new long-form Info.plist copy
+- Read a real workout from Apple Watch Ultra, see it appear in `member_health_samples` and promoted to `workouts`
+- Write a test weight, confirm it appears in Apple Health with source "VYVE Health", confirm next sync doesn't double-count it via the write-ledger shadow-read filter
+- Wire `window.__VYVE_HEALTH_FEATURE_ALLOWED__` from `member-dashboard` response so the allowlist is automatic (Dean gets the Settings UI without the localStorage dev flag)
+
+---
+
 ## 2026-04-23 — HealthKit session 1: DB foundation + sync-health-data EF v1 ACTIVE
 
 ### What shipped
