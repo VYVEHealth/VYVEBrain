@@ -22,6 +22,10 @@
      - Rollout decisions: Alan first, then cohort of ~5. Rollback = EF v51 with reduced allowlist.
      - Privacy.html HealthKit section + Lewis sign-off + App Store Connect questionnaire + Build 3 submit
      - Submission-scope decision: submit all 7 reads, or phase to 4 (workouts + weight + steps + active_energy) with v1.1 for HR/sleep/distance
+   - **Post-launch HealthKit workstreams (all drafted 24 April):**
+     - `plans/habits-healthkit-autotick.md` — auto-tick habits from HK data (steps 10k, sleep 7h+, workouts, cardio duration, flights). Server-authoritative `health_rule jsonb` on `habit_library`; `member-dashboard` v51 returns `health_auto_satisfied` per habit; habits.html pre-populates tick state. Pairs with editing-bug fix (Critical Missing Piece #2). ~3 sessions.
+     - `plans/healthkit-views.md` — Apple Health data inspector (`apple-health.html`) + personal activity feed on `exercise.html`. Transparency + engagement. ~2 sessions.
+     - Nutrition/MFP reads via HK — parked. Capgo 8.4.7 exposes no dietary types. Would need plugin fork/PR. Separate plan at `plans/nutrition-healthkit.md` when sequenced. Unblocks water habit auto-tick and MFP-native nutrition totals.
 
 ### ⭐ **High-Value Additions**
 4. **Enhanced Content Quality** — Update wellbeing check-in slider questions to match onboarding questionnaire. Add health disclaimer for App Store compliance.
