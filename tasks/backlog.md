@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 23 April 2026 (Sessions: HealthKit session 2 partial + session 3 full shipped)
+> Updated: 24 April 2026 (Sessions: HealthKit session 4 device validation + session 5 validation/flag/banner shipped)
 
 ---
 
@@ -9,11 +9,19 @@
 ### 🔥 **Critical Missing Pieces**
 1. **Native Push Notifications (2-3 sessions)** — APNs (iOS) + FCM (Android) via Capacitor plugins. Daily habit reminders, weekly check-in prompts, milestone celebrations, streak risk alerts. Currently only VAPID web push works on PWA.
 2. **Habits Editing Bug** — Cannot un-skip or change habit answers once submitted. Members accidentally clicking wrong option are locked out until next day.
-3. **HealthKit Integration (6 sessions, iOS-first) + Health Connect (4+ sessions, deferred)** — Full plan at `plans/healthkit-health-connect.md`. Reads 7 data types, writes workouts + weight.
-   - ~~Session 1 (DB + EF foundation) shipped 23 April~~: 3 tables, `queue_health_write_back` trigger, `sync-health-data` EF v1 ACTIVE. 22/24 smoketest checks pass. Shadow-read guard verified.
-   - ~~Session 2 pre-device work shipped 23 April~~: `@capgo/capacitor-health@8.4.7` installed in `~/Projects/vyve-capacitor`, `npx cap sync ios` wired SPM manifest, Info.plist upgraded to Apple-defensible copy (backup at Info.plist.bak.pre-healthkit), entitlement confirmed in App.entitlements. **Blocked on Xcode install for device test.**
-   - ~~Session 3 (client orchestrator + Settings UI) shipped 23 April~~: `healthbridge.js` (18.4KB, 478 lines) + `member-dashboard` v50 (adds health_connections + health_feature_allowed) + settings.html rewrite + sw cache bump to `v2026-04-23d-healthbridge`. Feature-flagged via `localStorage.vyve_healthkit_dev='1'` and server allowlist (Dean-only). Zero production visibility.
-   - **Session 4 next:** iOS device test + write-path round-trip + auto-wire `window.__VYVE_HEALTH_FEATURE_ALLOWED__`. **Pre-req: Xcode install completes.**
+3. **HealthKit Integration (iOS-first) + Health Connect (deferred)** — Full plan at `plans/healthkit-health-connect.md`. v1 scope locked: reads 7 data types, writes weight only (workouts write-back not supported by Capgo 8.4.7 on iOS — codified session 4, dead path removed session 5d).
+   - ~~Session 1 (DB + EF foundation) shipped 23 April~~: 3 tables, `queue_health_write_back` trigger, `sync-health-data` EF v1 ACTIVE. Shadow-read guard verified.
+   - ~~Session 2 pre-device work shipped 23 April~~: `@capgo/capacitor-health@8.4.7` installed, `npx cap sync ios` wired SPM manifest, Info.plist upgraded to Apple-defensible copy, entitlement confirmed.
+   - ~~Session 3 (client orchestrator + Settings UI) shipped 23 April~~: `healthbridge.js` + `member-dashboard` v50 (adds health_connections + health_feature_allowed) + settings.html rewrite. Feature-flagged via `localStorage.vyve_healthkit_dev='1'` with server allowlist staged but not yet wired.
+   - ~~Session 4 (iOS device validation + UX overhaul) shipped 23 April~~ (commit [612459b](https://github.com/VYVEHealth/vyve-site/commit/612459b)): Xcode 26.4.1 + signing setup, iPhone 15 Pro Max dev-build working, four plugin debugging iterations codifying Capgo 8.4.7 iOS taxonomy (`Health` plugin name, `calories` dataType, `workouts` read-only, no `saveWorkout`). UX pivoted to Apple-native patterns: consent-gate 4th card (iOS only), connect-only Settings toggle with "open iPhone Settings to disconnect" note, 7-day re-prompt banner on index.html. Initial 30-day pull logged as "complete" but unverified.
+   - ~~Session 5 (validation, bug hunt, server-authoritative flag) shipped 24 April~~: spot-check of the 30-day pull surfaced two silent bugs. `sync-health-data` v2 (workout-type normalisation fixes unpromoted workouts), SQL backfill of 7 existing samples, then vyve-site commits 5a/5b/5c/5d: readSamples method-name fix + platformId in native_uuid, persistent `has_connected` flag fixing banner regression, server-authoritative hydration via member-dashboard v50 on every page load (flag is off localStorage now — real gate is `HEALTH_FEATURE_ALLOWLIST` in the EF), dead writeWorkout branch removed. SW cache: `v2026-04-24d-write-path-cleanup`.
+   - **Session 6 next — closing out v1:**
+     - Write-path round-trip on-device (Dean logs weight on nutrition.html → ledger queued → confirmed → no shadow-read, no re-log duplication)
+     - Verify six new sample types land on Dean's next sync (steps, HR, weight, active_energy, sleep, distance)
+     - Consent-gate + re-prompt banner fresh-account flow test (needs clean signup)
+     - Rollout decisions: Alan first, then cohort of ~5. Rollback = EF v51 with reduced allowlist.
+     - Privacy.html HealthKit section + Lewis sign-off + App Store Connect questionnaire + Build 3 submit
+     - Submission-scope decision: submit all 7 reads, or phase to 4 (workouts + weight + steps + active_energy) with v1.1 for HR/sleep/distance
 
 ### ⭐ **High-Value Additions**
 4. **Enhanced Content Quality** — Update wellbeing check-in slider questions to match onboarding questionnaire. Add health disclaimer for App Store compliance.

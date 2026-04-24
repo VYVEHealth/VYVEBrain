@@ -1,3 +1,108 @@
+## 2026-04-24 — HealthKit session 5: spot-check unearthed silent type-drop + failed promotion, taxonomy normalisation, server-authoritative feature flag, banner regression fix, and dead-path cleanup
+
+Started the session aiming to close out HealthKit before broader testing — move off the localStorage dev flag, run the write-path round-trip, think through rollout. Step 1 was meant to be a five-minute spot-check of the initial 30-day pull that Session 4 logged as "completed" but that nobody had actually verified. It took ten minutes and surfaced two bugs that would have corrupted every subsequent test. The rest of the session was unwinding that.
+
+### Finding 1 — only workouts reached `member_health_samples`
+
+Query against the table for `deanonbrown@hotmail.com` returned 7 rows, all `sample_type='workout'`. Zero rows for steps, heart_rate, weight, active_energy, sleep, or distance, even though all seven scopes had been granted at connect time. Connection row said `last_sync_status: ok` with `total_synced: 0`.
+
+Root cause: client-side. `healthbridge.js`'s `pullAllSamples` calls `plugin.querySamples()` for the six non-workout types. Capgo `@capgo/capacitor-health` 8.4.7 exposes no `querySamples` method — the correct name is `readSamples`. The `safe()` wrapper in `pullAllSamples` caught the six TypeErrors, logged them as console warnings, and returned `null`, dropping every sample. The Session 4 taxonomy audit had codified the real method list as `isAvailable, requestAuthorization, checkAuthorization, readSamples, saveSample, getPluginVersion, openHealthConnectSettings, showPrivacyPolicy, queryWorkouts, queryAggregated` — but the client was never patched to match. Six data types have been silently failing since Session 4 shipped.
+
+### Finding 2 — all 7 workouts sat unpromoted
+
+Of the 7 `workout` samples that did make it in, zero had `promoted_to` set. The samples were real — 3 Apple Watch runs (29 Mar, 4 Apr, 22 Apr), 2 Apple Watch walks (31 Mar, 1 Apr), 2 Strong-app strength sessions (both 7 Apr, both ~1 minute — mis-logs in Strong, not a VYVE concern).
+
+Root cause: server-side. `sync-health-data` v1's promotion logic did `WORKOUT_TO_CARDIO.has(wt)` against a set of UpperCamelCase names (`"Running"`, `"Walking"`, `"TraditionalStrengthTraining"`). The Capgo plugin's `queryWorkouts` response uses lowerCamelCase (`"running"`, `"walking"`, `"strengthTraining"`), which is also what the Swift source's `HealthDataType` and workout-type enums serialize to. Every sample fell through to the `return null` branch — "unknown workout type, keep raw".
+
+### Finding 3 — `total_synced` counter stomped on every re-sync
+
+Minor, included for completeness: the EF's `upsert` uses `ignoreDuplicates: true`, so on a second sync with all-duplicate inserts the `.select()` returns `[]` and `total_synced` gets set to 0. Should be additive. Cosmetic — not fixed.
+
+### Fix 1 — `sync-health-data` v2 with normalised workout-type matching
+
+Rewrote the promotion path to be taxonomy-agnostic. Added `normWorkoutType(s) = String(s).toLowerCase().replace(/[^a-z0-9]/g, "")` and built canonical sets of normalised tokens. `running` / `Running` / `RUNNING` all collapse to `running`; `strengthTraining` / `STRENGTH_TRAINING` / `TraditionalStrengthTraining` handled distinctly but in the same strength set. Yoga-duration branching preserved. Ignored set expanded to cover the full HK leisure-sport list plus Health Connect variants. EF deployed as v2 (ACTIVE).
+
+### Backfill — one-shot promotion for the 7 existing unpromoted samples
+
+EF's promotion loop only iterates over freshly-inserted samples, so a re-sync with the now-fixed EF wouldn't re-promote the existing 7 rows (blocked by `native_uuid` conflict). SQL DO block mirrored the EF's `promoteMapping` logic against `member_health_samples` where `promoted_to IS NULL AND sample_type='workout'`. Result: 5 rows → `cardio`, 2 rows → `workouts`, all with correct `day_of_week`, `time_of_day`, `duration_minutes`, `logged_at`. `promoted_to` and `promoted_id` backfilled on the source rows. Safe to re-run (filters on unpromoted only).
+
+### vyve-site commits (all on main)
+
+**Session 5a — [e060edc](https://github.com/VYVEHealth/vyve-site/commit/e060edcdcd4d64b88e72044fa8752bab81bbebfb).** `healthbridge.js` now calls `plugin.readSamples()` instead of the non-existent `querySamples()`. Added `s.platformId` to the `native_uuid` fallback chain in `sampleToEF` — `readSamples` exposes the HealthKit UUID there, previously we fell through to a synthetic `start_iso + end_iso + value` uuid that would have defeated the shadow-read guard on re-ingestion of the same sample. Comment in `pullAllSamples` rewritten to reflect the actual Capgo 8.4.7 API surface. `sw.js` bumped to `v2026-04-24a-healthkit-readsamples`.
+
+**Session 5b — [31cee69](https://github.com/VYVEHealth/vyve-site/commit/31cee694fc7136fbc1dc02f136feceeaea57c78f).** Pink re-prompt banner on `index.html` was appearing for connected users. Reported by Dean at 00:44 BST showing the "Get more from VYVE / Connect Apple Health" banner despite being connected the evening prior.
+
+Root cause: the banner's gate read `healthBridge.getState()`, which reads `localStorage['vyve_health_state']` with a 10-minute TTL. Dean's last successful sync was 22:41 UTC on 23 April; by ~23:44 UTC the cache had expired. `getState()` returned `null`. Banner's `if (st && st.connected) return` didn't short-circuit. Banner rendered. The server knew the truth (`member_health_connections` row for Dean had `revoked_at: null`), but the client never consulted it — `getState()` only reads the expiring cache. This would have hit every connected user reliably after 10 minutes of idle.
+
+Fix: persistent flag. `healthbridge.js`'s `sync()` now writes `localStorage.vyve_healthkit_has_connected = '1'` alongside the expiring state cache on every successful sync. `disconnect()` clears it. `index.html`'s banner init checks the persistent flag first, falling back to `getState()`. `hbBannerConnect`'s success path also sets the flag (belt-and-braces). `sw.js` bumped to `v2026-04-24b-banner-connected-flag`.
+
+**Session 5c — [d31f380](https://github.com/VYVEHealth/vyve-site/commit/d31f380616c9b82e0a9d540def39262f720ecfe8).** The 5b fix addressed the symptom. The real architectural gap was that 5b wrote the flag only when `sync()` ran — it doesn't help a user who just opened the app and whose cache has since expired.
+
+Proper fix: server-authoritative hydration. On every page load where `healthbridge.js` is present (index, settings, workouts, nutrition), it now fetches `member-dashboard` v50 after `vyveAuthReady` and populates three things:
+
+- `window.__VYVE_HEALTH_FEATURE_ALLOWED__` from `data.health_feature_allowed` (the server-side allowlist — currently Dean only)
+- `localStorage.vyve_healthkit_has_connected` when `data.health_connections` has a non-revoked row for the current platform
+- `vyve_health_state` cache seeded from server state so `getState()` returns `connected: true` instantly, without waiting for a fresh sync
+
+This is the proper replacement for the localStorage-only `vyve_healthkit_dev` feature gate. The dev flag remains as an OR fallback in `isFeatureEnabled()` for rapid dev testing on non-allowlist accounts — can be removed in a later pass once the server path is confirmed stable.
+
+New public API method `window.healthBridge.hydrateFromDashboard(data)` lets pages that already fetch `member-dashboard` (index.html does, for rendering the home screen) pass their response in directly — the internal `_hasHydrated` boolean prevents double-work. Not yet wired from index.html, so currently there are two dashboard fetches per home-page load; small perf tax, fine for now, cleanup item.
+
+Field-shape note for future work: `member-dashboard` v50's `health_connections` rows return `is_revoked: boolean` (not `revoked_at: string | null` as the raw `member_health_connections` table shape suggests). Codified.
+
+`sw.js` bumped to `v2026-04-24c-server-hydration`.
+
+**Session 5d — [fbc0ddb](https://github.com/VYVEHealth/vyve-site/commit/fbc0ddb80cca063d05ca32878fcf66025f456023).** Dead-code cleanup. `healthbridge.js`'s `flushPendingWrites` had an `else if (tgt === 'workouts')` branch that called `plugin.writeWorkout()`. Capgo 8.4.7 exposes no such method — Session 4 taxonomy audit codified this as "only `saveSample` for quantity/category types; no `saveWorkout`". The branch was unreachable in practice (server trigger `queue_health_write_back()` gates workout queuing on `'write_workouts' = any(granted_scopes)`, and `DEFAULT_WRITE_SCOPES = ['weight']` means that scope is never requested), but it was masquerading as a supported feature.
+
+Removed the branch. The fallback `else` now handles any non-`weight_logs` target by marking the ledger row `failed` with `error_message = 'write_target_unsupported_' + tgt`, so if the server ever starts returning workout ledger entries (e.g., a v2 plugin upgrade) they get cleanly failed instead of throwing a TypeError on the missing plugin method.
+
+The DB-side `queue_health_write_back_workouts` trigger on `public.workouts` is left in place — it's zero runtime cost (WHERE clause matches zero rows without the scope granted) and preserves the migration path for whenever workout write-back lands in v2.
+
+`sw.js` bumped to `v2026-04-24d-write-path-cleanup`.
+
+### State of play
+
+**vyve-site latest:** [fbc0ddb](https://github.com/VYVEHealth/vyve-site/commit/fbc0ddb80cca063d05ca32878fcf66025f456023). SW cache: `v2026-04-24d-write-path-cleanup`. Five commits today: `sync-health-data` EF v2 + backfill, then 5a/5b/5c/5d.
+
+Dean's account on Supabase: 7 workout samples all promoted (5 cardio, 2 workouts, visible on cardio.html/workouts.html for the right dates). Six missing sample types (steps, HR, weight, active_energy, sleep, distance) will land on his next on-device sync now that `readSamples` is wired.
+
+Feature gate: dev flag `localStorage.vyve_healthkit_dev` still works as fallback but is no longer required — the `HEALTH_FEATURE_ALLOWLIST` Set in `member-dashboard` v50 is now the real gate for who sees the Settings Apple Health panel and the re-prompt banner. Currently just Dean.
+
+### Gotchas codified
+
+1. **Capgo plugin emits lowerCamelCase workout_type on iOS.** Server-side taxonomy matching must normalise (lowercase + strip non-alphanumerics) both sides of a set-membership check. Do not rely on Apple's UpperCamelCase enum names matching what the plugin actually sends.
+
+2. **`plugin.querySamples()` does not exist in Capgo 8.4.7.** The method is `plugin.readSamples()`. Session 4 codified the method list; this entry codifies the cost of not patching the client to match (6 silent type-drops from Session 4 ship until today).
+
+3. **State caches with short TTLs cannot be the source of truth for durable membership gates.** "Has this user ever connected" needs either a persistent localStorage flag or server-authoritative state — never a 10-minute state cache. The banner gate in 5b is the persistent-flag fix; 5c is the server-authoritative one.
+
+4. **`readSamples` exposes the HealthKit UUID as `platformId`, not `id` or `uuid`.** Add it to any `native_uuid` fallback chain. Otherwise the synthetic fallback produces a new UUID on every re-pull, which breaks the shadow-read guard on re-ingestion.
+
+5. **`member-dashboard` v50's `health_connections` response shape uses `is_revoked: boolean`, not the raw table's `revoked_at: timestamptz | null`.** EF-shape ≠ table-shape. Hydration consumers check the transformed field.
+
+6. **"Sync completed successfully" is not the same as "promotion happened".** EF v1's `last_sync_status: ok` was returned even when `promoted` counts were all zero. Future EF work should surface promotion outcomes more prominently (or fail the sync status when promotion fails), and any time an on-device sync is described as "complete", the verification is checking `member_health_samples.promoted_to` counts, not just the connection row.
+
+### Outstanding for the rest of session 5
+
+- **Write-path round-trip on-device.** Dean to log a weight on nutrition.html, verify `member_health_write_ledger` goes queued → confirmed with a real HealthKit `native_uuid`, next sync filters that UUID out of the shadow-read, re-logging same day updates `weight_logs` in place rather than duplicating.
+- **Verify the `readSamples` fix lands six new sample types on Dean's next on-device sync.** Spot-check `member_health_samples.sample_type` counts after sync.
+- **Consent-gate + re-prompt banner flow test with a fresh test account.** Carried over from Session 4's outstanding list — still needs a new signup in a clean session.
+- **Rollout plan.** Paper decisions: Alan first, then cohort of ~5 paying members, rollback = EF v51 with reduced `HEALTH_FEATURE_ALLOWLIST`, member comms strategy. Not worth broadening past Dean's circle before the App Store build is live.
+- **Privacy.html HealthKit section + App Store Connect questionnaire + Build 3 submission.** Needs Lewis on the copy. Plan doc has the outline.
+- **Decide submission scope.** Plan's risk register flagged "Apple rejects on broad 7-scope request" as Medium. Either submit all 7 and react to rejection, or preemptively phase to 4 (workouts + weight + steps + active_energy) with HR/sleep/distance in v1.1. Conservative path saves a ~1-week rejection loop against the May deadline.
+
+### Commits this session
+
+- Supabase: `sync-health-data` v2 deployed ACTIVE (workout taxonomy normalisation)
+- Supabase: one-shot SQL backfill of 7 unpromoted workout samples for Dean's account
+- vyve-site: [e060edc](https://github.com/VYVEHealth/vyve-site/commit/e060edcdcd4d64b88e72044fa8752bab81bbebfb) — 5a (readSamples + platformId + sw v2026-04-24a)
+- vyve-site: [31cee69](https://github.com/VYVEHealth/vyve-site/commit/31cee694fc7136fbc1dc02f136feceeaea57c78f) — 5b (has_connected persistent flag + banner gate + sw v2026-04-24b)
+- vyve-site: [d31f380](https://github.com/VYVEHealth/vyve-site/commit/d31f380616c9b82e0a9d540def39262f720ecfe8) — 5c (server-authoritative hydration via member-dashboard v50 + sw v2026-04-24c)
+- vyve-site: [fbc0ddb](https://github.com/VYVEHealth/vyve-site/commit/fbc0ddb80cca063d05ca32878fcf66025f456023) — 5d (drop dead writeWorkout branch + sw v2026-04-24d)
+- Brain: this entry + backlog tick
+
+---
+
 ## 2026-04-23 — Portal outage & recovery: defer-on-auth TypeError, then SDK-before-ready RLS strip (two bugs, one evening)
 
 Fixing a ~500ms blank-screen perf issue this afternoon led to a two-stage portal outage on 17 paying members and ~90 minutes of wrong-hypothesis debugging before the real cause was read directly from the code. Root-causing is captured here so the pattern doesn't repeat.
