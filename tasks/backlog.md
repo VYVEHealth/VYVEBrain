@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 24 April 2026 (Sessions: HK session 5 + session 6 pipeline rebuild + session 7a workout cap fix + session 7b habit_library.health_rule + master.md full rewrite + autotick session 2 server evaluator shipped)
+> Updated: 25 April 2026 (Autotick session 3 shipped: `habits.html` wired to `member-dashboard` v51 — feature fully live end-to-end. Editing bug found to be already fixed on entry. Yesterday: sessions 5 → 7b + master rewrite + session 2 server evaluator.)
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### 🔥 **Critical Missing Pieces**
 1. **Native Push Notifications (2-3 sessions)** — APNs (iOS) + FCM (Android) via Capacitor plugins. Daily habit reminders, weekly check-in prompts, milestone celebrations, streak risk alerts. Currently only VAPID web push works on PWA.
-2. **Habits Editing Bug** — Cannot un-skip or change habit answers once submitted. Members accidentally clicking wrong option are locked out until next day.
+2. ~~**Habits Editing Bug** — Cannot un-skip or change habit answers once submitted.~~ **SHIPPED pre-session-3 (live on entry 25 April 2026).** Upsert-on-conflict in `logHabit`, Undo button with DELETE in `undoHabit`, unique constraint `daily_habits_member_habit_date_unique (member_email, activity_date, habit_id)` all confirmed live. Re-tapping a habit re-writes the row; Undo clears it and restores the three-button state. RLS `cmd=ALL` covers the UPDATE path cleanly.
 3. **HealthKit Integration (iOS-first) + Health Connect (deferred)** — Full plan at `plans/healthkit-health-connect.md`. v1 scope locked: reads 7 data types, writes weight only (workouts write-back not supported by Capgo 8.4.7 on iOS — codified session 4, dead path removed session 5d).
    - ~~Session 1 (DB + EF foundation) shipped 23 April~~: 3 tables, `queue_health_write_back` trigger, `sync-health-data` EF v1 ACTIVE. Shadow-read guard verified.
    - ~~Session 2 pre-device work shipped 23 April~~: `@capgo/capacitor-health@8.4.7` installed, `npx cap sync ios` wired SPM manifest, Info.plist upgraded to Apple-defensible copy, entitlement confirmed.
@@ -25,7 +25,7 @@
      - Privacy.html HealthKit section + Lewis sign-off + App Store Connect questionnaire + Build 3 submit
      - Submission-scope decision: submit all 7 reads, or phase to 4 (workouts + weight + steps + active_energy) with v1.1 for HR/sleep/distance
    - **Post-launch HealthKit workstreams (all drafted 24 April):**
-     - `plans/habits-healthkit-autotick.md` — auto-tick habits from HK data (steps 8k/10k, sleep 7h+, workouts, cardio duration). Revised 24 April for session 6 reality: rule evaluator in `member-dashboard` v51+ routes per metric — daily-table lookup for `steps/distance/active_energy`, sleep-state aggregation for `sleep_asleep_minutes` (`light+rem+deep+asleep`, excluding awake), direct query of `workouts`/`cardio` for workout completion rules. Per-habit `health_rule jsonb` on `habit_library`. Workout-cap pre-req shipped session 7a. Sleep_state metadata pre-req shipped session 5c. Pairs with editing-bug fix (Critical Missing Piece #2). ~1 session remaining: client UI + editing fix combined (session 3). Schema+seeds (session 1/7b) and server evaluator (session 2) both shipped 24 April.
+     - ~~`plans/habits-healthkit-autotick.md` — auto-tick habits from HK data (steps 8k/10k, sleep 7h+, workouts, cardio duration)~~ **SHIPPED 25 April 2026.** All three sessions live: schema + Lewis-approved seeds (session 1/7b), server evaluator + `_shared/taxonomy.ts` (session 2), client UI wired to `member-dashboard` v51 with pre-tick on auto-satisfied rows, `.hk-progress` hints on unsatisfied rows, `.hk-badge` scaffolded hidden pending Lewis design (session 3). Editing-bug fix turned out to already be in place (upsert + undo + unique constraint all live pre-entry). Feature fully flagged via `HEALTH_FEATURE_ALLOWLIST` — Dean only today. Rollout opens alongside the broader HK v1 launch.
      - `plans/healthkit-views.md` — Apple Health data inspector (`apple-health.html`) + personal activity feed on `exercise.html`. Transparency + engagement. ~2 sessions.
      - Nutrition/MFP reads via HK — parked. Capgo 8.4.7 exposes no dietary types. Would need plugin fork/PR. Separate plan at `plans/nutrition-healthkit.md` when sequenced. Unblocks water habit auto-tick and MFP-native nutrition totals.
 
