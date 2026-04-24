@@ -1,7 +1,7 @@
 # Habits × HealthKit auto-tick — Build Plan
 
-> **Status:** Drafted 24 April 2026 during session 5. Post-launch — not a v1 blocker.
-> **Target:** Ship as a minor release (v1.1 / v1.2) within the first 4–6 weeks after HealthKit v1 lands on the App Store.
+> **Status:** Drafted 24 April 2026 during session 5, revised same day end-of-session 7a against the session 6 pipeline reality. Post-launch — not a v1 blocker.
+> **Target:** Ship as a minor release within the first 4–6 weeks after HealthKit v1 lands on the App Store.
 > **Owner:** Dean (technical), Lewis (habit library copy + visual design sign-off).
 > **Related:** `plans/healthkit-health-connect.md` (v1 HK integration); `plans/healthkit-views.md` (inspector + feed).
 
@@ -11,20 +11,56 @@
 
 Members who live in the Apple Watch ecosystem already do a lot of their "VYVE habits" — they walk, they workout, they sleep. Making them tick those habits manually is friction. Auto-confirming from HealthKit data turns the daily habits page from a to-do list into a "look at what you did today" surface. Engagement-multiplier, not a new product.
 
-The hard UX constraint Dean named explicitly: habits are **batch-submitted** via the Submit button on `habits.html`, not auto-logged behind the member's back. So "auto-tick" means **auto-populate the UI state**, not auto-insert into `daily_habits`. Member still owns the submit.
+Hard UX constraint (Dean's call, unchanged): habits are **batch-submitted** via the Submit button on `habits.html`, not auto-logged behind the member's back. So "auto-tick" means **auto-populate the UI state**, not auto-insert into `daily_habits`. Member still owns the submit.
 
 ---
 
-## Scope decisions (locked 24 April 2026)
+## Scope decisions
 
 | Decision | Value | Rationale |
 |---|---|---|
-| Model | **Auto-populate tick state, member still hits Submit.** | Preserves member agency. Dean's call. |
+| Model | **Auto-populate tick state, member still hits Submit.** | Preserves member agency. |
 | Mapping source | **`habit_library.health_rule jsonb` column**, per-habit rule. | Generic enough to extend to Health Connect, VYVE-native metrics, future wearables without re-scoping. |
-| Evaluation | **Server-side** in `member-dashboard` v51+. Each assigned habit row returned with `health_auto_satisfied: bool \| null`. | Single source of truth. No duplicate rule engine in the PWA. Easier to unit-test. |
+| Evaluation | **Server-side** in `member-dashboard` v51+. Each assigned habit row returned with `health_auto_satisfied: bool \| null` and `health_progress: {value, target, unit} \| null`. | Single source of truth. No duplicate rule engine in the PWA. Unit-testable in isolation. |
 | Override | **Member can change Yes → No/Skip manually.** Their tick wins over the auto-confirm. | Edge case: HealthKit thinks steps were done but member disagrees (e.g., took phone for a walk). |
-| Pairs with | **Habits editing bug fix** (Critical Missing Piece #2 in backlog) — same session. | Without it, member who submits in the morning gets locked in before HK catches up. Feature is 30% less compelling without editing. |
-| Nutrition | **Deferred.** Capgo 8.4.7 has zero dietary types exposed; forking the plugin is a separate mini-project (see `Nutrition work parked` section). | Not abandoning it, just sequencing. Water habit auto-tick blocks on this. |
+| Pairs with | **Habits editing bug fix** (Critical Missing Piece #2 in backlog) — same session. | Without it, a member who submits in the morning gets locked in before HK catches up. Feature is 30% less compelling without editing. |
+| Nutrition | **Deferred.** Capgo 8.4.7 has zero dietary types exposed; forking the plugin is a separate mini-project. | Not abandoning, sequencing. Water habit auto-tick blocks on this. |
+
+---
+
+## Routing — three data sources, not one
+
+Session 6 split the HealthKit pipeline into three backing stores, each with different shape and semantics. The rule evaluator routes per metric:
+
+| Metric family | Backing store | Why |
+|---|---|---|
+| `steps`, `distance_km`, `active_energy` | `member_health_daily` — one row per `(member, source, sample_type, date)`, already Watch-vs-iPhone deduped via Apple's `HKStatisticsCollectionQuery` | Indexed lookup by primary key. BST-correct (client constructs local day buckets). Aggregation already done. No per-sample arithmetic needed in the evaluator. |
+| `sleep_asleep_minutes` | `member_health_samples` where `sample_type='sleep'`, summed by `metadata.sleep_state IN ('light','rem','deep','asleep')` excluding `{awake, inBed}` | Sleep needs segment-level fidelity. `HKCategoryValueSleepAnalysis` states aren't aggregable upstream — only a segment-summation does the right thing. |
+| `workout_any`, `workout_cardio`, `workout_strength`, `workout_duration_minutes` | Direct query of `public.workouts` and `public.cardio`, filtered by `activity_date = <today local>` | HK workouts are already promoted to these tables by `sync-health-data` v6 (with `source='healthkit'` stamped post-session-7a). The taxonomy normalisation from sync-health-data v2 is the single source of truth for strength-vs-cardio routing. Re-querying raw `workout` samples would duplicate that logic. |
+| `flights_climbed`, `apple_watch_rings` | Not available in v1 | `flightsClimbed` is not in the 7 granted read scopes. Apple Watch rings need `stand_hours` + the member's move goal, neither of which Capgo 8.4.7 exposes. Both dropped from v1 seed habits. |
+
+Window semantics:
+
+- `today_local` — lookup for daily table: `date = (current_date at time zone 'Europe/London')` (the daily row is already tagged with local date). For workouts/cardio: `activity_date = ...` (same semantics — set by `set_activity_time_fields()` trigger using BST-aware logic).
+- `last_night` — sleep: segments whose `start_at` is between `(current_date - interval '1 day')` local 18:00 and `current_date` local 18:00. Captures last night's sleep even when evaluated at noon the next day.
+- `last_24h` — rolling: less used, available for niche rules.
+
+Supported `op` values: `gte`, `lte`, `eq`, `exists`.
+
+---
+
+## What shipped ahead of this plan
+
+Three pre-requisites landed before the main build can start. All green.
+
+### ✓ Session 5c (already in main, shipped 24 April)
+`sampleToEF` in `healthbridge.js` folds `s.sleepState` into `metadata.sleep_state` on write, giving segment-level Apple sleep data in our store. Verified: 169 segments over 30 days for Dean's account with the full state vocabulary (`light`, `rem`, `deep`, `asleep`, `awake`, `inBed`) represented.
+
+### ✓ Session 6 (shipped 24 April)
+`member_health_daily` table exists with the `push_daily` handler in `sync-health-data` v5+ upserting aggregated step/distance/active_energy rows. BST bucket bug squashed. Verified: today's row for Dean reports 9,136 steps / 833 kcal / 6.8 km matching the Watch.
+
+### ✓ Session 7a (shipped 24 April)
+Workout cap is source-aware. `workouts.source` and `cardio.source` columns default `'manual'`; BEFORE INSERT cap only fires on manual rows; `sync-health-data` v6 stamps `source: 'healthkit'` on promotion. A Watch-heavy member doing 3+ workouts a day now gets all of them counted instead of the 3rd silently diverting to `activity_dedupe`. Without this the "complete a workout" rule would have returned false for any day the member genuinely did 3+.
 
 ---
 
@@ -34,35 +70,37 @@ Of the 30 habits currently in `habit_library`, three have unambiguous HealthKit 
 
 | habit_pot | habit_title | Rule |
 |---|---|---|
-| movement | 10-minute walk | Sum of `distance` samples AND/OR duration of `walking`-type workouts today ≥ 10 min |
-| movement | Take the stairs | Sum of `flightsClimbed` today ≥ 3 floors *(adds new scope — not in current 7 reads)* |
-| sleep | Sleep 7+ hours | Sum of asleep-state sleep segments (asleep + rem + deep + light; exclude awake and inBed) for last night ≥ 420 min |
+| movement | 10-minute walk | Daily lookup: `member_health_daily.distance` today ≥ 1 km (rough proxy for 10-min walk) OR `exists` a walking-type workout today |
+| movement | Take the stairs | `flightsClimbed` today ≥ 3 floors *(requires scope addition — not in v1 seed)* |
+| sleep | Sleep 7+ hours | Sleep-state sum today (last_night window) ≥ 420 min, counting `{light, rem, deep, asleep}` only |
 
-Another four have partial signal (loose/fuzzy — evaluate case-by-case before seeding rules):
+Another four have partial signal (fuzzy — not seeded in v1):
 
-- `movement / Active commute` — walking/cycling distance in commute windows. Time-of-day heuristic makes this brittle.
-- `movement / Move every hour` — Apple Watch Stand Hours (`standHour` category — not in current reads; Watch-only).
-- `movement / Stretch for 5 minutes` — infer from short Yoga / Flexibility workouts. Member might stretch without logging.
-- `mindfulness / Daily breathing exercise` — HealthKit `mindfulness` type (Capgo supports). Only populates if member uses Breathe / Oak / Headspace / similar.
+- `movement / Active commute` — time-of-day heuristic over walking/cycling workouts. Brittle.
+- `movement / Move every hour` — Apple Watch Stand Hours (`standHour` category — Watch-only, not in granted scopes). Drop.
+- `movement / Stretch for 5 minutes` — short Yoga/Flexibility workout matches. Member might stretch untracked. Fuzzy.
+- `mindfulness / Daily breathing exercise` — `mindfulness` type via Breathe/Oak/Headspace integrations. Only populates for members using those apps.
 
-Everything else (social, most of nutrition, most of mindfulness, sleep hygiene behaviours) stays manual — no HK sensor exists.
+Everything else (social, most nutrition, most mindfulness, sleep hygiene behaviours) stays manual.
 
 ---
 
 ## New HK-native habits to add to library
 
-Retrofitting covers 3 habits. The bigger unlock is adding habits *designed* around HK signals. Proposed additions for Lewis's review:
+The bigger unlock is adding habits *designed* around HK signals. Proposed seeds for Lewis's review:
 
-| habit_pot | habit_title | habit_description | Rule |
-|---|---|---|---|
-| movement | Walk 10,000 steps | A classic daily target. Backed by research on metabolic health and longevity. | `steps` sum today ≥ 10000 |
-| movement | Walk 8,000 steps | A slightly gentler daily target — evidence suggests 8k delivers most of the 10k health benefit. | `steps` sum today ≥ 8000 |
-| movement | Complete a workout | Any strength, cardio, or movement session that counts. Apple Watch auto-detects; Strong and Strava sync too. | Exists any `workout` sample today matching strength/cardio buckets |
-| movement | 30 minutes of cardio | Heart-pumping work. Running, cycling, rowing, swimming all count. | Sum of cardio-bucket workout durations today ≥ 30 min |
-| movement | Close your Apple Watch rings | Move, Exercise, and Stand — all three. | `active_energy` ≥ member's Move goal (need to pull via extra scope); Exercise minutes ≥ 30; Stand hours ≥ 12. Requires 2 extra scopes (`activeCaloriesBurned` target + stand hours). |
-| movement | Burn 500 active calories | A daily burn target for members on a fat-loss goal. | `active_energy` sum today ≥ 500 kcal |
+| habit_pot | habit_title | habit_description | Rule source | Rule payload |
+|---|---|---|---|---|
+| movement | Walk 10,000 steps | Classic daily target. | daily | `{metric:"steps", agg:"exists_row_gte", window:"today_local", value:10000}` |
+| movement | Walk 8,000 steps | Slightly gentler target — evidence suggests 8k delivers most of the 10k mortality benefit (Paluch et al., Lancet Public Health). | daily | `{metric:"steps", ..., value:8000}` |
+| movement | Complete a workout | Strength, cardio, or movement session. Apple Watch auto-detects; Strong and Strava sync via HK too. | workouts+cardio | `{metric:"workout_any", agg:"exists", window:"today_local"}` |
+| movement | 30 minutes of cardio | Running, cycling, rowing, swimming. | cardio | `{metric:"cardio_duration_minutes", agg:"sum", window:"today_local", op:"gte", value:30}` |
 
-Lewis call: habit_prompt copy, difficulty rating, which habit_pot each belongs in. I'd guess all `movement` except Apple Watch rings which might warrant its own category. Keep `habit_library.active = false` on the legacy "10-minute walk" if the new "Walk 8,000 steps" supersedes it.
+**Default threshold guidance for Lewis:** `Walk 8,000 steps` as the default for new members aged 50+ or with beginner fitness flag at onboarding; `Walk 10,000 steps` for NOVA persona and high-training-days flag. Both seeded; onboarding assigns one based on persona/fitness level. The threshold lives in `health_rule.value` so we can A/B without code changes.
+
+**Active calories — silent-tracked only, no user-facing habit in v1.** `member_health_daily.active_energy` is already flowing (833 kcal landed for Dean today, no build needed). Future habit "Burn 500 active calories" is a one-row seed when we want to surface it.
+
+**Apple Watch rings — dropped from v1.** Needs two additional scopes we don't have (`standHour`, member's move goal exposure). Reintroduce if/when Capgo exposes them or we fork.
 
 ---
 
@@ -72,107 +110,96 @@ Lewis call: habit_prompt copy, difficulty rating, which habit_pot each belongs i
 alter table public.habit_library
   add column health_rule jsonb;
 
--- Index not needed — scanned per-member, small row count
+-- No index. Scanned per-member at request time, ~30 rows total.
 ```
 
-Rule shape (proposed):
+Rule shape:
 
 ```json
 {
-  "source": "healthkit",
-  "metric": "steps",
-  "agg": "sum",
-  "window": "today_local",
-  "op": "gte",
+  "source": "daily" | "samples_sleep" | "activity_tables",
+  "metric": "steps" | "distance_km" | "active_energy" | "sleep_asleep_minutes" | "workout_any" | "workout_cardio" | "workout_strength" | "cardio_duration_minutes",
+  "agg": "sum" | "max" | "exists" | "duration_sum_minutes" | "exists_row_gte",
+  "window": "today_local" | "last_night" | "last_24h",
+  "op": "gte" | "lte" | "eq" | "exists",
   "value": 10000
 }
 ```
 
-Supported `metric` values (v1): `steps`, `distance_km`, `active_energy`, `workout_any`, `workout_cardio`, `workout_strength`, `sleep_asleep_minutes`, `flights_climbed`, `mindfulness_minutes`.
-
-Supported `agg` values: `sum`, `max`, `exists`, `duration_sum_minutes`.
-
-Supported `window` values: `today_local` (BST-aware, midnight → midnight), `last_night` (for sleep — sessions ending between today 00:00 and today 18:00 local), `last_24h` (rolling).
-
-Supported `op` values: `gte`, `lte`, `eq`, `exists`.
-
-Future-extensible: `source` could be `healthkit`, `health_connect`, `vyve_nutrition`, `vyve_session_views` etc.
+Supported `source` values in v1: `daily` (member_health_daily), `samples_sleep` (member_health_samples sleep segments), `activity_tables` (workouts+cardio). Future-extensible: `vyve_nutrition`, `vyve_session_views`, `health_connect_daily`, etc.
 
 Example seed rules:
 
 ```json
 -- Walk 10,000 steps
-{"source": "healthkit", "metric": "steps", "agg": "sum", "window": "today_local", "op": "gte", "value": 10000}
+{"source":"daily","metric":"steps","agg":"sum","window":"today_local","op":"gte","value":10000}
 
 -- Sleep 7+ hours
-{"source": "healthkit", "metric": "sleep_asleep_minutes", "agg": "duration_sum_minutes", "window": "last_night", "op": "gte", "value": 420}
+{"source":"samples_sleep","metric":"sleep_asleep_minutes","agg":"duration_sum_minutes","window":"last_night","op":"gte","value":420}
 
 -- Complete a workout
-{"source": "healthkit", "metric": "workout_any", "agg": "exists", "window": "today_local", "op": "exists"}
+{"source":"activity_tables","metric":"workout_any","agg":"exists","window":"today_local","op":"exists"}
 
 -- 30 minutes of cardio
-{"source": "healthkit", "metric": "workout_cardio", "agg": "duration_sum_minutes", "window": "today_local", "op": "gte", "value": 30}
-
--- Take the stairs
-{"source": "healthkit", "metric": "flights_climbed", "agg": "sum", "window": "today_local", "op": "gte", "value": 3}
+{"source":"activity_tables","metric":"cardio_duration_minutes","agg":"sum","window":"today_local","op":"gte","value":30}
 ```
 
 ---
 
-## Client-side gap to fix first
+## Server-side — extending `member-dashboard` to v51+
 
-`healthbridge.js`'s `sampleToEF` currently drops `s.sleepState`. Capgo's `HealthSample` for sleep samples carries `sleepState: 'inBed' | 'asleep' | 'awake' | 'rem' | 'deep' | 'light'`. Without this, the sleep aggregation rule has no segment data to distinguish "in bed" from "actually asleep".
+For each habit in `member_habits`, evaluate `health_rule` against the routed backing store and return `health_auto_satisfied: true | false | null` (null = no rule or member has no HK connection) and `health_progress: {value, target, unit}` when numeric.
 
-Patch:
-
-```js
-// In sampleToEF, extend metadata:
-metadata: Object.assign(
-  {},
-  s.metadata || {},
-  s.sleepState ? { sleep_state: s.sleepState } : {},
-  s.distance ? { distance_m: s.distance } : {}
-),
-```
-
-One-line client patch, ships ahead of this plan's main build so the sleep data starts arriving in a usable shape.
-
----
-
-## Server-side: extending `member-dashboard` to v51+
-
-For each habit in `member_habits` (already returned), also evaluate its `health_rule` against today's `member_health_samples` and return `health_auto_satisfied: true | false | null` (null = no rule, manual-only habit).
-
-Pseudocode in the EF:
+Pseudocode:
 
 ```ts
+// Single-pass context fetch (not per-rule)
+const today = localToday(member.timezone ?? 'Europe/London');
+const [dailyRows, sleepSegs, workoutsToday, cardioToday, hkConn] = await Promise.all([
+  svc.from('member_health_daily')
+     .select('sample_type, date, value, unit')
+     .eq('member_email', memberEmail).eq('source', 'healthkit').eq('date', today),
+  svc.from('member_health_samples')
+     .select('start_at, end_at, metadata')
+     .eq('member_email', memberEmail).eq('sample_type', 'sleep')
+     .gte('start_at', lastNightStart(today)).lte('start_at', lastNightEnd(today)),
+  svc.from('workouts').select('id, duration_minutes, source')
+     .eq('member_email', memberEmail).eq('activity_date', today),
+  svc.from('cardio').select('id, duration_minutes, cardio_type, source')
+     .eq('member_email', memberEmail).eq('activity_date', today),
+  svc.from('member_health_connections').select('platform, revoked_at')
+     .eq('member_email', memberEmail).eq('platform', 'healthkit').maybeSingle(),
+]);
+
+const hkActive = hkConn && !hkConn.revoked_at;
+
 for (const h of memberHabits) {
   const rule = habitLibraryMap.get(h.habit_library_id)?.health_rule;
-  if (!rule) { h.health_auto_satisfied = null; continue; }
-  h.health_auto_satisfied = await evaluateRule(rule, memberEmail, samplesContext);
+  if (!rule || !hkActive) { h.health_auto_satisfied = null; continue; }
+  const { satisfied, progress } = evaluateRule(rule, { dailyRows, sleepSegs, workoutsToday, cardioToday });
+  h.health_auto_satisfied = satisfied;
+  h.health_progress = progress;
 }
 ```
 
-The rule evaluator reads `member_health_samples` with appropriate window filters. For sleep it needs the `metadata.sleep_state` from the client-side patch above. For workouts it uses the same strength/cardio bucket logic that's in `sync-health-data` v2's `promoteMapping` (consider shared helper to avoid drift).
-
-Today's samples are queried once per request (not per rule) and passed as context.
+Taxonomy helpers (`normWorkoutType`, `STRENGTH_CANON`, `CARDIO_CANON`, `IGNORED_CANON`) extracted from `sync-health-data` into a shared `_shared/taxonomy.ts` module so both EFs cannot drift.
 
 ---
 
 ## Client behaviour on `habits.html`
 
 On page load:
-1. Trigger `healthBridge.sync()` if `isNative()` and last sync > 15 min ago — ensures today's samples are fresh. Brief spinner on auto-tickable rows.
-2. Fetch habits from member-dashboard (already happens). Each row now carries `health_auto_satisfied`.
+1. Trigger `healthBridge.sync()` if `isNative()` and last sync > 15 min ago — freshens today's daily row + sleep segments.
+2. Fetch habits from member-dashboard v51+; each row now carries `health_auto_satisfied` + `health_progress`.
 3. For rows where `health_auto_satisfied === true`:
    - Pre-select "Yes"
-   - Show a small badge: "✓ from Apple Health" (colour: var(--teal-lt); icon: HealthKit heart SVG)
-   - Member can still tap No/Skip to override — the badge stays but the tick moves
+   - Show a small Apple Health heart glyph badge in `var(--teal-lt)` (icon-only on mobile, icon + "from Apple Health" on desktop)
+   - Member can tap No/Skip to override — badge stays, tick moves
 4. For rows where `health_auto_satisfied === false` and rule exists:
    - Leave blank (default state)
-   - Optional tiny hint: "Not yet — 6,420/10,000 steps" — progress towards the threshold. Requires the EF to return not just boolean but the actual progress value too. Nice-to-have.
+   - Show progress hint on unsatisfied rows with numeric rules: `"6,420 / 10,000 steps"` — comes directly from `health_progress`, no extra computation
 5. For rows where `health_auto_satisfied === null`:
-   - No change from current UX
+   - No change from current UX (member has no HK connection, or habit has no rule)
 
 On Submit: normal insert to `daily_habits`. The auto-tick path is UI-only — server state doesn't know the member "intended" yes until they submit.
 
@@ -180,73 +207,50 @@ On Submit: normal insert to `daily_habits`. The auto-tick path is UI-only — se
 
 ## Pairing with the editing bug fix
 
-Backlog's Critical Missing Piece #2: "Habits Editing Bug — Cannot un-skip or change habit answers once submitted." The auto-tick feature is materially weaker without this fix because of the morning-submit / afternoon-HK-sync mismatch.
+Backlog's Critical Missing Piece #2. Without it, a member who submits in the morning gets locked in before HK catches up with an afternoon walk.
 
 Combined session scope:
-- Edit `daily_habits` to support updating an existing row for today (or remove the 1/day cap entirely and use `upsert on conflict (member_email, activity_date)`)
-- habits.html adds an "Edit today's submission" affordance when a submission already exists
-- Auto-tick from HK can update state even after submission
-
-Estimated combined effort: 2–3 sessions including testing.
-
----
-
-## Nutrition work parked
-
-Capgo `@capgo/capacitor-health` 8.4.7 exposes zero dietary types (verified 24 April 2026 from the plugin's `HealthDataType` enum — no `dietary*`). MFP, Cronometer, Lose It etc. all write to HealthKit's dietary types but we can't read them through this plugin.
-
-Paths to unlock nutrition reads (separate mini-project):
-
-1. **Fork Capgo, add dietary types.** Add ~15 enum cases + HKQuantityTypeIdentifier mappings + unit handling (g, ml, kcal). Same on Android Health Connect. ~2–3 sessions. Ongoing fork maintenance burden.
-2. **Open PR upstream to Capgo.** Clean long-term, slow to merge. Run in parallel with (1).
-3. **Wait.** No cost, no features.
-
-Once unlocked, unblocks:
-
-- `nutrition / Drink 2 litres of water` — auto-tick from `dietaryWater`
-- `nutrition / Protein with every meal` — fuzzy, probably daily dietaryProtein threshold
-- Nutrition totals on `nutrition.html` pulled from HealthKit for MFP-using members
-- Macro adherence display (consumed vs TDEE target)
-
-Merge strategy question (deferred): if both HK-pulled nutrition AND VYVE's own log-food.html entries exist for the same day, which wins? Probably HK-pulled totals take precedence if present, else sum from `nutrition_logs`. Needs to be explicit.
-
-Scoped as separate plan when we sequence it: `plans/nutrition-healthkit.md`.
+- Add `unique (member_email, activity_date, habit_id)` on `daily_habits` (0 duplicates in current data — verified 24 April, safe to add)
+- Rewrite insert path to `upsert on conflict` updating `habit_completed`
+- `habits.html` gets an "Edit today's submission" affordance when a submission already exists
+- Auto-tick state can update even after submission (the evaluator runs on every member-dashboard fetch; `habits.html` re-reads on visibility-change)
 
 ---
 
-## Per-session breakdown
+## Per-session breakdown (revised)
 
 | # | Session | Pre-req | Deliverables |
 |---|---|---|---|
-| 0 | **`healthbridge.js` sleepState metadata patch** | None (can ship now ahead of the main build) | sampleToEF extended to fold `s.sleepState` into `metadata.sleep_state`; data starts landing correctly |
-| 1 | **Habit library additions + schema migration** | Lewis signs off on new habit copy + difficulty | Migration adds `habit_library.health_rule`; Lewis-approved habits seeded with rules; existing 3 mappable habits retrofitted |
-| 2 | **Server evaluator** | Session 1 merged | `member-dashboard` v51 returns `health_auto_satisfied` per assigned habit; shared rule-evaluator helper with sync-health-data's workout bucketing; unit-tested rule shapes |
-| 3 | **Client UI + editing bug fix combined** | Session 2 deployed | habits.html pre-populates tick state from auto-satisfied flag; "✓ from Apple Health" badge (Lewis design); editing affordance for same-day submissions; daily_habits cap / upsert rework |
-| 4 | **Progress hints (nice-to-have)** | Session 3 shipped | Rule returns progress value (`6420/10000 steps`) alongside satisfied boolean; habits.html shows inline on unsatisfied rows |
+| ~~0~~ | ~~`healthbridge.js` sleepState metadata patch~~ | — | ✓ Shipped session 5c |
+| ~~0a~~ | ~~Workout cap source-aware~~ | — | ✓ Shipped session 7a |
+| 1 | **Habit library additions + schema migration** | Lewis signs off on copy + difficulty + habit_pot for each new habit | Migration adds `habit_library.health_rule`; Lewis-approved habits seeded with rules; existing 3 mappable habits retrofitted |
+| 2 | **Server evaluator** | Session 1 merged | `member-dashboard` v51 routes per-metric and returns `health_auto_satisfied` + `health_progress` per assigned habit; shared `_shared/taxonomy.ts` helper imported by both `member-dashboard` and `sync-health-data`; unit-tested rule shapes |
+| 3 | **Client UI + editing bug fix combined** | Session 2 deployed | `habits.html` pre-populates tick state from auto-satisfied flag; Apple Health heart badge (Lewis design); progress hints on unsatisfied rows; editing affordance for same-day submissions; `daily_habits` unique constraint + upsert rework |
 
-Total: ~3 sessions if (4) is dropped, ~4 sessions otherwise. Plus session 0 (a one-line patch) which can ship ahead of the rest.
+Total: 3 sessions. Progress hints merged into session 3 rather than held back as a "nice-to-have" since the evaluator now returns the numbers for free.
 
 ---
 
-## Risks & mitigations
+## Risks & mitigations (revised)
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| Member submits before HK data syncs; their "No" locks in; they complain | High (without editing bug fix) | Pair with editing bug fix — non-negotiable |
-| Rule evaluator drifts from sync-health-data's workout-type normalisation logic (double source of truth) | Medium | Extract `normWorkoutType`, `STRENGTH_CANON`, `CARDIO_CANON` into a shared helper module used by both EFs |
-| Capgo plugin doesn't expose stand-hours / move-goal, breaking "Close your rings" habit | High | Either drop Apple Watch rings habit from v1 scope, or add scope requests and lobby Capgo for support |
-| Members find "auto-confirmed" confusing — feel surveilled rather than helped | Low-medium | Badge copy and icon tested with Lewis + Alan before wider rollout; always reversible via tap |
-| HealthKit returns stale sleep data (member hasn't opened Health app to trigger iCloud sync) | Medium | Trigger `plugin.requestAuthorization` or a gentle refresh on habits.html open; accept that we can't force an Apple Health app refresh |
+| Member submits before HK syncs; their "No" locks in; they complain | Medium (without editing fix) / Low (with) | Pair with editing bug fix — non-negotiable |
+| Rule evaluator drifts from sync-health-data's workout-type normalisation | Low | Extract taxonomy into `_shared/taxonomy.ts` — both EFs import the same constants and functions |
+| Sleep rule returns 0 for iPhone-only members (no Watch) | High (for that segment) | Evaluator returns `null` (not `false`) when the member has no sleep samples in the window — UI treats null as "no rule", member isn't shown a disappointed blank tick |
+| HK returns stale sleep data (member hasn't opened Health app to sync iCloud) | Medium | Trigger `healthBridge.sync()` on habits.html open; accept we can't force an Apple Health app sync |
+| Members find auto-tick confusing — feel surveilled not helped | Low | Badge copy + icon tested with Lewis + Alan before rollout; always reversible via tap |
+| First-time migration: members with null `health_rule` break the evaluator's JSONB parser | Low | Null-check before rule evaluation; null = manual-only behaviour, no-op |
 
 ---
 
 ## Open questions parked for later
 
-- Should the badge say "Apple Health" or just "Auto-confirmed"? Branding call — Lewis.
-- Weekly goals (not daily habits) — should they also auto-track progress from HK? Separate product decision.
-- Can we proactively prompt "Hey, you hit 10k steps — head to the app to log it" via a push notification? Depends on native push (Critical Missing Piece #1 in backlog).
-- Does the auto-tick feature need to respect the employer privacy boundary differently than manual ticks? Enterprise dashboard only sees aggregate, so probably not — but worth explicit check with Alan.
+- Weekly goals (not daily habits) — should they also auto-track progress from HK? Separate product decision; would share the same routing layer cleanly.
+- Push notification "Hey, you hit 10k steps — head to the app to log it" — depends on native push (Critical Missing Piece #1).
+- Enterprise privacy — auto-tick vs manual: no difference in aggregate visibility (employer sees counts, not origin), but worth explicit check with Alan before Sage pilot.
+- How to handle the daily-table `preferred_source` column when a future member has two sources (e.g., HealthKit + Fitbit). Evaluator currently hardcodes `source = 'healthkit'` — needs arbiter logic once multi-source lands.
 
 ---
 
-*Plan committed to brain 24 April 2026.*
+*Plan committed to brain 24 April 2026; revised same day end-of-session 7a against session 6 pipeline reality.*

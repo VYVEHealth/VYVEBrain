@@ -1,3 +1,168 @@
+## 2026-04-24 — HealthKit session 7a: workout cap now source-aware; collateral fix for broken `queue_health_write_back`
+
+Pre-work for the habits × HealthKit auto-tick plan. The existing `cap_workouts` / `cap_cardio` BEFORE INSERT triggers cap at 2/day and divert overflow to `activity_dedupe` — designed for manual-entry spam prevention, but wrong for Apple Watch members who routinely do 3+ sessions a day (morning run, lunchtime class, evening strength). A third HK-sourced workout was silently disappearing from workouts.html, from the member's 30-activity charity count, and from the leaderboard. Fix needs to ship before any habit rule saying "complete a workout" is evaluated against Watch data, otherwise auto-tick would disagree with reality.
+
+### Schema change — `source` column on workouts + cardio
+
+```sql
+alter table public.workouts add column source text not null default 'manual';
+alter table public.cardio   add column source text not null default 'manual';
+```
+
+Default `'manual'` means all existing rows retro-populate as manual (53 workouts, 21 cardio at time of migration) and new manual inserts from the PWA continue working unchanged without any client-side patch. Retro-stamped the 2 workouts and 9 cardio rows that `sync-health-data` v2 had promoted from HK samples during session 5's backfill — joined via `member_health_samples.promoted_to` / `promoted_id` and updated `source = 'healthkit'` on the target rows. Provenance now accurate across the whole table.
+
+### Check constraint drop — `session_number` can no longer be capped at {1,2}
+
+The `workouts_session_number_check` and `cardio_session_number_check` check constraints (`session_number = ANY (ARRAY[1,2])`) were tied to the old 2/day cap. With the cap lifted for HK rows, a 3rd HK-sourced workout on the same day would violate the constraint even though the trigger now allows it. Both constraints dropped. `sync-health-data` continues to send `session_number: 1` on every HK-promoted row — it was never used for ordering anyway (`logged_at` serves that purpose), and no unique constraint references it.
+
+### Trigger rewrite — `cap_workouts` and `cap_cardio` source-aware
+
+```sql
+if coalesce(new.source, 'manual') = 'manual' then
+  if (select count(*) from workouts
+       where member_email = new.member_email
+         and activity_date = new.activity_date
+         and coalesce(source, 'manual') = 'manual') >= 2 then
+    insert into activity_dedupe (...) values (...);
+    return null;
+  end if;
+end if;
+return new;
+```
+
+Key property: non-manual rows bypass the cap entirely and the cap counts only manual rows. A member who logs 2 manual workouts, then has 4 HK workouts sync, then tries to log a 3rd manual — the 3rd manual still diverts to dedupe (manual count is 2, not 6). Watch-heavy members get all their sessions counted; no change to manual spam prevention.
+
+### Charity + cert counters stay naturally capped at 2/day
+
+Checked before shipping: `get_charity_total()` uses its own `LEAST(COUNT(*), 2)` in the UNION ALL, and `increment_workout_counter()` / `increment_cardio_counter()` check `existing_count < 2` before bumping `members.cert_workouts_count` / `cert_cardio_count`. Both independent of the BEFORE INSERT trigger. Lifting the trigger cap for HK inflates nothing downstream — charity months and certificate tier progression remain capped at 2/day per activity type by design. Real additional activity shows on the member's dashboard and leaderboard but doesn't unfairly rocket the charity counter past its intended pace. Clean separation.
+
+### Collateral discovery — `queue_health_write_back()` crashed on any workouts INSERT
+
+Caught by the first live test. The AFTER INSERT trigger `queue_health_write_back_workouts` on `public.workouts` calls the shared `queue_health_write_back()` function, whose IF clause was:
+
+```
+if TG_TABLE_NAME = 'weight_logs' and NEW.native_uuid is not null then
+  return NEW;
+end if;
+```
+
+plpgsql tries to resolve `NEW.native_uuid` against the composite type of NEW (workouts for a workouts trigger firing). Workouts table has no `native_uuid` column, so the reference fails with `record "new" has no field "native_uuid"` before the AND short-circuits. Any workouts INSERT for a member with a `member_health_connections` row would throw. Session 5d's cleanup note had reassured us this trigger was "zero runtime cost (WHERE clause matches zero rows without the scope granted)" — wrong, the function crashed before reaching the WHERE. Only reason it hadn't exploded yet: the three live members without HK connections don't trigger the evaluation cost, and the two HK-connected members (me + possibly Lewis) hadn't manually logged workouts since session 5d shipped 24 April earlier.
+
+Fixed defensively by nesting: outer `if TG_TABLE_NAME = 'weight_logs'` gates the inner `to_jsonb(NEW) ->> 'native_uuid'` jsonb-safe check. jsonb extraction works on any composite type; direct field access does not. Function now safe for `workouts`, `cardio`, `weight_logs`, and any future table that gets the trigger attached.
+
+### `sync-health-data` v6 — stamps `source: 'healthkit'` on promoted rows
+
+Promotion path in `promoteMapping()` now passes the platform tag through and attaches it to both the `workouts` and `cardio` row payloads. Without this the NOT NULL DEFAULT 'manual' would make every HK-promoted row look like a manual entry, which would cap-count and negate the trigger fix. Signature change: `promoteMapping(sample, memberEmail, sourceTag)`. Weight rows unchanged — `weight_logs` has no source column.
+
+The pre-existing `promoted.skipped_cap` counter in handlePullSamples continues not to fire correctly when the cap trigger returns NULL (empty data, no error, neither branch runs) — noted but not fixed in v6 because with source stamping in place no HK row will be cap-triggered anyway. If we later add non-manual non-HK sources (Strava direct, Strong direct, etc.), the counter semantics need revisiting.
+
+### End-to-end validation via transactional rollback
+
+Asserted in a `DO` block that ended with a tagged `raise exception` so nothing persisted:
+
+```
+TEST_PASS_ROLLBACK hk=4 manual=2 dedupe=1
+```
+
+4 HK workouts written source='healthkit' bypassed the cap as intended. 2 manual rows land normally. 3rd manual routes to activity_dedupe. All seven triggers on the workouts table fire cleanly. Transaction rolls back on exception so no test data hits live tables.
+
+### Files changed
+
+- Supabase: `workouts.source` + `cardio.source` columns added; session_number check constraints dropped; `cap_workouts` + `cap_cardio` rewritten source-aware; `queue_health_write_back` nested-conditional fix; 2 workouts + 9 cardio rows retro-stamped `source='healthkit'`.
+- Supabase EF: `sync-health-data` v6 ACTIVE (stamps source on promotion).
+- Brain: this entry + backlog tick for Autotick pre-req; `plans/habits-healthkit-autotick.md` revised to reflect queryAggregated/member_health_daily routing and mark session 0 (sleep_state patch) and session 7a (cap fix) complete.
+
+### Gotchas codified
+
+1. **plpgsql triggers that dereference `NEW.<column>` only resolve against the specific table's composite type.** A shared trigger function attached to multiple tables must not reference a column that exists on only some of them — even inside an IF guard — because plpgsql evaluates the reference as part of compiling the expression, not as part of short-circuit evaluation. Use `to_jsonb(NEW) ->> 'column_name'` for defensive access across table types.
+2. **Activity caps that were originally spam-prevention guards don't map onto third-party data sources.** Source-discriminate the cap (`manual` vs everything else) rather than dropping it entirely — otherwise manual logging regains its original spam vector.
+3. **`promoted.skipped_cap` in sync-health-data only counts `error` branch hits, not `data=[]` empty returns from BEFORE INSERT NULL.** When a cap trigger diverts to activity_dedupe, PostgREST returns 200 with empty data (not an error). Any future source-aware audit needs to compare `insertedSamples.length` against `promoted.workouts + promoted.cardio + promoted.skipped_cap` and surface the delta.
+
+### Outstanding for session 7
+
+- Full rewrite of `brain/master.md` — session 6's pipeline changes and session 7a's cap fix together constitute enough schema + EF change that the existing master will drift quickly if patched. Needs its own session: audit of all live EF versions (sync-health-data v6, member-dashboard v50, certificate-checker v9, etc.), table inventory including `member_health_daily`, trigger inventory including source-aware caps and fixed `queue_health_write_back`, updated Hard Rules (plpgsql NEW dereference + source discrimination).
+- Autotick sessions 7b–7d per the revised plan: schema + habit library additions (Lewis sign-off on copy/difficulty), server rule evaluator in `member-dashboard` v51+, client UI + editing bug fix combined.
+
+### Commits this session
+
+- Supabase: 7 migrations + 1 EF deploy (`sync-health-data` v6 ACTIVE)
+- Brain: this entry + session 6 writeup + backlog update + autotick plan revision
+
+---
+
+## 2026-04-24 — HealthKit session 6: pipeline rebuild around `queryAggregated`, new `member_health_daily` aggregate table, BST bucket fix, two views parked
+
+Session 5's finish left one big open item: verify the six non-workout sample types (steps, distance, active_energy, heart_rate, sleep, weight) actually land on the next on-device sync now that the `readSamples` client fix and the workout-type normalisation EF fix had both shipped. Initial spot-check on-device showed steps/distance/active_energy landing — but heavy. Eight days of raw step samples for one member was hundreds of small rows each covering ~10 minutes of walking. By the time the `apple-health.html` inspector page tried to render 954 samples inline the payload was a blocker for any page that wanted to do day-level aggregation over 30 days.
+
+Architectural pivot: for metrics where Apple exposes a native aggregation API (`HKStatisticsCollectionQuery` via Capgo's `queryAggregated`), pull daily totals directly on-device and store pre-aggregated rows. For metrics where the fine-grained shape matters (heart rate samples, sleep state segments, weight readings as point-in-time events), keep pulling into `member_health_samples` where they belong.
+
+### New table — `member_health_daily`
+
+Long-format. One row per `(member_email, source, sample_type, date)` tuple:
+
+- `member_email text`, `source text`, `sample_type text`, `date date`, `value numeric`, `unit text`, `preferred_source text nullable`, `ingested_at timestamptz default now()`
+- Primary key / unique: `(member_email, source, sample_type, date)` with the EF upserting on conflict
+- `ALLOWED_DAILY_TYPES = {steps, distance, active_energy}` in the EF allowlist
+- `preferred_source` reserved for a future multi-source dedupe arbiter (e.g. when a member connects both HealthKit and Fitbit). Currently null across all rows; not read by the EF. Rule evaluators should filter on `source = 'healthkit'` until the arbiter lands.
+
+The value column stores whatever Apple's `HKStatisticsCollectionQuery` returned for that bucket: integer step counts, metres for distance, kilocalories for active_energy. Units are preserved as-is from HK and stored per row so downstream conversions are explicit.
+
+### Watch-vs-iPhone dedupe is native in HealthKit, not in our code
+
+`HKStatisticsCollectionQuery` with `sumQuantitySamples` across all sources that contributed to a bucket returns one value per day with Apple's internal priority logic already applied — Watch takes precedence over iPhone for overlapping windows, motion sensors on the wrist are preferred over phone accelerometer when both are present. This replaces what would have been a painful hand-rolled dedupe if we'd aggregated from `member_health_samples` ourselves. Saves us from a class of subtle double-counting bugs (a walk logged on the watch would also be counted by the phone in the member's pocket).
+
+### BST bucket-anchor bug squashed
+
+Early inspector readouts were showing daily buckets landing a day behind the actual walk. Root cause: `HKStatisticsCollectionQuery` anchors buckets to midnight local time, but the client was serialising the anchor with a default `Date` constructor that parses as UTC. During BST (+01:00) the anchor at midnight UK = 23:00 the previous day UTC, so yesterday's step count tagged with today minus one. Fix was client-side: construct the bucket anchor from local year/month/day components (`new Date(+y, +m-1, +d, 0, 0, 0, 0)`) rather than passing an ISO string through `new Date(...)`. Codifies the recurring BST gotcha that's bitten several portal areas (per memory) — TL;DR for future sessions: any date-math that crosses a day boundary near midnight must use local construction, never UTC parsing.
+
+### handlePushDaily EF handler — sync-health-data v5
+
+Client posts `{action: "push_daily", platform: "healthkit", daily: [{sample_type, date, value, unit}, ...]}` with the 60-day window it has. EF validates against `ALLOWED_DAILY_TYPES`, enforces a 60-day freshness cutoff (matching pull_samples), outlier-checks steps (reject if >200,000/day), and upserts to `member_health_daily` with `onConflict: 'member_email,source,sample_type,date'`. Batch limit 200 rows per call. Returns `{ok, upserted, skipped}` with skipped counts broken out by reason (invalid, too_old, bad_type, bad_value).
+
+### Samples path still carries the rich-segment types
+
+`member_health_samples` continues to land heart rate point samples, sleep segments (with `metadata.sleep_state` preserved from session 5's sampleToEF extension), and weight readings. Sleep segments carry Apple's full state vocabulary — today's 30-day distribution for my account: 1,609 min `light`, 693 min `rem`, 308 min `deep`, 223 min `asleep` (legacy consolidated state from pre-iOS-16 devices), 77 min `awake`. Rule evaluators for sleep should sum across `{light, rem, deep, asleep}` and exclude `{awake, inBed}`.
+
+Note: `active_energy` still appears in `member_health_samples` as 6 point samples, overlapping with its aggregated representation in `member_health_daily`. Intentional — the daily aggregate is for fast habit-rule evaluation and dashboard display; the raw samples stay for future analytics. Any consumer computing daily totals MUST read from `member_health_daily` not aggregate the samples (the daily row is the deduped Apple-authoritative value; the samples are unreliable for summation across sources).
+
+### End-to-end validation on-device
+
+- My account this morning: smart scale Bluetooth-synced → Apple Health → HKSample → Capgo readSamples → `member_health_samples` as weight=88.550000001 kg at 06:48 UTC → `promoteMapping` → `weight_logs.weight_kg=88.55` with matching `logged_at`. Visible on nutrition.html. Shadow-read guard prevents next sync echoing it back.
+- Today's daily row: 9,136 steps, 833 active kcal, 6.8 km distance. Matches the Watch's Activity app.
+- Heart rate: 775 samples for the three days since the fix shipped, point values with start/end timestamps, averaging to resting ~60 bpm for my account.
+- Sleep: 169 segments over the 30-day window, fine-grained (1–32 min per segment), `sleep_state` metadata populated for every segment.
+
+### Two views built and parked
+
+Apple Health inspector (`apple-health.html`) and personal activity feed (`activity.html`) were both wired up during the session and both ended up shelved.
+
+**apple-health.html** — Samples-table inspector intended to give me (and future devs) a single pane to debug what's arriving from Capgo. Works functionally; renders correctly on small payloads. With 954 samples in scope the inline rendering chokes — not an engineering mystery, just payload mass. Shelving for now is cheap because the page is unlinked from nav and nothing depends on it. When it's needed next it wants paging and/or virtualised rendering, or ideally a samples-query filter that restricts the pull to the last 24–48 hours by default.
+
+**activity.html** — Personal self-view of recent workouts + cardio. Built, then removed from the Exercise Hub (`exercise.html`) because without GPS route maps on running/cycling entries it felt distinctly second-rate compared to Strava/Apple Health's own views. GPS would require either a direct Apple MapKit integration (iOS-only, Capacitor plugin fork) or pulling route polylines from HealthKit's workout metadata (not exposed by Capgo 8.4.7). Both out of scope for v1. The page stays in the repo unlinked — good chance the concept reappears inside a community/social context (feed of team activity, not per-member self-view) rather than as a personal surface, so the scaffolding is worth keeping.
+
+### Currently active EF trail
+
+- `sync-health-data` v5 ACTIVE — push_daily + pull_samples + confirm_write + mark_revoked handlers
+- `member-dashboard` v50 — server-authoritative health feature flag + health_connections hydration (from session 5c)
+- Client `healthbridge.js` — readSamples + queryAggregated calls + BST-safe daily bucket construction + sleepState metadata folding
+
+### Outstanding for session 7+
+
+- Workout cap collision with HK multi-workout days — split into its own pre-req session (session 7a).
+- Habits × HealthKit auto-tick — rewrite the plan against the new routing (daily table for steps/distance/active_energy; samples for sleep; promoted workouts/cardio tables for completion rules).
+- Full rewrite of `brain/master.md` — too much change since last rewrite.
+- `apple-health.html` paging or scoped-pull rework before unshelving.
+- `promoted.skipped_cap` counter semantics in sync-health-data — only counts errors, not BEFORE-INSERT NULL returns.
+- Write-path round-trip still needs on-device validation for the workouts write target (dead-path; Capgo has no saveWorkout, but the schema reserves the lane).
+
+### Commits this session
+
+- vyve-site: session 6 work at commit `37ad068` — `healthbridge.js` queryAggregated integration + BST-safe daily bucket construction + push_daily client invocation; `apple-health.html` built (unlinked); `activity.html` built then unlinked from exercise.html
+- Supabase: `member_health_daily` table created; `sync-health-data` v3 → v4 → v5 deployed ACTIVE through the session (weight native_uuid in v3, diagnostics persistence in v4, push_daily handler in v5)
+- Brain: this entry (written retrospectively in session 7a)
+
+---
+
 ## 2026-04-24 — HealthKit session 5: spot-check unearthed silent type-drop + failed promotion, taxonomy normalisation, server-authoritative feature flag, banner regression fix, and dead-path cleanup
 
 Started the session aiming to close out HealthKit before broader testing — move off the localStorage dev flag, run the write-path round-trip, think through rollout. Step 1 was meant to be a five-minute spot-check of the initial 30-day pull that Session 4 logged as "completed" but that nobody had actually verified. It took ten minutes and surfaced two bugs that would have corrupted every subsequent test. The rest of the session was unwinding that.
