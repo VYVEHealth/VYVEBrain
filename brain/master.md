@@ -1,6 +1,6 @@
 # VYVE Health — Brain Master
 
-> Single source of truth for the whole business. Full rewrite 24 April 2026 (not a patch). Captures live state through Autotick session 7b inclusive. If this drifts from live reality, rewrite it fully again — do not paper over.
+> Single source of truth for the whole business. Full rewrite 24 April 2026 (not a patch). Captures live state through Autotick session 2 inclusive (sessions 1+2 shipped 24 April 2026). If this drifts from live reality, rewrite it fully again — do not paper over.
 
 ---
 
@@ -264,14 +264,14 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All 70 public tables
 | Function | Version | Purpose |
 |---|---|---|
 | `onboarding` | v78 | New member onboarding. Two-phase (fast persona/habits/recs + `EdgeRuntime.waitUntil()` for 8-week workout JSON). Stream-aware since 19 April (`if stream==='workouts'`). |
-| `member-dashboard` | v50 | Full dashboard data in one call. Server-authoritative hydration on every page load. `HEALTH_FEATURE_ALLOWLIST` gates HealthKit; `health_connections` + `health_feature_allowed` in payload. Source of truth for autotick session 2 (v51+ will add `health_auto_satisfied` per habit). |
+| `member-dashboard` | v51 | Full dashboard data in one call. Server-authoritative hydration on every page load. `HEALTH_FEATURE_ALLOWLIST` gates HealthKit; `health_connections` + `health_feature_allowed` + new `habits` block in payload. Each habit returns `health_auto_satisfied` + `health_progress` evaluated server-side against `member_health_daily` / `member_health_samples` / `workouts` / `cardio` via the autotick evaluator (session 2). Imports `_shared/taxonomy.ts`. |
 | `employer-dashboard` | v31 | Aggregate employer analytics. API-key auth (no PII). |
 | `wellbeing-checkin` | v35 | Weekly check-in flow. AI recs pulled from activity + persona. |
 | `monthly-checkin` | v17 | Monthly 8-pillar check-in. Writes `monthly_checkins`. |
 | `log-activity` | v21 | PWA activity logging. Replaced Make entirely. |
 | `anthropic-proxy` | v16 | Server-side Anthropic proxy for running plans + misc AI calls. verify_jwt:true. |
 | `generate-workout-plan` | v11 | AI workout plan generation (invoked from onboarding's waitUntil path). |
-| `sync-health-data` | v6 | HealthKit sync. Stamps `source:'healthkit'` on promoted workout/cardio rows (7a). `queryAggregated` routing for steps/distance/active_energy; sleep segments with full state metadata. |
+| `sync-health-data` | v7 | HealthKit sync. Stamps `source:'healthkit'` on promoted workout/cardio rows (7a). `queryAggregated` routing for steps/distance/active_energy; sleep segments with full state metadata. v7 refactor (session 2) extracts workout taxonomy to `_shared/taxonomy.ts` — `promoteMapping` body byte-identical to v6, zero behaviour change. |
 | `get-health-data` | v2 | Reads back health data for portal display. |
 | `get-activity-feed` | v1 | Personal activity feed (community surface, parked for now). |
 | `admin-dashboard` | v9 | Admin console data API. |
@@ -331,8 +331,8 @@ All portal pages live at `online.vyvehealth.co.uk`. Every page is gated behind S
 
 | Page | Purpose |
 |---|---|
-| `index.html` | Member dashboard. Cache-first (skeleton on first load, instant on return). Reads `member-dashboard` v50. Daily check-in pill strip, activity score ring, goals, live session slot, charity banner. |
-| `habits.html` | Daily habit logging. 7-day pill strip, streak + dot strip, monthly theme badge. Autotick auto-populate (pending session 3) will surface an Apple Health badge on satisfied habits. |
+| `index.html` | Member dashboard. Cache-first (skeleton on first load, instant on return). Reads `member-dashboard` v51. Daily check-in pill strip, activity score ring, goals, live session slot, charity banner. |
+| `habits.html` | Daily habit logging. 7-day pill strip, streak + dot strip, monthly theme badge. Server now returns `health_auto_satisfied` per habit via `member-dashboard` v51 — session 3 will wire this up client-side (Apple Health badge on satisfied habits, progress hints on unsatisfied, editing fix). |
 | `exercise.html` | **Exercise Hub (since 19 April).** Hero card + stream cards linking to Movement / Workouts / Cardio / Classes. |
 | `workouts.html` | Gym programme page. My Programme / My Workouts tabs. Custom workouts, exercise logs, swap. Reads `workout_plan_cache`. |
 | `movement.html` | Movement stream. Reads `workout_plan_cache`, activity list, video modal, Mark as Done. No content yet in `programme_library` — default-state members see no-plan state. |
@@ -420,20 +420,30 @@ Five personas live in `personas` table with full system prompts.
 | Running plan generator (`running-plan.html` + `anthropic-proxy` v16 + Supabase cache) | LIVE |
 | Weekly check-in recommendations (persona-voiced AI recs) | LIVE (`wellbeing-checkin` v35) |
 | Workout plan generator (8-week custom programme at onboarding via waitUntil) | LIVE (`generate-workout-plan` v11) |
-| **Habits × HealthKit autotick** | **Session 7b shipped 24 April — schema + seeds only.** Session 2 (server evaluator in `member-dashboard` v51+) not yet built. Session 3 (client UI + editing bug fix) not yet built. |
+| **Habits × HealthKit autotick** | **Sessions 1 (7b) + 2 shipped 24 April.** Schema + seeds + server evaluator all live. `member-dashboard` v51 returns `health_auto_satisfied` per habit; shared `_shared/taxonomy.ts` in place. Session 3 (client UI + editing bug fix) is the last piece. |
 | AI weekly goals (phase 1 targets set at onboarding) | LIVE |
 | Weekly progress email (Friday, AI-generated, Brevo) | BACKLOG — blocked on Lewis copy template |
 | Persona context modifiers (age 50+, beginner, time-poor, new parent) | BACKLOG |
 | Session recommender (post check-in, mood/energy/time-aware) | BACKLOG |
 
-### HealthKit autotick — what shipped in session 7b (24 April 2026)
+### HealthKit autotick — what shipped in sessions 1 (7b) + 2 (24 April 2026)
 
 - `habit_library.health_rule jsonb` column added (nullable; null = manual-only).
 - Two existing habits retrofitted with rules: `10-minute walk` (daily distance ≥ 1km) and `Sleep 7+ hours` (sleep-state sum ≥ 420 min last_night).
 - Four new Lewis-approved habit seeds inserted (created_by `autotick-7b`): Walk 10,000 steps, Walk 8,000 steps, Complete a workout, 30 minutes of cardio. Thresholds defaulted per plan: 8k for 50+/beginner/non-NOVA, 10k for NOVA/high-training.
 - Rule shape: `{source, metric, agg, window, op, value}`. Supported source values in v1: `daily` (`member_health_daily`), `samples_sleep` (`member_health_samples` sleep segments), `activity_tables` (workouts+cardio). Future-extensible: `vyve_nutrition`, `vyve_session_views`, `health_connect_daily`.
 
-Next up: session 2 (server evaluator) and session 3 (client UI + editing bug fix + progress hints). Plan at `plans/habits-healthkit-autotick.md`.
+**Session 2 additions (server evaluator):**
+
+- `member-dashboard` v51 deployed ACTIVE with `habits` block in response payload. Each active habit returns `habit_id`, `habit_pot`, `habit_title`, `habit_prompt`, `difficulty`, `has_rule`, `health_auto_satisfied` (bool or null), `health_progress` (`{value, target, unit}` or null).
+- Evaluator routes per rule source: `daily` → `member_health_daily` lookup for today; `samples_sleep` → `member_health_samples` sleep rows in last-night window (yesterday 18:00 local to today 11:00 local); `activity_tables` → `workouts` + `cardio` for today.
+- Snapshot-once pattern: all health data fetched in a single `Promise.all` batch, then each habit's rule evaluates against the in-memory snapshot — no N+1 per habit.
+- Null-not-false: evaluator returns `{satisfied: null, progress: null}` when rule is null OR member has no HealthKit connection OR no data in window. UI will treat null as "manual-only", no disappointed blank tick.
+- `_shared/taxonomy.ts` created as sibling file in both `member-dashboard` and `sync-health-data` deploys. Exports the workout-type constants (`STRENGTH_CANON` / `CARDIO_CANON` / `IGNORED_CANON` / `YOGA_CANON`), `classifyWorkout()` helper, `HealthRule` / `HealthProgress` / `HealthEvaluation` types, `applyOp()`, and UK time helpers (`ukLocalDateISO`, `lastNightWindow`). Both EFs now import from here instead of maintaining duplicates.
+- `sync-health-data` v7 — pure refactor to import from `_shared/taxonomy.ts`. `promoteMapping` body preserved byte-identical to v6 (verified via substring check pre-deploy). Zero behaviour change.
+- SQL-validated against Dean's live data across all 6 seeded rule shapes (distance, steps ≥8k, steps ≥10k, sleep ≥420min, workout_any, cardio_duration). Oracle results matched evaluator logic exactly.
+
+Next up: session 3 (client UI + editing bug fix + progress hints). Plan at `plans/habits-healthkit-autotick.md`.
 
 ### Operational AI (Lewis — 24 built skills)
 
@@ -490,7 +500,7 @@ Trial/test data only today. Per-employer Auth-gated URLs (e.g. `/sage`) build wh
 
 ### Member dashboard
 
-Single call to `member-dashboard` v50. Cache-first — renders instantly from localStorage on return visits, skeleton on first load, silent background refresh. Server-authoritative hydration on every page load (HealthKit flag is `HEALTH_FEATURE_ALLOWLIST` in the EF, not localStorage).
+Single call to `member-dashboard` v51. Cache-first — renders instantly from localStorage on return visits, skeleton on first load, silent background refresh. Server-authoritative hydration on every page load (HealthKit flag is `HEALTH_FEATURE_ALLOWLIST` in the EF, not localStorage).
 
 Engagement score 0–100 ring. Activity + Consistency + Variety + Wellbeing components (12.5 points each). Base 50.
 
@@ -645,6 +655,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 - **HealthKit integration (iOS)** — 7 read scopes + 1 write (weight). Device-validated on iPhone 15 Pro Max. `@capgo/capacitor-health@8.4.7` wired via SPM. Session 6 pipeline rebuild: `queryAggregated`-based `member_health_daily`, BST bucket bug squashed, sleep_state coverage verified, scale-to-app weight round-trip validated.
 - **Autotick session 7a (24 April)** — source-aware workout/cardio caps, `sync-health-data` v6 stamps `source:'healthkit'`, `queue_health_write_back` nested-conditional fix.
 - **Autotick session 7b (24 April)** — `habit_library.health_rule` column, 2 retrofits + 4 new Lewis-approved seeds.
+- **Autotick session 2 (24 April)** — `member-dashboard` v51 server evaluator, `_shared/taxonomy.ts` shared module, `sync-health-data` v7 refactor.
 - `member_home_state` aggregate with real-time trigger maintenance wired to 10 source tables.
 - `schema-snapshot-refresh` weekly cron, auto-committing structural changes to VYVEBrain.
 - Push notifications live end-to-end (iOS Web Push via RFC 8291 AES-GCM encryption, user-gesture-triggered).
@@ -686,7 +697,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 
 1. Native push notifications (APNs + FCM via Capacitor). VAPID web push currently covers PWA. 2–3 sessions estimated.
 2. **Habits editing bug** — cannot un-skip or change habit answers once submitted. Fix paired with autotick session 3.
-3. HealthKit launch rollout — consent-gate + re-prompt fresh-account flow test (needs clean signup — never done). Then Alan first, cohort of ~5. Rollback: `member-dashboard` v52 with reduced `HEALTH_FEATURE_ALLOWLIST`.
+3. HealthKit launch rollout — consent-gate + re-prompt fresh-account flow test (needs clean signup — never done). Then Alan first, cohort of ~5. Rollback: `member-dashboard` v53 with reduced `HEALTH_FEATURE_ALLOWLIST` (v52+ reserved for rollback shipments).
 
 ### This weekend's active priorities
 
@@ -701,7 +712,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 
 - `auth.js` ready-promise refactor (`window.VYVE_AUTH_READY`) — unblocks deferred-script perf win.
 - Tech debt: `#skeleton` + `#app` dual-main DOM on `exercise.html` + `movement.html` — migrate to single `#app` with internal skeleton state.
-- HealthKit autotick session 2 (server evaluator in `member-dashboard` v51+). Then session 3 (client UI + editing bug fix + progress hints).
+- HealthKit autotick session 3 (client UI + editing bug fix + progress hints). Sessions 1 (7b) + 2 shipped 24 April.
 - Calendar integration (Google/Apple) + calendar page in portal.
 
 ### Soon

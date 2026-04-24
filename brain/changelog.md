@@ -1,3 +1,54 @@
+## 2026-04-24 — Autotick session 2 shipped: server evaluator + _shared/taxonomy.ts
+
+Second session of the day after 7b + master rewrite. Deliverable per `plans/habits-healthkit-autotick.md` session 2: server-side evaluator in `member-dashboard` v51 that returns `health_auto_satisfied` + `health_progress` per assigned habit, plus a shared `_shared/taxonomy.ts` module imported by both `member-dashboard` and `sync-health-data` so the workout-type classification can't drift. Zero behaviour change to the sync pipeline — this is a backend-only ship. Session 3 (client UI + editing bug fix) still pending.
+
+**`_shared/taxonomy.ts` created.** 6.7k chars. Extracts from the old `sync-health-data` v6 inline body: `normWorkoutType`, `STRENGTH_CANON`, `CARDIO_CANON`, `IGNORED_CANON`, `YOGA_CANON`, `YOGA_STRENGTH_MIN_MINUTES`, `ALLOWED_DAILY_TYPES`, and a new `classifyWorkout()` helper that encodes the strength/cardio/ignored decision tree in one place. Adds `HealthRule`, `HealthProgress`, `HealthEvaluation` types + `applyOp()` operator dispatch + UK time helpers (`ukLocalDateISO`, `lastNightWindow`, `isBST` approximation) + metric-to-column mapping (`dailyMetricColumn`, `dailyUnitFor`). Shipped as a sibling file in both EF deploy payloads — same content, independently loaded at cold start. Supabase Edge Functions don't share filesystem across deployments, so `_shared/` is a per-EF convention, not a global path.
+
+**`member-dashboard` v50 → v51.** Additive. Existing response shape preserved verbatim. Five new parallel queries added to the `Promise.all` batch: `member_habits` (with embedded `habit_library(id, habit_pot, habit_title, habit_description, habit_prompt, difficulty, health_rule)` via PostgREST FK select), `member_health_daily` for today's rows filtered to `source=healthkit`, `member_health_samples` for sleep segments in the last-night window, `workouts` + `cardio` for today's rows. The evaluator builds a `HealthSnapshot` once (`dailyByType: Map<metric, {value, unit}>`, `sleepLastNightAsleepMin`, `workoutsTodayCount`, `cardioTodayCount`, `cardioTodayMinutes`, `hasHealthkitConnection`) then routes each habit's rule against it — no N+1 queries per habit.
+
+**Null-not-false semantics.** If a habit has no rule, or if the member hasn't connected HealthKit, or if there's no data in the relevant window (e.g. iPhone-only member with no sleep segments), the evaluator returns `{satisfied: null, progress: null}` rather than a false tick. Plan's rationale: members with no data shouldn't see a disappointed blank tick — UI treats null as "manual-only" and renders the existing radio as-if the rule wasn't there. This is the single most important UX semantic of the evaluator; false means "you didn't hit it", null means "we can't evaluate it".
+
+**Habits block in response.** Each active habit returns:
+
+```
+{ habit_id, habit_pot, habit_title, habit_description, habit_prompt,
+  difficulty, has_rule, health_auto_satisfied, health_progress }
+```
+
+`has_rule` is a cheap boolean for client branching. `health_progress` when non-null is `{value, target, unit}` — the evaluator returns real data for all rule shapes so session 3 can render "6.8 / 10 km" hints without extra fetches.
+
+**`sync-health-data` v6 → v7.** Pure refactor. Deletes inline `normWorkoutType` + canon sets + `ALLOWED_DAILY_TYPES` from the body; imports from `./_shared/taxonomy.ts` instead. `promoteMapping` body preserved byte-identical to v6 (verified via substring check pre-deploy). `queryAggregated` routing, outlier checks, cap bypass for HK rows, `queue_health_write_back` trigger — all untouched. Zero behaviour change intended; if anything breaks in sync, the ~7k character refactor is the suspect.
+
+**Rule-shape validation.** SQL replica of the evaluator logic run against Dean's live data pre-deploy, oracles:
+
+| Rule | Evaluated | Target | Satisfied |
+|---|---|---|---|
+| `10-minute walk` (`daily.distance_km gte 1`) | 6.80 km | 1 | true |
+| `Walk 8,000 steps` (`daily.steps gte 8000`) | 9,136 | 8,000 | true |
+| `Walk 10,000 steps` (`daily.steps gte 10000`) | 9,136 | 10,000 | false |
+| `Sleep 7+ hours` (`samples_sleep.sleep_asleep_minutes gte 420`) | 294 min | 420 | false |
+| `Complete a workout` (`activity_tables.workout_any exists`) | 0 | — | false |
+| `30 minutes of cardio` (`activity_tables.cardio_duration_minutes gte 30`) | 0 | 30 | false |
+
+All 6 rule shapes (every source/agg/op combination seeded in 7b) produce expected outputs against real data. Dean's account is currently the only test surface (sole member in `HEALTH_FEATURE_ALLOWLIST`), and only `10-minute walk` is in his assigned active habits — so in practice the session 2 ship adds autotick data for exactly one habit on one member right now. Rest exercise via SQL parity.
+
+**Gotchas codified.**
+
+- Sleep state lives at `metadata.sleep_state` in `member_health_samples`, NOT `metadata.state`. First evaluator draft used the wrong path — fixed before deploy. When the sleep rule looks dead in future, this is the first thing to check.
+- `member_health_daily` stores distance in meters (`unit: "meter"`), not km. Rule metric `distance_km` triggers a `/1000` conversion in the evaluator. The rule authoring convention is to pick the display unit and let the evaluator convert — rules don't assume storage units.
+- `member_health_daily.value` for sleep samples is already the pre-computed duration in minutes — sum `value` directly, don't recompute `(end_at - start_at)`. The client's `healthbridge.js` did the arithmetic when the sample was ingested.
+- Evaluator snapshot pattern — single fetch per dashboard request, all rules evaluate against the in-memory snapshot. Avoids both N+1 SQL and repeated JSON serialisation. If a habit is assigned that references a metric not in the snapshot (e.g. `workout_strength` specifically), the evaluator returns null; snapshot widens when that rule ships.
+- BST approximation: `isBST()` uses April–October month check. Real BST transitions happen last Sunday of March / last Sunday of October; members using the evaluator on a transition day may see ±1h shifted windows for up to 7 days/year. Acceptable error margin for v1; exact transitions ship when multi-timezone support does.
+- `esm.sh` imports still avoided in the shared file; all crypto-adjacent helpers (none currently) would go through Deno's built-in Web Crypto per the standing rule.
+
+**Deployment.** Both EFs now ACTIVE: `member-dashboard` v51 (`ezbr_sha256: f0d28cf5d1967ada0103f786979338b70cdd6ecb75d2fa3093d9560b84f5e64e`, `verify_jwt:false` preserved — JWT validated internally via `getUser()`), `sync-health-data` v7 (`ezbr_sha256: f08de14c540d3e8b84564909c49117a65e88d071c131e18167e261b4cbc16cfa`, `verify_jwt:false` preserved — service role with internal JWT extraction). Each ships its own copy of `_shared/taxonomy.ts`; if that file ever changes, both EFs must redeploy in lockstep to stay consistent.
+
+**Known unshipped evaluator cases.** `workout_strength` and `workout_cardio` specific rules: evaluator returns null. No seeded habit uses them today — `Complete a workout` uses `workout_any` which covers both. Future strength-specific habits need the evaluator to read `workouts.source='healthkit'` and filter by the type canon. Multi-source arbitration (HealthKit + Fitbit): evaluator hardcodes `source='healthkit'`. Will move to `preferred_source` column logic when a second source actually exists.
+
+**Next.** Session 3 — `habits.html` pre-populate from `health_auto_satisfied`, Apple Health heart badge (pending Lewis design sign-off), progress hints on unsatisfied rows, editing affordance for same-day submissions, `daily_habits` unique constraint + upsert rework. That ship completes the autotick feature end-to-end.
+
+---
+
 ## 2026-04-24 — Brain master.md full rewrite + Autotick session 7b shipped
 
 Two related pieces of work in a single session. 7b is the continuation of the HealthKit-autotick work queued after session 7a shipped the source-aware cap fix. The master rewrite was the other pending item — previous master had drifted and the committed file had latent base64 corruption from a prior workbench commit.
