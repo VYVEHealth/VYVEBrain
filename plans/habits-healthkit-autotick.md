@@ -223,7 +223,7 @@ Combined session scope:
 |---|---|---|---|
 | ~~0~~ | ~~`healthbridge.js` sleepState metadata patch~~ | — | ✓ Shipped session 5c |
 | ~~0a~~ | ~~Workout cap source-aware~~ | — | ✓ Shipped session 7a |
-| 1 | **Habit library additions + schema migration** | Lewis signs off on copy + difficulty + habit_pot for each new habit | Migration adds `habit_library.health_rule`; Lewis-approved habits seeded with rules; existing 3 mappable habits retrofitted |
+| ~~1~~ | ~~**Habit library additions + schema migration**~~ | ✓ Shipped session 7b (24 April) | ✓ `habit_library.health_rule` column added; 4 Lewis-approved seeds inserted (Walk 10k, Walk 8k, Complete a workout, 30 min cardio); 2 existing habits retrofitted (`10-minute walk`, `Sleep 7+ hours`); `Take the stairs` skipped pending `flightsClimbed` scope |
 | 2 | **Server evaluator** | Session 1 merged | `member-dashboard` v51 routes per-metric and returns `health_auto_satisfied` + `health_progress` per assigned habit; shared `_shared/taxonomy.ts` helper imported by both `member-dashboard` and `sync-health-data`; unit-tested rule shapes |
 | 3 | **Client UI + editing bug fix combined** | Session 2 deployed | `habits.html` pre-populates tick state from auto-satisfied flag; Apple Health heart badge (Lewis design); progress hints on unsatisfied rows; editing affordance for same-day submissions; `daily_habits` unique constraint + upsert rework |
 
@@ -253,4 +253,4 @@ Total: 3 sessions. Progress hints merged into session 3 rather than held back as
 
 ---
 
-*Plan committed to brain 24 April 2026; revised same day end-of-session 7a against session 6 pipeline reality.*
+*Plan committed to brain 24 April 2026; revised same day end-of-session 7a against session 6 pipeline reality; session 1 marked shipped end-of-session 7b same day.*

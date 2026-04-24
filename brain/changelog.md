@@ -1,3 +1,72 @@
+## 2026-04-24 — Brain master.md full rewrite + Autotick session 7b shipped
+
+Two related pieces of work in a single session. 7b is the continuation of the HealthKit-autotick work queued after session 7a shipped the source-aware cap fix. The master rewrite was the other pending item — previous master had drifted and the committed file had latent base64 corruption from a prior workbench commit.
+
+### Autotick session 7b — `habit_library.health_rule` + seeds
+
+Plan at `plans/habits-healthkit-autotick.md` session 1. Deliverable: schema column + retrofit existing mappable habits + seed Lewis-approved HK-native habits. No evaluator, no client UI — sessions 2 and 3 respectively. Scope boundary held deliberately.
+
+**Schema change.**
+
+```sql
+alter table public.habit_library
+  add column if not exists health_rule jsonb;
+```
+
+Nullable (null = manual-only, no autotick evaluation). Column comment codifies the rule shape and supported source values. No index — scanned per-member at request time, ~34 rows in the whole library.
+
+**Rule shape.**
+
+```json
+{"source": "daily|samples_sleep|activity_tables",
+ "metric": "steps|distance_km|active_energy|sleep_asleep_minutes|workout_any|workout_cardio|workout_strength|cardio_duration_minutes",
+ "agg": "sum|max|exists|duration_sum_minutes|exists_row_gte",
+ "window": "today_local|last_night|last_24h",
+ "op": "gte|lte|eq|exists",
+ "value": 10000}
+```
+
+Future-extensible: `vyve_nutrition`, `vyve_session_views`, `health_connect_daily` all slot in as new `source` values without schema change.
+
+**Retrofit of two existing habits.** `10-minute walk` (movement, easy) → `daily.distance_km ≥ 1 today`. `Sleep 7+ hours` (sleep, medium) → `samples_sleep.sleep_asleep_minutes ≥ 420 last_night` (sum of light/rem/deep/asleep state segments). `Take the stairs` skipped — needs `flightsClimbed` scope not in v1 grant.
+
+**Four Lewis-approved new seeds** (created_by `autotick-7b`, all movement pot):
+
+- `Walk 10,000 steps` (medium) — classic daily target. Default for NOVA / high-training flag.
+- `Walk 8,000 steps` (easy) — evidence-based gentler variant (Paluch et al., Lancet Public Health). Default for 50+ / beginner flag / non-NOVA.
+- `Complete a workout` (medium) — any workout today via `activity_tables.workout_any exists`. Watch auto-detects, Strong/Strava sync via HK too.
+- `30 minutes of cardio` (medium) — `activity_tables.cardio_duration_minutes sum ≥ 30 today`.
+
+Threshold values live in `health_rule.value` — A/B variants will be schema-free when we want them.
+
+**Not-in-v1.** Apple Watch rings (needs `standHour` + move goal exposure). Active calories silent-tracked only (no user-facing habit). Dietary metrics deferred (Capgo 8.4.7 exposes zero dietary types). `Take the stairs`. Fuzzy signals left null for manual-only: `Active commute`, `Move every hour`, `Stretch for 5 minutes`, `Daily breathing exercise`.
+
+**No behaviour change yet.** `member-dashboard` v50 doesn't read `health_rule` — session 2 will extend to v51+ to return `health_auto_satisfied: bool|null` and `health_progress: {value, target, unit}|null` per assigned habit. `habits.html` doesn't yet pre-populate tick state. Today's impact: 6 rows in the library carry rules, sitting idle.
+
+### Brain master.md full rewrite
+
+Previous master had drifted — still claimed 35 tables / 15 core EFs / 31 members when live state was 70 tables / ~25 core EFs / ~17 members. Committed file was also base64-corrupted from an earlier workbench commit (104k gibberish decoding to 77k real content). Full rewrite rather than patching.
+
+**Source of truth for the rewrite.** Live Supabase `list_tables` (70 tables, verified) and `list_edge_functions` (75 active, of which ~25 core-operational). Recent changelog entries (7a, session 6, session 5 sub-sessions). Current `tasks/backlog.md`. Existing slower-changing business sections (pillars, origin, charity, GDPR, company values) freshened rather than rewritten from scratch.
+
+**Structure.** 24 sections covering company + legal, mission + positioning, business model, pipeline, tech stack, Supabase (70 tables broken into 9 functional groups), EFs (core operational vs retired), portal pages (including Exercise Hub + Admin Console), onboarding, personas, AI features (autotick 7b captured), ops, dashboards, workouts, brand + podcast, GDPR, charity, website, current status, blockers, priorities, decisions, gotchas, credentials. 55k chars — tighter than previous 77k by removing duplication and archival content that belongs in changelog, not master.
+
+**Gotchas section notably expanded** with items codified since last rewrite: `SUPABASE_APPLY_A_MIGRATION` silent partial execution, plpgsql composite-type trigger gotcha (session 7a root cause), activity cap source-discrimination pattern, BST timezone bug class, esm.sh unreliability in Deno, `first_name` in `members` not user_metadata, iOS Web Push user-gesture requirement, base64 corruption for >50K commits.
+
+**Committed via `run_composio_tool("GITHUB_COMMIT_MULTIPLE_FILES", args)` inside the workbench** — never direct MCP, per codified rule. Verified by fetching committed file and checking first 100 chars decode clean (not base64 gibberish).
+
+### Files changed
+
+- Supabase: `habit_library.health_rule jsonb` column + comment; 2 retrofits (`10-minute walk`, `Sleep 7+ hours`); 4 INSERTs (`autotick-7b` seeds).
+- Brain: this entry (prepended to `brain/changelog.md`); `brain/master.md` full rewrite; `tasks/backlog.md` 7b completion tick; `plans/habits-healthkit-autotick.md` session 1 marked complete.
+
+### Gotchas codified
+
+1. **Master rewrite > incremental patch.** Documented tables and EF versions fell far behind live state when prior sessions tried to patch the master instead of rewriting it. Full rewrite is cheaper than chasing drift.
+2. **Large brain commits must go through the workbench `run_composio_tool` path.** Direct MCP `GITHUB_COMMIT_MULTIPLE_FILES` on a ~55k+ file produces base64 corruption half the time. Post-commit verification (fetch + first-100-char check) is mandatory.
+
+---
+
 ## 2026-04-24 — HealthKit session 7a: workout cap now source-aware; collateral fix for broken `queue_health_write_back`
 
 Pre-work for the habits × HealthKit auto-tick plan. The existing `cap_workouts` / `cap_cardio` BEFORE INSERT triggers cap at 2/day and divert overflow to `activity_dedupe` — designed for manual-entry spam prevention, but wrong for Apple Watch members who routinely do 3+ sessions a day (morning run, lunchtime class, evening strength). A third HK-sourced workout was silently disappearing from workouts.html, from the member's 30-activity charity count, and from the leaderboard. Fix needs to ship before any habit rule saying "complete a workout" is evaluated against Watch data, otherwise auto-tick would disagree with reality.
