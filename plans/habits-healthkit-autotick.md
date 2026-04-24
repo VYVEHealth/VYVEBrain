@@ -1,6 +1,6 @@
 # Habits × HealthKit auto-tick — Build Plan
 
-> **Status:** ✓ COMPLETE. Drafted 24 April 2026 during session 5, revised same day end-of-session 7a against the session 6 pipeline reality. Sessions 1 (7b) + 2 shipped 24 April. Session 3 shipped 25 April. Feature fully live end-to-end.
+> **Status:** ✓ COMPLETE. Drafted 24 April 2026 during session 5, revised same day end-of-session 7a against the session 6 pipeline reality. Sessions 1 (7b) + 2 shipped 24 April. Sessions 3 + 3a shipped 25 April. Feature fully live end-to-end — attribution via done-state copy swap, no visual badge (session 3a dropped the scaffolded badge as a phantom dependency).
 > **Target:** Ship as a minor release within the first 4–6 weeks after HealthKit v1 lands on the App Store.
 > **Owner:** Dean (technical), Lewis (habit library copy + visual design sign-off).
 > **Related:** `plans/healthkit-health-connect.md` (v1 HK integration); `plans/healthkit-views.md` (inspector + feed).
@@ -225,7 +225,8 @@ Combined session scope:
 | ~~0a~~ | ~~Workout cap source-aware~~ | — | ✓ Shipped session 7a |
 | ~~1~~ | ~~**Habit library additions + schema migration**~~ | ✓ Shipped session 7b (24 April) | ✓ `habit_library.health_rule` column added; 4 Lewis-approved seeds inserted (Walk 10k, Walk 8k, Complete a workout, 30 min cardio); 2 existing habits retrofitted (`10-minute walk`, `Sleep 7+ hours`); `Take the stairs` skipped pending `flightsClimbed` scope |
 | ~~2~~ | ~~**Server evaluator**~~ | ✓ Shipped session 2 (24 April) | ✓ `member-dashboard` v51 deployed ACTIVE (`ezbr f0d28cf5...`); `habits` block added to response with `health_auto_satisfied` + `health_progress` per habit; evaluator routes `daily` / `samples_sleep` / `activity_tables`; snapshot-once pattern (no N+1); null-not-false for no-data. `_shared/taxonomy.ts` created and shipped as sibling in both EFs. `sync-health-data` v7 deployed — pure refactor, `promoteMapping` byte-identical to v6. SQL-validated against Dean's live data across all 6 seeded rule shapes. |
-| ~~3~~ | ~~**Client UI + editing bug fix combined**~~ | ✓ Shipped session 3 (25 April) | ✓ `habits.html` wired to `member-dashboard` v51; fourth parallel fetch (`fetchDashboardHabits`), autotick pre-render pass stamping `notes='autotick'`, `.hk-progress` hints on unsatisfied rule rows, `.hk-badge` scaffolded hidden (design pending Lewis), `.autotick` card accent, cache key bumped to `vyve_habits_cache_v2`. Editing bug turned out already fixed: upsert-on-conflict in `logHabit`, DELETE-based Undo in `undoHabit`, unique constraint live. No SQL DDL, no SW bump (HTML-only change under network-first sw.js). Commit `25611117e`. |
+| ~~3~~ | ~~**Client UI + editing bug fix combined**~~ | ✓ Shipped session 3 (25 April) | ✓ `habits.html` wired to `member-dashboard` v51; fourth parallel fetch (`fetchDashboardHabits`), autotick pre-render pass stamping `notes='autotick'`, `.hk-progress` hints on unsatisfied rule rows, cache key bumped to `vyve_habits_cache_v2`. Editing bug turned out already fixed: upsert-on-conflict in `logHabit`, DELETE-based Undo in `undoHabit`, unique constraint live. Commit `25611117e`. |
+| ~~3a~~ | ~~**Badge → copy-only attribution**~~ | ✓ Shipped session 3a (25 April) | ✓ `.hk-badge` scaffold dropped (phantom "pending Lewis sign-off" — no design artifact ever existed). Replaced with done-state sub-label swap: "from Apple Health" on auto-ticked rows, "Logged to your progress" on manual-yes rows. `notes='autotick'` persistence retained for the copy variant. Commit `8272a2c4`. |
 
 Total: 3 sessions (1 + 2 shipped 24 April; 3 shipped 25 April — feature fully live). Progress hints merged into session 3 rather than held back as a "nice-to-have" since the evaluator now returns the numbers for free.
 
@@ -253,4 +254,4 @@ Total: 3 sessions (1 + 2 shipped 24 April; 3 shipped 25 April — feature fully 
 
 ---
 
-*Plan committed to brain 24 April 2026; revised same day end-of-session 7a against session 6 pipeline reality; session 1 marked shipped end-of-session 7b same day; session 2 marked shipped end-of-session 2 same day; session 3 marked shipped 25 April — plan closed.*
+*Plan committed to brain 24 April 2026; revised same day end-of-session 7a against session 6 pipeline reality; session 1 marked shipped end-of-session 7b same day; session 2 marked shipped end-of-session 2 same day; session 3 marked shipped 25 April; session 3a (badge → copy-only attribution) marked shipped 25 April — plan closed.*

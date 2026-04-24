@@ -1,3 +1,24 @@
+## 2026-04-25 — Autotick session 3a: badge dropped, copy-only attribution
+
+Post-ship review with Dean. He asked what the "pending Lewis design sign-off" on the `.hk-badge` scaffold actually referred to, I searched every brain file, and the honest answer came back: no design artifact exists, Lewis was never asked about a badge, no mockup or Figma anywhere. The scaffold and the dependency label were both phantoms — carried forward verbatim from my session 3 handoff prompt without anyone ever questioning where the badge idea came from. It traces back to one speculative sentence in `plans/habits-healthkit-autotick.md` line 195 drafted during an earlier Claude-only session. Never Lewis, never Dean, never a designer.
+
+Dean's call: drop the badge entirely, replace attribution with a one-line copy variant on the existing done-state sub-label. Auto-ticked rows now read "Done today / from Apple Health"; manual-yes rows unchanged at "Done today / Logged to your progress". No new visual element. The `.hk-progress` bar + text on unsatisfied rule rows stays — that's a genuine UX affordance, not attribution theatre.
+
+**habits.html diff (-591 chars):**
+
+- Dropped: `.hk-badge` + `.hk-badge svg` + `.habit-card.autotick::before` CSS; `HK_HEART_SVG` constant; `hkBadgeHTML` templating variable + interpolation; `.autotick` class on card element; "pending Lewis" comment block.
+- Added: `const doneSubCopy = autotick ? 'from Apple Health' : 'Logged to your progress'` in the done branch of `habitCardHTML`; replacement CSS comment noting the copy-only model.
+- Kept (all still correct): `notes='autotick'` on auto-logged `daily_habits` rows, `logsToday[id].autotick` rehydration on reload from `row.notes === 'autotick'`, `runAutotickPass()` pre-render pass, all `member-dashboard` v51 wiring, `.hk-progress` progress-hint rendering, upsert-on-conflict, Undo DELETE flow.
+
+**Why this matters as a codification moment, not just a UX tweak.** The badge survived a whole session drift cycle — it was invented by one Claude session, embedded in a plan committed to the brain, then quoted back at face value by the next session (me, yesterday) as if it were approved scope. The "pending Lewis design sign-off" label made it sound real without ever being real. Two guardrails to carry forward:
+
+- When a plan attributes future work to a named person's sign-off, the brain should reference the evidence (a Figma URL, a changelog entry where they approved it, a message thread). If no evidence exists, the sign-off language should not survive into downstream planning.
+- When picking up scope from a handoff prompt, phrases like "pending X's sign-off" get scrutinised before being treated as a blocker. Dean explicitly caught this one with "what is the heart glyph badge design" — exactly the right question, and neither of us knew the answer.
+
+Commit `8272a2c4` on vyve-site ([link](https://github.com/VYVEHealth/vyve-site/commit/8272a2c400299c9682d962206e0b41555f522e29)). Script-tag balance 7/7, brace/paren/bracket deltas zero, byte-exact post-commit verify. No server, SQL, or SW changes.
+
+---
+
 ## 2026-04-25 — Autotick session 3 shipped: habits.html wired to v51, feature end-to-end complete
 
 Final piece of the Habits × HealthKit autotick workstream. `habits.html` now consumes the `habits` block shipped by `member-dashboard` v51 in session 2 and pre-populates the UI from it. This completes the autotick feature end-to-end — schema (7b), server evaluator (session 2), and client UI (session 3) all live. No server changes this session; no SQL either — `daily_habits_member_habit_date_unique (member_email, activity_date, habit_id)` turned out to already be present on the live DB (previous session added it without being loud about it) and 0 duplicates confirmed.
