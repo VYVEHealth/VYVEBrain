@@ -740,6 +740,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 - Milestone message system.
 - Social activity feed (activity-only, no comments/photos in v1) — scoped and back-burnered.
 - Wearable integration (HealthKit deepen + Health Connect) — HealthKit live, Health Connect deferred (session 1 plan complete, device work paused).
+- HealthKit background sync — **parked 25 April 2026** as future vision. Full investigation + parked plan at `plans/healthkit-background-sync.md`. Scoping confirmed Capgo 8.4.7 exposes zero background primitives; architectural path would be a companion Swift Capacitor plugin (~400 lines) alongside Capgo, ≈4–5 build sessions + 1 week device soak + App Store review cycle. Not a priority until the Capacitor wrap is on the App Store and a real member/enterprise signal justifies the work.
 - National Lottery Awards for All application.
 - The Fore grant — register June/July 2026.
 - WHISPA research partnership — monitor May 2026 launch.

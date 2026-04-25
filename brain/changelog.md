@@ -1,3 +1,25 @@
+## 2026-04-25 — HealthKit background sync: investigated and parked as future vision
+
+Dean asked for a written plan (no code) to scope iOS HealthKit background sync — the v2 of the autotick feature shipped sessions 1+2+3+3a, where Apple Health data would flow into Supabase even when VYVE is closed (e.g. workout completed on the Watch at 6am, member never opens VYVE that day, dashboard still up to date by evening).
+
+**Investigation done:**
+- Loaded brain (master 60.7 K, changelog 133.8 K, backlog 32.7 K). Existing `plans/healthkit-health-connect.md` already flagged background delivery as "v2 deferred — requires Swift-level Capacitor plugin extension"; this work picks up that thread.
+- Found `VYVEHealth/vyve-capacitor` (private, last updated 18 April) — the iOS/Android Capacitor wrapper repo. Significant finding: **no `ios/` directory committed on `main`**. `.gitignore` only excludes iOS build artefacts (`ios/App/build/`, `ios/App/Pods/`, etc.), not `ios/` itself. The full iOS native project (AppDelegate, Info.plist, App.entitlements, Xcode project, Capgo SPM Package.resolved) lives only on Dean's MacBook. Hygiene item flagged in the parked plan; orthogonal to whether we ever build background sync.
+- Read Cap-go/capacitor-health main branch directly — `src/definitions.ts` (canonical TS API), `ios/Sources/HealthPlugin/HealthPlugin.swift` (the @objc bridge), `Package.swift`, and `CapgoCapacitorHealth.podspec`. Greps of `Health.swift` (59.6 K chars) for `observer` / `Observer` / `background` / `Background` / `enableBackground` / `BGAppRefresh` / `BGTask` / `listener` / `notifyListeners` / `HKObserverQuery` / `subscribe` all returned **zero matches**. Public API is exactly 10 methods (`isAvailable`, `requestAuthorization`, `checkAuthorization`, `readSamples`, `saveSample`, `getPluginVersion`, `openHealthConnectSettings`, `showPrivacyPolicy`, `queryWorkouts`, `queryAggregated`) — no private scaffolding, no events, no listeners. Capgo 8.4.7 is a purely pull-based foreground accessor.
+- Web-confirmed Apple's current entitlement name (`com.apple.developer.healthkit.background-delivery`), Info.plist requirements (`UIBackgroundModes` += `fetch` for `BGAppRefreshTask`; `BGTaskSchedulerPermittedIdentifiers` += our task identifier; **no `"healthkit"` UIBackgroundMode exists** — the entitlement alone is the gate), and App Store review stance (stricter than standard; reviewers want explicit justification in App Store Review Notes).
+
+**Architecture reached:** companion Swift Capacitor plugin (~400 lines) sitting alongside Capgo, registers `HKObserverQuery` + `enableBackgroundDelivery(.immediate)` for 5 sample types (workouts, steps, distance, activeEnergyBurned, bodyMass), backs that with `BGAppRefreshTask` as a daily floor, refreshes Supabase access token from a Keychain-stored refresh token (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`), POSTs to `sync-health-data` v7 in the same JSON shape `healthbridge.js` uses. **Zero server-side changes** — `sync-health-data` v7 is already idempotent on `native_uuid` so foreground/background overlap is a no-op. Forking Capgo or waiting on upstream both rejected with reasons documented.
+
+**Scope landed at ≈4–5 Claude-assisted build sessions + 1 week real-time device soak on Dean's iPhone 15 Pro Max + App Store review cycle (≈2–3 weeks calendar).**
+
+**Parking decision (Dean's call):** disproportionate cost for a v2 improvement on a v1 feature whose parent (the Capacitor wrap itself) isn't on the App Store yet. Foreground autotick is doing a respectable job for members who open VYVE at least weekly. No external signal (enterprise pilot, member feedback, engagement-data cohort) currently justifies the work. Unpark signals captured in §0 of the plan.
+
+**Committed:** full plan at `plans/healthkit-background-sync.md` (29.8 K chars) — preserves the technical findings so we don't redo them. Master.md `§21 → Soon` updated with a one-line pointer. Backlog `Post-launch HealthKit workstreams` updated with the parked entry next to Nutrition/MFP-via-HK (also parked, also blocked on Capgo plugin limits — a recurring shape).
+
+**No code shipped this session by design.**
+
+---
+
 ## 2026-04-25 — Autotick session 3a: badge dropped, copy-only attribution
 
 Post-ship review with Dean. He asked what the "pending Lewis design sign-off" on the `.hk-badge` scaffold actually referred to, I searched every brain file, and the honest answer came back: no design artifact exists, Lewis was never asked about a badge, no mockup or Figma anywhere. The scaffold and the dependency label were both phantoms — carried forward verbatim from my session 3 handoff prompt without anyone ever questioning where the badge idea came from. It traces back to one speculative sentence in `plans/habits-healthkit-autotick.md` line 195 drafted during an earlier Claude-only session. Never Lewis, never Dean, never a designer.
