@@ -1,3 +1,34 @@
+## 2026-04-25 — warm-ping expanded from 3 to 10 EFs (no cache-rework path taken)
+
+Dean asked whether "pages don't stay cached on app reopen" was actually a cold-start problem at low traffic, given there are only ~17 members and most are inactive. Honest diagnosis: cold starts and the asset-cache problem are different layers, but cold starts ARE a real factor on the EFs not currently in the warm-ping list.
+
+**State before:** `warm-ping` v3 was firing every 5 min via cron `warm-ping-every-5min` (`*/5 * * * *`), but only hitting `member-dashboard`, `wellbeing-checkin`, `log-activity`. Every other member-facing EF was idling out and cold-starting on first navigation.
+
+**Manual trigger of v4 confirmed the diagnosis** — first ping after deploy:
+
+| EF | Latency | State |
+|---|---|---|
+| member-dashboard | 251ms | Already warm (in v3 list) |
+| wellbeing-checkin | 157ms | Already warm (in v3 list) |
+| log-activity | 160ms | Already warm (in v3 list) |
+| leaderboard | **727ms** | **Was cold — newly warmed** |
+| anthropic-proxy | **733ms** | **Was cold — newly warmed** |
+| notifications | 183ms | Was warm-ish |
+| monthly-checkin | **782ms** | **Was cold — newly warmed** |
+| off-proxy | **581ms** (204) | **Was cold — newly warmed** |
+| workout-library | 264ms | Was warm-ish |
+| employer-dashboard | **633ms** | **Was cold — newly warmed** |
+
+The 4 newly-added cold EFs were taking 580–780ms on first hit vs ~200ms warm — exactly the per-page-navigation lag Dean was feeling on first tab to a non-home page after app reopen. From now on all 10 stay warm via the existing 5-min cron. No cron change needed — `warm-ping` just got fatter.
+
+**Cost check:** 10 OPTIONS preflights × 288 cron firings/day = 2,880 invocations/day. Well within Supabase Pro headroom. Each ping is OPTIONS (CORS preflight), zero DB queries, zero side effects.
+
+**Cache-rework decision:** parked. Three reasons documented in conversation: (1) only ~17 members so the asset-cache symptom barely affects real users, (2) Capacitor reshapes the caching model entirely (native WebView + asset bundling) so SW work would be partly redone, (3) iteration speed is currently the highest-value thing and the existing network-first SW doesn't slow Dean down. Revisit when Capacitor ships, OR active members cross ~50–100, OR a real (non-dev) member complains about offline behaviour.
+
+**Files:** `warm-ping` EF v3 → v4. No portal changes, no DB changes, no cron changes.
+
+---
+
 ## 2026-04-25 — Mojibake sweep across portal + brain changelog
 
 Dean reported seeing mojibake on pages and assumed DB was affected. Did a full deep dive across all repos and the database.
