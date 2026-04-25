@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 25 April 2026 (Autotick session 3 shipped: `habits.html` wired to `member-dashboard` v51 — feature fully live end-to-end. Editing bug found to be already fixed on entry. Yesterday: sessions 5 → 7b + master rewrite + session 2 server evaluator.)
+> Updated: 25 April 2026 (Autotick session 3 shipped + warm-ping expanded 3→10 EFs + cache rework parked + new high-value items added: in-app tour and achievements layer.)
 
 ---
 
@@ -33,6 +33,8 @@
 ### ⭐ **High-Value Additions**
 4. **Enhanced Content Quality** — Update wellbeing check-in slider questions to match onboarding questionnaire. Add health disclaimer for App Store compliance.
 5. **Advanced Analytics** — Enhanced employer insights with absenteeism correlation, burnout prediction, productivity metrics for enterprise ROI conversations.
+6. **In-App Tour / First-Run Walkthrough** — Step-through introduction shown on first portal visit after onboarding completes. Walks members through home dashboard (score ring + streak), habits (how to log + Undo), workouts (programme + custom), nutrition log-food, weekly check-in, sessions, leaderboard. Persistence via `members.tour_completed_at` flag, with "Restart tour" option in Settings. Skip path required. Implementation options: (a) full-screen modal step-through (faster build), (b) inline coachmark tooltips per page (better UX, more work), (c) short embedded video post-welcome. Leans toward (a) for v1. Highest expected impact: addresses the bounce gap where new members complete onboarding then don't know what to do — directly relevant for enterprise engagement metrics. Dependencies: Lewis copy + screenshot approval. Effort: ~1–2 sessions, mostly UI.
+7. **Achievements System (light layer over Certificates)** — Frequent micro-rewards distinct from the 5×30-activity certificates (Architect/Warrior/Relentless/Elite/Explorer). Covers first-time actions ("First habit logged", "First workout"), streak milestones (3/7/14/30/100 day), variety badges (all 5 categories in one week), persona engagement, charity contribution markers. New table `member_achievements (achievement_id, member_email, earned_at, seen_at)`. Server-side trigger evaluation at activity log time (extend `log-activity`) or via daily cron sweep. Display surface TBD: dedicated page, home-dashboard slot, push/in-app toast on earn, or combination. Open: Lewis approval on full achievement list + copy, gamification tone fit, notification rules (fire on earn vs batch daily). Pairs naturally with #6 — achievements give members something to chase after the tour finishes. Effort: ~1–2 sessions.
 
 ---
 
