@@ -2,13 +2,13 @@
 
 > Auto-generated from live Supabase project `ixjfklpckgxrwjlfsaaz`.
 > DO NOT EDIT — overwritten weekly by the `schema-snapshot-refresh` Edge Function.
-> Last refresh: 2026-04-19T03:00:13.213Z
+> Last refresh: 2026-04-26T03:00:17.057Z
 
-**Totals:** 68 tables (68 with RLS) · 786 columns · 25 FKs · 125 triggers · 32 public functions · 73 RLS policies · 160 indexes · 13 cron jobs
+**Totals:** 74 tables (74 with RLS) · 897 columns · 26 FKs · 161 triggers · 40 public functions · 79 RLS policies · 182 indexes · 13 cron jobs
 
 ---
 
-## Tables (68)
+## Tables (74)
 
 ### `activity_dedupe` · RLS
 
@@ -32,6 +32,33 @@
 **Indexes:**
 - `activity_dedupe_pkey`
 
+### `admin_audit_log` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `admin_email` | text | NO |  |  |  |
+| `admin_role` | text | NO |  |  |  |
+| `member_email` | text | YES |  |  |  |
+| `action` | text | NO |  |  |  |
+| `table_name` | text | YES |  |  |  |
+| `column_name` | text | YES |  |  |  |
+| `old_value` | jsonb | YES |  |  |  |
+| `new_value` | jsonb | YES |  |  |  |
+| `reason` | text | YES |  |  |  |
+| `ip_address` | text | YES |  |  |  |
+| `user_agent` | text | YES |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**RLS policies:** _(none — service-role only)_
+
+**Indexes:**
+- `admin_audit_log_pkey`
+- `idx_admin_audit_action`
+- `idx_admin_audit_admin_email_created`
+- `idx_admin_audit_created_at`
+- `idx_admin_audit_member_email_created`
+
 ### `admin_users` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -44,7 +71,7 @@
 | `notes` | text | YES |  |  |  |
 
 **Check constraints:**
-- `admin_users_role_check`: CHECK ((role = ANY (ARRAY['admin'::text, 'viewer'::text])))
+- `admin_users_role_check`: CHECK ((role = ANY (ARRAY['admin'::text, 'viewer'::text, 'coach_full'::text, 'coach_exercise'::text, 'coach_mental'::text])))
 
 **RLS policies:** _(none — service-role only)_
 
@@ -116,9 +143,9 @@
 | `duration_minutes` | integer | YES |  |  |  |
 | `distance_km` | numeric | YES |  |  |  |
 | `logged_at` | timestamp with time zone | YES | now() |  |  |
+| `source` | text | NO | 'manual'::text |  |  |
 
 **Check constraints:**
-- `cardio_session_number_check`: CHECK ((session_number = ANY (ARRAY[1, 2])))
 - `cardio_time_of_day_check`: CHECK ((time_of_day = ANY (ARRAY['morning'::text, 'afternoon'::text, 'evening'::text, 'night'::text])))
 
 **Foreign keys:**
@@ -130,6 +157,7 @@
 - `enforce_cap_cardio` — BEFORE INSERT
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
+- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
 - `cardio_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
@@ -686,6 +714,7 @@
 - `enforce_cap_daily_habits` — BEFORE INSERT
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
+- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
 - `daily_habits_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
@@ -838,6 +867,7 @@
 | `active` | boolean | NO | true |  |  |
 | `created_at` | timestamp with time zone | NO | now() |  |  |
 | `created_by` | text | YES |  |  |  |
+| `health_rule` | jsonb | YES |  |  |  |
 
 **Check constraints:**
 - `habit_library_difficulty_check`: CHECK ((difficulty = ANY (ARRAY['easy'::text, 'medium'::text, 'hard'::text])))
@@ -876,59 +906,6 @@
 **Indexes:**
 - `habit_themes_one_active`
 - `habit_themes_pkey`
-
-### `kahunas_checkins` · RLS
-
-| Column | Type | Nullable | Default | PK | Unique |
-|---|---|---|---|---|---|
-| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
-| `member_email` | text | NO |  |  |  |
-| `activity_date` | date | NO |  |  |  |
-| `day_of_week` | text | NO |  |  |  |
-| `time_of_day` | text | YES |  |  |  |
-| `iso_week` | integer | NO |  |  |  |
-| `iso_year` | integer | NO |  |  |  |
-| `score_wellbeing` | integer | YES |  |  |  |
-| `score_sleep` | integer | YES |  |  |  |
-| `score_energy` | integer | YES |  |  |  |
-| `score_stress` | integer | YES |  |  |  |
-| `score_physical` | integer | YES |  |  |  |
-| `score_diet` | integer | YES |  |  |  |
-| `score_social` | integer | YES |  |  |  |
-| `score_motivation` | integer | YES |  |  |  |
-| `composite_score` | numeric | YES |  |  |  |
-| `ai_recommendation` | text | YES |  |  |  |
-| `ai_persona` | text | YES |  |  |  |
-| `flow_type` | text | YES |  |  |  |
-| `logged_at` | timestamp with time zone | YES | now() |  |  |
-
-**Check constraints:**
-- `weekly_checkins_flow_type_check`: CHECK ((flow_type = ANY (ARRAY['active'::text, 'quiet'::text])))
-- `weekly_checkins_score_diet_check`: CHECK (((score_diet >= 1) AND (score_diet <= 10)))
-- `weekly_checkins_score_energy_check`: CHECK (((score_energy >= 1) AND (score_energy <= 10)))
-- `weekly_checkins_score_motivation_check`: CHECK (((score_motivation >= 1) AND (score_motivation <= 10)))
-- `weekly_checkins_score_physical_check`: CHECK (((score_physical >= 1) AND (score_physical <= 10)))
-- `weekly_checkins_score_sleep_check`: CHECK (((score_sleep >= 1) AND (score_sleep <= 10)))
-- `weekly_checkins_score_social_check`: CHECK (((score_social >= 1) AND (score_social <= 10)))
-- `weekly_checkins_score_stress_check`: CHECK (((score_stress >= 1) AND (score_stress <= 10)))
-- `weekly_checkins_score_wellbeing_check`: CHECK (((score_wellbeing >= 1) AND (score_wellbeing <= 10)))
-- `weekly_checkins_time_of_day_check`: CHECK ((time_of_day = ANY (ARRAY['morning'::text, 'afternoon'::text, 'evening'::text, 'night'::text])))
-
-**Foreign keys:**
-- `member_email` → `members.email` (`weekly_checkins_member_email_fkey`)
-
-**Triggers:**
-- `auto_iso_week_checkins` — BEFORE INSERT
-- `auto_time_fields_checkins` — BEFORE INSERT
-- `counter_checkins` — AFTER INSERT
-- `enforce_cap_kahunas_checkins` — BEFORE INSERT
-- `zz_lc_email` — BEFORE INSERT/UPDATE
-
-**RLS policies:**
-- `kahunas_checkins_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
-
-**Indexes:**
-- `weekly_checkins_pkey`
 
 ### `knowledge_base` · RLS
 
@@ -1012,7 +989,7 @@
 | `active` | boolean | NO | true |  |  |
 
 **Check constraints:**
-- `member_habits_assigned_by_check`: CHECK ((assigned_by = ANY (ARRAY['onboarding'::text, 'ai'::text, 'theme_update'::text, 'self'::text])))
+- `member_habits_assigned_by_check`: CHECK ((assigned_by = ANY (ARRAY['onboarding'::text, 'ai'::text, 'theme_update'::text, 'self'::text, 'admin'::text])))
 
 **Foreign keys:**
 - `habit_id` → `habit_library.id` (`member_habits_habit_id_fkey`)
@@ -1028,6 +1005,195 @@
 - `member_habits_email_idx`
 - `member_habits_member_email_habit_id_key`
 - `member_habits_pkey`
+
+### `member_health_connections` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `member_email` | text | NO |  | ✓ |  |
+| `platform` | text | NO |  | ✓ |  |
+| `granted_scopes` | text[] | NO | '{}'::text[] |  |  |
+| `connected_at` | timestamp with time zone | NO | now() |  |  |
+| `last_sync_at` | timestamp with time zone | YES |  |  |  |
+| `last_sync_status` | text | YES |  |  |  |
+| `total_synced` | integer | NO | 0 |  |  |
+| `revoked_at` | timestamp with time zone | YES |  |  |  |
+
+**Check constraints:**
+- `member_health_connections_platform_check`: CHECK ((platform = ANY (ARRAY['healthkit'::text, 'health_connect'::text])))
+
+**Triggers:**
+- `zz_lc_email` — BEFORE INSERT/UPDATE
+
+**RLS policies:**
+- `member_health_connections_self_select` (SELECT, roles: public) — (auth.email() = member_email)
+
+**Indexes:**
+- `member_health_connections_active_idx`
+- `member_health_connections_pkey`
+
+### `member_health_daily` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `member_email` | text | NO |  | ✓ |  |
+| `source` | text | NO |  | ✓ |  |
+| `sample_type` | text | NO |  | ✓ |  |
+| `date` | date | NO |  | ✓ |  |
+| `value` | numeric | NO |  |  |  |
+| `unit` | text | YES |  |  |  |
+| `preferred_source` | text | YES |  |  |  |
+| `ingested_at` | timestamp with time zone | NO | now() |  |  |
+
+**RLS policies:**
+- `members read own daily health` (SELECT, roles: public) — (auth.email() = member_email)
+
+**Indexes:**
+- `member_health_daily_lookup_idx`
+- `member_health_daily_pkey`
+
+### `member_health_samples` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  | ✓ |
+| `source` | text | NO |  |  | ✓ |
+| `sample_type` | text | NO |  |  |  |
+| `native_uuid` | text | NO |  |  | ✓ |
+| `start_at` | timestamp with time zone | NO |  |  |  |
+| `end_at` | timestamp with time zone | NO |  |  |  |
+| `value` | numeric | YES |  |  |  |
+| `unit` | text | YES |  |  |  |
+| `workout_type` | text | YES |  |  |  |
+| `metadata` | jsonb | NO | '{}'::jsonb |  |  |
+| `app_source` | text | YES |  |  |  |
+| `ingested_at` | timestamp with time zone | NO | now() |  |  |
+| `promoted_to` | text | YES |  |  |  |
+| `promoted_id` | uuid | YES |  |  |  |
+
+**Check constraints:**
+- `member_health_samples_promoted_to_check`: CHECK (((promoted_to = ANY (ARRAY['workouts'::text, 'cardio'::text, 'weight_logs'::text])) OR (promoted_to IS NULL)))
+- `member_health_samples_sample_type_check`: CHECK ((sample_type = ANY (ARRAY['workout'::text, 'steps'::text, 'heart_rate'::text, 'weight'::text, 'active_energy'::text, 'sleep'::text, 'distance'::text])))
+- `member_health_samples_source_check`: CHECK ((source = ANY (ARRAY['healthkit'::text, 'health_connect'::text])))
+
+**Triggers:**
+- `zz_lc_email` — BEFORE INSERT/UPDATE
+
+**RLS policies:**
+- `member_health_samples_self_select` (SELECT, roles: public) — (auth.email() = member_email)
+
+**Indexes:**
+- `member_health_samples_member_email_source_native_uuid_key`
+- `member_health_samples_member_start_idx`
+- `member_health_samples_member_type_idx`
+- `member_health_samples_pkey`
+- `member_health_samples_unpromoted_idx`
+
+### `member_health_write_ledger` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `platform` | text | NO |  |  | ✓ |
+| `vyve_source_table` | text | NO |  |  | ✓ |
+| `vyve_source_id` | uuid | NO |  |  | ✓ |
+| `native_uuid` | text | YES |  |  |  |
+| `write_status` | text | NO | 'queued'::text |  |  |
+| `queued_at` | timestamp with time zone | NO | now() |  |  |
+| `confirmed_at` | timestamp with time zone | YES |  |  |  |
+| `error_message` | text | YES |  |  |  |
+
+**Check constraints:**
+- `member_health_write_ledger_platform_check`: CHECK ((platform = ANY (ARRAY['healthkit'::text, 'health_connect'::text])))
+- `member_health_write_ledger_vyve_source_table_check`: CHECK ((vyve_source_table = ANY (ARRAY['workouts'::text, 'weight_logs'::text])))
+- `member_health_write_ledger_write_status_check`: CHECK ((write_status = ANY (ARRAY['queued'::text, 'confirmed'::text, 'failed'::text])))
+
+**Triggers:**
+- `zz_lc_email` — BEFORE INSERT/UPDATE
+
+**RLS policies:**
+- `member_health_write_ledger_self_select` (SELECT, roles: public) — (auth.email() = member_email)
+
+**Indexes:**
+- `member_health_write_ledger_native_uuid_idx`
+- `member_health_write_ledger_pkey`
+- `member_health_write_ledger_platform_vyve_source_table_vyve__key`
+- `member_health_write_ledger_queued_idx`
+
+### `member_home_state` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `member_email` | text | NO |  | ✓ |  |
+| `today_date` | date | YES |  |  |  |
+| `habits_today` | integer | NO | 0 |  |  |
+| `workouts_today` | integer | NO | 0 |  |  |
+| `cardio_today` | integer | NO | 0 |  |  |
+| `sessions_today` | integer | NO | 0 |  |  |
+| `checkin_this_week` | boolean | NO | false |  |  |
+| `week_start` | date | YES |  |  |  |
+| `habits_total` | integer | NO | 0 |  |  |
+| `workouts_total` | integer | NO | 0 |  |  |
+| `cardio_total` | integer | NO | 0 |  |  |
+| `sessions_total` | integer | NO | 0 |  |  |
+| `checkins_total` | integer | NO | 0 |  |  |
+| `overall_streak_current` | integer | NO | 0 |  |  |
+| `overall_streak_best` | integer | NO | 0 |  |  |
+| `habits_streak_current` | integer | NO | 0 |  |  |
+| `habits_streak_best` | integer | NO | 0 |  |  |
+| `workouts_streak_current` | integer | NO | 0 |  |  |
+| `workouts_streak_best` | integer | NO | 0 |  |  |
+| `cardio_streak_current` | integer | NO | 0 |  |  |
+| `cardio_streak_best` | integer | NO | 0 |  |  |
+| `sessions_streak_current` | integer | NO | 0 |  |  |
+| `sessions_streak_best` | integer | NO | 0 |  |  |
+| `checkin_streak_current` | integer | NO | 0 |  |  |
+| `checkin_streak_best` | integer | NO | 0 |  |  |
+| `engagement_score` | integer | NO | 50 |  |  |
+| `engagement_recency` | numeric | NO | 0 |  |  |
+| `engagement_consistency` | numeric | NO | 0 |  |  |
+| `engagement_variety` | numeric | NO | 0 |  |  |
+| `engagement_wellbeing` | numeric | NO | 0 |  |  |
+| `active_days_30` | integer | NO | 0 |  |  |
+| `wellbeing_latest_score` | integer | YES |  |  |  |
+| `wellbeing_latest_iso_week` | integer | YES |  |  |  |
+| `goal_habits_target` | integer | YES |  |  |  |
+| `goal_habits_done` | integer | NO | 0 |  |  |
+| `goal_workouts_target` | integer | YES |  |  |  |
+| `goal_workouts_done` | integer | NO | 0 |  |  |
+| `goal_cardio_target` | integer | YES |  |  |  |
+| `goal_cardio_done` | integer | NO | 0 |  |  |
+| `goal_sessions_target` | integer | YES |  |  |  |
+| `goal_sessions_done` | integer | NO | 0 |  |  |
+| `goal_checkin_target` | integer | YES |  |  |  |
+| `goal_checkin_done` | integer | NO | 0 |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+| `recent_habits_30d` | integer | NO | 0 |  |  |
+| `recent_workouts_30d` | integer | NO | 0 |  |  |
+| `recent_cardio_30d` | integer | NO | 0 |  |  |
+| `recent_sessions_30d` | integer | NO | 0 |  |  |
+| `habits_this_month` | integer | NO | 0 |  |  |
+| `workouts_this_month` | integer | NO | 0 |  |  |
+| `cardio_this_month` | integer | NO | 0 |  |  |
+| `sessions_this_month` | integer | NO | 0 |  |  |
+| `checkins_this_month` | integer | NO | 0 |  |  |
+| `last_activity_at` | timestamp with time zone | YES |  |  |  |
+| `recent_checkins_30d` | integer | NO | 0 |  |  |
+
+**Foreign keys:**
+- `member_email` → `members.email` (`member_home_state_member_email_fkey`)
+
+**Triggers:**
+- `zz_lc_email` — BEFORE INSERT/UPDATE
+
+**RLS policies:**
+- `member_home_state_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `member_home_state_select_own` (SELECT, roles: authenticated) — (lower(member_email) = lower(auth.email()))
+
+**Indexes:**
+- `member_home_state_pkey`
 
 ### `member_notifications` · RLS
 
@@ -1052,6 +1218,42 @@
 - `idx_member_notifications_lookup`
 - `idx_member_notifications_member_email`
 - `member_notifications_pkey`
+
+### `member_running_plans` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `plan_name` | text | YES |  |  |  |
+| `goal` | text | YES |  |  |  |
+| `level` | text | YES |  |  |  |
+| `days_per_week` | integer | YES |  |  |  |
+| `timeframe_weeks` | integer | YES |  |  |  |
+| `long_run_day` | text | YES |  |  |  |
+| `start_date` | date | YES |  |  |  |
+| `plan_json` | jsonb | NO |  |  |  |
+| `completions` | jsonb | NO | '[]'::jsonb |  |  |
+| `is_active` | boolean | NO | false |  |  |
+| `source` | text | NO | 'portal'::text |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+| `last_used_at` | timestamp with time zone | NO | now() |  |  |
+
+**Foreign keys:**
+- `member_email` → `members.email` (`member_running_plans_member_email_fkey`)
+
+**Triggers:**
+- `mrp_touch_updated_at` — BEFORE UPDATE
+- `zz_lc_email` — BEFORE INSERT/UPDATE
+
+**RLS policies:**
+- `member_running_plans_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+
+**Indexes:**
+- `member_running_plans_email_idx`
+- `member_running_plans_one_active_idx`
+- `member_running_plans_pkey`
 
 ### `member_stats` · RLS
 
@@ -1209,6 +1411,7 @@
 | `location` | text | YES |  |  |  |
 | `dob` | date | YES |  |  |  |
 | `exercise_stream` | character varying | YES | 'workouts'::character varying |  |  |
+| `display_name_preference` | text | NO | 'anonymous'::text |  |  |
 
 **Check constraints:**
 - `members_baseline_diet_check`: CHECK (((baseline_diet >= 1) AND (baseline_diet <= 10)))
@@ -1219,6 +1422,7 @@
 - `members_baseline_social_check`: CHECK (((baseline_social >= 1) AND (baseline_social <= 10)))
 - `members_baseline_stress_check`: CHECK (((baseline_stress >= 1) AND (baseline_stress <= 10)))
 - `members_baseline_wellbeing_check`: CHECK (((baseline_wellbeing >= 1) AND (baseline_wellbeing <= 10)))
+- `members_display_name_preference_check`: CHECK ((display_name_preference = ANY (ARRAY['anonymous'::text, 'initials'::text, 'first_name'::text, 'full_name'::text])))
 - `members_exercise_stream_check`: CHECK (((exercise_stream)::text = ANY ((ARRAY['workouts'::character varying, 'movement'::character varying, 'cardio'::character varying])::text[])))
 - `members_persona_check`: CHECK ((persona = ANY (ARRAY['NOVA'::text, 'RIVER'::text, 'SPARK'::text, 'SAGE'::text, 'HAVEN'::text])))
 - `members_session_duration_preference_check`: CHECK ((session_duration_preference = ANY (ARRAY[20, 30, 45, 60])))
@@ -1226,6 +1430,7 @@
 
 **Triggers:**
 - `zz_lc_email` — BEFORE INSERT/UPDATE
+- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
 - `members_own_data` (ALL, roles: public) — (email = auth.email()) / CHECK: (email = auth.email())
@@ -1623,9 +1828,11 @@
 
 **Triggers:**
 - `auto_time_fields_replay_views` — BEFORE INSERT
+- `enforce_cap_replay_views` — BEFORE INSERT
 - `replay_views_cert_count_trigger` — AFTER DELETE/INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
+- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
 - `replay_views_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
@@ -1741,6 +1948,7 @@
 - `session_views_cert_count_trigger` — AFTER DELETE/INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
+- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
 - `session_views_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
@@ -1808,9 +2016,11 @@
 | `sessions_target` | integer | NO | 1 |  |  |
 | `checkin_target` | integer | NO | 1 |  |  |
 | `created_at` | timestamp with time zone | NO | now() |  |  |
+| `movement_target` | integer | NO | 0 |  |  |
 
 **Triggers:**
 - `zz_lc_email` — BEFORE INSERT/UPDATE
+- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
 - `weekly_goals_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
@@ -1838,6 +2048,7 @@
 
 **Triggers:**
 - `zz_lc_email` — BEFORE INSERT/UPDATE
+- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
 - `weekly_scores_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
@@ -1856,8 +2067,10 @@
 | `logged_date` | date | NO |  |  | ✓ |
 | `weight_kg` | numeric | NO |  |  |  |
 | `logged_at` | timestamp with time zone | NO | now() |  |  |
+| `native_uuid` | text | YES |  |  |  |
 
 **Triggers:**
+- `queue_health_write_back_weight` — AFTER INSERT
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
@@ -1867,6 +2080,7 @@
 - `weight_logs_logged_date_idx`
 - `weight_logs_member_date_unique`
 - `weight_logs_member_email_idx`
+- `weight_logs_native_uuid_idx`
 - `weight_logs_pkey`
 
 ### `wellbeing_checkins` · RLS
@@ -1913,8 +2127,10 @@
 **Triggers:**
 - `auto_iso_week_wellbeing_checkins` — BEFORE INSERT
 - `auto_time_fields_wellbeing_checkins` — BEFORE INSERT
+- `counter_checkins` — AFTER INSERT
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
+- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
 - `wellbeing_checkins_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
@@ -2006,9 +2222,9 @@
 | `workout_name` | text | YES |  |  |  |
 | `duration_minutes` | integer | YES |  |  |  |
 | `logged_at` | timestamp with time zone | YES | now() |  |  |
+| `source` | text | NO | 'manual'::text |  |  |
 
 **Check constraints:**
-- `workouts_session_number_check`: CHECK ((session_number = ANY (ARRAY[1, 2])))
 - `workouts_time_of_day_check`: CHECK ((time_of_day = ANY (ARRAY['morning'::text, 'afternoon'::text, 'evening'::text, 'night'::text])))
 
 **Foreign keys:**
@@ -2018,8 +2234,10 @@
 - `auto_time_fields_workouts` — BEFORE INSERT
 - `counter_workouts` — AFTER INSERT
 - `enforce_cap_workouts` — BEFORE INSERT
+- `queue_health_write_back_workouts` — AFTER INSERT
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
+- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
 - `workouts_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
@@ -2032,13 +2250,15 @@
 
 ---
 
-## Public Functions (32)
+## Public Functions (40)
 
+- `_vyve_daily_streak(p_dates date[], p_today date)` — func
+- `_vyve_daily_streak_best(p_dates date[])` — func
 - `backfill_platform_metrics(p_days integer)` — func
 - `bump_member_activity(p_email text, p_type text, p_date date, p_at timestamp with time zone)` — func
 - `cap_cardio()` — func
 - `cap_daily_habits()` — func
-- `cap_kahunas_checkins()` — func
+- `cap_replay_views()` — func
 - `cap_session_views()` — func
 - `cap_workouts()` — func
 - `compute_engagement_components(p_last_activity_at timestamp with time zone, p_active_days_30d integer, p_distinct_types_7d integer, p_latest_wellbeing integer)` — func
@@ -2052,14 +2272,20 @@
 - `increment_workout_counter()` — func
 - `member_age(birth_date date)` — func
 - `next_certificate_number()` — func
+- `queue_health_write_back()` — func
 - `rebuild_member_activity_daily()` — func
 - `rebuild_member_activity_daily_incremental()` — func
 - `recompute_all_member_stats()` — func
 - `recompute_company_summary()` — func
 - `recompute_member_stats(p_email text)` — func
 - `recompute_platform_metrics(p_date date)` — func
+- `refresh_member_home_state(p_email text)` — func
 - `set_activity_time_fields()` — func
 - `set_checkin_iso_week()` — func
+- `tg_mrp_lc_email()` — func
+- `tg_mrp_touch_updated_at()` — func
+- `tg_refresh_home_state_from_members()` — func
+- `tg_refresh_member_home_state()` — func
 - `update_cc_updated_at()` — func
 - `update_cert_sessions_count()` — func
 - `update_push_native_updated_at()` — func
