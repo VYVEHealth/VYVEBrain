@@ -132,9 +132,9 @@ First paying B2C customer and first named charity partner confirmed late April 2
 
 ---
 
-## 6. Supabase architecture — 70 tables
+## 6. Supabase architecture — 74 tables
 
-Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All 70 public tables have RLS enabled (April 2026 audit). Listing live-verified 24 April 2026.
+Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All public tables have RLS enabled (April 2026 audit). Listing live-verified 26 April 2026.
 
 ### Core member + activity (member-scoped RLS)
 
@@ -142,9 +142,9 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All 70 public tables
 |---|---|---|
 | `members` | 14 | Core member profiles. Email PK. Persona, welcome recs, goals, consent flags, `exercise_stream`. |
 | `employer_members` | 0 | Employer–member relationships (empty until first enterprise goes live). |
-| `daily_habits` | 136 | Habit completions. Cap 1/day via BEFORE INSERT trigger. |
+| `daily_habits` | 151 | Habit completions. Cap 1/day via BEFORE INSERT trigger. |
 | `workouts` | 53 | Workout completions. Cap 2/day for `source='manual'` only since 7a. New `source` column. |
-| `cardio` | 21 | Cardio completions. Same source-aware cap as workouts since 7a. |
+| `cardio` | 23 | Cardio completions. Same source-aware cap as workouts since 7a. |
 | `session_views` | 51 | Live session views. Cap 2/day. |
 | `replay_views` | 5 | Replay views. |
 | `qa_submissions` | 3 | QA test submissions. |
@@ -176,11 +176,11 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All 70 public tables
 |---|---|---|
 | `habit_themes` | 5 | Monthly habit themes. |
 | `habit_library` | **34** | Source habits. **New `health_rule jsonb` column (24 April — autotick 7b).** Null = manual-only. |
-| `member_habits` | 67 | Habits assigned to members. |
+| `member_habits` | 72 | Habits assigned to members. |
 | `nutrition_logs` | 5 | Food log entries. |
 | `nutrition_my_foods` | 0 | Member-saved custom foods. |
 | `nutrition_common_foods` | 125 | Pre-populated food database. |
-| `weight_logs` | 15 | Member weight entries. One row per member per day (upsert on conflict). |
+| `weight_logs` | 16 | Member weight entries. One row per member per day (upsert on conflict). |
 | `monthly_checkins` | 0 | Monthly 8-pillar wellbeing check-in (iso_month YYYY-MM). |
 
 ### AI, persona, knowledge
@@ -196,8 +196,8 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All 70 public tables
 | Table | Rows | Purpose |
 |---|---|---|
 | `member_health_connections` | 1 | Per-member HK connection state (platform, `has_connected`, last_sync_at). |
-| `member_health_samples` | 967 | Raw HK samples — long-format, per-sample rows. Includes sleep segments with state metadata. |
-| `member_health_daily` | 92 | Aggregated daily long-format table (`queryAggregated` — steps/distance/active_energy per local date). Session 6 pipeline rebuild. |
+| `member_health_samples` | 1,674 | Raw HK samples — long-format, per-sample rows. Includes sleep segments with state metadata. |
+| `member_health_daily` | 95 | Aggregated daily long-format table (`queryAggregated` — steps/distance/active_energy per local date). Session 6 pipeline rebuild. |
 | `member_health_write_ledger` | 1 | Write-back attempts (weight only; anti-echo via `native_uuid`). |
 
 ### Dashboard + aggregation
@@ -205,19 +205,19 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All 70 public tables
 | Table | Rows | Purpose |
 |---|---|---|
 | `member_home_state` | 14 | One row per member. Dashboard aggregate. Populated via triggers from 10 source tables. Read by `member-dashboard` v44+. |
-| `member_activity_daily` | 97 | Per-member per-day aggregate. |
-| `member_activity_log` | 283 | Chronological activity log. |
+| `member_activity_daily` | 99 | Per-member per-day aggregate. |
+| `member_activity_log` | 300 | Chronological activity log. |
 | `member_stats` | 14 | Per-member rolling stats. |
 | `company_summary` | 3 | Enterprise aggregate rollup. |
-| `platform_metrics_daily` | 97 | Platform-wide metrics per day. |
-| `platform_alerts` | 157 | Central monitoring — errors, failures, proactive alerts. Service-role only. |
+| `platform_metrics_daily` | 99 | Platform-wide metrics per day. |
+| `platform_alerts` | 164 | Central monitoring — errors, failures, proactive alerts. Service-role only. |
 
 ### Certificates + engagement
 
 | Table | Rows | Purpose |
 |---|---|---|
 | `certificates` | 2 | Issued certificate records. Global sequential numbers. |
-| `engagement_emails` | 35 | Re-engagement email tracking. Streams A/B/C1/C2/C3. |
+| `engagement_emails` | 39 | Re-engagement email tracking. Streams A/B/C1/C2/C3. |
 | `session_chat` | 5 | Live session chat (last 50 per session). Open INSERT/SELECT for live chat. |
 | `service_catalogue` | 21 | Available sessions and content. |
 
@@ -225,7 +225,7 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All 70 public tables
 
 | Table | Rows | Purpose |
 |---|---|---|
-| `member_notifications` | 19 | In-app notifications. |
+| `member_notifications` | 20 | In-app notifications. |
 | `push_subscriptions` | 10 | VAPID web push subscriptions. |
 | `push_subscriptions_native` | 0 | APNs/FCM subscriptions (reserved for native push session). |
 
@@ -257,7 +257,7 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All 70 public tables
 
 ## 7. Edge Functions — live inventory
 
-75 active Edge Functions as of 24 April 2026. ~25 are actively operational; the remainder are one-shot patchers/seeders/debug helpers retained for reference. Security audit (9 April) identified ~89 for deletion — partial cleanup complete, more remain.
+74 active Edge Functions as of 26 April 2026. ~25 are actively operational; the remainder are one-shot patchers/seeders/debug helpers retained for reference. Security audit (9 April) identified ~89 for deletion — partial cleanup complete, more remain.
 
 ### Core operational (actively serving requests)
 
@@ -352,6 +352,15 @@ All portal pages live at `online.vyvehealth.co.uk`. Every page is gated behind S
 | `strategy.html` | Internal strategy dashboard (password `vyve2026`). Reads Action Ticks Apps Script + Supabase. |
 | `apple-health.html` | Inspector page — built session 6, parked (954-sample payload needs paging). |
 | `activity.html` | Personal activity feed — built session 6, unlinked from `exercise.html` (GPS route maps out of scope without Capgo plugin fork; concept parked, likely returns as a community surface). |
+| `shared-workout.html` | Shareable workout import endpoint. Receives a workout `id` and renders it for adoption. |
+| `certificate.html` | Single-cert viewer (distinct from the `certificates.html` index). |
+| `consent-gate.html` | Standalone consent-gate route. Also wired into onboarding flow. |
+| `nutrition-setup.html` | TDEE/macros initial setup wizard. |
+| `offline.html` | PWA offline fallback page. |
+| `how-to-pdfs.html` · `how-to-videos.html` | Help/education library shells. |
+| Session live/replay variants | `yoga-{live,rp}.html`, `mindfulness-{live,rp}.html`, `workouts-{live,rp}.html`, `education-{live,rp}.html`, `events-{live,rp}.html`, `podcast-{live,rp}.html`, `therapy-{live,rp}.html`, `checkin-{live,rp}.html` — per-stream live + replay shells. |
+| `admin-console.html` (in `vyve-site` root) | Also exists at the portal repo root (49KB) in addition to the `admin.vyvehealth.co.uk` host served by `vyve-command-centre`. Intent to confirm — dev mirror or stale copy. |
+| `VYVE_Health_Hub.html` | 182KB file in `vyve-site` root. Purpose unverified; not currently linked from nav. Flagged for inspection. |
 
 ### Admin console (separate host)
 
@@ -649,7 +658,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 
 ### Completed — Dean (technical)
 
-- Supabase Pro. **70 public tables**, ~25 core operational Edge Functions, SQL functions for activity caps + charity totals.
+- Supabase Pro. **74 public tables**, ~25 core operational Edge Functions, SQL functions for activity caps + charity totals.
 - Supabase Auth migration complete. Auth0 gone. `auth.js` v2.2 live.
 - All portal pages live: index, habits, exercise, workouts, movement, cardio, nutrition, log-food, settings, certificates, engagement, leaderboard, sessions, wellbeing-checkin, monthly-checkin, running-plan, welcome, login, set-password, strategy. Plus parked: apple-health, activity.
 - Theme system (dual dark/light tokens) live. `nav.js` body-prepend pattern. Cache-first dashboard. Consent gate built and wired. Viewport zoom disabled. `target="_blank"` audit complete.

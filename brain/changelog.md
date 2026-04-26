@@ -1,3 +1,32 @@
+## 2026-04-26 — Brain reconcile pass: master.md cleaned + stale memory edits cleared
+
+Dean asked for a deep dive of the brain vs live reality after I (Claude) misclaimed in conversation that HealthKit was "scoped as a future priority" and would need 3-4 sessions to ship. The misclaim came from stale stored memory edits — not from `master.md`, which has correctly captured HealthKit autotick as live end-to-end since session 3a (25 April).
+
+**Findings — the brain is essentially current.** No structural drift. Both of Dean's strategy ideas (in-app tour + achievements layer) were already in `tasks/backlog.md` MVP requirements as items 6 and 7, added 25 April with effort estimates and open questions noted.
+
+**Drifts found (all small, all fixed in this commit):**
+
+- Section 6 header said "70 tables" — live is 74. Header now says 74. The section's own tables already enumerated 74 — only the count line was stale.
+- Section 7 header said "75 active Edge Functions as of 24 April" — live is 74. Header refreshed to 26 April.
+- Section 19 said "**70 public tables**" — refreshed to 74.
+- Row counts in section 6 were 2 days old. Refreshed the ones that drifted noticeably: `daily_habits` 136→151, `cardio` 21→23, `member_habits` 67→72, `weight_logs` 15→16, `member_health_samples` 967→1,674 (Watch-heavy growth), `member_health_daily` 92→95, `member_activity_daily` 97→99, `member_activity_log` 283→300, `platform_metrics_daily` 97→99, `platform_alerts` 157→164, `engagement_emails` 35→39, `member_notifications` 19→20. Static tables left untouched.
+- Section 8 page list was missing several files that exist in the `vyve-site` repo root. Added a row block covering: `shared-workout.html`, `certificate.html` (singular, distinct from `certificates.html`), `consent-gate.html`, `nutrition-setup.html`, `offline.html`, `how-to-pdfs.html` + `how-to-videos.html`, and the per-stream live/replay variant shells (`yoga-{live,rp}.html`, `mindfulness-{live,rp}.html`, etc — 16 files in total). Two outliers explicitly flagged for inspection: `admin-console.html` exists in `vyve-site/` root (49KB) in addition to the `admin.vyvehealth.co.uk` host served by `vyve-command-centre` — confirm if this is a dev mirror or stale copy. And `VYVE_Health_Hub.html` (182KB) sits in `vyve-site` root with no nav link — purpose to verify.
+
+**Not touched in this pass:**
+
+- Section 19's "~17 active members across B2C + early enterprise trial seats" claim. The `members` table has 14 rows live. The 17 figure may include all-time signups (e.g. churned trial accounts or auth-only users) — leaving it for Dean to clarify rather than assume.
+- The base64-encoded historical blob in `brain/changelog.md` (~152K decoded chars). Still on the brain-hygiene backlog. Untouched.
+- Anything in sections 11 (HealthKit autotick), 21 (build items), 22 (open decisions), 23 (gotchas). All current and correct.
+- 30+ Edge Function inventory delta. Brain section 7 "Retired / one-shot / debug" already covers these as a fuzzy ~30-function group across `seed-*`, `patch-*`, `trigger-*-workout`, `setup-*`, `run-migration-*`, `debug-*`, `test-*`, `send-stuart-*`, `ban-user-*`, `thumbnail-*` etc. — matches live reality.
+
+**Memory hygiene also done.** Stored memory edits #2, #3, #4, #5 were carrying state that contradicted the brain (35 tables, 31 members, 15 core EFs, HealthKit "future priority", Make publisher specifics). Replaced with concise durable facts plus an explicit instruction: load VYVEBrain from GitHub for current state, do not trust counts cached in memory.
+
+**Files changed this commit:** `brain/master.md` (header counts, row count refresh, section 8 addendum), `brain/changelog.md` (this entry prepended).
+
+**Process learning codified.** Stored memories drift faster than the brain. When something feels off, the brain on GitHub is the answer — not whatever the memory layer is currently asserting. The brain master.md was rewritten cleanly on 24 April and has been kept current via incremental updates since; memories last refreshed before the rewrite are guaranteed to lie about HealthKit, table counts, EF versions, and member counts.
+
+---
+
 ## 2026-04-25 — warm-ping expanded from 3 to 10 EFs (no cache-rework path taken)
 
 Dean asked whether "pages don't stay cached on app reopen" was actually a cold-start problem at low traffic, given there are only ~17 members and most are inactive. Honest diagnosis: cold starts and the asset-cache problem are different layers, but cold starts ARE a real factor on the EFs not currently in the warm-ping list.
