@@ -1,3 +1,25 @@
+## 2026-04-26 — Revert: VYVE_Health_Hub.html restored to web root (Dean correction)
+
+Earlier today I archived `VYVE_Health_Hub.html` from `vyve-site/` web root to `archive/VYVE_Health_Hub.html` based on three signals: zero inbound links, zero backend wiring, and an LLM characterisation that called it a "standalone client-side prototype." Dean immediately corrected: the file is **staging — pending Phil's clinical sign-off**. Same gate pattern as HAVEN persona. Not orphaned, not a prototype to archive — a real launch candidate held back until clinical review of the assessment instruments + scoring/risk thresholds + signposting copy is complete.
+
+**Reverted in commit [`436a2f3`](https://github.com/VYVEHealth/vyve-site/commit/436a2f31b05ea35d748925aeca80d2a1bd95d97d):**
+
+- `VYVE_Health_Hub.html` restored to `vyve-site/` web root, byte-identical to original (sha `f7087880a8`).
+- `archive/VYVE_Health_Hub.html` deleted.
+- `sw.js` cache bumped `v2026-04-26a-archive-cleanup` → `v2026-04-26b-revert-hub-archive`.
+
+**Brain updated to reflect actual status:**
+
+- Section 8 row rewritten to "Staging — pending Phil's clinical sign-off before launch" with explicit "do not delete or archive without Lewis/Phil approval" warning.
+- Section 22 (open decisions) gained a new line: `VYVE_Health_Hub.html` go-live — Phil's clinical review required.
+- Section 23 (gotchas) gained two new rules:
+  1. **Pre-launch / staging files in `vyve-site` root** — "no inbound links + no backend wiring" is not a sufficient signal for archive/delete. Some files are staged unlinked while waiting on a Lewis/Phil sign-off. Never archive or delete a substantial standalone HTML file from `vyve-site` without confirming with Dean first.
+  2. **`GITHUB_COMMIT_MULTIPLE_FILES` deletes shape** — `upserts` takes objects `{path, content, sha?}` but `deletes` takes a flat array of path strings, not objects. Mixed shape — the API rejects `[{path, sha}]` for deletes.
+
+**Lesson codified.** I treated absence-of-links as evidence of orphan-ness, when in fact for a small team shipping iteratively with clinical review gates, "unlinked" is the *expected* state for any sensitive page mid-development. The right test is "does Dean (or whoever owns the area) know about this file?" — not "can grep find a link to it?". Asking before destructive action on any file >50KB with substantive content is now the rule. The earlier reconcile pass (which I'd assumed was done by a parallel session and which had also flagged this file as "Purpose unverified") arrived at the same uncertainty correctly — the right move at that point was to leave it alone, not to characterise and act in the next pass.
+
+---
+
 ## 2026-04-26 — Three open items closed: members count clarified, vyve-site/admin-console.html deleted, VYVE_Health_Hub.html archived
 
 Closing the three diagnostic flags the earlier reconcile pass left for inspection.

@@ -359,7 +359,7 @@ All portal pages live at `online.vyvehealth.co.uk`. Every page is gated behind S
 | `offline.html` | PWA offline fallback page. |
 | `how-to-pdfs.html` · `how-to-videos.html` | Help/education library shells. |
 | Session live/replay variants | `yoga-{live,rp}.html`, `mindfulness-{live,rp}.html`, `workouts-{live,rp}.html`, `education-{live,rp}.html`, `events-{live,rp}.html`, `podcast-{live,rp}.html`, `therapy-{live,rp}.html`, `checkin-{live,rp}.html` — per-stream live + replay shells. |
-| `archive/VYVE_Health_Hub.html` | Archived 26 April. Standalone client-side prototype (welcome card + assessments flow + report generator). Zero inbound links, zero backend wiring. Moved out of web root; kept for assessment definitions + report-generator reference if useful for future work. |
+| `VYVE_Health_Hub.html` | **Staging — pending Phil's clinical sign-off before launch.** Standalone single-file experience: welcome card → multi-step clinical assessment flow with scoring/risk classification → `generateReport()` text export. Sits in `vyve-site` web root unlinked from nav by design (not promoted until Phil signs off the assessment instruments + risk thresholds + signposting copy). Same clinical-gate pattern as HAVEN persona. Do not delete or archive without Lewis/Phil approval. |
 
 ### Admin console (separate host)
 
@@ -369,7 +369,7 @@ All portal pages live at `online.vyvehealth.co.uk`. Every page is gated behind S
 
 | Piece | Detail |
 |---|---|
-| Service worker | `sw.js` — network-first for HTML + skipWaiting + clients.claim (since 21 April). HTML changes reach users on next reload without cache bumps. Non-HTML assets still use cache versioning `vyve-cache-v[date][letter]` — current cache version `v2026-04-26a-archive-cleanup`. |
+| Service worker | `sw.js` — network-first for HTML + skipWaiting + clients.claim (since 21 April). HTML changes reach users on next reload without cache bumps. Non-HTML assets still use cache versioning `vyve-cache-v[date][letter]` — current cache version `v2026-04-26b-revert-hub-archive`. |
 | Theme system | `theme.js` — dual dark/light CSS tokens. `data-theme` on `html`. Stored in localStorage. All pages use dual-token CSS blocks — never single `:root`. |
 | Nav | `nav.js` — body-prepend since 21 April. Back button on inner pages, logo-only on home. Wired into `wellbeing-checkin.html` + `monthly-checkin.html` on 21 April (previously had bespoke nav markup). |
 | Consent gate | Built. Writes `privacy_accepted` + `health_data_consent` to `members`. |
@@ -772,6 +772,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 - Today's Progress strip — Lewis to approve copy before building.
 - Podcast rebrand timing — *The Everyman* → *The VYVE Podcast* — when to switch fully.
 - HAVEN go-live — Phil's clinical review.
+- `VYVE_Health_Hub.html` go-live — Phil's clinical review of assessment instruments, scoring/risk thresholds, and signposting copy. Page is staged in web root; promote to nav once approved.
 - Google Workspace migration (`team@vyvehealth.co.uk`) — post-first-enterprise-contract.
 - External DPO service — required before 500 members.
 - 5 disabled Make tasks — keep or remove: LinkedIn article, podcast brief, LinkedIn newsletter, PR pitch, employee advocacy pack.
@@ -813,6 +814,8 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 | **Capacitor #1 priority** | PWA is ready to wrap. Primary business goal. |
 | **Website footer** | Standardise all footers to "VYVE Health CIC" (not "Ltd") — legal structure. |
 | **Enterprise references** | Named prospects not included in brain or investor docs. Use generic language. |
+| **Pre-launch / staging files in `vyve-site` root** | "No inbound links + no backend wiring" is NOT a sufficient signal that an HTML file is orphaned. Some files are staged in the web root unlinked from nav while waiting on a clinical/Lewis/Phil sign-off (e.g. `VYVE_Health_Hub.html`). Never archive or delete a substantial standalone HTML file from `vyve-site` without confirming with Dean first. Codified 26 April after I incorrectly archived `VYVE_Health_Hub.html` and Dean reverted me. |
+| **`GITHUB_COMMIT_MULTIPLE_FILES` deletes shape** | `upserts` takes objects `{path, content, sha?}` but `deletes` takes a flat array of path strings, not objects. Mixed shape — the API rejects `[{path, sha}]` for deletes with a "valid string" validation error. |
 
 ---
 
