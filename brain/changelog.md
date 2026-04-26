@@ -1,3 +1,51 @@
+## 2026-04-26 — Design session: Achievements System (cumulative-forever) + In-App Tour spec landed
+
+Strategy session with Dean on backlog items 6 (in-app tour) and 7 (achievements). Both items had light specs from 25 April; this session promoted them to full builds with locked architectural decisions. Three architectural shifts vs the original backlog wording:
+
+**1. Cumulative-forever ladders, not a flat catalogue.** Original spec said `member_achievements (achievement_id, member_email, earned_at, seen_at)` — implying a fixed list of badges. Dean's pivot: every metric needs an incremental ladder that scales forever (log habits 1, 3, 5, 10, 15, 25, 50, 100, 200, 500, 1000…) so a member on for ten years still has tiers ahead. Data model rewritten to **metric × ladder**:
+
+```sql
+achievement_metrics (slug PK, category, display_name, unit, source_query)
+achievement_tiers   (metric_slug, tier_index, threshold, title, body,
+                     PRIMARY KEY (metric_slug, tier_index))
+member_achievements (id, member_email, metric_slug, tier_index, earned_at, seen_at,
+                     UNIQUE (member_email, metric_slug, tier_index))
+```
+
+Adding tier 14 when a member first hits 10,000 of something is one INSERT, zero schema change. First-times collapse into "tier 1 of the relevant counter" — `first_habit` is `habits_logged` tier 1.
+
+**2. Push notification on earn.** Originally scoped as v2. Dean's pivot: push fires as the action completes, so toast + native push lands in the same tap that earned it. Architecture: `log-activity` v22 inserts achievement → returns earned tiers in response payload (so the active client toasts instantly without push round-trip) → fires web VAPID push to any other subscribed devices using existing `push_subscriptions` infrastructure (same pattern as `habit-reminder` / `streak-reminder`) → writes `member_notifications` row as durable record. When the native APNs/FCM session lands, the same EF will also send to `push_subscriptions_native` — no rework needed. Native push is **not** a v1 dependency for achievements.
+
+**3. First tier earnable on action one across every quantitative metric.** Dean caught that a "30 minutes session watched" first tier was a 3-session wall before any reward (some sessions are only 10 minutes). Rule applied universally: 1 minute, 1 km, 1k steps — every quantitative ladder lights up tier 1 on the very first qualifying action. Especially important for the tour, where every step needs to land a celebration moment.
+
+**Metrics inventory landed at 27** across counts (13), time totals (4), HK-derived (4), streaks (6, all already computed in `member_home_state`), variety (1), collective (2), tenure (1), and one-shots (3 — `tour_complete`, `healthkit_connected`, `persona_switched`). With ~12–15 tiers per ladder this gives ~350–400 earnable achievements at v1 launch. Full per-metric inventory captured in `tasks/backlog.md` item 7.
+
+**Schema verified live before locking the inventory.** Direct table introspection via `SUPABASE_GET_TABLE_SCHEMAS`: `workouts.duration_minutes`, `cardio.duration_minutes`, `cardio.distance_km`, `session_views.minutes_watched`, `replay_views.minutes_watched` all exist live (so the time-total and distance metrics aren't fabricated). `member_home_state` already tracks `*_streak_current` and `*_streak_best` for habits/workouts/cardio/sessions/checkin and overall — six per-track streak ladders are essentially free to compute.
+
+**Trigger placement decided as hybrid.** Counts + time totals + streak day-of evaluations fire inline from `log-activity` v22 (one COUNT after insert is cheap on indexed tables, immediacy matters for the toast). Variety, charity-tips, tenure, and HK-derived metrics go into a daily sweep extending `certificate-checker` (window calcs that don't benefit from immediacy). Best of both — fast where it matters, batched where it doesn't.
+
+**Display surfaces decided as three.** Toast on earn (celebration moment), home dashboard slot with progress bars on 1–3 in-flight achievements ("13/14 day streak — one more!"), dedicated `achievements.html` (full grid, locked vs earned). Same data layer, three render passes — UI cost is shallow.
+
+**Non-HK member handling decided as hide, not lock.** The 4 HK-derived metrics (steps, distance, active energy, sleep nights) simply don't render for members without a `member_health_connections` row. Reasoning: showing four greyed-out "Connect Apple Health to unlock" badges is nudgy and pointless for Android members who literally can't act on the prompt. The HK CTA belongs on dashboard + settings (where it can convert), not as locked badges. Retroactive earn fires on connect — any tier the member would already have earned with HK data lights up at once.
+
+**HK rollout promoted to a sibling backlog item.** `HEALTH_FEATURE_ALLOWLIST` in `member-dashboard` v51 currently hard-codes Dean only. To make the four HK-derived metrics meaningful at achievements launch, HK needs to be available to any iPhone user opting in. ~1 session: drop the allowlist, swap truthsource to `member_health_connections` row presence, add iOS-only Settings toggle (PWA + Android Capacitor hide via runtime guard), polish consent wording. Android Health Connect stays parked — schema and EF logic are extension-ready, only blocker is Dean having a Pixel/Galaxy device for E2E testing. Added as new item 6 in backlog High-Value Additions, ships **before** Achievements (now item 7).
+
+**Build order locked, to be executed across discrete chats:**
+
+1. HK gating session — drop allowlist, settings toggle, iOS guard. ~1 session.
+2. Lewis copy doc (in parallel with build above) — full ladders, every tier title + body, ~400 lines of copy in one Lewis-facing doc, bulk-approval model.
+3. Achievements data layer + `log-activity` v22 + daily sweep + `member-dashboard` v52 payload extension. ~1 session.
+4. Achievements UI — toast + dashboard slot + `achievements.html`. ~1 session.
+5. In-App Tour — modal step-through, real-activity-logging, achievement-on-each-step. ~1–2 sessions.
+
+**Roll-out for achievements:** Open to all from day one (no allowlist). Existing 14 members will retroactively earn handfuls of cumulative badges on first dashboard load — natural activation moment.
+
+**Files changed this commit:** `tasks/backlog.md` (items 6 + 7 rewritten as new items 7 + 8 with full architectural detail; new item 6 inserted for HK rollout; header date refreshed), `brain/changelog.md` (this entry prepended).
+
+No code, schema, or portal changes this turn. Pure design + brain housekeeping ahead of execution.
+
+---
+
 ## 2026-04-26 — Revert: VYVE_Health_Hub.html restored to web root (Dean correction)
 
 Earlier today I archived `VYVE_Health_Hub.html` from `vyve-site/` web root to `archive/VYVE_Health_Hub.html` based on three signals: zero inbound links, zero backend wiring, and an LLM characterisation that called it a "standalone client-side prototype." Dean immediately corrected: the file is **staging — pending Phil's clinical sign-off**. Same gate pattern as HAVEN persona. Not orphaned, not a prototype to archive — a real launch candidate held back until clinical review of the assessment instruments + scoring/risk thresholds + signposting copy is complete.

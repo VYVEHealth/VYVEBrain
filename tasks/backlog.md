@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 25 April 2026 (Autotick session 3 shipped + warm-ping expanded 3→10 EFs + cache rework parked + new high-value items added: in-app tour and achievements layer.)
+> Updated: 26 April 2026 (Achievements System + In-App Tour design specs locked + HK rollout promoted to sibling backlog item; build sequenced across discrete sessions.)
 
 ---
 
@@ -33,8 +33,55 @@
 ### ⭐ **High-Value Additions**
 4. **Enhanced Content Quality** — Update wellbeing check-in slider questions to match onboarding questionnaire. Add health disclaimer for App Store compliance.
 5. **Advanced Analytics** — Enhanced employer insights with absenteeism correlation, burnout prediction, productivity metrics for enterprise ROI conversations.
-6. **In-App Tour / First-Run Walkthrough** — Step-through introduction shown on first portal visit after onboarding completes. Walks members through home dashboard (score ring + streak), habits (how to log + Undo), workouts (programme + custom), nutrition log-food, weekly check-in, sessions, leaderboard. Persistence via `members.tour_completed_at` flag, with "Restart tour" option in Settings. Skip path required. Implementation options: (a) full-screen modal step-through (faster build), (b) inline coachmark tooltips per page (better UX, more work), (c) short embedded video post-welcome. Leans toward (a) for v1. Highest expected impact: addresses the bounce gap where new members complete onboarding then don't know what to do — directly relevant for enterprise engagement metrics. Dependencies: Lewis copy + screenshot approval. Effort: ~1–2 sessions, mostly UI.
-7. **Achievements System (light layer over Certificates)** — Frequent micro-rewards distinct from the 5×30-activity certificates (Architect/Warrior/Relentless/Elite/Explorer). Covers first-time actions ("First habit logged", "First workout"), streak milestones (3/7/14/30/100 day), variety badges (all 5 categories in one week), persona engagement, charity contribution markers. New table `member_achievements (achievement_id, member_email, earned_at, seen_at)`. Server-side trigger evaluation at activity log time (extend `log-activity`) or via daily cron sweep. Display surface TBD: dedicated page, home-dashboard slot, push/in-app toast on earn, or combination. Open: Lewis approval on full achievement list + copy, gamification tone fit, notification rules (fire on earn vs batch daily). Pairs naturally with #6 — achievements give members something to chase after the tour finishes. Effort: ~1–2 sessions.
+6. **HealthKit Rollout — Open to All iPhone Users (~1 session)** — Drop the hard-coded `HEALTH_FEATURE_ALLOWLIST` in `member-dashboard` v51 (currently Dean only) and replace with `member_health_connections` row presence as the truthsource. Settings page gets an "Apple Health" toggle, rendered only on iOS Capacitor builds (Android Capacitor + PWA hide it via runtime guard). Existing consent gate flow handles the actual permission + data-sharing wording. **Android Health Connect parked** until Dean has a Pixel/Galaxy device for end-to-end testing — schema and EF logic are extension-ready, no blocker beyond device. Ships **before** the Achievements System (item 7) so the four HK-derived metrics (lifetime steps, distance, active energy, sleep nights) aren't a Dean-only feature on launch day. Effort: ~1 session.
+
+7. **Achievements System — Cumulative-Forever, Push on Earn (~2 sessions)** — Full design spec landed 26 April. Light layer beneath the 5×30-activity certificates (Architect/Warrior/Relentless/Elite/Explorer). **Data model is metric × ladder, not a flat catalogue**: 27 metrics × ~12–15 tiers each ≈ 350–400 earnable achievements that scale forever — a year-ten member still has tiers ahead. Schema:
+
+   ```sql
+   achievement_metrics (slug PK, category, display_name, unit, source_query)
+   achievement_tiers   (metric_slug, tier_index, threshold, title, body,
+                        PRIMARY KEY (metric_slug, tier_index))
+   member_achievements (id, member_email, metric_slug, tier_index, earned_at, seen_at,
+                        UNIQUE (member_email, metric_slug, tier_index))
+   ```
+
+   Adding tier 14 to a ladder is a single INSERT into `achievement_tiers`, no schema change. First-times collapse into "tier 1 of the relevant counter" — `first_habit` is `habits_logged` tier 1.
+
+   **Metrics inventory (27):**
+   - **Counts (13):** `habits_logged`, `workouts_logged`, `cardio_logged`, `sessions_watched`, `replays_watched`, `checkins_completed`, `monthly_checkins_completed`, `meals_logged`, `weights_logged`, `exercises_logged`, `custom_workouts_created`, `workouts_shared`, `running_plans_generated`
+   - **Time totals (4):** `workout_minutes_total`, `cardio_minutes_total`, `session_minutes_total` (live + replay), `cardio_distance_total` (km)
+   - **HK-derived (4, hidden for non-HK members):** `lifetime_steps`, `lifetime_distance_hk`, `lifetime_active_energy`, `nights_slept_7h`
+   - **Streaks (6, all already computed in `member_home_state`):** `streak_overall`, `streak_habits`, `streak_workouts`, `streak_cardio`, `streak_sessions`, `streak_checkin_weeks`
+   - **Variety (1):** `full_five_weeks` (all five categories logged in one ISO week, recurring)
+   - **Collective (2):** `charity_tips` (recurring, fires when member tips community past a 30-boundary), `personal_charity_contribution` (lifetime)
+   - **Tenure (1):** `member_days` (since `members.join_date`)
+   - **One-shots (3, single tier):** `tour_complete`, `healthkit_connected`, `persona_switched`
+
+   **Ladder principle:** **First tier earnable on action one** across every quantitative metric. 1 minute watched / logged / cardio'd lights up tier 1. Tight at the start (1, 3, 5, 10), doubling-ish in the middle (25, 50, 100, 250), multiplicative late (500, 1000, 2500…) so the ladder always has somewhere to go. Streaks at 3, 7, 14, 30, 60, 100, 200, 365, 500, 730, 1000, 1500, 1825 (5y), 3650 (10y).
+
+   **Trigger placement (hybrid):**
+   - **Inline in `log-activity` v22** — counts, time totals, streak day-of evaluations. Cheap (one COUNT against indexed table after insert), fires same-tap as the action. Returns earned tiers in response payload so the active client toasts instantly without push round-trip.
+   - **Daily sweep (extend `certificate-checker` v25 or sibling EF, 23:00 UK)** — `full_five_weeks`, `charity_tips`, `member_days` tenure, HK-derived metrics. Window calcs that don't need same-tap immediacy.
+
+   **Push on earn:** Web VAPID push fires to any subscribed devices using existing `push_subscriptions` infrastructure (same pattern as `habit-reminder` / `streak-reminder`). `member_notifications` row written as durable record. When the native APNs/FCM session lands, the same EF will also send to `push_subscriptions_native` — no rework. Native push is **not** a v1 dependency.
+
+   **Display surfaces (three, all in v1):**
+   - **Toast on earn** — in-app, dismissible, queueable. Driven off new `member-dashboard` v52 payload field `unseen_achievements[]`. On dismiss, set `seen_at`.
+   - **Home dashboard slot** — recent earned strip + "next up" with progress bars on 1–3 in-flight achievements ("13/14 day streak — one more!"). Forward-motion framing, not just retrospective.
+   - **`achievements.html`** — full grid, locked vs earned, tap for body copy + earned-at date.
+
+   **Non-HK members:** The 4 HK-derived metrics are **hidden** (not shown locked). 23 manual-or-HK metrics work identically with or without HealthKit. HK conversion lives on dashboard + settings, not as four greyed-out badges. Retroactive earn on connect: when a member connects HK later, all earnable HK-tier achievements fire at once.
+
+   **Roll-out:** Open to all from day one. No allowlist. Existing 14 members will retroactively earn handfuls of cumulative badges on first dashboard load (Dean alone earns dozens) — natural activation moment.
+
+   **Dependencies:**
+   - HK gating change (item 6) ships first
+   - Lewis copy approval — full ladders, every tier title + body, ~400 lines of copy in one Lewis-facing doc, bulk-approval model
+   - SW cache bump for `achievements.html` JS/CSS additions
+
+   **Effort:** ~1 session data layer (`achievement_metrics` + `achievement_tiers` + `member_achievements` + `log-activity` v22 + sweep job + `member-dashboard` v52 payload extension). ~1 session UI (toast + dashboard slot + dedicated page). Total ~2 sessions.
+
+8. **In-App Tour / First-Run Walkthrough (~1–2 sessions)** — Full design spec landed 26 April. **Builds on top of the Achievements System** — every tour step earns the relevant first-tier achievement, so day one ends with banked progress on the 30-activity certificates instead of the brutal 0% cold start. **Tour activities count as real activities**, not throwaway tutorial ticks. Modal step-through (option a) confirmed for v1. Walks members through: home dashboard (score ring + streak), first habit log, first workout log, first cardio log (with HealthKit consent prompt at this step on iOS), first session watched, first weekly check-in. Each step ends with the member tapping the actual log button — earning `first_habit` / `first_workout` / `first_cardio` / `first_session` / `first_checkin` (tier 1 of each respective ladder) — and the achievement toast/push fires inline at each step. Tour completion itself earns the `tour_complete` achievement. Persistence via `members.tour_completed_at`, with "Restart tour" in Settings. Skip path required. **Dependencies:** Achievements System (item 7) shipped, Lewis copy + screenshot approval. **Ships after** achievements so the celebration moments at each step actually land. Effort: ~1–2 sessions, mostly UI.
 
 ---
 
