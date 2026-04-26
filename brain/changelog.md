@@ -1,3 +1,39 @@
+## 2026-04-26 — Three open items closed: members count clarified, vyve-site/admin-console.html deleted, VYVE_Health_Hub.html archived
+
+Closing the three diagnostic flags the earlier reconcile pass left for inspection.
+
+**1. Members count clarified.** Section 19 said "~17 active members across B2C + early enterprise trial seats." Investigation: live `members` table = 14 rows; live `admin_users` = 3 rows. The 17 figure was 14 members + 3 admin operators conflated. Fixed wording to be explicit: "14 active members in `members` table … (3 admin operators tracked separately in `admin_users` — total 17 platform identities)."
+
+**2. `admin-console.html` duplicate deleted from `vyve-site`.** Two copies existed:
+
+| Location | Size | Style | Status |
+|---|---|---|---|
+| `vyve-site/admin-console.html` | 49 KB | Bare HTML, no theme tokens, no `noindex` meta | Stale standalone copy. Different SHA from canonical. |
+| `vyve-command-centre/admin-console.html` | 131 KB | Full theme system, `data-theme="dark"`, `noindex,nofollow`, Google Fonts | Canonical — served by `admin.vyvehealth.co.uk`. |
+
+The vyve-site copy is not served (admin host points at vyve-command-centre), is materially smaller, lacks the production styling, and is not referenced from any nav. Deleted from `vyve-site`. Master.md section 8 row removed; the existing "Admin console (separate host)" sub-section already covers the canonical host correctly.
+
+**3. `VYVE_Health_Hub.html` archived (not deleted).** 182 KB file in `vyve-site` web root. Investigation: zero inbound links from any repo (grep across `vyve-site` + `Test-Site-Finalv3` returned 0 matches), zero `localStorage` / `fetch` / `supabase` / Anthropic refs, 23 client-side function defs, no backend wiring at all. LLM characterisation: standalone client-side prototype containing a welcome card, dashboard tabs, multi-step assessment flow with scoring/risk-classification, and a `generateReport()` plain-text export. Self-contained mock-up — not part of any live user journey.
+
+Decision: **archive rather than delete.** The assessment definitions (instrument names, authors, psychometric properties) and `generateReport()` implementation are unique within the codebase and may be useful reference material for future feature work. Moved to `archive/VYVE_Health_Hub.html` to keep it out of the web root while preserving git history. Section 8 row updated to reflect new path.
+
+**4. SW cache version bumped.** vyve-site `sw.js` cache name `vyve-cache-v2026-04-25b-mojibake-sweep` → `v2026-04-26a-archive-cleanup`. Master.md PWA infrastructure row updated (it was on `v2026-04-24d-write-path-cleanup`, two bumps stale).
+
+**Files changed:**
+
+| Repo | File | Action |
+|---|---|---|
+| VYVEBrain | `brain/master.md` | Section 19 members line + section 8 admin-console row removed + section 8 VYVE_Health_Hub row updated to archive path + PWA infra SW cache version line |
+| VYVEBrain | `brain/changelog.md` | This entry |
+| vyve-site | `admin-console.html` | DELETE |
+| vyve-site | `VYVE_Health_Hub.html` | DELETE (moved to archive path) |
+| vyve-site | `archive/VYVE_Health_Hub.html` | CREATE (content preserved byte-identical) |
+| vyve-site | `sw.js` | CACHE_NAME constant bumped |
+
+No DB changes. No Edge Function changes. No live user journeys touched.
+
+---
+
 ## 2026-04-26 — Brain reconcile pass: master.md cleaned + stale memory edits cleared
 
 Dean asked for a deep dive of the brain vs live reality after I (Claude) misclaimed in conversation that HealthKit was "scoped as a future priority" and would need 3-4 sessions to ship. The misclaim came from stale stored memory edits — not from `master.md`, which has correctly captured HealthKit autotick as live end-to-end since session 3a (25 April).

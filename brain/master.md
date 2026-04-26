@@ -359,8 +359,7 @@ All portal pages live at `online.vyvehealth.co.uk`. Every page is gated behind S
 | `offline.html` | PWA offline fallback page. |
 | `how-to-pdfs.html` · `how-to-videos.html` | Help/education library shells. |
 | Session live/replay variants | `yoga-{live,rp}.html`, `mindfulness-{live,rp}.html`, `workouts-{live,rp}.html`, `education-{live,rp}.html`, `events-{live,rp}.html`, `podcast-{live,rp}.html`, `therapy-{live,rp}.html`, `checkin-{live,rp}.html` — per-stream live + replay shells. |
-| `admin-console.html` (in `vyve-site` root) | Also exists at the portal repo root (49KB) in addition to the `admin.vyvehealth.co.uk` host served by `vyve-command-centre`. Intent to confirm — dev mirror or stale copy. |
-| `VYVE_Health_Hub.html` | 182KB file in `vyve-site` root. Purpose unverified; not currently linked from nav. Flagged for inspection. |
+| `archive/VYVE_Health_Hub.html` | Archived 26 April. Standalone client-side prototype (welcome card + assessments flow + report generator). Zero inbound links, zero backend wiring. Moved out of web root; kept for assessment definitions + report-generator reference if useful for future work. |
 
 ### Admin console (separate host)
 
@@ -370,7 +369,7 @@ All portal pages live at `online.vyvehealth.co.uk`. Every page is gated behind S
 
 | Piece | Detail |
 |---|---|
-| Service worker | `sw.js` — network-first for HTML + skipWaiting + clients.claim (since 21 April). HTML changes reach users on next reload without cache bumps. Non-HTML assets still use cache versioning `vyve-cache-v[date][letter]` — current cache version `v2026-04-24d-write-path-cleanup`. |
+| Service worker | `sw.js` — network-first for HTML + skipWaiting + clients.claim (since 21 April). HTML changes reach users on next reload without cache bumps. Non-HTML assets still use cache versioning `vyve-cache-v[date][letter]` — current cache version `v2026-04-26a-archive-cleanup`. |
 | Theme system | `theme.js` — dual dark/light CSS tokens. `data-theme` on `html`. Stored in localStorage. All pages use dual-token CSS blocks — never single `:root`. |
 | Nav | `nav.js` — body-prepend since 21 April. Back button on inner pages, logo-only on home. Wired into `wellbeing-checkin.html` + `monthly-checkin.html` on 21 April (previously had bespoke nav markup). |
 | Consent gate | Built. Writes `privacy_accepted` + `health_data_consent` to `members`. |
@@ -679,7 +678,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 - `member_home_state` aggregate with real-time trigger maintenance wired to 10 source tables.
 - `schema-snapshot-refresh` weekly cron, auto-committing structural changes to VYVEBrain.
 - Push notifications live end-to-end (iOS Web Push via RFC 8291 AES-GCM encryption, user-gesture-triggered).
-- ~17 active members across B2C + early enterprise trial seats. First paying B2C. First named charity partner.
+- 14 active members in `members` table across B2C + early enterprise trial seats (3 admin operators tracked separately in `admin_users` — total 17 platform identities). First paying B2C. First named charity partner.
 
 ### Completed — Lewis (commercial)
 
