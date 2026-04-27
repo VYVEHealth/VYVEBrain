@@ -1,3 +1,101 @@
+## 2026-04-27 (later) — Achievements System Phase 1 SHIPPED end-to-end: catalog + inline evaluator + dashboard payload + mark-seen + sweep cron, 15 members backfilled with 185 earned tiers all marked seen
+
+Session 1 of the Achievements + Push Notifications work. Scope: data layer landed end-to-end, sweep cron live, all backfill rows pre-cleared so toast queue is empty when UI ships. Pushes will come in Sessions 2 and 4 (native + web fan-out wiring). Dean's 57 retroactively-earned tiers (53 inline + 4 member_days) are sat in the catalog ready for Session 3 UI to render.
+
+### Schema: `create_achievements_schema` migration
+
+Three tables, all RLS on, service-role write only.
+
+`public.achievement_metrics` — slug PK, category CHECK in (counts, time_totals, distance, hk, streaks, variety, collective, tenure, one_shot), source CHECK in (inline, sweep), hidden_without_hk bool, is_recurring bool, sort_order. The catalogue header.
+
+`public.achievement_tiers` — composite PK (metric_slug, tier_index), threshold numeric, title text, body text, copy_status CHECK in (placeholder, approved). The ladder. `copy_status` is the gate: re-seeds only overwrite placeholder rows, leaving Lewis-approved copy in place via `CASE WHEN copy_status='approved' THEN public.achievement_tiers.title ELSE EXCLUDED.title END`.
+
+`public.member_achievements` — bigserial id, UNIQUE(member_email, metric_slug, tier_index), earned_at, seen_at (null = unseen toast pending), notified_at (null = push pending). Three indexes: `idx_member_achievements_email`, `idx_member_achievements_unseen` (partial WHERE seen_at IS NULL), `idx_member_achievements_recent` (member_email, earned_at DESC).
+
+RLS policies: authenticated read on metrics + tiers (catalog is public to logged-in members), member-scoped read + UPDATE on own achievements (`lower(member_email) = lower(coalesce(auth.email(), ''))`), no INSERT/DELETE for non-service-role.
+
+### Seed: 34 metrics × 349 tiers, all `copy_status='placeholder'`
+
+The headline number was `27 metrics` in earlier brain notes but the actual bullet sum is 34. Final breakdown: counts (13), time_totals (3), distance (1), hk (4), streaks (6), variety (1), collective (2), tenure (1), one_shot (3).
+
+Tier ladders by shape:
+- short_count `[1, 3, 5, 10, 25, 50, 100, 250, 500, 1000]` — 10 tiers, used for high-effort low-frequency metrics (custom_workouts_created, workouts_shared, running_plans_generated, weekly + monthly check-ins, personal_charity_contribution).
+- long_count `[…, 2500, 5000, 10000]` — 13 tiers, used for high-frequency metrics (habits_logged, workouts_logged, cardio_logged, sessions_watched, replays_watched, meals_logged, weights_logged, exercises_logged).
+- time_minutes `[10, 30, 60, 180, 360, 600, 1500, 3000, 6000, 15000, 30000, 60000]` — 12 tiers, lifetime workout / cardio / session minutes.
+- distance_km `[1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500]` — 10 tiers, lifetime cardio distance.
+- streaks `[3, 7, 14, 30, 60, 100, 200, 365, 500, 730, 1000, 1500, 1825, 3650]` — 14 tiers, all six streak metrics from `member_home_state`.
+- HK ladders: hk_steps `[1k…25M]`, hk_distance_km `[1…25k]`, hk_active_kcal `[100…1M]`, hk_nights `[1…1000]`.
+- tenure_days `[1, 7, 30, 90, 180, 365, 730, 1095, 1825, 3650]` — 10 tiers, days since `members.created_at`.
+
+Two `is_recurring` metrics — `full_five_weeks` (one per ISO week the member touches all 5 pillars) and `charity_tips` (one per global tip-over-30 boundary moment). Both have a single tier row with threshold=1; tier_index increments as the nth occurrence. The unique constraint on (member_email, metric_slug, tier_index) handles this naturally — the sweep just inserts (email, slug, n+1) when the next occurrence happens.
+
+### `_shared/achievements.ts` (10.6KB) — the evaluator
+
+Single shared module, bundled into both `log-activity` v22 and `member-dashboard` v55 deploys. Two exported entry points:
+
+- `evaluateInline(supabase, email)` — runs every inline metric for a given member, inserts any newly-earned tiers into `member_achievements` (idempotent via upsert+ignoreDuplicates on the unique conflict target), returns the freshly-earned tier rows. Loads catalog with a 60s in-memory cache so repeated calls within the same EF instance avoid re-fetching 34+349 rows. Skips `hidden_without_hk` metrics when no `member_health_connections` row exists for the member.
+
+- `getMemberAchievementsPayload(supabase, email, opts)` — read-only. Returns `{ unseen, inflight, recent, earned_count, hk_connected }` for the dashboard. `unseen` = earned tiers not yet seen (toast queue). `inflight` = top N closest-to-earn next tiers (progress bars), sorted by `current_value / next_threshold` descending. `recent` = last N earned. Used by member-dashboard v55.
+
+Inline-only metric set covered (22 of 34): all 13 counts, the three time totals, cardio_distance_total, all 6 streaks (read straight from `member_home_state`), persona_switched (`members.persona_switches` jsonb length > 0). Sweep-source metrics (HK lifetime stats × 4, full_five_weeks, charity_tips, personal_charity_contribution, member_days, tour_complete, healthkit_connected) — handled by `achievements-sweep` (Phase 1 covers `member_days`, rest deferred to Phase 2).
+
+### EF: `log-activity` v22 — inline trigger
+
+v22 = v21 + post-insert achievement evaluation. After every successful insert (and even on cap-skip path so concurrent activity doesn't miss tiers), calls `evaluateInline()` synchronously and returns `earned_achievements[]` in the response payload. This means the client gets earned tiers in the same network round-trip as the activity log → instant toast on the page that just logged. Existing v21 streak-milestone notifications (7/14/30/60/100 days) preserved verbatim — they coexist with achievements until Phase 3 UI replaces them. New helper `writeAchievementNotifications()` writes one `member_notifications` row per earned tier with type `achievement_earned_{slug}_{tier}`, deduped via `in.()` filter check. Notification path runs via `EdgeRuntime.waitUntil()` so it doesn't block the response. verify_jwt: false (in-function JWT validation via `getAuthUser`, matching v21 contract).
+
+### EF: `member-dashboard` v55 — payload extension
+
+v55 = v54 + new `achievements` block in response: `{ unseen[], inflight[], recent[], earned_count, hk_connected }`. Single Promise.all branch with bounded fallback (`{ unseen:[], inflight:[], recent:[], earned_count:0, hk_connected:false }` on any error) so achievements payload never breaks the dashboard. join_date hotfix from v54 preserved (sourced from `members.created_at`). Autotick + evaluator + activity / engagement / certificate / charity payloads byte-identical to v54.
+
+### EF: `achievements-mark-seen` v1 — toast clear endpoint
+
+POST + JWT auth. Body: `{ mark_all: true }` OR `{ metric_slug, tier_index }`. Updates `member_achievements.seen_at = NOW()` for the caller's own rows where seen_at IS NULL. Returns `{ success, marked, rows[] }`. Used by Phase 3 toast UI on dismiss / "mark all seen". verify_jwt: false (in-function JWT auth).
+
+### EF: `achievements-sweep` v1 — daily cron, member_days only (Phase 1 scope)
+
+POST, no JWT (service-role only), idempotent. Phase 1 sweep does **only** `member_days` (tenure metric — days since members.created_at). All other sweep metrics deferred to Phase 2: HK lifetime stats × 4 (need `member_health_daily` aggregation), `full_five_weeks` (weekly variety scan), `charity_tips` + `personal_charity_contribution` (collective state), `tour_complete` (needs new `members.tour_completed_at` column), `healthkit_connected` (one-shot on first HK link). Returns `{ results: [{ metric, rows_inserted, members_processed, errors[] }], phase2_deferred: [...] }`.
+
+Cron scheduled: jobid 15, name `vyve-achievements-sweep-daily`, schedule `0 22 * * *` (22:00 UTC = 23:00 UK during BST, 22:00 UK during GMT). Calls the EF with service-role bearer auth via `current_setting('app.service_role_key', true)` — same pattern as `habit-reminder-daily` and `streak-reminder-daily` jobs.
+
+### Backfill: 185 earned tiers across 15 members, all marked seen
+
+Two-step backfill executed during the session:
+
+**Step 1 — inline evaluator backfill (workbench script):** Ran `evaluateInline()` against all 15 members in the live members table. Result: 147 tiers earned across 13 members (2 members had no qualifying activity yet). Top earner: deanonbrown@hotmail.com with 53 tiers across 14 metrics (exercises_logged tier 7, habits_logged tier 6, workouts_shared tier 6, cardio_minutes_total tier 5, sessions_watched tier 5, workouts_logged tier 5).
+
+**Step 2 — sweep run:** Invoked `achievements-sweep` once. Result: 38 `member_days` tiers earned across all 15 members (members joining Dec 2025 hit tier 4 at threshold 90; April joiners hit tier 1 or 2). Total elapsed: 2.8s.
+
+**Pre-launch hygiene:** All 185 earned tiers marked `seen_at = notified_at = NOW()` after backfill so the Phase 3 toast queue starts empty. Without this, every existing member's first dashboard load post-UI-launch would fire dozens of toasts at once with placeholder copy — bad UX. Going forward, only fresh earns from log-activity v22 onwards will be unseen.
+
+### What's blocking next
+
+**Phase 2 (sweep extensions, no UI changes):** HK lifetime metric sweeps (need `member_health_daily` aggregation pattern), `full_five_weeks` weekly scan, `charity_tips` + `personal_charity_contribution` collective events, `tour_complete` (gated on adding `members.tour_completed_at`), `healthkit_connected` one-shot. All extend the same `achievements-sweep` EF — same cron, more `sweep*` functions wired into the serve handler. Ships in Session 4 wiring with push.
+
+**Phase 3 (UI):** Toast queue (driven off `unseen[]` from member-dashboard payload, dismisses via `achievements-mark-seen`), home dashboard slot (recent earned strip + inflight progress bars), `achievements.html` full grid (locked vs earned, tap for body + earned-at). **Blocked on Lewis copy approval** — placeholder titles / bodies currently in the catalog. Doc at `playbooks/achievements-copy-for-lewis.md` (37KB, ~400 rows for Lewis to fill in). UI will only render rows where `copy_status='approved'` (with placeholder fallback during transition).
+
+**Push on earn:** Phase 1 only writes notification rows (`member_notifications`), no push send. Web VAPID push lands in Session 4 (extends existing `habit-reminder` fan-out pattern). Native APNs / FCM push lands in Session 2 → 4 chain (`@capacitor/push-notifications` plugin install + `push_subscriptions_native` table + `push-send-native` EF + Build 4 App Store cycle). `notified_at` column on `member_achievements` already in schema as the dedup key.
+
+### Files touched
+
+Live deploys:
+- `_shared/achievements.ts` — bundled into log-activity + member-dashboard
+- `log-activity` EF v22 — `verify_jwt: false`, in-function JWT auth, esm.sh imports preserved (separate refactor)
+- `member-dashboard` EF v55 — `verify_jwt: false`, achievements payload via Promise.all
+- `achievements-mark-seen` EF v1 — new, `verify_jwt: false`, in-function JWT auth
+- `achievements-sweep` EF v1 — new, `verify_jwt: false`, service-role only
+
+Live SQL:
+- Migration `create_achievements_schema` (3 tables + 3 indexes + 5 RLS policies)
+- Seed: 34 rows in achievement_metrics, 349 rows in achievement_tiers (all placeholder)
+- Backfill: 185 rows in member_achievements (all marked seen)
+- Cron: jobid 15 `vyve-achievements-sweep-daily`
+
+Brain commits:
+- `plans/achievements-system.md` — architecture doc (new)
+- `playbooks/achievements-copy-for-lewis.md` — Lewis copy approval doc, ~400 rows (new)
+- `tasks/backlog.md` — item 6 marked shipped (HK rollout 26 April), item 7 status banner added with Phase 1 details, new item 9 added for Lewis copy approval as UI blocker
+- `brain/changelog.md` — this entry
+
 ## 2026-04-27 — iOS App Store 1.1 (3) submitted: Capgo HealthKit binary cut, asset pipeline rebuilt to @capacitor/assets v3 single-icon scheme
 
 First post-Capgo App Store submission. The 26 April web rollout (`member-dashboard` v54, `healthbridge.js` v0.3 with defensive `getPlugin` lookup, three-state Settings UI, `HEALTH_FEATURE_ALLOWLIST` dropped) had landed across all iPhone members earlier in the day, but the live App Store binary was 1.0 (1) archived 14 April — pre-Capgo. Members upgrading from PWA to native were running a binary with no Capgo plugin in it: the JS would call `window.Capacitor.Plugins.Health` and get `undefined`. Tonight's job was to cut a fresh release build that has Capgo compiled in, fix the asset-catalog warnings Xcode was flagging, archive, upload, and submit for review.
