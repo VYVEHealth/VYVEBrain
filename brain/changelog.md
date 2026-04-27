@@ -1,3 +1,75 @@
+## 2026-04-27 (workout engine prep + onboarding align) — Calum's exercise scoring, ranking spec + QA framework received; inputs pack drafted; welcome.html aligned to spec ahead of parking the engine build
+
+Session focus: review what Calum (Physical Health Lead) delivered, shape it into a deterministic workout engine architecture, get the smaller-blast-radius onboarding fixes in before parking. The engine build itself is parked pending Calum's filled inputs pack; this session's commit only touches `welcome.html` to align the questionnaire with the spec he's given.
+
+### What Calum delivered
+
+Three documents (project files):
+- `Vyve_Exercise_Ranking_Selection_Spec.docx` — filter/score/rank/select architecture
+- `VYVE_exercise_scoring_table.xlsx` — 203 exercises scored on 8 base dimensions (Effectiveness / Simplicity / Fatigue / Skill / Joint / Time / Accessibility / Stability) plus 5 pre-computed context fits and an A/B/C/D selection tier; second sheet is a 8-context weight recipe table (Default / Beginner / Advanced muscle gain / Fat loss / Short session / Home / Injury / Priority muscle)
+- `Vyve_Workout_Qa_Testing_Framework.docx` — three-layer QA model (deterministic checks → AI reviewer → human review), 8/10 acceptance threshold, 20 ready-made test scenarios with explicit pass/fail criteria
+
+Together these constitute essentially the full spec for v1 of the workout engine. Engine architecture going forward: deterministic selection (engine fills slot templates by filtering on equipment/environment/experience/injury, scoring with Calum's context weights, picking top-ranked per slot), with AI used only for programme name + rationale (one small Sonnet 4 call) and the Layer 2 reviewer (Haiku 4.5). Drops generation cost from ~£0.30/onboarding → ~£0.01 (≈30× cheaper) AND raises quality (Calum's expertise encoded in data, deterministic, testable).
+
+### Inputs pack drafted (not yet sent to Calum)
+
+`VYVE_Inputs_Pack_for_Calum.docx` (13 pages, brand-styled) + `VYVE_Exercise_Scoring_Gap.xlsx` (paired workbook).
+
+The pack covers six sections:
+- A. Reconciliation summary — Calum's 203 vs our `workout_plans` library (131 unique resistance exercises after filtering 63 session/content entries; only 64 direct matches, 67 gaps to score, 151 of his exercises lack videos in our library — wishlist for content expansion)
+- B. Slot templates — empty 8-row tables per split (PPL Push/Pull/Legs separately, Upper, Lower, Full Body, Home, Movement & Wellbeing) for him to define what slots a session contains
+- C. Contraindications matrix — 10 constraint flags x auto-exclude rules (lower back, knee, shoulder, hip, wrist, pregnancy, high BP, 60+, recent injury, deconditioned)
+- D. Session length → exercise count bounds (15/20/30/45/60 min)
+- E. Progression scheme (current default + space for him to override per goal)
+- F. Confirmation checklist — substitution priority, context weight finality, AI reviewer rubric, goal-specific progression, Movement & Wellbeing routing
+
+Gap workbook: 67 unscored exercises pre-populated with our DB metadata (equipment, primary muscle, movement pattern inferred from name) in Calum's exact column structure. Yellow score columns are the 8 he fills; fit-scores + tier auto-calculate via formulas (469 formulas, recalc'd, zero errors). Formulas use IF(ISBLANK(...)) so rows stay clean until scored.
+
+Both deliverables built locally, ready to send. Dean to forward.
+
+### Discrepancy audit between live `welcome.html` and Calum's spec
+
+Pulled live welcome.html (413k chars), parsed sections A-J. Audited Section A contact ordering (Dean's request) and Section C physical health questionnaire against what the engine needs.
+
+Discrepancies found, Dean's decisions:
+- Section A: Email + Mobile bundled in same q-group; Confirm email separate after. Dean wants Email + Confirm email paired, Mobile alone after → DONE
+- Equipment options "Dumbbells or kettlebells" bundled, no Machines/Cables, includes irrelevant "Cardio equipment" → DONE (separated, added Machines+Cables, removed Cardio)
+- Training environment too coarse (Gym/Home/Mix/Flexible/Not sure) → DONE (Full commercial gym / Basic gym / Home / Hotel gym / Mixed / Not sure)
+- Session length missing entirely from Workouts branch (was only in Movement) → DONE (added 15/20/30/45/60 mins)
+- Priority muscle never asked despite Calum's "Priority muscle selected" context weight existing → DONE (added optional Glutes/Arms/Back/Chest/Shoulders/Legs/None)
+- Injury flags missing pregnancy/HBP/60+/recent injury/deconditioned → Dean: keep current 6 (Shoulders/Knees/Hips/Back/Wrists/Ankles) only, no expansion
+- "Returning" experience level has no engine mapping → Dean: leave as-is, mapping to be defined when engine build restarts
+- Movement stream → Dean: should generate its own movement plan via separate engine; not yet built
+
+### Commit: `welcome.html` @ Test-Site-Finalv3 main `c34c347`
+
+Six edits applied atomically via `GITHUB_COMMIT_MULTIPLE_FILES` through the remote workbench (file > 50k chars). Verified post-commit via fetch on the new SHA: all 10 expected strings present, "Cardio equipment" absent, file length 415,882 chars (was 413,409, +2,473), div tag balance 588/588.
+
+1. Section A email/mobile/confirm-email reorder (Email + Confirm email paired in input-row, Mobile in own q-group below)
+2. Section C environment options rebuilt with 6 new values
+3. Section C equipment options rebuilt — separated Dumbbells from Kettlebells, added Machines + Cables, dropped Cardio equipment, relabelled question "What equipment do you have access to?"
+4. `toggleEquipment()` JS array updated to ['Home','Hotel gym','Mixed','Not sure'] — equipment q now hides for Full commercial gym + Basic gym (members at proper gyms have full equipment)
+5. New q-group: session length question (15/20/30/45/60 mins, single-select, id=`sessionLength`) inserted in Workouts followups after trainDays
+6. New q-group: priority muscle question (Glutes/Arms/Back/Chest/Shoulders/Legs/None, single-select, optional, id=`priorityMuscle`) inserted after session length
+
+### Important: persistence gap on new fields
+
+`priorityMuscle` and `sessionLength` are now collected by the form and POSTed to onboarding EF v78 — but the EF doesn't read those keys, so they're dropped on the floor. Members onboarding between now and engine-build restart will fill the fields but their answers won't be saved anywhere. Acceptable trade given (a) we're pre-revenue with low onboarding volume and (b) the fix is bundled into engine-build work where these fields are first used. To wire up at engine-build restart: add columns to `members` table, update onboarding EF v78 → v79 to persist them.
+
+### Status: workout engine build PARKED
+
+Awaiting Calum's filled inputs pack + gap-list xlsx before resuming. When he returns them:
+- Stage 1: import 203 + 67 = 270 scored exercises into Supabase `exercise_scoring` table (joined to `workout_plans` by name with normalisation layer for word-order differences — "Barbell Bench Press" ↔ "Bench Press – Barbell")
+- Stage 2: build deterministic engine in TS inside `generate-workout-plan` v12, behind feature flag
+- Stage 3: persist new onboarding fields (members table + EF v79)
+- Stage 4: code Calum's 20 QA scenarios as automated regression tests
+- Stage 5: shadow mode for 50 onboardings (run old AI + new engine in parallel, log both, ship old)
+- Stage 6: cutover after Calum sign-off on shadow comparisons
+
+Maintenance surface for Calum: hybrid — Google Sheet sync into Supabase for v1 (lower friction), upgrade to admin page in strategy dashboard once it earns its keep.
+
+---
+
 ## 2026-04-27 (later) — Achievements System Phase 1 SHIPPED end-to-end: catalog + inline evaluator + dashboard payload + mark-seen + sweep cron, 15 members backfilled with 185 earned tiers all marked seen
 
 Session 1 of the Achievements + Push Notifications work. Scope: data layer landed end-to-end, sweep cron live, all backfill rows pre-cleared so toast queue is empty when UI ships. Pushes will come in Sessions 2 and 4 (native + web fan-out wiring). Dean's 57 retroactively-earned tiers (53 inline + 4 member_days) are sat in the catalog ready for Session 3 UI to render.

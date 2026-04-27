@@ -391,6 +391,29 @@ Supabase Auth user created directly by the onboarding EF. No Make, no Auth0.
 
 Welcome email via Brevo includes programme overview card + iOS/Android PWA install steps. Stripe coupons `VYVE15` and `VYVE10`. Annual discount % TBD (Lewis to decide).
 
+### Questionnaire — Section A (About you)
+
+Order (post 27 April 2026 reorder): First name + Last name (input-row) → Email + Confirm email (input-row, paired) → Mobile (own q-group, optional) → DOB + Gender (input-row) → Where are you based.
+
+### Questionnaire — Section C (Physical Health, Workouts branch) field reference
+
+Engine-relevant inputs from the Workouts stream after 27 April 2026 alignment:
+
+- `location-train` (single, mandatory): `Full commercial gym` | `Basic gym` | `Home` | `Hotel gym` | `Mixed` | `Not sure`
+- `equipment` (multi, conditional — shown for Home / Hotel gym / Mixed / Not sure; hidden for Full commercial gym + Basic gym): `Bodyweight only` | `Resistance bands` | `Dumbbells` | `Kettlebells` | `Barbell and weights` | `Machines` | `Cables`
+- `gymExperience` (single, mandatory): `Beginner` | `Intermediate` | `Advanced` | `Returning` (mapping for Returning to be defined at engine-build restart — likely Beginner with elevated Joint Friendliness weight)
+- `trainDays` (single, mandatory): `1-2` | `3` | `4` | `5+` | `Not sure`
+- `sessionLength` (single, **NEW 27 April 2026, not yet persisted by EF**): `15` | `20` | `30` | `45` | `60` (minutes)
+- `priorityMuscle` (single, **NEW 27 April 2026, not yet persisted by EF**, optional): `Glutes` | `Arms` | `Back` | `Chest` | `Shoulders` | `Legs` | `None` — drives the "Priority muscle selected" context weight in Calum's scoring table
+
+Injury flags kept as-is at Dean's call (no expansion to pregnancy/HBP/60+/recent injury/deconditioned in this pass): `Shoulders` | `Knees` | `Hips` | `Back / spine` | `Wrists` | `Ankles` | `None`. Free-text avoid-exercises field also retained.
+
+**Persistence gap (carries into engine-build restart):** `sessionLength` and `priorityMuscle` are POSTed to onboarding EF v78 but the EF doesn't read or save them. Members onboarding pre-restart fill the fields but answers are dropped. Add columns to `members` + bump EF to v79 in Stage 3 of the parked workout-engine work.
+
+### Movement and Cardio streams
+
+Movement stream still routes through legacy AI generation (no engine yet — separate movement engine planned post workout-engine v2). Cardio stream goes through `running-plan.html` + `anthropic-proxy` v16.
+
 ---
 
 ## 10. AI personas
