@@ -1,3 +1,67 @@
+## 2026-04-27 (achievements copy approval — sessions 1 + 2) — Phase 1 copy locked end-to-end: 327/327 tier rows approved, 32 display names finalised, catalog adjustments codified
+
+Two-session run with Lewis closing out Phase 1 of the achievements system. Session 1 of copy approval ran the catalog hygiene + first three copy batches; session 2 (this commit) ran batches 4-7 and the display name polish. Database is the source of truth — counts confirmed via direct SQL on `achievement_metrics` + `achievement_tiers`.
+
+### Catalog adjustments (session 1, prior to copy approval)
+
+Pre-approval, the seeded catalog was trimmed and one new metric added so we weren't approving copy on dead-wired or under-specified metrics:
+
+- **Dropped `running_plans_generated`** — `member_running_plans` table was empty, evaluator wired but no live data path.
+- **Dropped `cardio_distance_total`** — only 1 of 50 historical `cardio` rows had distance populated. Re-add when distance capture is real (parked in backlog).
+- **Dropped `session_minutes_total`** — dead-wired in evaluator and view-time data not meaningful yet. Re-add against `minutes_watched` once view-time tracking is meaningful (parked in backlog).
+- **Added `volume_lifted_total`** in a new `volume` category. Required expanding the `achievement_metrics_category_check` constraint to include `volume`. Ladder: 100 kg → 50 megatons over 10 tiers (100, 1k, 5k, 10k, 25k, 100k, 500k, 1M, 10M, 50M kg). Sums `sets × reps × weight` from `exercise_logs`. **Not yet wired in the evaluator** — that's a Phase 2 backlog item with sanity caps required (see below).
+- **Fixed `streak_checkin_weeks` threshold ladder.** Was wrongly populated with day values; corrected to weeks-scaled `3, 6, 10, 16, 26, 39, 52, 78, 104, 156, 208, 260, 312, 520`.
+
+Post-trim catalog: **32 metrics × 327 tier rows.** That's the locked Phase 1 surface area.
+
+### Copy approval — seven batches
+
+All copy was drafted in markdown tables, red-penned by Lewis inline, and bulk-committed via Supabase MCP only after approval. Validation gate before every commit: zero within-batch duplicate titles, zero global duplicates against the running approved set, all bodies in 10-20 words, all titles in 3-6 words.
+
+- **Batch 1 — eight long-ladder count metrics (104 rows):** habits, workouts, cardio, sessions watched, replays, meals, weights, exercises.
+- **Batch 2 — five short-ladder count metrics (50 rows):** weekly checkins, monthly checkins, custom workouts, workouts shared, personal charity contribution.
+- **Batch 3 — minutes + new volume (34 rows):** workout minutes, cardio minutes, volume_lifted_total.
+- **Batch 4 — six streak metrics (84 rows):** streak_overall, streak_habits, streak_workouts, streak_cardio, streak_sessions on the day ladder (3, 7, 14, 30, 60, 100, 200, 365, 500, 730, 1000, 1500, 1825, 3650 days × 5 metrics = 70 rows). streak_checkin_weeks on the corrected weeks ladder (14 rows). Voice anchor: streaks are about consecutive cadence, not cumulative volume — bodies use "consecutive", "in a row", "unbroken", "without a miss", with next-tier nudges in tiers 1-10 and short reverent copy at tiers 11-14 (star-chart trophies, no nudge).
+- **Batch 5 — HK lifetime metrics (40 rows):** lifetime_active_energy (9 tiers), lifetime_distance_hk (10), lifetime_steps (10), nights_slept_7h (11). Voice anchor: cumulative passive metrics from Apple Health — different from streaks (cadence) and counts (logged actions). Bodies use real-world equivalents (M25, marathon, equator, NHS sleep guideline, London-Edinburgh) to ground numbers in proactive-wellbeing terms.
+- **Batch 6 — variety/collective/tenure/one-shot (15 rows):** charity_tips (recurring, 1 row), full_five_weeks (recurring, 1 row), tour_complete (one-shot, 1 row), healthkit_connected (one-shot, 1 row), persona_switched (one-shot, 1 row), member_days (tenure, 10 rows). Recurring-metric copy is evergreen — reads naturally on first occurrence and every subsequent fire.
+- **Batch 7 — display name polish on all 32 metrics:** 13 metric labels updated for member-facing UI, 19 left as-is. Notable swaps: `Habits Logged` → **Daily Habits**, `Workouts Logged` → **Workouts Completed**, `HealthKit Connected` → **Apple Health Connected** (matches what members see on their phone), `Charity Boundary Tips` → **Community Months Donated** (removes internal jargon), `Personal Charity Contribution` → **Your Months Donated** (member-facing, paired contrast with Community), `Member Tenure` → **Time on VYVE** (friendlier UI label), `Sessions Streak` → **Session Streak** (singular reads cleaner alongside the other 5 streak labels).
+
+### Voice rules codified
+
+For future re-seeds and Phase 2 ladder extensions, these are the locked-in voice rules:
+
+- **No emojis.** Anywhere. Lewis-facing constraint extends to member-facing copy.
+- **Titles 3-6 words.** Formal British in long titles ("Two Hundred and Fifty Cardio"); body shorthand ("Two-fifty") reads fine.
+- **Bodies 10-20 words.** Hard window — validation rejects anything outside.
+- **VYVE voice:** proactive wellbeing, performance investment, prevention over cure, evidence over assumption. No fitness-influencer tone, no grind language, no shame.
+- **Tier 11+ on long ladders:** short and reverent, no next-tier nudge — these are star-chart trophies.
+- **Recurring metrics:** copy must read naturally as a repeatable milestone (no "another" assuming prior; phrasing that works for first occurrence and Nth occurrence equally).
+- **Globally unique titles** across all 327 rows. Within-batch + cross-batch dedupe enforced before commit.
+- **Streaks ≠ counts in body voice.** Streaks emphasise consecutive cadence ("in a row", "unbroken"); counts emphasise cumulative volume ("logged", "banked", "tracked").
+
+### Final state
+
+- `achievement_tiers` rows: **327 / 327 approved, 0 placeholder.**
+- `achievement_metrics`: **32 metrics**, all display names finalised.
+- `copy_status='approved'` is the gate that protects this work from being overwritten by future re-seeds — `CASE WHEN copy_status='approved' THEN public.achievement_tiers.title ELSE EXCLUDED.title END` in the upsert path.
+- Phase 3 UI (toast queue, dashboard slot, achievements tab on `engagement.html`) was previously **blocked on Lewis copy approval — now UNBLOCKED.** Phase 2 (sweep extensions for HK lifetime, variety/collective/tenure/one-shot metrics) and Phase 3 ready to schedule.
+
+### What's NOT done — captured in backlog
+
+- `volume_lifted_total` evaluator wiring (needs sanity caps: reject `reps_completed > 100` or `weight_kg > 500`).
+- Two corrupt `exercise_logs` rows on Dean's account zeroed (Back Squat, 2026-04-18, `reps_completed = 87616`) — would fire `volume_lifted_total` tier 10 immediately if not fixed.
+- Input validation on log forms generally to prevent that class of finger-slip.
+- Re-add `cardio_distance_total` once distance capture is real.
+- Re-add `session_minutes_total` against `minutes_watched` once view-time tracking is meaningful.
+- Clean orphan `running_plans_generated` entry from evaluator INLINE map (next time we touch `log-activity`).
+- Confirm `full_five_weeks` source-query semantics map correctly to the five web pillars (mental/physical/nutrition/education/purpose) — copy enumerates these by name; if metric is wired against five platform activity types instead, body needs a tweak.
+
+### UI direction agreed
+
+Achievements surfaces as a **tab on `engagement.html`** alongside the existing Progress content — not a separate page. Captures (a) the all-achievements grid (32 metrics × tiers earned/locked) and (b) inflight progress to the next tier per metric. Phase 3 build, not yet sequenced.
+
+---
+
 ## 2026-04-27 (workout engine prep + onboarding align) — Calum's exercise scoring, ranking spec + QA framework received; inputs pack drafted; welcome.html aligned to spec ahead of parking the engine build
 
 Session focus: review what Calum (Physical Health Lead) delivered, shape it into a deterministic workout engine architecture, get the smaller-blast-radius onboarding fixes in before parking. The engine build itself is parked pending Calum's filled inputs pack; this session's commit only touches `welcome.html` to align the questionnaire with the spec he's given.
