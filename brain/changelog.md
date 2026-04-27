@@ -68,6 +68,27 @@ Awaiting Calum's filled inputs pack + gap-list xlsx before resuming. When he ret
 
 Maintenance surface for Calum: hybrid — Google Sheet sync into Supabase for v1 (lower friction), upgrade to admin page in strategy dashboard once it earns its keep.
 
+
+### v2 of inputs pack drafted (later same session)
+
+After reviewing v1, Dean spotted gaps that would cost a round-trip with Calum. Rebuilt the pack as v2 with these additions/fixes:
+
+**Fixes** — contraindications matrix tightened from 10 flags to the 6 onboarding actually captures (no pregnancy / HBP / 60+ / deconditioned at this stage, those would need new onboarding questions). Equipment + environment language updated to the live state shipped in `c34c347` rather than describing future fixes. Movement & Wellbeing slot template removed entirely — replaced with a "separate engine, future build" framing per Dean's call.
+
+**New content** — exec summary at top with explicit "no rush, parked work" framing + escalation contact line. Slot tables now include consistency-vs-vary column per slot and explicit ordering convention (top-to-bottom = session order, encoding the QA-framework rule that compounds come before accessories). Added A/B session structure question (Push A vs Push B: same template with rotated picks, or genuinely different focuses).
+
+**Section F — Onboarding-to-engine mapping** is the biggest v2 addition. Five mapping tables covering: (F.1) goal mapping to context weights, (F.2) experience level including how Returning is treated, (F.3) "Not sure" defaults, (F.4) the new fields not yet persisted (priorityMuscle, sessionLength), (F.5) wellbeing slider influence on engine selection. Without these, the engine architecture has soft edges that would trip us up at restart.
+
+**Section G — Wishlist priority** on Calum's 151 unmatched scored exercises (HIGH/MEDIUM/LOW so content production knows what to film first).
+
+**Confirmation checklist (Section H) expanded** — added programme duration variants question (4/8/12 week), feedback loop sign-off (auto-adjust scores from skip rates, or every change goes through Calum?), and explicit reference to the 10 "Most Important First Tests" in his QA framework as the v1 acceptance gate.
+
+**xlsx — kept v1 as-is.** Remote sandbox couldn't access Calum's original xlsx to do a clean rebuild. Instead, the new docx contains the additive instructions that v2 of the xlsx would have had (RETIRE/LOW PRIO options in Status column, spot-check fuzzy matching instruction, HIGH/MEDIUM/LOW priority on the 151). The existing v1 xlsx + the v2 docx is a complete pack.
+
+**File:** `VYVE_Inputs_Pack_for_Calum_v2.docx` — 18 tables, 167 paragraphs, ~28KB. Uploaded to Composio S3 (URL in chat). Pairs with v1 xlsx unchanged.
+
+---
+
 ---
 
 ## 2026-04-27 (later) — Achievements System Phase 1 SHIPPED end-to-end: catalog + inline evaluator + dashboard payload + mark-seen + sweep cron, 15 members backfilled with 185 earned tiers all marked seen
