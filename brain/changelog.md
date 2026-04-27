@@ -1,3 +1,207 @@
+## 2026-04-27 — iOS App Store 1.1 (3) submitted: Capgo HealthKit binary cut, asset pipeline rebuilt to @capacitor/assets v3 single-icon scheme
+
+First post-Capgo App Store submission. The 26 April web rollout (`member-dashboard` v54, `healthbridge.js` v0.3 with defensive `getPlugin` lookup, three-state Settings UI, `HEALTH_FEATURE_ALLOWLIST` dropped) had landed across all iPhone members earlier in the day, but the live App Store binary was 1.0 (1) archived 14 April — pre-Capgo. Members upgrading from PWA to native were running a binary with no Capgo plugin in it: the JS would call `window.Capacitor.Plugins.Health` and get `undefined`. Tonight's job was to cut a fresh release build that has Capgo compiled in, fix the asset-catalog warnings Xcode was flagging, archive, upload, and submit for review.
+
+Submitted at 02:20 BST. Status: "1.1 Ready for Review". Auto-release on approval.
+
+### Why a single 30-minute icon hunt would have killed the session
+
+Five Xcode asset warnings had to clear before archive:
+
+1. 60×60@2x app icon required for iPhone iOS 7+
+2. 76×76@2x app icon required for iPad iOS 7+
+3. 83.5×83.5@2x app icon required for iPad iOS 9+
+4. 1024×1024 App Store icon required for iOS apps
+5. Splash image set has 3 unassigned children
+
+Dean had a true master VYVE logo *somewhere* — Lewis's Drive, possibly local, used for previous builds — but locating it at 02:00 BST would have been a 30-minute distraction with no certainty. So instead of hunting:
+
+- Pulled `online.vyvehealth.co.uk/icon-512.png` (the PWA install icon — already what members see on their iPhone home screens via Add to Home Screen) directly via the workbench.
+- Probed it: 512×512, RGBA, alpha extrema (255, 255) → fully opaque despite RGBA mode. Brand-correct. Source verified.
+- Lanczos-upscaled to 1024×1024 in PIL.
+- Flattened RGBA → RGB on a `#0D2B2B` canvas (VYVE dark teal — section 15 brand colour) using `bg.paste(upscaled, (0,0), upscaled)`. App Store Connect rejects PNGs with an alpha channel even when alpha is fully 255 — flatten to RGB or fail validation.
+- Saved as `icon.png`, uploaded to Composio S3 for Dean to curl.
+
+For splash: built a 2732×2732 RGB canvas of the same dark teal, pasted the 1024×1024 logo centred (x=854, y=854 — Capacitor's safe zone for any device aspect ratio), saved as `splash.png`, uploaded.
+
+Briefly considered the portal `logo.png` as an alternative source — rejected immediately on probe: 500×500 with real transparency (alpha extrema 0–255). Not usable as App Store icon source. The portal logo serves the in-app teal-background context where transparency is fine; the App Store icon must be a self-contained square against a brand background.
+
+Dean curled both files into `~/Projects/vyve-capacitor/assets/`, verified with `sips -g pixelWidth -g pixelHeight -g hasAlpha`:
+- `assets/icon.png`: 1024×1024, hasAlpha: no, 229028 bytes
+- `assets/splash.png`: 2732×2732, hasAlpha: no, 271208 bytes
+
+### sharp on Apple Silicon — `--include=optional` rescue
+
+`npx @capacitor/assets generate --ios` failed first run with:
+
+```
+Error: Cannot find module '../build/Release/sharp-darwin-arm64v8.node'
+```
+
+Sharp 0.33+ moved its prebuilt platform binaries into optional dependencies. Dean's original `npm install` had skipped them. Fix:
+
+```bash
+npm install --include=optional sharp
+```
+
+Pulled in 4 packages, sharp now resolves on Apple Silicon. **Codified as gotcha** — Capacitor projects on M-series Macs need this flag whenever sharp is involved (Capacitor's icon/splash generator is the most common trigger).
+
+### `@capacitor/assets` v3 single-icon scheme silenced 4 of 5 warnings outright
+
+Re-ran the generator after sharp fixed:
+
+```
+CREATE ios icon /Users/deanbrown/Projects/vyve-capacitor/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png (327.17 KB)
+CREATE ios splash /Users/deanbrown/Projects/vyve-capacitor/ios/App/App/Assets.xcassets/Splash.imageset/Default@1x~universal~anyany.png (83.22 KB)
+CREATE ios splash /Users/deanbrown/Projects/vyve-capacitor/ios/App/App/Assets.xcassets/Splash.imageset/Default@2x~universal~anyany.png (83.22 KB)
+CREATE ios splash /Users/deanbrown/Projects/vyve-capacitor/ios/App/App/Assets.xcassets/Splash.imageset/Default@3x~universal~anyany.png (83.22 KB)
+CREATE ios splash-dark /Users/deanbrown/Projects/vyve-capacitor/ios/App/App/Assets.xcassets/Splash.imageset/Default@1x~universal~anyany-dark.png (199.56 KB)
+CREATE ios splash-dark /Users/deanbrown/Projects/vyve-capacitor/ios/App/App/Assets.xcassets/Splash.imageset/Default@2x~universal~anyany-dark.png (199.56 KB)
+CREATE ios splash-dark /Users/deanbrown/Projects/vyve-capacitor/ios/App/App/Assets.xcassets/Splash.imageset/Default@3x~universal~anyany-dark.png (199.56 KB)
+Totals: ios: 10 generated, 2.48 MB total
+```
+
+Tool rewrote `AppIcon.appiconset/Contents.json` to a single-entry universal scheme:
+
+```json
+{
+  "images": [
+    {
+      "idiom": "universal",
+      "size": "1024x1024",
+      "filename": "AppIcon-512@2x.png",
+      "platform": "ios"
+    }
+  ],
+  "info": {"author": "xcode", "version": 1}
+}
+```
+
+This is the modern Xcode 14+/26.x convention — App Store Connect now generates all device-specific sizes server-side from the single 1024×1024 universal master. The legacy 60×60@2x / 76×76@2x / 83.5×83.5@2x slots aren't expected to exist anymore. Warnings 1-4 cleared automatically because those slots no longer appear in the asset catalog spec.
+
+### Orphaned splash files — manual rm required after asset regeneration
+
+The "splash image set has 3 unassigned children" warning (warning 5) survived the regeneration. Cause:
+
+```
+ls -la ios/App/App/Assets.xcassets/Splash.imageset/
+splash-2732x2732-1.png    (25 March, 41273 bytes)
+splash-2732x2732-2.png    (25 March, 41273 bytes)
+splash-2732x2732.png      (25 March, 41273 bytes)
+Default@*~universal~anyany*.png  (27 April, regenerated)
+Contents.json             (27 April, references only Default@*)
+```
+
+Old files from a previous Capacitor convention (pre-v3 of `@capacitor/assets`, when splashes were named `splash-WxH.png`) remained in the directory but Contents.json no longer referenced them. That's exactly what Xcode means by "unassigned children" — files in the imageset dir that aren't named in Contents.json. Fix:
+
+```bash
+rm ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732*.png
+```
+
+All 5 warnings cleared. **Codified as gotcha** — `@capacitor/assets generate` doesn't clean up files from previous-convention naming schemes; manual `rm` of orphans is required after regenerations.
+
+### Version bump via `agvtool`
+
+Bumped marketing version 1.0 → 1.1 (HealthKit is a real feature addition deserving a minor bump, gives App Review reviewers a clean reason for re-review vs a 1.0.x patch suggestion) and build version 2 → 3:
+
+```bash
+cd ~/Projects/vyve-capacitor/ios/App
+xcrun agvtool new-marketing-version 1.1
+xcrun agvtool new-version -all 3
+```
+
+`agvtool` writes both `CFBundleShortVersionString` and `CFBundleVersion` directly into `App.xcodeproj/../App/Info.plist`. The "No marketing version number found for Jambase targets — Looking for marketing version in native targets..." preamble is harmless; agvtool falls through to native targets and writes correctly. **Codified.**
+
+### Archive + Distribute: clean
+
+Product → Clean Build Folder → Product → Archive (target: Any iOS Device (arm64)). Archive succeeded with the new 1.1 (3) entry at the top of the Xcode Organizer:
+
+- Version: 1.1 (3)
+- Identifier: co.uk.vyvehealth.app
+- Type: iOS App Archive
+- Team: VYVE Health CIC (VPW62W696B)
+- Architecture: arm64
+
+Distribute App → App Store Connect → Upload → automatic signing → encryption-strip + symbol-upload enabled, **Manage Version and Build Number unchecked** (avoids agvtool/Xcode bump conflict where Xcode auto-bumps and leaves local Info.plist drifted from App Store Connect record). Upload completed. "Uploaded to Apple" with green tick alongside the previous 1.0 (1), 1.0 (2), and 1.0 (1) builds.
+
+### App Store Connect 1.1 version setup
+
+Web flow:
+
+1. **Create version 1.1** via "+" next to "iOS App" in left sidebar. Most metadata pre-filled from 1.0 — description, keywords, screenshots, support/marketing URLs, copyright (2026 VYVE Health CIC), privacy policy URL.
+
+2. **What's New in This Version** — short, Lewis-tone, no emojis: *"Apple Health is now supported. Connect your iPhone and Apple Watch in Settings to bring your workouts, steps, sleep, weight and more into your VYVE daily progress automatically. Plus stability improvements and faster loading across the app."* 280 chars; gives App Review reviewers a clear scope-of-change signal that justifies the new HealthKit entitlement.
+
+3. **Build attach** — picked Build 3 from the modal, which appeared with "Missing Compliance" warning (encryption export compliance unanswered). Walked through the 4 export-compliance questions: Yes (HTTPS) → Yes (qualifies for Cat 5 Pt 2 exemption) → No (no proprietary algorithms) → No (no standard algorithms beyond Apple's). Same answers VYVE used for 1.0 (1) and 1.0 (2). Compliance cleared, green tick next to Build 3.
+
+4. **App Privacy** — already current. The 1.0 declaration published 14 days ago by Lewis includes Health and Fitness as Data Linked to You data types (8 total: Name, Email Address, Crash Data, Fitness, Performance Data, Health, Product Interaction, Phone Number). Apple maps the 7 HealthKit read scopes onto these two umbrella categories — steps/distance/active-energy/workouts go under Fitness; heart-rate/weight/sleep go under Health. The declaration carries forward to 1.1 automatically. App Store Connect did not request re-attestation. **Codified as gotcha** — App Privacy is per-app, not per-version.
+
+5. **App Review notes** (already populated from 1.0): *"Fixed app icon (was placeholder). Added Apple Health section to Settings page showing HealthKit data read/write permissions."* Useful context for the Apple reviewer about what's new to test.
+
+6. **Add for Review** clicked. Status transitioned: "1.1 Prepare for Submission" (yellow) → "1.1 Ready for Review" (yellow). Bottom-right shows "Draft Submissions (1)" — the in-flight submission record.
+
+### What Apple Review will check (HealthKit-specific reviewer playbook)
+
+Codifying this for future submissions involving HealthKit changes:
+
+- `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription` Info.plist strings must be feature-named and user-friendly (set 23 April session 2; "guideline-5.1.3-defensible language" was the framing).
+- App must gracefully handle permission denial — no crashes if user taps Don't Allow.
+- Data flowing through the app must match the App Privacy declaration. Declared = Health + Fitness; actual reads = 7 scopes mapping cleanly to those two categories.
+- Clinical Health Records and Background Delivery sub-capabilities are the rejection-prone ones. Both OFF on `co.uk.vyvehealth.app`'s App ID. Confirmed during 23 April session 2 entitlement audit.
+
+Risk profile: low. The 23 April session 4 device-validated end-to-end flow on Dean's iPhone 15 Pro Max + Apple Watch Ultra was clean.
+
+### Files changed this session
+
+In `~/Projects/vyve-capacitor` (NOT a git repo — see codified backlog item below):
+
+- `assets/icon.png` (NEW, 1024×1024 RGB, 229028 bytes)
+- `assets/splash.png` (NEW, 2732×2732 RGB, 271208 bytes)
+- `ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png` (regenerated, 1024×1024 RGB, 335026 bytes)
+- `ios/App/App/Assets.xcassets/AppIcon.appiconset/Contents.json` (rewritten by tool to single-icon universal scheme)
+- `ios/App/App/Assets.xcassets/Splash.imageset/Default@{1x,2x,3x}~universal~anyany{,-dark}.png` (6 regenerated)
+- `ios/App/App/Assets.xcassets/Splash.imageset/Contents.json` (rewritten by tool)
+- `ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732{,-1,-2}.png` (3 DELETED — orphaned from old convention)
+- `ios/App/App/Info.plist` — `CFBundleShortVersionString` 1.0 → 1.1, `CFBundleVersion` 2 → 3 (via agvtool)
+- `node_modules/sharp/*` — prebuilt darwin-arm64v8 binary added via `--include=optional`
+
+App Store Connect:
+
+- iOS App Version 1.1 created with What's New copy, Build 3 attached, export compliance answered, "Add for Review" submitted
+
+VYVEBrain:
+
+- This changelog entry prepended to `brain/changelog.md`
+- `brain/master.md` Section 19 date updated to 27 April 2026 + iOS submission added to Completed list
+- `brain/master.md` Section 21 PRIORITY #1 demoted (no longer the top priority — submitted)
+- `brain/master.md` Section 23 — five new gotchas codified
+
+### Gotchas codified for Hard Rules
+
+1. **App Store icon must be RGB no-alpha, not RGBA-fully-opaque.** Apple validates the alpha channel's *presence*, not its values. RGBA mode is rejected even when alpha is uniformly 255. Always flatten via `Image.new("RGB", size, bg).paste(rgba, (0,0), rgba)` in PIL or equivalent before submission.
+2. **`@capacitor/assets` v3 single-icon scheme.** Modern Xcode 14+/26.x reads a single `AppIcon-512@2x.png` at 1024×1024 universal from `AppIcon.appiconset/`. Legacy 60×60@2x / 76×76@2x / 83.5×83.5@2x slots are no longer in the spec. The tool rewrites `Contents.json` accordingly; running `npx @capacitor/assets generate --ios` once silences all multi-size warnings outright.
+3. **Sharp on Apple Silicon needs `npm install --include=optional sharp`** before any `@capacitor/assets` or other sharp-using tool will run. Sharp 0.33+ moved prebuilt platform binaries into optional dependencies.
+4. **`@capacitor/assets generate` does not clean up orphaned files** from previous-convention naming schemes (e.g., `splash-2732x2732*.png` from pre-v3). Manually `rm` any files in the imageset directory not referenced by the regenerated Contents.json — otherwise Xcode flags "N unassigned children".
+5. **Canonical brand icon source for Capacitor builds is `online.vyvehealth.co.uk/icon-512.png`.** Fully opaque, brand-correct (it's the PWA install icon members already see on their home screens). The other portal logo (`logo.png`) is 500×500 with real transparency (alpha extrema 0–255) — usable in-app on a teal background, not usable as an App Store icon source. Lanczos upscale 512→1024 + RGB flatten on `#0D2B2B` is App Store-acceptable; preserves visual consistency for members upgrading PWA → native.
+6. **App Privacy declarations carry forward across versions automatically.** Once 1.0 published with Health + Fitness data types, 1.1 inherits without re-attestation. Apple maps HealthKit's 7 read scopes onto those two umbrella categories (steps/distance/active-energy/workouts → Fitness; heart-rate/weight/sleep → Health). Don't expect a re-walk of the data-type wizard on minor version bumps.
+7. **agvtool "Jambase targets" preamble is harmless.** It falls through to native targets and writes correctly.
+8. **Distribute App → uncheck "Manage Version and Build Number".** When agvtool has already set the version locally, Xcode's distribute-time auto-bump leaves Info.plist drifted from the App Store Connect record (you ship Build 3 locally but App Store Connect records Build 4). Confusing for next-session diagnostics. Always uncheck if you've used agvtool.
+
+### Outstanding for next session
+
+1. **Apple Review.** Typical turnaround: a few hours to 24 hr. Auto-release configured — once approved, 1.1 (3) goes live on the App Store automatically. All opted-in iPhone members get the binary with Capgo plugin compiled in on app update; HealthKit autotick goes from Dean-only (current `member_health_connections` state on production) to cohort-wide via the consent gate flow already shipped 23 April.
+2. **Initialise `vyve-capacitor` as a git repo.** Two-line fix from the project root: `git init && git add . && git commit -m "Initial commit at 1.1 (3) submission"`. Currently no version control on the Capacitor project, which is fine while iOS work is mostly asset/version-bump deltas but becomes painful once we start touching native source files (Swift plugin work, custom Capacitor plugins for background HealthKit sync — see `plans/healthkit-background-sync.md`). Codified as backlog item.
+3. **Drop session learnings into Lewis's HK rollout doc** when ready — the "What's New" copy from this submission is the natural seed for the in-app update notification when 1.1 ships.
+
+### Commits this session
+
+- VYVEBrain: this entry prepended to `brain/changelog.md`; master.md sections 19, 21, 23 updated
+- vyve-capacitor: NOT a git repo, no commit
+- vyve-site: no changes (web rollout was 26 April session, separate scope)
+- App Store Connect: 1.1 (3) submitted
+
+---
+
 ## 2026-04-26 — Design session: Achievements System (cumulative-forever) + In-App Tour spec landed
 
 Strategy session with Dean on backlog items 6 (in-app tour) and 7 (achievements). Both items had light specs from 25 April; this session promoted them to full builds with locked architectural decisions. Three architectural shifts vs the original backlog wording:

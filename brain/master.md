@@ -653,7 +653,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 
 ---
 
-## 19. Current status — 24 April 2026
+## 19. Current status — 27 April 2026
 
 ### Completed — Dean (technical)
 
@@ -679,6 +679,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 - `schema-snapshot-refresh` weekly cron, auto-committing structural changes to VYVEBrain.
 - Push notifications live end-to-end (iOS Web Push via RFC 8291 AES-GCM encryption, user-gesture-triggered).
 - 14 active members in `members` table across B2C + early enterprise trial seats (3 admin operators tracked separately in `admin_users` — total 17 platform identities). First paying B2C. First named charity partner.
+- **iOS App Store 1.1 (3) submitted (27 April 2026)** — Capgo HealthKit plugin compiled into the binary. Asset pipeline rebuilt via `npx @capacitor/assets generate --ios` to the v3 single-icon scheme (1024×1024 universal `AppIcon-512@2x.png` replacing the legacy 60/76/83.5 multi-size convention). 6-output splash imageset (3 light + 3 dark, universal/anyany at @1×/@2×/@3×) generated from a 2732×2732 dark-teal canvas with the brand logo centred. Submitted via Xcode Organizer → App Store Connect, status "Ready for Review", auto-release on approval. The 26 April web rollout (`member-dashboard` v54, `healthbridge.js` v0.3 defensive `getPlugin`, three-state Settings UI, `HEALTH_FEATURE_ALLOWLIST` dropped) had already shipped to all iPhone members; this build closes the loop by putting the Capgo plugin inside the App Store binary so opted-in members get autotick on next app update.
 
 ### Completed — Lewis (commercial)
 
@@ -710,18 +711,18 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 
 ## 21. Outstanding build items & priorities
 
-**PRIORITY #1: Capacitor wrap for iOS App Store + Android Play Store.** PWA ready. This is the primary business goal.
+**PRIORITY #1 — App Store reviews in flight:** iOS 1.1 (3) submitted to App Store Connect on 27 April 2026 with Capgo HealthKit plugin compiled in (status: Ready for Review, auto-release on approval). Android 1.0.2 awaiting Google Play review since 15 April resubmission (icon-fix). Once iOS approves, all opted-in iPhone members get autotick cohort-wide on next app update. **New top priority post-approval: polish + bug-fix pass + execute Achievements + In-App Tour build pipeline (designed 26 April)** — these are the headline UX wins for the May sell-ready milestone.
 
 ### Critical missing pieces (MVP-blocking)
 
 1. Native push notifications (APNs + FCM via Capacitor). VAPID web push currently covers PWA. 2–3 sessions estimated.
 2. ~~Habits editing bug~~ **SHIPPED pre-session-3** — upsert on conflict + Undo (DELETE) + unique constraint all confirmed live on DB and in `habits.html` on 25 April 2026 entry audit. No further work needed.
-3. HealthKit launch rollout — consent-gate + re-prompt fresh-account flow test (needs clean signup — never done). Then Alan first, cohort of ~5. Rollback: `member-dashboard` v53 with reduced `HEALTH_FEATURE_ALLOWLIST` (v52+ reserved for rollback shipments).
+3. HealthKit launch rollout — gating sequence completed 26 April (web): `member-dashboard` v54 with hydration globals, `healthbridge.js` v0.3 with defensive plugin lookup, three-state Settings UI, `HEALTH_FEATURE_ALLOWLIST` dropped in favour of `member_health_connections` row presence as the truthsource. Web layer is fully rolled out for all iPhone members. **Final remaining piece: Apple Review approval of 1.1 (3) puts the Capgo plugin in the App Store binary** — at which point any opted-in iPhone member upgrading from PWA to native gets autotick. Consent-gate fresh-signup flow E2E test still pending (requires a clean signup; not yet done).
 
 ### This weekend's active priorities
 
 - Android icon fix (resubmitted 15 April, awaiting Google review).
-- iOS icon fix (app live but icon wrong, Build 2 uploaded).
+- ~~iOS icon fix (app live but icon wrong, Build 2 uploaded).~~ ✓ **SHIPPED 27 April** — version bumped to 1.1 (3), Capgo HealthKit plugin compiled in, asset pipeline rebuilt to `@capacitor/assets` v3 single-icon scheme, all 5 Xcode asset warnings cleared (4 silenced by the modern single-1024 universal scheme; 5th was orphaned splash files from a previous Capacitor convention, manually rm'd). Submitted to App Store Connect awaiting Apple Review.
 - Exercise restructure — Rounds 1–5 shipped, still open: movement plan content in `programme_library`, `category` column, existing-member backfill decision, Classes stream, hub progress aggregation, `mrpSetCompletion` race-unsafe GET-then-PATCH (acceptable for MVP).
 - Admin Console Sub-scope A browser smoketest. Then Sub-scope B (bulk ops + multi-select).
 - Polish and bug-fix pass.
@@ -816,6 +817,15 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 | **Enterprise references** | Named prospects not included in brain or investor docs. Use generic language. |
 | **Pre-launch / staging files in `vyve-site` root** | "No inbound links + no backend wiring" is NOT a sufficient signal that an HTML file is orphaned. Some files are staged in the web root unlinked from nav while waiting on a clinical/Lewis/Phil sign-off (e.g. `VYVE_Health_Hub.html`). Never archive or delete a substantial standalone HTML file from `vyve-site` without confirming with Dean first. Codified 26 April after I incorrectly archived `VYVE_Health_Hub.html` and Dean reverted me. |
 | **`GITHUB_COMMIT_MULTIPLE_FILES` deletes shape** | `upserts` takes objects `{path, content, sha?}` but `deletes` takes a flat array of path strings, not objects. Mixed shape — the API rejects `[{path, sha}]` for deletes with a "valid string" validation error. |
+| **App Store icon must be RGB no-alpha** | App Store Connect rejects PNGs with an alpha channel even when alpha is uniformly 255. RGBA-fully-opaque is NOT acceptable — must be flat RGB. Flatten via PIL: `Image.new("RGB", size, bg).paste(rgba, (0,0), rgba)` before submission. Codified 27 April. |
+| **`@capacitor/assets` v3 single-icon scheme** | Modern Xcode 14+ reads a single `AppIcon-512@2x.png` at 1024×1024 universal from `AppIcon.appiconset/`. Legacy 60/76/83.5 multi-size slots are no longer in spec. Tool rewrites `Contents.json` to single-entry universal — running `npx @capacitor/assets generate --ios` once silences all multi-size warnings. Codified 27 April. |
+| **Sharp on Apple Silicon** | `npm install --include=optional sharp` is required on M-series Macs before any `@capacitor/assets` or other sharp-using tool will run. Sharp 0.33+ moved prebuilt platform binaries into optional dependencies; default `npm install` skips them. Codified 27 April. |
+| **`@capacitor/assets generate` doesn't clean up orphans** | Files from previous-convention naming (e.g. `splash-2732x2732*.png` from pre-v3) remain in the imageset directory after regeneration. Manually `rm` any files not referenced in the regenerated `Contents.json`, otherwise Xcode flags "N unassigned children". Codified 27 April. |
+| **Canonical brand icon source** | `online.vyvehealth.co.uk/icon-512.png` is the PWA install icon — fully opaque, brand-correct, what members already see on home screens. Lanczos upscale 512→1024 + RGB flatten on `#0D2B2B` is App Store-acceptable. The other portal logo `logo.png` is 500×500 with real transparency (alpha extrema 0–255) — usable in-app on a teal background, NOT usable as App Store icon source. Codified 27 April. |
+| **App Privacy carries forward across versions** | Once 1.0 publishes Health + Fitness data types, 1.1 inherits without re-attestation. Apple maps HealthKit's 7 read scopes onto those two umbrella categories (steps/distance/active-energy/workouts → Fitness; heart-rate/weight/sleep → Health). Don't expect the data-type wizard to re-trigger on minor version bumps. Codified 27 April. |
+| **Distribute App: uncheck "Manage Version and Build Number"** | When agvtool has set the version locally, Xcode's distribute-time auto-bump leaves Info.plist drifted from the App Store Connect record. Always uncheck if you've used agvtool for the bump. Codified 27 April. |
+| **agvtool "Jambase targets" preamble** | Harmless. agvtool falls through to native targets and writes the version correctly. Don't be alarmed by the preamble line "No marketing version number found for Jambase targets". Codified 27 April. |
+| **`vyve-capacitor` is NOT a git repo** | Operational risk. Currently fine while changes are mostly asset/version-bump deltas, but becomes painful once native source edits start (Swift plugins, custom Capacitor plugins). Two-line fix when ready: `git init && git add . && git commit -m "Initial commit"` from `~/Projects/vyve-capacitor`. Backlog. |
 
 ---
 
