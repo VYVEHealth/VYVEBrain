@@ -279,7 +279,7 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All public tables ha
 | `employer-dashboard` | v31 | Aggregate employer analytics. API-key auth (no PII). |
 | `wellbeing-checkin` | v35 | Weekly check-in flow. AI recs pulled from activity + persona. |
 | `monthly-checkin` | v17 | Monthly 8-pillar check-in. Writes `monthly_checkins`. |
-| `log-activity` | v23 | PWA activity logging. Replaced Make entirely. v22 added inline achievement evaluation (`evaluateInline()` → `earned_achievements[]` in payload). v23 (28 April PM) adds push fan-out via `achievement-earned-push` v1 alongside the existing `writeAchievementNotifications` in-app log path. Both paths fire under `EdgeRuntime.waitUntil()` so the user-facing response stays fast. Imports `_shared/achievements.ts`. |
+| `log-activity` | v24 | PWA activity logging — ALSO serves as `evaluate_only` endpoint for trigger pages that write direct to PostgREST. v22 added inline achievement evaluation (`evaluateInline()`); v23 (28 April PM) added push fan-out via `achievement-earned-push` v1; **v24 (29 April AM)** added `evaluate_only:true` short-circuit that skips write/cap/dedup logic and runs evaluator + fan-out only — closes the inline-evaluator-never-fires-from-real-writes gap. All trigger pages now call this post-write via `VYVEAchievements.evaluate()`. Both notification paths fire under `EdgeRuntime.waitUntil()`. Imports `_shared/achievements.ts`. |
 | `anthropic-proxy` | v16 | Server-side Anthropic proxy for running plans + misc AI calls. `verify_jwt:true`. |
 | `generate-workout-plan` | v11 | AI workout plan generation (invoked from onboarding's waitUntil path). |
 | `sync-health-data` | v7 | HealthKit sync. Stamps `source:'healthkit'` on promoted workout/cardio rows. `queryAggregated` routing for steps/distance/active_energy; sleep segments with full state metadata. v7 refactor extracts workout taxonomy to `_shared/taxonomy.ts`. |
@@ -413,7 +413,8 @@ All portal pages live at `online.vyvehealth.co.uk`. Every page is gated behind S
 
 | Piece | Detail |
 |---|---|
-| Service worker | `sw.js` — network-first for HTML + skipWaiting + clients.claim. HTML changes reach users on next reload without cache bumps. Non-HTML assets still use cache versioning. **Push event listener + notificationclick handler shipped 28 April** (`vyve-site@124ecb53`). Current cache: `vyve-cache-v2026-04-28a-pushhandler`. |
+| Service worker | `sw.js` — network-first for HTML + skipWaiting + clients.claim. HTML changes reach users on next reload without cache bumps. Non-HTML assets still use cache versioning. **Push event listener + notificationclick handler shipped 28 April** (`vyve-site@124ecb53`). Current cache: `vyve-cache-v2026-04-28c-ach-wire`. |
+| Achievement client | `achievements.js` v1 (29 April) — toast queue + debounced evaluator + mark-seen + replay-unseen. Loaded on every portal page (trigger and passive). Trigger pages call `VYVEAchievements.evaluate()` after direct PostgREST writes; passive pages auto-replay unseen tiers from `vyve_dashboard_cache.data.achievements.unseen[]` on load. |
 | Theme system | `theme.js` — dual dark/light CSS tokens. `data-theme` on `html`. Stored in localStorage. All pages use dual-token CSS blocks — never single `:root`. |
 | Nav | `nav.js` — body-prepend pattern. Back button on inner pages, logo-only on home. |
 | Consent gate | Built. Writes `privacy_accepted` + `health_data_consent` to `members`. |
@@ -572,7 +573,9 @@ Two exports:
 
 ### Inline vs sweep split
 
-Counts + time totals + streak day-of evaluations + persona_switched fire **inline** from `log-activity` v23 — one COUNT after insert is cheap on indexed tables, immediacy matters for the toast. Tenure/variety/collective/HK-lifetime/one-shot metrics go into **`achievements-sweep`** at 22:00 UTC daily — window calcs that don't benefit from immediacy.
+Counts + time totals + streak day-of evaluations + persona_switched fire **inline** from `log-activity` v22+ — one COUNT after insert is cheap on indexed tables, immediacy matters for the toast. Tenure/variety/collective/HK-lifetime/one-shot metrics go into **`achievements-sweep`** at 22:00 UTC daily — window calcs that don't benefit from immediacy.
+
+**Critical — evaluator activation pattern (29 April).** Trigger pages (habits.html, workouts.html, cardio.html, sessions.html, wellbeing-checkin.html, monthly-checkin.html, log-food.html, movement.html, nutrition.html, plus the workouts-*.js modules) write directly to PostgREST tables via `/rest/v1/<table>` POSTs, NOT through log-activity. The inline evaluator therefore does not fire from these writes unless the client explicitly calls log-activity afterwards. log-activity v24 added an `evaluate_only:true` mode for exactly this purpose; all trigger pages now call `VYVEAchievements.evaluate()` from the new `/achievements.js` client lib after each successful write. Without this wire-up the inline path would remain dead even though the EF code is correct. Codified as a §23 hard rule.
 
 ### Push fan-out (28 April PM)
 
@@ -830,6 +833,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 - 15 active members in `members` table (live count via Supabase). 3 admin operators in `admin_users`.
 - `member_home_state` aggregate with real-time trigger maintenance wired to 10 source tables.
 - `schema-snapshot-refresh` weekly cron, auto-committing structural changes to VYVEBrain.
+- **Phase 3 Achievements foundation (29 April AM)** — closed the silent inline-evaluator gap. log-activity v24 deployed with `evaluate_only:true` short-circuit. New `/achievements.js` v1 client lib (toast queue + debounced evaluator + mark-seen + replay-unseen) loaded across all portal pages. All 9 trigger pages wired to call evaluator after writes; 8 passive pages load lib for replay-unseen. SW cache bumped `v2026-04-28c-ach-wire`. End-to-end smoke verified on Dean (first real member-action achievement earn since system was built). Phase 3 UI (engagement.html grid tab + index.html dashboard slot) still pending; foundation now unblocks it.
 
 ### Completed — Lewis (commercial)
 
@@ -1006,6 +1010,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 | **`SUPABASE_DEPLOY_FUNCTION` has no verify_jwt param — defaults true** | Combined with the UPDATE corruption rule, this means we cannot reliably set `verify_jwt:false` on Composio-deployed EFs. With `verify_jwt:true` the gateway accepts only JWT-format tokens and rejects `sb_secret_*` with `UNAUTHORIZED_INVALID_JWT_FORMAT`. |
 | **Dual-auth pattern for service-role-guarded EFs** | Workaround for the verify_jwt-stuck-true situation. Save the legacy service-role JWT as a non-`SUPABASE_*`-prefixed secret (`LEGACY_SERVICE_ROLE_JWT`). Have the EF's guard accept `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` (= `sb_secret_*`) OR `Bearer ${LEGACY_SERVICE_ROLE_JWT}`. External callers (workbench INVOKE, Composio) use the legacy path; internal EF→EF callers can use either. `send-push` v11 and `achievement-earned-push` v1 are canonical implementations. |
 | **EF semantic version vs Supabase platform version (28 April)** | Brain tracks **semantic versions** (Dean-controlled bumps with code changes). The Supabase API returns **platform versions** that auto-increment on every deploy/redeploy/metadata change, including no-ops. As of 28 April, platform version is consistently +3 to +4 ahead of semantic version across most EFs (a residue of the `SUPABASE_UPDATE_A_FUNCTION` corruption diagnostics). Treat the gap as expected, not as drift. When auditing brain vs live, compare semantic versions; the platform-numbers from `list_edge_functions` are not the source of truth. |
+| **Trigger pages bypass log-activity for direct PostgREST writes (29 April)** | habits.html, workouts.html, cardio.html, sessions.html, wellbeing-checkin.html, monthly-checkin.html, log-food.html, movement.html, nutrition.html, plus the workouts-*.js modules write to their tables via direct `/rest/v1/<table>` POSTs, NOT through `log-activity`. The inline achievement evaluator wired into log-activity v22+ therefore does not fire from these writes by default. log-activity v24 (29 April) added an `evaluate_only:true` short-circuit that skips write/cap/dedup logic and runs the evaluator only; trigger pages now call `VYVEAchievements.evaluate()` from `/achievements.js` after each successful write. Without this wire-up the inline path is dead even though the EF code is correct. ALL future trigger pages added must include this call. Standard new-trigger checklist: (1) load `/achievements.js`, (2) fire `VYVEAchievements.evaluate()` in post-write success branch, (3) any waitUntil fan-out to push or in-app already runs server-side from the EF — no client work needed. |
 
 ---
 

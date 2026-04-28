@@ -1,3 +1,117 @@
+## 2026-04-29 AM (Phase 3 foundation: trigger-page achievement evaluator gap fixed end-to-end — first real cohort earns flowing)
+
+### TL;DR
+
+Started session pivoting onto Phase 3 Achievements UI on engagement.html. Discovered, while auditing the trigger pages for toast wiring, that the entire achievement inline evaluator has been **dead in production** since 27 April. log-activity v22+ added an `evaluateInline()` call inside its handler, and v23 wired a push fan-out on top — but **none of the trigger pages (habits, workouts, cardio, sessions, wellbeing-checkin, monthly-checkin, log-food, movement, nutrition) actually call log-activity**. They write directly to PostgREST tables. So the inline evaluator has fired zero times for real member actions; only the 27 April backfill (185 tiers, all marked seen) and the daily `member_days` sweep have produced earned rows. Vicki's tier 2 cross last night was sweep-driven, not inline. Confirmed via SQL: every non-`member_days` row earned at exactly the same instant on 27 April — the backfill timestamp.
+
+Fixed in three steps tonight: (1) deployed log-activity v24 with an `evaluate_only:true` short-circuit that skips write/cap/dedup logic and just runs `evaluateInline` + push + in-app log fan-out, (2) shipped a new `/achievements.js` client lib (toast queue + debounced evaluator + mark-seen + replay-unseen on every page load), (3) wired both into all 9 trigger pages and all 8 passive pages across two atomic commits. End-to-end smoke verified — Dean tapped a habit, evaluator caught up the backlog, toast rendered. First real-cohort achievement earn from a member action since the system was built.
+
+### Why this was invisible
+
+- The 27 April backfill seeded everyone with their already-earned tiers and marked them seen, so dashboards never showed a 0% cold start. The grid (when it lands in Phase 3 UI) would have looked correct on first load.
+- `member_days` sweep runs nightly and was the only thing populating new earns post-backfill. One row in 24 hours of cohort activity (Vicki's t2). Looked like a quiet system, not a broken one.
+- The inline call site in log-activity v22+ — `evaluateInline(supabase, member_email)` — fires correctly when log-activity is invoked. The bug isn't in the EF; it's in the client architecture, which has always written direct to PostgREST.
+- The 28 April PM smoke test on Vicki's `member_days` t2 cross during sweep was real (APNs HTTP 200 verified), and that result framed achievements as live end-to-end. They were live for the sweep path. The inline path was always dead.
+
+### What shipped
+
+#### log-activity v24 (deployed, ACTIVE, platform v27)
+
+`evaluate_only` short-circuit at the top of the handler. Skips the body validation, cap check, and INSERT entirely; runs `evaluateInline(supabase, member_email)` directly; fires `writeAchievementNotifications` + `pushAchievementEarned` via `EdgeRuntime.waitUntil()` if anything earned. Returns `{success:true, evaluate_only:true, earned_achievements:[]}`. All other paths byte-identical to v23.
+
+```ts
+if (body && body.evaluate_only === true) {
+  let earned_achievements = [];
+  try {
+    earned_achievements = await evaluateInline(supabase, member_email);
+  } catch (e) { ... }
+  if (earned_achievements.length > 0) {
+    EdgeRuntime.waitUntil(writeAchievementNotifications(supabase, member_email, earned_achievements));
+    EdgeRuntime.waitUntil(pushAchievementEarned(member_email, earned_achievements));
+  }
+  return new Response(JSON.stringify({ success: true, evaluate_only: true, earned_achievements }), ...);
+}
+```
+
+`verify_jwt:false` preserved (custom auth via `getAuthUser` validating user JWT against `/auth/v1/user`). Auth gate smoke-tested — invocation without bearer returns the existing `{success:false, error:"Authentication required..."}` 401.
+
+#### `/achievements.js` v1 client lib (new file, 9.5KB)
+
+Public API: `VYVEAchievements.evaluate()` (debounced 1.5s), `VYVEAchievements.evaluateNow()` (immediate), `VYVEAchievements.replayUnseen()` (auto on page load), `VYVEAchievements.queueEarned(arr)` (manual queue).
+
+- **Debounced evaluator:** multiple writes within 1500ms coalesce into one EF call. Critical for `workouts-session.js` which fires many `exercise_logs` INSERTs in quick succession.
+- **Toast queue:** single host element appended to body (fixed bottom-center, z-index 9999), gradient teal-to-dark with gold accent border, brand-colour palette only. Auto-dismiss 6s, click-anywhere-to-dismiss, dedicated × button. Tap routes to `/engagement.html#achievements` (anchor doesn't exist yet — lands on engagement page until Phase 3 grid ships).
+- **Mark-seen on dismiss:** POSTs `{metric_slug, tier_index}` to `achievements-mark-seen` v1.
+- **Replay unseen on page load:** reads `vyve_dashboard_cache.data.achievements.unseen[]` from localStorage and queues those toasts. Cohort members who earned overnight or via sweep see toasts next time they open any portal page.
+- **Session de-dupe:** in-memory `Set` of `metric_slug:tier_index` so an evaluator that returns the same earn twice in one tab session won't double-toast.
+
+#### Trigger page wiring (commit `632b9373`, 19 files)
+
+Trigger pages (each fires `VYVEAchievements.evaluate()` after successful direct write):
+
+| Page | Hook point |
+|---|---|
+| `habits.html` | logHabit `isYes` branch (commit `783cbfec` earlier in session) |
+| `cardio.html` | After `/cardio` insert success (1 site) |
+| `wellbeing-checkin.html` | After `wellbeing-checkin` EF response 200 |
+| `monthly-checkin.html` | After `monthly-checkin` EF response 200 |
+| `log-food.html` | After `/nutrition_logs` insert (2 sites: food + custom food) |
+| `movement.html` | After `/workouts` insert (2 sites: session complete + quick log) |
+| `nutrition.html` | After `/weight_logs` upsert |
+| `workouts-session.js` | After `/exercise_logs`, `/workouts`, `share-workout` (3 sites) |
+| `workouts-builder.js` | After `/custom_workouts` INSERT |
+| `workouts-programme.js` | After programme `share-workout` |
+
+Passive pages (script tag only, replay-unseen):
+
+`index.html`, `engagement.html`, `sessions.html`, `exercise.html`, `settings.html`, `running-plan.html`, `certificates.html`, `leaderboard.html`, `workouts.html`.
+
+`sw.js` cache bumped `v2026-04-28b-achievements` → `v2026-04-28c-ach-wire`.
+
+### Smoke verification (Dean, real session)
+
+After commit `783cbfec` (habits.html only) shipped: Dean reloaded habits.html, tapped Yes on a habit, toast slid in. End-to-end pipeline proven on a real member action. Per pre-shipped SQL, Dean's account had backed-up earns sitting at:
+
+- `habits_logged` t7 (current 101, threshold 100)
+- `workouts_logged` t6 (current 61, threshold 50)
+- `cardio_logged` t5+ (current 116, threshold 25)
+- `exercises_logged` was at threshold 250, current 230 — ladder gap noted (see open issues)
+
+These are now flowing as real toasts the moment any cohort member crosses a threshold from a real action.
+
+### New §23 hard rule
+
+**Trigger pages bypass log-activity for direct PostgREST writes.** habits.html, workouts.html, cardio.html, sessions.html, wellbeing-checkin.html, monthly-checkin.html, log-food.html, movement.html, nutrition.html all write to their tables via direct `/rest/v1/<table>` POSTs, not through `log-activity`. The inline achievement evaluator wired into log-activity v22+ does not run from these writes by default. The fix as of v24 + commit 632b9373: each trigger page calls `VYVEAchievements.evaluate()` (which POSTs `evaluate_only:true` to log-activity) after its successful write. Any future trigger added to a portal page must wire this call. Codify as part of the standard new-trigger-page checklist.
+
+### Lewis-pending copy issues surfaced during smoke
+
+Two copy/threshold issues Dean spotted on the very first toast render. Both are tier-table data, not architecture, and both need Lewis re-approval since he signed off all 327 tier rows on 27 April.
+
+1. **`cardio_logged` tier copy "50 cardio hit"** — should be "50 cardio sessions". Casual phrasing slipped through copy review.
+2. **`exercises_logged` ladder gap 100 → 250** — Dean wants every-50 instead. Currently the ladder jumps to 250, then 500, then likely larger. Smoothing to 50/100/150/200/250/... means more frequent earns and steadier progression. Open: confirm exact ladder shape with Lewis.
+
+These are queued for Lewis review alongside other Phase 2 copy work. Not actioned tonight.
+
+### Open + deferred
+
+- **Phase 3 grid + dashboard slot still open.** Tonight focused on the foundation (toast pipeline working everywhere). Next session: tab on engagement.html (32-metric grid, ladders, inflight bars) + dashboard slot on index.html (latest unseen / closest inflight).
+- **Engagement.html anchor `#achievements` doesn't exist yet.** Toast click currently lands on `/engagement.html` (renders fine, lands on Score/Streak page). Phase 3 grid will add the anchor and clicks will start landing on the grid.
+- **log-activity CAPS = {daily_habits:1, ...} in the EF.** Per master §6, the daily_habits trigger cap was raised to 10/day in session 7a (24 April). The EF still has 1. Doesn't matter since trigger pages bypass the EF for writes, but flag for cleanup if log-activity ever becomes the canonical write path.
+- **`fire-test-push` v4 cleanup** still parked from last night. Add to next-session housekeeping.
+- **4 stale PWA web subs on Dean's account** — still parked. Naturally clears once Apple 410s them.
+- **~32 dead one-shot EFs from 9 April security audit** — still pending Supabase CLI cleanup.
+- **vyve-capacitor still not a git repo** — backlog risk, two-line fix.
+- **Achievement copy review queue:** cardio_logged "50 cardio hit", exercises_logged ladder smoothing. Lewis sign-off needed.
+
+### Files touched
+
+- log-activity v24 deployed via Composio `SUPABASE_DEPLOY_FUNCTION` (per §23 rule — not UPDATE).
+- `vyve-site` commit `783cbfec`: achievements.js + habits.html + sw.js (3 files, v0 of foundation).
+- `vyve-site` commit `632b9373`: 18 portal files + sw.js bump (the rest of the wire-up).
+- `VYVEBrain`: this entry prepended; §7 log-activity bumped v23 → v24; §8 achievements.js noted as new portal infrastructure; §11A reframed inline path as "live but evaluator-blocked until 29 April"; §19 completed list updated; §21 Phase 3 UI explicitly noted as next; §23 new hard rule added; backlog updated.
+
+---
+
 ## 2026-04-28 PM late late (web push VAPID layer fix — second bug hiding behind tonight's SW handler patch)
 
 ### TL;DR

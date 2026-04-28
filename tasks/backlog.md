@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 28 April 2026 PM (post brain audit + master rewrite). Headline news: **iOS 1.2 approved by Apple — Ready for Distribution.** Bundles HealthKit + native push permission flow + reliability fixes. Cohort-wide HK autotick now live for any opted-in iPhone member upgrading PWA → native. Push Notifications Session 2 item 1 (`achievement-earned-push` v1) shipped + verified end-to-end on Vicki's real `member_days` t2 cross. SW `push` + `notificationclick` handlers shipped (`vyve-site@124ecb53`) — fixed silent web push breakage from initial rollout. 4 of 5 Session 2 trigger EFs remain (`weekly-checkin-nudge` blocked on Lewis + Phil discussion re cohort split). Phase 3 Achievements UI still unblocked, not yet sequenced. Master.md fully rewritten this session.
+> Updated: 29 April 2026 AM (Phase 3 foundation shipped). Headline news: **Achievement inline evaluator gap fixed end-to-end — first real cohort earns flowing.** Trigger pages bypass log-activity; client lib `/achievements.js` v1 + log-activity v24 evaluate_only mode wires evaluator activation across all 9 trigger pages and 8 passive pages. SW cache `v2026-04-28c-ach-wire`. iOS 1.2 still approved by Apple, Ready for Distribution. Bundles HealthKit + native push permission flow + reliability fixes. Cohort-wide HK autotick now live for any opted-in iPhone member upgrading PWA → native. Push Notifications Session 2 item 1 (`achievement-earned-push` v1) shipped + verified end-to-end on Vicki's real `member_days` t2 cross. SW `push` + `notificationclick` handlers shipped (`vyve-site@124ecb53`) — fixed silent web push breakage from initial rollout. 4 of 5 Session 2 trigger EFs remain (`weekly-checkin-nudge` blocked on Lewis + Phil discussion re cohort split). Phase 3 Achievements UI still unblocked, not yet sequenced. Master.md fully rewritten this session.
 
 ---
 
@@ -73,11 +73,14 @@
    - Sweep extensions for HK lifetime metrics, `full_five_weeks`, `charity_tips`, `personal_charity_contribution`, `tour_complete`, `healthkit_connected`, `persona_switched`. Currently `achievements-sweep` only handles `member_days`.
    - Clean orphan `running_plans_generated` entry from evaluator INLINE map next time we touch `log-activity`.
 
-   **Phase 3 — UI (now UNBLOCKED):**
-   - Achievements as a **tab on `engagement.html`** alongside the existing Progress content. Captures the all-achievements grid (32 metrics × tiers earned/locked) plus inflight progress to the next tier per metric.
-   - Toast queue for newly-earned tiers (post mark-seen workflow).
-   - Dashboard slot showing latest unseen / next-up tier.
-   - Native push hook on tier earn lands in the push notifications session (item 1) and a later web-push fan-out session.
+   **Phase 3 — UI (foundation shipped 29 April):**
+   - **DONE:** `/achievements.js` v1 client lib — toast queue, debounced evaluator, mark-seen, replay-unseen. Loaded on every portal page.
+   - **DONE:** log-activity v24 `evaluate_only:true` short-circuit. Trigger pages fire `VYVEAchievements.evaluate()` post-write to activate the evaluator without restructuring the write path.
+   - **DONE:** All 9 trigger pages wired (habits, cardio, wellbeing-checkin, monthly-checkin, log-food, movement, nutrition, workouts-session.js, workouts-builder.js, workouts-programme.js).
+   - **DONE:** All 8 passive pages load `/achievements.js` for replay-unseen on load (index, engagement, sessions, exercise, settings, running-plan, certificates, leaderboard, workouts).
+   - **DONE:** End-to-end smoke verified on Dean's account — toast rendered for `habits_logged` t7 cross.
+   - **TODO:** Phase 3 UI surfaces — (a) achievements tab on `engagement.html` with 32-metric grid + inflight bars, (b) dashboard slot on `index.html` showing latest unseen / closest inflight, (c) `#achievements` anchor on engagement.html so toast clicks land precisely.
+   - Native push hook on tier earn already wired (achievement-earned-push v1) and now fires from real cohort actions for the first time.
 
    **Voice rules locked-in for future ladder extensions:** no emojis, titles 3-6 words, bodies 10-20 words, VYVE voice (proactive wellbeing, evidence over assumption, no fitness-influencer tone), tier 11+ on long ladders short and reverent (no next-tier nudge), recurring-metric copy evergreen, all titles globally unique. Streaks emphasise consecutive cadence; counts emphasise cumulative volume — distinct body voices.
 
@@ -85,6 +88,7 @@
    - Confirm `full_five_weeks` source-query maps to the five web pillars (mental/physical/nutrition/education/purpose) — Batch 6 copy enumerates these by name. If wired against five platform activity types instead, body needs a tweak.
    - `tour_complete` assumes the in-app tour is built (backlog item, post iOS approval). Metric currently not wired to anything.
    - `persona_switched` is intentionally one-shot (fires on first switch only, not subsequent).
+   - **Copy review queue (Lewis re-approval, surfaced 29 April smoke):** (a) `cardio_logged` tier "50 cardio hit" → should read "50 cardio sessions"; (b) `exercises_logged` ladder gap 100 → 250 too steep, smooth to every-50 progression. Both flagged from real toast-render observation.
 
 8. **In-App Tour / First-Run Walkthrough (~1–2 sessions)** — Full design spec landed 26 April. **Builds on top of the Achievements System** — every tour step earns the relevant first-tier achievement, so day one ends with banked progress on the 30-activity certificates instead of the brutal 0% cold start. **Tour activities count as real activities**, not throwaway tutorial ticks. Modal step-through (option a) confirmed for v1. Walks members through: home dashboard (score ring + streak), first habit log, first workout log, first cardio log (with HealthKit consent prompt at this step on iOS), first session watched, first weekly check-in. Each step ends with the member tapping the actual log button — earning `first_habit` / `first_workout` / `first_cardio` / `first_session` / `first_checkin` (tier 1 of each respective ladder) — and the achievement toast/push fires inline at each step. Tour completion itself earns the `tour_complete` achievement. Persistence via `members.tour_completed_at`, with "Restart tour" in Settings. Skip path required. **Dependencies:** Achievements System (item 7) shipped, Lewis copy + screenshot approval. **Ships after** achievements so the celebration moments at each step actually land. Effort: ~1–2 sessions, mostly UI.
 
