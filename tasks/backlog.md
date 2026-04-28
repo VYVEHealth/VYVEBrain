@@ -1,13 +1,28 @@
 # VYVE Health — Task Backlog
 
-> Updated: 27 April 2026 (Achievements Phase 1 SHIPPED end-to-end — data layer 27 April AM + copy approval 27 April PM. 327/327 tier rows approved, 32 metric labels finalised. Catalog adjustments codified: dropped running_plans_generated + cardio_distance_total + session_minutes_total; added volume_lifted_total in new 'volume' category; streak_checkin_weeks ladder corrected to weeks-scaled. Phase 3 UI now UNBLOCKED.)
+> Updated: 28 April 2026 PM (Push Notifications Foundation SHIPPED — `send-push` v11 unified fan-out EF deployed; `habit-reminder` v14 + `streak-reminder` v14 refactored to delegate to it; legacy JWT dual-auth pattern codified. Session 2 of triggers and Session 3 of polish remain. Achievements Phase 1 still ✓; Phase 3 UI still unblocked.)
 
 ---
 
 ## MVP Requirements (Critical for Enterprise Launch)
 
 ### 🔥 **Critical Missing Pieces**
-1. **Native Push Notifications (2-3 sessions)** — APNs (iOS) + FCM (Android) via Capacitor plugins. Daily habit reminders, weekly check-in prompts, milestone celebrations, streak risk alerts. Currently only VAPID web push works on PWA.
+1. **Native Push Notifications — Foundation SHIPPED 27–28 April 2026** — APNs (iOS) infra fully live end-to-end. AppDelegate.swift bridge methods (27 April PM), `register-push-token` v3 + `push-send-native` v5 ACTIVE, iOS 1.2(1) submitted with native push permission flow (Waiting for Review). **Session 1 of trigger work shipped 28 April PM**: `send-push` v11 unified fan-out EF (web VAPID + native APNs in one call, per-member same-day dedupe via `member_notifications`). `habit-reminder` v14 + `streak-reminder` v14 refactored to delegate all push mechanics to `send-push`. Banner verified on Dean's iPhone via smoke test before dev token was orphaned by 1.2(1) production-env build.
+
+   **Remaining trigger build (Session 2 — 5 EFs, all glue calls to send-push):**
+   - `achievement-earned-push` — fires from `log-activity` inline evaluator on new tier earn AND from `achievements-sweep` daily for sweep-derived metrics. Lewis copy already approved per tier (`achievement_tiers.title` + body). Most visceral demo win.
+   - `session-start-nudge` — cron 15 min before scheduled live session start. Optional opt-in (use `members.notifications_milestones` or new column).
+   - `weekly-checkin-nudge` — cron Monday 09:00 London (= 08:00 UTC outside BST, 08:00 UTC during BST too since the times match Sunday morning UK).
+   - `monthly-checkin-nudge` — cron 1st of month 09:00 London.
+   - `re-engagement-push` — companion to existing Brevo stream A; cron daily, push to 7-day inactive cohort.
+
+   **Polish (Session 3):**
+   - `notification_preferences` — extend `members.notifications_milestones` + `notifications_weekly_summary` to per-trigger booleans (or a new `notification_preferences` table); settings.html UI; max-pushes-per-day cap (3? Lewis decision); Lewis copy approval doc for all 5 trigger types.
+   - Foreground-suppression on iOS — Capacitor `pushNotificationReceived` listener should consume the payload as in-app toast input rather than letting APNs banner display, when app is foregrounded.
+   - Service worker `notificationclick` handler — read `data.url` from VAPID payload and route. Verify or build.
+
+   **Android (FCM) — parked** until Dean has a Pixel/Galaxy device for testing. Architecture is extension-ready; `push_subscriptions_native.platform` already accommodates.
+
 2. ~~**Habits Editing Bug** — Cannot un-skip or change habit answers once submitted.~~ **SHIPPED pre-session-3 (live on entry 25 April 2026).** Upsert-on-conflict in `logHabit`, Undo button with DELETE in `undoHabit`, unique constraint `daily_habits_member_habit_date_unique (member_email, activity_date, habit_id)` all confirmed live. Re-tapping a habit re-writes the row; Undo clears it and restores the three-button state. RLS `cmd=ALL` covers the UPDATE path cleanly.
 3. **HealthKit Integration (iOS-first) + Health Connect (deferred)** — Full plan at `plans/healthkit-health-connect.md`. v1 scope locked: reads 7 data types, writes weight only (workouts write-back not supported by Capgo 8.4.7 on iOS — codified session 4, dead path removed session 5d).
    - ~~Session 1 (DB + EF foundation) shipped 23 April~~: 3 tables, `queue_health_write_back` trigger, `sync-health-data` EF v1 ACTIVE. Shadow-read guard verified.

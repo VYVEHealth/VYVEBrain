@@ -1,3 +1,71 @@
+## 2026-04-28 PM (push notifications session 1 — unified send-push fan-out shipped) — habit-reminder + streak-reminder refactored to call send-push, both reminder paths now multi-channel
+
+### TL;DR
+
+The notification triggers/copy/cadence phase started this evening. Built `send-push` v1 as the unified VAPID + APNs fan-out wrapper, retrofitted `habit-reminder` (v12 → v14) and `streak-reminder` (v12 → v14) to delegate all push mechanics to it. Both reminder EFs lost ~3K chars of inline VAPID + member_notifications + sub-lookup boilerplate each. End-to-end smoke test confirmed: banner displayed on Dean's iPhone, in-app notification row written, dual-channel fan-out (web VAPID + native APNs) operational. Three new §23 hard rules codified — Composio's `SUPABASE_UPDATE_A_FUNCTION` corrupts deployed bundles (must use `SUPABASE_DEPLOY_FUNCTION` only), `SUPABASE_DEPLOY_FUNCTION` defaults to `verify_jwt:true` with no override, and the dual-auth pattern (legacy JWT secret as fallback) needed when verify_jwt:true blocks sb_secret_* at the gateway. Foundation work for Session 2 (per-trigger fan-out for achievements, sessions, weekly/monthly checkin, re-engagement) is now unblocked.
+
+### What shipped
+
+**1. send-push v1 — unified push fan-out EF**
+
+New Edge Function at `https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/send-push`. Service-role gated (dual-auth: matches `Bearer sb_secret_*` OR `Bearer ${LEGACY_SERVICE_ROLE_JWT}`). Single point of fan-out for both web and native push.
+
+- **Input contract:** `{member_emails: string[], type: string, title: string, body: string, data?: object, dedupe_same_day?: boolean, skip_inapp?: boolean, skip_web?: boolean, skip_native?: boolean}`. Type required for dedupe/log routing. Title + body required. Sensible defaults (dedupe on, all channels on).
+- **Per-member processing:** for each member email — same-day dedupe lookup against `member_notifications(member_email, type, today)` if `dedupe_same_day=true`; insert `member_notifications` row (in-app history, returns id); fan-out to all `push_subscriptions` rows (VAPID via inline RFC 8291 aes128gcm encryption, lifted from habit-reminder v12 verbatim); auto-revoke 410/404 web subs.
+- **Native batch:** after per-member loop, single batched HTTP call to `push-send-native` v5 with all recipient emails. Allowlist enforcement, ES256 JWT, APNs routing all stay in push-send-native (single APNs path preserved).
+- **Returns:** `{ok, processed, deduped, notified, web_attempted, web_sent, web_revoked, native_attempted, native_sent, native_revoked, native_skipped, details: [...]}` with per-member breakdown.
+- **Deployed v11 ACTIVE, verify_jwt:true** (forced — see §23 rules below). 13,376 chars source.
+
+**2. habit-reminder v14 — slim refactor**
+
+Lost the entire VAPID stack (b64u, db64u, concat, makeVapidJwt, encryptPayload, sendPush — ~140 lines), the inline `member_notifications` insert, and the per-member sub lookup. Now just iterates members, identifies who hasn't logged a habit today, and calls `send-push` once per member with personalised first-name body. 7118 → 4180 chars, -2938. Cron schedule unchanged (20:00 UTC daily). Smoke-tested live: 13 candidates, 13 pushes, 0 deduped, 0 failures.
+
+**3. streak-reminder v14 — same refactor pattern**
+
+Same shape as habit-reminder. Streak business logic (`calculateStreak`, `getActivityDates`) preserved verbatim. 6856 → 5222 chars, -1634. Cron 18:00 UTC unchanged. Smoke-tested: 15 candidates evaluated, 0 currently eligible (no member holds a 7+ day streak in current cohort). Function correct, just no targets.
+
+**4. LEGACY_SERVICE_ROLE_JWT secret added**
+
+Saved the legacy service-role JWT (`eyJhbGc...`, 219 chars) as a non-`SUPABASE_*`-prefixed Supabase secret. Send-push's auth check matches against either `SUPABASE_SERVICE_ROLE_KEY` (the `sb_secret_*` runtime value) OR `LEGACY_SERVICE_ROLE_JWT`. Same pattern available for any future service-role-gated EF that has to live with `verify_jwt:true`.
+
+### Three new §23 hard rules codified
+
+**Rule 1: `SUPABASE_UPDATE_A_FUNCTION` corrupts the deployed bundle.** Reproduced cleanly: deploy a working stub via `SUPABASE_DEPLOY_FUNCTION` (status 200 on invoke), then call `SUPABASE_UPDATE_A_FUNCTION` with the byte-identical body — next invoke returns persistent BOOT_ERROR. Affects body whether passing TypeScript source or anything else; metadata changes (verify_jwt) DO take effect, but the bundle gets mangled. **Always use `SUPABASE_DEPLOY_FUNCTION` for body changes.** UPDATE is unsafe except for slug/name renames (which we shouldn't be doing).
+
+**Rule 2: `SUPABASE_DEPLOY_FUNCTION` has no `verify_jwt` parameter — always defaults to true.** Combined with rule 1, this means we can't reliably set `verify_jwt:false` on Composio-deployed EFs. With `verify_jwt:true`, the Supabase gateway accepts only JWT-format tokens and rejects `sb_secret_*` with `UNAUTHORIZED_INVALID_JWT_FORMAT`. So callers must use the legacy JWT for the gateway to admit them.
+
+**Rule 3: Dual-auth pattern for service-role-guarded EFs.** Save the legacy service-role JWT as a non-`SUPABASE_*`-prefixed secret (e.g. `LEGACY_SERVICE_ROLE_JWT`). Have the EF's literal-compare guard accept either `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` or `Bearer ${LEGACY_SERVICE_ROLE_JWT}`. External callers (workbench INVOKE, Composio tools) use the legacy JWT path; internal EF→EF callers use either. One extra env var per service-role-gated EF, minor maintenance, fully unblocks the Composio UPDATE limitation.
+
+### Verification
+
+- send-push v11 smoke test: invoked from workbench targeting `deanonbrown@hotmail.com` with `dedupe_same_day:false`. Result: `{processed:1, notified:1, web_attempted:4, web_sent:0, native_attempted:2, native_sent:1, native_revoked:1}`. Banner confirmed displayed on Dean's iPhone 15 Pro Max. The 1 revoked native = the orphan dev-env token from the 27 April PM session (1.2(1) was being submitted in production env), which APNs rejected with 410 BadDeviceToken. Auto-revoke logic working as designed.
+- habit-reminder v14 invoke: 13 candidates → 13 sent successfully via send-push, all writing in-app notification rows, 0 failures.
+- streak-reminder v14 invoke: 15 candidates → 0 eligible (no 7+ day streaks live), 0 sent. Function clean, just no targets in current cohort.
+
+### Loose ends
+
+**Web push hygiene.** The 4 stale `push_subscriptions` rows on Dean's account returned non-410 errors during the smoke test. Per RFC 8030 we only auto-revoke on 410 Gone, so they stick around. Could be 401/403/etc from expired auth or stale registration — not formally expired but functionally dead. Backlog: extend send-push web-revoke logic to also delete on 4xx (excluding 408/429). Low priority — doesn't break anything.
+
+**Native push to Dean.** The dev-env token was revoked during smoke test, so habit-reminder/streak-reminder will not deliver pushes to Dean's iPhone again until 1.2(1) is approved by Apple Review and Dean installs it (which will register a fresh production-env token via `push-native.js`). Until then, only the in-app `member_notifications` history captures the daily reminders. Next live verification: post 1.2(1) approval, trigger habit-reminder again before bedtime tomorrow; banner should arrive within seconds.
+
+**send-test-push v11 not refactored.** Still uses inline VAPID, still web-only. Low-priority dev utility. Backlog item for whenever we touch it next — same refactor pattern as habit-reminder/streak-reminder, ~10 minute job.
+
+### Numbers
+
+- Edge functions: +1 (`send-push` v11), +2 versions (`habit-reminder` v14, `streak-reminder` v14)
+- Lines stripped from reminder EFs: ~150 (VAPID helpers + sub lookup) — now lives only in send-push
+- Active cron schedules unchanged: habit-reminder 20:00 UTC, streak-reminder 18:00 UTC
+- Secrets: +1 (`LEGACY_SERVICE_ROLE_JWT`)
+- §23 hard rules: +3 (Composio UPDATE corruption, DEPLOY no verify_jwt param, dual-auth pattern)
+
+### Pending / next
+
+- **Session 2: per-trigger fan-out** — achievement-earned-push (inline from log-activity + achievements-sweep on new tier earn), session-start-nudge (15min pre-session cron), weekly-checkin-nudge (Monday 9am London), monthly-checkin-nudge (1st of month 9am London), re-engagement-push (7-day inactive cohort, mirror Brevo stream A). All glue calls to send-push.
+- **Session 3: polish** — `notification_preferences` per-type opt-out (existing `members.notifications_milestones`, `notifications_weekly_summary` columns are seed for this), settings.html UI, max-pushes-per-day cap, Lewis copy approval doc.
+- **send-test-push v12 refactor** — backlog, low priority.
+- **Web push hygiene** — extend send-push to auto-revoke on 4xx (excluding 408/429). Backlog.
+- **Service worker `notificationclick` handler** — needs to read `data.url` from VAPID payload and route. Currently unverified (the existing SW may already do this; check on next portal session).
+
 ## 2026-04-27 PM → 28 April 00:52 UTC (native push end-to-end + iOS 1.2(1) submission) — App Store binary + APNs proven against Dean's iPhone
 
 ### TL;DR
