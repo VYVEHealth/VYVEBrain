@@ -1,3 +1,80 @@
+## 2026-04-28 PM late (brain audit + master.md full rewrite + backlog refresh) — drift catalogued, brain re-aligned to live reality, iOS 1.2 approval captured
+
+### TL;DR
+
+Dean asked for a deep dive of the brain vs live reality after the SW push handler patch shipped, given a sense of accumulated drift. Audited master.md / changelog.md / backlog.md against live Supabase state (`list_edge_functions` + `list_tables` + cron table + sw.js fetch + auth.js fetch) and surfaced ~20 distinct drift items. Dean confirmed iOS 1.2 is **approved by Apple — Ready for Distribution** (screenshot from App Store Connect), HAVEN still not Phil-signed-off, first paying B2C is Paige Coult @ £20/month. Master rewritten in full, backlog patched in six targeted edits, this entry prepended. No code shipped.
+
+### What was found drifting
+
+- **iOS App Store version** — master said 1.1(3) submitted/in-review in two places; reality is 1.2(1) submitted then approved. Now 1.2 Ready for Distribution.
+- **`member-dashboard` semantic version** — master said v51 in §7, §8, §11, §13; live is semantic v55 (v54 = 26 April web rollout, v55 = 27 April achievements payload). Brain ran 4 versions behind.
+- **`auth.js` semantic version** — master §3 said v2.2; brain hygiene closure note said v2.4; live `auth.js` first 400 chars confirms `v2.3 — April 2026 — consent gate check added`.
+- **SW cache key** — master §8 said `vyve-cache-v2026-04-26b-revert-hub-archive`; live is `vyve-cache-v2026-04-28a-pushhandler` (matches tonight's `124ecb53` push-handler patch).
+- **Achievements System** — Phase 1 shipped 27 April with three new tables (`achievement_metrics` 32 rows, `achievement_tiers` 327 rows all `copy_status='approved'`, `member_achievements` 186 rows), `_shared/achievements.ts` evaluator, `achievements-mark-seen` v1, `log-activity` v22+ inline integration, `member-dashboard` v55 dashboard payload — all of which were **almost entirely absent from master**. Tables not in §6 inventory; `achievements-mark-seen` not in §7 EF table; the architecture not described anywhere. Tonight's 28 April PM push fan-out work (`achievement-earned-push` v1 + `log-activity` v23 + `achievements-sweep` v2) was captured in §7 but the broader Phase 1 picture wasn't.
+- **Table count** — §5 said "70 tables", §6 said "74 tables", §19 said "70 public tables"; live `list_tables` returns 76. Three different numbers in master, none correct.
+- **Member counts** — §1 said "~17 active", §19 said "14 + 3 admins = 17 platform identities"; live is 15 in `members` (including `test@test.com`) + 3 in `admin_users`. Three different framings, none useful for someone reading cold.
+- **Row counts in §6** — every table drifted by 5–50 rows since the 26 April reconcile. `cardio` 23 → 147, `member_health_samples` 1,674 → 3,847, `daily_habits` 151 → 176, `workouts` 53 → 91, etc.
+- **HAVEN gate** — master §10 says "pending clinical review by Phil before promotion" but onboarding EF assigns HAVEN per the stress ≤4 / wellbeing ≤3 rule, and `conor@conorwarren.co.uk` (joined 15 April, baseline_wellbeing=3, baseline_stress=2) is currently on HAVEN in production. Phil has not signed off. Either pause auto-assignment or accelerate Phil's review — open issue in §22.
+- **`+3` platform-vs-semantic drift across nearly every EF** — 47 of 51 catalogued EFs show platform version exactly +3 ahead of brain's semantic version. Cause: Composio's `SUPABASE_DEPLOY_FUNCTION` bumps platform version on every redeploy regardless of source change, and tonight's `SUPABASE_UPDATE_A_FUNCTION` corruption diagnostics generated several no-op platform bumps. The semantic versions in master are mostly correct; the platform numbers Supabase exposes will always run ahead. Codified in §23 as a hard rule.
+- **Backlog item 2 ("iOS icon fix")** — stale; icon was fixed in 1.1(3) and 1.2(1). Retired.
+- **Backlog Security Quick Wins** — said "~9 remain" of the 89-deletion list; recount shows ~32 still-ACTIVE one-shots/seeders/debug helpers. Updated.
+- **Weekly-checkin-nudge cohort discovery** — Dean's 28 April PM finding (15 opted in, 12 overdue, 11 of those 12 have never done a check-in at all) was nowhere in brain. Now captured as a gating constraint on the EF and as a new entry in §22 open decisions.
+- **Named charity partner** — claimed in §3, §17, §19 of the 24 April master as "confirmed late April 2026". Reality (per Dean): not yet confirmed. Removed from completed list; left in §17 as an open status.
+
+### Master rewrite — what's new in this version
+
+Full rewrite, not a patch. Supersedes 24 April rewrite. Eight notable structural changes:
+
+1. **§1** — member count framing simplified ("Pre-revenue, build/test cohort. ~15 in `members` table including 1 paying B2C — Paige Coult @ £20/month — plus enterprise trial seats and internal accounts. Live count via Supabase, not cached in brain.").
+2. **§5** — table count corrected to 76. `auth.js` v2.3. iOS Capacitor wrap noted as **live in App Store as 1.2 (approved 28 April 2026)**. Push notifications row added describing the live end-to-end pipeline.
+3. **§6** — three achievement tables added to inventory. Row counts stripped from §6 entirely; section now describes purpose only, defers row counts to live SQL or `brain/schema-snapshot.md`.
+4. **§7** — `achievements-mark-seen` v1 added to core operational table. `member-dashboard` bumped v51 → v55. `log-activity` notes both v22 (inline achievement evaluator) and v23 (push fan-out). New "Shared modules" subsection describing `_shared/taxonomy.ts` and `_shared/achievements.ts`. New "Cron jobs (14 active)" subsection with the verified `pg_cron` schedule table. Versioning note at top of §7 explaining the platform-vs-semantic gap.
+5. **§8** — SW cache updated to `vyve-cache-v2026-04-28a-pushhandler`. Service worker row notes the push event listener + notificationclick handler shipped 28 April.
+6. **§10** — new "HAVEN open issue" subsection capturing the Conor-on-HAVEN-without-Phil-sign-off situation explicitly.
+7. **§11A — Achievements Architecture (NEW SECTION)** — full architecture writeup: data model, 32-metric inventory, evaluator pattern (inline + read-only), inline-vs-sweep split, push fan-out (28 April), backfill, voice rules, Phase 3 UI direction, open Phase 2 / Phase 3 items. ~70 lines.
+8. **§19** — current status reflects iOS 1.2 approved + Achievements Phase 1 live + Push Notifications Foundation + Session 2 item 1 + SW push handler patch + Paige Coult as first paying B2C.
+9. **§21** — top priority restructured. iOS approval is now the unblocker, not the blocker. Top priority is polish + bug-fix + Achievements Phase 3 UI + In-App Tour. Push notifications Session 2 has 4 of 5 trigger EFs remaining, and `weekly-checkin-nudge` is gated on the cohort-split conversation with Phil + Lewis.
+10. **§22** — three new open decisions: HAVEN auto-assignment pause vs Phil-review-acceleration, weekly-checkin-nudge copy split, named charity partner timing.
+11. **§23** — five new hard rules: SW push handler requirement, SW notificationclick `data.url` reading, `SUPABASE_UPDATE_A_FUNCTION` corruption, `SUPABASE_DEPLOY_FUNCTION` defaults verify_jwt:true, dual-auth pattern. Plus the platform-vs-semantic version gap rule.
+12. **§24** — added: SW cache key, brand icon source, iOS App Store version, APNs auth key rotation pending, `LEGACY_SERVICE_ROLE_JWT` secret, `vyve-capacitor` not-a-git-repo flagged.
+
+### Backlog patches (six targeted edits, no full rewrite)
+
+1. Header date refreshed; status summary now leads with iOS 1.2 approval + SW patch.
+2. MVP item 1 summary rewritten to reflect SW patch shipped + iOS 1.2 approved + Session 2 item 1 verified.
+3. `weekly-checkin-nudge` line gained the cohort-split discovery + Lewis + Phil gate.
+4. Active Priorities item 2 ("iOS icon fix") struck through with DONE annotation pointing at 1.2.
+5. Security Quick Wins dead-EF count corrected from "~9 remain" to "~32 still-ACTIVE candidates" with the full list of slugs.
+6. "This Week" gained two new P1 items: SW push handler real-browser verification + `vyve-capacitor` git init.
+
+### Verifications run live during the audit
+
+- `list_edge_functions` against project `ixjfklpckgxrwjlfsaaz` — 77 EFs, all ACTIVE.
+- `list_tables` (and `pg_stat_user_tables`) — 76 public tables, row counts captured.
+- `cron.job` — 14 active jobs verified (the achievements sweep at 22:00 UTC, schema snapshot Sundays 03:00, etc).
+- Live fetch of `https://online.vyvehealth.co.uk/sw.js` — confirms `vyve-cache-v2026-04-28a-pushhandler` + `addEventListener('push'` + `addEventListener('notificationclick'`.
+- Live fetch of `https://online.vyvehealth.co.uk/auth.js` — first 400 chars confirms `v2.3 — April 2026 — consent gate check added`.
+- SQL on `members`, `member_achievements`, `achievement_tiers`, `wellbeing_checkins` — confirmed Paige first paying B2C, Conor on HAVEN, 327/327 tier rows approved, 4 distinct check-in submitters out of 15 opted-in.
+
+### Files touched
+
+- `brain/master.md` — full rewrite, 89,855 chars (was ~80K). Single atomic commit via `GITHUB_COMMIT_MULTIPLE_FILES` from the workbench (per §23 rule for >50K commits).
+- `brain/changelog.md` — this entry prepended.
+- `tasks/backlog.md` — six targeted edits applied via Python `str.replace`, original 44,691 chars → 46,976 chars.
+
+### What's still on the brain hygiene backlog (deferred from this session)
+
+- **Changelog archive split** — pre-17 April entries into `changelog-archive/2026-Q1.md`. Dean signed off this is wanted; the file is now 247K chars and growing. Worth its own session — the historical entries are dense, want clean preservation.
+- **Base64-encoded historical blob in `brain/changelog.md`** (~152K decoded chars) — long-standing hygiene item, not actioned tonight.
+- **EF deletion pass** — ~32 candidates need a Supabase CLI / dashboard pass since Composio doesn't expose a delete-EF tool. Pulled into backlog with full slug list.
+- **Phil review of HAVEN** — open decision; pause auto-assignment or accelerate review. Logged in §22.
+
+### What's NOT in this entry
+
+- No live banner-render verification of the SW push patch — that's the natural next session task per Dean's framing earlier tonight.
+- No member-side data on whether Vicki saw the achievement push banner from this evening's smoke (worth a quick check tomorrow).
+- No code shipped.
+
 ## 2026-04-28 PM evening continuation (sw.js push + notificationclick handlers shipped — `vyve-site@124ecb53`) — fixed silent breakage of web push delivery that's been live since initial rollout
 
 ### TL;DR

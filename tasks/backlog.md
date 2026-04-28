@@ -1,18 +1,18 @@
 # VYVE Health — Task Backlog
 
-> Updated: 28 April 2026 PM (Push Notifications Foundation SHIPPED — `send-push` v11 unified fan-out EF deployed; `habit-reminder` v14 + `streak-reminder` v14 refactored to delegate to it; legacy JWT dual-auth pattern codified. Session 2 in progress (achievement-earned-push v1 shipped 28 April PM, 4 trigger EFs remaining). Session 3 polish remains. Achievements Phase 1 still ✓; Phase 3 UI still unblocked.)
+> Updated: 28 April 2026 PM (post brain audit + master rewrite). Headline news: **iOS 1.2 approved by Apple — Ready for Distribution.** Bundles HealthKit + native push permission flow + reliability fixes. Cohort-wide HK autotick now live for any opted-in iPhone member upgrading PWA → native. Push Notifications Session 2 item 1 (`achievement-earned-push` v1) shipped + verified end-to-end on Vicki's real `member_days` t2 cross. SW `push` + `notificationclick` handlers shipped (`vyve-site@124ecb53`) — fixed silent web push breakage from initial rollout. 4 of 5 Session 2 trigger EFs remain (`weekly-checkin-nudge` blocked on Lewis + Phil discussion re cohort split). Phase 3 Achievements UI still unblocked, not yet sequenced. Master.md fully rewritten this session.
 
 ---
 
 ## MVP Requirements (Critical for Enterprise Launch)
 
 ### 🔥 **Critical Missing Pieces**
-1. **Native Push Notifications — Foundation SHIPPED 27–28 April 2026** — APNs (iOS) infra fully live end-to-end. AppDelegate.swift bridge methods (27 April PM), `register-push-token` v3 + `push-send-native` v5 ACTIVE, iOS 1.2(1) submitted with native push permission flow (Waiting for Review). **Session 1 of trigger work shipped 28 April PM**: `send-push` v11 unified fan-out EF (web VAPID + native APNs in one call, per-member same-day dedupe via `member_notifications`). `habit-reminder` v14 + `streak-reminder` v14 refactored to delegate all push mechanics to `send-push`. Banner verified on Dean's iPhone via smoke test before dev token was orphaned by 1.2(1) production-env build.
+1. **Native Push Notifications — Foundation + Session 1 + Session 2 item 1 SHIPPED. SW patch complete.** APNs (iOS) infra fully live end-to-end. AppDelegate.swift bridge methods (27 April PM), `register-push-token` v1 + `push-send-native` v5 ACTIVE. **iOS 1.2 APPROVED 28 April — Ready for Distribution** (bundles HealthKit + native push permission flow + reliability fixes). Session 1 of trigger work: `send-push` v11 unified fan-out EF (web VAPID + native APNs in one call, per-member same-day dedupe via `member_notifications`). `habit-reminder` v14 + `streak-reminder` v14 refactored to delegate. Session 2 item 1 (`achievement-earned-push` v1 + `log-activity` v23 + `achievements-sweep` v2) shipped — end-to-end verified on Vicki's real `member_days` tier 2 cross. **SW `push` + `notificationclick` handlers shipped (`vyve-site@124ecb53`)** — fixed silent web push breakage that had been live since initial rollout. Two new §23 hard rules codified (SW push listener requirement, notificationclick `data.url` routing).
 
    **Remaining trigger build (Session 2 — 5 EFs, 1/5 shipped 28 April PM):**
    - ~~`achievement-earned-push`~~ **SHIPPED 28 April PM.** v1 deployed; `log-activity` v23 (inline) + `achievements-sweep` v2 (sweep) wired to it. End-to-end smoke verified on Dean (synthetic) + Vicki (real `member_days` t2 cross during sweep). Lewis-approved copy intact. Push fan-out latency 0ms on log-activity (parallel waitUntil).
    - `session-start-nudge` — cron 15 min before scheduled live session start. Optional opt-in (use `members.notifications_milestones` or new column).
-   - `weekly-checkin-nudge` — cron Monday 09:00 London (= 08:00 UTC outside BST, 08:00 UTC during BST too since the times match Sunday morning UK).
+   - `weekly-checkin-nudge` — cron Monday 09:00 London. **Cohort split discovered 28 April PM:** of 15 members opted in via `notifications_weekly_summary=true`, 12 are overdue, but **11 of those 12 have never completed a wellbeing check-in at all**. A "your weekly check-in is overdue" push reads wrong to a first-timer. Bifurcated copy needed — first-time activation framing for the 11, continuity framing for prior check-iners. Mental-health-adjacent — Phil should weigh in. **Gated on Lewis + Phil conversation before scaffolding the EF.**
    - `monthly-checkin-nudge` — cron 1st of month 09:00 London.
    - `re-engagement-push` — companion to existing Brevo stream A; cron daily, push to 7-day inactive cohort.
 
@@ -93,10 +93,10 @@
 
 9. ~~**Lewis copy approval — Achievements ~400 rows (BLOCKING UI)**~~ **DONE 27 April 2026 across two PM sessions.** All 327 tier rows approved (catalog trimmed from 349 to 327 via metric drops/adds during approval) and all 32 display names finalised. UI is now UNBLOCKED — Phase 3 ready to schedule. Voice rules captured in item 7 for future ladder extensions.
 
-## Active Priorities (This Weekend)
+## Active Priorities (This Week)
 
-1. **Android icon fix** — resubmitted 15 April, awaiting Google review
-2. **iOS icon fix** — app live but icon wrong, Build 2 uploaded
+1. **Android icon fix** — resubmitted 15 April, awaiting Google review (Play Store still pending)
+2. ~~**iOS icon fix**~~ — **DONE.** Icon corrected in 1.1(3), then rolled into 1.2(1), now live in approved 1.2 binary on App Store.
 3. **Exercise restructure** — Option A (Exercise Hub). Plan at `VYVEBrain/plans/exercise-restructure.md`. **Rounds 1–5 shipped 19 April; movement.html restored 20 April after mock-drift incident.**
    - ~~Round 1: `members.exercise_stream` DB column (workouts/movement/cardio, default workouts, 18 members backfilled) — 19 April~~
    - ~~Round 2: "Workouts" ⮕ "Exercise" label rename across nav.js, index, engagement, certificates, leaderboard — 19 April (`5fe6929`)~~
@@ -133,6 +133,8 @@
 
 ## This Week
 
+- **[P1] SW push handler verification on a real browser** (Mac Safari / iPhone Safari). Tonight's `vyve-site@124ecb53` patch is verified at static-analysis level only; needs a manual `send-push` smoke against Dean's web subs to confirm a banner renders. Member-side rollout happens organically as cohort members reload portal over the next 24h.
+- **[P1] `vyve-capacitor` git initialisation** — flagged backlog risk, two-line fix. Becomes painful once native source edits start (Swift plugins, custom Capacitor plugins).
 - **[P1] auth.js ready-promise refactor so it can be deferred safely.** Current arrangement: `auth.js` is non-deferred across 14 portal pages because its globals (`window.vyveSupabase`, `window.vyveCurrentUser`, `supa()` pattern assumptions) must exist before inline body scripts execute. This blocks the first-paint perf win we tried to ship in `14a3540`. Proper fix: have `auth.js` export a single `window.VYVE_AUTH_READY` Promise that resolves once the SDK is loaded, client is created, and `getSession()` has settled; every page that currently does `waitForAuth()` awaits that promise instead of listening for a custom event. Then `auth.js` can go back to `defer` and the preconnect/preload hints regain their value. Post-sell; not blocking the May deadline but clears the path for further perf work. See 2026-04-23 changelog entries for full context on the two bugs this prevents.
 - **Tech debt: `#skeleton` + `#app` dual-main DOM pattern on exercise.html and movement.html.** These pages wrap loading UI in `<div id="skeleton"><main>...</main></div>` above `<div id="app"><main>...</main></div>`. The 21 April nav.js fix (body-prepend) means nav chrome no longer cares, but the dual-`<main>` structure is fragile for future scripts doing broad selectors. Migrate to single `#app` with internal skeleton state. Pair with Design System Phase E work when that lands.
 - **HealthKit / Health Connect integration** — Capacitor plugin; habits linked to activity; weight from smart scales. Needs scoping session.
@@ -154,7 +156,7 @@
 - Remove 3 redundant RLS policies on `members` table
 - Add explicit service-role-only policies to the 7 aggregation/admin tables (document intent)
 - Add `<meta name="mobile-web-app-capable" content="yes"/>` to remaining 12 portal pages (was 13; `wellbeing-checkin.html` added 18 April)
-- **Clean up one-shot migration EFs** — ~9 remain (was "89 dead" before most were deleted in the 9 April / 11 April cleanups). Candidates for deletion: `seed-library-1`, `seed-library-2`, `seed-b1`, `create-ai-decisions-table`, `setup-ai-decisions`, `setup-member-units`, `trigger-owen-workout`, `trigger-callum-workout`, `thumbnail-batch-upload`, `generate-stuart-plan`, `send-stuart-reset`. Keep `ban-user-anthony` if ban workflow still in use.
+- **Clean up one-shot migration EFs** — recount 28 April: ~32 still-ACTIVE candidates (the original 89-deletion list from the 9 April security audit was only partially actioned). Candidates: `seed-library-1`, `seed-library-2`, `seed-b1`, `create-ai-decisions-table`, `setup-ai-decisions`, `setup-member-units`, `trigger-owen-workout`, `trigger-callum-workout`, `thumbnail-audit`, `thumbnail-upload`, `thumbnail-batch-upload`, `generate-stuart-plan`, `send-stuart-reset`, `monthly-checkin-test`, `run-monthly-checkins-migration`, `run-migration-monthly-checkins`, `resend-welcome`, `delete-housekeeping`, `send-test-welcome`, `send-test-push`, `inspect-members-schema`, `create-test-member`, `create-ai-decisions-table`, `add-exercise-stream`, `force-cache-refresh`, `update-brain-changelog`, `debug-cert-content`, `debug-show-file`, `test-html-render`, `smoketest-ach-push` (28 April inert 410 stub). Keep `ban-user-anthony` if ban workflow still in use. Composio doesn't expose a delete-EF tool — needs Supabase CLI/dashboard.
 
 ---
 
