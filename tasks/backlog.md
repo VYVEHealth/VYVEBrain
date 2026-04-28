@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 28 April 2026 PM (Push Notifications Foundation SHIPPED — `send-push` v11 unified fan-out EF deployed; `habit-reminder` v14 + `streak-reminder` v14 refactored to delegate to it; legacy JWT dual-auth pattern codified. Session 2 of triggers and Session 3 of polish remain. Achievements Phase 1 still ✓; Phase 3 UI still unblocked.)
+> Updated: 28 April 2026 PM (Push Notifications Foundation SHIPPED — `send-push` v11 unified fan-out EF deployed; `habit-reminder` v14 + `streak-reminder` v14 refactored to delegate to it; legacy JWT dual-auth pattern codified. Session 2 in progress (achievement-earned-push v1 shipped 28 April PM, 4 trigger EFs remaining). Session 3 polish remains. Achievements Phase 1 still ✓; Phase 3 UI still unblocked.)
 
 ---
 
@@ -9,8 +9,8 @@
 ### 🔥 **Critical Missing Pieces**
 1. **Native Push Notifications — Foundation SHIPPED 27–28 April 2026** — APNs (iOS) infra fully live end-to-end. AppDelegate.swift bridge methods (27 April PM), `register-push-token` v3 + `push-send-native` v5 ACTIVE, iOS 1.2(1) submitted with native push permission flow (Waiting for Review). **Session 1 of trigger work shipped 28 April PM**: `send-push` v11 unified fan-out EF (web VAPID + native APNs in one call, per-member same-day dedupe via `member_notifications`). `habit-reminder` v14 + `streak-reminder` v14 refactored to delegate all push mechanics to `send-push`. Banner verified on Dean's iPhone via smoke test before dev token was orphaned by 1.2(1) production-env build.
 
-   **Remaining trigger build (Session 2 — 5 EFs, all glue calls to send-push):**
-   - `achievement-earned-push` — fires from `log-activity` inline evaluator on new tier earn AND from `achievements-sweep` daily for sweep-derived metrics. Lewis copy already approved per tier (`achievement_tiers.title` + body). Most visceral demo win.
+   **Remaining trigger build (Session 2 — 5 EFs, 1/5 shipped 28 April PM):**
+   - ~~`achievement-earned-push`~~ **SHIPPED 28 April PM.** v1 deployed; `log-activity` v23 (inline) + `achievements-sweep` v2 (sweep) wired to it. End-to-end smoke verified on Dean (synthetic) + Vicki (real `member_days` t2 cross during sweep). Lewis-approved copy intact. Push fan-out latency 0ms on log-activity (parallel waitUntil).
    - `session-start-nudge` — cron 15 min before scheduled live session start. Optional opt-in (use `members.notifications_milestones` or new column).
    - `weekly-checkin-nudge` — cron Monday 09:00 London (= 08:00 UTC outside BST, 08:00 UTC during BST too since the times match Sunday morning UK).
    - `monthly-checkin-nudge` — cron 1st of month 09:00 London.

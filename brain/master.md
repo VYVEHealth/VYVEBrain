@@ -268,7 +268,7 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All public tables ha
 | `employer-dashboard` | v31 | Aggregate employer analytics. API-key auth (no PII). |
 | `wellbeing-checkin` | v35 | Weekly check-in flow. AI recs pulled from activity + persona. |
 | `monthly-checkin` | v17 | Monthly 8-pillar check-in. Writes `monthly_checkins`. |
-| `log-activity` | v21 | PWA activity logging. Replaced Make entirely. |
+| `log-activity` | v23 | PWA activity logging. Replaced Make entirely. v22 added inline achievement evaluation (returns `earned_achievements[]` in payload); v23 (28 April 2026 PM) adds push fan-out via `achievement-earned-push` v1 alongside existing `writeAchievementNotifications` in-app log. Both paths fire under `EdgeRuntime.waitUntil()` so the user-facing response stays fast. |
 | `anthropic-proxy` | v16 | Server-side Anthropic proxy for running plans + misc AI calls. verify_jwt:true. |
 | `generate-workout-plan` | v11 | AI workout plan generation (invoked from onboarding's waitUntil path). |
 | `sync-health-data` | v7 | HealthKit sync. Stamps `source:'healthkit'` on promoted workout/cardio rows (7a). `queryAggregated` routing for steps/distance/active_energy; sleep segments with full state metadata. v7 refactor (session 2) extracts workout taxonomy to `_shared/taxonomy.ts` — `promoteMapping` body byte-identical to v6, zero behaviour change. |
@@ -290,6 +290,8 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All public tables ha
 | `send-push` | v11 | **Unified push fan-out (shipped 28 April).** Single sender for both VAPID web (inline RFC 8291 aes128gcm) + APNs native (delegated to `push-send-native`). Per-member same-day dedupe via `member_notifications` lookup. Writes in-app notification row + fans out to `push_subscriptions` (web) + `push_subscriptions_native` (native). Service-role gated via dual-auth (`SUPABASE_SERVICE_ROLE_KEY` OR `LEGACY_SERVICE_ROLE_JWT`). `verify_jwt:true` (forced — Composio DEPLOY can't set false; UPDATE corrupts bundle). Used by `habit-reminder`, `streak-reminder`, and all future trigger EFs. |
 | `habit-reminder` | v14 | Habit reminder push (cron 20:00 UTC daily). Refactored 28 April — calls `send-push` instead of inline VAPID. Stripped ~150 lines of crypto/sub-lookup boilerplate. |
 | `streak-reminder` | v14 | Streak-risk push (cron 18:00 UTC daily, ≥7 day streak threshold). Refactored 28 April — calls `send-push`. Same shape as habit-reminder. |
+| `achievement-earned-push` | v1 | **Achievement push fan-out (shipped 28 April PM, Session 2 item 1).** Thin glue between achievement evaluator and `send-push`. Input `{member_email, earns:[{metric_slug, tier_index, title, body}]}`. One push per earned tier with `dedupe_same_day:false` and `skip_inapp:true` (in-app row already written by caller). Called by `log-activity` v23 (inline path) and `achievements-sweep` v2 (sweep path). Service-role gated, dual-auth (`SUPABASE_SERVICE_ROLE_KEY` OR `LEGACY_SERVICE_ROLE_JWT`). `verify_jwt:true`. |
+| `achievements-sweep` | v2 | Cron-driven daily sweep for tenure / lifetime / time-window achievement metrics. v1 handled `member_days` only; v2 (28 April PM) extends the tier query to pull title/body and fans out via `achievement-earned-push` per member after successful upsert. Phase 2 metric extensions (HK lifetime, full_five_weeks, charity_tips, etc.) deferred. `verify_jwt:false`, service-role internally. |
 | `platform-alert` | v3 | Writes to `platform_alerts`. |
 | `warm-ping` | v3 | Keep-warm pinger to prevent cold starts. |
 | `check-cron` | v20 | Cron job audit/verification. |
@@ -454,6 +456,7 @@ Five personas live in `personas` table with full system prompts.
 | Running plan generator (`running-plan.html` + `anthropic-proxy` v16 + Supabase cache) | LIVE |
 | Weekly check-in recommendations (persona-voiced AI recs) | LIVE (`wellbeing-checkin` v35) |
 | Workout plan generator (8-week custom programme at onboarding via waitUntil) | LIVE (`generate-workout-plan` v11) |
+| **Achievement push fan-out** | **LIVE end-to-end (28 April 2026 PM, Session 2 item 1).** `achievement-earned-push` v1 + `log-activity` v23 (inline path) + `achievements-sweep` v2 (sweep path). One push per earned tier, dedupe-off (multiple tiers in same day = feature), in-app suppressed (caller writes `member_notifications` separately). Smoke-tested live on Dean (synthetic earn → APNs HTTP 200) and on Vicki (real `member_days` tier 2 crossed during sweep invoke → push delivered). |
 | **Habits × HealthKit autotick** | **LIVE end-to-end (sessions 1 + 2 + 3 + 3a, 24–25 April 2026).** Schema + Lewis-approved seeds on `habit_library.health_rule`, server evaluator in `member-dashboard` v51 with `_shared/taxonomy.ts`, client UI in `habits.html` wired to v51 with pre-tick on auto-satisfied rows, `.hk-progress` hints on unsatisfied rows, done-state copy swap ("from Apple Health" vs "Logged to your progress") as the sole attribution mechanism — no visual badge. `notes='autotick'` on auto-written `daily_habits` rows persists the copy variant across reloads. Flag-gated via `HEALTH_FEATURE_ALLOWLIST` — Dean only today. |
 | AI weekly goals (phase 1 targets set at onboarding) | LIVE |
 | Weekly progress email (Friday, AI-generated, Brevo) | BACKLOG — blocked on Lewis copy template |
@@ -679,7 +682,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 
 ---
 
-## 19. Current status — 27 April 2026
+## 19. Current status — 28 April 2026
 
 ### Completed — Dean (technical)
 
@@ -704,6 +707,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 - `member_home_state` aggregate with real-time trigger maintenance wired to 10 source tables.
 - `schema-snapshot-refresh` weekly cron, auto-committing structural changes to VYVEBrain.
 - Push notifications live end-to-end (iOS Web Push via RFC 8291 AES-GCM encryption, user-gesture-triggered).
+- **Push notifications Session 2 item 1 (28 April PM)** — `achievement-earned-push` v1 (thin glue EF, dual-auth) + `log-activity` v23 (inline push fan-out under `waitUntil`) + `achievements-sweep` v2 (sweep push fan-out per member after upsert). End-to-end smoke on Dean (synthetic `habits_logged` t1 earn → APNs HTTP 200) and on Vicki (real `member_days` t2 crossed during sweep → push delivered). Lewis-approved copy delivered intact. Hot-path latency unchanged on `log-activity` (parallel waitUntil).
 - 14 active members in `members` table across B2C + early enterprise trial seats (3 admin operators tracked separately in `admin_users` — total 17 platform identities). First paying B2C. First named charity partner.
 - **iOS App Store 1.1 (3) submitted (27 April 2026)** — Capgo HealthKit plugin compiled into the binary. Asset pipeline rebuilt via `npx @capacitor/assets generate --ios` to the v3 single-icon scheme (1024×1024 universal `AppIcon-512@2x.png` replacing the legacy 60/76/83.5 multi-size convention). 6-output splash imageset (3 light + 3 dark, universal/anyany at @1×/@2×/@3×) generated from a 2732×2732 dark-teal canvas with the brand logo centred. Submitted via Xcode Organizer → App Store Connect, status "Ready for Review", auto-release on approval. The 26 April web rollout (`member-dashboard` v54, `healthbridge.js` v0.3 defensive `getPlugin`, three-state Settings UI, `HEALTH_FEATURE_ALLOWLIST` dropped) had already shipped to all iPhone members; this build closes the loop by putting the Capgo plugin inside the App Store binary so opted-in members get autotick on next app update.
 

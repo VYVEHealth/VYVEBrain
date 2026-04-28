@@ -1,3 +1,93 @@
+## 2026-04-28 PM evening (push notifications session 2 item 1 — achievement-earned-push v1 + log-activity v23 + achievements-sweep v2 shipped) — first per-trigger fan-out live, demo-grade tier-earn pushes proven end-to-end on a real member crossing during the smoke test
+
+### TL;DR
+
+First of the five Session 2 trigger EFs is shipped. Built `achievement-earned-push` v1 as a thin glue layer (~150 lines) that takes `{member_email, earns:[{metric_slug, tier_index, title, body}]}` and fans one push per tier through `send-push` v11 with `dedupe_same_day:false` (multiple tiers in same day = feature) and `skip_inapp:true` (caller already writes the in-app row). Wired into both call sites: `log-activity` v22 → v23 (inline path, fires on every habit/workout/cardio/session log under `EdgeRuntime.waitUntil()` so the user-facing response stays fast) and `achievements-sweep` v1 → v2 (sweep path, fans out per member after the bulk upsert). Smoke-tested twice — once with synthetic Lewis-approved copy on Dean's account proving the wiring (APNs HTTP 200 in `native_sent:1`), and again live during the sweep invoke when Vicki happened to cross her 7-day membership threshold and earned tier 2 of `member_days` ("First Week as a Member") — sweep detected, wrote, fanned out, push succeeded. End-to-end pipeline proven on a real, non-Dean member with real Lewis-approved copy. Three §23 hard rules from earlier in the day still hold; no new rules tonight.
+
+### What shipped
+
+**1. `achievement-earned-push` v1 — thin push fan-out glue EF**
+
+New Edge Function at `https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/achievement-earned-push`. Service-role gated under the dual-auth pattern codified in §23 (matches `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` OR `Bearer ${LEGACY_SERVICE_ROLE_JWT}`), `verify_jwt:true`. Single point of truth for achievement-specific push behaviour — any future tier-level templating, sound selection, or deep-link URL routing lives here.
+
+- **Input contract:** `{member_email: string, earns: [{metric_slug: string, tier_index: number, title: string, body?: string|null}]}`. Caller pre-resolves Lewis-approved copy from `achievement_tiers` (which both call sites already do during evaluation) and passes it through. No extra DB hop in the EF.
+- **Per-earn processing:** for each earn — build `type='achievement_earned_${metric_slug}_${tier_index}'`, build push title/body (fallback `body` to `You earned ${title}.` if null), build `data={url:'/engagement.html', metric_slug, tier_index}` for SW notificationclick routing (Phase 3 UI will add `#achievements` anchor), POST to `send-push` with `dedupe_same_day:false, skip_inapp:true`. Per-earn try/catch — one failed push doesn't block the rest.
+- **Returns:** `{ok, processed, sent, failed, details:[{metric_slug, tier_index, ok, send_push?, error?}]}` for caller observability.
+- **Empty earns is a successful no-op** — callers can fire blindly without checking, simplifying their hot path.
+- **Deployed v1 ACTIVE.** ~150 lines, 4.6KB source.
+
+**2. `log-activity` v22 → v23 — inline push fan-out**
+
+Pre-existing v22 already had `evaluateInline()` returning a clean `EarnedTier[]` (filtered against `member_achievements` so only freshly-earned tiers are returned) and was firing `writeAchievementNotifications()` under `EdgeRuntime.waitUntil()` to write the in-app `member_notifications` row. v23 adds a parallel `pushAchievementEarned()` `waitUntil` call alongside it in both code paths (cap-skip and success). Both paths fire-and-forget; the user-facing response stays as fast as v22 (parallel `waitUntil` not sequential).
+
+- **New helper:** `pushAchievementEarned(email, earned)` POSTs to `achievement-earned-push` with `Bearer ${LEGACY_SERVICE_ROLE_JWT}`. Defensive — bails silently if the secret isn't set, never throws to the caller.
+- **Call sites:** two — line ~155 in cap-skip path (after the existing notification waitUntil) and line ~190 in success path (after the existing notification waitUntil).
+- **Critical decoupling:** in-app `member_notifications` log path (`writeAchievementNotifications`) and push fan-out path (`pushAchievementEarned`) are independent. If `send-push` is down, in-app notification still works. If `member_notifications` write fails, push still fires. They share no state.
+- **`skip_inapp:true`** in the push payload prevents `send-push` from double-writing the in-app row. Combined with `dedupe_same_day:false` this means achievement-earned-push CANNOT cause duplicate in-app rows OR cause a missed push due to dedupe matching against the row written by `writeAchievementNotifications`.
+- Boot smoke verified: POST without auth → 401 with our auth-required JSON (not BOOT_ERROR or 500).
+- **Deployed semantic v23 ACTIVE** (platform version 26). `verify_jwt:false` preserved (custom auth via `getAuthUser` validating user JWT against `/auth/v1/user`).
+
+**3. `achievements-sweep` v1 → v2 — sweep push fan-out**
+
+Pre-existing v1 only handled `member_days` and only wrote to `member_achievements`; v2 extends the tier query to pull `title, body` alongside `tier_index, threshold`, and adds an `earnsByMember` map so per-member earns can be tracked through the bulk upsert. After successful upsert, sweeps the map and fires `achievement-earned-push` per member sequentially (low cohort, daily cron — sequential keeps log noise tidy).
+
+- **Failure isolation:** if `member_achievements` upsert fails, NO pushes fire (we'd be lying about earned tiers). If a per-member push fails, others continue.
+- **New result fields:** `push_attempted, push_succeeded, push_failed` per metric for cron observability.
+- **Deployed semantic v2 ACTIVE** (platform version 5). Cron schedule unchanged. Phase 2 metric extensions (HK lifetime, full_five_weeks, charity_tips, personal_charity_contribution, tour_complete, healthkit_connected) still deferred — they're independent of the push fan-out work.
+
+### Verification
+
+**Smoke 1 — synthetic earn on Dean's account:**
+
+Deployed a one-shot `smoketest-ach-push` EF (verify_jwt:false, hardcoded `habits_logged` tier 1 payload with real Lewis-approved copy: title "First Habit Logged", body "Daily habits compound quietly. One log today, three by week's end.") to invoke `achievement-earned-push` from inside the project (the legacy JWT secret never leaves the EF env). Result:
+
+```
+processed: 1, sent: 1, failed: 0
+send_push: { processed:1, deduped:0, notified:0, web_attempted:4, web_sent:0, web_revoked:0,
+             native_attempted:1, native_sent:1, native_revoked:0, native_skipped:0 }
+legacy_jwt_present: true (219 chars)
+```
+
+`notified:0` confirms `skip_inapp:true` worked. `native_attempted:1, native_sent:1` — APNs returned HTTP 200 for the dev-env token still on Dean's iPhone from the dev-built app (1.2(1) production token will register fresh once Apple approves the build currently sitting Waiting for Review). `web_attempted:4, web_sent:0, web_revoked:0` — exactly the 4 stale subs returning non-410 errors observed in the morning's send-push smoke test, confirming consistent state. The `smoketest-ach-push` EF was retired post-test by overwriting it with an inert 410 stub (Composio doesn't expose a delete-EF tool; queued for the next bulk cleanup pass alongside the 89 dead EFs from the 9 April security audit).
+
+**Smoke 2 — live sweep invoke catching Vicki's threshold cross:**
+
+Direct POST to `achievements-sweep` v2 with no body. Result:
+
+```
+elapsed_ms: 4042
+results: [{ metric:'member_days', rows_inserted:1, members_processed:15,
+            push_attempted:1, push_succeeded:1, push_failed:0, errors:[] }]
+```
+
+Post-invoke SQL confirms the row: `vicki.park22@gmail.com` earned `member_days` tier 2 ("First Week as a Member", threshold 7) at 20:48:04Z, with `days_member ≈ 7.17` — she'd just crossed the 7-day mark. Sweep detected, upserted, fanned to push. End-to-end pipeline proven on a real non-Dean member with real Lewis-approved copy on the night of deployment. Best possible smoke test.
+
+### Loose ends
+
+- **`smoketest-ach-push` EF is now an inert 410 stub** — Composio MCP doesn't expose a delete-edge-function tool, neither does the direct Supabase MCP. Queued for batch cleanup alongside the existing 89-deletion list from the 9 April security audit.
+- **Brain version drift fixed during this commit:** §7 had `log-activity v21` (was actually deployed semantic v22 since the achievement evaluator integration); now reads v23. §7 didn't list `achievements-sweep` at all; now listed at v2. Brain elsewhere referenced `achievements-sweep v3` — that was wrong, was actually semantic v1, now bumped to v2 by this work.
+- **Native push to Vicki specifically:** un-verified visually. She's a paying member but I didn't check her `push_subscriptions_native` row or web subs state. The `push_succeeded:1` from achievement-earned-push means the EF round-trip succeeded; whether it produced a banner on her physical device depends on her current sub state. Worth a quick chat with Vicki tomorrow to confirm she saw the "First Week" banner — would be the first cohort-side confirmation.
+- **`/engagement.html#achievements` anchor doesn't exist yet** — pushes deep-link to `/engagement.html` (which renders fine, Score/Streak page). Phase 3 UI work will add the achievements tab and the anchor will start landing on it.
+- **No new §23 rules** — tonight's work used only existing patterns (dual-auth, `EdgeRuntime.waitUntil()` parallel fire-and-forget, `SUPABASE_DEPLOY_FUNCTION` only). No new gotchas surfaced.
+
+### Numbers
+
+- New EFs: +1 (`achievement-earned-push` v1)
+- Updated EFs: +2 (`log-activity` v22 → v23, `achievements-sweep` v1 → v2)
+- Retired EFs: +1 (`smoketest-ach-push` overwritten as inert 410 stub, queued for delete)
+- Real production pushes fanned during this session: 2 (Dean synthetic, Vicki real-cross)
+- Lines added across the three EFs: ~80 (mostly the new `achievement-earned-push` body; log-activity +18 lines, sweep +30 lines)
+
+### Pending / next
+
+- **Session 2 items 2–5:** `weekly-checkin-nudge` (Monday 09:00 London cron), `monthly-checkin-nudge` (1st of month 09:00 London), `re-engagement-push` (daily, 7-day inactive cohort, mirror of Brevo stream A), `session-start-nudge` (15min pre-session cron). Same shape as achievement-earned-push — thin EF + cron + send-push call. Estimated ~30 minutes per EF including smoke test.
+- **Session 3 polish:** `notification_preferences` per-trigger booleans (extend `members.notifications_milestones` + `notifications_weekly_summary` columns), settings.html UI, max-pushes-per-day cap (Lewis decision: 3?), Lewis copy approval doc.
+- **Achievements Phase 2 — `volume_lifted_total` evaluator wiring:** parked tonight per discussion. Pending a future session to add evaluator + sanity caps (`reps_completed > 100` OR `weight_kg > 500` → exclude row) + decision on the two corrupt Back Squat rows on Dean's account (delete vs cap before turning the metric on).
+- **Other Phase 2 sweep extensions:** HK lifetime metrics (steps, distance, active energy, nights slept 7h), `full_five_weeks` (recurring weekly), `charity_tips` (recurring), `personal_charity_contribution`, `tour_complete`, `healthkit_connected`, `persona_switched` (one-shot). All deferred until after Session 2 trigger work completes.
+- **`achievement-earned-push` orphan cleanup:** evaluator INLINE map in `_shared/achievements.ts` still references `running_plans_generated` which was dropped from the catalog during Lewis copy approval. Harmless (evaluator early-returns when `metrics.get(slug)` is null) but worth cleaning next time we touch log-activity.
+- **Web push hygiene:** extend send-push web-revoke logic to also delete subs returning 4xx (excluding 408/429). Backlog from morning session, still applies.
+- **Service worker `notificationclick` handler:** still need to verify it reads `data.url` and routes accordingly. Tonight's pushes used `data.url='/engagement.html'`; if SW doesn't honour this, clicks land on the default (likely `/index.html` or whatever the SW hardcodes). Quick check on next portal session.
+
 ## 2026-04-28 PM (push notifications session 1 — unified send-push fan-out shipped) — habit-reminder + streak-reminder refactored to call send-push, both reminder paths now multi-channel
 
 ### TL;DR
