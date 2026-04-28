@@ -1,3 +1,43 @@
+## 2026-04-28 PM late late (web push VAPID layer fix — second bug hiding behind tonight's SW handler patch)
+
+### TL;DR
+
+Verifying tonight's earlier SW handler patch on Mac Safari surfaced a deeper, separate bug. Built `fire-test-push` v2 with per-sub diagnostics on Dean's 4 web push subs and discovered all 4 failing identically with `"Invalid key usage"` thrown by `crypto.subtle.importKey()` — the error fires in `makeVapidJwt` *before* Apple is ever contacted, hidden inside the per-sub `try/catch` and counted as a silent attempt fall-through. Root cause: importing the VAPID private key with `'raw'` format and `['sign']` usage is invalid per Web Crypto spec (`'raw'` is public-keys-with-`'verify'` only); Deno's Supabase Edge Runtime enforces strictly. Fixed in `send-push` v12 by importing as `'jwk'` with x/y reconstructed from `VAPID_PUBLIC_KEY`'s uncompressed point bytes (`0x04 || X(32) || Y(32)`) and `d` = raw 32-byte private scalar from the secret. Module-scoped CryptoKey cache so import only runs once per isolate. Verified via `fire-test-push` v3 (inline JWK → 4× HTTP 201 Created from `web.push.apple.com` with valid `apns-id` headers) and `fire-test-push` v4 (production wrapper through `send-push` v12 → `web_attempted: 4, web_sent: 4` — was `web_sent: 0` before fix). Web push pipeline functional in production for the first time since initial rollout. APNs native path was always unaffected. Brain entry prepended. No SW changes — the handler patch from earlier tonight was the right fix on its own; both bugs were silently breaking web push in compounding fashion.
+
+### Reframing the prior session entries
+
+The 28 April PM "Push Notifications Session 2 item 1" entry recorded "end-to-end verified on Vicki crossing her 7-day membership threshold during a sweep smoke test" with the achievement-earned-push fan-out. That verification was real for **APNs (native iOS)** — `push-send-native` v5 returns HTTP 200 from Apple — but illusory for the **web VAPID** path. `send-push` v11's `web_sent` counter was always zero, falling through silently because `makeVapidJwt` was throwing inside the per-sub try/catch and caught as `{ok:false, status:0}` without ever logging. The catch path meant no `console.warn` line surfaced in `function_edge_logs`, the only signal was the silent `web_sent=0`/`web_revoked=0` mismatch with `web_attempted=N`. Tonight's "SW handler patch closes silent web push breakage" framing was correct in identifying a real bug, but missed that there was a second deeper bug compounding it.
+
+The verification picture going forward:
+
+- **Native APNs via `push-send-native` v5** — operational since 27 April PM. Confirmed throughout the project (multiple Vicki + Dean APNs HTTP 200s, lock-screen banner Dean showed at the close of this session from a prior test).
+- **Web VAPID via `send-push` v12** — fixed tonight, verified at the Apple-acceptance level (HTTP 201s + `apns-id`). Real end-user banner verification still pending — requires a member with a fresh browser sub on a currently-active device. Dean's 4 subs are PWA-era artifacts (11–13 April) and the PWA is no longer installed on his iPhone (he's on the native 1.2 binary), so they accept-but-no-deliver. Picks up next time anyone subscribes from a browser.
+
+### What changed
+
+- **`send-push` v12** — `getVapidPrivateKey()` builds a JWK from `VAPID_PRIVATE_KEY` (raw 32-byte d) + `VAPID_PUBLIC_KEY` (uncompressed `0x04 || X || Y`). Imports with `'jwk'` format, `['sign']` usage. Module-scoped `_vapidPrivKey: CryptoKey | null` cache so import only runs once per isolate, not per push.
+- All other code paths in `send-push` identical to v11 (auth, dedupe, in-app insert, native batch delegation, response shape).
+- `habit-reminder` v14, `streak-reminder` v14, `achievement-earned-push` v1 — no changes needed; they delegate to `send-push` and inherit the fix automatically.
+- `fire-test-push` deployed v1→v4 across the diagnosis. v1 wrapper through send-push, v2 with per-sub status diagnostics (revealed the `Invalid key usage` error), v3 inline VAPID with JWK proved Apple-acceptance, v4 wrapper called send-push v12 to prove the fix flows through production code path. Currently parked as v4; deletion can wait until next session.
+
+### Brain edits in this commit
+
+- master.md §5 — Push notifications stack row updated: send-push v11 → v12, late-PM JWK fix called out alongside the SW handler patch, web pipeline framed as functional since late PM.
+- master.md §7 — `send-push` semantic version bumped v11 → v12 with full description of the JWK fix and the module-scope cache.
+- master.md §11A — Achievement Push fan-out subsection appended with a "Note on the original 28 April PM smoketest framing" paragraph reframing the Vicki "delivered" claim as APNs-only.
+- master.md §19 — Completed-Dean list appended with the late-PM VAPID JWK fix entry.
+- master.md §23 — New hard rule "Web Crypto `importKey` for ECDSA private keys (28 April late PM)" alongside the two SW rules from earlier tonight.
+- changelog.md — this entry prepended.
+
+### Open after this session
+
+- Real end-user banner verification on a browser sub. Lewis on his Mac, Vicki on her Mac, or any new web member who subscribes after the v12 fix went live. Picks up in next session — no action item on Lewis's plate.
+- Clean up the 4 stale PWA web subs on Dean's account (`web.push.apple.com` endpoints from 11–13 April; 410s never came back because Apple still considers the sub URLs valid). Low priority — naturally clears once they 410. Could be force-deleted if it bothers the data; not worth a session.
+- Phase 3 Achievements UI on `engagement.html` — the toast queue UX is now meaningfully unblocked: web push delivery to browser members works, native push delivery to iPhone works, and `achievements-mark-seen` is wired. No remaining infra blocker.
+- `fire-test-push` v4 — currently deployed for diagnostic purposes only. Delete next session, or leave as a future ad-hoc push debug aid (it's `verify_jwt:false` and only fires on direct invoke, no cron caller, no other dependency).
+
+---
+
 ## 2026-04-28 PM late (brain audit + master.md full rewrite + backlog refresh) — drift catalogued, brain re-aligned to live reality, iOS 1.2 approval captured
 
 ### TL;DR
