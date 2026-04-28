@@ -1,3 +1,128 @@
+## 2026-04-27 PM → 28 April 00:52 UTC (native push end-to-end + iOS 1.2(1) submission) — App Store binary + APNs proven against Dean's iPhone
+
+### TL;DR
+
+Native push notifications are live end-to-end on iOS as of this evening. The 14-line `AppDelegate.swift` patch that was diagnosed as the final blocker last session has been applied, the bridge fires correctly, and the first APNs token landed in `push_subscriptions_native` within 30 seconds of build-and-run. APNs sender verified end-to-end via `push-send-native` v5 — banner displayed on Dean's iPhone 15 Pro Max with the VYVE logo. iOS 1.2(1) was archived (with FaceID Info.plist defensive add), uploaded to App Store Connect at 00:36 UTC 28 April, build attached to the Version 1.2 distribution slot (caught a build-mismatch where ASC was still showing 1.1(3) under the Build section, swapped to 1.2(1)), Notes updated to describe Apple Health bundling + native push permission flow + reliability fixes, then submitted. Status now **Waiting for Review** in Apple's queue. iOS 1.1(3) was pulled from the queue earlier in the session — it was still "Ready for Review" so cleanly removable. The Foundation phase of native push (Item 1) is shipped; notification triggers/copy/cadence are the next phase and are decoupled from binary releases (deployable via web pushes + EFs without an App Store cycle).
+
+### What shipped
+
+**1. AppDelegate.swift bridge methods**
+
+`~/Projects/vyve-capacitor/ios/App/App/AppDelegate.swift` grew from 50 to 60 lines. Two methods added at the end of the class:
+
+```swift
+func application(_ application: UIApplication,
+                 didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    NotificationCenter.default.post(
+        name: .capacitorDidRegisterForRemoteNotifications,
+        object: deviceToken)
+}
+
+func application(_ application: UIApplication,
+                 didFailToRegisterForRemoteNotificationsWithError error: Error) {
+    NotificationCenter.default.post(
+        name: .capacitorDidFailToRegisterForRemoteNotifications,
+        object: error)
+}
+```
+
+These are the bridge that takes APNs's iOS-system-level callback and pushes it onto Capacitor's `NotificationCenter` channel, which the JS listener in `push-native.js` is awaiting. Without these methods, `getState()` showed plugin found / permission granted / listeners attached / no error — but the registration event simply never fired. Last session's diagnostic was correct.
+
+Built to Dean's device via Cmd+R in Xcode. Token row landed in Supabase within 30s:
+
+| Field | Value |
+|---|---|
+| `id` | `b07b5a1c-d1f2-4711-acb0-c9828f0eeaec` |
+| `member_email` | `deanonbrown@hotmail.com` |
+| `platform` | `ios` |
+| `environment` | `development` |
+| `token` (prefix) | `920E6724485C41D9A100…` |
+
+**2. APNs sender smoke test**
+
+Fired via workbench `requests.post` to `https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/push-send-native` with revealed `sb_secret_*` Bearer token. Payload: title "VYVE push test", body "If you see this banner...", `member_emails=["deanonbrown@hotmail.com"]`. Response: HTTP 200, `{"ok":true,"sent":1,"revoked":0,"skipped":0,"results":[{"status":200,"ok":true}],"allowlist_active":true}`.
+
+Banner *failed* to display on the first attempt — DND was on and the app was foregrounded, so iOS suppressed it. After turning DND off and backgrounding the app, the second test fired the banner correctly with the VYVE logo. Full chain proven.
+
+**3. push-send-native EF cleanup arc (v3 → v4 → v5)**
+
+The auth situation revealed a sharp edge worth codifying. v3 had a guard `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` with literal string compare. After Supabase's key rotation, the runtime-injected `SUPABASE_SERVICE_ROLE_KEY` is the new `sb_secret_*` value, **not** the legacy `eyJhbGc…` JWT. `SUPABASE_GET_PROJECT_API_KEYS` without `reveal:true` returns the new key masked with bullets. We initially mis-diagnosed and deployed v4 with a dual-auth fallback (legacy JWT acceptance via a `NATIVE_PUSH_LEGACY_SERVICE_ROLE` secret), then realised the cleaner fix was just calling `SUPABASE_GET_PROJECT_API_KEYS` with `reveal:true`. Reverted to v5 with single-auth path identical to v3 logic, comments updated to capture the lesson. **v5 is the live version, ACTIVE.** Codified to §23.
+
+**4. PUSH_ENV flip + sw.js cache bump**
+
+`vyve-site/push-native.js` line `const PUSH_ENV = 'development';` → `'production'`. Single occurrence. sw.js cache version bumped from `vyve-cache-v2026-04-27b-native-push-pluginfix` to `vyve-cache-v2026-04-27c-pushenv-prod`.
+
+Atomic commit via `GITHUB_COMMIT_MULTIPLE_FILES`: [22939ac](https://github.com/VYVEHealth/vyve-site/commit/22939ac7034a64245cc486ba32f256f18cc61284). Verified live propagation via curl within 25 seconds.
+
+Note on the dev token already in the table: 1.2 will install in production environment, so the existing row (token `920E6724…`, environment `development`) becomes orphan. APNs will return 410 BadDeviceToken on the next push attempt and the EF auto-revokes — handled.
+
+**5. iOS 1.2(1) archive flow**
+
+iOS 1.1(3) had been "Ready for Review" but not yet picked up — Dean removed it cleanly via App Store Connect. Then:
+
+- `cd ~/Projects/vyve-capacitor && npx cap sync ios` — clean, all 16 plugins synced including `@capgo/capacitor-health@8.4.7` and `capacitor-native-biometric@4.2.2`.
+- `cd ~/Projects/vyve-capacitor/ios/App && agvtool new-marketing-version 1.2 && agvtool new-version -all 1`. Verified Info.plist: `CFBundleShortVersionString=1.2`, `CFBundleVersion=1`.
+
+**6. Plugin audit caught FaceID gap**
+
+Audited 16 Capacitor plugins. `capacitor-native-biometric@4.2.2` is installed but **unused** (zero biometric refs in `vyve-site` code). However: the plugin links `LocalAuthentication.framework` and Apple's binary scanner may flag a missing `NSFaceIDUsageDescription` even with no JS calls. Defensively added before re-archive:
+
+```bash
+/usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string \
+  'VYVE Health uses Face ID to securely sign you back into your account.'" \
+  ~/Projects/vyve-capacitor/ios/App/App/Info.plist
+```
+
+Final Info.plist usage strings (6 total): `NSCameraUsageDescription`, `NSHealthShareUsageDescription`, `NSHealthUpdateUsageDescription`, `NSPhotoLibraryUsageDescription`, `NSUserNotificationsUsageDescription`, `NSFaceIDUsageDescription`. Codified to §23.
+
+**7. Re-archive + upload**
+
+First archive went up pre-FaceID add — re-archived after the Info.plist edit. Two 1.2(1) archives ended up in Organizer; the newer (post-FaceID) was distributed.
+
+Distribute App → App Store Connect → unchecked **"Manage Version and Build Number"** (per the codified rule for agvtool builds — without that uncheck Xcode's distribute-time auto-bump leaves Info.plist drifted from the App Store Connect record) → Upload.
+
+Upload Successful at 00:36 UTC 28 April. App Store Connect TestFlight showed 1.2(1) Complete after ~2 min processing. Export Compliance answered: Yes (uses encryption) / Yes (qualifies for exemption) / "Only uses or accesses standard encryption from Apple's operating system". Status moved to Ready to Submit.
+
+**8. Distribution tab — caught build mismatch**
+
+App Store Connect auto-renamed the existing 1.1 draft slot to 1.2 when 1.2(1) was attached, but the Build section was still showing **Build 3 / Version 1.1** (the old 1.1(3) binary that we'd just removed from review earlier). Caught and swapped — Build 1 / Version 1.2 / NO App Clip. Confirmed in the Distribution view.
+
+App Review Information already populated: sign-in `deanonbrown@hotmail.com` / `Happy673!vyve`, contact Dean Brown / +447594880256.
+
+Notes field updated to describe what's actually new in 1.2 (rather than carrying forward the 1.1 placeholder text):
+
+> Version 1.2 changes: (1) Apple Health integration is now bundled into the App Store binary — Settings → Apple Health surfaces the connect toggle on iOS. (2) Native push notification infrastructure added; the app will request notification permission on first launch, declined permissions will not affect any other functionality. (3) Reliability fixes around remote-notification token registration.
+>
+> This is a PWA-based wellness app that loads content from https://online.vyvehealth.co.uk inside a Capacitor WebView shell.
+>
+> Test account credentials are provided above. After signing in, the reviewer will see the member dashboard with workout programmes, habit tracking, nutrition, and wellbeing check-in features.
+
+Saved → **Add for Review** → Export Compliance + IDFA dialogs answered → Submit. Status flipped to **Waiting for Review**. Sidebar now shows "1.2 Waiting for Review" with the yellow dot.
+
+### Three new §23 hard rules codified
+
+1. **AppDelegate.swift bridge methods required for Capacitor PushNotifications** — without the two `application(_:...)` methods posting to NotificationCenter, registration silently never fires. Audit AppDelegate.swift against every Capacitor plugin's iOS setup section before any future archive.
+2. **Service-role-guarded EFs need the `sb_secret_*` value, not the legacy JWT** — always pass `reveal:true` to `SUPABASE_GET_PROJECT_API_KEYS` for manual workbench/curl invocations.
+3. **`NSFaceIDUsageDescription` required even for unused biometric plugins** — defensively add via PlistBuddy.
+
+### Numbers
+
+- AppDelegate.swift: 50 → 60 lines (+14, including blank lines and signatures)
+- push-send-native: v3 → v4 → v5 (final state functionally equivalent to v3 with updated comments)
+- push_subscriptions_native rows: 0 → 1 (Dean's iPhone 15 Pro Max, dev environment, ~13 hours TTL until 1.2 install orphans it)
+- Info.plist usage strings: 5 → 6 (added NSFaceIDUsageDescription)
+- iOS app version: 1.1(3) → 1.2(1)
+- App Store Connect status: Ready for Review (1.1(3), now removed) → Waiting for Review (1.2(1))
+- Edge Function inventory: +2 (`register-push-token` v1, `push-send-native` v5)
+
+### Pending / next
+
+- Apple Review pending — monitor App Store Connect daily until status moves Waiting for Review → In Review → Approved.
+- Notification triggers + copy + cadence design — daily habit reminders local time, streak-risk alerts, achievement-tier-earned celebrations, live session start, weekly/monthly check-in nudges, re-engagement after 7 days inactive. Each is an EF + cron + Lewis copy + frequency cap. Decoupled from App Store cycle — ships post-1.2 approval via web releases.
+- **APNs auth key rotation: KEY_ID `2MWXR57BU4`** — the .p8 PEM contents were pasted in chat earlier this evening, treat as exposed. Generate new APNs key in Apple Developer portal, update `APNS_AUTH_KEY` + `APNS_KEY_ID` Supabase secrets, retire old key. Calendar reminder.
+- Decide on `capacitor-native-biometric`: wire it up properly OR remove from package.json to silence SPM warning + reduce binary size. Currently dead weight.
+- AppDelegate.swift audit checklist — recurring rule, lives in §23 but worth a backlog reminder before every archive.
+
 ## 2026-04-27 (achievements copy approval — sessions 1 + 2) — Phase 1 copy locked end-to-end: 327/327 tier rows approved, 32 display names finalised, catalog adjustments codified
 
 Two-session run with Lewis closing out Phase 1 of the achievements system. Session 1 of copy approval ran the catalog hygiene + first three copy batches; session 2 (this commit) ran batches 4-7 and the display name polish. Database is the source of truth — counts confirmed via direct SQL on `achievement_metrics` + `achievement_tiers`.

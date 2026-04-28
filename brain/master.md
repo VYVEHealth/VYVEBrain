@@ -227,7 +227,7 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All public tables ha
 |---|---|---|
 | `member_notifications` | 20 | In-app notifications. |
 | `push_subscriptions` | 10 | VAPID web push subscriptions. |
-| `push_subscriptions_native` | 0 | APNs/FCM subscriptions (reserved for native push session). |
+| `push_subscriptions_native` | 1 | APNs subscriptions for native iOS push. Live end-to-end as of 27 April 2026 PM session. Schema: `member_email`, `token`, `platform`, `environment`, `app_version`, `created_at`, `last_used_at`, `revoked_at`. Per-token unique index. Android/FCM rows reserved (parked, backlog). |
 
 ### Admin + command centre (`cc_*`, `admin_*`)
 
@@ -285,6 +285,8 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All public tables ha
 | `workout-library` | v7 | Library API for workouts. |
 | `leaderboard` | v11 | Leaderboard with scope tabs, range filter, privacy-aware name resolver, tie-aware gap copy. Reads aggregation layer only. |
 | `notifications` | v9 | In-app notifications read/write. |
+| `register-push-token` | v1 | PWA `push-native.js` POSTs `{token, platform, environment, app_version}`; row written to `push_subscriptions_native` with per-token uniqueness. `verify_jwt:true`. Live 27 April 2026 PM. |
+| `push-send-native` | v5 | APNs sender. ES256 JWT via Web Crypto from `APNS_AUTH_KEY`/`APNS_KEY_ID`/`APNS_TEAM_ID`. Routes per environment: `api.development.push.apple.com` vs `api.push.apple.com`. `NATIVE_PUSH_ALLOWLIST` fail-closed. 410/400-BadDeviceToken auto-revokes. `verify_jwt:false` with manual service-role guard (literal compare against `SUPABASE_SERVICE_ROLE_KEY`). Live 27 April 2026 PM. |
 | `habit-reminder` | v10 | Habit reminder push (on cron). |
 | `streak-reminder` | v10 | Streak-risk push (on cron). |
 | `platform-alert` | v3 | Writes to `platform_alerts`. |
@@ -849,6 +851,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 | **Distribute App: uncheck "Manage Version and Build Number"** | When agvtool has set the version locally, Xcode's distribute-time auto-bump leaves Info.plist drifted from the App Store Connect record. Always uncheck if you've used agvtool for the bump. Codified 27 April. |
 | **agvtool "Jambase targets" preamble** | Harmless. agvtool falls through to native targets and writes the version correctly. Don't be alarmed by the preamble line "No marketing version number found for Jambase targets". Codified 27 April. |
 | **`vyve-capacitor` is NOT a git repo** | Operational risk. Currently fine while changes are mostly asset/version-bump deltas, but becomes painful once native source edits start (Swift plugins, custom Capacitor plugins). Two-line fix when ready: `git init && git add . && git commit -m "Initial commit"` from `~/Projects/vyve-capacitor`. Backlog. |
+| **AppDelegate.swift bridge methods required for Capacitor PushNotifications** | Without `application(_:didRegisterForRemoteNotificationsWithDeviceToken:)` and `application(_:didFailToRegisterForRemoteNotificationsWithError:)` posting `.capacitorDidRegisterForRemoteNotifications` / `.capacitorDidFailToRegisterForRemoteNotifications` to `NotificationCenter`, the registration event never fires. Symptoms: `getState()` shows plugin found, permission granted, listeners attached, no error — but no token row. Audit `AppDelegate.swift` against every Capacitor plugin's iOS setup section before any future archive — installing the npm package is necessary but not sufficient. Codified 27 April 2026 PM. |
+| **Service-role-guarded EFs need the `sb_secret_*` value, not the legacy JWT** | When an EF compares `Authorization` against `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` literal, runtime-injected value post-key-rotation is the new `sb_secret_*` not the legacy `eyJhbGc...` JWT. `SUPABASE_GET_PROJECT_API_KEYS` without `reveal:true` returns the new key masked with bullets. ALWAYS pass `reveal:true` for manual workbench/curl invocations against service-role-gated EFs. Codified 27 April 2026 PM. |
+| **App Store: `NSFaceIDUsageDescription` required even for unused biometric plugins** | `capacitor-native-biometric` or any plugin linking `LocalAuthentication.framework` gets compiled into the binary; Apple's binary scanner may flag missing `NSFaceIDUsageDescription` even with no JS calls. Defensively add via `/usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string '<copy>'" Info.plist`. Codified 27 April 2026 PM. |
 
 ---
 
