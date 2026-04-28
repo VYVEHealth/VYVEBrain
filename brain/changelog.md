@@ -1,3 +1,48 @@
+## 2026-04-28 PM evening continuation (sw.js push + notificationclick handlers shipped — `vyve-site@124ecb53`) — fixed silent breakage of web push delivery that's been live since initial rollout
+
+### TL;DR
+
+Audited `vyve-site/sw.js` to verify the `notificationclick` handler routes correctly for the achievement pushes that just shipped. Found something much worse: **the service worker has had NO `push` event listener AND NO `notificationclick` handler since initial web push rollout.** Web push payloads have been arriving at every browser sub fine — VAPID encryption working, push service accepting, AES-GCM payload decrypting — but the SW had nowhere to route them, so the OS never rendered a banner. Silent breakage, no errors visible anywhere. Native (Capacitor/APNs) was unaffected throughout because Capgo handles its own push routing inside the iOS/Android wrapper. Patched both handlers in `124ecb53` on `vyve-site` main, cache name bumped to `vyve-cache-v2026-04-28a-pushhandler`. Two new §23 hard rules codified to prevent regression.
+
+### What shipped
+
+`vyve-site/sw.js` patch (single commit `124ecb53`, 3,203 → 5,158 chars):
+
+- **`push` event listener** — parses `event.data.json()` into `{title, body, data}` (with text fallback if JSON parse fails), calls `event.waitUntil(self.registration.showNotification(title, {body, icon, badge, data}))`. Icon and badge both `/icon-192.png` (already in pre-cache so no extra fetch). The `event.waitUntil` is mandatory — without it the SW worker is allowed to terminate before the OS picks up the showNotification call.
+- **`notificationclick` handler** — closes the notification, reads `event.notification.data.url` (defaults to `/`), tries to focus an existing tab on the same origin+pathname (ignoring hash), falls back to `clients.openWindow(targetUrl)` on no match. Hash-routing fallback: if a tab matches path but not hash, post a `notification_navigate` message so the page can self-route via its existing client-side router. Means a future `data.url='/engagement.html#achievements'` from Phase 3 UI will land cleanly even when the engagement tab is already open.
+- **Cache name bumped** from `vyve-cache-v2026-04-27c-pushenv-prod` to `vyve-cache-v2026-04-28a-pushhandler` per the standing hard rule (always bump on any portal file change). Old caches purged in the existing `activate` listener.
+
+### Why this was invisible
+
+- VAPID encryption (RFC 8291 aes128gcm) implemented in `send-push` v11 was correct — payload decryption requires the correct private key + key derivation, and if any step had been wrong, the browser would have logged a decryption error to the SW console (which we'd have eventually noticed). The fact that no errors were visible means the entire transmission pipeline was working — payload was arriving, decrypting, and being discarded by an SW with no listener.
+- The push service (FCM/Mozilla autopush/Apple WebPush) reports HTTP 201 Created on accepting an encrypted payload, regardless of whether the SW eventually does anything with it. So `web_sent` was incrementing correctly when the push service accepted, even though no banner rendered. The metric was always going to look fine.
+- Smoke tests in send-push v11 verification (28 April AM session) used Dean's iPhone via APNs path, where Capgo handled it natively. Web push to Dean's web subs returned non-410 errors (interpreted at the time as "stale subs"), but actually masked the underlying SW handler gap. Subs were probably fine; the missing handler was the issue.
+
+### Verification
+
+- Post-commit refetch confirmed identical bytes (5,158 chars), cache name `vyve-cache-v2026-04-28a-pushhandler`, both handlers present (`addEventListener('push'`, `addEventListener('notificationclick'`).
+- End-to-end web push verification deferred — needs a member to (a) reload portal so the new SW activates, (b) be at the right point in the day for a real trigger to fire, OR (c) Dean to manually invoke `send-push` against his own web subs. First option lands naturally as members open the portal tomorrow morning.
+
+### New §23 hard rules (codified tonight)
+
+**SW push handler requirement.** Web push delivery requires `self.addEventListener('push', e => e.waitUntil(self.registration.showNotification(title, opts)))` in the SW. Without it, payload arrives, decrypts, and is discarded silently. ALL future SW edits must preserve this listener.
+
+**SW notificationclick must read `data.url`.** Every trigger EF setting `data.url` (achievement-earned-push v1, habit-reminder v14, streak-reminder v14, all future Session 2 nudges) relies on the SW reading the field and routing accordingly. Click-through is broken if the handler is removed.
+
+### Numbers
+
+- vyve-site commits: 1 (`124ecb53`)
+- Lines added to sw.js: ~50 (push handler + notificationclick handler + comments)
+- Estimated number of web pushes lost since initial rollout: unknown but >0 (every `web_sent:N>0` from send-push since the first deploy)
+- Native pushes unaffected: yes — `native_sent` from tonight's smoke test and all prior streak/habit/achievement pushes worked because Capgo's iOS handler is independent of sw.js
+
+### Pending / next
+
+- **Member-side verification:** as cohort members reload the portal over the next 24 hours, their browser SW will activate the new version and start rendering banners. No action required — purely organic rollout. iPhone PWA users will pick up the new SW on next launch.
+- **Dean's web subs cleanup still recommended:** the 4 stale subs that returned non-410 in tonight's smoke test may now actually deliver banners with the new SW. Worth re-running a smoke against Dean's account in 24h to see if `web_sent` figures change.
+- **Backlog: extend send-push web-revoke logic to 4xx (excluding 408/429)** still applies — if any of those 4 subs were genuinely broken (not just SW-gapped), they'll continue returning errors and should auto-revoke.
+- **Service worker push handler smoke test in next session:** worth a manual flow — send-push to dean's web sub, watch banner render. Currently only verified at the static-analysis level.
+
 ## 2026-04-28 PM evening (push notifications session 2 item 1 — achievement-earned-push v1 + log-activity v23 + achievements-sweep v2 shipped) — first per-trigger fan-out live, demo-grade tier-earn pushes proven end-to-end on a real member crossing during the smoke test
 
 ### TL;DR
