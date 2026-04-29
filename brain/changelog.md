@@ -1,3 +1,126 @@
+## 2026-04-29 PM (Phase 3 grid shipped: trophy-shelf UI live on engagement.html · Phase 2 volume_lifted_total wiring complete)
+
+### TL;DR
+
+Phase 3 Achievements UI shipped end-to-end. Trophy-shelf design (Nike+ inspired): cream shelves, tier-tinted SVG trophies/shields/medals/banners, locked/earned/current states, modal on tile click, hash-based deep-link from toast clicks. Phase 2 `volume_lifted_total` wired into INLINE evaluator with the same sanity caps as the grid helper, two corrupt `exercise_logs` rows on Dean's account zeroed, cohort backfill of 12 earned tiers across 4 members (Dean t1-5, Lewis t1-3, Stuart t1-3, Calum t1) marked seen to prevent toast storm. New `member-achievements` v2 EF deployed (JWT-required) reading from a shared `getMemberGrid()` helper added to `_shared/achievements.ts`. log-activity bumped to v26 (platform v29) to keep the shared module in lockstep across both EFs. SW cache `v2026-04-28c-ach-wire` → `v2026-04-29a-ach-grid`.
+
+### Why the design landed where it did
+
+Started session pivoting onto Phase 3 UI on engagement.html. First mockup pass was a data-grid (rows of horizontal tier-tile strips with inflight bars) — clean but reads as a stats screen. Dean said he was leaning towards "more of a badges page". Second pass was three options (full collection / one-per-metric / hybrid), each more visual but still using CSS-only flat shapes. Dean's reference: a Nike+ trophy shelf screenshot — tactile, three-dimensional, each badge an individual object. Honest call made: bespoke illustrated badges (one per achievement) is illustrator territory, not buildable in a session — but a cream-shelf trophy-cabinet layout with tier-tinted SVG shapes (trophy/shield/medal/banner) achieves the same visual language with what we have. Fourth mockup landed it. Dean approved, flagged that future icon upgrades will use AI tooling (Gemini image gen + Claude art direction), not weeks of illustrator work — captured for sequencing.
+
+### What shipped
+
+#### `member-achievements` EF v1 → v2 (NEW endpoint, JWT-required, ACTIVE)
+
+GET endpoint that returns the full 32-metric ladder for the authenticated member with each tier flagged earned/locked/current and read-time inflight progress. Hidden-without-HK metrics filtered server-side. Source-of-truth math is `getMemberGrid()` in `_shared/achievements.ts` — same evaluator definitions as `evaluateInline` so toast threshold logic and grid display can never disagree. Response shape:
+
+```json
+{
+  "success": true,
+  "member_email": "...",
+  "hk_connected": false,
+  "categories": [{"key": "counts", "display": "Activity Counts"}, ...],
+  "metrics": [
+    {
+      "slug": "habits_logged",
+      "display_name": "Daily Habits",
+      "category": "counts",
+      "unit": "count",
+      "current_value": 110,
+      "highest_tier_earned": 7,
+      "max_tier": 13,
+      "tiers": [
+        {"index": 1, "threshold": 1, "title": "...", "body": "...", "earned": true, "is_current": false, "earned_at": "...", "seen": true},
+        {"index": 8, "threshold": 250, "title": "...", "body": "...", "earned": false, "is_current": true,
+         "progress": {"current": 110, "target": 250, "prev_threshold": 100, "pct": 6.7}},
+        ...
+      ]
+    },
+    ...
+  ],
+  "earned_total": 76
+}
+```
+
+Cache-Control: `private, max-age=30` so opening the tab repeatedly within 30s doesn't re-fetch.
+
+#### `_shared/achievements.ts` extended (additive only)
+
+New helpers added without touching `evaluateInline` semantics:
+- `volumeLiftedTotal()` — SUM(reps × weight) from `exercise_logs` with `reps_completed <= 100 AND weight_kg <= 500` sanity caps.
+- `memberDays()` — `(now - members.created_at) / 86400000` floored.
+- `tourComplete()` — returns 0 (no `members.tour_completed_at` column yet, in-app tour build is backlog).
+- `healthkitConnected()` — boolean flag from `member_health_connections`.
+- `hkDailySum(sampleType)` — sums `member_health_daily.value` filtered by sample_type, de-duped via `preferred_source`.
+- `nightsSlept7h()` — counts dates where `sleep_asleep_minutes >= 420`, preferred-source de-duped.
+- `personalCharityContribution`, `charityTipsContributed`, `fullFiveWeeksCount` — return 0 (sweep metrics, real wiring in future Phase 2 sweep extensions).
+
+`GRID_EXTRA` map — sweep/extra metric evaluators *not* in INLINE (so they don't trigger tier writes). `getMemberGrid()` reads `{...INLINE, ...GRID_EXTRA}` for read-time progress. INLINE gained `volume_lifted_total: volumeLiftedTotal` — this metric now writes earned tiers organically.
+
+`CATEGORY_LABELS` and `CATEGORY_ORDER` const for grid section ordering. Tier tile struct includes computed `progress: {current, target, prev_threshold, pct}` for the active tile.
+
+#### `log-activity` v25 → v26 (platform v29)
+
+Refresh of bundled `_shared/achievements.ts` to pick up `volume_lifted_total` INLINE wiring. Handler logic byte-identical to v24/v25. New behaviour: any `exercise_logs` insert via the trigger-page `evaluate_only` wiring now seeds volume tiers as the member crosses thresholds.
+
+#### Cohort backfill — `volume_lifted_total`
+
+Pure-SQL evaluator mirror inserted earned tiers into `member_achievements` for every member whose capped sum-volume exceeded a tier threshold. 12 rows landed across 4 members:
+
+- `deanonbrown@hotmail.com`: t1-5 (current 64,732 kg, into tier 6's 25k→100k span at ~53%)
+- `lewisvines@hotmail.com`: t1-3
+- `stuwatts09@gmail.com`: t1-3
+- `calumdenham@gmail.com`: t1 only (one exercise_log row, 500 kg total)
+
+All 12 rows marked `seen_at = NOW()` immediately after insert to prevent a 5-toast storm on Dean and 3-each on Lewis/Stuart on next portal page load. Members will discover the volume tiles when they explore the new grid; no surprise.
+
+#### Corrupt rows on Dean's account
+
+Two `exercise_logs` rows (Back Squat – Barbell, 2026-04-18, `reps_completed=87616`) zeroed via `UPDATE ... SET reps_completed = 0`. Preserves row history; contributes 0 to volume sum. Cohort-wide check confirmed no other member has corrupt rows (`reps > 100 OR weight_kg > 500` returns empty).
+
+#### `engagement.html` (commit `997979b5`)
+
+Surgical patches only — existing Progress content untouched:
+
+1. **CSS additions** (~3 KB) appended to `<style>` block: tab strip, trophy shelves, trophy cells, modal.
+2. **Tab strip** inserted at top of `#main-content` (before score-hero). Two tabs: Progress (default) | Achievements.
+3. **Existing content wrapped** in `<div id="tab-progress" class="tab-pane is-active">` — zero changes to score ring, streak cards, activity grid, log, or score-explanation.
+4. **New `#tab-achievements` pane** added after, containing `#ach-skeleton` (4 shimmer placeholders) and `#ach-content` (populated on first switch to tab).
+5. **Modal** (`#ach-modal-backdrop` + `#ach-modal-content`) — fixed-position, dark-blur backdrop, centered card, dismissed via close button / backdrop click / Escape.
+6. **JS module (~19.6 KB)** appended as a new `<script>` block before sw register. Self-contained IIFE. Responsibilities: tab switching, hash deep-link (`#achievements` → switch tab + lazy-load on first switch), trophy SVG generator (4 shapes × 4 tints + locked state), shelf renderer (groups metrics by category, renders shelf-row of tile buttons), modal handler (eyebrow + title + body + tier-aware meta), threshold/value formatters (kg→tonnes/megatons, days/weeks/min→hours, k/M abbreviation), localStorage cache fallback for offline (`vyve_ach_grid`).
+
+Pre-deploy verification: `node --check` on extracted JS block — passes. Brace-balance was a false positive from a naive Python regex stripper that mis-parsed the `escapeText` regex literal; Node parser confirmed clean syntax. Standalone Node smoke of `escapeText` returned correct HTML escaping.
+
+#### `sw.js` cache bumped
+
+`v2026-04-28c-ach-wire` → `v2026-04-29a-ach-grid`. Network-first for HTML still in effect (per 21 April Hard Rule), so members will get the new engagement.html on next reload without service worker ping-ponging.
+
+### What's notably *not* shipped
+
+- **In-app tour** — `tour_complete` metric will read locked for everyone until tour ships (backlog item 8).
+- **Sweep extensions** for `charity_tips`, `personal_charity_contribution`, `full_five_weeks` — currently return 0 from helpers; tiles render as locked. Real wiring is Phase 2 sweep extensions backlog.
+- **Index.html dashboard slot** showing latest unseen / closest inflight — Phase 3 sub-task, not started this session.
+- **Per-tile deep-link** in toast click — current behaviour is `#achievements` switches tab and scrolls to top. Going to a specific tile would need `#achievements&slug=X&tier=N` parsing; deferred. Toast click → tab switch is sufficient for v1.
+- **Bespoke illustrated badge artwork** — current SVG generator covers 4 shapes (trophy / shield / medal / banner) × 4 tints (bronze/silver/gold/platinum). Future upgrade path: AI image gen via Gemini with VYVE brand grade applied (deep teals/greens, warm highlights, no text/logos), then SVG/PNG drop-in replacement of `svgTrophy()` calls. Data layer doesn't change.
+
+### New gotchas
+
+None this session. The JS architecture follows the existing portal patterns (vyveAuthReady waiting, network-first sw, localStorage cache mirror). The injection pattern (one CSS block at end of `<style>`, one IIFE script block before sw register) is reusable.
+
+### Verification
+
+Post-commit fetch confirmed both files live on `main`:
+- `engagement.html` — 66,325 bytes, starts with `<!DOCTYPE html>`
+- `sw.js` — 5,155 bytes, contains `vyve-cache-v2026-04-29a-ach-grid`
+
+End-to-end smoke not run yet (page not yet propagated to GitHub Pages CDN at time of commit). Will verify visually on next reload.
+
+### Pre-existing toast deep-link
+
+`/achievements.js` line 119 already had `window.location.href = '/engagement.html#achievements';` baked in from this morning's foundation ship. The hash listener added in this session's JS makes that navigation actually do something — previously it landed on engagement.html with no #achievements anchor and no grid to view. The toast-click flow is now end-to-end.
+
+---
+
 ## 2026-04-29 AM (Phase 3 foundation: trigger-page achievement evaluator gap fixed end-to-end — first real cohort earns flowing)
 
 ### TL;DR

@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 29 April 2026 AM (Phase 3 foundation shipped). Headline news: **Achievement inline evaluator gap fixed end-to-end — first real cohort earns flowing.** Trigger pages bypass log-activity; client lib `/achievements.js` v1 + log-activity v24 evaluate_only mode wires evaluator activation across all 9 trigger pages and 8 passive pages. SW cache `v2026-04-28c-ach-wire`. iOS 1.2 still approved by Apple, Ready for Distribution. Bundles HealthKit + native push permission flow + reliability fixes. Cohort-wide HK autotick now live for any opted-in iPhone member upgrading PWA → native. Push Notifications Session 2 item 1 (`achievement-earned-push` v1) shipped + verified end-to-end on Vicki's real `member_days` t2 cross. SW `push` + `notificationclick` handlers shipped (`vyve-site@124ecb53`) — fixed silent web push breakage from initial rollout. 4 of 5 Session 2 trigger EFs remain (`weekly-checkin-nudge` blocked on Lewis + Phil discussion re cohort split). Phase 3 Achievements UI still unblocked, not yet sequenced. Master.md fully rewritten this session.
+> Updated: 29 April 2026 PM (Phase 3 grid shipped — trophy-shelf UI live on engagement.html · Phase 2 volume_lifted_total wiring complete). Headline news: **Phase 3 Achievements UI live on engagement.html — trophy-shelf design with tier-tinted SVG shapes, modal on tile click, hash deep-link from toasts.** `member-achievements` v2 EF (NEW, JWT-required) backs the grid. Phase 2 `volume_lifted_total` wired into INLINE evaluator with sanity caps; cohort backfill of 12 earned tiers across 4 members. log-activity v26 (platform v29). SW cache `v2026-04-29a-ach-grid`.
 
 ---
 
@@ -73,14 +73,18 @@
    - Sweep extensions for HK lifetime metrics, `full_five_weeks`, `charity_tips`, `personal_charity_contribution`, `tour_complete`, `healthkit_connected`, `persona_switched`. Currently `achievements-sweep` only handles `member_days`.
    - Clean orphan `running_plans_generated` entry from evaluator INLINE map next time we touch `log-activity`.
 
-   **Phase 3 — UI (foundation shipped 29 April):**
+   **Phase 3 — UI (grid shipped 29 April PM):**
    - **DONE:** `/achievements.js` v1 client lib — toast queue, debounced evaluator, mark-seen, replay-unseen. Loaded on every portal page.
    - **DONE:** log-activity v24 `evaluate_only:true` short-circuit. Trigger pages fire `VYVEAchievements.evaluate()` post-write to activate the evaluator without restructuring the write path.
    - **DONE:** All 9 trigger pages wired (habits, cardio, wellbeing-checkin, monthly-checkin, log-food, movement, nutrition, workouts-session.js, workouts-builder.js, workouts-programme.js).
    - **DONE:** All 8 passive pages load `/achievements.js` for replay-unseen on load (index, engagement, sessions, exercise, settings, running-plan, certificates, leaderboard, workouts).
    - **DONE:** End-to-end smoke verified on Dean's account — toast rendered for `habits_logged` t7 cross.
-   - **TODO:** Phase 3 UI surfaces — (a) achievements tab on `engagement.html` with 32-metric grid + inflight bars, (b) dashboard slot on `index.html` showing latest unseen / closest inflight, (c) `#achievements` anchor on engagement.html so toast clicks land precisely.
-   - Native push hook on tier earn already wired (achievement-earned-push v1) and now fires from real cohort actions for the first time.
+   - **DONE:** **Achievements grid live on `engagement.html`** (29 April PM, commit `997979b5`) — trophy-shelf UI, tier-tinted SVG shapes, modal on tile click, hash deep-link `#achievements` from toast clicks. Backed by `member-achievements` v2 EF (NEW, JWT-required, `getMemberGrid()` in `_shared/achievements.ts`). Tab strip: Progress (default) | Achievements. localStorage cache fallback for offline.
+   - **DONE:** Phase 2 `volume_lifted_total` wired into INLINE evaluator with sanity caps. log-activity v25 → v26 (platform v29). 12 cohort tiers backfilled.
+   - **TODO:** Index.html dashboard slot showing latest unseen / closest inflight (Phase 3 sub-task, not started).
+   - **TODO:** Per-tile deep-link in toast click (`#achievements&slug=X&tier=N`) — current behaviour switches tab + scrolls to top, sufficient for v1.
+   - **TODO:** Bespoke illustrated badge artwork upgrade — current SVG generator covers 4 shapes × 4 tints. Future upgrade via AI image gen (Gemini + Claude art direction with VYVE brand grade), drop-in replacement of `svgTrophy()` calls. Data layer doesn't change. Captured 29 April PM as the canonical upgrade path; not weeks of illustrator work as previously assumed.
+   - Native push hook on tier earn already wired (achievement-earned-push v1) and now fires from real cohort actions.
 
    **Voice rules locked-in for future ladder extensions:** no emojis, titles 3-6 words, bodies 10-20 words, VYVE voice (proactive wellbeing, evidence over assumption, no fitness-influencer tone), tier 11+ on long ladders short and reverent (no next-tier nudge), recurring-metric copy evergreen, all titles globally unique. Streaks emphasise consecutive cadence; counts emphasise cumulative volume — distinct body voices.
 
