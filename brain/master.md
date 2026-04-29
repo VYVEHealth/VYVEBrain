@@ -413,7 +413,7 @@ All portal pages live at `online.vyvehealth.co.uk`. Every page is gated behind S
 
 | Piece | Detail |
 |---|---|
-| Service worker | `sw.js` — network-first for HTML + skipWaiting + clients.claim. HTML changes reach users on next reload without cache bumps. Non-HTML assets still use cache versioning. **Push event listener + notificationclick handler shipped 28 April** (`vyve-site@124ecb53`). Current cache: `vyve-cache-v2026-04-29b-routes`. |
+| Service worker | `sw.js` — network-first for HTML + skipWaiting + clients.claim. HTML changes reach users on next reload without cache bumps. Non-HTML assets still use cache versioning. **Push event listener + notificationclick handler shipped 28 April** (`vyve-site@124ecb53`). Current cache: `vyve-cache-v2026-04-29h-fullsync-btn`. |
 | Achievement client | `achievements.js` v1 (29 April) — toast queue + debounced evaluator + mark-seen + replay-unseen. Loaded on every portal page (trigger and passive). Trigger pages call `VYVEAchievements.evaluate()` after direct PostgREST writes; passive pages auto-replay unseen tiers from `vyve_dashboard_cache.data.achievements.unseen[]` on load. |
 | Theme system | `theme.js` — dual dark/light CSS tokens. `data-theme` on `html`. Stored in localStorage. All pages use dual-token CSS blocks — never single `:root`. |
 | Nav | `nav.js` — body-prepend pattern. Back button on inner pages, logo-only on home. |
@@ -813,17 +813,18 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 
 ---
 
-## 19. Current status — 29 April 2026 PM-3
+## 19. Current status — 29 April 2026 PM-4
 
 ### Completed — Dean (technical)
 
+- **HealthKit auto-recovery + sync-gap closure (29 April PM-4, 7 commits)** shipped end-to-end. Diagnosed silent breakage of HK reads on 1.2 App Store binary install (28 April 19:24 UTC onwards): iOS reset HK auth to "not determined" on the new signed binary, existing sync flow had no recovery path, and `last_sync_at` advanced through broken syncs creating a data gap. Fixed via three changes: (1) `get-health-data` v6 — split combined samples query into 4 per-type queries to escape Supabase's 1000-row default cap that was crowding out workouts/sleep/weight under HR volume; (2) `healthbridge.js` v0.4–v0.7 — Capacitor App lifecycle listeners, 60→2min cooldown, auto-recovery via `requestAuthorization` retry on all-probes-unauthorized pattern, `?fullsync=1` URL trigger, Force-full-backfill button on apple-health.html, dropped synthetic native_uuid fallback; (3) `sync-health-data` v9 — don't advance `last_sync_at` on auth-blocked syncs, mark `last_sync_status:'auth_blocked'` instead so next successful sync's incremental window covers the gap. Plus DB cleanup of 7 synthetic-UUID dup workout samples + 4 dup cardio rows on Dean's account. Live data flow confirmed: today's aggregates ingesting at 15:00 UTC, missing 28 April 18:33 BST run recovered at 15:21 UTC, 28 April daily totals retroactively corrected. Three new §23 hard rules codified. See PM-4 changelog entry for full diagnostic journey.
 - **Achievements UI trophy-cabinet redesign** shipped (29 April 2026 PM-3, vyve-site `30ef4ddba`). Replaced wall-of-tiles grid with three sections: Recently earned (last 6 unlocks, horizontal scroller) → Up next (top 3 in-progress) → Trophy cabinet (one trophy per metric, click → full-ladder modal). EF unchanged. SW cache `v2026-04-29c-trophy-cabinet`. Mockup-first workflow used and approved before code touched.
 - **Notification routing infrastructure** shipped end-to-end (29 April 2026 PM-2, vyve-site `30e8398b`). Every notification on every surface (in-app toast, in-app row, web push, native push) carries a route to the right destination. Schema: `route TEXT` column added to `member_notifications`, all 35+ existing rows backfilled via SQL `regexp_replace`. Server: `send-push` v13 (writes `data.url` to row); `achievement-earned-push` v2 (per-tier deep-link `/engagement.html#achievements&slug=X&tier=Y`); `log-activity` v27 (platform v30) — streak rows route to `/engagement.html#streak`, achievement rows carry per-tier route. Client: `/achievements.js` toast click reads `earn.route` with fallback; `engagement.html` `parseHashRoute()` parses `#achievements&slug=X&tier=N` and auto-opens modal once grid loads; `notification_navigate` postMessage listener routes in-place if member already on the page; `#streak` anchor target added. SW cache `v2026-04-29a-ach-grid` → `v2026-04-29b-routes`.
 - Supabase Pro. **76 public tables**, ~30 core operational Edge Functions, SQL functions for activity caps + charity totals.
 - Supabase Auth migration complete. Auth0 gone. `auth.js` v2.3 live.
 - All portal pages live: index, habits, exercise, workouts, movement, cardio, nutrition, log-food, settings, certificates, engagement, leaderboard, sessions, wellbeing-checkin, monthly-checkin, running-plan, welcome, login, set-password, strategy. Plus parked: apple-health, activity.
 - Theme system (dual dark/light tokens) live. `nav.js` body-prepend pattern. Cache-first dashboard. Consent gate built and wired. Viewport zoom disabled. `target="_blank"` audit complete.
-- Service worker network-first for HTML + skipWaiting + clients.claim. **Push event listener + notificationclick handler shipped 28 April PM** (`vyve-site@124ecb53`) — fixed silent web push breakage that had been live since initial push rollout. Current cache: `vyve-cache-v2026-04-29b-routes`.
+- Service worker network-first for HTML + skipWaiting + clients.claim. **Push event listener + notificationclick handler shipped 28 April PM** (`vyve-site@124ecb53`) — fixed silent web push breakage that had been live since initial push rollout. Current cache: `vyve-cache-v2026-04-29h-fullsync-btn`.
 - Activity logging via `log-activity` v23 (Make retired from Dean's stack).
 - Re-engagement system live — streams A/B/C1/C2/C3, `engagement_emails` live.
 - Certificate automation — `certificate-checker` v24, global sequential numbers, Brevo delivery.
@@ -988,6 +989,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 | **Never "Kahunas"** | Product is "VYVE Health app" in member copy. |
 | **Never "Corporate Wellness"** | Not used as tagline or descriptor. |
 | **Anthropic key location** | Server-side in Edge Functions only. Never in HTML or committed to GitHub. Stored as Supabase secret. |
+| **iOS HK auth resets on binary upgrade (29 April PM-4)** | Every signed-binary change (1.x → 1.y, PWA → native, dev → release) resets HealthKit per-app auth state to "not determined", regardless of App ID continuity. iPhone Settings → Health → Data Access & Devices entry is created on first successful `requestAuthorization` prompt, NOT on install — so a member upgrading sees "VYVE Health is not in iPhone Settings → Health" before any prompt fires, despite previous binary having had full grants. Auto-sync code paths must detect the all-probes-unauthorized pattern and re-prompt; `member_health_connections.platform` row presence is NOT sufficient signal that HK is functional. Recovery shipped in `healthbridge.js` v0.6 + `sync-health-data` v9. |
+| **Supabase JS `.in()` queries hit 1000-row default cap (29 April PM-4)** | Multi-type queries combining high-volume types (heart_rate, ~2.5k/30d) with low-volume types (workouts/sleep/weight, <200/30d) under a single `.in([...])` predicate silently truncate the low-volume types to zero rows when the high-volume type fills the 1000-row default. The diagnostic page rendered "0 workouts" while the DB held 154. Always split into per-type queries with explicit `.limit()` calls when sample types have wildly different cardinalities. Codified after `get-health-data` v6 fix. |
+| **Never synthesise `native_uuid` (29 April PM-4)** | If the Capgo plugin doesn't return `platformId`/`id`/`uuid`/`metadataId`, `sampleToEF()` returns null and the caller skips the sample. Earlier code synthesised a fallback shape from `start_end_value` — produced fragile dedupe keys that collided with themselves when plugin behaviour shifted across versions (real UUIDs returned later didn't match synthetic UUIDs from earlier syncs → same workout, two rows in `member_health_samples`, dup-promoted to `cardio`). 7 dup workout samples + 4 dup cardio rows cleaned up on Dean's account; client-side fix in `healthbridge.js` v0.5 prevents recurrence. |
 | **HAVEN safeguarding** | Must signpost professional help in crisis. Clinical review required before promotion — HAVEN is currently auto-assigning in production despite Phil not having signed off (open issue, see §10/§22). |
 | **NOVA/SPARK restriction** | Never assign with serious life context flagged in Section G. |
 | **Brevo logo** | Free plan injects "sent via Brevo" footer. ~$12/month upgrade removes it. Pending before enterprise demo. |
@@ -1084,7 +1088,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 | Admin console | `admin.vyvehealth.co.uk/admin-console.html` |
 | iOS App Store | VYVE Health app — version 1.2 approved 28 April 2026, Ready for Distribution. App ID `co.uk.vyvehealth.app`. |
 | Android Play Store | 1.0.2 awaiting Google Play review since 15 April resubmission (icon-fix). Keystore on Windows PC. |
-| SW cache | `vyve-cache-v2026-04-29b-routes` |
+| SW cache | `vyve-cache-v2026-04-29h-fullsync-btn` |
 | Make social publisher | Scenario 4950386 — BROKEN since 23 March |
 | Make analytics collectors | Scenarios 4993944 (IG), 4993948 (FB), 4993949 (LinkedIn) → Data Store 107716 |
 | Facebook connection expiry | **22 MAY 2026 — Lewis to renew urgently** |

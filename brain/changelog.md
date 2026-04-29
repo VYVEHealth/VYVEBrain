@@ -1,3 +1,110 @@
+## 2026-04-29 PM-4 (HealthKit auto-recovery + EF dup-fixes + sync-gap closure · 7 commits)
+
+### TL;DR
+
+The 1.2 App Store install on Dean's phone (28 April PM) silently broke HealthKit reads cohort-wide for upgrading members. iOS reset HK auth to "not determined" on the new signed binary; the existing sync flow had no recovery path and silently advanced `last_sync_at` through the broken syncs, creating a gap where real data (Dean's 28 April 18:33 BST run) was missed even after auth recovered. Diagnosed via `platform_alerts.client_diagnostics` rows showing every probe failing with "Authorization not determined" since 28 April 19:24 UTC — across `queryWorkouts`, `readSamples.heartRate/weight/sleep`, and `queryAggregated.steps/distance/calories`. The Capgo plugin and HealthKit entitlement were both intact in the binary (`codesign -d --entitlements` confirmed `com.apple.developer.healthkit` present); the JS bridge saw `Plugins.Health` with full method set. Bug was purely runtime — iOS doesn't surface "permission was reset on binary upgrade" as anything other than the generic auth-not-determined error and silently no-ops `requestAuthorization` if the call originates from a code path that doesn't expect to need it. Now closed end-to-end via three fixes: (1) `get-health-data` v6 — split single combined samples query into 4 per-type queries with limits to prevent HR data crowding out workouts/sleep/weight under Supabase's 1000-row default cap, (2) `healthbridge.js` v0.4–v0.7 — Capacitor App lifecycle listeners + 60→2 min cooldown + auto-recovery via `requestAuthorization` retry on all-probes-failed + `?fullsync=1` URL trigger + Force-full-backfill button + dropped synthetic native_uuid fallback, (3) `sync-health-data` v9 — don't advance `last_sync_at` on auth-blocked syncs, mark `last_sync_status:'auth_blocked'` instead, preserves last good timestamp so next successful sync's incremental window covers the gap. Plus DB cleanup of 7 synthetic-UUID dup workout samples + 4 dup cardio rows on Dean's account that landed before the v0.5 client fix.
+
+### Why this happened
+
+iOS resets HealthKit per-app auth state when a new signed binary installs over an old one (entitlement combination changes are flagged as a new app from HK's privacy POV, even if the App ID is unchanged). Apple does NOT add the app to `Settings → Health → Data Access & Devices` until `requestAuthorization` is invoked AND iOS displays the sheet — i.e. the iPhone Settings entry is created on first prompt, not on install. So a member upgrading from 1.1 to 1.2 sees "VYVE Health is not in iPhone Settings → Health" because the new binary has never prompted, despite the previous binary having had full grants. The existing `connect()` flow only fires `requestAuthorization` from a deliberate Connect button tap; auto-sync never re-prompts because server-side `member_health_connections.platform='healthkit'` row says "connected" and we trust it.
+
+The runtime symptom is hostile to debug: every HK probe returns `{ok: false, error: "Authorization not determined"}` but the EF returns 200 OK, the client `sync()` returns `{ok: true}`, the dashboard reads `last_sync_at: just-now`, and the Apple Health page shows "Synced just now · Connected · 30 samples" — all green, all silent failure. The diagnostics blob attached to `pull_samples` is the only place the failure is visible, and only if you read `platform_alerts` directly.
+
+Compounding bug: even when auth recovered (e.g. via the v0.6 retry), the incremental sync window was `last_sync - 10min`. Since `last_sync_at` had been advancing through the broken syncs, the window started ~10 min ago, missing anything that landed in HK during the broken period. Hence Dean's 28 April 18:33 BST run was in HK on the device but not in our DB even after the page said "synced just now". Verified via direct query of `member_health_samples WHERE start_at >= NOW() - INTERVAL '48 hours'` returning empty while Apple Health on the device showed the run with full source attribution (Dean's Apple Watch).
+
+### Diagnostics journey
+
+Initial hypothesis was "HK background sync isn't wired" — wrong, that's parked. Second hypothesis was "1.2 binary missing entitlement" — wrong, codesign confirmed entitlement on archive at `~/Library/Developer/Xcode/Archives/.../App.app`. Third hypothesis was "Capgo plugin not loading on iOS" — wrong, `Plugins.Health` exists with full method set, JS bridge healthy, PushNotifications working fine in same binary. Fourth hypothesis was the right one — auth state reset on binary upgrade. Confirmed by: (a) Dean's account showed `member_health_samples` workouts up to 28 April 12:40 UTC ingest, then nothing; (b) `platform_alerts` showed all probes flipping from `ok:true` (24-28 April) to `ok:false, error:"Authorization not determined"` (from 28 April 19:24 UTC onwards — exactly when 1.2 install would have happened); (c) iPhone Settings → Health → Data Access & Devices showed VYVE Health absent (would be present if any prompt had occurred on this binary).
+
+The breakthrough was the codesign output:
+```
+[Key] com.apple.developer.healthkit
+[Value]
+```
+Empty `[Value]` is correct (HK entitlement is boolean — key presence is enough). That ruled out entitlement-stripping and forced focus on runtime state. From there, asking "why doesn't requestAuthorization show a sheet?" pointed at iOS's silent no-op behaviour for a code path that never explicitly re-prompts after binary upgrade.
+
+### What shipped
+
+#### `get-health-data` Edge Function v6 (29 April 14:28 UTC)
+
+Pre-existing diagnostic page (`apple-health.html`) was rendering "0 workouts · 30 days" / "0 sleep segments" / "0 weight samples" on Dean's account despite 154 workouts and 187 sleep rows existing server-side over the last 30 days. Root cause: the EF used a single `.in('sample_type', ['workout','heart_rate','weight','sleep'])` query against `member_health_samples` ordered by `start_at DESC` with no `.range()` cap. Supabase JS client defaults to 1000 rows per query when no range is specified. HR data (~2,500 samples in 30 days) consumed the entire 1000-row quota, starving workouts/sleep/weight to zero. Diagnostic showed 1000 HR readings (= the cap) which was the smoking gun.
+
+Fix: replaced single query with `Promise.all([...])` of 4 per-type queries — `LIMIT_WORKOUT=500`, `LIMIT_HR=5000`, `LIMIT_WEIGHT=200`, `LIMIT_SLEEP=2000`. After deploy, Dean's diagnostic page rendered 15 workouts / 187 sleep / 2 weight as expected.
+
+#### `healthbridge.js` v0.4 (vyve-site `cd3f4ce`)
+
+Three changes:
+- `SYNC_MIN_INTERVAL_MS`: `60 * 60 * 1000` → `2 * 60 * 1000`. The 60-min cooldown was sensible for web visibility events but completely wrong for native foreground use; members opening the app multiple times an hour expect each open to refresh.
+- `maybeAutoSync(opts)` accepts `opts.force` to bypass cooldown for explicit lifecycle triggers.
+- Capacitor `App.addListener('appStateChange', ...)` and `App.addListener('resume', ...)` wired in to fire `maybeAutoSync({force: true})` on native foreground. The existing `document.visibilitychange` listener was unreliable on iOS Capacitor 8 (depends on iOS version + JS thread suspension state); the `@capacitor/app` events are the authoritative native lifecycle signal.
+- Polling fallback for delayed `Plugins.App` registration on cold launch — retry every 200ms up to 5s.
+
+SW cache `v2026-04-29c-trophy-cabinet` → `v2026-04-29d-hk-autosync`.
+
+#### `healthbridge.js` v0.5 (vyve-site `a0926f6`)
+
+Dropped the synthetic `native_uuid` fallback in `sampleToEF()`. Earlier code:
+```js
+native_uuid: String(s.platformId || s.id || s.uuid || s.metadataId || (start + '_' + end + '_' + (s.value ?? '')))
+```
+The fallback shape (`<ISO>Z_<ISO>Z_`) produced fragile dedupe keys — when the Capgo plugin behaviour changed across versions (earlier syncs hit fallback, later syncs returned real HKWorkout UUID like `20550083-2BC5-4C91-993F-615EF8952718`), the same workout came back with two different `native_uuid` values, defeating the EF's `(member_email, source, native_uuid)` unique constraint. Result: 7 dup workout samples + 4 dup cardio rows on Dean's account. Now: if no real platform UUID is available, return `null` and the caller skips the sample. Cleaner to drop than to ingest with a colliding key.
+
+DB cleanup applied via direct SQL: deleted 7 synthetic-UUID rows from `member_health_samples` (all had real-UUID twins, verified via `start_at + end_at` pair-match), then deleted 4 dup cardio rows in `cardio` table that came from synthetic-row promotions (verified the surviving cardio rows were the ones referenced by `member_health_samples.promoted_id`, kept those). Final state: 147 workouts / 103 HK cardio rows / no dups. Other members were unaffected (only Dean had hit the version split).
+
+SW cache `v2026-04-29d-hk-autosync` → `v2026-04-29e-hk-uuid-fix`.
+
+#### `healthbridge.js` v0.6 (vyve-site `09ffd46`)
+
+Auto-recovery from "Authorization not determined". Inside `sync()` after `pullAllSamples` returns, inspect `_lastDiagnostics` and detect the all-probes-unauthorized pattern. If true and `_authRecoveryAttempted` is false, call `plugin.requestAuthorization({read: DEFAULT_READ_SCOPES, write: DEFAULT_WRITE_SCOPES})` and retry the pull once. Bounded to one recovery per page-load via the flag — prevents looping on permanent denial.
+
+This was the fix that made the HK permission sheet appear on Dean's phone after the existing 1.2 binary had been silently failing for 17 hours. After grant, today's data started flowing: 3,708 steps / 2.6km / 180 kcal at 15:00 UTC.
+
+SW cache `v2026-04-29e-hk-uuid-fix` → `v2026-04-29f-hk-auth-recovery`.
+
+#### `healthbridge.js` v0.7 + apple-health.html "Force full backfill" button (vyve-site `1e3c30b`, `c0f1db6`)
+
+After auth recovered, Dean's run from last night was still missing because the incremental window had advanced through the broken-auth period. Two recovery paths shipped:
+
+1. **`?fullsync=1` URL trigger**: any portal page loaded with `?fullsync=1` in the query string fires `sync({fullHistory: true})` once after hydration completes. Strips the param via `history.replaceState` after triggering so a refresh doesn't re-trigger. Bounded by `_fullSyncTriggered` flag.
+
+2. **"Force full backfill" button on apple-health.html**: visible button next to "Sync now" that calls `healthBridge.sync({fullHistory: true})` directly. Heavier than the URL trigger (no auto-fire-once gate) but discoverable via UI. Used by Dean to recover the missing run; took ~3 minutes to complete (5 months of HK data, capped at 365 days by the EF) and pulled 1 new workout (the 28 April 18:33 BST run).
+
+After v9 server-side fix (below) members shouldn't need this button under normal conditions. Worth tucking into a sub-page on the redesign rather than leaving prominent.
+
+SW cache `v2026-04-29f-hk-auth-recovery` → `v2026-04-29g-fullsync-url` → `v2026-04-29h-fullsync-btn`.
+
+#### `sync-health-data` Edge Function v9 (29 April 15:27 UTC)
+
+Root-cause fix preventing the gap from forming in the first place. v8 wrote `last_sync_at: nowIso` unconditionally on every `pull_samples` call — including the silent-auth-failure case. v9 inspects `body.diagnostics` for the all-probes-failed pattern (every probe `ok:false` with regex match on "Authorization not determined") and writes `last_sync_status: 'auth_blocked'` WITHOUT advancing `last_sync_at`. The next successful sync's incremental window then starts from the last genuinely good timestamp and covers the gap automatically.
+
+Response payload now includes `auth_blocked: boolean` so future client logic can react accordingly. `server_last_sync_at` returns null when auth-blocked.
+
+This means future cohort members upgrading binary (1.2 → 1.3 → ... or PWA → 1.3) will hit auto-recovery via v0.6, get the HK sheet on first sync, grant, and have all data since their last good sync re-pulled automatically — no manual force-backfill needed.
+
+### Verification
+
+Live data flow confirmed on Dean's account:
+- 29 April 15:00 UTC: today's daily aggregates landed (`member_health_daily` rows for steps=3708, distance=2657m, active_energy=180kcal)
+- 29 April 15:21 UTC: missing workout from 28 April 18:33 BST landed (`member_health_samples` workout row, `app_source: "Dean's Apple Watch"`, 55 minutes running)
+- 29 April 15:00 UTC: 28 April daily totals retroactively corrected from partial early-day capture (3,584 steps) to full-day aggregate (13,008 steps / 9.7km)
+
+Zero residual dups in `cardio` or `member_health_samples` for Dean. Other members untouched (synthetic-UUID pattern was Dean-only as the only 1.1 → 1.2 upgrader to date).
+
+### New §23 hard rules codified
+
+1. **iOS HK auth resets on binary upgrade.** Every signed-binary change resets HealthKit per-app auth state to "not determined", regardless of App ID continuity. iPhone Settings → Health → Data Access & Devices entry is created on first successful `requestAuthorization` prompt, NOT on install. Auto-sync code paths must detect the all-probes-unauthorized pattern and re-prompt — `member_health_connections.platform` row presence is NOT a sufficient signal that HK is functional.
+
+2. **Supabase JS client default 1000-row cap on `.in()` queries.** Multi-type sample queries combining high-volume types (heart_rate) with low-volume types (workouts, sleep, weight) under a single `.in([...])` predicate will silently truncate the low-volume types to zero rows when the high-volume type fills the 1000-row default. Always split into per-type queries with explicit `.limit()` calls when types have wildly different cardinalities.
+
+3. **Never synthesise `native_uuid`.** If the Capgo plugin doesn't return `platformId`/`id`/`uuid`/`metadataId`, return null from `sampleToEF` and let the caller skip the sample. Synthetic shapes (e.g. `start_end_value`) produce fragile dedupe keys that collide with themselves on future syncs when plugin behaviour shifts. Drop is always safer than insert-with-collidable-key.
+
+### Architecture nuances worth keeping in mind
+
+- The "Force full backfill" button is a recovery tool, not routine UX. With v9 server-side fix in place, members should never need to tap it. Either tuck into a sub-page on the apple-health redesign or remove entirely (URL trigger remains for support cases).
+- 365-day backfill cap (`MAX_SAMPLE_AGE_DAYS=365`) means a member connecting HK 18 months after joining gets only 12 months of history. Deliberate trade-off from v8 to protect against runaway batch sizes; surfaceable later if it becomes a complaint.
+- The `_authRecoveryAttempted` flag is module-scoped to one recovery per page-load. Designed so a member who genuinely denies HK access doesn't get stuck in a re-prompt loop. Means if a member upgrades, opens the app, denies the sheet, then comes back later wanting to re-grant — they'd need to navigate through Settings → HK → reconnect. Acceptable trade-off for now.
+- v9 EF returns `auth_blocked: true` in response. Future client work can surface this in the UI (e.g. a banner saying "Tap to reconnect Apple Health") rather than letting the auto-recovery silently re-prompt. Backlog item.
+
 ## 2026-04-29 PM-3 (Phase 3 Achievements UI redesign — trophy cabinet pattern · 300+ tiles → ~28 trophies)
 
 ### TL;DR
