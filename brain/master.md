@@ -602,9 +602,17 @@ Both call sites of the evaluator now also fan out via `achievement-earned-push` 
 - Globally unique titles across all 327 rows.
 - Streaks ≠ counts in body voice — streaks emphasise consecutive cadence, counts emphasise cumulative volume.
 
-### Phase 3 UI (now unblocked, not yet sequenced)
+### Phase 3 UI (LIVE — trophy-cabinet redesign 29 April PM-3)
 
-Achievements lands as a **tab on `engagement.html`** alongside the existing Progress content. Captures (a) the all-achievements grid (32 metrics × tiers earned/locked) and (b) inflight progress to the next tier per metric. Plus toast queue (mark-seen via `achievements-mark-seen` EF) + dashboard slot showing latest unseen / next-up tier.
+Achievements ships as a **tab on `engagement.html`** alongside the Progress content. Layout (29 April PM-3 redesign superseding morning's wall-of-tiles):
+
+1. **Recently earned** — horizontal scroll of last 6 unlocks. Each card = trophy + tier title + metric + time-ago. Click → modal (full ladder).
+2. **Up next** — top 3 in-progress metrics by `progress.pct` desc. Locked-style trophy preview + progress bar + "X to go". Click → modal (full ladder, scrolled to the current tier).
+3. **Trophy cabinet** — one trophy per metric, grouped by category, on cream shelves. Number on the trophy face = highest tier earned (or "?" with locked tinting). Click → modal (full ladder).
+
+Modal opens for any tile click and shows the full tier ladder for that metric, with earned rows tinted gold, current row teal-bordered with inline progress bar, locked rows muted. Optional `tierIndex` param scrolls the named row into view (used by Up Next + toast deep-link `#achievements&slug=X&tier=N`).
+
+Backed unchanged by `member-achievements` v2 EF — `tiers[].earned_at`, `tiers[].is_current`, `tiers[].progress` already returned, no server work needed for the redesign. Toast queue + mark-seen via `achievements-mark-seen` EF + push-on-earn via `achievement-earned-push` v2 all wired and live since the morning ship. Dashboard slot on `index.html` (latest unseen / closest inflight) still unstarted — Phase 3 sub-task.
 
 ### Open Phase 2 / Phase 3 items
 
@@ -805,10 +813,11 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 
 ---
 
-## 19. Current status — 28 April 2026 PM
+## 19. Current status — 29 April 2026 PM-3
 
 ### Completed — Dean (technical)
 
+- **Achievements UI trophy-cabinet redesign** shipped (29 April 2026 PM-3, vyve-site `30ef4ddba`). Replaced wall-of-tiles grid with three sections: Recently earned (last 6 unlocks, horizontal scroller) → Up next (top 3 in-progress) → Trophy cabinet (one trophy per metric, click → full-ladder modal). EF unchanged. SW cache `v2026-04-29c-trophy-cabinet`. Mockup-first workflow used and approved before code touched.
 - **Notification routing infrastructure** shipped end-to-end (29 April 2026 PM-2, vyve-site `30e8398b`). Every notification on every surface (in-app toast, in-app row, web push, native push) carries a route to the right destination. Schema: `route TEXT` column added to `member_notifications`, all 35+ existing rows backfilled via SQL `regexp_replace`. Server: `send-push` v13 (writes `data.url` to row); `achievement-earned-push` v2 (per-tier deep-link `/engagement.html#achievements&slug=X&tier=Y`); `log-activity` v27 (platform v30) — streak rows route to `/engagement.html#streak`, achievement rows carry per-tier route. Client: `/achievements.js` toast click reads `earn.route` with fallback; `engagement.html` `parseHashRoute()` parses `#achievements&slug=X&tier=N` and auto-opens modal once grid loads; `notification_navigate` postMessage listener routes in-place if member already on the page; `#streak` anchor target added. SW cache `v2026-04-29a-ach-grid` → `v2026-04-29b-routes`.
 - Supabase Pro. **76 public tables**, ~30 core operational Edge Functions, SQL functions for activity caps + charity totals.
 - Supabase Auth migration complete. Auth0 gone. `auth.js` v2.3 live.

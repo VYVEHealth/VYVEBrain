@@ -1,3 +1,69 @@
+## 2026-04-29 PM-3 (Phase 3 Achievements UI redesign — trophy cabinet pattern · 300+ tiles → ~28 trophies)
+
+### TL;DR
+
+Replaced the wall-of-tiles Phase 3 grid (shipped 29 April PM, commit `997979b5`) with a calmer three-section layout: **Recently earned** (last 6 unlocks, horizontal scroller) → **Up next** (top 3 in-progress by `progress.pct` desc) → **Trophy cabinet** (one trophy per metric, grouped by category, tap-to-modal showing the full ladder). Strava/Nike+/Garmin pattern. Was 300+ tier-tiles per page load; now ~28 metric trophies plus 9 contextual cards in Recently/Up Next. EF unchanged — `member-achievements` v2 already returns everything the new client needs (`tiers[].earned_at`, `tiers[].is_current`, `tiers[].progress`). Engagement commit `30ef4ddba`. SW cache `v2026-04-29b-routes` → `v2026-04-29c-trophy-cabinet`.
+
+### Why the redesign landed
+
+The trophy-shelf pattern from the morning ship (one tile per *tier*, all visible) was correct in intent but misjudged on density. With Dean's account at 110 habits / tier 7 of 13, every metric showed every tier as a square — 32 metrics × ~10 tiers each = 300+ shapes per scroll. ~80% of those squares were locked future tiers nobody cared about yet. The page read as a stats screen, not a celebration. Dean called it during the next session: members should see their progress at a glance, with celebration moments and forward pull surfaced separately. Ladder detail belongs in the modal, not the grid.
+
+Mockup-first workflow was used (per session prompt): standalone HTML mockup with realistic Dean-shaped data was built and approved before any engagement.html work started. Saved an iteration cycle vs. last two sessions where UI was coded then mocked-up after.
+
+### What shipped
+
+#### `engagement.html` (commit `30ef4ddba`)
+
+CSS additions (~3.5 KB) appended before `.skel-ach-summary` block: trophy cabinet redesign classes (`.ach-section`, `.ach-recent-strip`, `.ach-recent-card`, `.ach-upnext-grid`, `.ach-upnext-card`, `.cabinet-cat`, `.metric-cell`, `.ladder-row` family for the new full-ladder modal). Existing `.ach-summary`, `.shelf`, `.trophy-cell`, `.shelf-row`, `.ach-modal-*` classes preserved (still used — modal kept, shelf used as the cream backdrop for the cabinet rows).
+
+JS replacement inside the achievements IIFE — `renderGrid()` rewritten plus the entire `renderShelf()` function removed and replaced with five new helpers:
+
+- **`renderRecent(payload)`** — derives last 6 metrics by max(`tiers[].earned_at`) of any earned tier in their ladder. Sort desc, slice 6. Renders a horizontal scroll-snapping strip of cream mini-cards. Each card → trophy + tier title + metric display name + time-ago.
+- **`renderUpNext(payload)`** — picks each metric's `is_current` tier where `progress.pct > 0`, sorts by pct desc, slices to 3. Renders a 3-column grid (collapses to 1 col on mobile). Each card shows locked-style trophy preview (lights up when crossed) + tier title + metric + progress bar + "X to go".
+- **`renderCabinet(payload)`** — groups metrics by category preserving `payload.categories` order. One cream shelf per category. Inside each shelf, one trophy per metric via `renderMetricCell()`.
+- **`renderMetricCell(m)`** — single-trophy tile. Number on the trophy face = `highest_tier_earned` (or "?" with locked tinting if `highest_tier_earned === 0`). Sub-label reads "Tier X / Y", "Maxed · Y / Y", "Earned"/"Locked" for one-shots, or "Not started".
+- **`timeAgo(iso)`** — formatter for the recent strip ("5m ago", "3h ago", "2d ago", or short date for >7d).
+
+`openModal(payload, slug, tierIndex)` rewritten — now always shows the **full ladder** for the metric (was: single tier card). Big trophy at top showing current tier earned. Eyebrow = metric display name. Headline = title of highest-earned tier (or first tier if none earned). Subhead = "Tier X of Y · {current_value}{unit}" / "Not started yet" / "All Y tiers earned". Then a column of `.ladder-row` rows for every tier 1→max, each with tier index in a circle, title, meta line ("Earned 22 Apr 2026" / "30% · 60 to go" / "Reach 250"), and an inline progress bar on the current row. `tierIndex` parameter is now a scroll-to hint — when present (Up Next card click, toast deep-link via `#achievements&slug=X&tier=N`), the named row scrolls into view inside the modal.
+
+Tile click delegation moved to `[data-metric-slug]` attribute selector (covers recent cards, upnext cards, and metric tiles in one querySelectorAll). Existing `closeModal()`, hash deep-link parser (`parseHashRoute()` + `handleHash()`), service-worker postMessage bridge, and skeleton/cache-fallback paths all preserved byte-identical.
+
+The Progress tab and everything else on `engagement.html` (score-hero, streak-cards, activity-grid, log table, score-explanation) are byte-identical to commit `997979b5`. Tab strip, skeleton structure, modal backdrop wrapper, and IIFE outer shell are untouched.
+
+#### `sw.js` cache bumped
+
+`v2026-04-29b-routes` → `v2026-04-29c-trophy-cabinet`. Network-first for HTML still in effect (per 21 April Hard Rule), members get the new engagement.html on next reload without SW ping-pong.
+
+### What's notably *not* shipped
+
+- **Tier threshold rework** — Dean flagged that some ladders feel sparse at the top end (50 → 100 → 250 → 500 → 1000 stops feeling reachable). Discussed during this session: surgical add-tiers-between-existing-thresholds is the lower-blast-radius play (preserves existing earned rows and Lewis-approved copy via `copy_status='approved'` gate, only requires Lewis-approval of new in-between titles). Parked for separate session — analysis pass first to identify worst-spaced ladders.
+- **Bespoke illustrated badges** — current SVG generator (4 shapes × 4 tints) carries forward unchanged. Future upgrade path via Gemini image gen + brand grade is captured in backlog item 7 (already there from the morning ship).
+- **Index.html dashboard slot** — Phase 3 sub-task showing latest unseen / closest inflight on the home dashboard. Still unstarted.
+
+### New gotchas
+
+None this session. The redesign uses the same EF, the same helpers (`tierTint`, `shapeFor`, `svgTrophy`, `escapeText`, `formatThreshold`, `formatValue`), and the same hash deep-link parser. The toast click flow (achievements.js → `#achievements&slug=X&tier=N`) is now even cleaner — `openModal` always shows the full ladder, and the tier param scrolls the named row into view rather than opening a one-tier card.
+
+### Verification
+
+Pre-deploy:
+- `node --check` on the four inline `<script>` blocks combined: passes clean (47,575 chars total).
+- Stubbed-DOM smoke ran `_achTest.renderGrid(payload)` + `_achTest.openModal(payload, 'habits_logged')` end-to-end on a 5-metric realistic Dean-shaped payload. Confirmed: 4 recent cards, 3 upnext cards, 5 metric tiles, modal renders 13 ladder rows (7 earned + 1 current + 5 locked), progress bar present in current row, tier 8 correctly identified as current. `openModal(slug, tier=8)` deep-link variant also clean.
+
+Post-commit re-fetch confirmed both files live on `main`:
+- `engagement.html` — 80,856 bytes, starts with `<!DOCTYPE html>`, all five new helpers present, `renderShelf(metric)` removed.
+- `sw.js` — 5,161 bytes, contains `vyve-cache-v2026-04-29c-trophy-cabinet`, old cache string gone.
+
+Live smoke pending — page propagating to GitHub Pages CDN at time of commit. Will verify visually on next reload of `online.vyvehealth.co.uk/engagement.html#achievements`.
+
+### Architecture nuances worth keeping in mind
+
+- The cream-shelf visual remains the unifier across the page — Recently Earned cards are mini cream shelves, Trophy Cabinet rows are full cream shelves. Up Next deliberately uses the dark portal surface (not cream) to break visual rhythm and signal "this is forward-looking, not historical".
+- Metric tiles in the cabinet now show the *highest earned tier* number on the trophy face (was: each tier rendered its own trophy with its threshold number). For a member with 7 tiers earned in habits, the cabinet shows one gold trophy with "7" on the face — instantly readable as "this is where I am".
+- Locked metrics (`highest_tier_earned === 0`) show a "?" with locked tint. Sublabel reads "Not started" — kept stark intentionally; Dean's call. Could soften to "Tier 1 at X" if it tests poorly.
+
+---
+
 ## 2026-04-29 PM-2 (Notification routing: every notification links to its destination)
 
 ### TL;DR
