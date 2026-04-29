@@ -1,6 +1,6 @@
 # VYVE Health — Task Backlog
 
-> Updated: 29 April 2026 PM (Phase 3 grid shipped — trophy-shelf UI live on engagement.html · Phase 2 volume_lifted_total wiring complete). Headline news: **Phase 3 Achievements UI live on engagement.html — trophy-shelf design with tier-tinted SVG shapes, modal on tile click, hash deep-link from toasts.** `member-achievements` v2 EF (NEW, JWT-required) backs the grid. Phase 2 `volume_lifted_total` wired into INLINE evaluator with sanity caps; cohort backfill of 12 earned tiers across 4 members. log-activity v26 (platform v29). SW cache `v2026-04-29a-ach-grid`.
+> Updated: 29 April 2026 PM-2 (Notification routing infrastructure shipped — every notification on every surface routes to its destination. Hard rule codified in master §23.) Headline news: **Phase 3 Achievements UI live on engagement.html — trophy-shelf design with tier-tinted SVG shapes, modal on tile click, hash deep-link from toasts.** `member-achievements` v2 EF (NEW, JWT-required) backs the grid. Phase 2 `volume_lifted_total` wired into INLINE evaluator with sanity caps; cohort backfill of 12 earned tiers across 4 members. log-activity v26 (platform v29). SW cache `v2026-04-29a-ach-grid`.
 
 ---
 
@@ -79,12 +79,15 @@
    - **DONE:** All 9 trigger pages wired (habits, cardio, wellbeing-checkin, monthly-checkin, log-food, movement, nutrition, workouts-session.js, workouts-builder.js, workouts-programme.js).
    - **DONE:** All 8 passive pages load `/achievements.js` for replay-unseen on load (index, engagement, sessions, exercise, settings, running-plan, certificates, leaderboard, workouts).
    - **DONE:** End-to-end smoke verified on Dean's account — toast rendered for `habits_logged` t7 cross.
+   - **DONE:** **Notification routing infrastructure** (29 April PM-2, vyve-site `30e8398b`). `member_notifications.route` column + send-push v13 + log-activity v27 (platform v30) + achievement-earned-push v2 + `/achievements.js` + `engagement.html` parseHashRoute + SW postMessage bridge. Hard rule codified master §23. **Every notification anywhere routes to the right place.**
    - **DONE:** **Achievements grid live on `engagement.html`** (29 April PM, commit `997979b5`) — trophy-shelf UI, tier-tinted SVG shapes, modal on tile click, hash deep-link `#achievements` from toast clicks. Backed by `member-achievements` v2 EF (NEW, JWT-required, `getMemberGrid()` in `_shared/achievements.ts`). Tab strip: Progress (default) | Achievements. localStorage cache fallback for offline.
    - **DONE:** Phase 2 `volume_lifted_total` wired into INLINE evaluator with sanity caps. log-activity v25 → v26 (platform v29). 12 cohort tiers backfilled.
    - **TODO:** Index.html dashboard slot showing latest unseen / closest inflight (Phase 3 sub-task, not started).
-   - **TODO:** Per-tile deep-link in toast click (`#achievements&slug=X&tier=N`) — current behaviour switches tab + scrolls to top, sufficient for v1.
+   - **DONE:** Per-tile deep-link in toast click (`#achievements&slug=X&tier=N`) — modal opens directly on the earned tile (29 April PM-2).
    - **TODO:** Bespoke illustrated badge artwork upgrade — current SVG generator covers 4 shapes × 4 tints. Future upgrade via AI image gen (Gemini + Claude art direction with VYVE brand grade), drop-in replacement of `svgTrophy()` calls. Data layer doesn't change. Captured 29 April PM as the canonical upgrade path; not weeks of illustrator work as previously assumed.
-   - Native push hook on tier earn already wired (achievement-earned-push v1) and now fires from real cohort actions.
+   - Native push hook on tier earn already wired (achievement-earned-push v2 with deep-link) and fires from real cohort actions.
+   - **TODO:** In-app notifications list UI (bell icon dropdown reading `member_notifications` rows for the authenticated member, marking `read=true` on tap, navigating via `route` column). Schema is ready (`route` populated). Likely lives in nav bar across all member-facing pages. Backlog item; not urgent until cohort grows past current testers.
+   - **TODO:** Promote `route` to a first-class input on send-push (currently inferred from `data.url`). No behaviour change, just clarity. Defer until a real reason — current single-source-of-truth via data.url works fine.
 
    **Voice rules locked-in for future ladder extensions:** no emojis, titles 3-6 words, bodies 10-20 words, VYVE voice (proactive wellbeing, evidence over assumption, no fitness-influencer tone), tier 11+ on long ladders short and reverent (no next-tier nudge), recurring-metric copy evergreen, all titles globally unique. Streaks emphasise consecutive cadence; counts emphasise cumulative volume — distinct body voices.
 

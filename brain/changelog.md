@@ -1,3 +1,114 @@
+## 2026-04-29 PM-2 (Notification routing: every notification links to its destination)
+
+### TL;DR
+
+End-to-end work on the notification routing principle: every notification on every surface (in-app toast, in-app row in `member_notifications`, VAPID web push, APNs native push) now carries a route to the right destination. Tap an achievement notification → engagement.html opens with the modal already showing for that tile. Tap a streak notification → engagement.html scrolls to the streak section. Tap a habit reminder → habits.html. Schema migration added `route TEXT` column to `member_notifications`, four EFs updated (send-push v13, achievement-earned-push v2, log-activity v27 — platform v30), `/achievements.js` + `engagement.html` updated client-side, plus a parametric hash parser (`parseHashRoute()`) that opens modals from URL fragments, plus a postMessage bridge so members already on the page route in-place. Codified as a hard rule in master.md §23 with a checklist for adding any new notification type in the future.
+
+### Why this work landed now
+
+Earlier in the session we shipped the Phase 3 Achievements grid (commit `997979b5`). The toast click handler in `/achievements.js` hard-coded `/engagement.html#achievements`, which works for achievements but breaks the principle for everything else — and even for achievements, it left the member dumped on the grid having to find the tile they earned. Dean's call: "any notification anywhere, in-app or push, takes you to the right part of the app." The fix was to flow the destination URL end-to-end across every surface, with a single source of truth — `data.url` from the EF input becomes `member_notifications.route` becomes the SW notificationclick `data.url` becomes the postMessage bridge target.
+
+### Architecture (single source of truth)
+
+The destination URL flows like this:
+
+1. **Notification trigger fires** — log-activity, habit-reminder cron, sweep, etc.
+2. **Writer constructs route** — e.g. `'/engagement.html#achievements&slug=' + slug + '&tier=' + tier`
+3. **Pushed via send-push** — caller passes `data: { url: '<route>' }`. send-push v13 reads `customData.url`, writes it to `member_notifications.route` row + forwards `data` unchanged to VAPID payload + APNs payload.
+4. **Direct DB writers** (log-activity v27 streak/achievement handlers) write the row + call `achievement-earned-push` v2 which derives the same route from slug+tier and passes through send-push, keeping web/native + in-app row in lockstep.
+5. **Tap on web push** → SW `notificationclick` reads `data.url`, focuses existing tab if same path (posts `notification_navigate` postMessage with the full URL for in-place hash routing), or opens new tab.
+6. **Tap on native push** → Capacitor `pushNotificationActionPerformed` reads `data.url`, navigates the WebView.
+7. **Tap on in-app toast** → `/achievements.js` reads `earn.route` (with fallback constructing the same deep-link from `metric_slug`+`tier_index` if the EF response is older).
+8. **engagement.html** — `parseHashRoute()` parses `#achievements&slug=X&tier=N` and auto-opens the modal once the grid loads (poll for ~8s, gracefully bails on network error). Listens for SW postMessage so members already on the page route in-place.
+
+Every notification has a destination. Every surface honours it. Single field (`data.url` or `route`) carries the truth.
+
+### What shipped
+
+#### Schema migration
+
+```sql
+ALTER TABLE member_notifications ADD COLUMN route TEXT;
+```
+
+35+ existing rows backfilled via `regexp_replace`:
+- `habit_reminder` (23) → `/habits.html`
+- `checkin_complete` (11) → `/wellbeing-checkin.html`
+- `streak_milestone_*` → `/engagement.html#streak`
+- `achievement_earned_<slug>_<tier>` (15) → `/engagement.html#achievements&slug=<slug>&tier=<tier>` (slug+tier extracted via regex)
+- `smoke_test_send_push_v1` (1) → left NULL (test row)
+
+#### `send-push` v12 → v13 (ACTIVE)
+
+One change: when inserting `member_notifications`, populate `route` from `input.data.url` if provided. Web/native push payload behaviour byte-identical (data.url already flows through to VAPID/APNs via customData). VAPID JWT signing fix from v12 retained.
+
+#### `achievement-earned-push` v1 → v2 (ACTIVE)
+
+`buildAchievementRoute(slug, tierIndex)` returns `/engagement.html#achievements&slug=<encoded>&tier=<n>`. Used in the `data.url` field passed to send-push. Replaces v1's hard-coded `/engagement.html`.
+
+#### `log-activity` v26 → v27 (platform v29 → v30, ACTIVE)
+
+Two changes inside two helper functions:
+- `writeAchievementNotifications`: per-row `route: '/engagement.html#achievements&slug=' + encodeURIComponent(metric_slug) + '&tier=' + tier_index` added to insert payload.
+- `checkAndWriteStreakNotification`: `route: '/engagement.html#streak'` added to insert payload.
+
+Handler logic, shared module, and all other behaviour byte-identical to v26.
+
+#### `/achievements.js` (vyve-site `30e8398b`)
+
+Toast click handler updated:
+```js
+var route = (earn && typeof earn.route === 'string' && earn.route) ||
+            (earn && earn.metric_slug && earn.tier_index
+              ? '/engagement.html#achievements&slug=' + encodeURIComponent(earn.metric_slug) + '&tier=' + earn.tier_index
+              : '/engagement.html#achievements');
+window.location.href = route;
+```
+
+Tries `earn.route` first (if EF response includes it — Phase 4 work to add it to evaluator output). Falls back to constructing the deep-link from `metric_slug`+`tier_index` (always present in evaluator output today). Final fallback to page-level anchor for legacy.
+
+#### `engagement.html` (vyve-site `30e8398b`)
+
+Three additions:
+
+1. **`parseHashRoute()`** — parses URL fragments of form `#<id>&k1=v1&k2=v2` (NOT `?`-prefixed query string after hash, which has different semantics). Returns `{id, params}`.
+
+2. **Updated `handleHash()`** — branches on `route.id`:
+   - `achievements` → switch tab; if `slug` and `tier` params present, poll `window._achLoaded`/`window._achPayload` (set after grid render) and call `openModal(payload, slug, tier)` once available. Polls every 100ms for up to 8 seconds before bailing. Same flow whether the deep-link arrived via initial page load (`#achievements&slug=X&tier=N` in URL on first paint) or via postMessage in-place navigation.
+   - `streak` → switch to Progress tab and `scrollIntoView({behavior:'smooth'})` on `#streak` anchor.
+
+3. **`navigator.serviceWorker.addEventListener('message', ...)`** — listens for `{type:'notification_navigate', url:'/engagement.html#...'}` from SW. Updates `window.location.hash` if different (triggers hashchange → handleHash) or re-runs handleHash directly if the hash is already current. Lets a member already on engagement.html route to a deep-linked tile when they tap a push from outside the app.
+
+Plus: `id="streak"` added to the streak-section div so `#streak` hash scrolls there.
+
+Plus: `renderGrid()` now stashes `window._achPayload = payload` (and the cache fallback path does too) so the deep-link poll loop has the data to open the modal.
+
+#### `sw.js` cache bumped
+
+`v2026-04-29a-ach-grid` → `v2026-04-29b-routes`. Network-first for HTML still in effect, so members will get the new engagement.html on next reload.
+
+### Hard rule codified
+
+§23 of master.md gained a new sub-section: **Hard Rule (notification routing)**. Includes:
+- The principle ("every notification carries a route to its destination")
+- Where the route lives (member_notifications.route + data.url + earn.route + SW postMessage)
+- Single source of truth (send-push v13 reading input.data.url)
+- 6-step checklist for adding a new notification type (decide URL → pass data.url → check page handler → for parametric hashes, confirm parser → add to known-types table)
+- Currently routed types table
+- Common pitfall: don't change URL fragment grammar (`#id&k=v` not `#id?k=v`) without updating ALL writers + the parseHashRoute parser + backfilled rows.
+
+### Verification
+
+Schema column added, all backfilled rows verified by `SELECT type, route, COUNT(*) GROUP BY type, route`. Direct GitHub API confirmed all three site files committed at SHA `30e8398b`. SW notificationclick handler already reads data.url correctly (hard rule from 28 April). Pre-deploy: `node --check` passed on injected engagement.html JS block + achievements.js. Live smoke pending: next push notification fired (next achievement earn or tomorrow's habit-reminder cron at 20:00 UTC) will be the first to test the full path end-to-end.
+
+### What's notably *not* shipped
+
+- **In-app notifications list UI** (bell icon dropdown reading `member_notifications` rows by `member_email`, marking `read=true` on tap, navigating via `route`). Schema is ready, but no UI yet — added to backlog.
+- **Per-earn `route` in the evaluator response** — log-activity returns `earned_achievements` array with `metric_slug`+`tier_index` but not a precomputed `route`. The toast handler's fallback path already constructs the deep-link inline so this isn't a hot bug; deferred to a future shared module pass.
+- **Send-push `route` parameter as first-class** — currently inferred from `data.url`. Could be promoted to its own input field for clarity, but no behaviour change. Deferred.
+
+---
+
 ## 2026-04-29 PM (Phase 3 grid shipped: trophy-shelf UI live on engagement.html · Phase 2 volume_lifted_total wiring complete)
 
 ### TL;DR

@@ -413,7 +413,7 @@ All portal pages live at `online.vyvehealth.co.uk`. Every page is gated behind S
 
 | Piece | Detail |
 |---|---|
-| Service worker | `sw.js` — network-first for HTML + skipWaiting + clients.claim. HTML changes reach users on next reload without cache bumps. Non-HTML assets still use cache versioning. **Push event listener + notificationclick handler shipped 28 April** (`vyve-site@124ecb53`). Current cache: `vyve-cache-v2026-04-29a-ach-grid`. |
+| Service worker | `sw.js` — network-first for HTML + skipWaiting + clients.claim. HTML changes reach users on next reload without cache bumps. Non-HTML assets still use cache versioning. **Push event listener + notificationclick handler shipped 28 April** (`vyve-site@124ecb53`). Current cache: `vyve-cache-v2026-04-29b-routes`. |
 | Achievement client | `achievements.js` v1 (29 April) — toast queue + debounced evaluator + mark-seen + replay-unseen. Loaded on every portal page (trigger and passive). Trigger pages call `VYVEAchievements.evaluate()` after direct PostgREST writes; passive pages auto-replay unseen tiers from `vyve_dashboard_cache.data.achievements.unseen[]` on load. |
 | Theme system | `theme.js` — dual dark/light CSS tokens. `data-theme` on `html`. Stored in localStorage. All pages use dual-token CSS blocks — never single `:root`. |
 | Nav | `nav.js` — body-prepend pattern. Back button on inner pages, logo-only on home. |
@@ -575,7 +575,7 @@ Two exports:
 
 Counts + time totals + streak day-of evaluations + persona_switched fire **inline** from `log-activity` v22+ — one COUNT after insert is cheap on indexed tables, immediacy matters for the toast. Tenure/variety/collective/HK-lifetime/one-shot metrics go into **`achievements-sweep`** at 22:00 UTC daily — window calcs that don't benefit from immediacy.
 
-**Critical — evaluator activation pattern (29 April).** Trigger pages (habits.html, workouts.html, cardio.html, sessions.html, wellbeing-checkin.html, monthly-checkin.html, log-food.html, movement.html, nutrition.html, plus the workouts-*.js modules) write directly to PostgREST tables via `/rest/v1/<table>` POSTs, NOT through log-activity. The inline evaluator therefore does not fire from these writes unless the client explicitly calls log-activity afterwards. log-activity v26 (platform v29) · member-achievements v2 (NEW · JWT-required, getMemberGrid endpoint for Phase 3 grid) added an `evaluate_only:true` mode for exactly this purpose; all trigger pages now call `VYVEAchievements.evaluate()` from the new `/achievements.js` client lib after each successful write. Without this wire-up the inline path would remain dead even though the EF code is correct. Codified as a §23 hard rule.
+**Critical — evaluator activation pattern (29 April).** Trigger pages (habits.html, workouts.html, cardio.html, sessions.html, wellbeing-checkin.html, monthly-checkin.html, log-food.html, movement.html, nutrition.html, plus the workouts-*.js modules) write directly to PostgREST tables via `/rest/v1/<table>` POSTs, NOT through log-activity. The inline evaluator therefore does not fire from these writes unless the client explicitly calls log-activity afterwards. log-activity v27 (platform v30) · member-achievements v2 · send-push v13 · achievement-earned-push v2 (NEW · JWT-required, getMemberGrid endpoint for Phase 3 grid) added an `evaluate_only:true` mode for exactly this purpose; all trigger pages now call `VYVEAchievements.evaluate()` from the new `/achievements.js` client lib after each successful write. Without this wire-up the inline path would remain dead even though the EF code is correct. Codified as a §23 hard rule.
 
 ### Push fan-out (28 April PM)
 
@@ -809,11 +809,12 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 
 ### Completed — Dean (technical)
 
+- **Notification routing infrastructure** shipped end-to-end (29 April 2026 PM-2, vyve-site `30e8398b`). Every notification on every surface (in-app toast, in-app row, web push, native push) carries a route to the right destination. Schema: `route TEXT` column added to `member_notifications`, all 35+ existing rows backfilled via SQL `regexp_replace`. Server: `send-push` v13 (writes `data.url` to row); `achievement-earned-push` v2 (per-tier deep-link `/engagement.html#achievements&slug=X&tier=Y`); `log-activity` v27 (platform v30) — streak rows route to `/engagement.html#streak`, achievement rows carry per-tier route. Client: `/achievements.js` toast click reads `earn.route` with fallback; `engagement.html` `parseHashRoute()` parses `#achievements&slug=X&tier=N` and auto-opens modal once grid loads; `notification_navigate` postMessage listener routes in-place if member already on the page; `#streak` anchor target added. SW cache `v2026-04-29a-ach-grid` → `v2026-04-29b-routes`.
 - Supabase Pro. **76 public tables**, ~30 core operational Edge Functions, SQL functions for activity caps + charity totals.
 - Supabase Auth migration complete. Auth0 gone. `auth.js` v2.3 live.
 - All portal pages live: index, habits, exercise, workouts, movement, cardio, nutrition, log-food, settings, certificates, engagement, leaderboard, sessions, wellbeing-checkin, monthly-checkin, running-plan, welcome, login, set-password, strategy. Plus parked: apple-health, activity.
 - Theme system (dual dark/light tokens) live. `nav.js` body-prepend pattern. Cache-first dashboard. Consent gate built and wired. Viewport zoom disabled. `target="_blank"` audit complete.
-- Service worker network-first for HTML + skipWaiting + clients.claim. **Push event listener + notificationclick handler shipped 28 April PM** (`vyve-site@124ecb53`) — fixed silent web push breakage that had been live since initial push rollout. Current cache: `vyve-cache-v2026-04-29a-ach-grid`.
+- Service worker network-first for HTML + skipWaiting + clients.claim. **Push event listener + notificationclick handler shipped 28 April PM** (`vyve-site@124ecb53`) — fixed silent web push breakage that had been live since initial push rollout. Current cache: `vyve-cache-v2026-04-29b-routes`.
 - Activity logging via `log-activity` v23 (Make retired from Dean's stack).
 - Re-engagement system live — streams A/B/C1/C2/C3, `engagement_emails` live.
 - Certificate automation — `certificate-checker` v24, global sequential numbers, Brevo delivery.
@@ -1017,6 +1018,41 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 **Phase 2 `volume_lifted_total` wiring (29 April 2026 PM)** — wired into INLINE evaluator with sanity caps `reps_completed <= 100 AND weight_kg <= 500` matching grid helper. Two corrupt `exercise_logs` rows on Dean's account (Back Squat, 2026-04-18, reps=87616) zeroed. Cohort backfill of 12 earned tiers across 4 members (Dean t1-5, Lewis t1-3, Stuart t1-3, Calum t1) marked seen on insert to prevent toast storm. log-activity bumped to v26 (platform v29) to keep shared module in lockstep with member-achievements.
  |
 
+### Hard Rule (notification routing) — 29 April 2026 PM
+
+**Every notification — in-app, web push, native push — carries a route to its destination. Tapping any notification on any surface lands the member precisely where the notification refers to.**
+
+**Where the route lives:**
+- `member_notifications.route` (TEXT column) — populated on every insert
+- VAPID web push payload `data.url` — read by SW `notificationclick` handler
+- APNs payload `data.url` (via `push-send-native`) — read by Capacitor `pushNotificationActionPerformed`
+- The toast click handler in `/achievements.js` reads `earn.route` from the EF response (with deep-link fallback)
+- The SW posts `{type:'notification_navigate', url:...}` to existing tabs so a member already on the destination page routes in-place via `engagement.html`'s `parseHashRoute()`
+
+**Single source of truth:** `send-push` v13 reads `input.data.url` and writes it to `member_notifications.route` so web/native push payloads + in-app row stay in lockstep. Other writers (e.g. `log-activity` v27 `writeAchievementNotifications` + `checkAndWriteStreakNotification`) build the route inline and pass it in both fields.
+
+**Checklist for adding a new notification type:**
+1. Decide the destination URL (page + hash if applicable). Examples: `/habits.html`, `/wellbeing-checkin.html`, `/engagement.html#streak`, `/engagement.html#achievements&slug=X&tier=Y`, `/sessions.html#session-{id}`.
+2. If the writer goes through `send-push`: pass `data: { url: '<route>' }` — `send-push` v13+ writes it to `member_notifications.route` automatically and the SW + native handler read it from `data.url`.
+3. If the writer inserts to `member_notifications` directly (e.g. `log-activity` streak/achievement handlers): pass `route: '<url>'` in the row payload AND ensure any push fan-out includes the same URL in `data.url`.
+4. If the destination is a hash anchor (`#streak`, `#achievements&...`), confirm the target page has either a matching DOM `id` (for plain hash scrolls) OR a `parseHashRoute()`-style handler (for parametric hashes that open modals/tabs).
+5. If the destination is a parametric deep-link, add a `<meta name="vyve-supported-hashes">` style note in the brain so future Claudes don't break the parser by changing the URL fragment grammar.
+6. Add the new notification type + route to the §23 known-types list below.
+
+**Currently routed notification types:**
+
+| `type` prefix | Route |
+|---|---|
+| `habit_reminder` | `/habits.html` |
+| `checkin_complete` | `/wellbeing-checkin.html` |
+| `streak_milestone_*` | `/engagement.html#streak` |
+| `achievement_earned_<slug>_<tier>` | `/engagement.html#achievements&slug=<slug>&tier=<tier>` |
+
+**Existing rows backfilled** 29 April 2026 PM via SQL — `regexp_replace` extraction of slug + tier from `achievement_earned_*` types worked cleanly (15 rows). Test row `smoke_test_send_push_v1` left NULL by design.
+
+**Common pitfall:** if you change the URL fragment grammar (e.g. switch from `&slug=` to `?slug=` after the hash), you must update both the route generators (in `_shared/achievements.ts` if added later, `log-activity` v27, `achievement-earned-push` v2) AND the `parseHashRoute()` parser in `engagement.html` AND any backfilled rows. The current grammar is `#<id>&k1=v1&k2=v2` — id first, then `&`-separated params, NOT a `?`-prefixed query string.
+
+
 ---
 
 ## 24. Key references, credentials & URLs
@@ -1039,7 +1075,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 | Admin console | `admin.vyvehealth.co.uk/admin-console.html` |
 | iOS App Store | VYVE Health app — version 1.2 approved 28 April 2026, Ready for Distribution. App ID `co.uk.vyvehealth.app`. |
 | Android Play Store | 1.0.2 awaiting Google Play review since 15 April resubmission (icon-fix). Keystore on Windows PC. |
-| SW cache | `vyve-cache-v2026-04-29a-ach-grid` |
+| SW cache | `vyve-cache-v2026-04-29b-routes` |
 | Make social publisher | Scenario 4950386 — BROKEN since 23 March |
 | Make analytics collectors | Scenarios 4993944 (IG), 4993948 (FB), 4993949 (LinkedIn) → Data Store 107716 |
 | Facebook connection expiry | **22 MAY 2026 — Lewis to renew urgently** |
