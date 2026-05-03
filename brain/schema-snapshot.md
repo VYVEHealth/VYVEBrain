@@ -2,13 +2,61 @@
 
 > Auto-generated from live Supabase project `ixjfklpckgxrwjlfsaaz`.
 > DO NOT EDIT — overwritten weekly by the `schema-snapshot-refresh` Edge Function.
-> Last refresh: 2026-04-26T03:00:17.057Z
+> Last refresh: 2026-05-03T03:00:18.626Z
 
-**Totals:** 74 tables (74 with RLS) · 897 columns · 26 FKs · 161 triggers · 40 public functions · 79 RLS policies · 182 indexes · 13 cron jobs
+**Totals:** 77 tables (77 with RLS) · 925 columns · 28 FKs · 161 triggers · 40 public functions · 83 RLS policies · 190 indexes · 14 cron jobs
 
 ---
 
-## Tables (74)
+## Tables (77)
+
+### `achievement_metrics` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `slug` | text | NO |  | ✓ |  |
+| `category` | text | NO |  |  |  |
+| `display_name` | text | NO |  |  |  |
+| `unit` | text | YES |  |  |  |
+| `source` | text | NO |  |  |  |
+| `hidden_without_hk` | boolean | NO | false |  |  |
+| `is_recurring` | boolean | NO | false |  |  |
+| `description` | text | YES |  |  |  |
+| `sort_order` | integer | NO | 0 |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `achievement_metrics_category_check`: CHECK ((category = ANY (ARRAY['counts'::text, 'time_totals'::text, 'distance'::text, 'hk'::text, 'streaks'::text, 'variety'::text, 'collective'::text, 'tenure'::text, 'one_shot'::text, 'volume'::text])))
+- `achievement_metrics_source_check`: CHECK ((source = ANY (ARRAY['inline'::text, 'sweep'::text])))
+
+**RLS policies:**
+- `auth_read_achievement_metrics` (SELECT, roles: authenticated) — true
+
+**Indexes:**
+- `achievement_metrics_pkey`
+
+### `achievement_tiers` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `metric_slug` | text | NO |  | ✓ |  |
+| `tier_index` | integer | NO |  | ✓ |  |
+| `threshold` | numeric | NO |  |  |  |
+| `title` | text | NO |  |  |  |
+| `body` | text | YES |  |  |  |
+| `copy_status` | text | NO | 'placeholder'::text |  |  |
+
+**Check constraints:**
+- `achievement_tiers_copy_status_check`: CHECK ((copy_status = ANY (ARRAY['placeholder'::text, 'approved'::text])))
+
+**Foreign keys:**
+- `metric_slug` → `achievement_metrics.slug` (`achievement_tiers_metric_slug_fkey`)
+
+**RLS policies:**
+- `auth_read_achievement_tiers` (SELECT, roles: authenticated) — true
+
+**Indexes:**
+- `achievement_tiers_pkey`
 
 ### `activity_dedupe` · RLS
 
@@ -927,6 +975,32 @@
 **Indexes:**
 - `knowledge_base_pkey`
 
+### `member_achievements` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | bigint | NO | nextval('member_achievements_id_seq'::regclass) | ✓ |  |
+| `member_email` | text | NO |  |  | ✓ |
+| `metric_slug` | text | NO |  |  | ✓ |
+| `tier_index` | integer | NO |  |  | ✓ |
+| `earned_at` | timestamp with time zone | NO | now() |  |  |
+| `seen_at` | timestamp with time zone | YES |  |  |  |
+| `notified_at` | timestamp with time zone | YES |  |  |  |
+
+**Foreign keys:**
+- `metric_slug` → `achievement_metrics.slug` (`member_achievements_metric_slug_fkey`)
+
+**RLS policies:**
+- `member_read_own_achievements` (SELECT, roles: authenticated) — (lower(member_email) = lower(COALESCE(auth.email(), ''::text)))
+- `member_update_own_seen` (UPDATE, roles: authenticated) — (lower(member_email) = lower(COALESCE(auth.email(), ''::text))) / CHECK: (lower(member_email) = lower(COALESCE(auth.email(), ''::text)))
+
+**Indexes:**
+- `idx_member_achievements_email`
+- `idx_member_achievements_recent`
+- `idx_member_achievements_unseen`
+- `member_achievements_member_email_metric_slug_tier_index_key`
+- `member_achievements_pkey`
+
 ### `member_activity_daily` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -1206,6 +1280,7 @@
 | `body` | text | NO |  |  |  |
 | `read` | boolean | NO | false |  |  |
 | `created_at` | timestamp with time zone | NO | now() |  |  |
+| `route` | text | YES |  |  |  |
 
 **Triggers:**
 - `zz_lc_email` — BEFORE INSERT/UPDATE
@@ -1765,8 +1840,13 @@
 | `platform` | text | NO |  |  |  |
 | `created_at` | timestamp with time zone | NO | now() |  |  |
 | `updated_at` | timestamp with time zone | NO | now() |  |  |
+| `app_version` | text | YES |  |  |  |
+| `last_used_at` | timestamp with time zone | NO | now() |  |  |
+| `revoked_at` | timestamp with time zone | YES |  |  |  |
+| `environment` | text | NO |  |  |  |
 
 **Check constraints:**
+- `push_subscriptions_native_environment_check`: CHECK ((environment = ANY (ARRAY['development'::text, 'production'::text])))
 - `push_subscriptions_native_platform_check`: CHECK ((platform = ANY (ARRAY['ios'::text, 'android'::text])))
 
 **Foreign keys:**
@@ -1780,8 +1860,9 @@
 - `member can manage own native push token` (ALL, roles: public) — (auth.email() = member_email) / CHECK: (auth.email() = member_email)
 
 **Indexes:**
-- `push_subscriptions_native_member_platform_idx`
+- `push_subscriptions_native_active_member_idx`
 - `push_subscriptions_native_pkey`
+- `push_subscriptions_native_token_uniq`
 
 ### `qa_submissions` · RLS
 
@@ -2295,7 +2376,7 @@
 
 ---
 
-## Cron Jobs (13)
+## Cron Jobs (14)
 
 | Job | Schedule | Active | Command preview |
 |---|---|---|---|
@@ -2307,6 +2388,7 @@
 | `vyve_recompute_company_summary` | `0 2 * * *` | ✓ | `SELECT public.recompute_company_summary();` |
 | `vyve_recompute_member_stats` | `*/15 * * * *` | ✓ | `SELECT public.recompute_all_member_stats();` |
 | `vyve_schema_snapshot` | `0 3 * * 0` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `vyve-achievements-sweep-daily` | `0 22 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-certificate-checker` | `0 9 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-daily-report` | `5 8 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-reengagement-daily` | `0 8 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
