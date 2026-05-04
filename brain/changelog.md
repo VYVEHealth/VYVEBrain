@@ -1,3 +1,93 @@
+## 2026-05-04 PM-1 (Email pipeline silent failure + watchdog · 6 commits)
+
+### TL;DR
+
+Daily/weekly/monthly internal reports stopped landing in `team@vyvehealth.co.uk` on 28 April. Dean noticed manually 6 days later. Diagnosed end-to-end as a Brevo recipient-MX cache issue independent of public DNS: `team@` mailbox was hard-bouncing for one specific upstream change at GoDaddy/Microsoft Exchange (the personal Microsoft Exchange via GoDaddy account briefly broke around 28 April morning, healed at the inbox layer, but Brevo's outbound mail server kept the failed-MX cached well past public DNS TTL and the address sat on Brevo's blocked-contacts list). Public DNS, MX records, SPF, DKIM, DMARC all verified correct on GoDaddy panel; inbound to `team@` confirmed working from Dean's phone before any Brevo retest landed. Fixed by waiting ~3 hours for Brevo's resolver chain to expire its cached MX, with diagnosis aided by a "Check configuration" click on Brevo's dashboard which validates outbound auth (passed all green) but does NOT refresh recipient-MX cache. Added 12 backfilled reports to `team@` covering 24 Apr → 3 May (10 dailies + 1 weekly + April monthly), plus duplicate copies sent to Dean+Lewis Hotmail accounts during the wait window. Built `email-watchdog` EF + 30-min cron + 6h-suppression alert table — never miss this class of failure silently again. Brain `master.md` §16 corrected (the userMemories cache had it wrong: `team@` is Microsoft Exchange via GoDaddy, never was Google Workspace).
+
+### Why this happened
+
+Brevo's mail-out infrastructure caches MX records for recipient domains independent of public DNS TTL. When `team@vyvehealth.co.uk` started hard-bouncing on 28 April (something on the GoDaddy/Microsoft Exchange side — likely a tenant/alias config blip that resolved itself), Brevo's smtp-relay servers logged the bounce, added `team@` to the transactional blocked-contacts list, and continued to route subsequent attempts to whatever stale MX they'd cached. Even after the upstream issue self-healed and inbound mail to `team@` started working again, Brevo kept hitting the broken endpoint. The Brevo dashboard's "Check configuration" button — which Lewis and Dean tried — only validates the *outbound* auth records (SPF, DKIM, DMARC, brevo-code TXT) on the sender's domain. It does NOT touch the recipient MX cache used for *inbound* delivery routing. So all four green ticks appeared, masking the actual issue.
+
+The cron itself was firing every day at 08:05 UTC. The EF was returning success. Brevo's API was returning 200 OK. Every visible signal said the system was healthy. The only place the failure was visible was in `smtp/statistics/events?event=hardBounces` — and nothing was watching that.
+
+The first delivered report after the bounce was a manual canary fire at 14:13 BST today, after ~3 hours of waiting for Brevo's resolver to refresh. Once `team@` started delivering again, the 12 backfilled reports went through cleanly with zero bounces.
+
+### Diagnostics journey
+
+Initial hypothesis: "cron not firing". Wrong — `cron.job_run_details` showed daily-report at jobid 2 firing successfully every day, including this morning. Second hypothesis: "EF erroring". Wrong — manual invoke at 11:19 BST returned `success:true`. Third hypothesis: "Brevo API key revoked or rate-limited". Wrong — Brevo accepted every send with 200 + valid messageId. Fourth hypothesis: "team@ mailbox doesn't exist". Confirmed via `smtp/blockedContacts` showing `team@vyvehealth.co.uk` on the hard-bounce list since 28 April 10:05 UTC, and `smtp/statistics/events?event=hardBounces` showing every send in the window rejected with `550-5.1.1 The email account that you tried to reach does not exist` from `gsmtp`. The `gsmtp` part was a red herring that initially pointed at Google Workspace — the brain's userMemories had `team@` listed as Google Workspace. Dean correctly pushed back: it's Microsoft Exchange via GoDaddy, always has been. The `aspmx.l.google.com` strings appearing in some DNS resolver responses were a stale-cache artefact, not a config truth. After GoDaddy DNS audit (one MX row pointing correctly at `vyvehealth-co-uk.mail.protection.outlook.com`, all TXT records intact, no Google records anywhere), and Dean confirming inbound to `team@` worked from his phone, the only remaining variable was Brevo's own resolver. Wait + retry confirmed that.
+
+### What shipped
+
+#### `daily-report` v8, `weekly-report` v3, `monthly-report` v2 (all 04 May AM)
+
+All three internal-report EFs now accept optional URL/body params for backfill and recipient override:
+- `?date=YYYY-MM-DD` (daily) / `?week_start=YYYY-MM-DD` (weekly) / `?month_start=YYYY-MM` (monthly) — runs the report for that historical window instead of the cron's default "last completed period". Subject prefix becomes `VYVE Daily (backfill)` etc. so receivers can distinguish from cron sends.
+- `?to=email` and `?cc=email` (or POST body equivalents) — override the hardcoded `REPORT_TO` recipient. Used to route 12 backfilled reports to Dean's Hotmail with Lewis cc'd while Brevo's MX cache cleared.
+- Default behaviour with no params unchanged. Cron commands unchanged (no body = no override). The cron commands were temporarily updated mid-session to pass `{"to":"deanonbrown@hotmail.com","cc":"lewisvines@hotmail.com"}` while team@ was broken, then reverted to `{}::jsonb` once Brevo caught up.
+
+#### `email-watchdog` v1 EF + jobid 16 cron (04 May PM)
+
+New EF runs every 30 min via pg_cron job 16 (`*/30 * * * *`). Five checks:
+1. **`daily_report_not_delivered_24h` (critical)** — searches `smtp/statistics/events?tags=daily-report&event=delivered` last 26h for any event to `team@vyvehealth.co.uk`. If none found, alerts. Catches the exact failure mode that bit us today.
+2. **`team_hardbounce` (critical)** — checks last 24h for any hard bounce to `team@`. Latest reason text included in alert detail. Catches new bounce events the moment they appear.
+3. **`team_on_blocklist` (critical)** — checks `smtp/blockedContacts` for `team@`. Flagged immediately if Brevo auto-blocks again.
+4. **`cron_failures` (critical)** — calls `watchdog_cron_failures(hours_back:=6)` RPC, which queries `cron.job_run_details` for any non-`succeeded` status in last 6h. Catches pg_cron-side breakages.
+5. **`bounce_spike` (warn)** — flags if 5+ hard bounces happened across all auto-email tags in the last hour. Catches broader infra issues (member welcomes failing, etc.).
+
+Each alert code is suppressed for 6h via `watchdog_alerts` table after firing, so the inbox doesn't get hammered. Alert email goes to `deanonbrown@hotmail.com` (TO) with `lewisvines@hotmail.com` + `team@vyvehealth.co.uk` (CC) — multi-recipient by design so a single inbox failure can never blind us. Subject prefix: `🚨 VYVE Email Pipeline Alert — N issues detected`. First fire of the watchdog (manual smoke test 13:41 UTC) correctly caught the 9 historical hard-bounces from this morning; suppression marker inserted so it doesn't re-alert as the data ages out naturally over 6h.
+
+#### Schema additions
+
+- `watchdog_alerts` table — `id uuid pk`, `code text`, `severity text`, `title text`, `detail text`, `fired_at timestamptz`. Two indexes on `fired_at desc` and `(code, fired_at desc)`. RLS enabled, no policies (service-role only).
+- `watchdog_cron_failures(hours_back int)` SQL function — SECURITY DEFINER, returns rows from `cron.job_run_details` joined to `cron.job` where status != succeeded.
+
+#### Backfilled reports (12 total, all delivered to team@)
+
+After Brevo MX cache cleared at ~14:13 BST, fired the full backfill batch to `team@vyvehealth.co.uk` direct: 10 daily reports for activity dates 24 Apr → 3 May, 1 weekly report covering 27 Apr – 3 May, 1 April monthly. All 12 accepted by Brevo with zero bounces. Earlier in the session the same 12 were also fired to `deanonbrown@hotmail.com` cc `lewisvines@hotmail.com` while waiting on the cache to clear — those duplicates landed in the Hotmail inboxes and remain there as harmless extras (delete if not wanted). Subjects are clearly marked `VYVE Daily (backfill)` etc. so they're distinguishable from the regular cron fires that resume tomorrow morning.
+
+#### Audit forwarder (one-off, deleted)
+
+Built `forward-emails-audit` EF on the fly to re-render and forward the 5 re-engagement emails sent to members during the bounce window (Vicki A_7d, Conor A_14d, Kelly C1_7d, Cole A_14d, Lewis C1_30d) plus 5 certificate summary emails (all Dean's own from 28 April: cardio 30/60/90, workouts 30/60). Sent with `[AUDIT]` subject prefix and a yellow banner in the email body so the forwards are unmistakably distinguishable from production sends. Used `re-engagement-scheduler` v7's exact build helpers (buildA, buildC1) so the re-renders are functionally identical to what members received — only the AI-generated personalisation lines differ slightly because Anthropic isn't deterministic. EF deleted after firing per session policy on one-off helpers.
+
+#### Brain corrections (this commit)
+
+The userMemories cache had `team@vyvehealth.co.uk` listed as a personal Google Workspace account. This was wrong — the account has been Microsoft Exchange via GoDaddy throughout. The `aspmx.l.google.com` strings showing up in some DNS resolver responses today were stale-cache artefacts from somewhere upstream of those resolvers, not a config truth. master.md §16 (GDPR/Compliance) and §22 (Open Decisions) corrected. New §23 hard rule for the Brevo MX cache lag pattern. §19 status updated.
+
+### Audit of what else might have been missed
+
+Pulled every Brevo event in the 28 Apr – 4 May window (292 events total across all tags + recipients) to confirm nothing other than `team@`-bound reports was affected. Findings:
+- **0 new members in window** — no welcome emails missed (would've gone to member addresses anyway, not affected by team@ block).
+- **5 re-engagement emails** sent to members (Vicki 29 Apr, Conor + Kelly 30 Apr, Cole 3 May, Lewis 4 May) — all delivered cleanly to member addresses, several opened/clicked. Re-engagement EF sends to member email only, no `team@` cc, so the team@ outage didn't affect them at all.
+- **5 certificate emails** earned by Dean on 28 April morning at 09:00 UTC — landed in Dean's Hotmail just before the team@ bounce kicked in at 10:05 UTC. Delivered + opened + clicked.
+- **38 platform_alerts emails** to Dean and Lewis Hotmail — all delivered. The alert types reveal an elevated runtime error rate in the PWA worth a separate look (see backlog): `network_error_member-dashboard` (8), `network_error_register-push-token` (8), `network_error_notifications` (8), `network_error_members` (6), `network_error_sync-health-data` (2), `skeleton_timeout_index` (12), `skeleton_timeout_nutrition` (2), `skeleton_timeout_habits` (2), `js_error` (8). These delivered fine but indicate broader PWA reliability work needed.
+- **Zero certs earned, zero check-ins, zero onboarding** in the window — the daily reports for those 7 days had little real activity content anyway.
+
+Summary: the only thing actually missed was the 9 reports to team@. All backfilled. Everything else either delivered fine to member or admin addresses, or simply didn't get triggered in the window.
+
+### Verification
+
+- Manual canary fire to `team@` at 14:13 BST → delivered cleanly, no bounce, contact removed from blocked list (only `deanonbrown2@hotmail.com` remains on the list — old test address, unrelated).
+- 12 backfill reports fired to `team@` → all 12 returned `{success:true}` from EFs, Brevo events show `delivered` for all (no bounces).
+- Watchdog manual smoke fire at 13:41 BST → correctly identified 9 historical hard bounces, classified as `critical`, fired alert email through Brevo with multi-recipient (Hotmail + Hotmail + team@), recorded in `watchdog_alerts` for 6h suppression.
+- `cron.job` table confirms email-watchdog jobid 16 active on `*/30 * * * *` schedule. Daily/weekly/monthly cron commands reverted to default body `{}::jsonb` (no recipient override) — tomorrow's 09:05 BST daily lands in `team@` automatically.
+
+### Scoreboard
+
+- Cron firing: ✅ (was always firing, never the issue)
+- EFs running: ✅ (always returned success, were never the issue)
+- Brevo outbound auth: ✅ (DKIM, SPF, DMARC, brevo-code all green throughout)
+- DNS at GoDaddy: ✅ (single correct MX row pointing at `vyvehealth-co-uk.mail.protection.outlook.com`)
+- `team@` mailbox inbound: ✅ (working since some point on or before 4 May; Dean's manual test confirmed)
+- Brevo MX cache: ✅ (cleared by 14:13 BST after ~3h of patient waiting)
+- 12 backfilled reports: ✅ delivered to team@
+- Watchdog: ✅ live, running every 30 min, multi-recipient alerts
+- Brain: ✅ corrected (Microsoft Exchange via GoDaddy, not Google Workspace)
+
+### Next session
+- Daily/weekly/monthly cron resumes at 08:05 UTC tomorrow with default behaviour. Watchdog will tell us within 30 min if anything fails. Open question: should `email-watchdog` itself be monitored (meta-watchdog)? For now, the watchdog's own delivery would be visible in the same alerts the next day if it stopped firing — acceptable.
+- Platform alerts spike (38 in 7 days) deserves a look — added to backlog.
+
+
 ## 2026-04-29 PM-4 (HealthKit auto-recovery + EF dup-fixes + sync-gap closure · 7 commits)
 
 ### TL;DR
