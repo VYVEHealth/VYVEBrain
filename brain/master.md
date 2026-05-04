@@ -820,7 +820,10 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
-## 19. Current status — 04 May 2026 PM-8
+## 19. Current status — 04 May 2026 PM-9
+
+**04 May 2026 PM-9 — Offline data layer session 3 (paint-cache-first across remaining surfaces).** Audit-driven scope reduction: walking through index, engagement, leaderboard, sessions, habits showed most pages already had bespoke paint-cache-first localStorage caches. Two surgical fixes shipped: (1) engagement.html `loadAchievements` flipped from cache-on-failure to paint-cache-first with diff-checked re-render (achievements tab now feels instant on every switch); (2) habits.html offline cache horizon extended (offline branch no longer requires <24h freshness — stale data > empty state when on a flight or in a gym). SW cache `v2026-05-04e-offline-habits-weight` → `v2026-05-04f-cache-paint-first`. vyve-site commit [`09b51953`](https://github.com/VYVEHealth/vyve-site/commit/09b519538f3e1a872c261eb657f5b40bee40d056). The original "every page feels slow" complaint was largely a Phase-3 achievements-tab issue masquerading as universal — the audit caught that. Sessions 2b (log-food client_id rework) and 2c (wellbeing-checkin offline UX) remain in backlog.
+
 
 **04 May 2026 PM-8 — Offline data layer session 2a (habits + weight log writes).** Extended the offline-tolerance pattern from workouts to two more high-frequency surfaces: `daily_habits` (logHabit / undoHabit / autotick) and `weight_logs` (the nutrition.html weight tracker POST). Idempotent via existing natural-key on_conflict + merge-duplicates — re-flushes are no-ops without needing client_id. Three more partial unique indexes added (`weight_logs`, `nutrition_logs`, `wellbeing_checkins` — last two pre-staged for sessions 2b/2c). SW cache `v2026-05-04d-offline-data` → `v2026-05-04e-offline-habits-weight`. vyve-site commit [`9a9e7cec`](https://github.com/VYVEHealth/vyve-site/commit/9a9e7cecc9723a9493d209e929572ab252d914e2). Sessions 2b (log-food rework around client_id row identity) and 2c (wellbeing-checkin offline UX with deferred AI response) remain in backlog.
 

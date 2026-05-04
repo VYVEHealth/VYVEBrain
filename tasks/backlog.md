@@ -1,3 +1,9 @@
+## Added 04 May 2026 PM-9
+
+- **Offline data layer session 3 — DONE 04 May PM-9.** Audit-driven scope reduction. Two surgical fixes shipped: engagement.html `loadAchievements` flipped from cache-on-failure to paint-cache-first; habits.html offline cache horizon extended (any age, not <24h). Most pages already had bespoke paint-cache-first patterns (`vyve_engagement_cache`, `vyve_lb_cache_*`, `vyve_habits_cache_v2`, home dashboard cache) that didn't need touching. SW cache `v2026-05-04f-cache-paint-first`. vyve-site commit `09b51953`.
+
+- **Cache key hygiene pass (low priority, future).** The bespoke localStorage caches across vyve-site evolved organically: `vyve_engagement_cache`, `vyve_lb_cache_<email>_<range>_<scope>`, `vyve_habits_cache_v2`, the home dashboard cache (no explicit prefix), `vyve_ach_grid`. Each uses slightly different key shapes, freshness windows (24h vs none vs custom), and email-scoping rules. They all work — user-visible result is paint-cache-first across all of them — but a future hygiene pass could unify them under `VYVEData.cacheGet`/`cacheSet` (already exists from session 1, currently used only by workouts modules). Not blocking anything; defer until there's an actual paper-cut from the divergence (e.g., a member sees one page hydrated from cache and the next page showing a skeleton because their localStorage key shape changed mid-version).
+
 ## Added 04 May 2026 PM-8
 
 - **Offline data layer session 2a — DONE 04 May PM-8.** `habits.html` + `nutrition.html` weight tracker wired through `VYVEData.writeQueued`. Schema: `client_id` + partial unique indexes added to `weight_logs`, `nutrition_logs`, `wellbeing_checkins` (last two pre-staged for 2b/2c). SW cache `v2026-05-04e-offline-habits-weight`. vyve-site commit `9a9e7cec`. Combined with session 1, the four highest-frequency member-authored writes are now offline-tolerant.

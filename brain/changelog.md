@@ -1,3 +1,52 @@
+## 2026-05-04 PM-9 (Offline data layer session 3: paint-cache-first audit + 2 surgical fixes · 1 site commit, 1 brain commit)
+
+### TL;DR
+
+Session 3 was originally specced as "extend cache-then-network read pattern across engagement, leaderboard, sessions, habits, plus the parallel reads in wellbeing-checkin." Walking through the actual code, **most of that work was already done** — every page that warranted caching had a bespoke `vyve_<page>_cache_*` localStorage entry doing paint-cache-first already. The session distilled to two surgical fixes and a sessions.html footnote.
+
+### What I found page-by-page
+
+- **index.html** — already cache-first via `writeHomeCache`/`readHomeCache` keyed on member email. `loadDashboard` is the network refresh; `waitForAuth` paints from cache before kicking it off. Nothing to do.
+- **leaderboard.html** — already cache-first via `vyve_lb_cache_<email>_<range>_<scope>`. The cacheKey scopes by range AND scope tabs, so each tab has its own paint-from-cache. Nothing to do.
+- **engagement.html summary** — already cache-first via `vyve_engagement_cache` (24h horizon). `_ec` paint-first at L777 is correct. Nothing to do.
+- **engagement.html achievements** — `loadAchievements` was cache-on-FAILURE only, not paint-cache-first. **This was the actual bug.** Every tab switch into Achievements triggered the skeleton loader even when a cached payload was available. Fixed in this session.
+- **habits.html** — already cache-first (`vyve_habits_cache_v2`). One subtle bug: the offline branch required cache age <24h, so a member offline >1 day got an empty state. **Fixed in this session** — offline branch now accepts any cache age. Online branch still respects 24h freshness for cache priming.
+- **sessions.html** — schedule data is hardcoded JS literals. Already 100% offline. Nothing to do.
+- **wellbeing-checkin.html reads** — explicitly part of session 2c scope (offline UX). Not duplicating.
+
+### What shipped
+
+**engagement.html `loadAchievements` flipped to paint-cache-first.** New flow: read `localStorage.vyve_ach_grid` → if present, render immediately, hide skeleton, show content (`var rendered = true`). Then fetch from EF → compare cached vs fresh JSON via `JSON.stringify` round-trip → only re-render if differ (no flicker on tab switch when nothing has changed). On network failure: if `rendered` is true, silent (user keeps last-known grid); if no cache, error state. The cache key, payload shape, and EF call are all unchanged — pure UX-tier improvement.
+
+**habits.html offline cache horizon extended.** The `if (!navigator.onLine)` branch's `(Date.now() - _hc.ts < 86400000)` freshness check was dropped. Stale data > empty state when offline. Online priming branch (~7 lines below) keeps the 24h check. The `VYVEOffline.showBanner(_hc.ts)` call still surfaces the cached timestamp so the member knows what they're looking at.
+
+### Service worker
+
+`vyve-cache-v2026-05-04e-offline-habits-weight` → `vyve-cache-v2026-05-04f-cache-paint-first`.
+
+### Verification
+
+vyve-site commit [`09b51953`](https://github.com/VYVEHealth/vyve-site/commit/09b519538f3e1a872c261eb657f5b40bee40d056). Re-fetched all three files: SW cache key landed; engagement.html has Paint-cache-first comment block + `var rendered = false` + flicker-avoid `JSON.stringify` comparison; habits.html offline branch no longer contains `86400000` (online branch unchanged). Schema unchanged this session — no migration ran.
+
+### Why the audit was the deliverable
+
+Worth flagging explicitly because session-3-as-originally-specced would have been a multi-hour rewrite of code that was already correct. The bespoke caches in vyve-site evolved organically across pages and they all do roughly the right thing — they're not centralised through `VYVEData.fetchCached` because they predate it, but the user-visible result is identical. Forcing them through the new module would be churn for churn's sake.
+
+The honest residual gap is that `vyve_engagement_cache`, `vyve_lb_cache_*`, `vyve_habits_cache_v2`, and the home dashboard cache all use slightly different key shapes, freshness windows, and email-scoping rules. A future hygiene pass could unify them under `VYVEData.cacheGet`/`cacheSet` (which already exist from session 1) but it's not blocking anything.
+
+### Combined effect across sessions 1-3
+
+Through PM-7 / PM-8 / PM-9, the offline data layer doctrine is fully realised on the four highest-frequency surfaces:
+
+- **Workouts** (programme load, history, custom workouts, set logging, completed-workout, programme-advance) — fully offline-tolerant via paint-cache-first reads + outbox-queued writes with client_id idempotency.
+- **Habits** (logHabit, undoHabit, autotick) — fully offline-tolerant via outbox-queued writes with natural-key idempotency + paint-from-cache on entry (now any-age offline).
+- **Weight log** — fully offline-tolerant via outbox-queued POST.
+- **Engagement page (dashboard summary + achievements grid)** — both paint instantly from cache on every visit.
+
+Outstanding (parked in backlog): nutrition food log (session 2b — needs UI rework around client_id row identity), wellbeing check-in (session 2c — needs deferred AI response UX). Both are scoped, neither is blocking.
+
+---
+
 ## 2026-05-04 PM-8 (Offline data layer session 2a: habits + weight log writes · 1 site commit, 1 schema migration, 1 brain commit)
 
 ### TL;DR
