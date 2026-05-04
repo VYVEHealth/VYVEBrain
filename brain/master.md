@@ -311,7 +311,7 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All public tables ha
 | `send-session-recap` | v13 | Session recap emails. |
 | `send-journey-recap` | v13 | Journey recap emails. |
 | `send-password-reset` | v4 | Password reset flow. |
-| `re-engagement-scheduler` | v22 | A/B/C1/C2/C3 streams. Cron 8:00 UTC daily. |
+| `re-engagement-scheduler` | v8 (build 26) | Two streams: A (no consent + no activity) and B (onboarded but dormant). Cron 8:00 UTC daily. C1/C2/C3 retired 4 May (legacy two-surface split — Kahunas app + portal). |
 | `daily-report` | v23 | Cron 8:05 UTC daily. |
 | `weekly-report` | v16 | Weekly report generation. Cron 08:10 Monday UTC. |
 | `monthly-report` | v16 | Monthly report generation. Cron 08:15 1st of month UTC. |
@@ -827,7 +827,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 - Theme system (dual dark/light tokens) live. `nav.js` body-prepend pattern. Cache-first dashboard. Consent gate built and wired. Viewport zoom disabled. `target="_blank"` audit complete.
 - Service worker network-first for HTML + skipWaiting + clients.claim. **Push event listener + notificationclick handler shipped 28 April PM** (`vyve-site@124ecb53`) — fixed silent web push breakage that had been live since initial push rollout. Current cache: `vyve-cache-v2026-04-29h-fullsync-btn`.
 - Activity logging via `log-activity` v23 (Make retired from Dean's stack).
-- Re-engagement system live — streams A/B/C1/C2/C3, `engagement_emails` live.
+- Re-engagement system live — two-stream model (A: no consent + no activity; B: onboarded but dormant), `engagement_emails` live. C1/C2/C3 retired 4 May.
 - Certificate automation — `certificate-checker` v24, global sequential numbers, Brevo delivery.
 - Running plan generator — Haiku 4096 max_tokens, Supabase-first, `member_running_plans` table.
 - **Admin Console Shell 1 + 2 + 3 Sub-scope A** — live at `admin.vyvehealth.co.uk`.

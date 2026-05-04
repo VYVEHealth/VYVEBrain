@@ -1,3 +1,41 @@
+## 2026-05-04 PM-2 (Re-engagement scheduler — single-app rewrite · 1 commit)
+
+### TL;DR
+
+Re-engagement scheduler had been carrying a legacy stream model from when VYVE ran two surfaces — Kahunas as the app (habits/workouts) and the website (sessions/check-ins). A member could be active in one and dormant in the other, hence the C1/C2/C3 split. That world is gone. One app now, one signal. Collapsed to two streams: **A** (no consent + no activity — never opened the app) and **B** (onboarded but dormant — opened it, then went quiet). Deployed as v8 build 26. Dry-run on 15 active members classified correctly: 5 active members skipped, 4 dormant routed to B_3d with AI overlay, 3 consent-pending handled correctly (1 suppressed from old A run, 1 overwhelm-capped, 1 excluded), 2 excluded list. No errors. C1/C2/C3 rows in `engagement_emails` left in place — they're load-bearing for suppression and audit; new sends only ever write A or B keys.
+
+### Why this needed to change
+
+The old gate for Stream A was `kahunas_qa_complete = false`. With Kahunas retired and onboarding_v37 owning the questionnaire, that flag is meaningless for new members and inverted in meaning for old ones. Worse, Stream A copy says "your workout plan is assigned, your programme is ready, just download the app" — which only makes sense if someone *has* completed onboarding. So the gate was firing for the wrong people and saying the wrong things.
+
+The C1/C2/C3 split assumed app dormant ≠ portal dormant. With one PWA + native wrap, all four signals (`daily_habits`, `workouts`, `session_views`, `wellbeing_checkins`) come from the same surface. The "active in sessions but not tracking habits" subtlety isn't worth a stream — that's a job for in-app push notifications (already shipped via achievements + streak/habit reminders), not for an email.
+
+### What shipped
+
+Stream A — `privacy_accepted_at IS NULL` AND no activity rows anywhere. Cadence 48h / 96h / 7d / 14d from `created_at`. Subjects + bodies carried forward from v7's A copy with AI persona overlay (Haiku) on the first three rungs. The fourth is plain — last nudge.
+
+Stream B — anyone with consent done OR any activity, currently dormant (`lastAny < hoursAgo(168)`). Cadence 3d / 7d / 14d / 30d from last activity timestamp (or `onboarding_completed_at`, or `created_at` as fallback). Subjects + bodies adapted from v7's B copy with persona overlay across all four rungs.
+
+Active in last 7d → no stream, no email.
+
+`isOverwhelmed()` cap (1 email per stream) preserved. `EXCLUDED_EMAILS` set preserved (test, maketest, team). Brevo sender preserved (`team@vyvehealth.co.uk`). All copy stays as carried forward — Lewis to do a copy pass against the new ladder when ready (added to backlog, not blocking).
+
+### Brain drift caught and fixed
+
+`master.md` had `re-engagement-scheduler` at v22 — that was the Supabase build counter (now 26 after this deploy), not the source-level version. The deployed v7 source had been there since before the brain note was last touched. Updated the EF inventory line to surface both numbers (`v8 (build 26)`) so we don't conflate them again.
+
+### Why this matters for the achievements/push split
+
+The brain has been heading toward push-as-realtime, email-as-heavyweight. This rewrite finishes that picture on the email side — re-engagement is now strictly "you didn't show up at all" or "you stopped showing up". The lightweight "1 away from your next milestone" nudges are push's job (already shipped). No more email noise on cohorts who are clearly active.
+
+### Files touched
+
+- `re-engagement-scheduler` EF — full v8 deploy via `Supabase:deploy_edge_function` (build 26).
+- `brain/master.md` — §7 EF inventory line; §19 status line.
+- `brain/backlog.md` — replaced the vague "Re-engagement automations x3 (blocked on Lewis email copy)" with a concrete copy-review item against the new A/B ladder.
+
+---
+
 ## 2026-05-04 PM-1 (Email pipeline silent failure + watchdog · 6 commits)
 
 ### TL;DR
