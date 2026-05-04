@@ -102,7 +102,7 @@ Pre-call briefs via Sales Intelligence skill (8-step deep dive, ROI calculator, 
 | Portal hosting | GitHub Pages — `VYVEHealth/vyve-site` (private) → `online.vyvehealth.co.uk` |
 | Marketing hosting | GitHub Pages — `VYVEHealth/Test-Site-Finalv3` → `www.vyvehealth.co.uk` |
 | Admin console | Separate host — `admin.vyvehealth.co.uk` — served by `vyve-command-centre` repo |
-| iOS native wrapper | `~/Projects/vyve-capacitor` (NOT a git repo — backlog) wrapping the PWA into a Capacitor native binary. Live in App Store as **VYVE Health 1.2** (approved 28 April 2026). Bundles `@capgo/capacitor-health@8.4.7` + native APNs push registration via `AppDelegate.swift` bridge methods. |
+| Native app delivery | `~/Projects/vyve-capacitor` (NOT a git repo — backlog) is the Capacitor project that bundles the `vyve-site` web shell into both store binaries. **iOS:** App Store as **VYVE Health 1.2** (approved 28 April 2026), with `@capgo/capacitor-health@8.4.7` + native APNs registration via `AppDelegate.swift` bridge methods. **Android:** Play Store live (both stores shipping the same web shell — single codebase, two binaries). The browser at `online.vyvehealth.co.uk` is an account-management fallback only — 100% of new members install via App Store / Play Store. |
 | Brain | `VYVEHealth/VYVEBrain` — markdown source of truth, session-loaded at start of every Claude session |
 | Authentication | Supabase Auth. **`auth.js` v2.3** gates every portal page. `VYVE_RETURN_TO_KEY` in localStorage. Admin Console uses separate admin-side session. |
 | Primary datastore | Supabase — project `ixjfklpckgxrwjlfsaaz` (West EU/Ireland, Pro plan). 76 public tables as of 28 April 2026. |
@@ -127,7 +127,7 @@ Pre-call briefs via Sales Intelligence skill (8-step deep dive, ROI calculator, 
 | Typeform | Replaced by `welcome.html` (stream-aware since 19 April). |
 | Looker Studio | Replaced by HTML dashboards on GitHub Pages. |
 | Auth0 | Gone entirely. Supabase Auth primary. Never say "Auth0 gated". |
-| Kahunas | Replaced by the PWA. Never reference in member copy — product is "VYVE Health app". |
+| Kahunas | Replaced by the VYVE Health app. Never reference in member copy — product is "VYVE Health app". |
 | Make (Dean) | Retired from Dean's stack. All activity writes via `log-activity` EF. |
 | onboarding_v8.html | Superseded by `welcome.html`. |
 
@@ -374,9 +374,9 @@ Approximately 32 functions across `seed-*`, `patch-*`, `trigger-*-workout`, `set
 
 ---
 
-## 8. Portal pages & PWA infrastructure
+## 8. Portal pages & web shell
 
-All portal pages live at `online.vyvehealth.co.uk`. Every page is gated behind Supabase Auth (`auth.js` v2.3).
+All portal pages live at `online.vyvehealth.co.uk` and are bundled inside the iOS + Android Capacitor binaries via `npx cap copy` from `~/Projects/vyve-capacitor`. The web URL itself is the browser-accessible account-management fallback — the *member experience* (the app) is delivered exclusively through the App Store and Play Store binaries. Every page is gated behind Supabase Auth (`auth.js` v2.3).
 
 ### Core pages
 
@@ -816,7 +816,7 @@ Rebrand *The Everyman* → *The VYVE Podcast* in progress. Guest expression-of-i
 | `welcome.html` | Post-payment onboarding (stream picker + questionnaire). |
 | `vyve-dashboard-live.html` | Employer dashboard for account management. |
 
-Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Portal pages are PWA-enabled with offline capability.
+Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The portal pages at `online.vyvehealth.co.uk` are bundled inside the iOS + Android Capacitor binaries; the web URL itself is a browser-accessible account-management fallback (still service-worker-cached for offline resilience).
 
 ---
 
@@ -1017,7 +1017,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 | **Employment Rights Act** | SSP changes 6 April 2026 — strongest current economic argument for preventative wellbeing. Use in all sales conversations. |
 | **Theme system** | All portal pages use dual dark/light CSS token blocks. Never single `:root`. Always include `theme.js` before closing `head`. |
 | **EF deploys** | Always require full `index.ts`. `verify_jwt:false` for public-facing. |
+| **VYVE is not a PWA — it's two Capacitor binaries** | The product is delivered as the **iOS App Store** binary and the **Google Play Store** binary, both wrapping the `vyve-site` web shell via Capacitor. `online.vyvehealth.co.uk` is a browser-accessible **account-management fallback** for members who need web access — it is *not* the member experience. Don't reintroduce "add to home screen" / PWA install banners (removed 04 May PM-3). Member-facing copy says "the VYVE Health app" — never "the PWA". The phrase "PWA" is internal-only and refers strictly to the legacy infrastructure (service worker, `offline.html`) that still services the web fallback. |
 | **iOS Capacitor wrap is LIVE** | App Store binary 1.2 approved 28 April. HealthKit + native push permission flow in production. Cohort-wide HK autotick available to any opted-in iPhone member. |
+| **Push delivery state — three channels, one working** | **APNs (iOS):** live and shipping via `push-send-native` v5+. Auto-revokes 410/400 BadDeviceToken. **FCM (Android):** `register-push-token` accepts and stores Android tokens in `push_subscriptions_native`, but `push-send-native` v5 explicitly skips them with `reason: "android FCM not implemented (backlog #6)"`. Android members receive in-app `member_notifications` rows + correct tap routing — but no system banner. **VAPID web push:** retired. `push_subscriptions` table still exists, last sub registered 15 April 2026 (pre-iOS-1.2). `send-push` v12 still includes the web fan-out leg but it's a no-op for current members. Don't invest further in VAPID; FCM is the next push priority. |
 | **Website footer** | Standardise all footers to "VYVE Health CIC" (not "Ltd") — legal structure. |
 | **Enterprise references** | Named prospects not included in brain or investor docs. Use generic language. |
 | **Pre-launch / staging files in `vyve-site` root** | "No inbound links + no backend wiring" is NOT a sufficient signal that an HTML file is orphaned. Some files are staged in the web root unlinked from nav while waiting on a clinical/Lewis/Phil sign-off (e.g. `VYVE_Health_Hub.html`). Never archive or delete a substantial standalone HTML file from `vyve-site` without confirming with Dean first. |
@@ -1112,7 +1114,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 
 ### Repos
 
-- `VYVEHealth/vyve-site` — portal PWA (GitHub Pages at `online.vyvehealth.co.uk`).
+- `VYVEHealth/vyve-site` — portal web shell (GitHub Pages at `online.vyvehealth.co.uk`; bundled into both Capacitor binaries via `npx cap copy`).
 - `VYVEHealth/Test-Site-Finalv3` — marketing/onboarding site (`www.vyvehealth.co.uk`).
 - `VYVEHealth/VYVEBrain` — AI source-of-truth document store (this repo).
 - `vyve-command-centre` — Lewis's internal ops dashboard + admin console.

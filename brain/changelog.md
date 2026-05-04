@@ -1,3 +1,63 @@
+## 2026-05-04 PM-6 (In-app notifications tap-routing + brain language overhaul: PWA → Capacitor binaries · 1 site commit, 1 brain commit)
+
+### TL;DR
+
+Two things shipped together. **(1)** The bell-icon notifications sheet on `index.html` had non-tappable rows since the routing infrastructure landed on 29 April PM-2 — `member_notifications.route` was populated correctly, the renderer just didn't use it. Patched: each row is now a `<button data-id data-route>` with a delegated click handler that marks-read for that id only and navigates via `location.href = route`. Bulk mark-read on sheet open removed; pink unread dot now correctly means "not yet tapped". Clear-all button retained for explicit bulk-clear. **(2)** Audit of "PWA" mentions across master.md surfaced misleading framing now that both stores are live — iOS App Store binary 1.2 (since 28 April) and Play Store binary now both shipping the same `vyve-site` web shell via Capacitor. 100% of new members install via the stores; `online.vyvehealth.co.uk` is a browser-accessible account-management fallback, not a member experience. Stripped misleading PWA references; added two new §23 hard rules covering the model and the actual push delivery state (APNs live, Android FCM stubbed-but-skipped in `push-send-native` v5, VAPID web push functionally retired).
+
+### What shipped — notifications routing
+
+- vyve-site commit `2fb5a49a` (`index.html` + `sw.js`)
+- Renderer change: `<div class="notif-item">` → `<button class="notif-item" data-id="{id}" data-route="{route}">`
+- New delegated handler on `#notif-list`: reads `data-id` + `data-route`, fires per-id mark-read POST, closes sheet, `location.href = route`
+- Removed: bulk mark-read on `openNotifSheet()` open (was firing on every sheet open regardless of taps)
+- CSS: button defaults reset (`border:0; width:100%; text-align:left; font:inherit; color:inherit`), pointer cursor, `:active` background feedback, `-webkit-tap-highlight-color:transparent`
+- SW cache: `v2026-05-04b-habits-remind` → `v2026-05-04c-notif-routing`
+- Verification: post-commit re-fetch confirmed `data-route` + `list.onclick=async function` present, bulk-mark-on-open removed, cache version live
+
+### What shipped — brain language overhaul
+
+Seven discrete edits to master.md, all single-occurrence replacements:
+
+1. §8 header: "Portal pages & PWA infrastructure" → "Portal pages & web shell"; preamble added explaining bundling model
+2. §5: replaced "iOS native wrapper" row with "Native app delivery" row covering both stores explicitly; dropped "wrapping the PWA" phrase
+3. §18: "Portal pages are PWA-enabled with offline capability" → bundled-into-binaries framing with web URL as fallback
+4. §24: "portal PWA" → "portal web shell" with `cap copy` bundling note
+5. §5 retired-tech Kahunas row: "Replaced by the PWA" → "Replaced by the VYVE Health app"
+6. §23 NEW RULE: "VYVE is not a PWA — it's two Capacitor binaries". Locks in the model. Member-facing copy says "the VYVE Health app" — never "the PWA". The phrase "PWA" is internal-only and refers strictly to the legacy infrastructure (service worker, `offline.html`) that still services the web fallback.
+7. §23 NEW RULE: "Push delivery state — three channels, one working". APNs live via `push-send-native` v5+. FCM: `register-push-token` accepts/stores Android tokens but `push-send-native` v5 explicitly skips with `reason: "android FCM not implemented (backlog #6)"`. VAPID web push: 10 dead subs, last created 15 April, no investment.
+
+### Why this matters
+
+The PWA framing was actively misleading — Dean asked the question that prompted this audit because Claude was generating responses about "the PWA" as though that was still the member experience. It's not. iOS members install the App Store binary; Android members install the Play Store binary. Both binaries wrap the same `vyve-site` web shell via Capacitor. The web URL exists as a browser-accessible account-management surface — not as the product. Without this rewrite, future sessions would keep producing responses that conflate the legacy PWA infrastructure (which still exists, still services the web fallback) with the member experience (which is the native app, full stop).
+
+### Diagnosis log — push delivery audit
+
+Triggered by the brain rewrite — needed an honest answer on "is web push dead?" before committing the §23 push rule.
+
+- `push_subscriptions_native`: 5 iOS tokens (4 members, last_used today), 2 Android tokens (2 members, last_used 03 May)
+- `push_subscriptions` (VAPID): 10 rows, last `created_at` 2026-04-15 16:21 — 19 days dormant, all pre-iOS-1.2
+- `push-send-native` v5 source review: explicit `if (s.platform === 'ios') iosSubs.push(s); else skipped.push({..., reason: 'android FCM not implemented (backlog #6)'});` — Android tokens stored, never fired
+- `send-push` v12 (the unified fan-out): web VAPID leg still wired but harmless when no web subs match
+
+So the honest state in master.md §23 reflects reality, not aspiration: APNs is the only working channel right now; Android members get the in-app row + correct tap routing but no system banner.
+
+### Files changed
+
+- `vyve-site` commit `2fb5a49a`: `index.html` (+1189 chars), `sw.js` (cache version bump)
+- `VYVEBrain` (this commit): `brain/master.md` (+2220 chars), `tasks/backlog.md` (+1 new section), `brain/changelog.md` (this entry)
+
+### Open follow-ups (now in backlog)
+
+- Wire Android FCM in `push-send-native` (~1 session, pre-req: Firebase service account → `FCM_SERVICE_ACCOUNT_JSON` Supabase secret)
+- Deprecate VAPID web push stack (one-week soak → remove fan-out leg → drop `vapid.js` → drop table after 30-day final soak; defer until FCM ships to avoid churning the push stack twice)
+
+### What didn't ship
+
+- Promotion of the bell-icon list to its own page (e.g. `notifications.html`). Decision: stay embedded in `index.html` for now. The renderer is self-contained and trivial to lift later if Lewis wants notifications accessible from every page (currently only Home shows the bell). Not worth doing pre-emptively.
+- `notifications` EF dual-auth alignment with §23 pattern. The EF is `verify_jwt:false` and does its own bearer-token check internally — works, but inconsistent with the rest of the v13 stack. Architectural drift, not a bug. Backlog candidate for a future polish pass.
+
+---
+
 ## 2026-05-04 PM-5 (Habits 'Remind me in 2h' wired to server-side scheduled push · 1 commit, 1 SQL migration, 2 new EFs, 1 new cron)
 
 ### TL;DR
