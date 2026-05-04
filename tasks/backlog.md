@@ -1,3 +1,9 @@
+## Added 04 May 2026 PM-13b
+
+- **Home dashboard tick lag fix — breadcrumb wiring follow-up — DONE 04 May PM-13b.** PM-13's overlay was a no-op because it walked outbox-only and every wired write site uses direct fetch. Added `vyve_recent_activity_v1` breadcrumb store (2-min TTL) populated by every direct-fetch activity write; overlay now merges outbox + breadcrumbs (deduped by habitId for habits). Wiring: habits.html (yes-tick + autotick + undo strip), cardio.html (added invalidate AND record — was missing both), workouts-session.js completeWorkout, tracking.js onVisitStart. SW v2026-05-04k-home-optimistic. vyve-site commit `1549c84e`.
+
+- **INCIDENT — brain markdown leaked to vyve-site Pages for ~3 minutes — RESOLVED 04 May PM-13b.** First commit attempt this session returned a commit (`e31af6e2`) that wrote brain markdown to vyve-site root instead of the 6 site files I sent. vyve-site is private as a repo but is GitHub Pages source for `online.vyvehealth.co.uk`, so all three URLs were briefly publicly fetchable (HTTP 200 confirmed during window). Closure commit `431bfc0c` removed them; Pages 404'd within 15s. New §23 hard rule added: brain content NEVER goes into vyve-site, and every commit_multiple_files call must verify the post-commit changed_paths match the upserts sent.
+
 ## Added 04 May 2026 PM-13
 
 - **Home dashboard tick lag fix — DONE 04 May PM-13.** Two-part fix for the "tick → 1-10s blank → fills" UX bug. Cache invalidation on every activity write (habits, workouts, weight, food, check-in, session entry — but NOT heartbeats or plan counters). Optimistic outbox overlay in `renderDashboardData` reads pending writes from `vyve_outbox` and bumps pill strip + counts + activity_log so the dot fills instantly even before the EF round-trip returns. Race-safe: only bumps counts if EF response doesn't already reflect today's activity for that type. SW v2026-05-04j-home-optimistic. vyve-site commit `aa978349`.

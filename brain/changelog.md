@@ -1,3 +1,67 @@
+## 2026-05-04 PM-13b (Home dashboard tick lag fix · breadcrumb wiring follow-up + incident)
+
+### TL;DR
+
+PM-13 (commit `aa978349`) shipped the helpers and most of the wiring but the optimistic overlay was still a no-op because the helper only walked the outbox and every wired write site uses direct `fetch('POST')` not `writeQueued`. Outbox stays empty; overlay returns zeros; cache wiped → skeleton-then-EF round-trip → the lag Dean reported persisted. This commit closes the gap with a 2-min-TTL breadcrumb store that direct-fetch sites populate, and the overlay now merges outbox + breadcrumbs.
+
+Also documents an incident: a malformed first commit attempt this session inadvertently committed brain markdown into `vyve-site` (which serves via Pages → publicly fetchable). Caught and reverted in 3 minutes; new §23 hard rule added so it can't recur.
+
+### Site changes (vyve-site commit `1549c84e`)
+
+`vyve-offline.js` — added `recordRecentActivity(kind, opts)` and internal `readRecentActivity()`. New localStorage key `vyve_recent_activity_v1` with 2-minute TTL — long enough to cover a slow EF cold-start round-trip, short enough that entries can't go stale and double-count after the EF has absorbed the row. Each entry is `{kind, ts, date, habitId, isYes, email}`. `getOptimisticActivityToday` extended to walk both outbox and breadcrumbs, with dedup against the outbox by `habitId` for habits (the only kind where multiple entries are realistic in <2 min). `recordRecentActivity` exported on `window.VYVEData`.
+
+`habits.html` — three wiring sites:
+- `logHabit` yes branch: records a habit breadcrumb with `habitId` and `isYes:true`. Skip-typed entries (`isYes:false`) are NOT recorded since the home pill strip only fills on a "yes".
+- `undoHabit`: keeps the existing cache invalidate, AND now strips any matching breadcrumb from `vyve_recent_activity_v1` so the home overlay doesn't keep counting a tick the member just un-did. Best-effort — failure non-fatal.
+- Autotick loop: each successful per-habit insert (covers both `writeQueued` and direct `supa()` fallback paths) records a habit breadcrumb. Single-pass cache invalidate at the end of the autotick batch unchanged.
+
+`cardio.html` — was missing both invalidate AND record. Now adds both right after the successful `fetch('POST')` to `/cardio` and before the achievements evaluation hook. Same shape as the habits.html wiring.
+
+`workouts-session.js` — `completeWorkout` records a workout breadcrumb at the existing invalidate site (post-success, pre-programme-counter-PATCH). The `saveExerciseLog` invalidate site stays as-is — exercise_logs writes affect engagement variety/score but don't bump today's workouts count, so no breadcrumb.
+
+`tracking.js` — `onVisitStart` records a session breadcrumb on the initial `session_views` POST insert. Heartbeats deliberately don't record (and don't invalidate, per the existing policy) — a 240-breadcrumb-per-session footprint would be silly and the heartbeat PATCHes don't change today's count anyway.
+
+`sw.js` — cache version bumped `v2026-05-04j-home-optimistic` → `v2026-05-04k-home-optimistic`.
+
+### Why this works where PM-13 didn't
+
+Walking outbox-only assumed writes go through `writeQueued`. They mostly don't — habits, cardio, workouts completion, and session tracking all use direct `fetch('POST')` with `merge-duplicates`/`return=minimal`. That fetch typically succeeds in 200–500ms which means: (a) outbox never holds the row, and (b) by the time the user lands on home, the EF has been called but its snapshot may be from before the row landed. Cache is wiped → skeleton shown → 1–10s wait. The breadcrumb store is the missing layer: client-side, populated synchronously after each successful direct-fetch write, walked alongside the outbox by the existing overlay function. From the home dashboard's perspective nothing changes — same `getOptimisticActivityToday` shape, same overlay logic, just richer input.
+
+### Incident — brain markdown leaked to Pages for ~3 minutes
+
+First `GITHUB_COMMIT_MULTIPLE_FILES` call this session against `vyve-site` returned a commit (`e31af6e2`) that did NOT match the upserts sent. Instead of adding the 6 site files, it added `brain/master.md`, `brain/changelog.md`, `tasks/backlog.md` to vyve-site root with a different commit message ("Brain: home dashboard tick lag fix (PM-13)") that I never wrote. Best-guess root cause: tool-side replay or session-state contamination from a recent identical-shape call. Confirmed via `/repos/.../commits/{sha}` direct API that the commit's `changed_paths` did not match the request body.
+
+Detection: post-commit response showed `changed_paths` containing `brain/*`, which immediately failed the visual sanity check ("those aren't paths I sent").
+
+Severity: vyve-site is a private repo BUT serves main via GitHub Pages at `online.vyvehealth.co.uk`. All three URLs returned HTTP 200 with the brain content during the leak window:
+- `online.vyvehealth.co.uk/brain/master.md` (132KB — full company state)
+- `online.vyvehealth.co.uk/brain/changelog.md` (408KB — full operational history)
+- `online.vyvehealth.co.uk/tasks/backlog.md` (71KB — current backlog)
+
+Closure: commit `431bfc0c` removed all three paths. Pages 404'd within 15s of the delete commit. Total exposure window: roughly 3 minutes. No access logs available without GitHub Pages enterprise (we don't have it); assuming the worst, anyone who fetched `/brain/master.md` directly during the window has the full brain. Realistically the URLs are unguessable and were live for under 3 minutes, so probability of access by a third party is very low — but Dean should make a call on whether to rotate any credentials referenced in the brain (Stripe link, Brevo IDs, Supabase project ID are all public-shaped already; the more sensitive items like HubSpot deal IDs and member email patterns aren't keys but are intelligence).
+
+Mitigation: new §23 hard rule. Brain content NEVER goes into vyve-site under any circumstance. Every `GITHUB_COMMIT_MULTIPLE_FILES` call must verify (a) the repo argument matches the file paths' home repo, and (b) the post-commit `changed_paths` response matches the upserts sent — if not, the commit is assumed broken and re-issued with a uniquifier in the message. The re-attempt this session used `[ts={unix}]` in the message and verified all 6 files re-fetched as exact byte matches before declaring success.
+
+### Verification
+
+vyve-site commit `1549c84e`:
+- All 6 files post-commit re-fetched as byte-for-byte matches of the prepared payloads
+- `recordRecentActivity` present in vyve-offline.js, habits.html, cardio.html, workouts-session.js, tracking.js
+- sw.js cache key live as `vyve-cache-v2026-05-04k-home-optimistic`
+
+Pages cleanup commit `431bfc0c`:
+- `/brain/master.md`, `/brain/changelog.md`, `/tasks/backlog.md` all return HTTP 404 on `online.vyvehealth.co.uk`
+
+### Expected member-facing behaviour
+
+Tick a habit on habits.html → navigate to home. The bespoke home cache is invalidated by `invalidateHomeCache` (existing PM-13 behaviour); the home page reads outbox + breadcrumbs via `getOptimisticActivityToday`, finds the breadcrumb, overlays today onto the pill strip + bumps the habits count. Member sees the tick reflected on home immediately, regardless of EF round-trip latency. Same flow for cardio, workout completion, session viewing. The EF refresh that lands 1–10s later just confirms what the overlay already showed — no flicker, no "wrong then right" correction.
+
+If member ticks a habit then immediately undoes it before navigating: the breadcrumb is stripped on undo, so the home overlay doesn't show the un-done tick. EF response on home will also reflect the deleted row.
+
+If member is offline when ticking: writes go through writeQueued (the direct-fetch path will fail; offline.js's writeQueued path is the fallback). The overlay still works because it walks both stores.
+
+---
+
 ## 2026-05-04 PM-13 (Home dashboard tick lag fix · 1 site commit, 1 brain commit)
 
 ### TL;DR
