@@ -1,3 +1,50 @@
+## 2026-05-04 PM-15 (Movement page: walks → cardio with distance, PM-13b wiring closed)
+
+### TL;DR
+
+Member raised that the movement page quick-log doesn't capture distance and isn't fully wired up. Investigation: the page had three issues in one. Fixed all three in a single commit.
+
+1. **No distance field at all.** Quick-log captured type + duration + optional note. No distance input. Walks especially needed it.
+2. **All six types wrote to the workouts table.** Stretch/yoga/mobility/pilates/other are time-only mobility work — workouts is fine. But walks belong in cardio (it's where cardio.html's "walking" type already lives, and where the activity-score, leaderboard, and certificate tracks expect to find them). Walks were silently miscategorised, denying members credit on the cardio progress track and "The Relentless" certificate.
+3. **Zero PM-13b wiring.** When PM-13b shipped breadcrumb-aware home overlay across habits/cardio/workouts-session/tracking, movement.html was outside the audited scope. Both write paths on this page (`markDone` for the programme flow, `logMovement` for the quick-log flow) were invisible to the home overlay until the EF round-tripped — the same 1-10s lag the rest of the platform fixed in PM-13b.
+
+### What shipped (vyve-site commit `91eff384`)
+
+`movement.html`:
+- New optional "Distance (km)" input field. Hidden by default; shown only when the Walk pill is active. `parseFloat`-validated, range 0.1–100, sent as `null` when blank.
+- Pill-click handler now calls `updateDistanceFieldVisibility()` on every click; called once on page load so the default-active Walk pill shows the field from first paint.
+- `logMovement` branches on `mvSelectedType === 'walk'`:
+  - **Walk** → POST `/rest/v1/cardio` with `{member_email, activity_date, day_of_week, cardio_type: 'walking', duration_minutes, distance_km}`. Schema matches what cardio.html already writes for the walking type — zero divergence.
+  - **All others** → POST `/rest/v1/workouts` exactly as today (`plan_name: 'Movement'`, `session_name`, `duration_mins`).
+- Both success paths now invoke `VYVEData.invalidateHomeCache()` and `VYVEData.recordRecentActivity()` with the right `kind`.
+- `markDone` (programme path) gets the same PM-13b wiring on success — it was missing too.
+- `<script src="/vyve-offline.js" defer>` added to head before `theme.js`. Without this, `window.VYVEData` was undefined on this page and every PM-13b call would have been a silent no-op behind the existing `if (window.VYVEData && ...)` guards.
+
+`sw.js`: cache key `vyve-cache-v2026-05-04k-home-optimistic` → `vyve-cache-v2026-05-04l-movement-distance`.
+
+### Why walks belong in cardio, not workouts
+
+Brain §6 lists `cardio` as the table for cardio activities (with `cardio_type`, `duration_minutes`, `distance_km`); `workouts` is the table for resistance/structured workouts (no distance column exists). cardio.html already accepts `walking` as one of its six cardio types (`running`, `cycling`, `walking`, `swimming`, `rowing`, `other`). The movement page was just writing to the wrong table. Member-dashboard EF, leaderboard EF, and certificate-checker all read these tables independently and treat them as separate progress tracks — putting a walk in workouts means it counts toward "The Warrior" certificate (workouts) instead of "The Relentless" (cardio), and the activity-score variety component sees one type instead of two when the member did both.
+
+### Verification
+
+- JS syntax check on the combined inline script blocks: clean (`node --check`).
+- Authoritative content API re-fetch on both files post-commit: byte-for-byte exact match with prepared payloads.
+- Feature checks: `mv-in-distance` field present, `/vyve-offline.js` loaded, `/rest/v1/cardio` POST present, `recordRecentActivity` 4 occurrences, `invalidateHomeCache` 4 occurrences, `isWalk` branch present.
+- SW cache key live as `vyve-cache-v2026-05-04l-movement-distance`.
+
+### Side effects + non-goals
+
+- workouts table NOT modified. No `distance_km` column added. Walks live in cardio where they belong; everything else stays duration-only as designed.
+- No EF changes. No migration. No schema change.
+- Pre-existing rows in workouts that should have been cardio (historical walk logs) are NOT migrated. Decision: too small a member base for the rewrite to matter, the data isn't catastrophically wrong (member did exercise on that date), and a backfill migration is fragile (no way to programmatically distinguish "walk" from "movement session" in old rows since session_name was free text). If anyone notices and complains, we revisit. Not flagged in backlog yet.
+
+### What this exposed about earlier work
+
+PM-13b's audit of write surfaces missed movement.html entirely. Reason: the audit was looking for files with `'POST'` markers AND existing `invalidateHomeCache` calls or matching write-shape patterns; movement.html had `'POST'` but didn't surface in the file list because the focus was on habits/workouts/cardio/check-in/session — the Big Five. Lesson: any future audit of "every page that writes activity data" should pull the full repo file list and grep for `fetch.+rest/v1/(cardio|workouts|daily_habits|session_views|replay_views|wellbeing_checkins)` rather than relying on a fixed list of expected pages.
+
+---
+
 ## 2026-05-04 PM-14 (Monthly check-in EF column drift fix · members can now complete the feature)
 
 ### TL;DR

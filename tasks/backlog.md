@@ -1,3 +1,9 @@
+## Added 04 May 2026 PM-15
+
+- **Movement page distance + walks routed to cardio + PM-13b wiring — DONE 04 May PM-15.** Quick-log now captures distance for walks and writes them to cardio (matches cardio.html's `walking` type exactly). Stretch/yoga/mobility/pilates/other still go to workouts. Both `markDone` and `logMovement` now invalidate home cache and record breadcrumbs (PM-13b wiring closed). vyve-offline.js script tag added (was missing — VYVEData was undefined on this page). SW v2026-05-04l-movement-distance. vyve-site commit `91eff384`. No EF changes, no migrations.
+
+- **PM-13b carry-over partially closed.** PM-13b's audit missed movement.html. The remaining surfaces flagged at the end of PM-13b — `workouts.html` direct POST audit, `monthly-checkin.html`, `events-live.html`, `workouts-builder.js` — are still open. None are on the critical "tick → home dot" path; revisit when next adjacent change comes up.
+
 ## Added 04 May 2026 PM-14
 
 - **Monthly check-in EF column drift fix — DONE 04 May PM-14.** `monthly-checkin` v18 deployed. Replaced `nutrition_logs.log_date`/`calories` with `activity_date`/`calories_kcal` (PM-12 renamed them; EF never updated). Postgres 42703 was killing every POST with a 500 — zero successful monthly check-ins ever in DB until this fix. Tested live with realistic payload; test row deleted to keep Lewis's April slot open. Members can complete the feature for the first time.
