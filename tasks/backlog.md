@@ -1,3 +1,33 @@
+## Added 04 May 2026 PM-13c
+
+- **Profile pictures (member avatars) — NOT STARTED.** Members currently see initials only (e.g. "LV") on settings.html, index.html nav avatar, and leaderboard.html rank rows. Add upload + display flow.
+
+  **Architecture (settled in PM-13c discussion):** Supabase Storage public bucket `member-avatars`, one image per member at path `<member_email>/avatar.jpg`, always overwrite. New `avatar_url TEXT` nullable column on `members`. Public bucket chosen over signed URLs because (a) avatars are not sensitive, (b) public URL means no signed-URL refresh churn, (c) cache layer (`vyve_home_v3_<email>`) doesn't have to deal with URL expiry. Cache-bust via `?v=<timestamp>` on the URL stored in `members.avatar_url`.
+
+  **Client pipeline:** `<input type="file" accept="image/*">` → load to canvas → square crop (centre-crop MVP, drag-pan UI later) → resize to 256×256 → re-encode JPEG q0.85 → upload via Supabase Storage SDK or new `avatar-upload` EF (verify_jwt:true, validates <100KB, writes to bucket, updates `members.avatar_url`). End size ~20-30KB. Single source of truth — every surface reads the same image.
+
+  **iOS/Capacitor:** web file input works in WKWebView, surfaces native iOS photo picker, no extra plugin needed for MVP. Camera capture (take new photo right now) is a Phase 2 upgrade — either `accept="image/*" capture="user"` one-liner or `@capacitor/camera` plugin.
+
+  **Surfaces to wire (read side):**
+  - settings.html — write surface; new "Profile picture" card above existing profile card; click avatar → picker → upload → success toast → invalidate home cache.
+  - index.html — nav-avatar: render `<img src=avatar_url>` if set, initials block fallback if null.
+  - leaderboard.html — small circular img next to rank rows (gated on privacy toggle, see open question below).
+  - member-dashboard EF — add `avatar_url` to member object in response.
+  - employer-dashboard EF — leave initials-only (aggregate-only philosophy holds).
+  - leaderboard EF — add `avatar_url` to rank row response (gated on opt-in).
+  - auth.js — pull `avatar_url` at login, stash on `window.vyveCurrentUser` so any portal page can read.
+  - Cache write site (settings.html upload) calls `VYVEData.invalidateHomeCache()` after success — covered by the §23 hard rule about activity writes; treat avatar update as a "write that affects home rendering".
+
+  **Backend changes:** migration adds `avatar_url TEXT` to `members`. Storage bucket `member-avatars` with public read RLS; write RLS scoped to `auth.email()` matching the file path's first segment. New EF `avatar-upload` (verify_jwt:true). Optional but cleaner: also extend `member-dashboard` EF to return the URL (one column added to existing SELECT — trivial).
+
+  **Open design questions (Lewis's call, not technical):**
+  1. **Leaderboard visibility default.** Today the leaderboard is anonymous-by-default ("you only see people above you, never below" + no names). Adding avatars partially undoes that. Recommendation: settings toggle "Show my photo on the leaderboard" defaulting OFF. Avatar always visible to the member themselves on home/settings. Visible on leaderboard only if opt-in. Lewis to confirm before EF response shape is built.
+  2. **Default state messaging.** Initials block (current) vs coloured placeholder. Recommendation: keep initials — cheaper, more accessible, looks fine.
+
+  **Explicitly skipped for MVP:** automated content moderation. Small known member base, zero anonymous accounts, employer-onboarded users — problems get reported, don't slip through. Phase 2 if/when needed.
+
+  **Sized:** ~6-7 surgical edits across site files + 1 EF + 1 migration + 1 bucket. Single Claude-assisted session if uninterrupted. Do AFTER the workouts.html / monthly-checkin.html / events-live.html POST audit (PM-13b carry-over) so we don't duplicate the cache-invalidate wiring across overlapping changes.
+
 ## Added 04 May 2026 PM-13b
 
 - **Home dashboard tick lag fix — breadcrumb wiring follow-up — DONE 04 May PM-13b.** PM-13's overlay was a no-op because it walked outbox-only and every wired write site uses direct fetch. Added `vyve_recent_activity_v1` breadcrumb store (2-min TTL) populated by every direct-fetch activity write; overlay now merges outbox + breadcrumbs (deduped by habitId for habits). Wiring: habits.html (yes-tick + autotick + undo strip), cardio.html (added invalidate AND record — was missing both), workouts-session.js completeWorkout, tracking.js onVisitStart. SW v2026-05-04k-home-optimistic. vyve-site commit `1549c84e`.
