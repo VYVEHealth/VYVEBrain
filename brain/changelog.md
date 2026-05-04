@@ -1,3 +1,45 @@
+## 2026-05-04 PM-14 (Monthly check-in EF column drift fix · members can now complete the feature)
+
+### TL;DR
+
+Member feedback today: the monthly check-in "didn't work, it's just jumping back to question and not running the API". Diagnosis took ~5 tool calls — invoked the EF directly with realistic data and got a Postgres 42703 error: `column nutrition_logs.log_date does not exist`. The PM-12 nutrition rework renamed two columns on `nutrition_logs` (`log_date → activity_date`, `calories → calories_kcal`) but the `monthly-checkin` EF was never updated. The error sits inside a `Promise.all`, so it killed the whole POST handler with a 500. The page's catch handler hid AI loading, restored step-9, and alerted "Something went wrong" — exactly the reported symptom.
+
+The DB confirmed the scale of the silent failure: `SELECT count(*) FROM monthly_checkins` returned **0 rows ever**. Every member who has ever tried this feature has hit this bug since the feature shipped. Fix is three string changes in the EF; client side is fine.
+
+### What shipped (Supabase EF `monthly-checkin` v18, function version 21)
+
+- `dateFilter3` rebuilt to use `activity_date=gte.${start}&activity_date=lte.${end}` (was `log_date=...`).
+- `nutrition_logs` SELECT now `activity_date,calories_kcal,protein_g` (was `log_date,calories,protein_g`).
+- `buildNutritionSummary` type signature and field reads switched to `activity_date` + `calories_kcal`.
+- File header updated with v18 fix note above the existing v17 note. v17 fix (the `?email=` query-string GET fallback) was preserved verbatim — that fix was unrelated to this one and is still needed.
+- `verify_jwt: false` retained (matches the page's flow: it sends a JWT in the Bearer header but the EF tolerates anonymous callers via the email-in-body fallback).
+
+### Verification
+
+Invoked v18 directly with realistic Lewis payload:
+- HTTP 200, 13.6s end-to-end (Anthropic call dominates)
+- Real AI report generated, named Lewis correctly, surfaced his actual goal ("Lose 1 Stone"), used his real April activity (3 workouts, 1 session, 0 habits, 3 wellbeing check-ins, avg wellbeing 8.3), and his actual onboarding weight 86.64kg
+- Row landed in `monthly_checkins` with iso_month '2026-04', avg_score 6.63
+- **Test row deleted via DELETE WHERE id = ... AND member_email = ... AND iso_month = ...** so Lewis's real April slot remains open. He can complete his real check-in normally.
+
+### Why this took 5 weeks to surface
+
+Monthly check-ins are by definition low-frequency. The page only opens for a member from the 1st of the month after their join month, and only once per iso_month. Combined with a small member base (31), members hitting "submit" was rare enough that the silent failure could persist undetected. The page's catch handler showed a generic "Something went wrong" alert that members assumed was their problem; we had no operational signal because the failure was 5xx-after-EF-success-from-Brevo's-perspective and there's no error monitoring on the EF response code. Members who tried bounced back to step-9 and gave up.
+
+### What this exposed (added to §23 hard rules)
+
+1. Column rename migrations need an EF source grep before deploy.
+2. Low-frequency EFs need automated post-deploy smoke tests — they can sit broken for months.
+3. Page-level "Something went wrong" alerts mask server-side bugs from the dev surface — log the actual error code/body to console.
+
+None of (1)–(3) is fixed today; flagged as backlog ENG hygiene.
+
+### Side effects
+
+None. The fix is a pure string replacement in three places in the EF. No schema change, no client-side change, no SW bump (this is server-only). The member-facing page (`monthly-checkin.html`) is unchanged — it was never the problem.
+
+---
+
 ## 2026-05-04 PM-13b (Home dashboard tick lag fix · breadcrumb wiring follow-up + incident)
 
 ### TL;DR

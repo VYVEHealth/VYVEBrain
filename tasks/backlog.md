@@ -1,3 +1,12 @@
+## Added 04 May 2026 PM-14
+
+- **Monthly check-in EF column drift fix — DONE 04 May PM-14.** `monthly-checkin` v18 deployed. Replaced `nutrition_logs.log_date`/`calories` with `activity_date`/`calories_kcal` (PM-12 renamed them; EF never updated). Postgres 42703 was killing every POST with a 500 — zero successful monthly check-ins ever in DB until this fix. Tested live with realistic payload; test row deleted to keep Lewis's April slot open. Members can complete the feature for the first time.
+
+- **EF hygiene backlog opened by PM-14:**
+  - **Column rename → EF source grep step.** Add to migration playbook: before applying a column rename to a member-facing table, grep all Edge Function source for the old column name. If found, list the EFs that need updating and ship the EF updates as part of the same change set. Currently relying on memory.
+  - **Low-frequency EF smoke tests.** Monthly check-ins, certificate generation, weekly/monthly reports — these can sit broken for weeks because they're not exercised on every page load. Build a tiny `ef-smoke` cron that hits each low-frequency EF once a day with a `dry_run=true` payload and alerts on non-2xx. Owner: Dean. Sized: ~half a session per EF, total maybe a session.
+  - **Surface real EF errors to dev.** Page-level `"Something went wrong"` alerts hide server-side bugs from the dev surface. Add `console.error(res.status, await res.text())` to every EF call's failure path so DevTools shows the real error. Member-facing copy can stay generic; the dev surface needs the truth. Touches every page that calls an EF — ~10 surfaces.
+
 ## Added 04 May 2026 PM-13c
 
 - **Profile pictures (member avatars) — NOT STARTED.** Members currently see initials only (e.g. "LV") on settings.html, index.html nav avatar, and leaderboard.html rank rows. Add upload + display flow.
