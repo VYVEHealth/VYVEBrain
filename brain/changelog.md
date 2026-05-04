@@ -1,3 +1,63 @@
+## 2026-05-04 PM-8 (Offline data layer session 2a: habits + weight log writes · 1 site commit, 1 schema migration, 1 brain commit)
+
+### TL;DR
+
+Following session 1's gym-dropout fix on workouts, session 2 extends the same pattern to habits, weight, nutrition, and wellbeing — but I deliberately scoped this commit to **2a only: habits + weight log writes**, deferring nutrition (log-food.html) and wellbeing-checkin to dedicated 2b/2c sessions because both have UI semantics that are incompatible with naive write queueing.
+
+### What shipped — schema (migration applied direct, no migration file written)
+
+Three more `client_id uuid` columns + partial unique indexes:
+
+- `weight_logs` — `(member_email, client_id) WHERE client_id IS NOT NULL`
+- `nutrition_logs` — same. **Pre-staged** for session 2b (log-food rework). Existing 17 rows untouched.
+- `wellbeing_checkins` — same. **Pre-staged** for session 2c (offline UX). Existing 18 rows untouched.
+
+`daily_habits` already had the column from session 1's pre-stage; no change needed.
+
+Verified all seven `*_member_client_uniq` partial unique indexes via `pg_indexes`.
+
+### What shipped — habits.html
+
+Three writes converted to `VYVEData.writeQueued`:
+
+- `logHabit` (yes/no/skip POST → `daily_habits` with `on_conflict=member_email,activity_date,habit_id` + `Prefer: resolution=merge-duplicates,return=minimal`). Idempotent server-side via the natural-key conflict target — re-flushing the same payload merges into the existing row, last-write-wins. No `client_id` needed for dedupe (and our injection is harmless because the natural-key merge happens first).
+- `undoHabit` (DELETE on `(member_email, activity_date, habit_id)`). Naturally idempotent — DELETE on a missing row succeeds with 0 rows.
+- Autotick pass (post-render, after HK rule-evaluation). Same upsert shape as logHabit, same merge-duplicates idempotency. If autotick queues offline and the member then manually logs the same habit before the queue drains, both writes flush in order — manual override wins (last-write).
+
+Each patched call retains a legacy fallback (`if (window.VYVEData) { … } else { /* old direct supa() */ }`) so the page degrades gracefully if vyve-offline.js fails to load.
+
+`<script src="/vyve-offline.js" defer>` added before `/theme.js`.
+
+### What shipped — nutrition.html (weight tracker only)
+
+The single weight-log POST inside the weight tracker section was converted. Idempotent via existing `Prefer: resolution=merge-duplicates,return=minimal` on the natural `(member_email, logged_date)` key — one weight per day, same-day re-entries overwrite cleanly. Legacy fallback retained.
+
+`<script src="/vyve-offline.js" defer>` added.
+
+The two nutrition_logs POSTs at L900/L927 (food log) and the seven other weekly_scores reads were intentionally **not** touched — that's the log-food rework in session 2b.
+
+### What shipped — service worker
+
+`vyve-cache-v2026-05-04d-offline-data` → `vyve-cache-v2026-05-04e-offline-habits-weight`.
+
+### Why I split sessions 2b/2c off
+
+**log-food.html (session 2b).** The two `nutrition_logs` POSTs use `Prefer: return=representation` because the inserted row's `id` is needed to render the meal slot UI and to back the subsequent `DELETE ?id=eq.<id>` when a member taps "remove". Naively queueing the insert would leave the page rendering against a non-existent server id. Correct fix: switch the page's local row identity from server-assigned `id` to client-generated `client_id`, so DELETE goes by `?client_id=eq.<>` not `?id=eq.<>`. That's a UI rework, not a one-line wrap. ~1.5 sessions.
+
+**wellbeing-checkin.html (session 2c).** The submit POST goes to `/functions/v1/wellbeing-checkin`, which returns an AI-generated recommendation that the page renders inline. Queueing the write but not the response is a half-measure — the member taps submit, sees nothing meaningful, and assumes the app is broken. Correct UX: detect offline at submit time, show "your check-in is saved — recommendations will appear when you reconnect", queue the EF call, and on `vyve-back-online` event re-fire the request and surface the recommendations. ~1 session, with Lewis copy approval on the offline messaging.
+
+### Verification
+
+vyve-site commit [`9a9e7cec`](https://github.com/VYVEHealth/vyve-site/commit/9a9e7cecc9723a9493d209e929572ab252d914e2). Re-fetched habits.html, nutrition.html, sw.js — verified SW cache key landed (`v2026-05-04e-offline-habits-weight`), `/vyve-offline.js` script tag appears exactly once in each page, three `VYVEData.writeQueued` call sites in habits.html (logHabit L516, undoHabit L578, autotick L828), one in nutrition.html (weight log L642).
+
+Schema verified via `pg_indexes` — seven partial unique indexes total now (exercise_logs, workouts, cardio, daily_habits, weight_logs, nutrition_logs, wellbeing_checkins).
+
+### Effect
+
+Combined with session 1, the four highest-frequency member-authored writes are now offline-tolerant: workout sets, completed workouts, habit ticks, weight logs. That's most of the daily-engagement surface. Nutrition logging and weekly check-ins remain network-dependent — flagged honestly to the member through `offline-manager.js`'s banner + `[data-write-action]` disable rather than failing silently — until 2b/2c land.
+
+---
+
 ## 2026-05-04 PM-7 (Offline data layer session 1: workouts cache + outbox · 1 site commit, 1 schema migration, 1 brain commit)
 
 ### TL;DR
