@@ -820,7 +820,10 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
-## 19. Current status — 04 May 2026 PM-1
+## 19. Current status — 04 May 2026 PM-7
+
+**04 May 2026 PM-7 — Offline data layer session 1 (workouts).** Generic `vyve-offline.js` shipped with cache-then-network reads and outbox-queued writes. Schema: `client_id uuid` + partial unique index `(member_email, client_id)` added to `exercise_logs`, `workouts`, `cardio`, `daily_habits`. Wired workouts-only end-to-end: `loadExerciseHistory` + `loadCustomWorkouts` cache-first; `saveExerciseLog`, completeWorkout's workouts INSERT, and the workout_plan_cache PATCH all queue with idempotent client_ids. SW cache `v2026-05-04c-notif-routing` → `v2026-05-04d-offline-data`. `/vyve-offline.js` added to precache list. vyve-site commit [`d988c963`](https://github.com/VYVEHealth/vyve-site/commit/d988c9634f058c62ccf3ce1a2c51cd8d735f7c3b). Sessions 2 (habits/weight/nutrition/wellbeing) and 3 (read-only caching across remaining pages) parked in backlog.
+
 
 ### Completed — Dean (technical)
 
@@ -1083,6 +1086,8 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 
 ---
+| **Offline-tolerant where we can, online-honest where we can't** | The doctrine for offline behaviour across the app. Read paths cache aggressively under `vyve_cache:<key>` (paint cache → background refresh → swap on diff). Write paths queue via `VYVEData.writeQueued` and stamp a client-generated `client_id` so re-flushes are safe. Live data (live sessions, push, real-time chat) genuinely needs network and we say so. New tables that take member-authored writes get a nullable `client_id uuid` column + partial unique index `(member_email, client_id) WHERE client_id IS NOT NULL`. New pages that read member-state get a cacheKey via `VYVEData.fetchCached`. Loaded by `vyve-offline.js`. |
+| **`Prefer: resolution=ignore-duplicates,return=minimal` on every queued PostgREST insert** | The outbox MUST set this header on every POST that has a `client_id` partial unique index. Without it, a re-flush after a successful-but-network-dropped insert will 409 and the outbox will dead-letter a row that actually persisted. With it, PostgREST collapses duplicate (member_email, client_id) inserts into success and the outbox drains cleanly. The header is set in `vyve-offline.js` callers (workouts-session.js patched 04 May PM-7), not inside the data layer itself, so callers retain full control over headers (apikey, anon, JWT). |
 
 ## 24. Key references, credentials & URLs
 

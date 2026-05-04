@@ -1,3 +1,67 @@
+## 2026-05-04 PM-7 (Offline data layer session 1: workouts cache + outbox · 1 site commit, 1 schema migration, 1 brain commit)
+
+### TL;DR
+
+Real complaint from a member: signal drops at the gym, programme won't load, sets log silently into the void. Diagnosed: the gym scenario decomposes into a **read** problem and a **write** problem, both solvable with one architectural pattern that scales to the rest of the app. **(1) Read.** `loadProgramme` was already cache-first via `localStorage['vyve_programme_cache_<email>']` (good); `loadAllExercises` had a 24h TTL cache (good); but `loadExerciseHistory` and `loadCustomWorkouts` had no cache — every visit waited on network. **(2) Write.** `saveExerciseLog`, the `workouts` INSERT in `completeWorkout`, and the `workout_plan_cache` PATCH that advances session/week were all naked PostgREST POSTs/PATCHes. No queue, no retry, no idempotency — gym drop = lost set.
+
+**Shipped a generic offline data layer (`vyve-offline.js`) with cache-then-network reads and outbox-queued writes**, then wired workouts-only end-to-end in this session. Habits, weight, nutrition, wellbeing follow in session 2. Read-only screens (engagement, leaderboard, sessions list) follow in session 3.
+
+### What shipped — schema (migration applied direct, no migration file written)
+
+`ALTER TABLE` on `exercise_logs`, `workouts`, `cardio`, `daily_habits`: added nullable `client_id uuid` plus partial unique index `(member_email, client_id) WHERE client_id IS NOT NULL` on each. Verified via `pg_indexes`. Forward-only — existing 313 + 95 + 144 + 226 = 778 rows are untouched (client_id stays null), and re-flushes from the outbox become safe no-ops because PostgREST `Prefer: resolution=ignore-duplicates` collapses duplicate (member_email, client_id) inserts into success.
+
+Cardio + daily_habits are migrated now (not yet wired) so session 2 doesn't touch schema again.
+
+### What shipped — `vyve-offline.js` (new, 9785 chars)
+
+Public API surfaces three things on `window.VYVEData`:
+
+- `cacheGet(key)` / `cacheSet(key, value)` — sync localStorage helpers under prefix `vyve_cache:`
+- `fetchCached({ url, cacheKey, jwt, headers, onPaint })` — paint cached value immediately via `onPaint(value, true, ts)`, refresh in background, re-paint via `onPaint(value, false)` only if the JSON changed. Failure swallowed by default (offline = stay on cached).
+- `writeQueued({ url, method, headers, body, jwt, table, client_id })` — try once optimistically, queue on network failure; auto-flushes on `online` event, page load, custom `vyve-back-online` event (dispatched by existing `offline-manager.js`), and a 30s interval. After 3 server-side failures (4xx/5xx), an item moves to `vyve_outbox_dead` and `vyve-outbox-dead` CustomEvent fires — network failures don't count toward attempt limit.
+
+Body injection: if the queued body parses as JSON object and has no `client_id`, the layer stamps the item's UUID into it before send. Caller can pass an explicit `client_id` for tighter coupling with optimistic UI state.
+
+UUID v4 with `crypto.randomUUID` fallback to `getRandomValues` for older WKWebView builds.
+
+### What shipped — wiring (workouts only)
+
+- **workouts.html**: `<script src="/vyve-offline.js" defer></script>` inserted before `/theme.js` so the data layer is defined before the workouts modules run.
+- **workouts-programme.js** — two reads converted to cache-then-network:
+  - `loadExerciseHistory` → `VYVEData.fetchCached` with cacheKey `exercise_history:<email>`
+  - `loadCustomWorkouts` → `VYVEData.fetchCached` with cacheKey `custom_workouts:<email>`
+  - `loadProgramme` left as-is (already cache-first under its own pattern); `loadAllExercises` left as-is (24h TTL).
+- **workouts-session.js** — three writes converted to outbox-queued:
+  - `saveExerciseLog` → `VYVEData.writeQueued` POST `/rest/v1/exercise_logs`, stamps client_id, header `Prefer: resolution=ignore-duplicates,return=minimal`
+  - `completeWorkout` → workouts INSERT now goes through writeQueued; same idempotency
+  - `completeWorkout` → workout_plan_cache PATCH (session/week advance) also queued. **Plus**: the local programme cache row in localStorage is mirror-patched immediately, so a next page load reflects the advanced session even if the network PATCH hasn't drained yet.
+
+Each patched function retains a legacy-fallback branch behind `if (window.VYVEData ...) else { /* old direct fetch */ }` — the page works even if vyve-offline.js fails to load for any reason.
+
+### What shipped — service worker
+
+`vyve-cache-v2026-05-04c-notif-routing` → `vyve-cache-v2026-05-04d-offline-data`. `/vyve-offline.js` added to `urlsToCache`. Verified post-commit via re-fetch.
+
+### Verification
+
+vyve-site commit [`d988c963`](https://github.com/VYVEHealth/vyve-site/commit/d988c9634f058c62ccf3ce1a2c51cd8d735f7c3b). Re-fetched all five files; SW cache key is the new value, `/vyve-offline.js` is in the precache list, `vyve-offline.js` exposes all four public functions, the workouts.html script tag lands at byte 702 well before workouts-config.js at byte 50296, and both module patches show clean VYVEData call sites with idempotent client_id wiring.
+
+Schema verified via `pg_indexes` — all four `*_member_client_uniq` partial unique indexes live and well-formed.
+
+Live device verification deferred until Dean has the binary in hand — bundled-into-Capacitor pages will pick up the change on next `npx cap copy` + rebuild. The web fallback at online.vyvehealth.co.uk inherits the change immediately on next visit (network-first HTML + 30s SW activate).
+
+### Why this matters
+
+Two things. First, the immediate reported pain (gym drop = lost workout) is fixed for the workouts surface, end-to-end. Second, and more importantly, the architectural pattern is now generic and ready to extend — habits, weight, nutrition, wellbeing all collapse to the same shape (cacheKey + writeQueued + a partial unique index on client_id). Session 2 is mostly mechanical: copy the pattern, add columns to four more tables, wire four pages. Session 3 is read-only caching for engagement/leaderboard/sessions and is even simpler — no schema, no writes.
+
+The wider perceived slowness Dean flagged in conversation isn't workouts-specific; every page that fetches member-state on entry is paying the same network round-trip. As that pattern lands across the app, the entire experience starts feeling instant from cold.
+
+### Doctrine that emerged
+
+A new §23 hard rule codifies the model: **VYVE is offline-tolerant where it can be, online-honest where it can't.** Read paths cache aggressively; write paths queue with idempotent client_ids; live data (live sessions, push, real-time chat) genuinely needs the network and we don't pretend otherwise. Each table that sees member writes gets a `client_id` column + partial unique index; each page that reads member-state gets a cacheKey.
+
+---
+
 ## 2026-05-04 PM-6 (In-app notifications tap-routing + brain language overhaul: PWA → Capacitor binaries · 1 site commit, 1 brain commit)
 
 ### TL;DR
