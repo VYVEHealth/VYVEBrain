@@ -220,6 +220,7 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All public tables ha
 | `company_summary` | Enterprise aggregate rollup. Recomputed daily 02:00 UTC via `vyve_recompute_company_summary` cron. |
 | `platform_metrics_daily` | Platform-wide metrics per day. Recomputed daily 02:15 UTC via `vyve_platform_metrics` cron. |
 | `platform_alerts` | Central monitoring — errors, failures, proactive alerts. Service-role only. |
+| `watchdog_alerts` | Email-watchdog suppression table. Per-code 6h dedupe so a continuing failure doesn't spam alerts. Service-role only. |
 
 ### Certificates + engagement
 
@@ -258,7 +259,6 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All public tables ha
 | `workouts` | 2/day **for `source='manual'` only** | Since 7a. HK-sourced rows bypass entirely. |
 | `cardio` | 2/day for manual only | Same. |
 | `session_views` | 2/day | All sources. |
-| `kahunas_checkins` | 1/ISO week | Legacy table — still enforced. |
 
 **Charity + certificate counters stay independently capped at 2/day via `get_charity_total()` and `increment_*_counter()` read-path caps.** Lifting the trigger cap for HK data inflates nothing downstream — Watch-heavy members get full dashboard + leaderboard credit without rocketing the charity counter past its designed pace.
 
@@ -266,66 +266,68 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All public tables ha
 
 ## 7. Edge Functions — live inventory
 
-77 active Edge Functions as of 28 April 2026. ~30 are actively operational; the remainder are one-shot patchers/seeders/debug helpers retained for reference. Security audit (9 April) identified ~89 for deletion — partial cleanup complete; ~32 candidates remain (see backlog).
+86 Edge Functions as of 04 May 2026. ~32 actively operational (table below); the remainder are one-shot patchers/seeders/debug helpers retained for reference (see Retired subsection). Security audit (9 April) identified ~89 for deletion — partial cleanup complete; ~32 candidates remain (see backlog).
 
-> **Versioning note.** Brain tracks **semantic versions** (Dean-controlled bumps with code changes). The Supabase API returns **platform versions** that auto-increment on every deploy/redeploy/metadata change, including no-ops. As of 28 April, platform version is consistently +3 to +4 ahead of semantic version across most EFs (a residue of the `SUPABASE_UPDATE_A_FUNCTION` corruption diagnostics earlier today). Treat the gap as expected, not as drift. Codified in §23.
+> **Versioning note (revised 04 May 2026 PM-2).** This table previously carried a "Sem. ver" column that mixed two systems — sometimes mirroring the source-header `vN` (semantic) and sometimes the Supabase platform deploy counter (auto-incremented on every deploy/no-op). Audit found the column unreliable on roughly a third of EFs (e.g. `send-email` brain `v22` while source said `v4`; `wellbeing-checkin` brain `v35` while source said `v25`). **Source-level semantic versions live in the EF source-file header comment** (`// <ef-name> v<N> — <one-liner>`). To check the deployed version, read the source. The §7 table now carries only a Status indicator. The Supabase platform deploy counter is a deploy/redeploy artefact and not surfaced here.
 
 ### Core operational (actively serving requests)
 
-| Function | Sem. ver | Purpose |
+| Function | Status | Purpose |
 |---|---|---|
-| `onboarding` | v78 | New member onboarding. Two-phase (fast persona/habits/recs + `EdgeRuntime.waitUntil()` for 8-week workout JSON). Stream-aware since 19 April (`if stream==='workouts'`). |
-| `member-dashboard` | **v55** | Full dashboard data in one call. Server-authoritative hydration on every page load. Includes `health_connections` + `health_feature_allowed` + `habits` block (each habit returns `health_auto_satisfied` + `health_progress` evaluated server-side via the autotick evaluator) + `achievements` block (`unseen[], inflight[], recent[], earned_count, hk_connected`). Imports `_shared/taxonomy.ts` and `_shared/achievements.ts`. |
-| `employer-dashboard` | v31 | Aggregate employer analytics. API-key auth (no PII). |
-| `wellbeing-checkin` | v35 | Weekly check-in flow. AI recs pulled from activity + persona. |
-| `monthly-checkin` | v17 | Monthly 8-pillar check-in. Writes `monthly_checkins`. |
-| `log-activity` | v24 | PWA activity logging — ALSO serves as `evaluate_only` endpoint for trigger pages that write direct to PostgREST. v22 added inline achievement evaluation (`evaluateInline()`); v23 (28 April PM) added push fan-out via `achievement-earned-push` v1; **v24 (29 April AM)** added `evaluate_only:true` short-circuit that skips write/cap/dedup logic and runs evaluator + fan-out only — closes the inline-evaluator-never-fires-from-real-writes gap. All trigger pages now call this post-write via `VYVEAchievements.evaluate()`. Both notification paths fire under `EdgeRuntime.waitUntil()`. Imports `_shared/achievements.ts`. |
-| `anthropic-proxy` | v16 | Server-side Anthropic proxy for running plans + misc AI calls. `verify_jwt:true`. |
-| `generate-workout-plan` | v11 | AI workout plan generation (invoked from onboarding's waitUntil path). |
-| `sync-health-data` | v7 | HealthKit sync. Stamps `source:'healthkit'` on promoted workout/cardio rows. `queryAggregated` routing for steps/distance/active_energy; sleep segments with full state metadata. v7 refactor extracts workout taxonomy to `_shared/taxonomy.ts`. |
-| `get-health-data` | v2 | Reads back health data for portal display. |
-| `get-activity-feed` | v1 | Personal activity feed (parked — `activity.html` unlinked). |
-| `admin-dashboard` | v9 | Admin console data API. |
-| `admin-member-edit` | v6 | Admin write to member record. Audited. |
-| `admin-member-habits` | v3 | Admin assigns/removes habits. Audited. |
-| `admin-member-programme` | v3 | Admin changes member's programme. Audited. |
-| `admin-member-weekly-goals` | v3 | Admin edits weekly goals. Audited. |
-| `admin-programme-library` | v1 | Admin manages programme library. |
-| `edit-habit` | v1 | Habit definition edit helper. |
-| `share-workout` | v10 | Shared/community workout handler. |
-| `workout-library` | v7 | Library API for workouts. |
-| `leaderboard` | v11 | Leaderboard with scope tabs, range filter, privacy-aware name resolver, tie-aware gap copy. Reads aggregation layer only. |
-| `notifications` | v9 | In-app notifications read/write. |
-| `register-push-token` | v1 | PWA `push-native.js` POSTs `{token, platform, environment, app_version}`; row written to `push_subscriptions_native` with per-token uniqueness. `verify_jwt:true`. |
-| `push-send-native` | v5 | APNs sender. ES256 JWT via Web Crypto from `APNS_AUTH_KEY`/`APNS_KEY_ID`/`APNS_TEAM_ID`. Routes per environment: `api.development.push.apple.com` vs `api.push.apple.com`. `NATIVE_PUSH_ALLOWLIST` fail-closed. 410/400-BadDeviceToken auto-revokes. `verify_jwt:false` with manual service-role guard. |
-| `send-push` | v12 | **Unified push fan-out (28 April PM, JWK fix late PM).** Single sender for both VAPID web (inline RFC 8291 aes128gcm) + APNs native (delegated to `push-send-native`). Per-member same-day dedupe via `member_notifications` lookup. Writes in-app notification row + fans out to web + native subs. Service-role gated via dual-auth (`SUPABASE_SERVICE_ROLE_KEY` OR `LEGACY_SERVICE_ROLE_JWT`). `verify_jwt:true` (forced — see §23). v12 fixes the VAPID private key import: was `'raw'` with `['sign']` (invalid per spec, throwing `Invalid key usage` silently inside the per-sub try/catch), now `'jwk'` with x/y reconstructed from `VAPID_PUBLIC_KEY`'s uncompressed point bytes. Module-scoped `_vapidPrivKey` cache so import only runs once per isolate. |
-| `habit-reminder` | v14 | Habit reminder push (cron 20:00 UTC daily). Refactored 28 April — calls `send-push` instead of inline VAPID. `verify_jwt:true`. |
-| `streak-reminder` | v14 | Streak-risk push (cron 18:00 UTC daily, ≥7 day streak threshold). Refactored 28 April — calls `send-push`. `verify_jwt:true`. |
-| `achievement-earned-push` | v1 | **Achievement push fan-out (28 April PM).** Thin glue between achievement evaluator and `send-push`. Input `{member_email, earns:[{metric_slug, tier_index, title, body}]}`. One push per earned tier with `dedupe_same_day:false` and `skip_inapp:true`. Called by `log-activity` v23 (inline path) and `achievements-sweep` v2 (sweep path). Service-role gated, dual-auth. `verify_jwt:true`. |
-| `achievements-mark-seen` | v1 | Toast-clear endpoint. POST + JWT auth. `{mark_all:true}` or `{metric_slug, tier_index}`. Updates `member_achievements.seen_at = NOW()` for caller's own rows. Used by Phase 3 toast UI on dismiss. |
-| `achievements-sweep` | v2 | Cron-driven daily sweep (22:00 UTC) for tenure / lifetime / time-window achievement metrics. v1 handled `member_days` only; v2 (28 April PM) extends tier query to pull title/body and fans out via `achievement-earned-push` per member after upsert. Phase 2 metric extensions deferred. `verify_jwt:false`, service-role internally. |
-| `platform-alert` | v3 | Writes to `platform_alerts`. |
-| `warm-ping` | v4 | Keep-warm pinger (5-min cron) hitting 10 EFs to prevent cold starts. |
-| `check-cron` | v20 | Cron job audit/verification. |
-| `send-email` | v22 | Brevo transactional delivery. |
-| `send-session-recap` | v13 | Session recap emails. |
-| `send-journey-recap` | v13 | Journey recap emails. |
-| `send-password-reset` | v4 | Password reset flow. |
-| `re-engagement-scheduler` | v8 (build 26) | Two streams: A (no consent + no activity) and B (onboarded but dormant). Cron 8:00 UTC daily. C1/C2/C3 retired 4 May (legacy two-surface split — Kahunas app + portal). |
-| `daily-report` | v23 | Cron 8:05 UTC daily. |
-| `weekly-report` | v16 | Weekly report generation. Cron 08:10 Monday UTC. |
-| `monthly-report` | v16 | Monthly report generation. Cron 08:15 1st of month UTC. |
-| `certificate-checker` | v24 | Generates HTML certs to Supabase Storage. Global sequential numbers. Cron 9:00 UTC daily. |
-| `certificate-serve` | v26 | Serves certificate HTML files. |
-| `github-proxy` | v21 | GET + PUT to `vyve-site` via `GITHUB_PAT` secret. |
-| `github-proxy-marketing` | v11 | Same for `Test-Site-Finalv3`. |
-| `off-proxy` | v18 | Open Food Facts proxy for `log-food.html`. |
-| `ops-brief` | v11 | Ops brief generation. |
-| `internal-dashboard` | v11 | Internal metrics. |
-| `storage-cleanup` | v11 | Storage housekeeping. |
-| `schema-snapshot-refresh` | v4 | Weekly cron Sunday 03:00 UTC, auto-commits structural changes to VYVEBrain. `GITHUB_PAT_BRAIN` fine-grained PAT — expires 18 April 2027 (calendar rotation). |
-| `cc-data` | v4 | Command Centre data API. |
-| `debug-exercise-search` | v14 | Exercise-library search debug tool. |
+| `onboarding` | LIVE | New member onboarding. Two-phase (fast persona/habits/recs + `EdgeRuntime.waitUntil()` for 8-week workout JSON). Stream-aware since 19 April (`if stream==='workouts'`). |
+| `member-dashboard` | LIVE | Full dashboard data in one call. Server-authoritative hydration on every page load. Includes `health_connections` + `health_feature_allowed` + `habits` block (each habit returns `health_auto_satisfied` + `health_progress` evaluated server-side via the autotick evaluator) + `achievements` block (`unseen[], inflight[], recent[], earned_count, hk_connected`). Imports `_shared/taxonomy.ts` and `_shared/achievements.ts`. |
+| `employer-dashboard` | LIVE | Aggregate employer analytics. API-key auth (no PII). |
+| `wellbeing-checkin` | LIVE | Weekly check-in flow. AI recs pulled from activity + persona. |
+| `monthly-checkin` | LIVE | Monthly 8-pillar check-in. Writes `monthly_checkins`. |
+| `log-activity` | LIVE | PWA activity logging — ALSO serves as `evaluate_only` endpoint for trigger pages that write direct to PostgREST. v22 added inline achievement evaluation (`evaluateInline()`); v23 (28 April PM) added push fan-out via `achievement-earned-push` v1; **v24 (29 April AM)** added `evaluate_only:true` short-circuit that skips write/cap/dedup logic and runs evaluator + fan-out only — closes the inline-evaluator-never-fires-from-real-writes gap. All trigger pages now call this post-write via `VYVEAchievements.evaluate()`. Both notification paths fire under `EdgeRuntime.waitUntil()`. Imports `_shared/achievements.ts`. |
+| `anthropic-proxy` | LIVE | Server-side Anthropic proxy for running plans + misc AI calls. `verify_jwt:true`. |
+| `generate-workout-plan` | LIVE | AI workout plan generation (invoked from onboarding's waitUntil path). |
+| `sync-health-data` | LIVE | HealthKit sync. Stamps `source:'healthkit'` on promoted workout/cardio rows. `queryAggregated` routing for steps/distance/active_energy; sleep segments with full state metadata. v7 refactor extracts workout taxonomy to `_shared/taxonomy.ts`. |
+| `get-health-data` | LIVE | Reads back health data for portal display. |
+| `get-activity-feed` | LIVE | Personal activity feed (parked — `activity.html` unlinked). |
+| `admin-dashboard` | LIVE | Admin console data API. |
+| `admin-member-edit` | LIVE | Admin write to member record. Audited. |
+| `admin-member-habits` | LIVE | Admin assigns/removes habits. Audited. |
+| `admin-member-programme` | LIVE | Admin changes member's programme. Audited. |
+| `admin-member-weekly-goals` | LIVE | Admin edits weekly goals. Audited. |
+| `admin-programme-library` | LIVE | Admin manages programme library. |
+| `edit-habit` | LIVE | Habit definition edit helper. |
+| `share-workout` | LIVE | Shared/community workout handler. |
+| `workout-library` | LIVE | Library API for workouts. |
+| `leaderboard` | LIVE | Leaderboard with scope tabs, range filter, privacy-aware name resolver, tie-aware gap copy. Reads aggregation layer only. |
+| `notifications` | LIVE | In-app notifications read/write. |
+| `register-push-token` | LIVE | PWA `push-native.js` POSTs `{token, platform, environment, app_version}`; row written to `push_subscriptions_native` with per-token uniqueness. `verify_jwt:true`. |
+| `push-send-native` | LIVE | APNs sender. ES256 JWT via Web Crypto from `APNS_AUTH_KEY`/`APNS_KEY_ID`/`APNS_TEAM_ID`. Routes per environment: `api.development.push.apple.com` vs `api.push.apple.com`. `NATIVE_PUSH_ALLOWLIST` fail-closed. 410/400-BadDeviceToken auto-revokes. `verify_jwt:false` with manual service-role guard. |
+| `send-push` | LIVE | **Unified push fan-out (28 April PM, JWK fix late PM).** Single sender for both VAPID web (inline RFC 8291 aes128gcm) + APNs native (delegated to `push-send-native`). Per-member same-day dedupe via `member_notifications` lookup. Writes in-app notification row + fans out to web + native subs. Service-role gated via dual-auth (`SUPABASE_SERVICE_ROLE_KEY` OR `LEGACY_SERVICE_ROLE_JWT`). `verify_jwt:true` (forced — see §23). v12 fixes the VAPID private key import: was `'raw'` with `['sign']` (invalid per spec, throwing `Invalid key usage` silently inside the per-sub try/catch), now `'jwk'` with x/y reconstructed from `VAPID_PUBLIC_KEY`'s uncompressed point bytes. Module-scoped `_vapidPrivKey` cache so import only runs once per isolate. |
+| `habit-reminder` | LIVE | Habit reminder push (cron 20:00 UTC daily). Refactored 28 April — calls `send-push` instead of inline VAPID. `verify_jwt:true`. |
+| `streak-reminder` | LIVE | Streak-risk push (cron 18:00 UTC daily, ≥7 day streak threshold). Refactored 28 April — calls `send-push`. `verify_jwt:true`. |
+| `achievement-earned-push` | LIVE | **Achievement push fan-out (28 April PM).** Thin glue between achievement evaluator and `send-push`. Input `{member_email, earns:[{metric_slug, tier_index, title, body}]}`. One push per earned tier with `dedupe_same_day:false` and `skip_inapp:true`. Called by `log-activity` v23 (inline path) and `achievements-sweep` v2 (sweep path). Service-role gated, dual-auth. `verify_jwt:true`. |
+| `achievements-mark-seen` | LIVE | Toast-clear endpoint. POST + JWT auth. `{mark_all:true}` or `{metric_slug, tier_index}`. Updates `member_achievements.seen_at = NOW()` for caller's own rows. Used by Phase 3 toast UI on dismiss. |
+| `achievements-sweep` | LIVE | Cron-driven daily sweep (22:00 UTC) for tenure / lifetime / time-window achievement metrics. v1 handled `member_days` only; v2 (28 April PM) extends tier query to pull title/body and fans out via `achievement-earned-push` per member after upsert. Phase 2 metric extensions deferred. `verify_jwt:false`, service-role internally. |
+| `member-achievements` | LIVE | Achievements API surface — read-side helper for the engagement page achievements grid + dashboard slot. Returns earned/inflight/recent + tier metadata. `verify_jwt:true`. |
+| `platform-alert` | LIVE | Writes to `platform_alerts`. |
+| `warm-ping` | LIVE | Keep-warm pinger (5-min cron) hitting 10 EFs to prevent cold starts. |
+| `check-cron` | LIVE | Cron job audit/verification. |
+| `send-email` | LIVE | Brevo transactional delivery. |
+| `send-session-recap` | LIVE | Session recap emails. |
+| `send-journey-recap` | LIVE | Journey recap emails. |
+| `send-password-reset` | LIVE | Password reset flow. |
+| `re-engagement-scheduler` | LIVE | Two streams: A (no consent + no activity) and B (onboarded but dormant). Cron 8:00 UTC daily. C1/C2/C3 retired 4 May (legacy two-surface split — Kahunas app + portal). Source comment header: v8. |
+| `daily-report` | LIVE | Cron 8:05 UTC daily. |
+| `email-watchdog` | LIVE | Email pipeline watchdog (shipped 04 May 2026 PM-1). Cron `*/30 * * * *`. Five checks: missing daily delivery (26h), recent `team@` hard-bounces (24h), `team@` on Brevo blocklist, `pg_cron` failures (6h), bounce-spike across all auto-emails (1h). Multi-recipient alerting (Dean Hotmail TO + Lewis Hotmail + `team@` CC). Per-code 6h suppression via `watchdog_alerts` table. `verify_jwt:false`. |
+| `weekly-report` | LIVE | Weekly report generation. Cron 08:10 Monday UTC. |
+| `monthly-report` | LIVE | Monthly report generation. Cron 08:15 1st of month UTC. |
+| `certificate-checker` | LIVE | Generates HTML certs to Supabase Storage. Global sequential numbers. Cron 9:00 UTC daily. |
+| `certificate-serve` | LIVE | Serves certificate HTML files. |
+| `github-proxy` | LIVE | GET + PUT to `vyve-site` via `GITHUB_PAT` secret. |
+| `github-proxy-marketing` | LIVE | Same for `Test-Site-Finalv3`. |
+| `off-proxy` | LIVE | Open Food Facts proxy for `log-food.html`. |
+| `ops-brief` | LIVE | Ops brief generation. |
+| `internal-dashboard` | LIVE | Internal metrics. |
+| `storage-cleanup` | LIVE | Storage housekeeping. |
+| `schema-snapshot-refresh` | LIVE | Weekly cron Sunday 03:00 UTC, auto-commits structural changes to VYVEBrain. `GITHUB_PAT_BRAIN` fine-grained PAT — expires 18 April 2027 (calendar rotation). |
+| `cc-data` | LIVE | Command Centre data API. |
+| `debug-exercise-search` | LIVE | Exercise-library search debug tool. |
 
 ### Shared modules
 
@@ -346,10 +348,11 @@ Approximately 32 functions across `seed-*`, `patch-*`, `trigger-*-workout`, `set
 - `esm.sh` imports are unreliable in Deno — use Deno built-ins (Web Crypto, std library) for crypto operations. Codified from iOS Web Push RFC 8291 implementation.
 - `SUPABASE_DEPLOY_FUNCTION` for body changes; `SUPABASE_UPDATE_A_FUNCTION` corrupts deployed bundles (codified §23, 28 April).
 
-### Cron jobs (14 active)
+### Cron jobs (15 active)
 
 | Job | Schedule | Function |
 |---|---|---|
+| `email-watchdog` | `*/30 * * * *` | email-watchdog (every 30 min — checks 5 failure modes, alerts Dean+Lewis on first detection per 6h window) |
 | `vyve-reengagement-daily` | `0 8 * * *` | re-engagement-scheduler |
 | `vyve-daily-report` | `5 8 * * *` | daily-report |
 | `weekly-report` | `10 8 * * 1` | weekly-report (Mondays) |
@@ -827,7 +830,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 - Theme system (dual dark/light tokens) live. `nav.js` body-prepend pattern. Cache-first dashboard. Consent gate built and wired. Viewport zoom disabled. `target="_blank"` audit complete.
 - Service worker network-first for HTML + skipWaiting + clients.claim. **Push event listener + notificationclick handler shipped 28 April PM** (`vyve-site@124ecb53`) — fixed silent web push breakage that had been live since initial push rollout. Current cache: `vyve-cache-v2026-04-29h-fullsync-btn`.
 - Activity logging via `log-activity` v23 (Make retired from Dean's stack).
-- Re-engagement system live — two-stream model (A: no consent + no activity; B: onboarded but dormant), `engagement_emails` live. C1/C2/C3 retired 4 May.
+- Re-engagement system live — streams A/B/C1/C2/C3, `engagement_emails` live.
 - Certificate automation — `certificate-checker` v24, global sequential numbers, Brevo delivery.
 - Running plan generator — Haiku 4096 max_tokens, Supabase-first, `member_running_plans` table.
 - **Admin Console Shell 1 + 2 + 3 Sub-scope A** — live at `admin.vyvehealth.co.uk`.
@@ -971,6 +974,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. Por
 | Rule | Detail |
 |---|---|
 | **Auth** | Supabase Auth is primary. Auth0 gone entirely. Never say "Auth0 gated". |
+| **`members.kahunas_qa_complete` is dead post-04 May** | Column still exists on the `members` table for historical reasons but **nothing reads it after re-engagement-scheduler v8**. Was the gate for the legacy Stream A in v7 ("never finished onboarding QA"). v8 replaced the gate with `privacy_accepted_at IS NULL AND no activity`. Do not gate behaviour on `kahunas_qa_complete` in new code; do not assume rows with `kahunas_qa_complete=false` are pre-onboarding. Backlog item flagged to drop the column once we're confident no admin/marketing automation reads it (one-week soak then drop). |
 | **GitHub writes** | `vyve-site` is read-only via direct GitHub MCP — always 403. Writes via `github-proxy` v21 or one-shot EFs. For **large brain commits (>~50K chars), always use `run_composio_tool("GITHUB_COMMIT_MULTIPLE_FILES", args)` inside the Composio workbench — never direct MCP — to avoid base64 corruption.** Always verify post-commit by fetching and checking the first 100 chars. |
 | **`upserts` not `files`** | In `GITHUB_COMMIT_MULTIPLE_FILES`: array field is `upserts`, commit text field is `message` (not `commit_message`). |
 | **File read patterns** | `GITHUB_GET_RAW_REPOSITORY_CONTENT` returns an S3 URL needing a secondary fetch — S3 URLs expire fast, save to `/tmp/` immediately. `GITHUB_GET_REPOSITORY_CONTENT` returns nested `data.content.content` base64 — strip whitespace with `re.sub(r'\s+', '', b64)`, pad, then decode. |

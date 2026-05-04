@@ -1,3 +1,49 @@
+## 2026-05-04 PM-2 (Brain hygiene · drift audit + §7/§6/§23 patch · 1 commit)
+
+### TL;DR
+
+Full brain-vs-platform audit after the re-engagement v8 deploy. Found one structural problem and a handful of easy fixes. Headline: the §7 EF inventory had been mixing two version systems in the same column — some entries tracked source semantic versions (`member-dashboard` brain v55 = source v55 ✓), some tracked the Supabase platform deploy counter from when the entry was written (`wellbeing-checkin` brain v35 ≠ source v25), and some were neither (`send-email` brain v22, source v4, platform v25 — three different numbers). The column was unreliable on roughly a third of EFs and silently misleading on others.
+
+### What changed
+
+**§7 versioning model.** Dropped the "Sem. ver" column from the EF inventory table. Replaced with a Status column (`LIVE` for now; can extend to `LIVE (recently rebuilt)` / `RETIRED` later if useful). Source-level semantic versions now live exclusively in EF source-file headers — that's where they always belonged. Versioning note rewritten to make this explicit. Codified that the Supabase platform deploy counter is a deploy artefact, not a source version.
+
+**§7 inventory additions.** Two recently-shipped EFs added to the core operational table that had been missing: `email-watchdog` (shipped 04 May PM-1, covered narratively in §19/§23 but not in the inventory) and `member-achievements` (shipped 29 April, the achievements API surface). Cron job count corrected from 14 to 15 with an `email-watchdog` row added at the top of the cron table.
+
+**§7 description correction.** `re-engagement-scheduler` row updated to reflect today's v8 rewrite — two streams (A: no consent + no activity; B: onboarded but dormant), C1/C2/C3 retired, source comment header `v8` recorded inline. The earlier PM-1 commit had this still labelled with the legacy A/B/C1/C2/C3 description; that's now fixed.
+
+**§7 opening paragraph.** Updated EF count from "77 active" to "86" matching live, "~30 actively operational" to "~32" matching live core inventory.
+
+**§6 cleanup.** Removed the ghost `kahunas_checkins` row from the Activity Caps subsection — table doesn't exist in live DB but was still listed as "1/ISO week — Legacy table — still enforced", which was wrong on both counts. Added `watchdog_alerts` row to §6 alongside `platform_alerts` (it's the per-code suppression table for the email watchdog).
+
+**§23 new hard rule.** `members.kahunas_qa_complete` is dead post-v8. Column still exists for historical reasons but nothing reads it after today. New rule documents this and points to the backlog item to drop the column after a one-week soak.
+
+### What's NOT drift (alignment confirmed)
+
+- Portal SW cache (`vyve-cache-v2026-04-29h-fullsync-btn`) matches live `sw.js` exactly.
+- All three repos (`vyve-site`, `Test-Site-Finalv3`, `VYVEBrain`) reachable; last-pushed dates plausible (`vyve-site` 29 April, marketing 27 April, brain 04 May).
+- Achievement metrics: 32 ✓ matches §11A; tiers 327 (within 12-15/metric × 32 = 384 max range); 233 earned (grew from 185 backfill on 27 April, expected drift).
+- Cron jobs: 15 active matches the new count.
+- Member count: 15 matches `§19` and brain prelude. (`userMemories` cache has 31 — that's stale cache, not brain drift.)
+- All operational reference tables populated (`workout_plans` 297 rows, `habit_library` 34, `personas` 5, `nutrition_common_foods` 125, `service_catalogue` 21, `knowledge_base` 15).
+
+### Operational note: Stream B fires for the first time tomorrow
+
+`engagement_emails` has historical rows in streams A (31), C1 (5), C2 (10), C3 (3) — and **0 in stream B ever**. The v7 classifier had a quirk that made B unreachable in practice: anyone with no activity got routed to A (because `kahunas_qa_complete=false` covered them) or to C3 (because partial activity routed to a C-stream). v8 collapses C1/C2/C3 into B, so tomorrow's 08:00 UTC cron will be the first time stream B fires meaningfully. Today's dry run already classified 4 dormant members into B_3d (Paige, Vicki, Conor, Callum). Lewis should expect a small burst of "Checking in, [name]" emails arriving at members tomorrow morning that he hasn't seen the pattern of before. Behaviour is correct.
+
+### Backlog items added
+
+- **Standardise EF source-header semantic versioning** — sweep all ~32 active EFs and normalise to `// <ef-name> v<N> — <one-line summary>` + optional `// Changes from v<N-1>:` block. ~30 mins. Now that source is canonical, source needs to be readable.
+- **Drop `members.kahunas_qa_complete` column** — one-week soak, then ALTER TABLE. Around 11 May 2026.
+
+### Files touched
+
+- `brain/master.md` — §6 (kahunas removal + watchdog_alerts add), §7 (versioning note rewrite, column rename, two new EF rows, re-engagement description, opening paragraph, cron count + row), §23 (new hard rule).
+- `brain/changelog.md` — this entry prepended.
+- `tasks/backlog.md` — new "Added 04 May 2026 PM-2" section with two items.
+
+---
+
 ## 2026-05-04 PM-2 (Re-engagement scheduler — single-app rewrite · 1 commit)
 
 ### TL;DR
