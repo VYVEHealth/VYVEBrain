@@ -1,3 +1,63 @@
+## 2026-05-04 PM-4 (PWA legacy cleanup deep-dive · 2 commits)
+
+### TL;DR
+
+Followed PM-3's surface-level cleanup with a full PWA reference audit across vyve-site (69 text files, ~1.75M chars). Found 11 categories of PWA usage; killed 1 dead block, renamed/clarified 3 misleading-but-functional items, kept 6 categories that are actually still serving real members on web push, offline cache, native app, or harmless metadata.
+
+### Audit method
+
+Bulk-fetched all 69 text files in vyve-site main (HTML/JS/JSON/MD/TXT). Grepped 8 PWA-marker categories: install-prompt code, web push VAPID, PWA-mode detection, manifest links, apple-mobile-web-app meta, install-banner UI, offline mode, service worker. Cross-referenced findings against brain master §8 (PWA infrastructure), §23 (gotchas), and recent changelog entries on push pipeline (28 April PM-2 SW handler patch, 28 April late PM VAPID JWK fix).
+
+### What shipped
+
+**vyve-site `797b57a`** — 4-file commit:
+1. `auth.js` — removed block 5 "PWA not installed after 7 days" telemetry. Reported `pwa_not_installed` events when a member had been browsing the web for 7+ days without `display-mode: standalone` matching. Meaningless now — the install path is the App Store, not Add to Home Screen, and Capacitor users never trigger this code path because they're inside the WebView. Drops the `vyve_first_seen` localStorage write too. ~13 lines, 542 chars removed.
+2. `settings.html` — `detectPWA()` → `detectPlatform()`. Old function showed `'PWA'` whenever `display-mode: standalone` matched OR `navigator.standalone` was true, which means native Capacitor users were being mislabelled as `'PWA'`. New function uses `window.Capacitor.getPlatform()` (already used in 4 other files: `consent-gate.html`, `hk-diagnostic.html`, `healthbridge.js`, `push-native.js`) and labels as `'iOS app'` / `'Android app'` / `'Web'`. Also renamed the call site at the bottom of the file.
+3. `certificate.html` — renamed `isIOSPWA()` → `isIOSStandalone()`, updated comment. The PDF download function uses this check to route iOS+standalone users to `navigator.share()` instead of `<a download>` (because iOS WKWebView blocks `pdf.save()`). The check was always correct — it triggers for iOS PWA AND iOS Capacitor WebView, both of which want the share-sheet route. The function name was just lying. No behavioural change.
+4. `events-live.html` — keyboard layout fix comment updated from "iOS PWA" to "iOS standalone (PWA + Capacitor WebView)" to reflect that the fix applies in both contexts. Comment-only change.
+
+**vyve-site `7078667`** — SW cache bump: `vyve-cache-v2026-04-29h-fullsync-btn` → `vyve-cache-v2026-05-04a-pwa-cleanup`. Required because `auth.js` is in the `urlsToCache` pre-cache list, and the §23 hard rule says non-HTML asset changes require a cache bump for the change to reach users (network-first only applies to HTML).
+
+### Audit findings — kept as-is
+
+These were checked and confirmed still earning their keep:
+
+- **`sw.js`** — push handler + notificationclick handler are actively patched (28 April PM-2). Service worker required for both web push AND offline cache, both of which work for Capacitor and browser users. No PWA-only assumptions inside.
+- **`vapid.js`** — NOT garbage despite the name. Live web push subscription path for desktop browsers (Mac Safari, Mac/PC Chrome) and any Android web user. `send-push` v13 fans out to BOTH `push_subscriptions` (VAPID, served by sw.js push handler) AND `push_subscriptions_native` (APNs for iOS). Pipeline went functional for the first time on 28 April PM-2. Without vapid.js no desktop browser member can receive push.
+- **`offline-manager.js`** — offline banner + write-action disable. Native apps lose connectivity too; this isn't PWA-specific.
+- **`manifest.json` + `<link rel="manifest">` (39 files)** — passive metadata. Doesn't trigger any prompt. If a member opens the website in mobile browser, the manifest enables nicer behaviour (correct icon, theme colour). Inside Capacitor it's irrelevant. Harmless.
+- **`apple-mobile-web-app-*` meta tags (20 files)** — same: passive PWA metadata. Capacitor ignores it; Mobile Safari uses it if someone happens to add to home screen (which the welcome email no longer instructs). All set to `"VYVE Hub"` consistently. Harmless.
+- **22 `serviceWorker.register('/sw.js')` registrations across portal HTML pages** — same SW = same shared push + cache infrastructure.
+
+### Cosmetic dupe noted (not shipped)
+
+`workouts-notes-prs.js` has a stray `if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js'); }` at end of file. The page (`workouts.html`) already registers the SW inline. Harmless redundancy — second register is a no-op. Not worth a commit on its own; clean up next time we touch the file.
+
+### Updated push pipeline state (clarification)
+
+After PM-3 + PM-4, the push delivery picture is:
+- **iOS in native app** → APNs via `push-native.js` registering with `push_subscriptions_native`, fired by `send-push` v13
+- **Anyone in browser** (Mac Safari, Mac/PC Chrome, Android Chrome) → VAPID web push via `vapid.js` subscribing to `push_subscriptions`, served by `sw.js` push handler, fired by `send-push` v13
+- **iOS PWA from home-screen install** → would route through VAPID, but native is now the default after PM-3 welcome-email change; this path is mostly dormant for new members
+- **Android in native app** → currently NO push (FCM parked per §6) — they get nothing until Android FCM ships off the backlog
+
+### Files changed
+
+- `VYVEHealth/vyve-site/auth.js` (18,277 chars, was 18,819)
+- `VYVEHealth/vyve-site/settings.html` (79,286 chars, was 79,105)
+- `VYVEHealth/vyve-site/certificate.html` (20,423 chars, was 20,228)
+- `VYVEHealth/vyve-site/events-live.html` (22,491 chars, was 22,458)
+- `VYVEHealth/vyve-site/sw.js` (cache bumped only)
+- `VYVEHealth/VYVEBrain/brain/changelog.md` — this entry prepended
+
+### What's still open
+
+- **EF source-header semver audit** for ~31 EFs still on backlog (PM-2 item, partially closed PM-3 with onboarding v82)
+- **Android FCM** for native push to Android members — backlog
+- `workouts-notes-prs.js` stray duplicate SW register — fix opportunistically next time we touch the file
+
+---
+
 ## 2026-05-04 PM-3 (Native app store welcome email + login PWA install banner removal · 2 commits, 1 EF deploy)
 
 ### TL;DR
