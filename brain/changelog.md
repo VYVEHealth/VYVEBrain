@@ -1,3 +1,82 @@
+## 2026-05-04 PM-5 (Habits 'Remind me in 2h' wired to server-side scheduled push · 1 commit, 1 SQL migration, 2 new EFs, 1 new cron)
+
+### TL;DR
+
+The "Remind me in 2h" button on `habits.html` was unwired-in-spirit — it had a handler, but `setTimeout(2h)` + `new Notification()` is broken three ways: (1) `setTimeout` dies on tab close / navigation / device sleep, (2) `new Notification()` is the deprecated foreground API, (3) neither works inside Capacitor WebView. Replaced with a durable server-side queue: `scheduled_pushes` table → `schedule-push` EF (member-callable enqueuer) → `process-scheduled-pushes` cron (every 5 min) → `send-push` v13 fan-out to web VAPID + native APNs. End-to-end smoke test confirmed `fired_at` stamped + `member_notifications` row created.
+
+### What shipped
+
+**Supabase migration** — new `scheduled_pushes` table:
+- Schema: `id BIGSERIAL PK, member_email, fire_at TIMESTAMPTZ, type, title, body, data JSONB, dedupe_key, fired_at, cancelled_at, last_error, created_at`
+- Composite UNIQUE `(member_email, dedupe_key)` for idempotency — re-tap of same button updates `fire_at` instead of inserting a duplicate
+- Partial index `idx_scheduled_pushes_due` on `fire_at WHERE fired_at IS NULL AND cancelled_at IS NULL` for fast cron scan
+- RLS: 3 policies (`self_select`, `self_insert`, `self_update`) keyed on `auth.email() = member_email`; service role bypasses for the consumer
+- Applied via `SUPABASE_BETA_RUN_SQL_QUERY` one-statement-at-a-time per §23 hard rule (9 statements)
+
+**EF `schedule-push` v1** (`9f28d1eb-9649-49bb-8769-509e9febedf4`, ezbr_sha `b95d869…`, `verify_jwt:true`):
+- Decodes JWT for member email — same pattern as `wellbeing-checkin` / `member-dashboard`
+- Validates `{type, title, body, fire_in_seconds}`; clamps `fire_in_seconds` to 60..86400
+- Default `dedupe_key` = `${type}_${YYYY-MM-DD}` if caller doesn't provide one
+- Upsert via `?on_conflict=member_email,dedupe_key` with `Prefer: resolution=merge-duplicates,return=representation`
+- Re-scheduled rows reset `fired_at`/`cancelled_at`/`last_error` to null so they re-fire cleanly
+- Returns `{ok, id, fire_at, fire_in_seconds, dedupe_key}`
+
+**EF `process-scheduled-pushes` v1** (`ca44e53e-c5d2-425b-8e22-cab0ef0a296e`, ezbr_sha `1c68662…`, `verify_jwt:true`):
+- Service-role-callable consumer (dual-auth: new `SUPABASE_SERVICE_ROLE_KEY` or `LEGACY_SERVICE_ROLE_JWT`, matching `send-push` pattern)
+- Selects due rows (limit 200, ordered `fire_at ASC`) using the partial index
+- Sequentially calls `send-push` with `dedupe_same_day:false` (idempotency already enforced upstream by `dedupe_key` — same-day reschedule of a snooze is a *legitimate* second send, not a duplicate)
+- Stamps `fired_at = now()` on success or `last_error = "<message>"` on failure
+- Logs `due/fired/failed` counts for observability
+
+**pg_cron job** `process-scheduled-pushes` (jobid 18, schedule `*/5 * * * *`):
+- Pattern matches `habit-reminder-daily`/`streak-reminder-daily`: `pg_net.http_post` with `current_setting('app.service_role_key', true)` for auth header
+- 5-min granularity → "Remind me in 2h" surfaces at 2h0–4min, fine for an informal snooze
+
+**vyve-site `28080d6`** — `habits.html` button rewired:
+- Old handler: `setTimeout(2h, () => new Notification(...))` — broken three ways above
+- New handler: best-effort `Notification.requestPermission()` (doesn't block), JWT from `window.vyveSupabase.auth.getSession()`, POST to `/functions/v1/schedule-push` with `{type:'habit_reminder_2h', title, body, fire_in_seconds:7200, data:{url:'/habits.html'}}`
+- Button shows `Setting…` and disables during request
+- Toast confirms or surfaces failure
+- The `data.url` value pipes through `send-push` → SW notificationclick handler → routes back to `/habits.html` (per the routing infrastructure shipped 29 April PM-2)
+- No SW cache bump needed — habits.html is HTML, network-first per §23 rule
+
+### End-to-end smoke test
+
+1. Inserted row directly with `fire_at = now() - 10 seconds` for `deanonbrown@hotmail.com` (1 native sub + 4 web subs in `push_subscriptions`/`push_subscriptions_native`)
+2. Manually triggered `process-scheduled-pushes` via `pg_net.http_post` (mimicking the cron call)
+3. After ~28 seconds: `fired_at = '2026-05-04 15:31:56+00'`, `last_error IS NULL`
+4. `member_notifications` row created with `type='habit_reminder_2h'`, `title='VYVE smoke test'`, `route='/habits.html'`
+5. Smoke rows cleaned up to keep Dean's notification feed clean
+
+### Files changed
+
+- Supabase: new table `scheduled_pushes` + 3 RLS policies + 1 partial index
+- Supabase: new EF `schedule-push` v1
+- Supabase: new EF `process-scheduled-pushes` v1
+- Supabase: new pg_cron job `process-scheduled-pushes` (`*/5 * * * *`)
+- `VYVEHealth/vyve-site/habits.html` (43,277 chars, was 42,030) — commit [`28080d6`](https://github.com/VYVEHealth/vyve-site/commit/28080d6ffe7da22f926270125915306b8a7da98f)
+- `VYVEHealth/VYVEBrain/brain/master.md` — §6 add `scheduled_pushes` table; §7 add 2 new EFs; §7 cron table 15 → 16 jobs
+- `VYVEHealth/VYVEBrain/brain/changelog.md` — this entry prepended
+
+### Why this architecture
+
+Considered three options for "fire a push N seconds from now":
+
+1. **Client setTimeout + foreground Notification** — what was there. Three failure modes above. Dead.
+2. **pg_cron one-shot per scheduled push** — would work but heavyweight: every "remind me in 2h" tap creates a transient cron job. Cleanup, observability, and concurrency get noisy.
+3. **Queue table + 5-min polling consumer** — what shipped. Single durable cron job, single processor with sequential per-row marking, one row per scheduled push. Scales linearly, easy to observe (`SELECT * FROM scheduled_pushes` shows the live state), and the same plumbing covers any future "remind me later" button on any other page.
+
+### Reusable for future features
+
+`schedule-push` is generic — any client EF/page can enqueue a delayed push by providing `{type, title, body, fire_in_seconds, data}`. Future use cases that fit this pattern: workout session reminders, monthly check-in nudges, "reschedule for tomorrow" snooze on missed daily activities. No further infrastructure work needed; just call the EF.
+
+### What's still open
+
+- **Android FCM** still parked — Android native users won't surface the push, only web/iOS-native + the in-app row. No regression vs PM-3 state.
+- **§23 hard rule candidate:** the dual-auth pattern (new `SUPABASE_SERVICE_ROLE_KEY` + `LEGACY_SERVICE_ROLE_JWT`) is now used in 4 EFs (`send-push`, `process-scheduled-pushes`, plus 2 prior). Worth codifying once we hit five.
+
+---
+
 ## 2026-05-04 PM-4 (PWA legacy cleanup deep-dive · 2 commits)
 
 ### TL;DR
