@@ -1,3 +1,61 @@
+## 2026-05-04 PM-12 (log-food offline rework: client_id row identity · 1 site commit, 1 brain commit)
+
+### TL;DR
+
+Closes session 2b. log-food was the one remaining offline-tolerance gap because deletes relied on the server-assigned `id` from the insert response — naive queueing broke the delete path. PM-12 moves row identity client-side via the existing `client_id` partial unique index (added PM-8) so inserts queue offline and deletes work regardless of insert flush state. With 2b closed, the offline-tolerance work is **complete across every member-facing surface**.
+
+### What changed
+
+**Inserts** (both `logFood()` and `logQuickAdd()`). Before: insert with `Prefer: return=representation`, push the server response into `diaryLogs[meal]`, fail entirely if offline. After: generate `client_id` locally with `VYVEData.newClientId()`, stamp it onto the row, push the row into `diaryLogs[meal]` immediately (optimistic UI), then fire the queued POST via `VYVEData.writeQueued`. `Prefer: resolution=ignore-duplicates,return=minimal` makes re-fires server-side no-ops against the `nutrition_logs_member_client_uniq` partial unique index. Toast switches between "Logged: <name>" (online) and "Saved offline: <name>" (offline) so the member knows the state.
+
+**Deletes** (`deleteLog`). Before: `DELETE ?id=eq.<server_id>`, only worked after the insert flushed. After: filters local diary by `client_id` immediately for optimistic UI, then handles three cases:
+- Row still in `vyve_outbox` (insert never reached server): walks the queue and drops POSTs to `nutrition_logs` whose body `client_id` matches. No DELETE call goes out — the insert is just cancelled in place.
+- Row already on server: `VYVEData.writeQueued` issues `DELETE ?client_id=eq.<>&member_email=eq.<>`, queues if offline, fires now if online.
+- Both: defensive — outbox cancel runs first, then the DELETE fires anyway. The server DELETE on a non-existent client_id is a harmless no-op and protects against the race where flush completed between paint and tap.
+
+The render button onclick switched from `deleteLog('${r.id}', ...)` to `deleteLog('${r.client_id}', ...)`. Single-character schema change, zero impact on the UI.
+
+**Reads** (`loadDiary`). Before: skeleton → server fetch → render. After: paint-cache-first via new helpers `diaryCacheKey()` / `saveDiaryCache()` / `readDiaryCache()` (per-`(email, date)` key shape `vyve_food_diary:<email>:<YYYY-MM-DD>`). Cached diary paints immediately if present. Background refresh from server, JSON-diff comparison so we only re-render when something actually changed (no flicker). Offline path: cache stays visible, no error state. Cache write happens on every mutation so reload offline shows current state.
+
+**Legacy server rows without client_id** (predate PM-8 schema rollout) — `ensureClientId(r)` fabricates a UUID locally and a fire-and-forget PATCH writes it back to the server: `PATCH /nutrition_logs?id=eq.<server_id>` body `{ client_id: <fabricated> }`. Race-acceptable: if two browsers fabricate different UUIDs concurrently, one PATCH wins. Both browsers' local state stays internally consistent; future loads pick up whichever UUID landed.
+
+### Idempotency story
+
+Two flushes for the same logged food (rare flaky-signal partial success) collapse cleanly:
+- The `nutrition_logs_member_client_uniq` partial unique index (`member_email`, `client_id` WHERE `client_id IS NOT NULL`) is in place from PM-8.
+- Insert uses `Prefer: resolution=ignore-duplicates,return=minimal`. Re-fire is a no-op server-side.
+- DELETE by `client_id` is naturally idempotent — second DELETE against a non-existent row returns 204 with zero rows affected.
+
+No EF involvement, no server-side change. All client-side.
+
+### Why this UX shape
+
+Considered: keep the server `id` flow and just make DELETE smart enough to find rows by other keys (e.g., timestamp + name). Rejected — fragile, requires the server to round-trip on every insert (defeats the offline goal), and offers nothing the `client_id` flow doesn't already give.
+
+Considered: generate `client_id` on the server side via a trigger and have the client wait for the response. Rejected — same round-trip problem, plus it'd force a schema change (DEFAULT `gen_random_uuid()` on `client_id`) that conflicts with the `WHERE client_id IS NOT NULL` partial unique index.
+
+The chosen design (client owns identity, server validates + dedups via the partial index) is the same shape as PM-7's workouts/cardio writes — just extended to a table with a delete operation that needed careful handling.
+
+### Service worker
+
+`vyve-cache-v2026-05-04h-checkin-deferred` → `vyve-cache-v2026-05-04i-logfood-clientid`.
+
+### Validation
+
+All inline scripts pass `node --check`. Schema verified live: `nutrition_logs_member_client_uniq` partial unique index exists on `(member_email, client_id) WHERE client_id IS NOT NULL`. No DDL in this commit. Site round-trip confirmed: SW cache key landed, `/vyve-offline.js` script tag present, `client_id` in delete URL, `VYVEData.writeQueued` + `VYVEData.newClientId` calls present, `ensureClientId` helper present, `diaryCacheKey` helper present, `resolution=ignore-duplicates` Prefer header present, delete button onclick uses `r.client_id`, legacy backfill PATCH present.
+
+### Doctrine — final, complete
+
+Through PM-7 / PM-8 / PM-9 / PM-10 / PM-11 / PM-12, the offline-tolerance work is done across every member-facing surface that has any business being offline-tolerant:
+
+- **Tolerant where we can be.** Workouts (sets, completed workouts, programme advance, exercise history, custom workouts) — PM-7. Habits (yes/no/skip + autotick + undo), weight log — PM-8. **Nutrition log (logFood, logQuickAdd, deleteLog)** — PM-12. Reads paint cache: engagement summary, leaderboard, achievements grid, home dashboard, habits, **and now log-food's daily diary** — PM-9, PM-12.
+- **Honest where we can't be.** Live sessions (all 8 pages), running plan generation — PM-10.
+- **Bridged where it makes sense.** Wellbeing check-in submission queues + defers AI response into `member_notifications` with deep-link back to the existing renderAlreadyDone() flow — PM-10/11.
+
+No outstanding offline-tolerance items in the backlog. The doctrine codified in §23 ("offline-tolerant where we can be, offline-honest where we can't") is now realised end-to-end. Future surfaces inherit the same pattern: `client_id` partial unique index on member-authored writes, paint-cache-first reads, `VYVEData.requireOnline` for genuinely-online-only flows.
+
+---
+
 ## 2026-05-04 PM-11 (Wellbeing check-in offline queue + deferred AI response · 1 EF deploy, 1 site commit, 1 brain commit)
 
 ### TL;DR

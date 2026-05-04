@@ -1,3 +1,9 @@
+## Added 04 May 2026 PM-12
+
+- **log-food.html offline rework — DONE 04 May PM-12.** Closes session 2b. Row identity moved client-side via client_id partial unique index (added PM-8, in place from then). Both inserts queue via VYVEData.writeQueued with ignore-duplicates Prefer. deleteLog handles three cases (outbox cancel for in-flight inserts, queued DELETE by client_id for flushed rows, both for the race). loadDiary now paint-cache-first via vyve_food_diary cache. Legacy rows without client_id get fabricated UUID + fire-and-forget PATCH backfill. SW v2026-05-04i-logfood-clientid. vyve-site commit `6fb46b72`.
+
+- **Offline-tolerance doctrine COMPLETE through PM-12.** No outstanding offline-tolerance items remain. Every member-facing write surface that has any business being offline-tolerant is — workouts, habits, weight log, nutrition log queue transparently with client_id idempotency. Reads paint cache. Live streams + AI generation refuse cleanly. Wellbeing check-in queues + defers AI response via notifications. Future surfaces inherit the pattern: client_id partial unique index on member-authored writes, paint-cache-first reads, VYVEData.requireOnline for genuinely-online-only flows.
+
 ## Added 04 May 2026 PM-11
 
 - **Wellbeing check-in offline queue + deferred AI response — DONE 04 May PM-11.** Closes session 2c. EF v25 → v26 (Supabase v39 internal): X-VYVE-Deferred header support + route param on notifications. wellbeing-checkin.html: flushCheckinOutbox drains vyve_checkin_outbox queue on `online` event + 1.5s page-load retry, re-fires EF with deferred header. Notification deep-links to /wellbeing-checkin.html where renderAlreadyDone() paints recs. Natural-key dedup handles idempotency. SW v2026-05-04h-checkin-deferred. vyve-site commit `81aafc58`.
