@@ -1,3 +1,66 @@
+## 2026-05-04 PM-13 (Home dashboard tick lag fix · 1 site commit, 1 brain commit)
+
+### TL;DR
+
+Closes the "tick a habit, navigate to home, dot stays empty for 1-10 seconds" bug Dean reported. The lag was real even fully online. Two-part fix: bust the bespoke home-dashboard localStorage cache on every successful activity write, plus an optimistic outbox-overlay inside `renderDashboardData` so the dot fills instantly without waiting on the EF round-trip.
+
+### Why the lag existed
+
+The home screen reads via the `member-dashboard` Edge Function which reads from server-side tables. It also has its own bespoke `vyve_home_v3_<email>` localStorage cache for paint-cache-first UX. Two stacked problems:
+
+1. **Stale cache** — when a habit was ticked on `habits.html`, the home cache wasn't touched. Next home visit painted pre-tick state immediately. The EF round-trip then returned fresh data and the dashboard re-rendered. The visible flicker was the bug.
+2. **EF cold-start** — even with cache wiped, the EF does ~17 parallel queries inside one call. Cold-start days drag to several seconds, leaving the member staring at a skeleton or pre-tick state for an unreasonable wait.
+
+### Part 1 — Cache invalidation on every activity write
+
+New `VYVEData.invalidateHomeCache(email?)` helper in `vyve-offline.js`. Defaults to current authed user via `window.vyveCurrentUser`. Just deletes `vyve_home_v3_<email>` so the next home load skips the cached-stale paint and goes straight to skeleton + fresh fetch.
+
+Wired into every successful activity write site:
+
+- `habits.html`: `logHabit` (yes/no/skip), `undoHabit`, autotick pass (once per pass, only if anything actually wrote).
+- `workouts-session.js`: `saveExerciseLog`, `completeWorkout`. Deliberately NOT on the `workout_plan_cache` PATCH heartbeat (programme counter, not member activity).
+- `nutrition.html`: `saveWtLog` (weight log).
+- `log-food.html`: `deleteLog`, food-selector `logFood`, quick-add `logFood` — all 3 `nutrition_logs` write paths.
+- `wellbeing-checkin.html`: `submitCheckin` success path AND `flushCheckinOutbox` success branch (deferred submission flush, so even a queued offline check-in invalidates home when it eventually fires).
+- `tracking.js`: `onVisitStart` only — heartbeats fire every 15s, invalidating per-tick would be silly.
+
+### Part 2 — Optimistic overlay in renderDashboardData
+
+Even with cache wiped, the EF round-trip lag remains. Skeleton for 500ms-3s feels worse than seeing the just-ticked dot fill instantly. The home screen now layers local outbox state on top of the EF response.
+
+New `VYVEData.getOptimisticActivityToday()` walks `vyve_outbox` for any pending POSTs to `daily_habits` / `workouts` / `cardio` / `session_views` / `replay_views` matching today's UK-local date. Returns `{ habits/workouts/cardio/sessions: { count, hasToday }, habitIds: [] }`. Skips skip-typed habit entries (`habit_completed:false`) since the home dashboard's habit dot only fills on a "yes" log.
+
+`renderDashboardData` overlay (defensive try-catch around the lot):
+
+1. **Pill strip** — if `habits.hasToday`, ensure today's date is in `data.habitDatesThisWeek` so the dot fills.
+2. **Counts** — bump `data.counts.{habits,workouts,cardio,sessions}` by the pending count BUT only if the EF response doesn't already reflect today's activity for that type. Defends against the race where flush completed between the EF query and our render — in that case the EF data is authoritative, no double-count.
+3. **activity_log** — ensure today's row exists with the right activity types so the streak engine sees today as active and `daysInactive=0`.
+
+Honest fallback: if `VYVEData` isn't loaded or the outbox is empty, the overlay is a complete no-op. Server data remains the source of truth.
+
+### Infrastructure
+
+- `vyve-offline.js` 15074 → 19112 chars: `invalidateHomeCache` + `getOptimisticActivityToday` exposed on the public namespace.
+- `index.html` adds `<script src="/vyve-offline.js">` next to `auth.js` (non-deferred) so `VYVEData` is defined before the cache-first auth-ready render kicks off.
+- SW cache `v2026-05-04i-logfood-clientid` → `v2026-05-04j-home-optimistic`.
+
+### Validation
+
+All 5 modified HTML files (`index.html`, `habits.html`, `nutrition.html`, `log-food.html`, `wellbeing-checkin.html`) — every inline script passes `node --check`. All 4 modified JS files (`vyve-offline.js`, `workouts-session.js`, `tracking.js`, `sw.js`) — pass `node --check` directly. Site round-trip confirmed: 11 markers landed across all 9 files including `invalidateHomeCache` exports, `getOptimisticActivityToday` exports, the `<script src="/vyve-offline.js">` tag in index.html, the optimistic overlay block in renderDashboardData, every per-page invalidate call, and the SW cache key bump.
+
+### Expected member-facing behaviour
+
+- Tick a habit on `habits.html`, navigate to home → dot fills instantly. Background EF call still fires, but its render replaces optimistic data with the same authoritative state — no visible change.
+- Complete a workout, navigate to home → workouts count bumps instantly, activity score reflects today, daysInactive=0.
+- Online with fast wifi → EF response arrives within 300-800ms, replaces optimistic overlay seamlessly.
+- Spotty / offline tick + navigate to home → dot fills from outbox overlay even though server doesn't have the row yet. Outbox drains on reconnect, EF eventually returns matching state.
+
+### vyve-site commit
+
+[`aa978349`](https://github.com/VYVEHealth/vyve-site/commit/aa9783495fed6cee772134f9ed7f4f76be0ca184)
+
+---
+
 ## 2026-05-04 PM-12 (log-food offline rework: client_id row identity · 1 site commit, 1 brain commit)
 
 ### TL;DR
