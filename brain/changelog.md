@@ -1,3 +1,78 @@
+## 2026-05-04 PM-10 (Offline gates for AI / live pages · 1 site commit, 1 brain commit)
+
+### TL;DR
+
+Lewis flagged it: certain pages shouldn't pretend to work offline. Live sessions stream from YouTube + use Supabase Realtime — there is nothing to fall back to. AI calls (running plan generation, weekly check-in submission) silently queueing with no response visible is worse than refusing the action. PM-10 wires a shared offline-required gate into all four surfaces with consistent UX and copy that's honest about why each one needs the network.
+
+### Architecture
+
+New helper on the existing `VYVEData` namespace in `vyve-offline.js`:
+
+```
+VYVEData.requireOnline({
+  title?:   string,   // default "You're offline"
+  body?:    string,   // why this page needs network
+  host?:    Element,  // mount target (default <body>)
+  icon?:    string,   // SVG/glyph (default wifi-off)
+  autoReload?: bool   // reload on `online` event (default true)
+}) -> { teardown(): void }
+```
+
+Renders a full-page state into the host: brand-styled card with icon, heading, body copy, and a "Try again" button. Listens for the browser's `online` event and auto-reloads the page when network returns so the member doesn't need to tap anything if signal comes back while they're staring at the gate. Hint line: "We'll reload automatically when you're back online."
+
+Putting it on `VYVEData` rather than `VYVEOffline` (which lives in `offline-manager.js` and owns the banner) means we don't have to touch a second module — and the gate semantically belongs with the data layer's offline doctrine anyway.
+
+### Wired surfaces
+
+**Live sessions (8 pages)**
+
+The 7 stub live pages (`yoga-live.html`, `checkin-live.html`, `education-live.html`, `mindfulness-live.html`, `podcast-live.html`, `therapy-live.html`, `workouts-live.html`) all delegate to `session-live.js`, so a single patch covers all of them: early-exit at the top of `buildLivePage()` when `navigator.onLine` is false, before any DOM is built. Body copy: "Live sessions stream from the cloud — they need a connection."
+
+`events-live.html` is the only live page with its own self-contained 22kb inline script, not a session-live.js stub. Same gate logic, manually inlined at the top of its second `<script>` tag with explicit `else { ... } // end offline gate else` bracketing of the rest of the script body. Validated under `node --check` to catch the doubled-function-signature bug that the first attempt produced (the regex anchor captured one token too many — caught by syntax-checking before commit, fixed in the same workbench cell).
+
+All 8 pages now load `/vyve-offline.js` before their main script — 7 stubs slot it right before `/session-live.js`, events-live drops a non-deferred tag in `<head>` before the wakeLock helper.
+
+**Running plan (`running-plan.html`)**
+
+Gate INSIDE `generatePlan()`, not at page load. Deliberately scoped — the page itself stays useful offline because saved plans render from `localStorage` / `member_running_plans` on `vyveAuthReady`. Only the AI generation action is blocked. Body copy: "Generating your plan needs AI — that requires a live connection. Your saved plans are still available below."
+
+Confirmed with Dean before building (he picked block-on-Generate over block-whole-page).
+
+**Weekly check-in (`wellbeing-checkin.html`)**
+
+Gate INSIDE `submitCheckin()`, not at page load. The page's previous-week display works from cache offline so members can re-read what they got last time. Only new submissions are blocked, since silent-queueing a check-in with no AI response would be worse than refusing it cleanly. Body copy: "Your weekly check-in uses AI to give you personalised recommendations — that needs a live connection. We'll reload as soon as you're back online so you can check in then."
+
+This is the user-facing half of what session 2c was originally going to be. The deferred-AI-response + notifications fan-out (re-fire when online + push as `member_notifications`) is still parked for a future session, but the immediate UX problem (silent submit failure) is solved now.
+
+### Validation
+
+All five JS surfaces validated with `node --check`: `vyve-offline.js`, `session-live.js`, both `events-live.html` inline scripts, all `running-plan.html` inline scripts, all `wellbeing-checkin.html` inline scripts. One bug caught and fixed mid-flight (events-live.html's anchor doubled `function switchTab(name, btn) {` — invalid syntax, refused to parse, fixed by str-replacing the broken doublet down to a single signature). Re-fetched all 13 files post-commit and verified key markers present: SW cache key landed (`v2026-05-04g-offline-gates`), `requireOnline` is in vyve-offline.js, every patched surface contains `VYVEData.requireOnline`, every live-page stub has `/vyve-offline.js` ordered BEFORE `/session-live.js`.
+
+### Service worker
+
+`vyve-cache-v2026-05-04f-cache-paint-first` → `vyve-cache-v2026-05-04g-offline-gates`.
+
+### Doctrine update
+
+Pairs cleanly with PM-7/8/9's offline-tolerant work. The doctrine sharpens: **offline-tolerant where we can be, offline-honest where we can't**. Reads cache, writes queue (PM-7/8/9). AI and live streams refuse politely (PM-10). Members get a consistent visual + copy treatment so they learn the pattern once.
+
+### Combined effect through PM-7 / PM-8 / PM-9 / PM-10
+
+- **Workouts** — fully offline-tolerant.
+- **Habits** — fully offline-tolerant (any-age cache when offline).
+- **Weight log** — fully offline-tolerant.
+- **Engagement summary + achievements** — paint-cache-first.
+- **Live sessions** — offline-honest (full-page gate).
+- **Running plan generation** — offline-honest (gate on submit; saved plans still visible).
+- **Wellbeing check-in submission** — offline-honest (gate on submit; cached previous-week display still works).
+
+### Outstanding
+
+- **Session 2b — log-food.html offline rework.** Naive queueing breaks the existing UI because DELETE goes by server-assigned `id`. Plan: switch row identity to client-generated `client_id`, DELETE by `?client_id=eq.<>`. Schema column already in place from PM-8. ~1.5 sessions.
+- **Session 2c — wellbeing-checkin deferred AI response.** Now that PM-10 ships the user-facing half (graceful refusal), 2c shrinks to the back-half: queue the submission for `member_notifications` fan-out when online returns, with Lewis copy approval. ~0.5–1 session.
+
+---
+
 ## 2026-05-04 PM-9 (Offline data layer session 3: paint-cache-first audit + 2 surgical fixes · 1 site commit, 1 brain commit)
 
 ### TL;DR

@@ -820,7 +820,10 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
-## 19. Current status — 04 May 2026 PM-9
+## 19. Current status — 04 May 2026 PM-10
+
+**04 May 2026 PM-10 — Offline gates for AI / live pages.** Lewis directive: certain surfaces shouldn't pretend to work offline. New `VYVEData.requireOnline()` helper paints a full-page "You're offline" state with custom per-surface body copy + auto-reload on the `online` event. Wired into: all 8 live session pages (7 via single patch in session-live.js, events-live.html via inline gate with explicit else-bracket — validated by node --check after catching a doubled-function-signature bug from the first regex anchor), running-plan.html (gate inside generatePlan only — saved plans still visible offline), wellbeing-checkin.html (gate inside submitCheckin only — cached previous-week display still works). SW `v2026-05-04f-cache-paint-first` → `v2026-05-04g-offline-gates`. vyve-site commit [`3e46a2f5`](https://github.com/VYVEHealth/vyve-site/commit/3e46a2f56d2897ec283a343f18735b7bcde2a036). The doctrine sharpens: VYVE is offline-tolerant where it can be (workouts, habits, weight log, paint-cache-first reads), offline-honest where it can't (live streams, AI calls). PM-10 ships the user-facing half of session 2c; the back-half (deferred AI response via member_notifications fan-out) is the only remaining check-in offline work.
+
 
 **04 May 2026 PM-9 — Offline data layer session 3 (paint-cache-first across remaining surfaces).** Audit-driven scope reduction: walking through index, engagement, leaderboard, sessions, habits showed most pages already had bespoke paint-cache-first localStorage caches. Two surgical fixes shipped: (1) engagement.html `loadAchievements` flipped from cache-on-failure to paint-cache-first with diff-checked re-render (achievements tab now feels instant on every switch); (2) habits.html offline cache horizon extended (offline branch no longer requires <24h freshness — stale data > empty state when on a flight or in a gym). SW cache `v2026-05-04e-offline-habits-weight` → `v2026-05-04f-cache-paint-first`. vyve-site commit [`09b51953`](https://github.com/VYVEHealth/vyve-site/commit/09b519538f3e1a872c261eb657f5b40bee40d056). The original "every page feels slow" complaint was largely a Phase-3 achievements-tab issue masquerading as universal — the audit caught that. Sessions 2b (log-food client_id rework) and 2c (wellbeing-checkin offline UX) remain in backlog.
 
@@ -984,6 +987,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 ---
 
 ## 23. Known gotchas & architecture rules
+
+- **Offline-honest surfaces (added PM-10).** Any page that calls Anthropic-proxy (running plan, weekly check-in, future AI features) or streams from a live source (live sessions, real-time chat) MUST gate with `VYVEData.requireOnline()` rather than pretend to function offline. The gate is scoped: page-load gate for surfaces that have nothing to show offline (live sessions); action-only gate for surfaces with cached state worth showing (running-plan: saved plans still visible; wellbeing-checkin: previous-week display still visible). NEVER silent-queue an AI submission with no response surfaced to the member — that's a worse experience than refusing the submission cleanly. The UX pattern is consistent: brand-styled card, honest body copy explaining why the surface needs network, auto-reload on `online` event.
+
 
 | Rule | Detail |
 |---|---|

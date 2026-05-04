@@ -1,3 +1,9 @@
+## Added 04 May 2026 PM-10
+
+- **Offline gates for AI / live pages — DONE 04 May PM-10.** `VYVEData.requireOnline()` helper added to vyve-offline.js. Wired into all 8 live session pages (7 via session-live.js, events-live.html via inline gate), running-plan.html (gate inside generatePlan only), wellbeing-checkin.html (gate inside submitCheckin only). SW `v2026-05-04g-offline-gates`. vyve-site commit `3e46a2f5`. New §23 hard rule codifies the offline-honest pattern.
+
+- **Session 2c shrunk by ~half.** PM-10 ships the user-facing half of the wellbeing-checkin offline UX (graceful refusal at submit time). Remaining work: queue the submission for `member_notifications` fan-out when online returns, with Lewis copy approval on the wording of the deferred-response notification. ~0.5–1 session, blocked on Lewis copy review only.
+
 ## Added 04 May 2026 PM-9
 
 - **Offline data layer session 3 — DONE 04 May PM-9.** Audit-driven scope reduction. Two surgical fixes shipped: engagement.html `loadAchievements` flipped from cache-on-failure to paint-cache-first; habits.html offline cache horizon extended (any age, not <24h). Most pages already had bespoke paint-cache-first patterns (`vyve_engagement_cache`, `vyve_lb_cache_*`, `vyve_habits_cache_v2`, home dashboard cache) that didn't need touching. SW cache `v2026-05-04f-cache-paint-first`. vyve-site commit `09b51953`.
