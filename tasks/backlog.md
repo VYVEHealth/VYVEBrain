@@ -1,3 +1,9 @@
+## Added 04 May 2026 PM-11
+
+- **Wellbeing check-in offline queue + deferred AI response — DONE 04 May PM-11.** Closes session 2c. EF v25 → v26 (Supabase v39 internal): X-VYVE-Deferred header support + route param on notifications. wellbeing-checkin.html: flushCheckinOutbox drains vyve_checkin_outbox queue on `online` event + 1.5s page-load retry, re-fires EF with deferred header. Notification deep-links to /wellbeing-checkin.html where renderAlreadyDone() paints recs. Natural-key dedup handles idempotency. SW v2026-05-04h-checkin-deferred. vyve-site commit `81aafc58`.
+
+- **Offline-tolerance doctrine COMPLETE through PM-11.** Tolerant where we can: workouts/habits/weight log (PM-7, PM-8). Reads paint cache (PM-9). Honest where we can't: live sessions + running plan generation (PM-10). Bridged: check-in queues + defers (PM-11). Only remaining item is **session 2b — log-food.html client_id rework** (~1.5 sessions). The schema column was added PM-8 and is unused on this table; the work is the UI rework around row-identity for DELETEs.
+
 ## Added 04 May 2026 PM-10
 
 - **Offline gates for AI / live pages — DONE 04 May PM-10.** `VYVEData.requireOnline()` helper added to vyve-offline.js. Wired into all 8 live session pages (7 via session-live.js, events-live.html via inline gate), running-plan.html (gate inside generatePlan only), wellbeing-checkin.html (gate inside submitCheckin only). SW `v2026-05-04g-offline-gates`. vyve-site commit `3e46a2f5`. New §23 hard rule codifies the offline-honest pattern.

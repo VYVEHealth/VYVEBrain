@@ -1,3 +1,68 @@
+## 2026-05-04 PM-11 (Wellbeing check-in offline queue + deferred AI response · 1 EF deploy, 1 site commit, 1 brain commit)
+
+### TL;DR
+
+Closes session 2c. PM-10 shipped the user-facing half (graceful refusal of `submitCheckin()` when offline). PM-11 ships the back-half: the submission gets queued to localStorage, fires automatically when the device is back online, and the AI response surfaces via the existing `member_notifications` infrastructure deep-linked back to the check-in page. Doctrine completion — the offline story now reads cleanly: tolerant where we can, honest where we can't, bridged where it makes sense.
+
+### Edge function: wellbeing-checkin v25 → v26
+
+Three minimal patches, behaviour for online submissions byte-identical:
+
+- **Reads `X-VYVE-Deferred: 1` header.** When the client signals a deferred submission (queued offline, firing now), the EF swaps notification copy to `"Your check-in recommendations are ready" / "Your wellbeing score: N/10. Tap to see this week's recommendations from {persona}."` This makes sense when the member isn't on the page at submission time.
+- **`writeNotification()` extended with optional `route` parameter.** All notifications (deferred AND online) now include `route: '/wellbeing-checkin.html'`. Tapping the notification from the home dashboard's notifications sheet deep-links straight to the check-in page where the existing `renderAlreadyDone()` flow paints the recs from the row this EF just wrote.
+- **CORS preflight allow-headers list extended with `x-vyve-deferred`** so the deferred-submission header survives.
+
+Deployed to Supabase (their internal versioning calls it v39; our source comment is v26).
+
+### Client: wellbeing-checkin.html
+
+`submitCheckin()` offline path replaced. Instead of just painting the PM-10 `requireOnline` gate and bailing, it now:
+
+1. Snapshots the full submission payload (score, flow, answer text, memberData, historyData) to `localStorage.vyve_checkin_outbox`.
+2. Paints a friendlier gate: "Your check-in is saved. We'll send you a notification with your personalised recommendations as soon as you're back online."
+3. Returns. No EF call until network returns.
+
+New `flushCheckinOutbox()` function. Reconstructs the same body shape `submitCheckin()` would have sent, adds the `X-VYVE-Deferred: 1` header, fires the EF call. On HTTP success → clears the queue. On non-OK / network failure → leaves queued for next retry.
+
+Two flush triggers: `window.addEventListener('online', flushCheckinOutbox)` for in-page reconnects, plus a 1.5s page-load retry (`setTimeout(flushCheckinOutbox, 1500)`) for the case where the device came back online while the page was closed. The 1.5s delay lets auth resolve before `getAuthHeaders()` is called.
+
+### Idempotency story
+
+Two flushes for the same week (rare flaky-signal partial success) collapse cleanly:
+
+- The `wellbeing_checkins` table has `wellbeing_checkins_member_week_unique` (`member_email`, `iso_week`, `iso_year`).
+- The EF inserts with `Prefer: resolution=merge-duplicates,return=minimal`. Re-fire upserts into the single row.
+- `member_notifications` already has its own per-day-per-type dedup check (lines 95-101 of v25, preserved in v26): if a `checkin_complete` notification already exists for today, the second write no-ops.
+- Anthropic gets billed twice in the rare case. Acceptable.
+
+No `client_id` plumbing needed — the natural-key dedup is doing the work and the EF wraps the AI call + DB writes in one shot, so a `client_id` column on `wellbeing_checkins` (already added in PM-8) doesn't add value here. It's still there as backup.
+
+### Why this UX shape vs. the alternatives
+
+Considered: render the recs inline if the queued submission flushes while the page is still open. Decided against — the page might have been navigated away from, or sleeping for hours, or torn down by the OS in a Capacitor binary. The notifications surface is the only consistent delivery mechanism that works across all those states. If the member happens to still be on the page when the flush completes, the page-load retry fires, the EF returns, but we don't re-render — the next time they go to the page (either via the notification tap or independently), `renderAlreadyDone()` paints from the now-populated `wellbeing_checkins` row.
+
+The page-load retry happens 1.5s after load. Deliberate: by then auth has resolved, history has loaded, and if there's a queue it gets sent to the EF in the background while the member is reading the page. If they then navigate to the notifications sheet a few seconds later, the notification will be there. Unhurried, no spinner, no surprise UI changes.
+
+### Service worker
+
+`vyve-cache-v2026-05-04g-offline-gates` → `vyve-cache-v2026-05-04h-checkin-deferred`.
+
+### Validation
+
+All four `wellbeing-checkin.html` inline scripts pass `node --check`. EF deployed and `wellbeing_checkins_member_week_unique` index verified live. Site round-trip confirmed: `vyve_checkin_outbox` reference present, `X-VYVE-Deferred` header reference present, `flushCheckinOutbox` function present, page-load retry present, SW cache key landed.
+
+### Doctrine — final shape after PM-7/8/9/10/11
+
+- **Tolerant where we can be.** Workouts (sets, completed workouts, programme advance, exercise history, custom workouts), habits (yes/no/skip + autotick + undo), weight log — all queued via `VYVEData.writeQueued` with `client_id` idempotency (PM-7, PM-8). Reads paint from cache (PM-9).
+- **Honest where we can't be.** Live sessions, running plan generation — `VYVEData.requireOnline` gate refuses cleanly with explanatory copy (PM-10).
+- **Bridged where it makes sense.** Wellbeing check-in queues the submission, defers the AI response into `member_notifications`, deep-links back to the existing render flow (PM-11).
+
+### Outstanding offline work
+
+- **Session 2b — log-food.html client_id rework.** The two `nutrition_logs` POSTs at `log-food.html` use `Prefer: return=representation` because the server-assigned `id` backs subsequent `DELETE ?id=eq.<id>`. Naive queueing breaks delete path. Plan: switch row identity to client-generated `client_id`, DELETE by `?client_id=eq.<>&member_email=eq.<>`. Schema column already added PM-8. ~1.5 sessions of work, mostly UI plumbing. Last remaining offline-tolerance item.
+
+---
+
 ## 2026-05-04 PM-10 (Offline gates for AI / live pages · 1 site commit, 1 brain commit)
 
 ### TL;DR
