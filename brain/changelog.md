@@ -1,3 +1,55 @@
+## 2026-05-04 PM-3 (Native app store welcome email + login PWA install banner removal · 2 commits, 1 EF deploy)
+
+### TL;DR
+
+Cleaned up legacy PWA install affordances now that the iOS App Store binary is approved (1.2 live since 28 April) and Android Play Store URL is live. Two surgical changes: (1) `vyve-site` `login.html` strips the entire "Add VYVE to your home screen" install banner — CSS block, HTML markup, and `initPWAPrompt()` script — keeps service worker registration intact for offline caching since the wrapped Capacitor app still benefits from cached assets when offline; (2) `onboarding` EF v82 deployed — welcome-email `pwa` constant rewritten from "Open in Safari → Add to Home Screen" two-column instructions into native App Store + Play Store download buttons. Header label, log strings, and `onboarding_version` field also bumped from v78→v82 to close the "deployed v81 but source still labels v78" drift previously logged in §23. Verified end-to-end via re-fetch on both surfaces (login.html: 12,183 chars, no PWA install fragments remain; EF v82 ezbr_sha `e004b86d…` ≠ v81 sha `db0ac99e…`).
+
+### What shipped
+
+**vyve-site `login.html`** — commit [`61e44e8`](https://github.com/VYVEHealth/vyve-site/commit/61e44e880d4884f38d6ec148255b5e7cdfd710c5). 5,054 chars removed across 4 surgical cuts:
+- CSS: `.pwa-banner`, `.pwa-banner-icon`, `.pwa-banner-body`, `.pwa-banner-title`, `.pwa-banner-sub`, `.pwa-banner-actions`, `.pwa-dismiss-btn`, `.pwa-install-btn`, `.pwa-banner-close` and all hover variants
+- HTML: `<!-- PWA Install Banner -->` comment + entire `<div class="pwa-banner" id="pwa-banner">…</div>` block
+- JS: `initPWAPrompt()` call inside the login IIFE
+- JS: standalone `function initPWAPrompt(){…}` definition (`beforeinstallprompt` listener, iOS Safari instructions, Chrome detection, dismiss persistence)
+
+Kept intentionally:
+- `<link rel="manifest" href="/manifest.json"/>` and apple-mobile-web-app meta tags (these don't trigger any prompt; useful for SW + manifest-aware browsers)
+- `if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js')` — SW continues to power offline cache + push handler regardless of native wrap
+
+**onboarding EF v82** — `Supabase:deploy_edge_function`. New ezbr_sha `e004b86d3284edfc2ee6b89f922ad8e6523f1cac76668d824b69110c63c91816`. Source-text changes (5 string replacements applied programmatically against v81 source):
+1. Header: `// onboarding v78 - exercise stream routing + write-error hardening` → `// onboarding v82 - native app store welcome email (PWA install steps removed) + write-error hardening (carried from v78)`
+2. `console.log('Start v78:'` → `console.log('Start v82:'`
+3. `console.log('DONE v78:'` → `console.log('DONE v82:'`
+4. `onboarding_version:'v78'` (in `buildDecisionLog`) → `onboarding_version:'v82'`
+5. The entire `pwa` constant inside `sendWelcomeEmail()` — replaced two-column "iPhone / Open in Safari → Add to Home Screen" + "Android / Open in Chrome → Add to Home screen" instruction table with two prominent dark-teal call-to-action buttons linking directly to:
+   - **iPhone**: `https://apps.apple.com/gb/app/vyve-health/id6762100652`
+   - **Android**: `https://play.google.com/store/apps/details?id=co.uk.vyvehealth.app` (stripped `&pcampaignid=web_share` referrer tag from the URL Lewis pasted)
+   - Subhead copy added: "Download from the App Store or Google Play, then sign in with your VYVE email."
+   - Header copy: "Download the VYVE Health app" → "Get the VYVE Health app"
+
+### Why this matters
+
+Members onboarding from today (04 May 2026 PM-3 onwards) get a welcome email that points them at the native app rather than the PWA-install workaround. The login page no longer dangles a now-irrelevant "Add to Home Screen" banner if they happen to land in mobile Safari/Chrome instead of opening the wrapped app. Kills off ~1.5 weeks of stale install copy that has been live since iOS 1.2 approval on 28 April.
+
+### Drift closures
+
+- **EF source-header semantic versioning drift** (backlog item, added 2026-05-04 PM-2): `onboarding` was the worst offender (deployed v81, source said v78). v82 deploys with header, log labels, and `onboarding_version` all aligned. Other EFs still need an audit pass per the original backlog item — this only closes onboarding.
+- **§9 onboarding flow narrative** in master.md still described welcome email as "PWA install steps + programme card" — patched to "native App Store + Play Store download buttons + programme card."
+
+### Files changed
+- `VYVEHealth/vyve-site/login.html` (12,183 chars, was 17,237)
+- Supabase EF `onboarding` v82 (deployed via Supabase MCP, no source repo)
+- `VYVEHealth/VYVEBrain/brain/master.md` — §9 + §19 patches
+- `VYVEHealth/VYVEBrain/brain/changelog.md` — this entry prepended
+- `VYVEHealth/VYVEBrain/tasks/backlog.md` — closed welcome-email PWA item
+
+### What's still open
+
+- **EF source-header semver audit** for other functions (still on backlog from PM-2)
+- The `manifest.json` and apple-mobile-web-app meta tags remain on `vyve-site`. They're harmless in the Capacitor-wrapped flow (the wrapper hosts the same site origin), but worth a future audit to see if they're still earning their keep.
+
+---
+
 ## 2026-05-04 PM-2 (Brain hygiene · drift audit + §7/§6/§23 patch · 1 commit)
 
 ### TL;DR
