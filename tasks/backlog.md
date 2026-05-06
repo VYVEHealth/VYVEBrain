@@ -1,3 +1,11 @@
+## Added 06 May 2026
+
+- **Workout session resume fix — DONE 06 May.** Member WhatsApp feedback exposed `workouts-config.js`'s orphan `init()` — declared but never invoked, so `restoreSessionState()` (which is fully built and correct in `workouts-session.js`) never ran. Members tabbing away mid-workout (rest period, lock screen, app switch) lost the session view on return and had to redo it from scratch. Replaced with `vyveBootWorkouts(user)` + two-path wiring (already-fired auth race + cold-login listener) + idempotent boot guard. vyve-site `46006af1`. SW `v2026-05-06a-workout-resume`. New §23 hard rule codified.
+
+- **Audit other portal pages for orphan-init pattern.** Single grep across vyve-site repo for `^async function init` and `^function init` — confirm every match has a matching invocation site (or is replaced with the `vyveBootX` + two-path wiring pattern). Pages to check: `engagement.html`, `leaderboard.html`, `nutrition.html`, `log-food.html`, `cardio.html`, `movement.html`, `exercise.html`, `wellbeing-checkin.html`, `monthly-checkin.html`. Lower urgency than workouts since none have a comparable resume-on-reload feature, but the same wiring bug could be silently breaking other init steps (e.g. avatar bind, logout binding). 30-min audit + however many fixes.
+
+- **Add lightweight e2e smoke test for workout resume.** No automated test caught the regression. Add a Cypress/Playwright smoke that: log in → start a workout → log one set → reload page → assert session view is open and tick is preserved. Same pattern for: complete habit + reload (assert overlay), submit weekly check-in + reload (assert success state). Lewis's call on test infra investment timing — currently zero browser-level tests.
+
 ## Added 04 May 2026 PM-15
 
 - **Movement page distance + walks routed to cardio + PM-13b wiring — DONE 04 May PM-15.** Quick-log now captures distance for walks and writes them to cardio (matches cardio.html's `walking` type exactly). Stretch/yoga/mobility/pilates/other still go to workouts. Both `markDone` and `logMovement` now invalidate home cache and record breadcrumbs (PM-13b wiring closed). vyve-offline.js script tag added (was missing — VYVEData was undefined on this page). SW v2026-05-04l-movement-distance. vyve-site commit `91eff384`. No EF changes, no migrations.

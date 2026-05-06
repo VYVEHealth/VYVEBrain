@@ -1,3 +1,114 @@
+## 2026-05-06 (Workout session resume fix · workouts-config.js orphan init wired)
+
+### TL;DR
+
+Member WhatsApp feedback today (18:28): "Tried using the app again to log my workout. Added my workout that I was doing. Did 2 of the 5 exercises without issue. On the 3rd during a rest period was on another page and when went back to it, its lost the workout and made me redo it all over again." Real bug, not a member error. Diagnosis took ~6 tool calls. Fixed in vyve-site commit [`46006af1`](https://github.com/VYVEHealth/vyve-site/commit/46006af14e076d336b1ab87605db0dbdb6c655e5) — single-file refactor of `workouts-config.js`. SW cache `v2026-05-04s-kb-pure-css` → `v2026-05-06a-workout-resume`.
+
+### Diagnosis
+
+The persistence layer in `workouts-session.js` was complete and well-built — surprised on first read. There's a `vyve_active_session` localStorage blob, populated by `saveSessionState()` after every `saveExerciseLog()` call (~17000), capturing full DOM state per exercise: `kg`, `reps`, `ticked`, `bw`, `note`, plus `currentSessionData`, `sessionExercises`, `sessionLog`, `completedSetsCount`, `workoutTimerSeconds`, `savedAt`. `clearSessionState()` correctly wipes on `closeSessionView` (with confirm if any sets logged) and on `completeWorkout` success. `restoreSessionState()` re-opens the session view, replays the timer offset from `vyve_workout_start`, and re-paints all DOM state. There's even a 4-hour staleness TTL so stale blobs self-clear.
+
+So why didn't it work? Because `restoreSessionState()` was **never called**. Searched the entire workouts-* JS bundle and `workouts.html` — exactly one definition site, zero invocation sites in JS, zero in HTML.
+
+The actual init-wiring lived in `workouts-config.js`, which had this shape:
+
+```js
+async function init() {
+  document.body.style.overflow = '';
+  memberEmail = (window.vyveCurrentUser && window.vyveCurrentUser.email) || '';
+
+// Listen for auth ready event to handle race conditions
+document.addEventListener('vyveAuthReady', function(event) {
+  const user = event.detail?.user;
+  if (user && user.email) {
+    memberEmail = user.email;
+    if (typeof loadProgramme === 'function') {
+      loadProgramme().catch(err => { console.warn('Failed to load programme after auth ready:', err); });
+    }
+  }
+});
+  const avatar = document.getElementById('nav-avatar');
+  ...
+  await Promise.all([loadProgramme(), loadAllExercises(), loadExerciseHistory(), loadCustomWorkouts(), loadExerciseNotes()]);
+  restoreSessionState();
+}
+```
+
+Two structural problems sitting on top of each other:
+
+1. **`init()` is declared but never invoked.** No `DOMContentLoaded` handler, no IIFE, no trailing `init();`. The function body — including the `restoreSessionState()` call — never runs.
+2. **A `document.addEventListener('vyveAuthReady', …)` is hoisted into the middle of `init`'s body.** That listener (a) registers as soon as `init()` is called, but `init()` is never called — except… JavaScript happily parses this as a top-level `addEventListener` because of the way the bracketing falls. Wait, no — it's syntactically inside the function body. Brace count balances at 19/19. So the listener inside `init()` actually only attaches when `init()` runs, which never happens. That means the only thing that should have been firing `loadProgramme` was also dead. (Side question: how was `loadProgramme` running at all then? Answer: it wasn't, on this code path. The page was relying on the cached programme paint inside `loadProgramme` itself executing via *some other* invocation — possibly the sister listener pattern in `vyve-offline.js` or a stale tab. This is brittle and the fix collapses it into one explicit boot path.)
+
+The member's exact lived experience matches this: programme view paints (from cache, via whatever path was actually triggering loadProgramme), they tap into a session, set logs persist to `exercise_logs` (because `saveExerciseLog` is called directly from the set-tick handler with no init dependency), state persists to localStorage on every set, but on page re-mount (rest period → tab away → return) the resume blob is never read back. Member sees Start, not Resume.
+
+### Fix
+
+Replaced `init()` with `vyveBootWorkouts(user)` — a single, explicit, idempotent boot path:
+
+```js
+let _vyveBootRan = false;
+async function vyveBootWorkouts(user) {
+  if (_vyveBootRan) return;
+  _vyveBootRan = true;
+  document.body.style.overflow = '';
+  memberEmail = (user && user.email) || (window.vyveCurrentUser && window.vyveCurrentUser.email) || '';
+  // avatar + logout binding
+  // ...
+  try {
+    await Promise.all([loadProgramme(), loadAllExercises(), loadExerciseHistory(), loadCustomWorkouts(), loadExerciseNotes()]);
+  } catch (e) { console.warn('vyveBootWorkouts: data load partial failure', e); }
+  if (typeof restoreSessionState === 'function') {
+    try { restoreSessionState(); } catch (e) { console.warn('restoreSessionState failed', e); }
+  }
+}
+
+if (window.vyveCurrentUser && window.vyveCurrentUser.email) {
+  setTimeout(() => vyveBootWorkouts(window.vyveCurrentUser), 0);
+} else {
+  window.addEventListener('vyveAuthReady', function(event) {
+    vyveBootWorkouts(event.detail && event.detail.user);
+  });
+}
+```
+
+The two-path wiring at the bottom is the important part. `auth.js` is non-deferred and `workouts-config.js` is `defer` — so by the time this script parses, `auth.js` has likely already started `vyveInitAuth()` and may have already dispatched `vyveAuthReady` via the fast path (where `window.vyveCurrentUser` is set synchronously before the dispatch). If we attach the listener too late, we miss the event and boot never runs. So we check `window.vyveCurrentUser` immediately on parse: already populated → schedule boot for next tick (giving the other defer-scripts time to finish parsing); not yet → register the listener for the cold-login path. The `_vyveBootRan` one-shot guard means even if both paths somehow race, we only boot once.
+
+`Promise.all` wrapped in try/catch so a single failing data load (e.g. `loadExerciseNotes` 401, `loadCustomWorkouts` slow timeout) doesn't bubble out and skip `restoreSessionState()`. An active workout takes priority over the data-load completeness — even if the programme view is half-painted, the member should land back inside their session.
+
+### Verification
+
+- `node --check` on patched `workouts-config.js`: clean (returncode 0).
+- Brace count: 23 opens / 23 closes (matches structurally).
+- Atomic commit via `GITHUB_COMMIT_MULTIPLE_FILES` with both files (workouts-config.js + sw.js cache bump). SHAs re-fetched immediately before commit.
+- Post-commit re-fetch via `GITHUB_GET_REPOSITORY_CONTENT`: first 100 chars match expected for both files. `vyveBootWorkouts` referenced 4 times (definition + invocation in two-path), `restoreSessionState` referenced 5 times, no `async function init()` remaining, `vyveAuthReady` referenced once.
+- Live cache key on main: `vyve-cache-v2026-05-06a-workout-resume`.
+
+Dean to validate end-to-end on web + iOS binary: start a workout, complete one set, hard-close the app, re-open, expect to land back inside the session with the set still ticked and weights intact.
+
+### Side effects + non-goals
+
+- Existing stale `vyve_active_session` localStorage blobs in member browsers from before this fix will simply self-clear via the existing 4-hour TTL on first restore attempt — no migration needed.
+- No EF changes. No schema. No backend touched.
+- No fix yet for any other portal page that may have the same orphan-init pattern. Lewis's PR/dashboard/leaderboard pages all have similar `init()` shapes — audit added to backlog.
+
+### What this exposed
+
+- **Per-page init wiring is fragile.** The pattern of a page-init function declared at the bottom of a config script with implicit "hopefully someone calls this" invocation is silent-failure-prone. Codified as new §23 hard rule: every page-init script needs an explicit invocation site, every invocation site needs to handle both the auth-already-fired race and the auth-fires-later case, with an idempotent boot guard.
+- **Member feedback is the regression test we don't have.** This was shipped silently when the auth-promise refactor was being prepped (auth.js still non-deferred per master §8 — refactor still queued). No automated test caught it because there's no e2e test that exercises "tab away mid-workout, come back, expect resume". Worth adding a lightweight smoke test to the backlog.
+- **Counterintuitive defer ordering.** `auth.js` non-deferred + workouts-config.js deferred = auth runs first, but then defer-scripts run after DOM parse. The fast-path inside `vyveInitAuth()` can dispatch `vyveAuthReady` synchronously *during* `auth.js` execution, well before our defer-script's listener exists. Anyone wiring an auth-dependent boot needs to handle both the already-fired and not-yet-fired cases. This is now in §23.
+
+### Other portal pages to audit (added to backlog)
+
+- `engagement.html` / `achievements.js` — has its own boot pattern, low risk but worth checking.
+- `leaderboard.html` — independent init flow.
+- `nutrition.html` / `log-food.html` — independent.
+- `cardio.html` / `movement.html` / `exercise.html` — same hub family, possibly same pattern.
+- `wellbeing-checkin.html` / `monthly-checkin.html` — independent flow.
+
+Single grep across the repo for `^async function init` and `^function init` would catch any other orphans. Backlog item.
+
+---
+
 ## 2026-05-04 PM-15 (Movement page: walks → cardio with distance, PM-13b wiring closed)
 
 ### TL;DR
