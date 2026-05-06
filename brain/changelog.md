@@ -1,3 +1,54 @@
+## 2026-05-06 PM-2 (Home dashboard correctness fix · habits goal distinct-day count + member_home_state this-week pre-staging)
+
+### TL;DR
+
+Two-part shipping pass on `member-dashboard`. Originally scoped as a query-reduction layer ("drop 5 `*_this_week` queries by reading from `member_home_state`") but pivoted twice during pre-flight: (1) `member_home_state`'s actual writer is `refresh_member_home_state(p_email)` (trigger-fired, synchronous), not the `*/15` cron `recompute_all_member_stats()` which writes the sibling `member_stats` table — brain mental model corrected; (2) while reading v57 source, found a real semantic bug in the habits goal counter that took priority. Final shipped state: schema work intact and live (5 new `*_this_week` integer columns on `member_home_state`, kept fresh by the trigger writer, all 15 active rows backfilled and verified) but EF v58 was used to ship the habits-distinct-day correctness fix instead of the read-from-state swap. The new columns are dormant on the hot path, staged for a future EF revision.
+
+### What shipped
+
+**Schema layer (DDL + plpgsql):**
+- Added `habits_this_week`, `workouts_this_week`, `cardio_this_week`, `sessions_this_week`, `checkins_this_week` to `member_home_state`. All `INTEGER NOT NULL DEFAULT 0`.
+- Extended `refresh_member_home_state(p_email)` with 5 new `SELECT COUNT(*)` blocks for `[v_week_start, v_today]` against `daily_habits`/`workouts`/`cardio`/`session_views`/`wellbeing_checkins`. Mirrors the existing `*_this_month` aggregate block; mirrors EF v57's source-table query shape exactly (note: `session_views` only, NOT `replay_views`, matches `goalsPayload.progress.sessions`).
+- Backfilled all 15 active `member_home_state` rows via `SELECT public.refresh_member_home_state(email) FROM members`. Verified cohort-wide match against live source-table counts for current ISO Monday 2026-05-04 (Dean: h=10/10, w=0/0, c=1/1, s=0/0, ck=0/0; 15/15 rows match).
+- Triggers (`tg_refresh_member_home_state` on the 10 source tables) keep these columns same-write-fresh on every member action — no 15-min staleness window.
+
+**EF v58 (platform v62, ezbr `61e044416b8049b7869f579607027c96f08eaae0a18e4e524b9418394cca8bac`):**
+- `goalsPayload.progress.habits` now reflects DISTINCT `activity_date`s for the current ISO week, not raw row count. A member ticking 3 separate habit cards on the same Monday counts as 1 day toward "Log 3 daily habits", not 3/3. Matches the goal's actual semantic.
+- `habitsThisWeek` query selects `activity_date` (was `id`) so the EF can dedupe client-side via `new Set(rows.map(r => r.activity_date)).size`.
+- All 4 other `progress.*` counters unchanged — row count is correct for those (caps prevent same-day spam, and one workout on each of two days is legitimately two).
+- `_shared/taxonomy.ts` and `_shared/achievements.ts` redeployed unchanged in the same multi-file deploy via native `Supabase:deploy_edge_function`.
+
+### What did NOT ship
+
+- The `*_this_week` columns are not currently read by `member-dashboard`. The 4 non-habit `*_this_week` PostgREST queries are still in v58's `Promise.all`. Hot-path query count: unchanged from v57.
+- Layer B (`achievements_inflight` jsonb on `member_home_state` + 15-min cron writer) — deferred.
+- Layer C (single read from `member_activity_daily` to build `activity_log`, dropping 5 `*_recent` queries) — deferred.
+
+Both deferred layers go to backlog. The `*_this_week` columns are zero-cost staging — a future EF rev can swap 4 of the 5 source-table queries for `state.*_this_week` reads with no DDL or function work needed. The habits one will need a separate `habits_distinct_days_this_week` column at that point because the current `habits_this_week` is row count, not distinct-day count, and habits goal semantic now requires distinct days.
+
+### What this exposed
+
+**Brain drift on `member_home_state` writer model.** §6 said "populated via triggers from 10 source tables" but didn't name the function, and a casual read could imply the `vyve_recompute_member_stats` `*/15` cron was the populator. It isn't — that cron writes `member_stats`, a different table. New §23 hard rule codifies the distinction.
+
+**EF source-reading workflow.** Composio's `SUPABASE_GET_FUNCTION_BODY` returns the compiled ESZIP bundle with TS types stripped and JS minified — fine for forensics, useless for editing. Native `Supabase:get_edge_function` returns the clean files-array with original TypeScript intact. New §23 rule for future sessions.
+
+**Multi-file EF deploys.** EFs with `_shared/*` imports must use native `Supabase:deploy_edge_function` (takes `files: [{name, content}, ...]`); Composio's `SUPABASE_DEPLOY_FUNCTION` only takes a single-file body and silently breaks any EF that imports from siblings.
+
+**Cohort size.** 15 of 31 members currently have `member_home_state` rows. Worth a quick separate audit pass to see why — could be a join-date cutoff, could be a backfill gap from when the table was added.
+
+### Member impact
+
+Habits goal renders correctly for the first time. Members previously hitting 3/3 on a Monday after ticking 3 habit cards now correctly see 1/3 on Monday and need 2 more distinct days to complete the goal. No flag, no migration, takes effect on next dashboard EF round-trip.
+
+### Verification
+
+- DDL: `information_schema.columns` confirmed all 5 columns present, `NOT NULL DEFAULT 0`.
+- Backfill: cohort-wide cross-check query returned 15/15 rows matching live source counts.
+- EF v58 platform v62 active per `Supabase:get_edge_function`; `verify_jwt:false` retained; service-role-bypass invocations correctly 401 against `auth.getUser()`-gated handler.
+- No 5xx in `edge-function` logs since deploy. Pre-deploy v61 GETs returning 200 (warm 6.8–11.7s cold path), v62 401s are auth-gated test invocations from this verification pass.
+
+---
+
 ## 2026-05-06 PM (Weekly goals · recurring 4-row template + Coming Up removal)
 
 ### TL;DR
