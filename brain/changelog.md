@@ -1,3 +1,65 @@
+## 2026-05-06 PM (Weekly goals · recurring 4-row template + Coming Up removal)
+
+### TL;DR
+
+Member-facing dashboard fix: the "This week's goals" strip on `index.html` was rendering nothing or garbage for everyone except week-1 onboarders, because (a) the render code still read the legacy `t.workouts_target` / `t.cardio_target` shape, but (b) the backend was already migrated to a new `exercise_target` column with the legacy ones zeroed by `seed-weekly-goals` cron. Patched the renderer to match the new shape: 4 rows (3 habits / 3 exercise sessions / 2 live sessions / 1 weekly check-in) with `progress.exercise = workouts + cardio` combined. Also stripped the hardcoded "Coming Up This Week" block — it was rendering March dates and had never been wired up dynamically. vyve-site commit [`9152599a`](https://github.com/VYVEHealth/vyve-site/commit/9152599a5ba3818f0b6ca1ae711e1144f377bce9). SW cache `v2026-05-06a-workout-resume` → `v2026-05-06b-weekly-goals-recurring`.
+
+### Important — backend was already shipped
+
+This session uncovered substantial undocumented state. The full "recurring weekly goals" backend (table column, EF, cron, dashboard projection) had been built in a prior session — likely auto-deployed by Claude during a brain-out-of-sync window — but the brain was never updated to reflect it, AND the index.html renderer never landed. So:
+
+- `weekly_goals.exercise_target` column: live, default 3.
+- `weekly_goals.movement_target` column: live, default 0 (legacy / unused under current template).
+- `seed-weekly-goals` EF v1: live, `verify_jwt:false` with dual-auth shared-secret + service-role guard, ON CONFLICT DO NOTHING upsert of 4-target template.
+- pg_cron job `vyve-seed-weekly-goals`: schedule `1 0 * * 1` (Mon 00:01 UTC), active.
+- 15 rows for week_start `2026-05-04` already seeded with the new template (`h=3, ex=3, s=2, chk=1, w=0, c=0, mv=0`).
+- `member-dashboard` v57 already projects the goals payload as `{targets:{habits,exercise,sessions,checkin}_target, progress:{habits,exercise,sessions,checkin}}` with `progress.exercise = workouts+cardio` for the current ISO Monday — see source comment header `v57 — v2 weekly goals shape (06 May 2026, hotfix...)`.
+
+What was actually missing — and shipped tonight — was the front-end render code on `index.html`. Old code referenced `t.workouts_target` (zeroed) + `t.cardio_target` (zeroed), so two rows showed `0/0` (or were filtered out depending on the render path), `t.sessions_target` was 2 not 1 (rendered as the wrong target), and the strip was effectively dead/inconsistent for anyone past week-1.
+
+### Diagnosis order (for future Claudes)
+
+1. Lewis brief: "remove Coming Up + make goals recurring".
+2. Mocked the new shape, agreed 4-row template (collapse workouts + cardio into one "exercise sessions" row).
+3. Pre-flight schema check before writing migration: `weekly_goals` already had `exercise_target`. Surprising.
+4. Pre-flight cron check: `vyve-seed-weekly-goals` already running. More surprising.
+5. EF inspection: `seed-weekly-goals` v1 source already matched my proposed design exactly. Existing cohort already had week 2026-05-04 rows in the new shape.
+6. EF inspection: `member-dashboard` v57 source comment explicitly described the shape mismatch: "The strip has been silently dead in production for any member without a synthetic wrapper since the EF refactor that introduced the flat-row return shape — fixed here." That fix (v57) projected the new shape backwards onto the EF response, so the contract `member-dashboard` ↔ index.html would have been correct *if* index.html had been on the new shape too.
+7. Patch: index.html GOALS array rewrite + Coming Up removal + sw bump. Atomic commit, post-commit base64 verify.
+
+### What shipped (vyve-site `9152599a`)
+
+`index.html`:
+
+- New GOALS array reads `goals.targets.{habits,exercise,sessions,checkin}_target` and `goals.progress.{habits,exercise,sessions,checkin}` directly.
+- Default fallbacks (3/3/2/1) if a key is missing — defends against the very-narrow race where a member logs in mid-Monday before the seed cron runs.
+- Pluralisation on each label (`1 daily habit` vs `3 daily habits`, etc.).
+- `.filter(g=>g.target>0)` hides any row whose target resolves to 0 — protects against legacy shape leaking through.
+- Empty-array guard (no targets > 0) hides the whole strip, never shows zero-rows count.
+- Removed the entire `<!-- COMING UP -->` HTML block (hardcoded March dates, never populated). Orphan CSS rules (`.upcoming-list`, `.upcoming-card`, `.upcoming-day`, `.upcoming-mon`, `.upcoming-info`, `.upcoming-title`, `.upcoming-time`, `.upcoming-type`, `.upcoming-date-box`) left in place — no markup uses them, harmless dead bytes, hygiene pass later.
+- Net file size delta: 89123 → 88205 bytes (−918).
+
+`sw.js`: cache key bumped to `vyve-cache-v2026-05-06b-weekly-goals-recurring`.
+
+### Verification
+
+- Brace/paren balance on the affected `<script>` block: 222/222, 472/472. Clean.
+- `<main>` count: 1 open / 1 close. Wrapper structure (charity card → blank → `</div>\n</main>`) intact.
+- Post-commit re-fetch via `GITHUB_GET_REPOSITORY_CONTENT` (base64 path, codified §23 rule): all 5 content probes pass — new GOALS code present, new exercise label template present, Coming Up gone (markup), orphan CSS still present (expected), SW cache key live.
+
+### Carry-over
+
+- Lewis copy review on the four labels — not blocked because they're transparent expansions of the existing approved copy: "Log 3 daily habits" (unchanged), "Complete 3 exercise sessions" (was "Complete 2 exercise sessions" via `t.workouts_target`-based pluralisation, now reads from the new column), "Watch 2 live sessions" (was "Watch a live session"), "Complete your weekly check-in" (unchanged). Worth a heads-up to Lewis on the next sync; nothing blocking.
+- Orphan `.upcoming-*` CSS rules remain in `index.html` — backlog hygiene pass.
+- `members.movement_target` exists with default 0; never surfaced in current template; document it as a legacy column to drop or reuse later.
+
+### What this exposed
+
+- **Brain was significantly out of sync with live state.** Whole subsystem had been built (column + EF + cron) without master.md being updated. The schema-snapshot-refresh cron should have caught the column add but didn't, OR ran before the column was added. Worth checking whether that cron is running cleanly — separate audit item.
+- The §23 rule about brain commit verification + the master.md being authoritative is exactly why I cross-checked schema before assuming the brain was right. Good outcome from a known-bad situation.
+
+---
+
 ## 2026-05-06 (Workout session resume fix · workouts-config.js orphan init wired)
 
 ### TL;DR

@@ -1,3 +1,17 @@
+## Added 06 May 2026 PM
+
+- **Recurring weekly goals on home dashboard — DONE 06 May PM.** Member-facing strip on `index.html` now repopulates every Monday via the existing `seed-weekly-goals` EF + `vyve-seed-weekly-goals` cron (`1 0 * * 1`). 4-row template: 3 habits / 3 exercise sessions / 2 live sessions / 1 weekly check-in. Exercise = workouts + cardio combined. Backend was already shipped in a prior session but was undocumented in the brain — this commit closes the front-end half. vyve-site `9152599a`. SW `v2026-05-06b-weekly-goals-recurring`.
+
+- **Coming Up This Week block removed from home — DONE 06 May PM.** Static placeholder showing hardcoded March dates, never wired up dynamically. Removed entirely from `index.html`. Orphan CSS (`.upcoming-list`, `.upcoming-card`, etc.) left in stylesheet — flagged as hygiene-pass item below.
+
+- **Audit `schema-snapshot-refresh` cron health — NEW.** This session uncovered that `weekly_goals.exercise_target` and `weekly_goals.movement_target` columns had been added to the schema but were never surfaced in `brain/master.md` §6 and `brain/schema-snapshot.md`. Either the snapshot cron didn't run on the right Sunday, or it ran but the diff/commit step silently failed. Investigate: check `vyve_job_runs` for `schema-snapshot-refresh` invocations over the last month; spot-check whether the master snapshot file in VYVEBrain reflects the live `information_schema.columns` for at least 3 sentinel tables (members, weekly_goals, achievement_metrics); add a watchdog if the cron is silently failing. ~30 min audit.
+
+- **Orphan `.upcoming-*` CSS in index.html — NEW (hygiene).** Block at byte ~18466 covering 9 selectors. No markup uses them post-Coming-Up-removal. Single contiguous strip-out, ~30 lines. Trivial; do on next index.html touch.
+
+- **`members.movement_target` and `weekly_goals.movement_target` columns — NEW (decide).** Both default to 0 and aren't surfaced in any current template. Either drop in a future migration (after one-week soak to confirm no stragglers reference it), or reuse if a movement-stream-specific row is ever added back. Currently dead weight.
+
+- **Lewis copy review on weekly goals labels — NEW (low priority).** Four labels live now: "Log 3 daily habits", "Complete 3 exercise sessions", "Watch 2 live sessions", "Complete your weekly check-in". All transparent expansions of previously-approved copy; not blocking. Heads-up at next sync.
+
 ## Added 06 May 2026
 
 - **Workout session resume fix — DONE 06 May.** Member WhatsApp feedback exposed `workouts-config.js`'s orphan `init()` — declared but never invoked, so `restoreSessionState()` (which is fully built and correct in `workouts-session.js`) never ran. Members tabbing away mid-workout (rest period, lock screen, app switch) lost the session view on return and had to redo it from scratch. Replaced with `vyveBootWorkouts(user)` + two-path wiring (already-fired auth race + cold-login listener) + idempotent boot guard. vyve-site `46006af1`. SW `v2026-05-06a-workout-resume`. New §23 hard rule codified.
