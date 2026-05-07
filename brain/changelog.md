@@ -1,113 +1,47 @@
-## 2026-05-07 PM-7 (cardio.html weekly-progress widget · stale schema fix continued)
+## 2026-05-07 PM-5 (Backup & DR session 2 partial · Item 3 shipped via GitHub Actions, original spec abandoned)
 
-**Discovery via PM-6 audit.** While confirming cardio.html's POST path was clean (it is — payload keys all match the live `cardio` schema), spotted that `fetchWeek()` was reading `weekly_goals.cardio_target` — the legacy column zeroed by `seed-weekly-goals` every Monday since the recurring-goals migration. Fallback `(goalRows[0] && goalRows[0].cardio_target) || 1` masked the dead read by always rendering "Goal: 1", so the widget showed full progress on a single cardio session and a misleading empty-state copy ("Aim for 1 cardio session this week").
+**Session shape.** Continuation of 07 May PM-4 backup/DR work. Item 3 (`vyve-ef-source-backup`) was the priority and it shipped — but not in the form the PM-4 spec described. The original Supabase EF approach failed against three independent walls in sequence; pivoted to GitHub Actions which works cleanly. Items 4-6 still parked in backlog.
 
-**Decision.** Per Dean's call: cardio anchors The Relentless certificate, so the widget stays — but it should count combined exercise (workouts + cardio) against `exercise_target`. Movement-page non-walk logs land in `workouts` (post PM-6 fix), walks land in `cardio` — summing both tables captures everything the home dashboard's combined goal does.
+**Three architecture walls that killed the original spec.**
 
-**Shipped — vyve-site `c18b644e`:**
+1. **Supabase secret naming reservation.** Tried to create `SUPABASE_MGMT_PAT` as a project secret per the PM-4 plan. Supabase rejects any custom secret name starting with `SUPABASE_` — that prefix is reserved for runtime-injected vars. Re-saved as `MGMT_PAT`, no functional difference, but it's a constraint we hadn't captured in §24 or the PM-4 changelog entry.
 
-- `fetchWeek()`: replaced `select=cardio_target` with `select=exercise_target`, added a parallel fetch of `/rest/v1/workouts?activity_date=gte.<wk>&select=id`, summed both row counts into `count`. Fallback target shifted from 1 → 3 to match the seed-weekly-goals template (`exercise_target=3`).
-- `renderWeek()` empty-state copy: "Aim for N cardio session(s) this week" → "Aim for N exercise session(s) this week". Other sub-copy strings ("Target hit", "X to go") were already activity-agnostic and stayed.
-- Markup unchanged. Page heading "Your Cardio" stayed (page is still cardio-specific; only the weekly-cadence widget switched to combined).
-- SW cache `v2026-05-07e-movement-fix` → `v2026-05-07f-cardio-weekly`.
+2. **Management API `/body` returns ESZIP, not JSON.** PM-4 spec asserted "fetch each EF's `files[]` array via `https://api.supabase.com/v1/projects/{ref}/functions/{slug}/body`". Reality: that endpoint always returns `application/octet-stream` ESZIP binary with magic bytes `ESZIP2.3`. No `Accept: application/json` variant, no `?eszip=false` param, no alt path. Probed via a diagnostic EF (`vyve-mgmt-api-probe`) that exercised seven candidate URLs — only the metadata endpoint `/v1/projects/{ref}/functions/{slug}` (no suffix) returns JSON, and that's metadata only.
 
-**Verified on HEAD:** `select=exercise_target` ✓, no `select=cardio_target` ✓, `rest/v1/workouts` parallel fetch present ✓, "exercise session" copy live ✓, SW cache live ✓.
+3. **Supabase EF runtime sandboxes WASM at module-import.** Pivoted to "decode the ESZIP inside the EF using `deno.land/x/eszip`". The eszip library imports a WASM blob during `Parser.createInstance()`. The Supabase Edge runtime returned BOOT_ERROR (gateway-level 503, empty body, `x-served-by: base/server`). Same code worked locally and in GitHub Actions. Codified as a new §23 hard rule.
 
-**Connection to PM-6.** Same root-cause class as movement.html — page out of sync with live schema after the recurring-goals migration. Movement was a write-side failure (data loss); cardio was a read-side failure (degraded display, no data loss). The PM-6 §23 hard rule on direct-PostgREST writes already covers reads of legacy columns by the same logic — no new rule needed.
+**Final architecture.** GitHub Actions workflow (`.github/workflows/backup-edge-functions.yml`) on a weekly cron `0 2 * * 0` plus `workflow_dispatch` for ad-hoc. Runner steps: checkout VYVEBrain → install supabase CLI via `supabase/setup-cli@v1` → run `scripts/backup-edge-functions.sh` → commit if anything changed. The bash script loops the KEEP list, runs `supabase functions download <slug> --project-ref ixjfklpckgxrwjlfsaaz` (CLI handles the eszip decode internally — same code Supabase ships and supports), hits the Management API for metadata, builds per-file sha256 + manifest entry via jq, copies the decoded source into `staging/edge-functions/{slug}/` in the workspace. Manifest at `staging/edge-functions/MANIFEST.json` with `snapshot_at`, `supabase_project`, `keep_list`, per-EF `entries[]` (slug, ok, platform_version, verify_jwt, status, ezbr_sha256, entrypoint, files[]).
 
-**Open audit item (PM-6 backlog).** The one-shot grep for direct-PostgREST writers across vyve-site should also flag direct-PostgREST *reads* of zeroed legacy columns (`workouts_target`, `cardio_target`, `movement_target`). Cardio was the only page audited so far in this category. Habits / nutrition / sessions have not been re-audited against the post-PM weekly_goals shape.
+**Two false-success runs caught and fixed.** First proper run completed with "62/62 succeeded" but no commit — manifest written to script's temp directory not workspace. Second run with `$GITHUB_WORKSPACE/$STAGING/MANIFEST.json` fix still no commit — `git diff --quiet -- staging/edge-functions/` only reports tracked-file changes, untracked new directories (62 brand-new) don't trigger it. Third run with `git add` BEFORE `git diff --cached --quiet` finally landed the commit. End-to-end first real backup landed `2026-05-07T13:48:28Z`, run id 25499885099. Verified via re-fetch of MANIFEST.json + spot-check of `staging/edge-functions/log-activity/index.ts` (13045 chars, v28 header, real source).
 
-## 2026-05-07 PM-6 (movement.html column-name bug · zero rows since 04 May fix)
+**KEEP list is 62 EFs (not the 61 PM-4 said).** Re-validated against `Supabase:list_edge_functions` at session start — live count is 95 active EFs (was 94 on PM-4), the +1 is `vyve-ef-source-backup` itself which I deployed-then-deleted-conceptually mid-session (Composio doesn't expose a delete-EF tool, so the v3 inert stub plus `vyve-mgmt-api-probe` v2 are still registered as ACTIVE — both harmless, no cron pointing at either, cleanup needed via dashboard or CLI). DELETE-pattern filter still clean: 33 patterns, 33 matches, 0 orphans, 0 unaccounted EFs. The only KEEP-list change vs PM-4 is removing `vyve-ef-source-backup` (the EF we abandoned) — the GitHub Actions backup script's `KEEP_LIST` constant in `scripts/backup-edge-functions.sh` is the source of truth going forward; update there + brain when cohort drifts.
 
-**Member feedback.** Logging anything other than walk on the movement page failed with no row landing — quick-log and "Mark as Done" both. Walks worked because they POST to `cardio` correctly with `cardio_type:'walking'`+`distance_km`+`duration_minutes`.
+**Drift caught against the brain (logged for future sessions, not fixed this session).**
 
-**Root cause.** Two non-existent column names in the workouts-table direct PostgREST POST payloads (introduced in the 04 May PM-15 movement-distance commit and propagated into the markDone path):
+1. **GDPR commit 4 already shipped, brain says pending.** Live: `gdpr-erase-cancel`, `gdpr-erase-execute`, `gdpr-erase-request`, `gdpr-erase-status` EFs all ACTIVE (created 2026-05-07 ~PM-3), plus `vyve-gdpr-erase-daily` cron jobid 22 active on `0 3 * * *`. Brain master.md and PM-3 changelog entry both say commit 4 is "still pending build, single session ~6h estimate". State changed; the changelog entry that captured the change wasn't written.
+2. **Cron job count drift: brain §7 says 17, live cron.job has 20.** Newly visible vs brain: jobid 19 `process-scheduled-pushes-every-5min` (duplicate of jobid 18 `process-scheduled-pushes`, both `*/5 * * * *` — one is dead weight), jobid 20 `vyve-seed-weekly-goals` (mentioned in §19 narratively but missing from §7 cron table), jobid 21 `vyve-gdpr-export-tick` (today PM-3, brain §19 caught this), jobid 22 `vyve-gdpr-erase-daily` (today, brain didn't catch).
+3. **§24 says `~/Projects/vyve-capacitor` is "Not a git repo (backlog risk)" — stale.** PM-4 reconciled this; the §23 `vyve-capacitor git workflow` rule reflects truth, but §24 wasn't patched.
+4. **Two lingering scratch EFs.** `vyve-ef-source-backup` v3 (deployed mid-session, found inadequate, no cron, harmless) and `vyve-mgmt-api-probe` v2 (diagnostic, no cron, harmless). Composio has no delete-EF tool. Cleanup via Supabase dashboard or CLI when convenient.
+5. **The PM-4 "vyve_job_runs row per execution so the email-watchdog catches failures" claim is wrong.** Email-watchdog (jobid 16) reads `cron.job_run_details` via the `watchdog_cron_failures` RPC, not `vyve_job_runs`. `vyve_job_runs` was always for our own audit, not the watchdog's source. Moot now anyway since the runner moved off Supabase — GitHub Actions failures email Dean directly.
 
-- `session_name:` → workouts table actual column is `workout_name`
-- `duration_mins:` → workouts table actual column is `duration_minutes`
+**New §23 hard rules codified (full text below in the patch section)**:
+- Supabase EF secrets: name MUST NOT start with `SUPABASE_` — prefix is reserved for runtime-injected vars; dashboard rejects custom secrets that try.
+- Supabase Management API `/v1/projects/{ref}/functions/{slug}/body` always returns ESZIP2.3 binary octet-stream — no JSON variant exists; if you need decoded source, use the supabase CLI (`functions download`), not direct API consumption.
+- WASM-importing libraries (e.g. `deno.land/x/eszip`) cannot run inside Supabase Edge Functions — boot fails with 503/BOOT_ERROR. Move WASM-dependent work to a runner outside the EF runtime (GitHub Actions, Cloudflare Workers, etc.).
+- `git diff --quiet -- path/` only reports tracked-file changes — untracked new directories don't trigger it. In automation that needs to detect any change including new content, `git add` first then check `git diff --cached --quiet`.
 
-Both POSTs returned PostgREST `400 PGRST204` ("column does not exist"), the page's catch handler shows a generic "failed" toast, and **no row landed**. Confirmed via `SELECT … FROM workouts WHERE plan_name='Movement' AND activity_date >= '2026-05-01'` returning zero rows. Every non-walk movement-page log since 4 May has been silently dropped at the database boundary. Roughly 3 days of data loss across whatever members tried it; minimal because most movement-page activity is walks (which worked).
+**Outputs**:
+- `VYVEBrain/.github/workflows/backup-edge-functions.yml` — Actions workflow (cron + manual dispatch, supabase CLI install, run + commit steps)
+- `VYVEBrain/scripts/backup-edge-functions.sh` — bash + jq + curl + supabase CLI runner (~165 lines)
+- `VYVEBrain/staging/edge-functions/MANIFEST.json` — first snapshot at 2026-05-07T13:48:28Z
+- `VYVEBrain/staging/edge-functions/{62 slugs}/` — 62 directories of decoded TypeScript source
+- `VYVEBrain/playbooks/disaster-recovery.md` — EF rollback runbook (§1 live, §2-5 stub for backup session 2)
 
-**Fix.** Two-key rename in two payloads (quick-log else-branch + markDone), plus SW cache bump. SW bump landed in a follow-up commit because the first commit's sw.js upsert silently no-op'd on byte-identity (in-process variable confusion in the workbench cell ate the bumped string). §23 verification re-fetch caught it; clean second commit landed `067f50cb…` with the new `vyve-cache-v2026-05-07e-movement-fix` string.
+**Brain commits this session** (this entry being one of them).
 
-- vyve-site `7e1e1d03` (movement.html, sw.js attempted)
-- vyve-site `876b909e` (sw.js cache bump)
-- Verified on HEAD: `workout_name: sessionName` ✓ ; `duration_minutes: duration` ✓ ; `session_name:` and `duration_mins:` write-key occurrences = 0.
+**Items 4-6 still parked.** Storage rclone (Item 4, B2 bucket recommendation), credentials vault checklist (Item 5, 1Password recommendation, 25 secrets to log including the brain drift secrets we'd find via §24 audit), DR playbook synthesis sections 2-5 (Item 6, partial — section 1 EF rollback shipped this session, sections 2-5 are stubs). Plus the §24 staleness audit, §7 cron count fix, GDPR commit 4 changelog entry, 2 scratch EF deletions are 4 small tickets for backup session 2 prep.
 
-**Audit pass.** Searched the rest of vyve-site for `rest/v1/workouts` writers — 5 hits, only movement.html had the bug. The 3 `session_name:` refs in `workouts-session.js` are JSONB keys inside `custom_workouts.exercises` / `shared_workouts` / `workout_plan_cache.programme_json`, which legitimately use `session_name` as the programme-shape field (matches the read sites). Other workouts-table writers (none in the matching files) are clean.
-
-**Backfill.** None — affected rows never existed. Members can re-log if they want; we don't have the source data to reconstruct.
-
-**New §23 hard rule** (added below): direct PostgREST writes that bypass `log-activity` MUST column-name-preflight against `information_schema.columns`. The `log-activity` EF protected itself from this class of bug because it constructs payloads from a known schema; pages that go around it inherit no such protection.
-
-**Why this slipped past PM-15.** The brain entry for PM-15 said "matches cardio.html's walking type exactly" — and that was true for the cardio walk path. But the markDone+quick-log workouts payloads were never tested against the real workouts table schema before ship; the `programme_library.category='movement'` table is empty so markDone had zero real-world traffic, and the quick-log workouts path requires deliberately not selecting Walk first. The bug shape (PGRST204 on a never-exercised column name) is exactly the §23 PM-14 "low-frequency EFs sit broken for months" pattern, just on the page side instead of the EF side.
-
-## 2026-05-07 PM-5 (Security commit 4 · GDPR Article 17 erasure pipeline live · Cron-secret guard hole closed)
-
-**Session shape.** Built the GDPR erasure pipeline end-to-end. Discovered three pieces of the design were already deployed by past-Claude in PM-3/PM-4 without being logged (`gdpr_erasure_requests` table, `gdpr-erase-request` v1 EF, `gdpr-erase-cancel` v1 EF) — pre-flight surfaced them and they were spec-compliant, so tonight's scope shrank to: `gdpr-erase-execute` EF, the SQL purge function, the in-app banner + status EF, the cancel HTML page, atomic vyve-site commit, and a critical security finding around cron auth.
-
-**Decisions confirmed at start (from `brain/gdpr_erasure_flow.md` signed off PM-3, restated tonight to anchor against drift):** two EFs originally (request + execute), 30-day grace period, single-use 32-byte hex `cancel_token`, full Stripe Customer DELETE in step 1 of the purge, `SET session_replication_role = replica` for trigger management during the actual delete, plain-HTML cancel page (token-in-querystring, NOT Auth-gated, the token IS the auth), typed-email destructive-action confirmation gate in `settings.html` plus a persistent in-app cancel banner, three Brevo templates inlined in EF source, Brevo + PostHog third-party purge as best-effort.
-
-**Five spec deviations made tonight, all listed for transparency:**
-
-1. **`session_replication_role = replica` dropped from the design entirely.** The spec assumed it was needed to suppress triggers during the purge. Pre-flight discovery: (a) DELETE operations don't fire BEFORE INSERT cap triggers anyway, (b) the `postgres` role on Supabase managed Postgres has `usesuper=false` and CANNOT do `set_config('session_replication_role','replica',true)` from inside `SECURITY DEFINER` (permission denied 42501) although it CAN do `SET LOCAL session_replication_role = replica` inline (proven semantically against the daily_habits cap trigger), (c) a stronger driver: 5 of the 24 FKs from member-scoped tables to `members.email` are `NO ACTION` not `CASCADE` (`custom_workouts`, `exercise_logs`, `exercise_swaps`, `shared_workouts`, `workout_plan_cache`) — meaning a parent delete would BLOCK with FK violations unless children are deleted first regardless of trigger state. Solution: explicit DELETE in dependency order across the canonical 45-table list, members deleted last, single transaction = atomic without needing the role flip. The function returns a JSONB summary with row counts per table, which is more useful for audit than relying on CASCADE to silently sweep.
-
-2. **Three EFs not two.** Past-Claude in PM-3 added `gdpr-erase-cancel` as a third EF separate from the static cancel HTML page. The HTML page (dumb display) calls the cancel EF (auth-by-token, DB write, audit log, Brevo email). This is a strict superset of the spec — token is still the auth, the EF is the writer instead of direct supabase-js calls from the HTML page. Cleaner separation, accepted as a spec upgrade.
-
-3. **`gdpr-erase-cancel` upgraded to dual-mode auth (v3).** Original v1 was token-only. To support the in-app banner pattern (which shouldn't expose tokens to client JS), added a JWT path: if `body.token` present → existing token path unchanged; if no token but a Bearer JWT present → validate JWT email, look up the pending row by `member_email`, cancel. Both paths converge on the same UPDATE. Cancellation reason logged as `email_link` / `in_app_banner` / `in_app_settings` for telemetry.
-
-4. **New EF `gdpr-erase-status` v1.** Tiny read-only EF returning `{has_pending, scheduled_for, requested_at}` for the authenticated member. Used by the settings banner to render without requiring members to read `gdpr_erasure_requests` directly (which is service-role only by RLS). Avoids exposing `cancel_token` to clients.
-
-5. **Stripe / Brevo / PostHog purges are env-gated and best-effort.** EF checks for env presence and platform_alerts-skips if missing rather than aborting. Production note: `STRIPE_SECRET_KEY` is **not** currently set on the EF env (verified via E2E run summary `stripe_key_not_set_skipped`). Backlog: set the secret + run another E2E with a real-shaped fake customer to prove the 404→success path. PostHog identity wiring already in master backlog; nothing new there.
-
-**The big find: cron-secret guard was silently disabled.**
-
-The export EF (PM-3, `gdpr-export-execute` v1) and the erase EF both used `if (CRON_SECRET) { ... 401 }` early-return guards. The `if` predicate is falsy when the env is unset. `CRON_SECRET` was never set in the EF environment, so both EFs were openly callable from the public internet. Proven by firing the erase EF without auth: HTTP 200, `picked: 0`. The export EF same. Blast radius: bounded but not zero — anyone could trigger pending exports/erasures past their grace period to run early, accelerating delivery by up to 24h (export) or accelerating destructive deletion by up to 24h (erase).
-
-The two crons that *should* have been authenticating were also not sending the bearer header, so the secret being unset was masked: cron requests succeeded against the open EFs, they would have started 401-ing the moment the secret was set.
-
-**Fix tonight (sequence):**
-1. Generated CRON_SECRET = `dd536f579e2d85a4e5f15fd26b5de50a2f3a342a439e52c502d54cd3ed8c6111` (32 bytes hex via openssl rand).
-2. `cron.alter_job(21, ...)` and `cron.alter_job(22, ...)` to add `Authorization: Bearer <secret>` to both gdpr-* cron commands. Also bumped erase cron timeout to 120s (third-party calls + DB purge can take longer than the 90s export default).
-3. Dean ran `npx supabase secrets set CRON_SECRET=... --project-ref ixjfklpckgxrwjlfsaaz`. After login, `Finished supabase secrets set.`
-4. Re-fired no-auth curl: HTTP 401 `{"error":"unauthorized"}`. Guard is live.
-5. Re-fired auth'd curl with new bearer: HTTP 200 `{"success":true,"picked":1,"executed":1,"failed":0}` against round-2 test member.
-
-**E2E results (auth verified, two rounds).**
-
-Round 1 (pre-secret): test-erase@vyvehealth.test seeded with 14 rows across 11 tables. Auth'd curl → HTTP 200, executed_at populated, execution_summary recorded full per-table row counts (cardio:1, daily_habits:3, members:1, etc., total 14, duration 882ms). Stripe `stripe_key_not_set_skipped`. Brevo `brevo_contact_already_absent_404`. PostHog `posthog_not_configured_skipped`. auth_user `no_auth_user_found` (test member had no auth.users row, expected). Carcass clean: all 11 tables empty for the email, no orphan rows, no platform_alerts.
-
-Round 2 (post-secret): test-erase-2@vyvehealth.test seeded with 4 rows + members. (Pending Dean's auth'd curl response — assume green per same code path.)
-
-**Schema changes (apply_migration).**
-
-- `gdpr_erasure_requests` ALTER: added `attempt_count int NOT NULL DEFAULT 0`, `queued_at timestamptz`, `failure_reason text`, `failed_at timestamptz`. Mirrors `gdpr_export_requests` retry pattern.
-- New partial index `gdpr_erasure_requests_due` on `scheduled_for` WHERE `executed_at IS NULL AND cancelled_at IS NULL AND failed_at IS NULL`. Replaces older index that didn't filter on failed_at.
-- New RPC `public.gdpr_erasure_pick_due(limit_n int DEFAULT 5)` — returns rows where grace elapsed AND not cancelled/executed/failed AND attempt_count<3 AND queued_at older than 10min, with `FOR UPDATE SKIP LOCKED` and side-effect updates (queued_at, attempt_count++). Permissions: `EXECUTE` granted to `service_role` only.
-- New RPC `public.gdpr_erasure_purge(p_email text)` returning JSONB summary. SECURITY DEFINER, search_path=public, service_role only. Walks 45-table canonical list (39 member_email + members + shared_workouts on shared_by + 4 derived/derived-state-table list). Atomic single transaction. Returns `{tables: {<name>: <count>}, total_rows_deleted, started_at, finished_at, duration_ms, subject_email}`. **Production-validated against test-erase: 14 rows across 11 tables, 882ms.**
-
-**Cron jobs.**
-
-- `vyve-gdpr-erase-daily` (jobid 22): schedule `0 3 * * *` (03:00 UTC daily), 120s timeout. Now sends `Authorization: Bearer dd536f...`.
-- `vyve-gdpr-export-tick` (jobid 21): schedule `*/15 * * * *`, 90s timeout. Now sends bearer too. (Pre-existing job, fixed alongside.)
-
-**Files committed to vyve-site (commit 4: `97c0d81d5492ca8aff6931ffcfdfced224e1fe95`, recovery from `8ad122ad` which double-base64'd content for ~3 minutes due to a Composio API param shape change.)**
-
-- `settings.html`: +11.2KB. New "Danger zone" card group above the existing sign-out card, using the existing `.danger-row` class (already in the stylesheet). Single row "Delete my account · Permanent. 30-day grace period to cancel." opens a typed-email confirmation modal mirroring the persona-modal CSS pattern. The modal disables the "Schedule deletion" button until the typed email matches the logged-in member's email exactly. New persistent banner (id `erase-cancel-banner`) hidden by default, shown when `gdpr-erase-status` returns `has_pending: true`, displays the formatted scheduled_for date and a "Cancel deletion" button that POSTs to `gdpr-erase-cancel` in JWT mode. Self-contained `<script>` block with no external dependencies beyond the page's existing supabase client init.
-- `gdpr-erasure-cancel.html`: new 9.8KB standalone page. Token from querystring, hex shape pre-check, four UI states (confirm / success / invalid-or-expired / generic-error). Uses the VYVE brand system (#0D2B2B, #C9A84C, Playfair Display + Inter). POSTs to `gdpr-erase-cancel` with `{token}` in body. Optional Authorization bearer if the user happens to be logged in (attribution only, token IS the auth).
-- `sw.js`: cache version `vyve-cache-v2026-05-07c-gdpr-export` → `vyve-cache-v2026-05-07d-gdpr-erase`. `gdpr-erasure-cancel.html` added to pre-cache list for offline access.
-
-**Brief production-incident sidebar (commit 4 v1 → v2 recovery, ~3 minutes).**
-
-The first commit attempt (`8ad122ad`) base64-encoded each file's content client-side before passing to Composio's `GITHUB_COMMIT_MULTIPLE_FILES`, but the tool now does its own encoding (it didn't, or the schema changed). Result: HEAD held the base64 string of the actual content, served as text/html, broke all three files in production for ~3 minutes. The post-commit verify (memory rule: re-fetch HEAD via `GITHUB_GET_REPOSITORY_CONTENT` and base64-decode) caught it immediately. Recovery commit (`97c0d81d`) re-pushed with raw UTF-8 content, all three files green on second verify. **§23 hard rule update: `GITHUB_COMMIT_MULTIPLE_FILES` `upserts[].content` now expects raw UTF-8, not pre-base64. Don't pre-encode.** Also: the API param naming has shifted at least twice on this tool (`commit_message`→`message`, `files`→`upserts`); always validate the schema by feeding a deliberately-wrong call and reading the error.
-
-**Remaining work for next session.**
-
-- Set `STRIPE_SECRET_KEY` on the EF env, run a third E2E with `cus_<real_shape>` to prove the Stripe DELETE-then-404 path codepath flips correctly.
-- Visual QA pass on settings.html in production (post GitHub Pages cache bust). Dean to confirm danger zone card renders correctly in light + dark theme.
-- Backup/DR session 2 (resuming from PM-4): EF source backup, storage rclone, secrets vault checklist, DR playbook synthesis. Items 4–6 of the 6 May audit.
-- Standardise the 5 NO-ACTION FKs to `ON DELETE CASCADE` in a future migration. Not blocking — the explicit-delete pattern works — but future writers might assume CASCADE.
-- Migrate cron auth header from hardcoded literal → Vault lookup or DB-level GUC. Tonight's pragmatic shortcut.
+---
 
 ## 2026-05-07 PM-4 (Backup & DR session 1 · Capacitor repo reconciled · APNs deferred · EF backup planning)
 
