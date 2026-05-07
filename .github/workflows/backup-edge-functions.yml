@@ -49,11 +49,11 @@ jobs:
         run: |
           git config user.name "vyve-ef-backup-bot"
           git config user.email "team@vyvehealth.co.uk"
-          if git diff --quiet -- staging/edge-functions/; then
+          git add staging/edge-functions/
+          if git diff --cached --quiet -- staging/edge-functions/; then
             echo "No changes to commit — staging is already up to date."
             exit 0
           fi
-          git add staging/edge-functions/
           COUNT=$(jq -r '.ef_count_succeeded' staging/edge-functions/MANIFEST.json 2>/dev/null || echo "?")
           ATTEMPTED=$(jq -r '.ef_count_attempted' staging/edge-functions/MANIFEST.json 2>/dev/null || echo "?")
           SNAPSHOT_AT=$(jq -r '.snapshot_at' staging/edge-functions/MANIFEST.json 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
