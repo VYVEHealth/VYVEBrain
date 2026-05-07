@@ -1,3 +1,28 @@
+## 2026-05-07 PM-6 (movement.html column-name bug · zero rows since 04 May fix)
+
+**Member feedback.** Logging anything other than walk on the movement page failed with no row landing — quick-log and "Mark as Done" both. Walks worked because they POST to `cardio` correctly with `cardio_type:'walking'`+`distance_km`+`duration_minutes`.
+
+**Root cause.** Two non-existent column names in the workouts-table direct PostgREST POST payloads (introduced in the 04 May PM-15 movement-distance commit and propagated into the markDone path):
+
+- `session_name:` → workouts table actual column is `workout_name`
+- `duration_mins:` → workouts table actual column is `duration_minutes`
+
+Both POSTs returned PostgREST `400 PGRST204` ("column does not exist"), the page's catch handler shows a generic "failed" toast, and **no row landed**. Confirmed via `SELECT … FROM workouts WHERE plan_name='Movement' AND activity_date >= '2026-05-01'` returning zero rows. Every non-walk movement-page log since 4 May has been silently dropped at the database boundary. Roughly 3 days of data loss across whatever members tried it; minimal because most movement-page activity is walks (which worked).
+
+**Fix.** Two-key rename in two payloads (quick-log else-branch + markDone), plus SW cache bump. SW bump landed in a follow-up commit because the first commit's sw.js upsert silently no-op'd on byte-identity (in-process variable confusion in the workbench cell ate the bumped string). §23 verification re-fetch caught it; clean second commit landed `067f50cb…` with the new `vyve-cache-v2026-05-07e-movement-fix` string.
+
+- vyve-site `7e1e1d03` (movement.html, sw.js attempted)
+- vyve-site `876b909e` (sw.js cache bump)
+- Verified on HEAD: `workout_name: sessionName` ✓ ; `duration_minutes: duration` ✓ ; `session_name:` and `duration_mins:` write-key occurrences = 0.
+
+**Audit pass.** Searched the rest of vyve-site for `rest/v1/workouts` writers — 5 hits, only movement.html had the bug. The 3 `session_name:` refs in `workouts-session.js` are JSONB keys inside `custom_workouts.exercises` / `shared_workouts` / `workout_plan_cache.programme_json`, which legitimately use `session_name` as the programme-shape field (matches the read sites). Other workouts-table writers (none in the matching files) are clean.
+
+**Backfill.** None — affected rows never existed. Members can re-log if they want; we don't have the source data to reconstruct.
+
+**New §23 hard rule** (added below): direct PostgREST writes that bypass `log-activity` MUST column-name-preflight against `information_schema.columns`. The `log-activity` EF protected itself from this class of bug because it constructs payloads from a known schema; pages that go around it inherit no such protection.
+
+**Why this slipped past PM-15.** The brain entry for PM-15 said "matches cardio.html's walking type exactly" — and that was true for the cardio walk path. But the markDone+quick-log workouts payloads were never tested against the real workouts table schema before ship; the `programme_library.category='movement'` table is empty so markDone had zero real-world traffic, and the quick-log workouts path requires deliberately not selecting Walk first. The bug shape (PGRST204 on a never-exercised column name) is exactly the §23 PM-14 "low-frequency EFs sit broken for months" pattern, just on the page side instead of the EF side.
+
 ## 2026-05-07 PM-5 (Security commit 4 · GDPR Article 17 erasure pipeline live · Cron-secret guard hole closed)
 
 **Session shape.** Built the GDPR erasure pipeline end-to-end. Discovered three pieces of the design were already deployed by past-Claude in PM-3/PM-4 without being logged (`gdpr_erasure_requests` table, `gdpr-erase-request` v1 EF, `gdpr-erase-cancel` v1 EF) — pre-flight surfaced them and they were spec-compliant, so tonight's scope shrank to: `gdpr-erase-execute` EF, the SQL purge function, the in-app banner + status EF, the cancel HTML page, atomic vyve-site commit, and a critical security finding around cron auth.

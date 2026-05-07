@@ -1,3 +1,7 @@
+## Added 07 May 2026 PM-6 (movement.html column-name bug)
+
+- **One-time grep audit for direct PostgREST writes across vyve-site.** The PM-6 movement.html bug was a writer that bypassed `log-activity` and wrote directly to `/rest/v1/workouts` with mismatched column names. Same shape could exist on other pages — `index.html`, `cardio.html`, `habits.html`, `nutrition.html`, `log-food.html`, `weight tracker`, etc. For each direct-PostgREST POST, capture the payload key set, diff against `information_schema.columns` for the target table, flag any mismatches. Cheap one-shot — probably 30 minutes including remediation if any other bugs of this class exist. Tracking item: write a server-side audit EF that lists distinct `(table, payload_keys)` tuples observed in the last 30 days of platform_alerts/PostgREST 4xx logs, filter for `PGRST204`/`PGRST116`, and surface as a one-shot report.
+
 ## Added 07 May 2026 PM-5 (GDPR erasure pipeline shipped)
 
 - **STRIPE_SECRET_KEY missing on EF env.** `gdpr-erase-execute` skips Stripe with platform_alerts when this env is unset. Set the secret (`npx supabase secrets set STRIPE_SECRET_KEY=...`), then run another erasure E2E with a fake-shaped real-format Stripe customer ID like `cus_S00000000000000000000000` (not the test placeholder `cus_TEST_FAKE_NOT_REAL_STRIPE`) to prove the DELETE→404→success codepath. Until done, real-member erasures will not actually delete the Stripe customer record — invoice history will linger.
