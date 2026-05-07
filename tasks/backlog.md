@@ -1,3 +1,16 @@
+## Added 08 May 2026 PM-2 (Exercise name canonicalisation shipped · library expansion deferred)
+
+- ✅ **CLOSED — Cross-day exercise history fixed for Stu Watts.** 28 April-10 orphan rows on `exercise_logs` rewritten to canonical via the new normaliser. His next Push B will cross-link to his April Push A data. Permanent normaliser system live on `exercise_logs`, `exercise_notes`, `exercise_swaps` (×2 cols), `custom_workouts.exercises`, `shared_workouts.session_data`, `shared_workouts.full_programme_json`, `workout_plan_cache.programme_json`, `workout_plans.exercise_name`.
+
+- 📋 **NEW — Exercise library expansion** (deferred, content decision needed). 22 distinct names surfaced in `exercise_name_misses` after JSONB backfills:
+  - **Alan Bird (18 names, 41 rows)** — AI-generated bodyweight exercises for his beginner programme that aren't in `workout_plans`. Examples: Wall Sit, Box Squats, Wall Push-ups, Standing Marching, Modified Plank (Knees Down), Standing Knee Raises, Bodyweight Squats variants, Mountain Climbers (Slow), Standing Side Steps, Single Leg Stands, Standing Calf Raises, Seated Leg Extensions, Gentle Stretching Flow, Incline Push-ups, Standard Push-ups (Modified as needed), Bodyweight Squats (Partial Range), Assisted Bodyweight Squats, Full Plank.
+  - **Callum Budzinski (4 names, 19 rows)** — library-variant choices: Hammer Curl – Dumbbell (genuinely different from Bicep Curl), Seated Row – Cable (vs library's V-Grip Cable variant — different muscle bias), Lat Pulldown – Close Grip (vs library's Cable), T-Bar Row – Machine (no library entry).
+  - Right action: review with Calum/Lewis, decide which to add to `workout_plans` library (so the AI generator has them in scope) and which to add as aliases to `exercise_canonical_names` (e.g. "Lat Pulldown – Close Grip" → "Lat Pulldown – Cable" if no close-grip variant is desired). NOT urgent — the trigger system protects all writes, these names just don't have library video/thumbnail/muscle_group metadata.
+
+- 📋 **NEW — `exercise_name_misses` review cadence.** Should appear on the daily report so future drift surfaces don't sit hidden. Right now the table is service-role-only RLS with no surfacing in any cron. Cheap to add — extend `daily-report` v8 to include `SELECT COUNT(*) FROM exercise_name_misses WHERE resolved=false AND observed_at > now() - interval '24 hours'` plus a per-name top-10 list when count > 0. ~30 min.
+
+- 📋 **NEW — `loadAllExercises` cache key** in `workouts-programme.js` is `vyve_exercise_library_v2` with 24h TTL — when we eventually expand `workout_plans` (Alan's bodyweight names etc.), members on stale caches won't see the new exercises until 24h later. Either bump cache key on library writes via SW push, or accept the 24h drift. Document.
+
 ## Added 08 May 2026 PM-1 (Brain hygiene + cleanup pass · all PM-5 cleanup tickets closed)
 
 - ✅ **CLOSED — Scratch EFs deleted.** `vyve-ef-source-backup` v3 + `vyve-mgmt-api-probe` v2 deleted via Supabase dashboard. EF count 95 → 93.

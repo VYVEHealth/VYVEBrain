@@ -1,3 +1,64 @@
+## 2026-05-08 PM-2 (Exercise name canonicalisation · cross-day workout history fix · trigger system live)
+
+**Session shape.** Member feedback from Stu Watts via Lewis: "completed Push A, then Push B same exercise, didn't see his previous data on the second session". Diagnosed not as a workouts code bug but as data drift — his April 10 logs were written with the *old* exercise naming convention (`Barbell Bench Press`, `Cable Lateral Raise`, `Seated Dumbbell Shoulder Press`) and his current programme uses the *new* convention (`Bench Press – Barbell`, `Lateral Raise – Cable`, etc.) introduced during the 19 April Exercise Hub work. The history join key in `buildExerciseCard()` is `exerciseHistory[ex.exercise_name]` — exact-string match — so April logs orphaned themselves the moment the library renamed.
+
+**Diagnostic walk.** `saveExerciseLog` is fine (writes are landing in `exercise_logs`, RLS clean, client_id idempotency working). `loadExerciseHistory` fetches all of a member's logs ordered desc by `logged_at`. `buildExerciseCard` reads `exerciseHistory[ex.exercise_name]` and prefills kg/reps + the "Last: 3×8 @ 60kg" caption. The whole pipeline works *as long as exercise names match exactly*. They didn't — so they don't.
+
+**Cohort blast radius (pre-fix).** Initial query against `workout_plans ∪ workout_plan_cache` (canonical set) found 49 orphan log rows across 3 members. Closer look corrected this: 28 of those (Stu's full April 10 session + 5 May overlap) were true orphans needing rewrite. The other 21 (Dean's 7 + Kelly's 14) were already in the library, just not in those members' *currently active* programme JSON — legitimately retired exercises, not drift. Library is also clean: zero alias-named entries in `workout_plans`. The drift was strictly historical.
+
+**Architecture shipped.** Permanent normaliser, not a one-shot patch:
+
+- **`exercise_canonical_names`** table — `(alias_key text PK, canonical_name text NOT NULL, source text, similarity_score numeric, created_at timestamptz)`. CHECK constraint enforces `alias_key = lower(trim(alias_key))`. RLS authenticated-true on SELECT (clients may want to surface canonical mappings later); no other policies = service-role only on writes.
+- **`exercise_name_misses`** table — `(id uuid PK, member_email text, exercise_name text, observed_at timestamptz, resolved boolean DEFAULT false)`. RLS enabled, no policies = service-role only. Two indexes: by-recency where unresolved, by-name where unresolved. Audit surface for unmapped names; never blocks a write.
+- **`exercise_canonical_set`** view — union of `exercise_canonical_names.canonical_name` + `workout_plans.exercise_name`. Used by trigger functions to distinguish "name not in alias table BUT IS canonical" from "name not in alias table AND not canonical = real miss".
+- **`exercise_logs_canonical_normalise()`** + **`exercise_name_canonical_normalise_generic(text)`** + **`normalise_exercise_names_in_jsonb(jsonb, text)`** + **`normalise_exercise_names_jsonb_trigger`** — four PL/pgSQL functions covering: scalar single-column, generic single-column with column name as TG_ARGV[0], recursive JSONB walker, JSONB trigger glue. Every miss insert wrapped in `BEGIN…EXCEPTION WHEN OTHERS THEN NULL END` so the audit logging cannot block the underlying write under any circumstance.
+
+**9 triggers installed across 7 tables**:
+- `exercise_logs.exercise_name` — scalar
+- `exercise_notes.exercise_name` — scalar
+- `exercise_swaps.original_exercise` + `.replacement_exercise` — scalar (×2)
+- `custom_workouts.exercises` — JSONB walker (member-keyed via `member_email`)
+- `shared_workouts.session_data` + `.full_programme_json` — JSONB walker (×2, keyed via `shared_by`)
+- `workout_plan_cache.programme_json` — JSONB walker (member-keyed)
+- `workout_plans.exercise_name` — scalar (library protection; member_email falls back to 'unknown' in misses log)
+
+**One mid-session correction.** Initial walker version logged ANY name that wasn't in the alias table as a miss — including legitimately canonical names (`Bench Press – Barbell` itself). After self-touch backfills, `exercise_name_misses` had 5,000+ bogus rows including high-volume canonical names. Fixed by introducing the `exercise_canonical_set` view and adding a second-pass check: only log as miss when the name is BOTH not an alias_key AND not in the canonical set. Truncated the bogus misses, re-ran backfills, got a clean 22-distinct-names / 60-row miss list which is the *real* drift surface.
+
+**Backfill outcomes.** Stu's 28 orphan rows rewritten to canonical via self-touch UPDATE on `exercise_logs`, plus full self-touch on `exercise_notes`, `exercise_swaps`, `custom_workouts.exercises`, `shared_workouts.session_data`, `shared_workouts.full_programme_json`, `workout_plan_cache.programme_json`, `workout_plans.exercise_name`. Final state: **0 orphan exercise_logs rows across the whole DB** (member's live programme cache or library will always resolve every log). Stu's history is now joined up — next time he opens Push B, his April Bench Press / Incline DB Press / etc. data populates the cards.
+
+**Six aliases seeded** (manual + similarity-validated):
+
+| `alias_key` | → `canonical_name` | score |
+|---|---|---|
+| barbell bench press | Bench Press – Barbell | 1.000 |
+| cable lateral raise | Lateral Raise – Cable | 1.000 |
+| seated dumbbell shoulder press | Seated Shoulder Press – Dumbbell | 1.000 |
+| incline dumbbell press | Incline Bench Press – Dumbbell | 0.793 |
+| tricep rope pushdown | Tricep Rope Pushdown – Cable | 0.778 |
+| barbell row | Bent Over Row – Barbell | 0.500 (manual override) |
+
+The `barbell row` mapping is the lesson: pg_trgm initially proposed `Upright Row – Barbell` at 0.600 — wrong muscle group entirely. Manual override to `Bent Over Row – Barbell` based on what Stu's current programme actually contains. Codified as §23 rule below: similarity scores aren't a substitute for human judgement on muscle-group-equivalent mappings.
+
+**22 misses surfaced for review** — these are NOT bugs in the canonicalisation, they're a real review surface:
+- **Alan Bird (alanbird1@gmail.com, 18 distinct names, 41 rows)** — beginner / accessibility programme. AI-generated bodyweight exercises that aren't in the library: "Wall Sit", "Box Squats", "Wall Push-ups", "Standing Marching", "Modified Plank (Knees Down)", "Standing Knee Raises", etc. These are correct exercises the AI generator invented; library doesn't contain them. Right action: **add to `workout_plans` library** so future programmes have them in scope and they're treated as canonical. Not auto-mapping.
+- **Callum Budzinski (cbudzski3@gmail.com, 4 distinct names, 19 rows)** — variants the AI chose that aren't in the library: "Hammer Curl – Dumbbell" (≠ Bicep Curl), "Seated Row – Cable" (vs library's "Seated Row – V-Grip Cable" — different attachment changes muscle bias), "Lat Pulldown – Close Grip" (vs library's "Lat Pulldown – Cable"), "T-Bar Row – Machine" (no library entry). Same recommendation: library expansion, not auto-mapping. Hammer Curl in particular is its own exercise.
+
+Library expansion deferred to a future session — it's a content decision (is "Wall Sit" in the brand-approved exercise library?) which Calum or Lewis weighs in on, not me alone.
+
+**Outputs.**
+- 4 Supabase migrations: `exercise_logs_canonical_name_normaliser_2026_05_08`, `canonical_normaliser_extend_to_notes_and_swaps_2026_05_08`, `canonical_normaliser_jsonb_walker_2026_05_08`, `canonical_normaliser_fix_miss_logic_2026_05_08`, `canonical_normaliser_extend_to_library_2026_05_08`.
+- 2 new tables, 1 view, 4 PL/pgSQL functions, 9 triggers across 7 tables.
+- 6 alias rules seeded, 60 miss rows surfaced for library expansion review.
+- Stu's exercise_logs cohort: 28 rows renamed to canonical. Member-visible result: cross-day exercise history works again.
+
+**Zero EF redeploys, zero portal changes, zero SW cache bumps.** The fix is entirely server-side — triggers transparent to clients. Members on stale SW caches still get correct behaviour because the database canonicalises on read regardless of what the client sends.
+
+**New §23 hard rule** (full text in §23): exercise library renames must be paired with `exercise_logs` rename migration; the canonical normaliser is now the protection layer but the library-rename → log-rename pairing remains the developer-side discipline.
+
+**Items 4-6 of backup/DR session 2 still parked.** This session was a side-step into a member-impacting bug; the storage rclone / credentials vault / DR playbook §2-5 build track resumes next session.
+
+---
+
 ## 2026-05-08 PM-1 (Brain hygiene + cleanup pass · Backup/DR session 2 prep)
 
 **Session shape.** Pre-flight cleanup before backup/DR session 2 build track (Items 4-6: storage rclone, credentials vault, DR playbook §2-5). Cleared the four small tickets carried over from PM-5: dedupe duplicate cron, delete two scratch EFs, fix §7 cron drift, write the missing §19 entry for GDPR commit 4. Caught one new §22 risk in passing.
