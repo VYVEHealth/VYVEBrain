@@ -158,6 +158,6 @@ jq -n \
     ef_count_failed: $fail,
     keep_list: $keep,
     entries: $entries[0],
-  }' > "$STAGING/MANIFEST.json"
+  }' > "$GITHUB_WORKSPACE/$STAGING/MANIFEST.json"
 
-echo "Manifest written: $STAGING/MANIFEST.json"
+echo "Manifest written: $GITHUB_WORKSPACE/$STAGING/MANIFEST.json"
