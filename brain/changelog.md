@@ -1,3 +1,22 @@
+## 2026-05-07 PM-7 (cardio.html weekly-progress widget · stale schema fix continued)
+
+**Discovery via PM-6 audit.** While confirming cardio.html's POST path was clean (it is — payload keys all match the live `cardio` schema), spotted that `fetchWeek()` was reading `weekly_goals.cardio_target` — the legacy column zeroed by `seed-weekly-goals` every Monday since the recurring-goals migration. Fallback `(goalRows[0] && goalRows[0].cardio_target) || 1` masked the dead read by always rendering "Goal: 1", so the widget showed full progress on a single cardio session and a misleading empty-state copy ("Aim for 1 cardio session this week").
+
+**Decision.** Per Dean's call: cardio anchors The Relentless certificate, so the widget stays — but it should count combined exercise (workouts + cardio) against `exercise_target`. Movement-page non-walk logs land in `workouts` (post PM-6 fix), walks land in `cardio` — summing both tables captures everything the home dashboard's combined goal does.
+
+**Shipped — vyve-site `c18b644e`:**
+
+- `fetchWeek()`: replaced `select=cardio_target` with `select=exercise_target`, added a parallel fetch of `/rest/v1/workouts?activity_date=gte.<wk>&select=id`, summed both row counts into `count`. Fallback target shifted from 1 → 3 to match the seed-weekly-goals template (`exercise_target=3`).
+- `renderWeek()` empty-state copy: "Aim for N cardio session(s) this week" → "Aim for N exercise session(s) this week". Other sub-copy strings ("Target hit", "X to go") were already activity-agnostic and stayed.
+- Markup unchanged. Page heading "Your Cardio" stayed (page is still cardio-specific; only the weekly-cadence widget switched to combined).
+- SW cache `v2026-05-07e-movement-fix` → `v2026-05-07f-cardio-weekly`.
+
+**Verified on HEAD:** `select=exercise_target` ✓, no `select=cardio_target` ✓, `rest/v1/workouts` parallel fetch present ✓, "exercise session" copy live ✓, SW cache live ✓.
+
+**Connection to PM-6.** Same root-cause class as movement.html — page out of sync with live schema after the recurring-goals migration. Movement was a write-side failure (data loss); cardio was a read-side failure (degraded display, no data loss). The PM-6 §23 hard rule on direct-PostgREST writes already covers reads of legacy columns by the same logic — no new rule needed.
+
+**Open audit item (PM-6 backlog).** The one-shot grep for direct-PostgREST writers across vyve-site should also flag direct-PostgREST *reads* of zeroed legacy columns (`workouts_target`, `cardio_target`, `movement_target`). Cardio was the only page audited so far in this category. Habits / nutrition / sessions have not been re-audited against the post-PM weekly_goals shape.
+
 ## 2026-05-07 PM-6 (movement.html column-name bug · zero rows since 04 May fix)
 
 **Member feedback.** Logging anything other than walk on the movement page failed with no row landing — quick-log and "Mark as Done" both. Walks worked because they POST to `cardio` correctly with `cardio_type:'walking'`+`distance_km`+`duration_minutes`.
