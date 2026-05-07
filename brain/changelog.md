@@ -1,3 +1,54 @@
+## 2026-05-07 PM-3 (Security commit 3 · gdpr-export EFs + cron + storage bucket + settings UI · LIVE)
+
+**What shipped — Supabase migrations + 2 EF deploys + cron + vyve-site `952c4275`:**
+
+Article 15 GDPR data export pipeline is live end-to-end. Async-with-email pattern matching Strava/Notion: member taps "Download my data" in `settings.html` → `gdpr-export-request` EF queues a row in `gdpr_export_requests` → `vyve-gdpr-export-tick` cron fires every 15 min → `gdpr-export-execute` EF picks up due rows via `gdpr_export_pick_due()` (FOR UPDATE SKIP LOCKED), walks 45 tables for the subject, uploads JSON to `gdpr-exports` Storage bucket, generates 7-day signed URL, sends Brevo email with the link, writes `admin_audit_log` receipt. End-to-end latency 27s on a high-data member; cron tick interval is the user-visible bound.
+
+**Migrations applied (2):**
+
+1. `gdpr_export_requests_table_and_pick_due_function`
+   - Table `public.gdpr_export_requests` (15 columns: id uuid PK, member_email, requested_by, request_kind CHECK ('member_self','admin'), requested_at, queued_at, delivered_at, failed_at, failure_reason, attempt_count int default 0, file_path, signed_url_expires_at, size_bytes bigint, tables_included int, brevo_message_id, created_at)
+   - 2 indexes: `gdpr_export_requests_pending` (partial WHERE delivered_at IS NULL AND failed_at IS NULL) + `gdpr_export_requests_by_member` (member_email, requested_at DESC)
+   - RLS enabled, no policies = service-role only (members never query directly; the request EF returns "queued" + estimated delivery, that's all they see)
+   - Trigger `zz_lc_email` (lowercase email normalisation, matches schema-wide pattern)
+   - SQL function `gdpr_export_pick_due(limit_n integer DEFAULT 5)` SECURITY DEFINER, FOR UPDATE SKIP LOCKED, picks due rows where attempt_count < 3 OR queued_at older than 10 min, marks queued_at + increments attempt_count, returns SETOF gdpr_export_requests. EXECUTE granted to service_role only.
+2. `gdpr_exports_storage_bucket`
+   - Bucket `gdpr-exports`, public=false, file_size_limit 50MB, allowed_mime_types ['application/json']
+   - No RLS policies on storage.objects = service-role-write-only access. Members access exclusively via signed URLs.
+
+**Edge Functions deployed (2):**
+
+1. `gdpr-export-request` v1, ezbr `ba06d0533f7fe206d7a4ff0db171990062ee15188385125d3a02ec8531eaaa0f`, verify_jwt:false (internal /auth/v1/user validation pattern matching wellbeing-checkin v28 / log-activity v28). 8KB. CORS default-origin fallback per §23 commit-1 rule, payload cap 100KB per §23 commit-1B rule. Member-self path (empty body, subject = JWT email) and admin path (body {target_email}, requester must be active admin in admin_users). Rate limit 1 per 30 days for member-self via successfully-delivered last-request lookup; admin path unlimited. Also rejects with 409 already_pending if member has an in-flight request that hasn't yet been delivered or failed. Returns 202 with request_id + estimated_delivery: "within 1 hour".
+
+2. `gdpr-export-execute` v1, ezbr `a4e85eeca0f40d4819f74c8511a91649924f0e847f73fc478cfecd1a1b63ab3a`, verify_jwt:false (cron-only, optional CRON_SECRET bearer check inside — not currently set, matching the half-dozen other cron-only EFs that are bearer-less). 16.8KB. Walks 40 member-scoped tables (parallel batches of 8) + 3 single-row tables (members, member_home_state, member_stats) + 1 shared-by table (shared_workouts on shared_by) + auth.users (via supabaseSvc.auth.admin.listUsers, sanitised to whitelist: id, email, created_at, updated_at, last_sign_in_at, email_confirmed_at, user_metadata, app_metadata; everything else dropped). 45 tables total. JSON includes _meta block (schema_version, generated_at, subject_email, tables_included, tables_excluded with reason for running_plan_cache, vyve_legal_entity, ico_registration, contact) and _readme block (plain-English explainer of what's included, derived data, what's not included, and Article 15/16/17 rights). Uploads to `gdpr-exports/{email}/{ISO}.json` with upsert:true. Creates 7-day signed URL via createSignedUrl(SIGNED_URL_TTL_SECONDS = 7 * 86400). Sends Brevo email via /v3/smtp/email with VYVE-styled HTML wrapper (matches re-engagement-scheduler v10's wrap()/h2()/pp()/btn() helper pattern). Writes admin_audit_log row with action 'gdpr_export_delivered' or 'gdpr_export_failed' on failure. Failure mode marks failed_at only on attempt_count >= MAX_ATTEMPTS (3); otherwise leaves for retry on next tick (10-min re-queue window in pick_due handles cron crashes mid-process).
+
+**Cron registered:**
+
+`vyve-gdpr-export-tick` jobid 21, schedule `*/15 * * * *`, 90-second timeout, hits `https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/gdpr-export-execute` with POST + Content-Type:application/json + empty body. Bearer-less call (matches email-watchdog, monthly-report, vyve-certificate-checker, weekly-report patterns).
+
+**Frontend ship — vyve-site `952c4275`:**
+
+- `settings.html` v(+8,466 chars): new "Privacy & Data" section between About and Account actions; "Download my data" row opens confirmation modal explaining 30-day rate limit, 7-day download window, Article 15 framing; on confirm calls `/functions/v1/gdpr-export-request` via existing getJWT()/SUPA_KEY helpers; handles 202 (queued), 429 (rate limited with next-eligible date), 409 (already pending), and other errors. "Delete my account" row shown but disabled with "Coming soon" sub — placeholder for commit 4 to fill. Modal HTML inlined at end of body, no external CSS dependency.
+- `sw.js` cache: `vyve-cache-v2026-05-07b-csp-fix1` → `vyve-cache-v2026-05-07c-gdpr-export`.
+
+**End-to-end test (verified live, 07 May 02:43 UTC):**
+
+Test row inserted directly into gdpr_export_requests (request_id `857a428f-dc7a-4068-88d4-14850c4478c5`, requested_by `system_test_07may2026`, kind admin), executor invoked manually via POST to /functions/v1/gdpr-export-execute. Response: `{success:true, processed:1, delivered:1, failed:0}`. Row state post-execution: delivered=true, failed=false, attempt_count=1, size_bytes=4,028,862 (~4MB), tables_included=45, has_brevo_id=true (msg `<202605070243.85453192526@smtp-relay.mailin.fr>`), file_path `deanonbrown@hotmail.com/2026-05-07T02-43-48-707Z.json`, signed_url_expires_at 2026-05-14, latency_sec=27 (cold start + 10.7s build + email send). admin_audit_log row written with action `gdpr_export_delivered` and full metadata blob. Real Brevo email landed in deanonbrown@hotmail.com inbox with working signed URL.
+
+**What's NOT done in this commit (deferred to next session or follow-ups):**
+
+- **Lewis copy approval on the Brevo email template.** The current copy is a draft inlined directly in the EF source (not in Brevo's template store). Iteration is a single EF redeploy. Show Lewis the test email Dean received, capture his copy preferences, redeploy.
+- **CRON_SECRET env var.** The execute EF supports it (gates the bearer check via `if (CRON_SECRET)`) but it's not set, matching the bearer-less pattern of email-watchdog/monthly-report/etc. If we want defence-in-depth later, add it via Supabase secrets without code changes.
+- **HTML companion file in the export bucket.** Discussed and deferred — current JSON is GDPR-compliant and matches Strava/Notion's raw shape. Add HTML rendering later only if real members ask. The email copy will be tightened (option 1: word "structured" added to the explainer) when Lewis reviews.
+- **Incognito CSP test.** Skipped this commit — settings.html added inline JS in the existing single `<script>` block + inline CSS in the modal; both are already permitted by the v2 CSP `'unsafe-inline'` allowance. No new external script/style sources introduced.
+- **Brevo template store integration.** Currently emails are sent with htmlContent inlined in the EF body. Eventually move to Brevo's template store so Lewis can iterate copy without an EF redeploy. Backlog item.
+
+**Build totals:** ~5 hours single session (slightly under the 6h estimate), 2 migrations, 2 EF deploys, 1 cron registration, 1 atomic vyve-site commit (settings.html + sw.js).
+
+**Next session — commit 4 (~6h):** gdpr-erase-request + gdpr-erase-execute EFs, gdpr_erasure_requests table, 3 Brevo templates (Lewis copy approval pending all three), settings.html "Delete my account" wiring (typed-email confirmation gate + persistent in-app cancel banner), standalone gdpr-erasure-cancel.html page, Stripe Customer DELETE, session_replication_role=replica trigger management, Brevo + PostHog third-party purge in execute path.
+
+---
+
 ## 2026-05-07 PM-2 (Security commit 2 · CSP meta tag + render-time XSS sanitiser · plus 5-policy hygiene roll)
 
 **What shipped — vyve-site `cdd04999` then `d336db0b` (fix-1 in same session):**
