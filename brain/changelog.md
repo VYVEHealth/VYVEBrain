@@ -1,3 +1,79 @@
+## 2026-05-07 PM (Security commit 1B · CORS hardening + payload caps + ai_interactions audit logging)
+
+### TL;DR
+
+Hygiene completion of the security pass that started in commit 1. Four EF redeploys (`log-activity` v28, `wellbeing-checkin` v28, `anthropic-proxy` v16, `re-engagement-scheduler` v10) plus one schema migration (`ai_interactions_triggered_by_check` constraint expanded to include `re_engagement`). Closes the remaining audit hygiene items: wildcard CORS fallback removed from the two POST EFs that still had it; 100KB payload caps wired in on every public-facing EF; AI audit trail extended from onboarding-only to four surfaces (onboarding, weekly check-ins, running plan generation, re-engagement email scheduler). One mid-commit catch — the existing CHECK constraint on `ai_interactions.triggered_by` was narrower than my new values, would have silently 23514'd every audit write under `EdgeRuntime.waitUntil()`. Fixed with a one-statement migration and three EF redeploys to align the literal values.
+
+### What shipped
+
+**Schema — `ai_interactions_triggered_by_check`:**
+- Dropped existing CHECK `(triggered_by IN ['weekly_checkin','onboarding','running_plan','milestone','manual'])`.
+- Re-added with `re_engagement` appended to the allowed list. The other five values unchanged. The re-engagement scheduler is the first new audit surface that doesn't fit any existing taxonomy slot — onboarding/weekly/plan/milestone/manual were all narrowly scoped, and shoehorning re-engagement into `manual` would have collided with admin-issued manual triggers.
+- Verified via insert-and-delete smoke test against a real member email: all three new values (`weekly_checkin`, `running_plan`, `re_engagement`) accept; CHECK passes; FK to `members.email` enforced; row count back to 21 (onboarding-only baseline) with no residue.
+
+**EF — `log-activity` v28** (platform v31, ezbr `f88f98f6a0eec72f325679f2c5e68c61598fb56d49b16eee8acc1d7661cfbaa8`):
+- `getCORSHeaders` simplified to `ALLOWED_ORIGINS.has(origin) ? origin : DEFAULT_ORIGIN`. No `*` branch.
+- `Access-Control-Allow-Credentials` always `'true'`.
+- `MAX_BODY_BYTES = 102400` const, `payloadTooLarge(req)` helper checks Content-Length, returns 413 before any handler logic. Added before the supabase client construction in the entry-point so the cap protects the whole handler including the `evaluate_only` branch.
+- `_shared/achievements.ts` redeployed unchanged in the same multi-file deploy.
+- All other behaviour byte-identical to v27. No `ai_interactions` write — log-activity isn't an AI surface.
+
+**EF — `wellbeing-checkin` v28** (platform v41, ezbr `bbce9c4b5b7db9e960b810220edf6046d11e35b223d0a0bceff833d818326a1d`):
+- Same CORS simplification + payload cap pattern as log-activity.
+- New `writeAiInteraction()` helper writes one row to `ai_interactions` per successful Anthropic response. `triggered_by='weekly_checkin'`. Persona resolved from the member row. `prompt_summary` captures score, flow type, and deferred-flag for human-readable inspection. `decision_log` jsonb carries model (`claude-sonnet-4-20250514`), max_tokens (1200), `score_wellbeing`, `flow_type`, `previous_score`, `deferred`, `iso_week`, `iso_year`, `response_status`. Fire-and-forget via `EdgeRuntime.waitUntil()` — never blocks the user response. Failures swallowed (logged to console).
+- Initial v27 deploy used `triggered_by='wellbeing-checkin'` (with hyphen) which would have failed the CHECK. v28 corrects to `'weekly_checkin'` (with underscore, matching constraint).
+- All other handler logic byte-identical to v26 — same Anthropic call shape, same notifications, same wellbeing_checkins/weekly_scores writes, same X-VYVE-Deferred handling.
+
+**EF — `anthropic-proxy` v16** (platform v21, ezbr `207d9b03de5c5b3a201e6acef6e131f92588774cf32747b3a5a4ebc01a8a2480`):
+- 100KB payload cap.
+- Audit row written for every successful Anthropic response. `triggered_by='running_plan'` (the only known caller is `running-plan.html`; if a future caller adds a non-running-plan surface, branch + constraint addition needed). `prompt_summary` captures model + max_tokens + first 200 chars of system prompt. `recommendation` captures first 500 chars of `response.content[0].text`. `decision_log` carries model, max_tokens, response_status, last_user_excerpt (200 chars), usage object. Member email resolved from the JWT user object. Persona null (proxy doesn't know it). Fire-and-forget. CORS posture already correct in v14 (`DEFAULT_ORIGIN` fallback, no `*` branch) — no change needed there.
+- v15 used `triggered_by='anthropic-proxy:running-plan'` which would have failed the CHECK. v16 corrects to `'running_plan'`.
+
+**EF — `re-engagement-scheduler` v10** (platform v28, ezbr `05e1c3055663f798ec83948fb3132d438df9ec6f4c93c3fcc8d0b6396a008bdd`):
+- `aiLine()` signature extended with audit context (email, persona, streamKey). All call-sites in `buildA()` and `buildB()` updated to pass the surrounding member's email/persona/stream key.
+- Audit row written inside `aiLine()` after every successful generation. `triggered_by='re_engagement'`. `prompt_summary` references the streamKey and max_tokens for human readability. `decision_log` jsonb carries model (`claude-haiku-4-5-20251001`), max_tokens, response_status, last_user_excerpt (200 chars), usage, and `stream_key` (e.g. `'A_48h'`, `'B_3d'`) so audit granularity is preserved at the row level. Fire-and-forget.
+- v9 used variable `triggered_by='re-engagement:<streamKey>'` strings which would have failed the CHECK on every variant. v10 corrects to a single fixed `'re_engagement'` literal with the streamKey moved to `decision_log.stream_key`.
+- CORS posture already wildcard `*` in v8 — left as-is for now since this EF is only ever invoked by the pg_cron `vyve-engagement-scheduler` job, never by browsers. Adding a default-origin fallback here would be a no-op posture change. Backlog item if procurement asks.
+- All other handler logic byte-identical to v8 — same A/B stream gates, same Brevo dispatch, same engagement_emails ledger.
+
+### Audit surface coverage — before vs after
+
+Before commit 1B: `ai_interactions` had 21 rows, all `triggered_by='onboarding'`. The other four AI surfaces in the platform produced zero audit trail.
+
+After commit 1B: every AI call from the platform writes one row.
+- `onboarding` — already live (no change).
+- `weekly_checkin` — wellbeing-checkin v28.
+- `running_plan` — anthropic-proxy v16.
+- `re_engagement` — re-engagement-scheduler v10.
+- `milestone` — reserved for future certificate/achievement-celebration AI flows (not yet wired).
+- `manual` — reserved for admin-console-issued manual triggers (not yet wired).
+
+### What this exposed
+
+**CHECK constraint pre-flight required for any new `triggered_by`-style value.** The original commit 1B EF deploys all used new `triggered_by` literals (`'wellbeing-checkin'`, `'anthropic-proxy:running-plan'`, `'re-engagement:<key>'`) without consulting the existing CHECK. All would have silently 23514'd inside `EdgeRuntime.waitUntil()` — no user-visible failure, just an empty audit trail and a console warning the cron logs would have buried. New §23 hard rule: before adding any value to a column with a CHECK constraint, query `pg_constraint` for the definition.
+
+**Composio's `SUPABASE_DEPLOY_EDGE_FUNCTION` slug doesn't exist in the toolkit.** Got `Tool not found` when I tried Composio's deploy first. Native `Supabase:deploy_edge_function` is the only working path for multi-file deploys (already documented in §23 from the 06 May session, but worth reinforcing — Composio's slug list for Supabase EFs covers `GET_FUNCTION_BODY` (returns ESZIP, useless for editing) but not the deploy verb).
+
+**Smoke test on `ai_interactions` insert pattern caught the constraint mismatch.** The cleanup step revealed an interesting wrinkle — `DELETE ... WHERE decision_log->>'sec_1b_smoke' = 'true'` returned 0 rows even though the insert returned the ID, because the JSONB key access syntax in the DELETE filter wasn't matching the inserted shape. Direct `WHERE id=` cleanup worked. Worth documenting as a brain note: PostgREST and direct SQL handle JSONB containment differently.
+
+### What did NOT ship in 1B (deferred to future sessions)
+
+- Re-roling the 5 cosmetic `public`-role INSERT policies to `authenticated`. Not a security hole (all have `WITH CHECK (auth.email() = ...)` quals that block anon). Bundled into commit 2 hygiene.
+- Default-origin fallback on `re-engagement-scheduler` CORS. Currently still wildcard `*` because the EF is cron-only; not a real exposure surface. Backlog if procurement raises.
+- Payload cap rollout to the remaining ~10 public-facing EFs (`monthly-checkin`, `onboarding`, `register-push-token`, etc.). Defensive; backlog as a single batch rather than a security commit.
+
+### Verification
+
+- Constraint: `pg_constraint` query confirms expanded definition. Smoke test inserts succeeded for all three new values; cleanup left exactly the original 21 onboarding rows.
+- All four EF deploys returned active platform versions and ezbr hashes (captured in the per-EF blocks above). `Supabase:get_edge_function` reads back the new source for each.
+- No live invocation possible from sandbox (egress proxy blocks `supabase.co`); first audit-row writes from real members will land on the next weekly check-in / running-plan generation / scheduled cron tick.
+
+### Member impact
+
+Zero. Members see no behavioural change. The audit trail is silent and server-side; the payload caps only fire on >100KB requests (no current member surface produces anything close); the CORS hardening only affects empty/null Origin which legitimate browsers never send.
+
+---
+
 ## 2026-05-07 (Security commit 1 · running_plan_cache RLS lockdown + member-dashboard CORS hardening)
 
 ### TL;DR
