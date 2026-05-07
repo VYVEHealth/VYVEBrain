@@ -1,49 +1,49 @@
 # VYVE Edge Function Source Backup
 #
-# Runs weekly Sundays 02:00 UTC (matching the original Item 3 spec) plus on-demand
-# via workflow_dispatch. Walks the KEEP list of Supabase Edge Functions, fetches
-# each one's ESZIP body via the Management API, decodes it with the deno eszip
-# library, writes the decoded source files into staging/edge-functions/{slug}/,
-# regenerates MANIFEST.json, and commits everything in a single commit.
+# Runs weekly Sundays 02:00 UTC plus on-demand via workflow_dispatch.
+# For each EF in the KEEP list:
+#   1. Download decoded source via `supabase functions download` (CLI handles ESZIP)
+#   2. Move the decoded files into staging/edge-functions/{slug}/
+#   3. Hit the Management API for metadata (version, verify_jwt, ezbr_sha256)
+#   4. Build MANIFEST.json with per-EF metadata + per-file sha256
+#   5. Single commit if anything changed
 #
-# On failure (any non-zero exit, any thrown error in the script), GitHub emails
-# the repo admin (Dean) automatically — that replaces the email-watchdog path
-# we'd have used if the runner lived in a Supabase EF.
+# Failure → GitHub emails the repo admin (Dean) automatically.
 #
 # Secrets required (Settings → Secrets and variables → Actions):
-#   - MGMT_PAT: Supabase Personal Access Token, project access
-#     Same value as the MGMT_PAT secret in Supabase Edge Function Secrets.
-#   - GITHUB_TOKEN: provided automatically by GitHub Actions, no manual setup.
+#   - MGMT_PAT: Supabase Personal Access Token (project access)
+#               Same value as MGMT_PAT in Supabase Edge Function Secrets.
 
 name: Backup Edge Function Source
 
 on:
   schedule:
-    - cron: "0 2 * * 0"   # Sundays 02:00 UTC
+    - cron: "0 2 * * 0"
   workflow_dispatch: {}
 
 permissions:
-  contents: write   # required to commit the staging snapshot
+  contents: write
 
 jobs:
   backup:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout VYVEBrain
         uses: actions/checkout@v4
 
-      - name: Setup Deno
-        uses: denoland/setup-deno@v2
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
         with:
-          deno-version: v1.x
+          version: latest
 
       - name: Run backup script
         env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.MGMT_PAT }}
           MGMT_PAT: ${{ secrets.MGMT_PAT }}
           SUPABASE_PROJECT_REF: ixjfklpckgxrwjlfsaaz
           STAGING_DIR: staging/edge-functions
-        run: deno run --allow-net --allow-env --allow-read --allow-write scripts/backup-edge-functions.ts
+        run: bash scripts/backup-edge-functions.sh
 
       - name: Commit staging snapshot
         run: |
@@ -54,7 +54,6 @@ jobs:
             exit 0
           fi
           git add staging/edge-functions/
-          # MANIFEST.json's first line carries the EF count; dig it out for the message.
           COUNT=$(jq -r '.ef_count_succeeded' staging/edge-functions/MANIFEST.json 2>/dev/null || echo "?")
           ATTEMPTED=$(jq -r '.ef_count_attempted' staging/edge-functions/MANIFEST.json 2>/dev/null || echo "?")
           SNAPSHOT_AT=$(jq -r '.snapshot_at' staging/edge-functions/MANIFEST.json 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
