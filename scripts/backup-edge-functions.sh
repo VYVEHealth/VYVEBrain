@@ -115,6 +115,11 @@ for slug in "${KEEP_LIST[@]}"; do
   rm -rf "$target_dir"
   mkdir -p "$target_dir"
   cp -R "$src_dir"/. "$target_dir"/
+  if [ ! -s "$target_dir/index.ts" ]; then
+    echo "  [WARN] cp completed but $target_dir/index.ts missing or empty" >&2
+    ls -la "$src_dir" >&2
+    ls -la "$target_dir" >&2
+  fi
 
   # Append manifest entry
   echo "$meta" | jq --arg slug "$slug" --argjson files "$files_json" \
@@ -124,6 +129,13 @@ for slug in "${KEEP_LIST[@]}"; do
 done
 
 cd "$GITHUB_WORKSPACE"
+echo
+echo "=== Workspace staging dump ==="
+echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+echo "STAGING=$STAGING"
+echo "ls of GITHUB_WORKSPACE/STAGING:"
+ls -la "$GITHUB_WORKSPACE/$STAGING" 2>&1 | head -80 || true
+echo "directory count: $(find "$GITHUB_WORKSPACE/$STAGING" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
 echo
 echo "=== Done. $SUCCEEDED/$TOTAL succeeded. $FAILED failed. ==="
 if [ $FAILED -gt 0 ]; then
