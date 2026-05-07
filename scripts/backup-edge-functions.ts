@@ -11,12 +11,6 @@
 //     including platform_version, verify_jwt, ezbr_sha256, file_shas, error rows.
 //   - Wipe each {slug}/ folder before re-writing so file deletions land cleanly between
 //     snapshots (prevents stale files lingering when an EF removes a shared module).
-//
-// Failure modes:
-//   - Any per-EF error (fetch/parse) is captured in the manifest entry's `error` field
-//     but does NOT abort the run. Partial snapshots still commit.
-//   - If 100% of EFs fail (likely a PAT/network outage), exit non-zero so Actions
-//     emails Dean and the manifest+staging are NOT overwritten.
 
 import { Parser } from "https://deno.land/x/eszip@v0.109.0/mod.ts";
 import { encodeHex } from "https://deno.land/std@0.224.0/encoding/hex.ts";
@@ -31,12 +25,6 @@ if (!PAT) {
   Deno.exit(2);
 }
 
-// 07 May 2026 KEEP list — EFs whose source we back up.
-// Excludes one-shot patchers, debug helpers, hardcoded-recipient triggers (full DELETE
-// list documented in VYVEBrain backlog Item 3 spec). When the cohort changes — e.g.
-// a new EF ships and survives the next Lewis-or-Dean cleanup pass — add the slug here
-// and bump the brain entry. Re-validate against `Supabase:list_edge_functions` if drift
-// is suspected.
 const KEEP_LIST = [
   "achievement-earned-push","achievements-mark-seen","achievements-sweep","admin-dashboard",
   "admin-member-edit","admin-member-habits","admin-member-programme","admin-member-weekly-goals",
@@ -74,11 +62,11 @@ async function sha256Hex(s: string): Promise<string> {
   return encodeHex(new Uint8Array(hash));
 }
 
-async function fetchAndDecode(slug: string): Promise<ManifestEntry> {
-  const headers = { Authorization: `Bearer ${PAT}`, Accept: "application/json" };
+async function fetchAndDecode(slug: string, isFirst: boolean): Promise<ManifestEntry> {
+  const headers = { Authorization: `Bearer ${PAT}` };
   const [metaRes, bodyRes] = await Promise.all([
-    fetch(`https://api.supabase.com/v1/projects/${REF}/functions/${slug}`, { headers }),
-    fetch(`https://api.supabase.com/v1/projects/${REF}/functions/${slug}/body`, { headers: { Authorization: `Bearer ${PAT}` } }),
+    fetch(`https://api.supabase.com/v1/projects/${REF}/functions/${slug}`, { headers: { ...headers, Accept: "application/json" } }),
+    fetch(`https://api.supabase.com/v1/projects/${REF}/functions/${slug}/body`, { headers }),
   ]);
   if (!metaRes.ok) {
     return { slug, ok: false, error: `metadata HTTP ${metaRes.status}: ${(await metaRes.text()).slice(0, 200)}` };
@@ -89,26 +77,58 @@ async function fetchAndDecode(slug: string): Promise<ManifestEntry> {
   const meta = await metaRes.json();
   const eszipBytes = new Uint8Array(await bodyRes.arrayBuffer());
 
-  const parser = await Parser.createInstance();
-  const specifiers: string[] = await parser.parseBytes(eszipBytes);
-  await parser.load();
+  // DIAGNOSTIC: log first EF's body shape so we can see if it's actually ESZIP.
+  if (isFirst) {
+    console.log(`  [diag] body content-type: ${bodyRes.headers.get("content-type")}`);
+    console.log(`  [diag] body bytes: ${eszipBytes.length}`);
+    const first16 = Array.from(eszipBytes.slice(0, 16)).map(b => b.toString(16).padStart(2, "0")).join(" ");
+    console.log(`  [diag] first 16 bytes (hex): ${first16}`);
+    const first40ascii = new TextDecoder("utf-8", { fatal: false }).decode(eszipBytes.slice(0, 40)).replace(/[\x00-\x1F]/g, ".");
+    console.log(`  [diag] first 40 bytes (ascii): ${first40ascii}`);
+    console.log(`  [diag] meta keys: ${Object.keys(meta).join(", ")}`);
+    console.log(`  [diag] meta.version: ${meta.version}, meta.ezbr_sha256: ${meta.ezbr_sha256}`);
+  }
+
+  let parser: Parser;
+  try {
+    parser = await Parser.createInstance();
+  } catch (e) {
+    return { slug, ok: false, error: `Parser.createInstance threw: ${e instanceof Error ? e.message : String(e)}` };
+  }
+
+  let specifiers: string[];
+  try {
+    specifiers = await parser.parseBytes(eszipBytes);
+  } catch (e) {
+    const head = Array.from(eszipBytes.slice(0, 16)).map(b => b.toString(16).padStart(2, "0")).join(" ");
+    return { slug, ok: false, error: `parseBytes threw: ${e instanceof Error ? e.message : String(e)} | first 16 bytes: ${head}` };
+  }
+
+  try {
+    await parser.load();
+  } catch (e) {
+    return { slug, ok: false, error: `parser.load threw: ${e instanceof Error ? e.message : String(e)}` };
+  }
 
   const localFiles: { name: string; src: string; sha: string }[] = [];
   for (const spec of specifiers) {
     if (spec.startsWith("http://") || spec.startsWith("https://")) continue;
-    const src = await parser.getModuleSource(spec);
+    let src: string | undefined;
+    try {
+      src = await parser.getModuleSource(spec);
+    } catch (e) {
+      console.error(`  [warn] getModuleSource(${spec}) threw: ${e instanceof Error ? e.message : String(e)}`);
+      continue;
+    }
     if (typeof src !== "string") continue;
-    // Specifier paths look like "source/index.ts" or "source/_shared/taxonomy.ts".
-    // Strip the "source/" prefix so files land at staging/edge-functions/{slug}/index.ts etc.
     const name = spec.replace(/^source\//, "");
     const sha = await sha256Hex(src);
     localFiles.push({ name, src, sha });
   }
   if (!localFiles.length) {
-    return { slug, ok: false, error: "no local source files in ESZIP after http filter" };
+    return { slug, ok: false, error: `no local source files in ESZIP after http filter (specifiers count: ${specifiers.length})` };
   }
 
-  // Wipe the per-EF staging dir before writing — handles file deletions cleanly.
   const efDir = join(STAGING_DIR, slug);
   try {
     await Deno.remove(efDir, { recursive: true });
@@ -134,15 +154,12 @@ async function fetchAndDecode(slug: string): Promise<ManifestEntry> {
   };
 }
 
-// Sequential, not parallel — the WASM parser instance has internal state and we want
-// deterministic file ordering on disk. 60 EFs at ~2-4s each = 2-4 minutes; well within
-// the 10-min Actions timeout.
 const entries: ManifestEntry[] = [];
 let i = 0;
 for (const slug of KEEP_LIST) {
   i++;
   try {
-    const entry = await fetchAndDecode(slug);
+    const entry = await fetchAndDecode(slug, i === 1);
     entries.push(entry);
     console.log(`[${i}/${KEEP_LIST.length}] ${slug}: ${entry.ok ? `${entry.files!.length} files` : `FAIL ${entry.error}`}`);
   } catch (e) {
