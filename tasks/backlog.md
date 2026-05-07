@@ -1,13 +1,16 @@
-## Added 07 May 2026 PM-8 (Direct-PostgREST audit clean · brain recovery from PM-5 clobber)
+## Added 08 May 2026 PM-1 (Brain hygiene + cleanup pass · all PM-5 cleanup tickets closed)
 
-- **PM-6/PM-7 brain recovery confirmation.** Verify on next session start that recovered PM-6 + PM-7 changelog entries (movement.html column-name bug, cardio.html weekly widget) are intact in `brain/changelog.md`, and that the recovered §23 hard rule on column-name pre-flight is still at the top of §23 in `brain/master.md`. If a future Backup&DR or other parallel session lands while a brain commit is in flight, the §23 PM-8 rule gives the playbook for catching it.
-- **Audit doctrine codified.** PM-6's backlog item ("one-shot grep audit for direct-PostgREST writers across vyve-site") was resolved PM-8 with 0 bugs found across 61 sites. The detector script (extract_full_url + extract_select_cols_v2 + extract_payload_keys_v3) lives in PM-8 transcript only; if this audit needs to be re-run later (e.g. after the next schema migration), the detector logic is recoverable from the PM-8 changelog entry.
+- ✅ **CLOSED — Scratch EFs deleted.** `vyve-ef-source-backup` v3 + `vyve-mgmt-api-probe` v2 deleted via Supabase dashboard. EF count 95 → 93.
+- ✅ **CLOSED — Cron drift fixed.** Duplicate jobid 19 (`process-scheduled-pushes-every-5min`) unscheduled. §7 cron table refreshed to 19 active jobs (was carrying 17). All 19 jobids accounted for, GDPR commit 4 daily cron documented.
+- ✅ **CLOSED — GDPR commit 4 §19 entry written.** PM-3 paragraph updated with retroactive same-evening shipped postscript.
+- ✅ **CLOSED — §21 capacitor git-init backlog bullet removed** (resolved 07 May PM-4).
+- 📋 **NEW — §22 entry: GDPR cron static-PSK exposure.** Logged as backlog rotation. Two fix paths documented (move PSK to `current_setting('app.gdpr_cron_psk')` or drop bearer entirely). Not blocking Sage diligence unless explicitly raised on security review.
 
-## Added 07 May 2026 PM-5 (Backup & DR session 1 continuation — Item 3 shipped, drift caught)
+## Added 07 May 2026 PM-5 (Backup & DR session 1 continuation — Item 3 shipped, drift caught) — superseded by 08 May PM-1 cleanup pass above
 
-- **Cleanup: delete two scratch EFs** — `vyve-ef-source-backup` v3 and `vyve-mgmt-api-probe` v2 are inert ACTIVE EFs left over from the PM-5 architecture pivot. Composio has no delete-EF tool. Cleanup via Supabase dashboard (Edge Functions → click slug → Delete) or CLI (`supabase functions delete <slug> --project-ref ixjfklpckgxrwjlfsaaz`). Bundle with the broader 9 April security audit's ~89-EF cleanup pass.
-- **Brain drift items caught PM-5 (low priority, none blocking)**: (a) GDPR commit 4 already shipped (4 erase EFs + jobid 22 cron live since 07 May PM-3), brain says pending — needs a small §19 entry + §22 update for HAVEN-style auto-assignment status if applicable. (b) §7 cron count drift: brain says 17, live cron.job has 20 — additions are `vyve-seed-weekly-goals` (jobid 20), `vyve-gdpr-export-tick` (jobid 21), `vyve-gdpr-erase-daily` (jobid 22), plus stale duplicate `process-scheduled-pushes-every-5min` (jobid 19, same `*/5 * * * *` as jobid 18 — one needs deleting). (c) §24 staleness audit (already in PM-4 backlog) gains weight — multiple drift items found in one session. Bundle these into a single brain-hygiene PR before backup session 2 starts.
-- **Item 4-6 still parked** (DR session 2): storage rclone backup (B2 recommended), credentials vault checklist (1Password recommended, 25+ secrets to log), DR playbook sections 2-5 (Capacitor SSD, Supabase deletion, APNs rotation, storage bucket loss). Section 1 (EF rollback) shipped this session.
+- ~~Cleanup: delete two scratch EFs~~ — done 08 May PM-1.
+- ~~Brain drift items caught PM-5~~ — all addressed 08 May PM-1.
+- **Item 4-6 still parked** (DR session 2): storage rclone backup (B2 recommended, scope updated 08 May to 5 buckets / 267 objects — `gdpr-exports` bucket is new since PM-4), credentials vault checklist (1Password recommended, 25+ secrets to log), DR playbook sections 2-5 (Capacitor SSD, Supabase deletion, APNs rotation, storage bucket loss). Section 1 (EF rollback) shipped 07 May PM-5.
 
 ## Added 07 May 2026 PM-4 (Backup & DR session 1)
 
