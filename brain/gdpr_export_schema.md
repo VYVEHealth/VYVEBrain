@@ -1,7 +1,7 @@
 # `gdpr-export` EF — Schema & Flow Mockup
 
-**Status:** Mockup v2 (async pattern). Awaiting Dean sign-off before code lands.
-**Last updated:** 07 May 2026 PM-3 (revised from sync-with-URL to async-with-email after research into industry-standard patterns; Strava and Notion both use async-queue-email; admin-mediated patterns like Slack do not apply to a B2C app like VYVE).
+**Status:** Mockup v2.1 — SIGNED OFF by Dean 07 May 2026 PM-3. Ready to build.
+**Last updated:** 07 May 2026 PM-3 (sign-off pass: all 5 open questions confirmed with the recommended defaults — see "Confirmed decisions" block below).
 
 ---
 
@@ -387,10 +387,12 @@ The `auth.users` sanitisation list (whitelist `id`, `email`, `created_at`, `upda
 
 Total: ~6 hours, single session, two EF deploys + one schema migration + portal HTML changes (cache bump). Up from v1's 5h estimate; the +1h is the cron + queue table + retry handling. Worth it for the procurement-recognisable pattern and the curiosity-click filter.
 
-## Open questions for Dean
+## Confirmed decisions (signed off by Dean 07 May 2026 PM-3)
 
-1. **Storage bucket name** — `gdpr-exports`. Acceptable?
-2. **Retention** — 90-day file lifecycle in the bucket. Confirm acceptable for procurement (some shops want 30 days, some 7 years).
-3. **Member rate limit** — 1 per 30 days for member-self path, no limit for admin path. Reasonable?
-4. **`auth.users` sanitisation whitelist** — `id`, `email`, `created_at`, `updated_at`, `last_sign_in_at`, `email_confirmed_at`, `user_metadata`, `app_metadata`. Drop everything else (tokens, password hashes, recovery codes). Confirm.
-5. **Settings UI placement** — new "Privacy & Data" section in About & Legal block on `settings.html`, button placement BELOW the privacy/terms links so curiosity clicks have to scroll. Confirm scope creep is acceptable in this commit.
+1. **Storage bucket name:** `gdpr-exports`. ✓
+2. **File retention:** 90-day lifecycle rule on the bucket; signed URL expires after 7 days separately. ✓
+3. **Rate limit:** 1 export per 30 days for member-self path; no limit on admin path. ✓
+4. **`auth.users` sanitisation whitelist:** `id`, `email`, `created_at`, `updated_at`, `last_sign_in_at`, `email_confirmed_at`, `user_metadata`, `app_metadata`. Everything else dropped (tokens, password hashes, recovery codes, phone-change tokens, email-change tokens). ✓
+5. **Settings UI placement:** new "Privacy & Data" section in `settings.html` About & Legal block, "Download my data" button BELOW existing privacy/terms links so curiosity clicks have to scroll first. Same section will host commit 4's "Delete my account" button. ✓
+
+No outstanding questions. Build is unblocked when next session picks up commit 3.

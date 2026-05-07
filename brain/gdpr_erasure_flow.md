@@ -1,7 +1,7 @@
 # `gdpr-erase-request` + `gdpr-erase-execute` EFs — Flow Mockup
 
-**Status:** Mockup v2. Awaiting Dean sign-off before any code or schema lands.
-**Last updated:** 07 May 2026 PM-3 (revised from v1 to add typed-email destructive-action confirmation gate per Dean's call; standard pattern from GitHub repo deletion / Stripe account closure / AWS S3 bucket deletion).
+**Status:** Mockup v2.1 — SIGNED OFF by Dean 07 May 2026 PM-3. Ready to build.
+**Last updated:** 07 May 2026 PM-3 (sign-off pass: all 6 open questions confirmed with the recommended defaults — see "Confirmed decisions" block below).
 
 ---
 
@@ -315,11 +315,22 @@ Out of scope for this commit. Lewis can use Supabase Studio + a manual REST call
 
 Total: ~6 hours, single session, two EF deploys + one schema migration + portal HTML changes (cache bump). Tight but feasible; if it spills, the request EF + cancel EF + table can ship in one session and the execute EF can ship in a second.
 
-## Open questions for Dean
+## Confirmed decisions (signed off by Dean 07 May 2026 PM-3)
 
-1. **Stripe Customer delete vs cancel-only.** Per Article 17, full Customer delete is the right answer. Confirm this is what we want — it means re-subscribing in future requires a fresh Stripe Customer. (Reasonable; they're a fresh GDPR member anyway.)
-2. **Re-enable trigger pattern.** `session_replication_role = replica` is the recommended approach (one-liner, atomic, future-proof). Per-trigger DISABLE/ENABLE is the alternative. Confirm `replica` mode is acceptable.
-3. **Cancel-link UX.** Plain HTML page with token-in-querystring is the proposal. Acceptable, or want it gated by Auth? (Auth-gated means the member must log in to cancel, which is annoying if they're cancelling because they got the email and weren't expecting it. Token-only is the standard pattern.)
-4. **Lewis copy approval** — request email + cancel email + cancel-confirmation email = 3 Brevo templates needed. He'll want to write these.
-5. **Settings UI scope confirmed in this revision.** "Delete my account" button + typed-email-confirmation modal + persistent in-app cancel banner all in `settings.html`, plus the `gdpr-erasure-cancel.html` standalone page. Adds a SW cache bump and an incognito test cycle, same as commit 2 shipped last session. Build estimate updated to reflect this (Settings UI was already in the v1 estimate; the typed-confirm gate adds maybe 10 minutes of JS to disable/enable the button on input change). No further sign-off needed unless you want different copy.
-6. **Backlog or commit 4? Brevo contact-delete + PostHog event-delete API calls** during execute path. Could roll into commit 4 (~30 extra min each, both have well-documented APIs) or defer. Lean: roll in. Procurement reviewers see an end-to-end purge that handles the third-party processors, which is the gold standard.
+1. **Stripe Customer DELETE (full Article 17 strict reading), not cancel-only.** ✓ Re-subscribing in future means a fresh Stripe Customer record is created — acceptable consequence; the member is a fresh GDPR subject anyway. Stripe Customer DELETE happens in Step 1 of the purge sequence, BEFORE any DB delete. Failure here aborts the purge (cron retries tomorrow). Stripe 404 (already-deleted) treated as success.
+
+2. **Trigger management via `SET session_replication_role = replica`.** ✓ One-liner, atomic, future-proof — any new trigger we add later is automatically disabled during the purge without code changes here. EF wraps the entire purge in a `try/finally` so `RESET session_replication_role` always runs. Per-trigger DISABLE/ENABLE rejected as the wrong abstraction (would need updating every time a new trigger is added to any of the 9 source tables).
+
+3. **Cancel-link UX: plain HTML page, token-in-querystring, NOT Auth-gated.** ✓ The token IS the auth. Auth-gated cancel was rejected — a member panicking after seeing the deletion-scheduled email shouldn't have to remember their password to stop it. Token is one-time use, single-purpose (cancellation only, no other operations possible), recorded in `gdpr_erasure_requests.cancel_token UNIQUE`. Same pattern as Brevo unsubscribe links and most "click to confirm" email flows.
+
+4. **Lewis copy approval required for 3 Brevo templates before commit 4 ships:**
+   - `gdpr-erasure-requested.html` — confirmation that deletion is scheduled, with the cancel link, scheduled-for date, and clear "this is reversible until {date}, after that it isn't" copy
+   - `gdpr-erasure-cancelled.html` — confirmation that cancellation succeeded, no further action needed
+   - `gdpr-erasure-executed.html` — final receipt confirming the deletion has run, with re-subscription pathway info if they ever come back
+   Suggest reusing the `re-engagement` template wrapper for visual consistency. ✓ Lewis writes these before EF deploys; they live in Brevo's template store, EF references by template ID.
+
+5. **Settings UI baked in this revision** — "Delete my account" button + typed-email-confirmation modal + persistent in-app cancel banner in `settings.html`, plus standalone `gdpr-erasure-cancel.html` page. SW cache bump and incognito test cycle required, same as commit 2 shipped 07 May PM-2. Build estimate adds ~10 min for the typed-confirm JS over v1's UI estimate. ✓
+
+6. **Brevo contact-delete + PostHog event-delete rolled INTO commit 4 execute path.** ✓ Both have well-documented APIs (~30 min each). Procurement-grade end-to-end purge — Sage's reviewer sees we handle the third-party processors, not just our own database. Failure on either third-party call writes a `platform_alerts` row but doesn't abort the rest of the purge (third-party processors are best-effort; our DB and Stripe are the must-deliver path). HubSpot intentionally NOT included — HubSpot holds prospect/CRM data, not member data; if a member is also a HubSpot lead they'd need a separate request to HubSpot.
+
+No outstanding questions. Build is unblocked when next session picks up commit 4.
