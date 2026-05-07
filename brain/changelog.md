@@ -1,3 +1,68 @@
+## 2026-05-07 PM-8 (Direct-PostgREST audit clean · brain recovery from PM-5 clobber)
+
+**What happened.** Per PM-6 backlog: one-shot audit for direct-PostgREST writers/readers across all member-facing vyve-site pages. 61 sites in 15 files. Audit method: extract every `/rest/v1/<table>` URL site, classify GET/POST/PATCH/DELETE, extract column references (select=, =eq.X filters, order= sorting) for GETs and JSON payload keys for POSTs/PATCHes, diff against `information_schema.columns` for the live target tables. Two iterations needed because:
+
+1. v1 detector capped URLs at 200 chars and sliced `paused_at` → `pause` (false positive on `workouts-library.js:40`); also walked nearest `JSON.stringify({` backwards which picked up the wrong literal in files with multiple stringify sites in close proximity (false positives on `events-live.html`, `session-live.js`, `movement.html` PATCH).
+2. v2 fixed both. v3 added support for `body: JSON.stringify(payloadVar)` pattern (resolves the variable name backwards to find its `const payload = {...}` definition). v3 reached 60/61 OK + 1 unresolved which was a manually-verified clean site (`workouts-session.js:596` uses `_planBody = JSON.stringify(...)` then `body: _planBody` — pre-serialised string variable pattern, detector can't trivially follow but eyeball confirms the keys `current_session, current_week` are valid `workout_plan_cache` columns).
+
+**Final result: 0 schema mismatches, 0 legacy-zeroed-column reads.** Cardio (PM-7) was the only stale-schema reader; movement (PM-6) was the only column-name writer; rest of the codebase is clean. Tables audited: workouts, cardio, daily_habits, exercise_logs, exercise_notes, exercise_swaps, custom_workouts, workout_plan_cache, workout_plans, members, weekly_goals, weekly_scores, wellbeing_checkins, session_chat, session_views, replay_views, member_running_plans, push_subscriptions.
+
+**Brain recovery from PM-5 clobber.** While preparing the PM-8 commit, refetched `brain/changelog.md` from HEAD and discovered the first line was "## 2026-05-07 PM-5 (Backup & DR session 2)" — the PM-6 and PM-7 entries from earlier in the session were missing. Investigation via `/repos/.../commits` showed:
+
+- `2e4394f4` 13:30:39Z — PM-6 commit (mine)
+- `e306ef9c` 13:52:33Z — PM-7 commit (mine)  
+- `ee6b55f3` 13:55:30Z — Backup&DR session 2's PM-5 commit (parallel Claude session)
+
+The Backup&DR session was working from a snapshot loaded BEFORE PM-6/PM-7 landed and prepended its PM-5 entry to that stale changelog, then pushed — overwriting both PM-6 and PM-7. `GITHUB_COMMIT_MULTIPLE_FILES` doesn't merge, it replaces. Recovery: re-fetched master.md and changelog.md from `e306ef9c` snapshot via the API (commit-pinned blob fetch), extracted the PM-6+PM-7 changelog block (chars 0..6050, exactly the two entries before the original PM-5), the PM-6 §23 column-name hard rule (1294 chars), and the PM-6+PM-7 §19 status block (1777 chars). Re-prepended in this PM-8 commit alongside the audit entry and a new §23 hard rule on the concurrent-brain-commit-clobber pattern.
+
+**New §23 hard rule (added in this commit).** Pre-commit re-fetch of HEAD is now mandatory — diff what was loaded at session start against current HEAD, surface concurrent edits, merge before pushing. The PM-13b §23 rule about `GITHUB_COMMIT_MULTIPLE_FILES` no-op'ing on byte-identity is a sibling pattern; both are "verify what landed on HEAD matches what you sent" rules. Cure for both: re-fetch HEAD post-commit and validate (which I'd been doing for byte-identity but not for content-collision).
+
+**No code changes.** The audit found the codebase clean. The only files touched in this commit are brain markdown.
+
+## 2026-05-07 PM-7 (cardio.html weekly-progress widget · stale schema fix continued)
+
+**Discovery via PM-6 audit.** While confirming cardio.html's POST path was clean (it is — payload keys all match the live `cardio` schema), spotted that `fetchWeek()` was reading `weekly_goals.cardio_target` — the legacy column zeroed by `seed-weekly-goals` every Monday since the recurring-goals migration. Fallback `(goalRows[0] && goalRows[0].cardio_target) || 1` masked the dead read by always rendering "Goal: 1", so the widget showed full progress on a single cardio session and a misleading empty-state copy ("Aim for 1 cardio session this week").
+
+**Decision.** Per Dean's call: cardio anchors The Relentless certificate, so the widget stays — but it should count combined exercise (workouts + cardio) against `exercise_target`. Movement-page non-walk logs land in `workouts` (post PM-6 fix), walks land in `cardio` — summing both tables captures everything the home dashboard's combined goal does.
+
+**Shipped — vyve-site `c18b644e`:**
+
+- `fetchWeek()`: replaced `select=cardio_target` with `select=exercise_target`, added a parallel fetch of `/rest/v1/workouts?activity_date=gte.<wk>&select=id`, summed both row counts into `count`. Fallback target shifted from 1 → 3 to match the seed-weekly-goals template (`exercise_target=3`).
+- `renderWeek()` empty-state copy: "Aim for N cardio session(s) this week" → "Aim for N exercise session(s) this week". Other sub-copy strings ("Target hit", "X to go") were already activity-agnostic and stayed.
+- Markup unchanged. Page heading "Your Cardio" stayed (page is still cardio-specific; only the weekly-cadence widget switched to combined).
+- SW cache `v2026-05-07e-movement-fix` → `v2026-05-07f-cardio-weekly`.
+
+**Verified on HEAD:** `select=exercise_target` ✓, no `select=cardio_target` ✓, `rest/v1/workouts` parallel fetch present ✓, "exercise session" copy live ✓, SW cache live ✓.
+
+**Connection to PM-6.** Same root-cause class as movement.html — page out of sync with live schema after the recurring-goals migration. Movement was a write-side failure (data loss); cardio was a read-side failure (degraded display, no data loss). The PM-6 §23 hard rule on direct-PostgREST writes already covers reads of legacy columns by the same logic — no new rule needed.
+
+**Open audit item (PM-6 backlog).** The one-shot grep for direct-PostgREST writers across vyve-site should also flag direct-PostgREST *reads* of zeroed legacy columns (`workouts_target`, `cardio_target`, `movement_target`). Cardio was the only page audited so far in this category. Habits / nutrition / sessions have not been re-audited against the post-PM weekly_goals shape.
+
+## 2026-05-07 PM-6 (movement.html column-name bug · zero rows since 04 May fix)
+
+**Member feedback.** Logging anything other than walk on the movement page failed with no row landing — quick-log and "Mark as Done" both. Walks worked because they POST to `cardio` correctly with `cardio_type:'walking'`+`distance_km`+`duration_minutes`.
+
+**Root cause.** Two non-existent column names in the workouts-table direct PostgREST POST payloads (introduced in the 04 May PM-15 movement-distance commit and propagated into the markDone path):
+
+- `session_name:` → workouts table actual column is `workout_name`
+- `duration_mins:` → workouts table actual column is `duration_minutes`
+
+Both POSTs returned PostgREST `400 PGRST204` ("column does not exist"), the page's catch handler shows a generic "failed" toast, and **no row landed**. Confirmed via `SELECT … FROM workouts WHERE plan_name='Movement' AND activity_date >= '2026-05-01'` returning zero rows. Every non-walk movement-page log since 4 May has been silently dropped at the database boundary. Roughly 3 days of data loss across whatever members tried it; minimal because most movement-page activity is walks (which worked).
+
+**Fix.** Two-key rename in two payloads (quick-log else-branch + markDone), plus SW cache bump. SW bump landed in a follow-up commit because the first commit's sw.js upsert silently no-op'd on byte-identity (in-process variable confusion in the workbench cell ate the bumped string). §23 verification re-fetch caught it; clean second commit landed `067f50cb…` with the new `vyve-cache-v2026-05-07e-movement-fix` string.
+
+- vyve-site `7e1e1d03` (movement.html, sw.js attempted)
+- vyve-site `876b909e` (sw.js cache bump)
+- Verified on HEAD: `workout_name: sessionName` ✓ ; `duration_minutes: duration` ✓ ; `session_name:` and `duration_mins:` write-key occurrences = 0.
+
+**Audit pass.** Searched the rest of vyve-site for `rest/v1/workouts` writers — 5 hits, only movement.html had the bug. The 3 `session_name:` refs in `workouts-session.js` are JSONB keys inside `custom_workouts.exercises` / `shared_workouts` / `workout_plan_cache.programme_json`, which legitimately use `session_name` as the programme-shape field (matches the read sites). Other workouts-table writers (none in the matching files) are clean.
+
+**Backfill.** None — affected rows never existed. Members can re-log if they want; we don't have the source data to reconstruct.
+
+**New §23 hard rule** (added below): direct PostgREST writes that bypass `log-activity` MUST column-name-preflight against `information_schema.columns`. The `log-activity` EF protected itself from this class of bug because it constructs payloads from a known schema; pages that go around it inherit no such protection.
+
+**Why this slipped past PM-15.** The brain entry for PM-15 said "matches cardio.html's walking type exactly" — and that was true for the cardio walk path. But the markDone+quick-log workouts payloads were never tested against the real workouts table schema before ship; the `programme_library.category='movement'` table is empty so markDone had zero real-world traffic, and the quick-log workouts path requires deliberately not selecting Walk first. The bug shape (PGRST204 on a never-exercised column name) is exactly the §23 PM-14 "low-frequency EFs sit broken for months" pattern, just on the page side instead of the EF side.
+
 ## 2026-05-07 PM-5 (Backup & DR session 2 partial · Item 3 shipped via GitHub Actions, original spec abandoned)
 
 **Session shape.** Continuation of 07 May PM-4 backup/DR work. Item 3 (`vyve-ef-source-backup`) was the priority and it shipped — but not in the form the PM-4 spec described. The original Supabase EF approach failed against three independent walls in sequence; pivoted to GitHub Actions which works cleanly. Items 4-6 still parked in backlog.

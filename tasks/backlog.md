@@ -1,3 +1,8 @@
+## Added 07 May 2026 PM-8 (Direct-PostgREST audit clean · brain recovery from PM-5 clobber)
+
+- **PM-6/PM-7 brain recovery confirmation.** Verify on next session start that recovered PM-6 + PM-7 changelog entries (movement.html column-name bug, cardio.html weekly widget) are intact in `brain/changelog.md`, and that the recovered §23 hard rule on column-name pre-flight is still at the top of §23 in `brain/master.md`. If a future Backup&DR or other parallel session lands while a brain commit is in flight, the §23 PM-8 rule gives the playbook for catching it.
+- **Audit doctrine codified.** PM-6's backlog item ("one-shot grep audit for direct-PostgREST writers across vyve-site") was resolved PM-8 with 0 bugs found across 61 sites. The detector script (extract_full_url + extract_select_cols_v2 + extract_payload_keys_v3) lives in PM-8 transcript only; if this audit needs to be re-run later (e.g. after the next schema migration), the detector logic is recoverable from the PM-8 changelog entry.
+
 ## Added 07 May 2026 PM-5 (Backup & DR session 1 continuation — Item 3 shipped, drift caught)
 
 - **Cleanup: delete two scratch EFs** — `vyve-ef-source-backup` v3 and `vyve-mgmt-api-probe` v2 are inert ACTIVE EFs left over from the PM-5 architecture pivot. Composio has no delete-EF tool. Cleanup via Supabase dashboard (Edge Functions → click slug → Delete) or CLI (`supabase functions delete <slug> --project-ref ixjfklpckgxrwjlfsaaz`). Bundle with the broader 9 April security audit's ~89-EF cleanup pass.
