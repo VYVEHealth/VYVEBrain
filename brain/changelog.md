@@ -1,3 +1,66 @@
+## 2026-05-07 PM-2 (Security commit 2 · CSP meta tag + render-time XSS sanitiser · plus 5-policy hygiene roll)
+
+**What shipped — vyve-site `cdd04999` then `d336db0b` (fix-1 in same session):**
+
+Strict-but-pragmatic Content-Security-Policy meta tag added to all 45 portal HTML pages (every file at vyve-site root with a `<head>`, except `VYVE_Health_Hub.html` which is staging awaiting Phil's clinical sign-off and unlinked from nav). Initial v1 broke three things in incognito test on `mindfulness-live.html` and was patched in v2 (`d336db0b`) before the brain commit landed. Final shipped CSP:
+
+```
+default-src 'self';
+script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com https://*.supabase.co https://*.posthog.com;
+style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+font-src 'self' https://fonts.gstatic.com data:;
+img-src 'self' data: blob: https:;
+media-src 'self' https: blob:;
+connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.brevo.com https://api.openfoodfacts.org https://www.googleapis.com https://*.posthog.com;
+frame-src 'self' https://www.youtube.com;
+object-src 'none';
+base-uri 'self';
+form-action 'self'
+```
+
+**Why pragmatic, not strict:** the portal has 83 inline `<script>` blocks across 44 files (engagement.html alone has 48KB of inline JS across 4 blocks), 24 files with inline event handlers (`onclick=`, `oninput=`, `onchange=`), and 27/45 files using inline `style=""` attributes. Externalising all of that is a real multi-session refactor. Going strict on day one would have broken every page in the portal. The pragmatic shape with `'unsafe-inline'` on script-src and style-src still delivers: `default-src 'self'`, no remote-script execution outside the locked allowlist, locked `connect-src` and `frame-src`, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`. 95% of procurement value, zero day-one breakage. Externalisation can ship as its own future commit.
+
+**XSS render-time sanitiser shipped on the actual exploited surfaces** — original brief targeted `workouts.html` (custom_workouts.workout_name) and `exercise.html` (exercise_notes.exercise_name), but a careful scan showed neither is a live XSS surface today (workouts.html has zero `.innerHTML` calls; exercise.html only renders hardcoded STREAMS markup; exercise_notes is currently a write-only table with no display surface). Real surfaces:
+
+- **`shared-workout.html` L287, L337** (cross-member, high risk) — `${ex.exercise_name}` from `custom_workouts.exercises[]` jsonb interpolated directly into innerHTML. A malicious member shares a custom workout with an exercise named `<img src=x onerror=...>`, viewer's browser fires the JS. Patched: `${escapeHTML(ex.exercise_name)}`.
+- **`shared-workout.html` L289, L342** — `${ex.thumbnail_url}` interpolated into `<img src="...">`. Member-controlled URL could break out of the src attribute. Patched: `${escapeHTML(safeURL(ex.thumbnail_url))}`. The `safeURL` helper rejects any scheme other than `https:`, `data:image/`, `blob:`.
+- **`shared-workout.html` reps/sets attribute interpolations** — `${ex.reps}` in placeholder attributes. Defence-in-depth escape.
+- **`index.html` L802, L804** (self-XSS, low risk) — `${firstName}` in greeting innerHTML. Patched.
+- **`wellbeing-checkin.html` L780** (self-XSS) — `${member.firstName}` in quiet-flow opener. Patched. Other `${member.firstName}` usage in the file is via `.textContent` which is XSS-safe — left alone.
+
+**The `escapeHTML` and `safeURL` helpers** are inserted as a leading `<script>` in the head of the three patched files, after the CSP meta tag. Pattern matches what `leaderboard.html` already does (it had its own escapeHTML helper from a previous build — proves the pattern was already established in the codebase, our patches align with it).
+
+**v1→v2 fix surfaced three real CSP gaps the pre-flight scan missed:**
+
+1. **PostHog dynamic script load.** `auth.js` (loaded on every portal page) runs the standard PostHog snippet which dynamically fetches `https://eu-assets.i.posthog.com/static/array.js`. Pre-flight scan only caught static `<script src>` tags; dynamic fetches built by inline JS slipped through. Fix: added `https://*.posthog.com` to script-src AND connect-src (PostHog also POSTs events to `https://eu.i.posthog.com`).
+
+2. **Supabase Realtime WebSocket.** `session-live.js` opens `wss://...supabase.co/realtime/v1/websocket` for live session chat. CSP `connect-src` covers WebSockets, but the protocol string must match exactly — `https://*.supabase.co` does NOT match `wss://*.supabase.co`. Fix: added `wss://*.supabase.co` explicitly.
+
+3. **`frame-ancestors` directive ignored from meta tag.** Browser warning, not breakage. `frame-ancestors` only applies when delivered as an HTTP response header, not in `<meta>`. Removed from the meta tag — keeping it produces console noise with no security benefit. To get real procurement-grade frame-ancestors enforcement we need to set it as a Cloudflare or GitHub Pages response header. Backlog item, not blocking.
+
+**SW cache bumped twice in same session** — `vyve-cache-v2026-05-06b-weekly-goals-recurring` → `vyve-cache-v2026-05-07a-csp` (v1) → `vyve-cache-v2026-05-07b-csp-fix1` (v2). Per §23 hard rule: SW cache bumps mandatory after every portal HTML push or returning members get the old cached HTML and never see the new CSP.
+
+**Incognito test passed clean on v2** — `mindfulness-live.html` reloaded in fresh incognito with DevTools open, console showed only a `favicon.ico 404` (unrelated, pre-existing missing-file issue). All three v1 violations gone. Brain commit landed after incognito-clean confirmation, NOT before.
+
+**Hygiene rolled in same session** — Schema migration `security_commit_2_reroll_5_cosmetic_public_policies_to_authenticated` re-roled the 5 cosmetic INSERT policies on `habit_library`, `monthly_checkins`, `scheduled_pushes`, `session_chat`, `shared_workouts` from `{public}` role to `{authenticated}`. All 5 had proper `WITH CHECK (auth.email() = ...)` quals already so anon was blocked by the qual not the role label — re-roling is for procurement reviewers who flag the `public` label without reading the qual. Verified post-migration via `pg_policies` direct query (per §23 hard rule). Migration recorded in `supabase_migrations.schema_migrations`.
+
+**Audit pipeline confirmed live in production** — separate from the commit work but resolved a major concern from commits 1+1B. Pre-commit-2 audit found that `ai_interactions` still had only the original 21 onboarding rows. Source review confirmed all three EFs (wellbeing-checkin v28, anthropic-proxy v16, re-engagement-scheduler v10) had the correct audit-write code in their deployed binaries. The reason for zero rows turned out to be zero traffic on the audited paths since the 1B deploy: weekly_checkin (last check-in was 28 April), running_plan (only 1 plan generated in 7d, pre-1B-deploy), re_engagement (cron fired 9 sends in 48h all pre-deploy at 06 May 17:43 UTC, today's cron correctly fired zero sends because cadence wasn't due). To prove the pipeline live, invoked `re-engagement-scheduler` with `dry_run:true` — EF processed 15 members, fired 2 real Anthropic calls, **2 fresh `re_engagement` rows landed in `ai_interactions`** at 2026-05-07 01:33:54 UTC. End-to-end confirmed: constraint accepts the value, EF source fires the insert, `EdgeRuntime.waitUntil()` flushes cleanly. Closed.
+
+**Mockups for security commits 3+4 also landed this session** at VYVEBrain `de44e237` — `brain/gdpr_export_schema.md` (15.4KB, Article 15 right of access, 39 member-data tables, signed-URL JSON in Storage) and `brain/gdpr_erasure_flow.md` (18.0KB, two-phase Article 17 flow with 30-day grace, cancel-token link, cron-driven execute, 11-round delete sequence with `session_replication_role = replica`). Both have open questions tagged for Dean sign-off before implementation.
+
+**Files changed:**
+- vyve-site `cdd04999` — 46 files: 45 portal HTML (all CSP v1) + sw.js (cache bump v1)
+- vyve-site `d336db0b` (fix-1) — 46 files: 45 portal HTML (CSP v2) + sw.js (cache bump v2)
+- VYVEBrain `de44e237` — 2 new mockup files
+- Supabase migration `security_commit_2_reroll_5_cosmetic_public_policies_to_authenticated`
+
+**EFs touched:** zero. Commit 2 is portal-side + 1 SQL migration, no EF redeploys.
+
+**New §23 rules** (3 added — see §23 section):
+- CSP meta tag must always be tested in fresh incognito on the live URL post-deploy.
+- CSP pre-flight must scan dynamic JS-built fetches, not just static `<script src>` tags.
+- WebSocket protocols (`wss:`) and HTTPS (`https:`) are separate match-strings in CSP `connect-src`.
+
 ## 2026-05-07 PM (Security commit 1B · CORS hardening + payload caps + ai_interactions audit logging)
 
 ### TL;DR
