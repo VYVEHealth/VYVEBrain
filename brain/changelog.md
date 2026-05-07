@@ -1,3 +1,65 @@
+## 2026-05-07 (Security commit 1 · running_plan_cache RLS lockdown + member-dashboard CORS hardening)
+
+### TL;DR
+
+First commit of a multi-session security hardening pass against the 06 May 2026 platform audit. Two findings closed tonight, both real anon-access holes: (1) `running_plan_cache` had three open-to-`public` RLS policies (SELECT/INSERT/UPDATE all qualified `true`) — a shared cache writable by unauthenticated clients; replaced with `authenticated`-only policies. (2) `member-dashboard` CORS `getCORSHeaders` returned `Access-Control-Allow-Origin: *` when the Origin header was empty or `'null'`; now falls through to `https://online.vyvehealth.co.uk` for every unrecognised case. EF v59 (platform v63, ezbr `57f1ceaad2cf76bc5de282719a9c4262c5abe985188e4b94bab7a92e23a697bb`). Audit's framing of the cache as member-scoped was wrong (it's parameter-keyed shared cache); corrected posture is authenticated read + authenticated write to a shared resource — anon access removed without breaking the existing read-modify-write pattern in `running-plan.html`.
+
+### What shipped
+
+**RLS — `running_plan_cache`:**
+- Dropped: `running_plan_cache_public_read` (SELECT, qual=true), `running_plan_cache_public_insert` (INSERT, with_check=true), `running_plan_cache_public_update` (UPDATE, qual=true with_check=true). All on the `public` role.
+- Created: `running_plan_cache_authenticated_read` (SELECT, qual=true, role=authenticated), `running_plan_cache_authenticated_insert` (INSERT, with_check=true, role=authenticated), `running_plan_cache_authenticated_update` (UPDATE, qual=true with_check=true, role=authenticated).
+- Net effect: anonymous clients (no JWT) now blocked at all three operations. Authenticated members continue to read/write the shared cache as before. `running-plan.html`'s existing flow — read by `cache_key`, PATCH `last_used_at`/`use_count`, POST new rows — works unchanged because the JS already passes the auth token via `SUPA_HDR`.
+- Verified via `pg_policies` query post-migration: 3 policies, all `authenticated`.
+
+**EF — `member-dashboard` v59:**
+- `getCORSHeaders` simplified: `ALLOWED_ORIGINS.has(origin) ? origin : DEFAULT_ORIGIN` where `DEFAULT_ORIGIN = 'https://online.vyvehealth.co.uk'`. No `*` branch. No `'null'`/empty-string special case.
+- `Access-Control-Allow-Credentials` always `'true'` as a result (was conditional on `allowOrigin !== '*'`).
+- All other handler logic byte-identical to v58 (achievements payload, autotick evaluator, weekly goals projection, distinct-day habits count).
+- Multi-file deploy via native `Supabase:deploy_edge_function`: `index.ts` + `_shared/taxonomy.ts` + `_shared/achievements.ts` redeployed unchanged.
+
+### Audit framing correction — `running_plan_cache` is a SHARED cache, not member-scoped
+
+The 06 May audit listed `running_plan_cache` under member-scoped RLS findings and recommended an `auth.email() = member_email` qualifier. That's wrong: the table has no `member_email` column. It's keyed by `cache_key` (hash of plan input parameters: goal/level/days_per_week/timeframe_weeks/long_run_day) — a parametric output cache shared across all members who request the same plan shape. 5,376 cacheable combinations per the original spec. Multiple members hit the same row.
+
+The correct posture for a shared parametric cache is: anonymous access blocked (no procurement-flag wildcard policies), authenticated read + authenticated write (members are co-tenants of the cache), service-role exempt for backend operations. That's what shipped. Documented in §6 + §23.
+
+### What this exposed
+
+**Audit recommendations need cross-checking against schema before implementation.** The audit's recommended qual would have failed at policy-create time (`column "member_email" does not exist`) and forced a stop-and-think pause in production work. Pre-flight check would have caught it: `information_schema.columns WHERE table_name='running_plan_cache'` before composing the migration. New §23 hard rule.
+
+**The five "extra" INSERT-on-public-role policies surfaced by the cross-check are NOT actual holes.** While verifying audit findings, ran a wider scan and found 5 more policies where INSERT is granted to the `public` role (`monthly_checkins_member_insert`, `scheduled_pushes_self_insert`, `members can insert chat`, `Members can insert own shares`, `members_insert_own_custom_habits`). All five have `WITH CHECK (auth.email() = member_email)` (or `created_by`/`shared_by` equivalent). Anonymous requests have `auth.email()` returning null, so the `WITH CHECK` fails and the insert is rejected. The "public role" assignment is cosmetic legacy from earlier migrations — semantically these are authenticated-only by virtue of the qual. Re-roling them to `authenticated` is a tidiness item, not a security item. Documented in §16 + flagged in `security_questionnaire.md` as a pre-canned answer for procurement reviewers who flag the `public` role labels.
+
+### What did NOT ship (deferred to commit 1B / 2 / 3-4)
+
+This was originally scoped as a five-step commit. Each EF redeploy carries non-trivial workbench overhead (full source as deploy parameter, all `_shared/*` files re-emitted), so context budget forced a split. Deferred to follow-up sessions:
+
+**Commit 1B** (next security session, hygiene completion):
+- `wellbeing-checkin` v27 + `log-activity` v28 — same CORS fallback pattern as v59. Lower-impact than `member-dashboard` (POST-only paths, browsers always send Origin) but worth tidying.
+- `ai_interactions` audit logging in `wellbeing-checkin`, `anthropic-proxy`, `re-engagement-scheduler`. Currently 21 rows, all `triggered_by='onboarding'`. No audit trail for any other AI surface.
+- 100KB payload cap helper added to `_shared/security.ts`, rolled into all EFs reading `req.json()`.
+
+**Commit 2** (CSP + XSS):
+- Strict `<meta http-equiv="Content-Security-Policy">` in every portal HTML head. Stored content sanitisation at render time for `custom_workouts.workout_name`, `exercise_notes.exercise_name` flowing into `innerHTML`. SW cache bump mandatory. Member-facing — needs incognito test on the live URL with console open before commit.
+
+**Commits 3 & 4** (GDPR EFs, mockup-first):
+- `gdpr-export` EF — single signed-URL JSON download covering ~28 tables; receipt to `admin_audit_log`. Schema mockup before code per Dean's "mockup-first" rule for non-trivial EFs.
+- `gdpr-erase-request` + `gdpr-erase-execute` EFs — 30-day grace period, two-phase erasure, receipts at both phases.
+
+These are the procurement-blockers. Commit 1B is hygiene; commits 3-4 are the only items on the audit list that would fail a Sage security questionnaire outright.
+
+### Verification
+
+- RLS posture: `pg_policies` query confirms 3 `authenticated` policies on `running_plan_cache`, no `public` policies remain.
+- EF v59: native `Supabase:get_edge_function` returns the exact source deployed (header comment v59, simplified `getCORSHeaders`). Platform deploy v63. ezbr `57f1ceaad2cf76bc5de282719a9c4262c5abe985188e4b94bab7a92e23a697bb`.
+- Live invocation against `member-dashboard` not exercised — egress proxy in this sandbox blocks `supabase.co` so no curl-based smoke. Verification will land on the next real member dashboard load (no rollback risk: the change is strictly stricter than v58, no member-flow surface affected because legitimate browsers always send the Origin header).
+
+### Member impact
+
+Zero. Members reading or writing the running plan cache from `running-plan.html` continue to work because they're authenticated. Members hitting `member-dashboard` from the portal continue to work because the portal always sends the `Origin: https://online.vyvehealth.co.uk` header. The only category of caller that sees a behavioural change is `Origin: ''` or `Origin: null` (e.g. file:// or sandboxed iframe contexts) — none of which are real members.
+
+---
+
 ## 2026-05-06 PM-2 (Home dashboard correctness fix · habits goal distinct-day count + member_home_state this-week pre-staging)
 
 ### TL;DR
