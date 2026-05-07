@@ -1,0 +1,1092 @@
+{
+  "snapshot_at": "2026-05-07T13:48:28Z",
+  "supabase_project": "ixjfklpckgxrwjlfsaaz",
+  "brain_repo": "VYVEHealth/VYVEBrain",
+  "brain_branch": "main",
+  "ef_count_attempted": 62,
+  "ef_count_succeeded": 62,
+  "ef_count_failed": 0,
+  "keep_list": [
+    "achievement-earned-push",
+    "achievements-mark-seen",
+    "achievements-sweep",
+    "admin-dashboard",
+    "admin-member-edit",
+    "admin-member-habits",
+    "admin-member-programme",
+    "admin-member-weekly-goals",
+    "admin-programme-library",
+    "anthropic-proxy",
+    "cc-data",
+    "certificate-checker",
+    "certificate-serve",
+    "check-cron",
+    "daily-report",
+    "edit-habit",
+    "email-watchdog",
+    "employer-dashboard",
+    "gdpr-erase-cancel",
+    "gdpr-erase-execute",
+    "gdpr-erase-request",
+    "gdpr-erase-status",
+    "gdpr-export-execute",
+    "gdpr-export-request",
+    "generate-workout-plan",
+    "get-activity-feed",
+    "get-health-data",
+    "github-proxy",
+    "github-proxy-marketing",
+    "habit-reminder",
+    "internal-dashboard",
+    "leaderboard",
+    "log-activity",
+    "member-achievements",
+    "member-dashboard",
+    "monthly-checkin",
+    "monthly-report",
+    "notifications",
+    "off-proxy",
+    "onboarding",
+    "ops-brief",
+    "platform-alert",
+    "process-scheduled-pushes",
+    "push-send-native",
+    "re-engagement-scheduler",
+    "re-engagement-test-sender",
+    "register-push-token",
+    "schedule-push",
+    "schema-snapshot-refresh",
+    "seed-weekly-goals",
+    "send-email",
+    "send-journey-recap",
+    "send-push",
+    "send-session-recap",
+    "share-workout",
+    "storage-cleanup",
+    "streak-reminder",
+    "sync-health-data",
+    "warm-ping",
+    "weekly-report",
+    "wellbeing-checkin",
+    "workout-library"
+  ],
+  "entries": [
+    {
+      "slug": "achievement-earned-push",
+      "ok": true,
+      "platform_version": 4,
+      "verify_jwt": true,
+      "status": "ACTIVE",
+      "ezbr_sha256": "43538d15cd924475fdfab515183af4f90186df70ff388f4088fb7775a5514b80",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_9f1172fe-eec0-4085-893a-512e22484246_2/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "4b12c6c9a4a05e50dfecd101fc02d6806c796910bbd01798fdf4ea2f2617bdbb",
+          "bytes": 5032
+        }
+      ]
+    },
+    {
+      "slug": "achievements-mark-seen",
+      "ok": true,
+      "platform_version": 6,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "42875c3280738b8385a2c9e871dbe1470ea9c011d3ca77ca6ce364a3ec29f69c",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_02d85ee5-b496-4490-9d9e-05e4a055bf69_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "9dcf51f804f3870b2a5afb2d1852352eae3bf34e39947c700270ce8dee396188",
+          "bytes": 3730
+        }
+      ]
+    },
+    {
+      "slug": "achievements-sweep",
+      "ok": true,
+      "platform_version": 7,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "81f0f3f8903186c08a22d4f9eb576d52dc670185f785e605cc5ea7bbc1660b38",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_d05fb75d-901f-42a9-ba69-593a3159def3_5/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "cb77724e5a2b8e4d06021d48fbf93102ff9c45c9d6f7f86aafe1d8709a3b1a20",
+          "bytes": 6050
+        }
+      ]
+    },
+    {
+      "slug": "admin-dashboard",
+      "ok": true,
+      "platform_version": 14,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "2600195126e653ce78168de1cf847f7afc1ef939603b5513b139d136c7e8c2f3",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_043c123f-a7f8-4661-b0a4-247162df243a_9/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "446ba49f06f919f635c9c760e40f3c0e5027c82145dadf59940d4186e4039f44",
+          "bytes": 18852
+        }
+      ]
+    },
+    {
+      "slug": "admin-member-edit",
+      "ok": true,
+      "platform_version": 11,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "a62a74dfed705750a837cbcb4aa3edeeebd3e1045cbcd608b8b95275ecd02008",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_ad108a46-823d-4b95-9009-7656a8956104_6/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "231b1076aded55a9b51f7449555cb3d884fc654ad26487a0ab11ed8b464f9f4b",
+          "bytes": 14007
+        }
+      ]
+    },
+    {
+      "slug": "admin-member-habits",
+      "ok": true,
+      "platform_version": 8,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "eccafaf72a183ec447eca508375e4813a7a720fc108e443aaeb738168abf059e",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_ee5acebc-4a0e-4739-90a0-bdf76bc8cdc1_3/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "efcf71360a4c487ba271e825381bfc6e680416e0abdf001cab184e55684db79a",
+          "bytes": 15734
+        }
+      ]
+    },
+    {
+      "slug": "admin-member-programme",
+      "ok": true,
+      "platform_version": 8,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "0d2b03ddac71c58ef23c61b84780593f1c9a5ef75aba31ecb115de6ae010c967",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_3129f5c9-7ccb-41eb-bfe7-6d4361edd36e_3/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "60500af578a607123335c828f3a17d1ed84dd2e27122e1058d77231c775d8f4a",
+          "bytes": 18507
+        }
+      ]
+    },
+    {
+      "slug": "admin-member-weekly-goals",
+      "ok": true,
+      "platform_version": 8,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "ee6f1994a8e5c8f072a0c447ee4fa3d674e6dac6a5572f5306503a47eee87eed",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c35ece85-edc0-462d-9141-86f5ea27247e_3/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "bed4fb2506f044e9ce45f1341ea5abcc4d5c933d0eb244053fe1e827bd5e8194",
+          "bytes": 11863
+        }
+      ]
+    },
+    {
+      "slug": "admin-programme-library",
+      "ok": true,
+      "platform_version": 6,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "ecb54da956b3eebccf84842008056417b10b08c6f0074284119925da9815bf8a",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_6f16c5ee-deeb-46a4-87fc-23a094cb4d44_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "dccb9d46b7e6906ae2efa388db31173de8970ca38903b607c609180bf4299e3b",
+          "bytes": 12467
+        }
+      ]
+    },
+    {
+      "slug": "anthropic-proxy",
+      "ok": true,
+      "platform_version": 23,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "207d9b03de5c5b3a201e6acef6e131f92588774cf32747b3a5a4ebc01a8a2480",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_e5b568d4-b634-467f-9455-eaea379eb8f2_21/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "a545150355fa01b8cf4093accc0ec30b8b9066d161a896b0880b02894a324a97",
+          "bytes": 6024
+        }
+      ]
+    },
+    {
+      "slug": "cc-data",
+      "ok": true,
+      "platform_version": 9,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "bbbf031fdfa5a854ac4d61c3fbc856ff89e559a943b451df66799e1f1488def0",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b9223998-91b9-43df-a68a-17776b1981f6_2/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "deeccc119a8d920c3b1f8e82732eafe60efc4e61d405c566f2752f9e2010f9fb",
+          "bytes": 8807
+        }
+      ]
+    },
+    {
+      "slug": "certificate-checker",
+      "ok": true,
+      "platform_version": 29,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "18a7561b7a06a30640031756f7a814abfa8eb0f5c7107333ed8eaf702f8e8b17",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_976798b3-3664-4521-b50e-0e16654c0493_24/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "1f073286407bf20035a00e6f57040875a660f6765a31cd8c8bbec14c20ca5651",
+          "bytes": 10901
+        }
+      ]
+    },
+    {
+      "slug": "certificate-serve",
+      "ok": true,
+      "platform_version": 31,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "873af1fef6d751e9dce877617e1cca498b910fe81c04daceae1f79f3691fd235",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_6c2a197a-225c-40cb-9b26-920a90eff59c_26/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "bb2b40ce5ea302f541dd36a2d00c425c5c509d25f645dd8048cbbe5cc3e9d465",
+          "bytes": 896
+        }
+      ]
+    },
+    {
+      "slug": "check-cron",
+      "ok": true,
+      "platform_version": 25,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "28618b1c617b8740586f008f3c7060d91c96a15d0b32d39380c86efdb01c8ec0",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_30ad63d1-a32e-4c7a-b6d7-f4ed4771c683_13/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "1462e89cc8c630b670926cb2a2b8f327f4261d229f8c0e9030a3f1a69d43fe1f",
+          "bytes": 621
+        }
+      ]
+    },
+    {
+      "slug": "daily-report",
+      "ok": true,
+      "platform_version": 30,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "2e6ef3e8b73ca9fada707c7bb6f16386c3d4574b6a5a2cfb6174005204393f2b",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_d9df4ee8-443a-4dbf-aa4c-26a056b7f869_28/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "6dbeaeecb8671868f1fda35141314bdd0fecaf66c00da64e5fd417499584b163",
+          "bytes": 21500
+        }
+      ]
+    },
+    {
+      "slug": "edit-habit",
+      "ok": true,
+      "platform_version": 6,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "f73ba548d105ee036552833ad821c5017d4c9be547e55d1587a1cce9234229ac",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_eb44cd4c-786a-447f-a71b-048cb007d70d_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "8b896421b53806e17812d4974e51ba818cbebfd00d16a20b21b4a138de259c70",
+          "bytes": 6054
+        }
+      ]
+    },
+    {
+      "slug": "email-watchdog",
+      "ok": true,
+      "platform_version": 3,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "c600d5c90d0dfdec0c38620971cfae21c992af66ac90c66e2d4083bd369cbfbe",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_96db7fa5-c7aa-4dee-a8a3-e8db2d16470d_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "9f9e7d1707aeda7a0ed6d55c69b2f543647dfd85201b1406bba10879b1929adc",
+          "bytes": 10583
+        }
+      ]
+    },
+    {
+      "slug": "employer-dashboard",
+      "ok": true,
+      "platform_version": 36,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "e18da006b95c168b5d5468dae797622543b62af30b2a41bf3bf373f270a0ecc7",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_a667c20e-2e0f-4271-bc33-c8013ea00746_26/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "f3f13108f2e57d4aebeafbe532be19edbd34dbce3041b24f44e613c538ce3d90",
+          "bytes": 9276
+        }
+      ]
+    },
+    {
+      "slug": "gdpr-erase-cancel",
+      "ok": true,
+      "platform_version": 4,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "1e2287258cd7f196eb0373163d41c94bd217ae80870ee68c1aac20d609eb5cb7",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_5632b706-5e0d-49e7-9393-a33355b4b0eb_3/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "5231ec9b563eaf0063668ee5e09a7f99f933870d1a996f69cd71174a17d7ad21",
+          "bytes": 11659
+        }
+      ]
+    },
+    {
+      "slug": "gdpr-erase-execute",
+      "ok": true,
+      "platform_version": 4,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "8032ff0466bf97040f4e1b294fa6274692aa0f4e093d9d49fa80f61aa4035fda",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_80d0bed3-3618-40b2-9a07-1ccfaf036d7e_2/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "ff594081290bbec935d7c618df6b2e3baa26e15be42ce75f811ca2f612dc8a0c",
+          "bytes": 17120
+        }
+      ]
+    },
+    {
+      "slug": "gdpr-erase-request",
+      "ok": true,
+      "platform_version": 3,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "c91e456d2b7b08c56652b68b862f3b589df529e71d63081e33d20dd7c02bff33",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_6590a0cf-d9b0-4d35-bc1d-0e3aa00c51df_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "772a92c1ab525316202b3414a3edece93d943744a143a7c16eaed5fea0cc954b",
+          "bytes": 14232
+        }
+      ]
+    },
+    {
+      "slug": "gdpr-erase-status",
+      "ok": true,
+      "platform_version": 2,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "ac579a5bc02c8ea735749c503d122f2618fcaaefeeabfbc62599dde9d79f8eef",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_cd838eab-406e-42ed-80ac-d84cf8b6e992_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "71e52be702f90309b636918e496a80e8e7848abdab2d0358b9a8fd713c47763f",
+          "bytes": 3477
+        }
+      ]
+    },
+    {
+      "slug": "gdpr-export-execute",
+      "ok": true,
+      "platform_version": 3,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "a4e85eeca0f40d4819f74c8511a91649924f0e847f73fc478cfecd1a1b63ab3a",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b21dab2b-bf27-4c26-88fa-d2261fe4f7ae_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "63bdca775e7e2c90110ccf946b43160e7d6bc1f0b818a9394fe93aae43026760",
+          "bytes": 16059
+        }
+      ]
+    },
+    {
+      "slug": "gdpr-export-request",
+      "ok": true,
+      "platform_version": 3,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "ba06d0533f7fe206d7a4ff0db171990062ee15188385125d3a02ec8531eaaa0f",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_62a911d5-2399-4139-94d7-83daf3d478a5_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "46bf6fe14c14f35436fcac386277cca9303670eace171e08d72aeb71affcb50d",
+          "bytes": 7874
+        }
+      ]
+    },
+    {
+      "slug": "generate-workout-plan",
+      "ok": true,
+      "platform_version": 16,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "4fabc05d8ae53a51ec4ae4827baa06e36d5423af13d548f67695ebf0b6d3e963",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_dd902daa-272f-4f1f-984f-01190c20781b_4/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "5e54a700219980182b3a9280c05190cbaebcdfc61b3e8f2996e111f81cc6fe83",
+          "bytes": 14393
+        }
+      ]
+    },
+    {
+      "slug": "get-activity-feed",
+      "ok": true,
+      "platform_version": 6,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "8bb6c7fc7849cdcf2fcf0912734041dc9126a9285989d7b63354ac2ee6449ac7",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_2a46e0d6-bc57-4215-b4b9-a943c3455619_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "a722f83da5440cb5b8507cc58572f8662f202d7f3e9a6e4937f7b89bafc601f9",
+          "bytes": 7382
+        }
+      ]
+    },
+    {
+      "slug": "get-health-data",
+      "ok": true,
+      "platform_version": 8,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "51c1c5a7371724542b134cb647658bbf84316bde60ae98d8f48f294cdcb5f8c1",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_56f48c55-03fd-48ca-ad2f-8b3cde88df1f_6/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "94349792de88bcbc3839f0731110e810268d01c28dbf9cdca1a1ea1d45a4a102",
+          "bytes": 11892
+        }
+      ]
+    },
+    {
+      "slug": "github-proxy",
+      "ok": true,
+      "platform_version": 26,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "e0b2b0f5f52e64abbd5d452b37342f027af05515b523b59201da59e8e87afa5d",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_e9440960-9ad4-4857-9bff-e767f9432281_15/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "0530136add37dca558804dcf802e3195037e6133d8baa53c7b2253096863dd57",
+          "bytes": 2735
+        }
+      ]
+    },
+    {
+      "slug": "github-proxy-marketing",
+      "ok": true,
+      "platform_version": 16,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "790a783897fb1cafdda0a8f6011fa388bcacfc0e22342eb419661927f899c120",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_9e5f4639-4fac-450e-a7f0-86e267b926cf_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "8062f616ef25f29f044a8f00558a7c2e5d323f1a849fd727f4697d31882f09a3",
+          "bytes": 2146
+        }
+      ]
+    },
+    {
+      "slug": "habit-reminder",
+      "ok": true,
+      "platform_version": 16,
+      "verify_jwt": true,
+      "status": "ACTIVE",
+      "ezbr_sha256": "d369f9d6e88cd652c24da20cfcb6f751b1376f9485faf3f4ff68b31c395c2075",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_974f31cd-b5b0-44d1-9581-bd65873c11dd_14/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "176d0b0a972ad0efe59cc204b3cf288aaa19559b70cc063306d088d56bd3415b",
+          "bytes": 4515
+        }
+      ]
+    },
+    {
+      "slug": "internal-dashboard",
+      "ok": true,
+      "platform_version": 16,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "26628d9ae37dab923ab95d7d9fd0e3f114689cc0562fd6d28f789d9dd486f779",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_4b8edc47-b50b-4b50-b3f9-50f7e4bb370e_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "3437f9fa9e2cb16fc6f95108f5865f176f797cd643894d06d91bcf0524426606",
+          "bytes": 2829
+        }
+      ]
+    },
+    {
+      "slug": "leaderboard",
+      "ok": true,
+      "platform_version": 16,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "803f3f5127c602db5e4bcdd80d7437fc5baecf6c482098386374334c398e2675",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_e7d71167-aa90-42fd-8659-c06721f2617a_11/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "b23057e70d1731d82df5926874508fa5a6e53d162bd1dbd3f41cc0b654e61eb0",
+          "bytes": 13043
+        }
+      ]
+    },
+    {
+      "slug": "log-activity",
+      "ok": true,
+      "platform_version": 33,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "f88f98f6a0eec72f325679f2c5e68c61598fb56d49b16eee8acc1d7661cfbaa8",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_bd663a89-08f6-465b-9144-d8af2b3f8364_31/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "d221a279ef08a3b463c07eae9592be7332a79d0abdf74c8aeebc7d4b8e5cbd4a",
+          "bytes": 13057
+        },
+        {
+          "name": "_shared/achievements.ts",
+          "sha256": "e281aaadf6838698d5ac164bf7f883f51a1175bb3b58569c1cd0fb68fed22f87",
+          "bytes": 15482
+        }
+      ]
+    },
+    {
+      "slug": "member-achievements",
+      "ok": true,
+      "platform_version": 4,
+      "verify_jwt": true,
+      "status": "ACTIVE",
+      "ezbr_sha256": "0fc262ad2f9e947ec4067dbcb32431192ae0f8a5e14037bc527f0fe8534b31a1",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_7c6364b5-f8b8-492f-a429-da3c6cc1fdd5_2/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "59ab58a20e463c2aee4d453c379da20fa53fe2957e87420374dbeca3f63380cc",
+          "bytes": 3051
+        },
+        {
+          "name": "_shared/achievements.ts",
+          "sha256": "f9dab3acac3138a9b15e407ae4885ac04d63f6a212ad741fcdf8da1ea8456db9",
+          "bytes": 15326
+        }
+      ]
+    },
+    {
+      "slug": "member-dashboard",
+      "ok": true,
+      "platform_version": 65,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "57f1ceaad2cf76bc5de282719a9c4262c5abe985188e4b94bab7a92e23a697bb",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c950ab00-49f3-4c07-bd77-83b57c644069_63/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "a471993290f501de669e078280fc1379d66efcd618b0812e35e6c8ec83341913",
+          "bytes": 18823
+        },
+        {
+          "name": "_shared/achievements.ts",
+          "sha256": "13355bc5d4f60a4794d2689c888ee7f0e60c2e5e7e794117d9da743d8d270ad3",
+          "bytes": 8301
+        },
+        {
+          "name": "_shared/taxonomy.ts",
+          "sha256": "f67f4d779160acd5d3c115f360eeb28067d2d49a336cc6157a91fa0c0b2487fd",
+          "bytes": 3481
+        }
+      ]
+    },
+    {
+      "slug": "monthly-checkin",
+      "ok": true,
+      "platform_version": 23,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "337c7b90b7290c0c2bca6930ac37dba8f9038236b900a9dbdde7b56e38d58d10",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_f5dbef36-2165-407f-9191-f7442ce0ca57_21/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "ba50ab951d730d45e6d17d65bde8c22550b0c5b585e8c5914cee9c5fb18bdf4b",
+          "bytes": 22513
+        }
+      ]
+    },
+    {
+      "slug": "monthly-report",
+      "ok": true,
+      "platform_version": 22,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "c0e0e81c72ffd0f0b262be09991f0d4b2e0e2902b03848ea593fccc5758588b7",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_133cf7cf-6d7e-4c48-9b95-ec90082c1cf7_20/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "35f8dbef502be07b9c6f46965c7c862a9c3ae232abae626c078f2f017a37e808",
+          "bytes": 17126
+        }
+      ]
+    },
+    {
+      "slug": "notifications",
+      "ok": true,
+      "platform_version": 14,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "736b8340db0f18bd33531deda1d7f172c56e0019af281227b306e72e4fa873e2",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_216f782e-d907-4817-bea0-911f38dabd83_7/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "2c6be60b66093e4d450c9728a65b3ef0a322fa662f02007de2896102d617317f",
+          "bytes": 4165
+        }
+      ]
+    },
+    {
+      "slug": "off-proxy",
+      "ok": true,
+      "platform_version": 23,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "25f1d9fb58421468867a5cd09d99feb8d8355d72bef3441cf364f228e658e17a",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_6c32e403-d05f-471b-8081-0bb78cc8e91c_8/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "4b12746715ce4807623a6800ced5159311c13d2af343f9f12936b310658e048e",
+          "bytes": 5399
+        }
+      ]
+    },
+    {
+      "slug": "onboarding",
+      "ok": true,
+      "platform_version": 84,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "e004b86d3284edfc2ee6b89f922ad8e6523f1cac76668d824b69110c63c91816",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b22c6618-2a62-4c8d-a81f-aa4bd723db1f_82/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "acfe1de91647eac462fa2c1ebe6a928dcb86f42c329e7643376662bd3b15cfcf",
+          "bytes": 52806
+        }
+      ]
+    },
+    {
+      "slug": "ops-brief",
+      "ok": true,
+      "platform_version": 16,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "c5bac6edd9b91bd09b9b1472ff185a25b6df2976f70ea15fd0fca017bd8648ee",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_39cf2752-1d8a-4211-a675-93e76bf272c1_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "d7279c8b48bb39c0d793fc47b4ab6b567bc376c5a3a5de15343b4ffcddbd9020",
+          "bytes": 5664
+        }
+      ]
+    },
+    {
+      "slug": "platform-alert",
+      "ok": true,
+      "platform_version": 8,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "6c5bd52c8573ea6a2c91e1bbd87fd4b5bdeae7df4fb6ccb09f75ae1697dc216e",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_f033566c-6f1c-422c-a149-7680cd189cde_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "3d2a8cf1699aaa77b872ed841b6a51dfcc00c436c4542150259c2ab9c9a83a80",
+          "bytes": 13072
+        }
+      ]
+    },
+    {
+      "slug": "process-scheduled-pushes",
+      "ok": true,
+      "platform_version": 4,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "e8b920b094fa17cccfd04e0624ad7a2a26cfdf563eb97f93717c4134893101d5",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_ca44e53e-c5d2-425b-8e22-cab0ef0a296e_2/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "2a8721d25c687e6d479b15722161148853aca109ab98ccf8f8de2fd687ef1917",
+          "bytes": 5839
+        }
+      ]
+    },
+    {
+      "slug": "push-send-native",
+      "ok": true,
+      "platform_version": 8,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "5afe8e400e29c75ee8c114855c13456f22febad9e9a2b7e97b4b2913671a794c",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_1170aacd-aacc-4345-a29c-a938ba543572_5/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "6fcbe8c155fbb252a434481b3bdf0eadd4f6d7ce02ee0460e42547bfcc9bad2c",
+          "bytes": 11911
+        }
+      ]
+    },
+    {
+      "slug": "re-engagement-scheduler",
+      "ok": true,
+      "platform_version": 30,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "05e1c3055663f798ec83948fb3132d438df9ec6f4c93c3fcc8d0b6396a008bdd",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_129e7765-302d-439b-bb74-a5f7ac5b2c20_28/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "55eea420bd2c5ee0126aab5beec5037db86a4fd96b1733a0e8d66fe0b61e800a",
+          "bytes": 23607
+        }
+      ]
+    },
+    {
+      "slug": "re-engagement-test-sender",
+      "ok": true,
+      "platform_version": 22,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "dd8cf5add273d6187f1f83876021db4c9f4e32f634c6bbac0b80520d4d1342f1",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_80e459af-7b97-4090-a4ee-77d206feeca3_2/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "17e72a7f37343ddb26d409dfe028a788d857c84eb9cf61760cd84b41ad810660",
+          "bytes": 19281
+        }
+      ]
+    },
+    {
+      "slug": "register-push-token",
+      "ok": true,
+      "platform_version": 6,
+      "verify_jwt": true,
+      "status": "ACTIVE",
+      "ezbr_sha256": "83555212fec3de2e93829d94eb60939a56fd5f61052b761c2415a20adaca6560",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b4ea6023-0da0-4bcd-8e38-d416b769359d_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "c7ffd5dbdb748a74830938e3e098842c430772c1b9ff5bedfb39e243046892c1",
+          "bytes": 4662
+        }
+      ]
+    },
+    {
+      "slug": "schedule-push",
+      "ok": true,
+      "platform_version": 3,
+      "verify_jwt": true,
+      "status": "ACTIVE",
+      "ezbr_sha256": "b95d86953e59bf87dc23f398f713f0028aa3408c128ecb0ca563f06d6ad28557",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_9f28d1eb-9649-49bb-8769-509e9febedf4_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "5a3e759c4160c7cdfc09a91cf2bc8be3ae37686563ee0b3edce2ba177b672928",
+          "bytes": 5648
+        }
+      ]
+    },
+    {
+      "slug": "schema-snapshot-refresh",
+      "ok": true,
+      "platform_version": 9,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "79bb34ddcb5f7b73718660e0b72947afe09761aad6b7d63c6aed6f33090705bd",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_57650cad-af83-4274-a3c0-6507337c2c16_2/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "22155a0d1f0329bda964f225f1dcc1ae9af76dfa69bee757017b4e7e12a3c918",
+          "bytes": 13885
+        }
+      ]
+    },
+    {
+      "slug": "seed-weekly-goals",
+      "ok": true,
+      "platform_version": 3,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "ec99afe29f0a2d032b91a0f3abc3d6c5612f8d299c3f259a7deed745ba5d4634",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_1015db53-4ef8-4227-9132-15b35da22633_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "796e954a146e31a95d9a600ee65d41266cb0e5da9a8f137e60b1f95efc720eaf",
+          "bytes": 5641
+        }
+      ]
+    },
+    {
+      "slug": "send-email",
+      "ok": true,
+      "platform_version": 27,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "bd6c9a0e9a12412335acbb66e579d9076e0d57d26de509129a2aa7652962d482",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_ef051b56-2b1d-412f-a367-f9ef10ba3806_20/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "5343d96a9a2b3403bf29b2408dd66608628183be806a985b27c6ca2cdfb8d57a",
+          "bytes": 9206
+        }
+      ]
+    },
+    {
+      "slug": "send-journey-recap",
+      "ok": true,
+      "platform_version": 18,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "e895c117a2a2bcf1116815982098214c076242c8714d0dfe00ac2ee77c0cef23",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_ebcb8cff-e1cc-4746-ba2f-c8c9f983e1a6_3/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "b3ab8d5bfb42a1bb3306422209402ea802a8e1da26f6fa0134f28564ceea6563",
+          "bytes": 126
+        }
+      ]
+    },
+    {
+      "slug": "send-push",
+      "ok": true,
+      "platform_version": 15,
+      "verify_jwt": true,
+      "status": "ACTIVE",
+      "ezbr_sha256": "fc50b40a26b523ecefda733016cff62b16d4fa4592778904ccc046de4a5b551a",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_f58806e5-14a5-4907-a2c5-280a3f4a7372_13/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "b07e746efc02d53d2b3a03e6e3ad48b055a7e9b4243b195e33709cd5e81270ae",
+          "bytes": 13602
+        }
+      ]
+    },
+    {
+      "slug": "send-session-recap",
+      "ok": true,
+      "platform_version": 18,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "646efe4cc7b238fddc27778db42730af2debf5a3f48a4ce2006e2e15b1478752",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_37c99e55-ce4f-4666-8ece-1e49deeeb8ff_3/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "78e88c70f528f7c520ed7349f726bef413ee588410d9562de25884d14fc87c7e",
+          "bytes": 9227
+        }
+      ]
+    },
+    {
+      "slug": "share-workout",
+      "ok": true,
+      "platform_version": 15,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "09f655ee274f451d1c65a06a69dc3a197dbd1f91478edd902fe8be77b4799c0e",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c1284afc-6dcf-42c9-aa2b-46dc401cbc41_10/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "37afca1795989381def3d1f3c9568c16a01fda60175aa97daff189e64705b511",
+          "bytes": 14409
+        }
+      ]
+    },
+    {
+      "slug": "storage-cleanup",
+      "ok": true,
+      "platform_version": 16,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "10ae66f651260acd8cab7694b768d0049bf5c0976edc3b6f8243dfae4724b9b1",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b986ed69-23e5-4568-bf38-2ecf2a114bd3_1/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "97cf1b12c755ad7a8afe5ea6fb0011c9e13bec7c625fc43a7129564fa1b48f7a",
+          "bytes": 16876
+        }
+      ]
+    },
+    {
+      "slug": "streak-reminder",
+      "ok": true,
+      "platform_version": 16,
+      "verify_jwt": true,
+      "status": "ACTIVE",
+      "ezbr_sha256": "b5fa66f05ad0bb71eb4efe552144db5ef302435c740e81234a6bb14375d792f1",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_211c9da2-1a06-4f42-9611-8426656b7ecb_14/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "f84ab36698232400bad882e8847a29f0fcff34f2e185c0236f7db852508ac8b5",
+          "bytes": 5581
+        }
+      ]
+    },
+    {
+      "slug": "sync-health-data",
+      "ok": true,
+      "platform_version": 14,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "77e0d416e7a21e216df516f68df6070e61d847485a800b3090a62fbe6a278d14",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_1b0d57b9-cbd2-4d6c-86e8-796bc9b42e4a_12/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "d5e209df58573d7432b5d517df975850b0b7471ec67d425cc67207e6e7ea0535",
+          "bytes": 18666
+        },
+        {
+          "name": "_shared/taxonomy.ts",
+          "sha256": "fd8bde77df8671b24df90fb5ca29af86651c6b39037cffc6c8310a2566cd14ee",
+          "bytes": 3725
+        }
+      ]
+    },
+    {
+      "slug": "warm-ping",
+      "ok": true,
+      "platform_version": 9,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "eeb9680682d426a0f2ac33a72967163b6ea4aaa01d790b3b19fb102d95257f7e",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_41d1d837-ec2f-46ae-bba3-5333d2aa0ada_4/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "bbf68f29cc037802333e3e038cf8650db8a872ddca1dfeb7e672ce25b52ac609",
+          "bytes": 1997
+        }
+      ]
+    },
+    {
+      "slug": "weekly-report",
+      "ok": true,
+      "platform_version": 23,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "da144a2cc636a036b199ea8ce1126b14ad0df6aadd729fd860dfc6f4049c0483",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_251d5c7b-8d45-4b3b-9b34-0c470152c26d_21/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "fd5c8906a70ca04471c0c005ffb8ed4e5c5d000b981980ff5de64c3d2404c6a8",
+          "bytes": 13935
+        }
+      ]
+    },
+    {
+      "slug": "wellbeing-checkin",
+      "ok": true,
+      "platform_version": 43,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "bbce9c4b5b7db9e960b810220edf6046d11e35b223d0a0bceff833d818326a1d",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_7fcc8d02-03b1-4905-a701-ce85eb048cea_41/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "e99f252cd02396de52246e9178b580c626721744aed719c381d921c506185089",
+          "bytes": 16458
+        }
+      ]
+    },
+    {
+      "slug": "workout-library",
+      "ok": true,
+      "platform_version": 12,
+      "verify_jwt": false,
+      "status": "ACTIVE",
+      "ezbr_sha256": "0fa741746b13c6f554942d87925727768ac116b7de70e430ee37bf404e472513",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_73b288e2-8083-4e6c-8c7a-5c264d8f29ec_7/source/index.ts",
+      "files": [
+        {
+          "name": "index.ts",
+          "sha256": "2a6fe4c2d2d0ba5629c6ee2c76d9318a282e4c36a30d39edaef6487a191bd875",
+          "bytes": 6564
+        }
+      ]
+    }
+  ]
+}
