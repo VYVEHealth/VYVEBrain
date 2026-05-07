@@ -1,7 +1,7 @@
 # `gdpr-erase-request` + `gdpr-erase-execute` EFs — Flow Mockup
 
-**Status:** Mockup. Awaiting Dean sign-off before any code or schema lands.
-**Last updated:** 07 May 2026 PM (security commit 2 spillover).
+**Status:** Mockup v2. Awaiting Dean sign-off before any code or schema lands.
+**Last updated:** 07 May 2026 PM-3 (revised from v1 to add typed-email destructive-action confirmation gate per Dean's call; standard pattern from GitHub repo deletion / Stripe account closure / AWS S3 bucket deletion).
 
 ---
 
@@ -214,9 +214,85 @@ The cancel page (`gdpr-erasure-cancel.html`) is a tiny static page that calls th
 
 ## Surface integration
 
-- `settings.html` — new "Delete my account" section in About & Legal block. Modal confirms: explanation, 30-day grace, "this isn't reversible after 30 days", text input for optional reason, two buttons ("Cancel" / "Schedule deletion"). On confirm, calls `gdpr-erase-request` and shows "Scheduled — check your email."
-- `gdpr-erasure-cancel.html` — new portal page. Single-purpose. Reads token, calls EF, shows result.
-- Admin UI — out of scope for this commit. Lewis can use Supabase Studio + a manual REST call to `gdpr-erase-request` with `target_email` if he ever needs to erase someone for procurement/support. Build the admin button in a future commit.
+### Member-facing: `settings.html`
+
+New "Delete my account" row in the same "Privacy & Data" section as the export button (commit 3), placed *below* "Download my data" so the destructive action is the second thing they see after the safer one. The row reads:
+
+```
+[Delete my account]
+   Permanently delete your account and all associated data. There's a
+   30-day grace period during which you can cancel by replying to the
+   confirmation email.
+```
+
+Click → confirmation modal with **typed-confirmation gate** (industry-standard destructive-action pattern, used by GitHub for repo deletion, Stripe for account closure, AWS for S3 bucket deletion):
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Delete your VYVE Health account                            │
+├─────────────────────────────────────────────────────────────┤
+│  This will:                                                 │
+│   · Schedule the permanent deletion of every record we      │
+│     hold about you across our platform                      │
+│   · Cancel any active VYVE subscription                     │
+│   · Begin a 30-day grace period, during which you can       │
+│     cancel by replying to the confirmation email or         │
+│     clicking the cancel link inside it                      │
+│   · After 30 days: irreversible. We cannot recover your     │
+│     data once it's been purged.                             │
+│                                                             │
+│  This is your right under Article 17 of the UK GDPR.        │
+│                                                             │
+│  ─────────────────────────────────────────────────────────  │
+│                                                             │
+│  To confirm, type your email address below:                 │
+│                                                             │
+│   ┌─────────────────────────────────────────────────────┐   │
+│   │ {placeholder: lewisvines@hotmail.com}               │   │
+│   └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  Reason for leaving (optional):                             │
+│                                                             │
+│   ┌─────────────────────────────────────────────────────┐   │
+│   │                                                     │   │
+│   └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│         [Cancel]              [Schedule deletion]           │
+│                                ^^^^^^^^^^^^^^^^^^           │
+│                                disabled until typed         │
+│                                email matches account        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+The "Schedule deletion" button is **disabled** until the typed email matches the account's email exactly (case-insensitive trim). The placeholder text shows their email so they don't have to leave the modal to look it up. This kills "I clicked through three modals and oh no" mistakes — the deliberate typing breaks autopilot. The reason field is genuinely optional and stored on `gdpr_erasure_requests.reason` for our own learning (high-volume reasons might point at retention problems).
+
+On confirm → fetch `gdpr-erase-request` → on 202, modal switches to:
+
+```
+Your account deletion is scheduled.
+
+We've emailed {email} with a confirmation. The email contains a "this
+wasn't me, cancel" link you can click any time in the next 30 days.
+
+After {scheduled_for_date} your data will be permanently deleted and
+cannot be recovered.
+
+[Close]
+```
+
+The settings page should also surface a persistent banner at the top while a deletion is pending: "Your account is scheduled for deletion on {date}. [Cancel deletion]." Click the cancel button → a smaller confirm-cancel modal ("Cancel the scheduled deletion? Your account will remain active.") → calls the cancel EF. This gives the member two cancel paths (email link + in-app banner) which is the right shape for a destructive action with a 30-day window.
+
+### Cancel-link page: `gdpr-erasure-cancel.html`
+
+New portal page, NOT in nav, NOT Auth-gated (the token in the URL is the auth). Reads `?token=<hex>`, calls `gdpr-erase-cancel` EF on load, shows one of three states:
+
+- **Token valid + cancellation succeeded:** "Your account is safe. The scheduled deletion has been cancelled. You can keep using VYVE as normal."
+- **Token expired/used/invalid:** "This cancellation link has expired or been used. If you didn't intend to delete your account, please email team@vyvehealth.co.uk urgently — we have a 30-day grace period and can stop the deletion if it hasn't yet executed."
+- **Token valid but `scheduled_for < now()` (cron may have already run):** Same as above, plus "Your account may have already been deleted. Email us immediately and we'll check."
+
+### Admin UI
+
+Out of scope for this commit. Lewis can use Supabase Studio + a manual REST call to `gdpr-erase-request` with `target_email` if he ever needs to erase someone for procurement/support. Build the admin button in a future commit. **Critical:** the admin path bypasses the typed-email confirmation gate (an admin acting on behalf of a member can't type the *member's* email convincingly without it being weird), so the admin EF call is the un-friction'd path. That's correct — Lewis is the safety check on his own actions, the typed-confirm is for the member.
 
 ## What this mockup is NOT covering
 
@@ -245,5 +321,5 @@ Total: ~6 hours, single session, two EF deploys + one schema migration + portal 
 2. **Re-enable trigger pattern.** `session_replication_role = replica` is the recommended approach (one-liner, atomic, future-proof). Per-trigger DISABLE/ENABLE is the alternative. Confirm `replica` mode is acceptable.
 3. **Cancel-link UX.** Plain HTML page with token-in-querystring is the proposal. Acceptable, or want it gated by Auth? (Auth-gated means the member must log in to cancel, which is annoying if they're cancelling because they got the email and weren't expecting it. Token-only is the standard pattern.)
 4. **Lewis copy approval** — request email + cancel email + cancel-confirmation email = 3 Brevo templates needed. He'll want to write these.
-5. **Settings UI scope** — confirm a "Delete my account" button + confirmation modal in `settings.html` is in-scope for commit 4. (Adds a SW cache bump and an incognito test cycle, just like commit 2.)
+5. **Settings UI scope confirmed in this revision.** "Delete my account" button + typed-email-confirmation modal + persistent in-app cancel banner all in `settings.html`, plus the `gdpr-erasure-cancel.html` standalone page. Adds a SW cache bump and an incognito test cycle, same as commit 2 shipped last session. Build estimate updated to reflect this (Settings UI was already in the v1 estimate; the typed-confirm gate adds maybe 10 minutes of JS to disable/enable the button on input change). No further sign-off needed unless you want different copy.
 6. **Backlog or commit 4? Brevo contact-delete + PostHog event-delete API calls** during execute path. Could roll into commit 4 (~30 extra min each, both have well-documented APIs) or defer. Lean: roll in. Procurement reviewers see an end-to-end purge that handles the third-party processors, which is the gold standard.
