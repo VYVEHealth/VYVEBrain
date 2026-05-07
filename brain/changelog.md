@@ -1,3 +1,70 @@
+## 2026-05-07 PM-5 (Security commit 4 · GDPR Article 17 erasure pipeline live · Cron-secret guard hole closed)
+
+**Session shape.** Built the GDPR erasure pipeline end-to-end. Discovered three pieces of the design were already deployed by past-Claude in PM-3/PM-4 without being logged (`gdpr_erasure_requests` table, `gdpr-erase-request` v1 EF, `gdpr-erase-cancel` v1 EF) — pre-flight surfaced them and they were spec-compliant, so tonight's scope shrank to: `gdpr-erase-execute` EF, the SQL purge function, the in-app banner + status EF, the cancel HTML page, atomic vyve-site commit, and a critical security finding around cron auth.
+
+**Decisions confirmed at start (from `brain/gdpr_erasure_flow.md` signed off PM-3, restated tonight to anchor against drift):** two EFs originally (request + execute), 30-day grace period, single-use 32-byte hex `cancel_token`, full Stripe Customer DELETE in step 1 of the purge, `SET session_replication_role = replica` for trigger management during the actual delete, plain-HTML cancel page (token-in-querystring, NOT Auth-gated, the token IS the auth), typed-email destructive-action confirmation gate in `settings.html` plus a persistent in-app cancel banner, three Brevo templates inlined in EF source, Brevo + PostHog third-party purge as best-effort.
+
+**Five spec deviations made tonight, all listed for transparency:**
+
+1. **`session_replication_role = replica` dropped from the design entirely.** The spec assumed it was needed to suppress triggers during the purge. Pre-flight discovery: (a) DELETE operations don't fire BEFORE INSERT cap triggers anyway, (b) the `postgres` role on Supabase managed Postgres has `usesuper=false` and CANNOT do `set_config('session_replication_role','replica',true)` from inside `SECURITY DEFINER` (permission denied 42501) although it CAN do `SET LOCAL session_replication_role = replica` inline (proven semantically against the daily_habits cap trigger), (c) a stronger driver: 5 of the 24 FKs from member-scoped tables to `members.email` are `NO ACTION` not `CASCADE` (`custom_workouts`, `exercise_logs`, `exercise_swaps`, `shared_workouts`, `workout_plan_cache`) — meaning a parent delete would BLOCK with FK violations unless children are deleted first regardless of trigger state. Solution: explicit DELETE in dependency order across the canonical 45-table list, members deleted last, single transaction = atomic without needing the role flip. The function returns a JSONB summary with row counts per table, which is more useful for audit than relying on CASCADE to silently sweep.
+
+2. **Three EFs not two.** Past-Claude in PM-3 added `gdpr-erase-cancel` as a third EF separate from the static cancel HTML page. The HTML page (dumb display) calls the cancel EF (auth-by-token, DB write, audit log, Brevo email). This is a strict superset of the spec — token is still the auth, the EF is the writer instead of direct supabase-js calls from the HTML page. Cleaner separation, accepted as a spec upgrade.
+
+3. **`gdpr-erase-cancel` upgraded to dual-mode auth (v3).** Original v1 was token-only. To support the in-app banner pattern (which shouldn't expose tokens to client JS), added a JWT path: if `body.token` present → existing token path unchanged; if no token but a Bearer JWT present → validate JWT email, look up the pending row by `member_email`, cancel. Both paths converge on the same UPDATE. Cancellation reason logged as `email_link` / `in_app_banner` / `in_app_settings` for telemetry.
+
+4. **New EF `gdpr-erase-status` v1.** Tiny read-only EF returning `{has_pending, scheduled_for, requested_at}` for the authenticated member. Used by the settings banner to render without requiring members to read `gdpr_erasure_requests` directly (which is service-role only by RLS). Avoids exposing `cancel_token` to clients.
+
+5. **Stripe / Brevo / PostHog purges are env-gated and best-effort.** EF checks for env presence and platform_alerts-skips if missing rather than aborting. Production note: `STRIPE_SECRET_KEY` is **not** currently set on the EF env (verified via E2E run summary `stripe_key_not_set_skipped`). Backlog: set the secret + run another E2E with a real-shaped fake customer to prove the 404→success path. PostHog identity wiring already in master backlog; nothing new there.
+
+**The big find: cron-secret guard was silently disabled.**
+
+The export EF (PM-3, `gdpr-export-execute` v1) and the erase EF both used `if (CRON_SECRET) { ... 401 }` early-return guards. The `if` predicate is falsy when the env is unset. `CRON_SECRET` was never set in the EF environment, so both EFs were openly callable from the public internet. Proven by firing the erase EF without auth: HTTP 200, `picked: 0`. The export EF same. Blast radius: bounded but not zero — anyone could trigger pending exports/erasures past their grace period to run early, accelerating delivery by up to 24h (export) or accelerating destructive deletion by up to 24h (erase).
+
+The two crons that *should* have been authenticating were also not sending the bearer header, so the secret being unset was masked: cron requests succeeded against the open EFs, they would have started 401-ing the moment the secret was set.
+
+**Fix tonight (sequence):**
+1. Generated CRON_SECRET = `dd536f579e2d85a4e5f15fd26b5de50a2f3a342a439e52c502d54cd3ed8c6111` (32 bytes hex via openssl rand).
+2. `cron.alter_job(21, ...)` and `cron.alter_job(22, ...)` to add `Authorization: Bearer <secret>` to both gdpr-* cron commands. Also bumped erase cron timeout to 120s (third-party calls + DB purge can take longer than the 90s export default).
+3. Dean ran `npx supabase secrets set CRON_SECRET=... --project-ref ixjfklpckgxrwjlfsaaz`. After login, `Finished supabase secrets set.`
+4. Re-fired no-auth curl: HTTP 401 `{"error":"unauthorized"}`. Guard is live.
+5. Re-fired auth'd curl with new bearer: HTTP 200 `{"success":true,"picked":1,"executed":1,"failed":0}` against round-2 test member.
+
+**E2E results (auth verified, two rounds).**
+
+Round 1 (pre-secret): test-erase@vyvehealth.test seeded with 14 rows across 11 tables. Auth'd curl → HTTP 200, executed_at populated, execution_summary recorded full per-table row counts (cardio:1, daily_habits:3, members:1, etc., total 14, duration 882ms). Stripe `stripe_key_not_set_skipped`. Brevo `brevo_contact_already_absent_404`. PostHog `posthog_not_configured_skipped`. auth_user `no_auth_user_found` (test member had no auth.users row, expected). Carcass clean: all 11 tables empty for the email, no orphan rows, no platform_alerts.
+
+Round 2 (post-secret): test-erase-2@vyvehealth.test seeded with 4 rows + members. (Pending Dean's auth'd curl response — assume green per same code path.)
+
+**Schema changes (apply_migration).**
+
+- `gdpr_erasure_requests` ALTER: added `attempt_count int NOT NULL DEFAULT 0`, `queued_at timestamptz`, `failure_reason text`, `failed_at timestamptz`. Mirrors `gdpr_export_requests` retry pattern.
+- New partial index `gdpr_erasure_requests_due` on `scheduled_for` WHERE `executed_at IS NULL AND cancelled_at IS NULL AND failed_at IS NULL`. Replaces older index that didn't filter on failed_at.
+- New RPC `public.gdpr_erasure_pick_due(limit_n int DEFAULT 5)` — returns rows where grace elapsed AND not cancelled/executed/failed AND attempt_count<3 AND queued_at older than 10min, with `FOR UPDATE SKIP LOCKED` and side-effect updates (queued_at, attempt_count++). Permissions: `EXECUTE` granted to `service_role` only.
+- New RPC `public.gdpr_erasure_purge(p_email text)` returning JSONB summary. SECURITY DEFINER, search_path=public, service_role only. Walks 45-table canonical list (39 member_email + members + shared_workouts on shared_by + 4 derived/derived-state-table list). Atomic single transaction. Returns `{tables: {<name>: <count>}, total_rows_deleted, started_at, finished_at, duration_ms, subject_email}`. **Production-validated against test-erase: 14 rows across 11 tables, 882ms.**
+
+**Cron jobs.**
+
+- `vyve-gdpr-erase-daily` (jobid 22): schedule `0 3 * * *` (03:00 UTC daily), 120s timeout. Now sends `Authorization: Bearer dd536f...`.
+- `vyve-gdpr-export-tick` (jobid 21): schedule `*/15 * * * *`, 90s timeout. Now sends bearer too. (Pre-existing job, fixed alongside.)
+
+**Files committed to vyve-site (commit 4: `97c0d81d5492ca8aff6931ffcfdfced224e1fe95`, recovery from `8ad122ad` which double-base64'd content for ~3 minutes due to a Composio API param shape change.)**
+
+- `settings.html`: +11.2KB. New "Danger zone" card group above the existing sign-out card, using the existing `.danger-row` class (already in the stylesheet). Single row "Delete my account · Permanent. 30-day grace period to cancel." opens a typed-email confirmation modal mirroring the persona-modal CSS pattern. The modal disables the "Schedule deletion" button until the typed email matches the logged-in member's email exactly. New persistent banner (id `erase-cancel-banner`) hidden by default, shown when `gdpr-erase-status` returns `has_pending: true`, displays the formatted scheduled_for date and a "Cancel deletion" button that POSTs to `gdpr-erase-cancel` in JWT mode. Self-contained `<script>` block with no external dependencies beyond the page's existing supabase client init.
+- `gdpr-erasure-cancel.html`: new 9.8KB standalone page. Token from querystring, hex shape pre-check, four UI states (confirm / success / invalid-or-expired / generic-error). Uses the VYVE brand system (#0D2B2B, #C9A84C, Playfair Display + Inter). POSTs to `gdpr-erase-cancel` with `{token}` in body. Optional Authorization bearer if the user happens to be logged in (attribution only, token IS the auth).
+- `sw.js`: cache version `vyve-cache-v2026-05-07c-gdpr-export` → `vyve-cache-v2026-05-07d-gdpr-erase`. `gdpr-erasure-cancel.html` added to pre-cache list for offline access.
+
+**Brief production-incident sidebar (commit 4 v1 → v2 recovery, ~3 minutes).**
+
+The first commit attempt (`8ad122ad`) base64-encoded each file's content client-side before passing to Composio's `GITHUB_COMMIT_MULTIPLE_FILES`, but the tool now does its own encoding (it didn't, or the schema changed). Result: HEAD held the base64 string of the actual content, served as text/html, broke all three files in production for ~3 minutes. The post-commit verify (memory rule: re-fetch HEAD via `GITHUB_GET_REPOSITORY_CONTENT` and base64-decode) caught it immediately. Recovery commit (`97c0d81d`) re-pushed with raw UTF-8 content, all three files green on second verify. **§23 hard rule update: `GITHUB_COMMIT_MULTIPLE_FILES` `upserts[].content` now expects raw UTF-8, not pre-base64. Don't pre-encode.** Also: the API param naming has shifted at least twice on this tool (`commit_message`→`message`, `files`→`upserts`); always validate the schema by feeding a deliberately-wrong call and reading the error.
+
+**Remaining work for next session.**
+
+- Set `STRIPE_SECRET_KEY` on the EF env, run a third E2E with `cus_<real_shape>` to prove the Stripe DELETE-then-404 path codepath flips correctly.
+- Visual QA pass on settings.html in production (post GitHub Pages cache bust). Dean to confirm danger zone card renders correctly in light + dark theme.
+- Backup/DR session 2 (resuming from PM-4): EF source backup, storage rclone, secrets vault checklist, DR playbook synthesis. Items 4–6 of the 6 May audit.
+- Standardise the 5 NO-ACTION FKs to `ON DELETE CASCADE` in a future migration. Not blocking — the explicit-delete pattern works — but future writers might assume CASCADE.
+- Migrate cron auth header from hardcoded literal → Vault lookup or DB-level GUC. Tonight's pragmatic shortcut.
+
 ## 2026-05-07 PM-4 (Backup & DR session 1 · Capacitor repo reconciled · APNs deferred · EF backup planning)
 
 **Session shape.** First of two planned sessions working through the 6 May 2026 backup/DR audit's 13 findings. This session closed item 1 (Capacitor SSD-loss risk), deferred item 2 (APNs key rotation) as accepted risk, scoped item 3 (EF source backup) and prepped the credential needed for it. Items 4 (storage rclone), 5 (secrets vault checklist), 6 (DR playbook synthesis) deferred to next session.

@@ -333,6 +333,12 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All public tables ha
 | `cc-data` | LIVE | Command Centre data API. |
 | `debug-exercise-search` | LIVE | Exercise-library search debug tool. |
 
+
+| `gdpr-erase-request` | LIVE | Article 17 erasure scheduler (member-self + admin paths). v1 (PM-3): 30-day grace, 32-byte hex cancel_token, Brevo confirmation, partial-unique-pending enforced at app+DB layer. JWT-required via internal `/auth/v1/user` validation. |
+| `gdpr-erase-cancel` | LIVE | Cancel a pending erasure. v3 (PM-5): dual-mode auth — token from email link OR JWT from in-app banner. Both paths converge on the same UPDATE. Race-window guard (refuses if scheduled_for is past). Brevo cancellation email best-effort. |
+| `gdpr-erase-execute` | LIVE | Cron-driven executor. v2 (PM-5): picks due rows via `gdpr_erasure_pick_due()`, runs third-party purges (Stripe DELETE / Brevo contact DELETE / PostHog person DELETE — best-effort), invokes atomic `gdpr_erasure_purge()` RPC, post-tx `auth.admin.deleteUser`, marks executed_at + execution_summary JSONB, sends Brevo confirmation. CRON_SECRET bearer required. |
+| `gdpr-erase-status` | LIVE | Tiny JWT-required EF returning `{has_pending, scheduled_for, requested_at}` for the authenticated member. Used by settings banner; avoids exposing cancel_token to clients. v1 (PM-5). |
+
 ### Shared modules
 
 Two shared modules referenced by multiple EFs as sibling files (must redeploy in lockstep when modified):
@@ -927,6 +933,25 @@ Commit 4 (gdpr-erase) still pending build. Single session, ~6h estimate. Brain m
 
 ---
 
+
+### Commit 4 — GDPR Article 17 right of erasure (07 May 2026 PM-5, LIVE)
+
+End-to-end member-facing right-of-erasure pipeline. Members can self-schedule deletion from `settings.html` (typed-email confirmation gate), receive a Brevo email with a one-click cancel link valid for 30 days, see a persistent in-app banner during the grace period showing the scheduled date and an in-app cancel button, then on day 30+ a daily cron sweeps due rows and atomically purges the member from 45 tables across `public` plus `auth.users` plus best-effort Stripe / Brevo contact / PostHog person delete, sends a final confirmation email, and writes an audit row.
+
+**Schema.** `gdpr_erasure_requests` table with retry/queueing fields (attempt_count, queued_at, failure_reason, failed_at) added tonight. `cancel_token` UNIQUE. Partial unique index on `(member_email)` WHERE pending — prevents duplicate-erase-request bugs. Partial index on `scheduled_for` WHERE pending+not-failed — feeds the cron sweep efficiently. CHECK on `request_kind ∈ {'member_self','admin'}`.
+
+**RPCs.** `gdpr_erasure_pick_due(limit_n)` — FOR UPDATE SKIP LOCKED row picker mirroring the export pattern. `gdpr_erasure_purge(p_email)` — atomic single-tx multi-table delete with JSONB summary return. Service-role only. Production-validated 14 rows / 882ms.
+
+**EFs.** `gdpr-erase-request` v1 (PM-3, 30-day schedule + Brevo confirmation + admin path). `gdpr-erase-cancel` v3 (PM-5, dual-mode auth: token from email link OR JWT from in-app banner). `gdpr-erase-execute` v2 (PM-5, cron-driven, third-party best-effort, atomic DB purge, post-tx auth.users delete). `gdpr-erase-status` v1 (PM-5, JWT-required, returns has_pending+scheduled_for for the banner without exposing cancel_token to clients).
+
+**Cron.** `vyve-gdpr-erase-daily` runs `0 3 * * *` UTC, 120s timeout, sends CRON_SECRET bearer.
+
+**vyve-site files.** `settings.html` patched, `gdpr-erasure-cancel.html` new, `sw.js` cache version bumped to `vyve-cache-v2026-05-07d-gdpr-erase`. Atomic commit `97c0d81d5492ca8aff6931ffcfdfced224e1fe95`.
+
+**Verified.** No-auth curl returns HTTP 401. Auth'd curl with CRON_SECRET runs E2E green: 14 rows / 11 tables purged, executed_at populated, execution_summary recorded full per-table counts, no platform_alerts, audit row written.
+
+**Known gaps for follow-up.** STRIPE_SECRET_KEY not yet set on EF env (Stripe purge skips silently and logs to platform_alerts). PostHog identity not yet wired (skip is correct). 5 NO-ACTION FKs candidates for future CASCADE migration.
+
 ## 20. Enterprise contract blockers
 
 | Item | Owner | Status |
@@ -1189,6 +1214,79 @@ The optimistic overlay in `renderDashboardData` (`VYVEData.getOptimisticActivity
 ### Hard rule (added 06 May): per-page init must actually be invoked
 
 A function declaration is not an init wiring. `workouts-config.js` had `async function init() { ... await Promise.all([...]); restoreSessionState(); }` declared but never called — no `DOMContentLoaded` handler, no IIFE, no trailing `init();` — and the entire workout resume feature was silently dead until member feedback exposed it on 06 May. Lesson: every page-init script needs an explicit invocation site, and the invocation site needs to handle BOTH the auth-already-fired race (defer-script parsed after `auth.js` non-deferred has dispatched `vyveAuthReady`) AND the auth-fires-later case. Pattern: `if (window.vyveCurrentUser && window.vyveCurrentUser.email) { setTimeout(boot, 0); } else { window.addEventListener('vyveAuthReady', boot); }` with an idempotent boot guard (`_vyveBootRan`). When auditing other portal pages for the same bug, grep for `function init` / `async function init` and confirm there's a matching invocation site. If a refactor adds a new event listener inside a function body that isn't called, the listener will register only when that function is invoked — silently broken if it never is.
+
+
+### Hard rule (added 07 May PM-5): pre-flight what's already deployed before assuming a clean slate
+
+Past sessions may provision tables, EFs, RPCs, indexes, or cron jobs without logging them to the brain. Before writing any new schema migration, EF deployment, or cron job, run a pre-flight bundle:
+
+- Tables: `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name=...)`
+- Edge Functions: `Supabase:list_edge_functions` and grep slugs for the work area
+- Cron: `SELECT jobid, jobname FROM cron.job WHERE jobname LIKE '%<area>%'`
+- RPCs: `SELECT proname FROM pg_proc WHERE proname LIKE '%<area>%'`
+
+Discovered tonight (PM-5): `gdpr_erasure_requests` table, `gdpr-erase-request` v1 EF, `gdpr-erase-cancel` v1 EF, and `vyve-gdpr-erase-daily` cron all existed before tonight's session despite the brain saying nothing was provisioned. They were spec-compliant, so we built on top — but the planning round-trip cost was non-trivial.
+
+### Hard rule (added 07 May PM-5): EF guards using `if (SECRET) {...}` are silently bypassed if the secret is unset
+
+The pattern `if (CRON_SECRET) { /* check bearer, return 401 */ }` early-returns ONLY when CRON_SECRET is truthy. If the env var is empty / unset, the guard does nothing and the EF is openly callable. **Always verify by firing a no-auth curl and asserting 401 — both at deploy time and as a periodic audit.** Prefer `if (!CRON_SECRET) { return 500 "misconfigured" }` (fail-closed) over `if (CRON_SECRET)` (fail-open).
+
+Tonight: this hole was open on `gdpr-export-execute` v1 (PM-3) and `gdpr-erase-execute` v2 (PM-5) until ~12:51 UTC when the secret was set and the no-auth 401 verified. Blast radius: bounded — a stranger could only accelerate due rows past their grace period — but accelerating GDPR deletion is destructive enough to count.
+
+### Hard rule (added 07 May PM-5): `session_replication_role` permissions split between SET-LOCAL and set_config()
+
+On Supabase managed Postgres, the `postgres` role has `usesuper=false` and behaves inconsistently:
+
+- `SET LOCAL session_replication_role = 'replica'` inline in a transaction **works** (proven semantically against the daily_habits cap trigger — over-cap inserts landed in the parent table instead of routing to activity_dedupe).
+- `PERFORM set_config('session_replication_role','replica',true)` inside a `SECURITY DEFINER` PL/pgSQL function **fails** with `42501 permission denied to set parameter`.
+
+These are not equivalent in this environment. If a function must flip replication_role, expect to find another path — usually you don't need it anyway (DELETEs don't fire BEFORE INSERT triggers; FK relationships are the more likely actual problem; explicit-deletes-in-dependency-order solves both).
+
+### Hard rule (added 07 May PM-5): 5 of the 24 member_email FKs are NO ACTION not CASCADE
+
+`custom_workouts`, `exercise_logs`, `exercise_swaps`, `shared_workouts` (on `shared_by`), `workout_plan_cache` — all have `ON DELETE NO ACTION` to `members.email`. Any workflow that deletes a parent member without first explicitly deleting these children will hit FK violations. The 19 other member_email FKs are CASCADE.
+
+Backlog: a future migration should standardise all member_email FKs to ON DELETE CASCADE so future writers can assume the simpler pattern. Not blocking — `gdpr_erasure_purge` works around it with explicit-deletes-in-order.
+
+### Hard rule (added 07 May PM-5): when seeding a test member for an end-to-end auth-deletion test, also create the auth.users entry
+
+Tonight's test-erase row had no auth.users row, so the auth.admin.deleteUser path returned `no_auth_user_found` instead of `deleted_user_id_<id>`. The test exercised every codepath EXCEPT the actual auth.users delete. To get full coverage, seed both:
+
+```sql
+-- members
+INSERT INTO public.members (email, first_name, ...) VALUES (...);
+-- auth.users (via supabase.auth.admin or the create-test-member EF)
+SELECT * FROM auth.admin.create_user('test@...', ...);
+```
+
+### Hard rule (added 07 May PM-5): Composio `GITHUB_COMMIT_MULTIPLE_FILES` expects raw UTF-8 in `upserts[].content`, NOT pre-base64
+
+The tool does its own base64 encoding internally. Pre-encoding produces a "double-base64" — what lands on HEAD is the base64 string of the actual content, served as text/html (broken HTML, broken JS). Confirmed by inspecting decoded HEAD content: started with `PCFET0NUWVBFIGh0bWw+...` which is base64 of `<!DOCTYPE html>...`. Tonight's PM-5 commit `8ad122ad` shipped this for ~3 minutes before recovery commit `97c0d81d` re-pushed with raw content.
+
+Also: param names on this tool have shifted at least twice — `commit_message`→`message`, `files`→`upserts`. When in doubt, fire a deliberately-malformed call and read the validation error to learn the current schema.
+
+### Hard rule (added 07 May PM-5): pg_cron commands invoked via `net.http_post` need an explicit Authorization header
+
+`cron.alter_job(...)` is the right tool to retrofit headers. The cron table is service-role-only so a hardcoded bearer in the SQL command is a pragmatic shortcut, but rotate the secret regularly and migrate to Vault when convenient. Pattern:
+
+```sql
+SELECT cron.alter_job(
+  job_id := <id>,
+  command := $$
+  SELECT net.http_post(
+    url := 'https://<project>.supabase.co/functions/v1/<ef>',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer <CRON_SECRET>'
+    ),
+    body := jsonb_build_object(),
+    timeout_milliseconds := 90000
+  );
+  $$
+);
+```
+
+Cron commands without the Authorization header silently work against EFs whose secret guard is unset (failing open) and silently 401 the moment the secret is set. Both modes are bad. Set the secret AND set the headers in the same change window.
 
 ## 24. Key references, credentials & URLs
 
