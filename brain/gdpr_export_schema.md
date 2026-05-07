@@ -17,13 +17,13 @@ The dominant B2C pattern for GDPR data export — across Strava (closest compara
 - **Procurement-recognisable.** Security questionnaires ask "is DSAR fulfilment automated and audit-logged?" — the queue + cron + email pattern is the recognisable industry-standard answer. The reviewer ticks the box without follow-up.
 - **Architectural consistency with commit 4.** The erasure flow already uses the same shape (request → grace period → cron → email). Two GDPR EFs that share table-design and email-template patterns are easier to maintain than two with different shapes.
 
-## Endpoints (3 EFs total)
+## Endpoints (2 EFs)
 
 `POST /functions/v1/gdpr-export-request` with `verify_jwt: true` — member-facing, queues the export. Returns 202 immediately.
 
 `POST /functions/v1/gdpr-export-execute` with `verify_jwt: false` (cron-only, secret-bearer check) — runs every 15 minutes, picks up due rows, builds the JSON, uploads to Storage, signs URL, sends Brevo email, marks completion.
 
-`POST /functions/v1/gdpr-export-download` with `verify_jwt: false` (token-link) — optional. The Brevo email could carry the signed URL directly, OR it could carry a token-link to this EF which validates the token and 302s to a fresh signed URL. Token-link is slightly more procurement-friendly (URL not in inbox indefinitely) but also one more EF to maintain. **Recommend the simpler option: signed URL directly in email, 7-day expiry.** If Sage pushes back during procurement we can add the token-link layer later — it's purely a session-attribute hardening, not a security gap.
+The Brevo email carries the signed URL directly (7-day expiry). Considered and rejected: a third `gdpr-export-download` EF that would have served as a token-link indirection so the URL isn't sitting in the member's inbox. The security gain is marginal (the URL is already short-lived, the inbox is the member's own), the cost is one more EF and one more redirect to maintain, and Sage hasn't asked for it. If procurement flags it during diligence we add it then — it's a session-attribute hardening commit, not a security gap.
 
 ### Member-self path
 
@@ -392,6 +392,5 @@ Total: ~6 hours, single session, two EF deploys + one schema migration + portal 
 1. **Storage bucket name** — `gdpr-exports`. Acceptable?
 2. **Retention** — 90-day file lifecycle in the bucket. Confirm acceptable for procurement (some shops want 30 days, some 7 years).
 3. **Member rate limit** — 1 per 30 days for member-self path, no limit for admin path. Reasonable?
-4. **Email vs token-link.** Recommend signed URL directly in email body (simpler). Token-link adds one more EF and one more redirect; only worth it if Sage's procurement reviewer flags inbox-resident URLs as a concern. Keep simple unless told otherwise?
-5. **`auth.users` sanitisation whitelist** — `id`, `email`, `created_at`, `updated_at`, `last_sign_in_at`, `email_confirmed_at`, `user_metadata`, `app_metadata`. Drop everything else (tokens, password hashes, recovery codes). Confirm.
-6. **Settings UI placement** — new "Privacy & Data" section in About & Legal block on `settings.html`, button placement BELOW the privacy/terms links so curiosity clicks have to scroll. Confirm scope creep is acceptable in this commit.
+4. **`auth.users` sanitisation whitelist** — `id`, `email`, `created_at`, `updated_at`, `last_sign_in_at`, `email_confirmed_at`, `user_metadata`, `app_metadata`. Drop everything else (tokens, password hashes, recovery codes). Confirm.
+5. **Settings UI placement** — new "Privacy & Data" section in About & Legal block on `settings.html`, button placement BELOW the privacy/terms links so curiosity clicks have to scroll. Confirm scope creep is acceptable in this commit.
