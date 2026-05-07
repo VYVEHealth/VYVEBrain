@@ -1,3 +1,36 @@
+## 2026-05-07 PM-4 (Backup & DR session 1 · Capacitor repo reconciled · APNs deferred · EF backup planning)
+
+**Session shape.** First of two planned sessions working through the 6 May 2026 backup/DR audit's 13 findings. This session closed item 1 (Capacitor SSD-loss risk), deferred item 2 (APNs key rotation) as accepted risk, scoped item 3 (EF source backup) and prepped the credential needed for it. Items 4 (storage rclone), 5 (secrets vault checklist), 6 (DR playbook synthesis) deferred to next session.
+
+**Pre-flight verifications surfaced two corrections to the brain.**
+
+1. `VYVEHealth/vyve-capacitor` repo *exists* — created 18 April 2026 18:49 UTC, last pushed 18 April 2026 19:21 UTC, single commit `2775db4` "Initial upload" (Android-only stub, 30 files, ~1.95MB). Brain §24 + §23 + memory all said "not a git repo (backlog risk)" — that flag was outdated. The local working tree at `~/Projects/vyve-capacitor` had no `.git` directory, so although a remote stub existed, no version control was happening locally, three weeks of iOS 1.2 + Capgo HealthKit + native push wiring sat on a single SSD. The risk was real, just shaped slightly differently than the brain captured.
+
+2. `APNS_AUTH_KEY` last rotated 27 April 2026 22:11 UTC — the original install timestamp from the same day the key was exposed in chat. So rotation is genuinely still pending, audit and brain §24 both correct.
+
+**Item 1 — Capacitor repo reconciliation. SHIPPED.** Local `git init -b main` in `~/Projects/vyve-capacitor`, fresh `.gitignore` written from scratch (curl of remote `.gitignore` 404'd because the repo is private and Dean's local environment had no GitHub auth configured). `.gitignore` extended with patterns the original 18 April Android-only ignore missed: `*.p8`, `*.p12`, `*.cer`, `*.mobileprovision`, `*.provisionprofile`, `ios/App/App.xcworkspace/xcuserdata/`, `ios/App/App.xcodeproj/xcuserdata/`, `www/cordova-plugins/`, `www/cordova.js`, `www/cordova_plugins.js`, `.env*`, `Info.plist.bak.pre-healthkit`, `*.bak`, `*.bak.*`. Clean check via `git diff --cached --name-only | grep -iE '(p8|p12|cer|jks|keystore|mobileprovision|provisionprofile)$|google-?services|GoogleService-Info'` returned `CLEAN`. Net staged: 86 files, 8271 insertions, ~3-4MB committed, 289MB total on disk (correctly ignored: node_modules, ios/App/Pods, ios/DerivedData). No Podfile (SPM-only Capacitor 6, confirmed via `git diff --cached --name-only | grep -i podfile` returning none). Force-push to `origin main` with new fine-scoped GitHub PAT (Dean created via fine-grained token UI under VYVEHealth org, scope: Contents R/W on `vyve-capacitor` only, expires 7 May 2027) replaced the 18 April Android-only stub with current state. Push resolved `+ 2775db4...3432aab main -> main (forced update)`, 142 objects, 2.01 MiB written. Credential helper set to `osxkeychain` so future pushes from Dean's Mac don't re-prompt.
+
+**Item 2 — APNs key rotation. DEFERRED to backlog.** Hit Apple's 2-keys-per-team cap when registering the new key — the existing `2MWXR57BU4` plus one other key occupy both slots. Sequencing would have required revoking one of the existing keys first, then creating the new key, then verifying push delivery against Dean's iPhone token, then revoking `2MWXR57BU4`. Dean weighed the actual risk (low — chat platform isn't a known leak source, exploitation requires team ID + bundle ID + .p8 contents combined, blast radius is "phishing pushes to VYVE iOS members" not data breach) against the rotation effort and chose to defer. Logged in §22 as accepted risk pending Sage procurement diligence; if Sage's security review surfaces it, rotate then. Brain §24 footnote updated to record "rotation deferred 07 May 2026 — accepted risk, see §22".
+
+**Item 3 — EF source backup. SCOPED + CREDENTIAL PROVISIONED, BUILD DEFERRED.** Original audit framing was 24 KEEP EFs, but `Supabase:list_edge_functions` showed 94 active EFs on the platform — much expanded since 9 April. After filtering against the audit's DELETE list (one-shot patchers, debug helpers, hardcoded-recipient triggers like `send-stuart-reset`, etc.), 61 EFs need offline backup. First attempted to fetch all 61 via `Supabase:get_edge_function` from this session, but the source streams back through the chat surface — at average ~10KB per EF that's ~600KB of context burn, and `onboarding` alone is 28KB. Composio's `SUPABASE_GET_FUNCTION_BODY` returns ESZIP binary not source (per existing §23 hard rule), so it can't replace the native MCP for backup purposes.
+
+Pivoted to building a self-contained backup EF (`vyve-ef-source-backup`) that calls Supabase's Management API server-side and commits each EF's source files into `VYVEBrain/staging/edge-functions/{slug}/` via `GITHUB_PAT_BRAIN`. Single weekly cron (`vyve-ef-source-backup-weekly`, Sundays 02:00 UTC), `vyve_job_runs` row per execution so the email-watchdog (jobid 16) catches failures. Credential needed: a Supabase Personal Access Token with project access. Dean generated one named `SUPABASE_MGMT_PAT` with 06 Jun 2026 expiry. Token added as a project-scoped secret of the same name — verifies against `https://api.supabase.com/v1/projects/{ref}/functions/{slug}/body` for source retrieval. Token visible in screenshot during chat — Dean to revoke and re-issue before next session per the rotation discipline applied to all credentials touching chat.
+
+EF build, deploy, cron registration, manual first-run invocation, and verification of the initial staging commit all deferred to next session — too much remaining context budget would be required to do it cleanly in this one. New-session prompt prepared.
+
+**Items 4-6 deferred to next session.** Storage rclone (266 objects, exercise-videos the irreplaceable bucket), secrets vault checklist (1Password recommended, 25 secrets to log), DNS/registrar documentation (GoDaddy: registrar, 2FA, recovery email, expiry, auto-renew), and `disaster-recovery.md` synthesis playbook (5 scenarios: Capacitor SSD loss, Supabase project deletion, EF deploy corruption, APNs key rotation, storage bucket loss) — all scoped, none built.
+
+**Brevo single-provider risk** logged as `§22` accepted risk: pre-Sage acceptable, post-Sage we evaluate AWS SES as a secondary ESP. Not building now.
+
+**Outputs:**
+- `VYVEHealth/vyve-capacitor` `3432aab` — 86 files, full Capacitor project state (iOS 1.2 + Android 1.0.2)
+- New GitHub fine-scoped PAT created (vyve-capacitor, Contents R/W, expires 7 May 2027) — log rotation calendar entry
+- New Supabase Management PAT (`SUPABASE_MGMT_PAT` secret, expires 6 Jun 2026) — log rotation calendar entry, must be re-issued before next session per chat exposure
+
+**New §23 hard rules (added below)** — three: (a) brain §24 reconciliation discipline whenever stale flag is suspected, (b) credentials surfaced in chat or screenshots must be rotated before they're used recurringly, (c) bulk EF-source operations belong in server-side EFs not chat fetch loops.
+
+---
+
 ## 2026-05-07 PM-3 (Security commit 3 · gdpr-export EFs + cron + storage bucket + settings UI · LIVE)
 
 **What shipped — Supabase migrations + 2 EF deploys + cron + vyve-site `952c4275`:**
