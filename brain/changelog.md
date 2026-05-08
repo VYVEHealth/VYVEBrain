@@ -1,3 +1,64 @@
+## 2026-05-08 PM-12 (engagement.html + habits.html cache-paint-before-auth + index habits prefetch)
+
+Lewis reported engagement and habits both loading slowly post-PM-11. Cause was NOT PM-11 — pre-flight grep showed both pages had a paint-timing bug that long predated this week's perf work and only became noticeable as the rest of the platform got faster. Audit-style diagnosis below; fix shipped same session.
+
+### Diagnosis
+
+PM-3/4/5 set up the cache-paint-before-auth pattern only on `index.html`. engagement.html and habits.html ship the same cache logic — they have correct `vyve_engagement_cache` / `vyve_habits_cache_v2` reads with the same 24h TTL gate — but the paint code lives inside `loadPage()` / `loadHabitsPage()` which are wired to fire on the `vyveAuthReady` event:
+
+```js
+// engagement.html v(pre-PM-12)
+if (window.vyveCurrentUser) { loadPage(); }
+else { window.addEventListener('vyveAuthReady', () => loadPage(), { once: true }); }
+```
+
+Result: on every navigation, the cache-paint waits for the full deferred auth chain (theme.js + auth.js + achievements.js + offline-manager.js) to parse and execute. On a fast device with warm SW cache that's still 100-300ms; on a cold device coming from a different page it can be 500ms+. The cache itself was being warmed correctly (engagement_cache populated by index.html's fan-out since PM-2 06 May; habits cache populated by habits.html's own load) — the paint was just artificially delayed.
+
+The PM-3 hard rule "cache paint runs before auth, not inside `onAuthReady`" was authored as a general principle but only ever enforced on index. The PM-10 audit didn't catch this drift because it was looking for missing-cache-paint-code, not wrong-paint-timing. Both engagement and habits HAVE the cache code — it just doesn't fire fast enough.
+
+### Fix
+
+Three pages touched in `vyve-site/3fcd9169`. Five conceptual changes, all small surgical edits.
+
+**engagement.html** —
+- `loadPage()` now discovers email from any source synchronously: `window.vyveCurrentUser` first, then `vyve_engagement_cache.email` (since the cache stores email), then `_vyveWaitAuth()` as a final fallback. Cache paint runs as soon as email is known, regardless of whether auth.js has finished loading.
+- The network refresh fetch awaits `_vyveWaitAuth()` so it gets a real JWT.
+- `_renderedFromCache` flag now also gates the `/login.html` redirect — if we painted from cache and the JWT fetch fails, we don't yank the user to login on top of valid cached data.
+- Wiring at bottom changed from auth-event-listener to immediate `loadPage()` call.
+
+**habits.html** —
+- Identical pattern. `loadHabitsPage()` discovers email via cache, paints, then awaits auth before the parallel `supa()` fetches.
+- Wiring at bottom changed from `waitForAuth()` (which itself listened on `vyveAuthReady`) to immediate `loadHabitsPage()` call.
+
+**index.html** —
+- Extended `_vyvePrefetchNextTabs()` with a third idle-time fetch wave that warms `vyve_habits_cache_v2` for users coming from index. Pulls `member_habits` (with library JOIN) + today's `daily_habits` in parallel, writes the composite cache shape habits.html expects. Engagement cache was already fanned out from the `member-dashboard` payload at index render time (PM-2 06 May fan-out) so no prefetch change needed there — the bug was purely paint-timing on engagement, not a missing prefetch.
+
+**`_vyveWaitAuth()` helper** added to engagement and habits — robust auth-ready waiter that handles the timing edge case where `window.VYVE_AUTH_READY` Promise hasn't been created yet (auth.js is deferred and executes after the inline script reaches its wiring). Three-way fallback: existing `vyveCurrentUser` → `VYVE_AUTH_READY` Promise (if it exists, OR via polling for late appearance) → `vyveAuthReady` event listener, with a 5s timeout safety net. Helper is small enough to copy verbatim per page, which is the right shape — extracting to a shared file would create another deferred-script load dependency we don't want on the cache-paint path.
+
+**SW cache key** `vyve-cache-v2026-05-08-theme-throttle-8` → `vyve-cache-v2026-05-08-paint-engagement-habits-9` so existing members get the new HTML on next navigation.
+
+### Verification
+
+- node --check on every inline JS block in engagement.html, habits.html, index.html: clean (8/8 blocks).
+- node --check on sw.js: clean.
+- Post-commit Contents API verification on all 4 files: byte-match.
+- Behaviour preserved for first-time visits (no cache → email discovery falls through to `_vyveWaitAuth`, then proceeds as before).
+- Behaviour preserved for offline visits (cache-only path unchanged, just runs sooner now).
+
+### Codified
+
+New §23 hard rule: cache-paint-before-auth is a contract every gated page must hold, not a one-time index.html setup. Two satisfying patterns documented (sync IIFE, or immediate-`loadPage` with cache-discovered email). Greppable check listed: `grep -n "vyveAuthReady', () => load" *.html` should return zero hits across the portal.
+
+### Time
+
+~90 min Claude-assisted including the diagnosis pass.
+
+### Side note on the PM-10 audit
+
+This is a paint-timing miss in the audit. The audit looked at member-dashboard's query count and the cache infrastructure but didn't audit per-page paint timing. Adding to the audit's "what was deliberately not included" list: per-page paint timing. The static-evidence approach of the PM-10 audit doesn't catch timing bugs that only show up at deferred-script-load time — only browser-level timing instrumentation would. The deferred telemetry shim (P2-X in the audit) is the right tool for catching the next one of these; treat it as more important than originally tiered now that we know paint-timing drift slips through static review.
+
+---
+
 ## 2026-05-08 PM-11 (P0-1 charity counter incremental rewrite + P2-1 theme.js fetch throttle · both shipped)
 
 Two of the PM-10 audit's ship-now items closed. Audit said 3-4h for P0-1 and 30 min for P2-1, ~half-day combined; landed in a single session with full verification on both.

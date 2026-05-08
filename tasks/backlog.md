@@ -1,3 +1,11 @@
+## Added 08 May 2026 PM-12 (engagement + habits paint-timing fix shipped)
+
+- ✅ **CLOSED — engagement.html + habits.html cache-paint-before-auth.** vyve-site `3fcd9169`. Both pages now discover email from cache synchronously, paint without waiting for auth.js to load, then await auth internally for the network refresh. _vyveWaitAuth() helper added to both. Index prefetch wave extended to warm vyve_habits_cache_v2. SW cache `theme-throttle-8` → `paint-engagement-habits-9`. New §23 hard rule codified.
+
+- 📋 **NEW (medium priority) — Paint-timing audit on every other gated portal page.** PM-12 found two pages with the wrong-paint-timing bug despite both having cache-paint CODE. Need to grep across the rest of the portal for the same anti-pattern: any page where cache-read lives inside a function that's wired to `addEventListener('vyveAuthReady', ...)`. Candidates to check explicitly: workouts.html, exercise.html, leaderboard.html, certificates.html, sessions.html, nutrition.html, log-food.html, settings.html, wellbeing-checkin.html, running-plan.html. Greppable check: `grep -n "vyveAuthReady', () => load" *.html` should return zero hits. Estimate ~30 min to audit, ~30 min per page found to fix. Likely 2-3 pages affected.
+
+- 📋 **PROMOTED — Telemetry shim from PM-10 audit P2.** Re-tiered up. PM-12 was a paint-timing miss in the static audit; only browser-level timing instrumentation would have caught it. Build the `?perf=1` gated `perf.js` + `perf_telemetry` table + `log-perf` EF when bandwidth allows — it's the only way to catch the next paint-timing drift before users do.
+
 ## Added 08 May 2026 PM-11 (P0-1 + P2-1 shipped)
 
 - ✅ **CLOSED P0-1 — `get_charity_total()` → `platform_counters` increment-on-write.** Migration `p0_1_charity_total_incremental_counter`. New table + 6 trigger fns + bump helper + reconcile-and-heal cron (jobid 23, `vyve_charity_reconcile_daily` 02:30 UTC). Backfilled to 444 byte-matching legacy. EXPLAIN ANALYZE 127.5ms → 0.93ms (137× faster, scale-flat). Stress test verified cap=1 and cap=2 paths both correct. New §23 hard rule codified for the incremental-aggregate pattern.
