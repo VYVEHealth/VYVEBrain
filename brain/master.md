@@ -1,6 +1,6 @@
 # VYVE Health — Brain Master
 
-> Single source of truth for the whole business. Full rewrite 28 April 2026 PM (not a patch). Captures live state through iOS 1.2 approval + autotick sessions 1–3a + push notifications sessions 1 + 2 item 1 + sw.js handler patch inclusive. Patched 8 May PM-3 (§23 cache-paint-before-auth hard rule) without full rewrite. Supersedes the 24 April rewrite. If this drifts from live reality, rewrite it fully again — do not paper over.
+> Single source of truth for the whole business. Full rewrite 28 April 2026 PM (not a patch). Captures live state through iOS 1.2 approval + autotick sessions 1–3a + push notifications sessions 1 + 2 item 1 + sw.js handler patch inclusive. Patched 8 May PM-3/PM-4 (§23 cache-paint-before-auth hard rule + 5 more pages migrated + workouts gap-fills) without full rewrite. Supersedes the 24 April rewrite. If this drifts from live reality, rewrite it fully again — do not paper over.
 
 ---
 
@@ -1233,7 +1233,7 @@ Rationale: `auth.js` stores its session under `localStorage.vyve_auth` (Supabase
 
 Don't use bespoke per-page TTL gates. Paint the cache regardless of age — fresh fetch always overwrites (model: `index.html`). Short TTLs cause unnecessary skeleton flashes mid-day.
 
-Pages that already follow this pattern (post 08 May PM-3): `index.html`, `settings.html`, `exercise.html`, `movement.html`, `certificates.html`. Pages still on the old "paint inside onAuthReady" pattern: `nutrition.html`, `log-food.html`, `leaderboard.html`, `sessions.html`, `engagement.html`, `monthly-checkin.html`, `wellbeing-checkin.html`, `running-plan.html`. These get the migration in Session 2.
+Pages that follow this pattern (post 08 May PM-4): `index.html`, `settings.html`, `exercise.html`, `movement.html`, `certificates.html`, `nutrition.html`, `log-food.html`, `leaderboard.html`, `engagement.html`, `running-plan.html`. Pages where the pattern doesn't apply (no fetch, or content is form-fill not display of historical data): `sessions.html`, `monthly-checkin.html`, `wellbeing-checkin.html`.
 
 Companion rule: when adding a cache-write site, double-check the truthiness gate. The certificates.html bug from 08 May (`if (data.error)` instead of `!data.error`) silently broke cache writes for months. Always test the cache-write path actually fires on a successful response.
 

@@ -1,3 +1,49 @@
+## 2026-05-08 PM-4 (Cache-paint-before-auth: 5 more pages + workouts gap-fills)
+
+**Session shape.** Continuation of PM-3. Migrate the cache-paint-before-auth pattern across the remaining portal pages members hit frequently, then close the workouts gap-fills (`loadExerciseNotes`, `loadLibrary`, `loadPausedPlans` were the three uncached loaders identified during the PM-3 audit).
+
+Three atomic site commits:
+- `b4adf8ef` — nutrition.html, log-food.html, leaderboard.html, engagement.html, running-plan.html. Same IIFE-before-auth pattern as PM-3. Each page paints from its bespoke cache the moment the script parses, fully independent of SDK loading.
+- `2d658e0e` — workouts-notes-prs.js (loadExerciseNotes wrapped with VYVEData.fetchCached), workouts-library.js (loadLibrary + loadPausedPlans wrapped with VYVEData.cacheGet/Set + fetchCached respectively).
+- sw.js bumped twice across the two site commits: `v2026-05-08-cache-paint-pages-2`, `v2026-05-08-workouts-cache-3`.
+
+### Pages skipped this session (low-value targets)
+
+- `sessions.html` — no fetch, static schedule page, nothing to cache. Even after future content updates, it's session-list rendering from build-time HTML.
+- `monthly-checkin.html` — monthly visit to fill out a form, render is the form not historical data.
+- `wellbeing-checkin.html` — weekly form-fill page, same logic. fetchMemberData/fetchWellbeingHistory pull this-week data which can't usefully cache (member is on the page to log fresh data).
+
+### Workouts page state — pre vs post PM-4
+
+Pre-PM-3 state per the brain audit: `loadProgramme` ✅, `loadAllExercises` ✅, `loadExerciseHistory` ✅, `loadCustomWorkouts` ✅, `loadExerciseNotes` ❌, `loadLibrary` ❌, `loadPausedPlans` ❌.
+
+Post-PM-4: all 7 loaders now cache-first.
+
+### Verification
+
+- node --check on every inline `<script>` block in 5 modified HTML files.
+- node --check on workouts-notes-prs.js, workouts-library.js, sw.js.
+- Isolated runtime test of each `paintXxxCacheEarly` IIFE with stubbed localStorage + DOM + render fns. All 5 IIFEs (engagement, leaderboard, nutrition, log-food, running-plan) execute cleanly on warm-cache scenarios.
+- Post-commit byte-for-byte re-fetch of all 9 files via Contents API. All match.
+
+### Notes / risks accepted
+
+- **leaderboard.html**: `loadLeaderboard`'s online-path cache-read at L675 will re-render after the early IIFE has already painted from the same cache. Wasted render cycle, not a bug. Will tidy if anyone notices.
+- **running-plan.html**: if `vyve_auth.user_metadata.first_name` is missing, early paint falls back to email-prefix. `waitForAuth`'s later resolution picks up the canonical given_name and re-renders if different.
+- **workouts saveExerciseNote**: doesn't explicitly invalidate `exercise_notes:<email>` cache. In-memory `exerciseNotes` map gets the new value immediately so the UI is correct; cache is one fetchCached cycle behind. Acceptable.
+- **workout_library_v1**: cache key has no TTL — relies on background refresh on every loadLibrary call. If new programmes ship to the EF, members see cached version paint first then fresh swap in. Standard cache-first.
+
+### What's next
+
+Two open follow-ups from the perf project:
+
+- Session 4 — eager prefetch from `index.html` for the top 3 nav targets after first paint, plus `touchstart` prefetch on nav buttons. Network-aware gate (`navigator.connection.effectiveType`). Closes the first-tap-of-the-session gap that cache-first can't fix.
+- Session 5 — auth.js promise refactor (top of backlog as P1). Get auth.js back to `defer`, regain the preconnect/preload perf hints. ~150-300ms first-paint win.
+
+The drafted `paintCacheFirst` infra in vyve-offline.js is still NOT shipped — none of the migrations needed it. Each page either had bespoke cache infra worth preserving, or used the existing `VYVEData.fetchCached`/`cacheGet`/`cacheSet` helpers. Drop the drafted infra unless a future page genuinely needs it.
+
+---
+
 ## 2026-05-08 PM-3 (Cache paint runs synchronously, before auth/SDK · 4 pages · 1 bug fix)
 
 **Session shape.** Member feedback: "every page has to load once clicked" — feels slower than Strava. Initial hypothesis was missing per-page caches, but live audit (settings.html, exercise.html, movement.html, certificates.html, workouts modules) showed every page already has its own bespoke cache key with cache-first paint logic. The real bottleneck: cache paint code is gated **inside `onAuthReady`**, so it doesn't run until the Supabase SDK has loaded + initialised + the optimistic fast-path has fired. On a cold page navigation the member waits for HTML parse → JS parse → SDK download (preloaded but still parses ~50–200ms) → SDK parse → client init → fast-path read of `vyve_auth` → dispatch `vyveAuthReady` → the page's `onAuthReady` finally reads cache and paints. The cache paint should happen *before* any of that.

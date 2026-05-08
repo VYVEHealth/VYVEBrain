@@ -1,3 +1,15 @@
+## Added 08 May 2026 PM-4 (Cache-paint-before-auth migration · 5 more pages + workouts gap-fills shipped)
+
+- ✅ **CLOSED — Session 2: cache paint runs before auth on 5 more pages.** vyve-site `b4adf8ef`. nutrition.html, log-food.html, leaderboard.html, engagement.html, running-plan.html. Three pages skipped as low-value (sessions/monthly-checkin/wellbeing-checkin — see §changelog PM-4 for rationale).
+
+- ✅ **CLOSED — Session 3: workouts gap-fills.** vyve-site `2d658e0e`. loadExerciseNotes (workouts-notes-prs.js), loadLibrary + loadPausedPlans (workouts-library.js) all wrapped with VYVEData cache-first helpers. Workouts page now has cache-first paint on all 7 boot loaders.
+
+- 📋 **Session 4: prefetch top nav targets from index.html.** Fire background fetches for the top 3 nav buttons after first paint completes. Plus `touchstart` prefetch on nav buttons. Wifi-only gate via `navigator.connection.effectiveType`. Closes the first-tap-of-the-session gap that cache-first can't fix on its own. Estimated 2–3h.
+
+- 📋 **Session 5: auth.js promise refactor (top of backlog as P1).** `auth.js` is non-deferred across 14 portal pages because its globals must exist before inline body scripts execute. Refactor into a `window.VYVE_AUTH_READY` Promise that resolves once SDK + client + getSession() have settled. Then auth.js can go back to `defer`, regaining the ~150–300ms preconnect/preload perf hint win. Independent of cache work. Estimated 1–2h once design is locked.
+
+- 🗑️ **DROPPED — Ship `paintCacheFirst` helper to vyve-offline.js.** Drafted PM-3 but never needed. Every page audited had either bespoke cache infra worth preserving or could use existing VYVEData.fetchCached/cacheGet/cacheSet helpers. Drafted code lives in /mnt/files/_new_helpers.txt locally if any future page genuinely needs the pattern. Don't ship dead infra.
+
 ## Added 08 May 2026 PM-3 (Cache-paint-before-auth shipped on 4 pages · perf project ongoing)
 
 - ✅ **CLOSED — Cache paint runs synchronously before auth on settings/exercise/movement/certificates.** Plus `data.error → !data.error` cache-write bug fix on certificates.html. vyve-site `29ada8f8`. SW key `v2026-05-08-cache-paint-early`.
