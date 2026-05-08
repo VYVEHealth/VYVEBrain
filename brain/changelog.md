@@ -1,3 +1,72 @@
+## 2026-05-08 PM-11 (P0-1 charity counter incremental rewrite + P2-1 theme.js fetch throttle · both shipped)
+
+Two of the PM-10 audit's ship-now items closed. Audit said 3-4h for P0-1 and 30 min for P2-1, ~half-day combined; landed in a single session with full verification on both.
+
+### P0-1 — `get_charity_total()` rewrite (137× faster, scale-flat)
+
+**The shape.** Pre-migration `get_charity_total()` was a 6-table UNION ALL with GROUP BY that scaled linearly in total platform activity, called on every dashboard load. PM-10 audit ranked it #1 in `pg_stat_statements` (577 seconds total exec time, 190ms mean, 3037 calls). EXPLAIN ANALYZE at 32 members: 127.5ms execution, 1382 shared buffer hits. Projection: 30s+ at 100K members, exceeds `work_mem` (2.1MB) and would hit `statement_timeout` floor.
+
+The fix is the standard incremental-counter pattern: single-row-per-counter table, AFTER INSERT/DELETE triggers that bump ±1 on cap boundary crossings, O(1) read.
+
+**Migration shipped: `p0_1_charity_total_incremental_counter`.**
+
+- `platform_counters` table (PK `counter_key`, single row keyed `'charity_total'`, RLS `false` policy = service-role only via `bump_*` SECURITY DEFINER helpers).
+- `bump_charity_total(p_delta)` SECURITY DEFINER helper — single place that does `UPDATE platform_counters SET counter_value = GREATEST(counter_value + p_delta, 0)`. The `GREATEST(..., 0)` floor protects against any future trigger bug from driving it negative.
+- 6 charity-specific trigger functions (`charity_count_daily_habits/workouts/cardio/session_views/replay_views/wellbeing_checkins`), each handling INSERT branch + DELETE branch:
+  - **Cap=1 sources (daily_habits, wellbeing_checkins):** insert with no sibling on the (member, date) or (member, iso_year, iso_week) key bumps +1; delete with no sibling on that key bumps -1.
+  - **Cap=2 sources (workouts, cardio, session_views, replay_views):** insert with `sibling_count < 2` on (member, date) bumps +1 (the 3rd same-day insert is a no-op); delete uses the equivalence "decrement only if `sibling_count + 1 <= 2`" — i.e. before the delete we were inside the cap band, so removing one decrements; if we were outside (had 3+ rows), removing one keeps us at the cap-2 ceiling and we don't decrement. Verified by stress test in this session that intentionally bypassed the manual cap via healthkit-source rows to land 3 in the cap band.
+- Triggers attached `AFTER INSERT OR DELETE` on each source table, separately from the existing `counter_*` triggers (which feed per-member `members.cert_*_count`). Layered, not replacing — the two families share cap math but write to different surfaces.
+- Backfill: `INSERT ... ON CONFLICT DO UPDATE` seeds `counter_value` from the legacy scan recompute. Came out **444**, matching `get_charity_total()` byte-identically.
+- New `get_charity_total()` body: `SELECT COALESCE(counter_value, 0)::integer FROM platform_counters WHERE counter_key = 'charity_total'`.
+
+**Verification.**
+- Counter == legacy scan == new fn: all 444. Drift 0.
+- EXPLAIN ANALYZE new fn: **0.93ms execution (was 127.5ms)**, planning 0.041ms, 180 shared buffers (mostly fn-wrapper overhead; the actual read is 1 row).
+- Stress test in same session via DO block: insert 1st habit (cap=1) → +1, insert 2nd same day → no-bump, delete 2nd → no-bump (sibling exists), delete 1st → -1 back to baseline. Then workouts (cap=2): insert 1st → +1, insert 2nd → +1 (now at cap), insert 3rd via `source='healthkit'` to bypass `enforce_cap_workouts` BEFORE INSERT trigger → no-bump (already capped at 2), delete 3rd → no-bump (still 2 in cap band), delete 2nd → -1, delete 1st → -1, baseline. **All 4 transitions correct on both cap families.**
+
+**Self-healing reconciliation cron.** Added `vyve_charity_reconcile_daily` (jobid 23, schedule `30 2 * * *` — between recompute_company_summary at 02:00 and platform_metrics at 02:15). The cron calls `charity_total_reconcile_and_heal()` which: recomputes via the legacy 6-table UNION (kept inside the function body for this purpose — that's where the scan should live, not on the read path), compares to the cached counter, on drift it `UPDATE`s the counter to the recomputed truth value AND inserts a `platform_alerts` row of type `charity_counter_drift` with `severity='warning'` and the cached/recomputed/drift in the details JSON. Drift never accumulates beyond 24h. The non-healing variant `charity_total_reconcile()` is also kept for ad-hoc inspection.
+
+**Edges + gotchas codified into §23 hard rules.**
+- Pattern is generalisable: any future platform-wide aggregate (total active days, total kg lifted, etc.) should follow this shape — counter table + bump triggers + reconcile-and-heal cron — not a scan on read.
+- Sibling trigger families (`charity_count_*` and `increment_*_counter`) share cap math but write to different surfaces. Future cap-rule changes must update BOTH families or we get drift between `charity_total` and per-member `cert_*_count`.
+- `replay_views` had no `counter_replays` trigger pre-PM-11 — it was contributing to the legacy `get_charity_total()` scan but not to per-member cert counters. The new `charity_count_replay_views` trigger fixes that for the platform aggregate; per-member cert tracking for replays remains unchanged (they currently fold into `cert_sessions_count` via `replay_views_cert_count_trigger`).
+
+**Time:** ~2h Claude-assisted, single session. Audit estimated 3-4h.
+
+### P2-1 — `theme.js` Supabase fetch throttle (1h TTL)
+
+**The shape.** PM-10 audit caught `theme.js` running a Supabase fetch on every page load (5247 calls in pg_stat_statements, 22s total exec time). Cross-device sync should run once per session, not per navigation.
+
+**vyve-site `7ff486f4`.** Two patches in one file plus SW cache key bump.
+
+`theme.js`:
+- New `SYNC_TTL_MS = 60 * 60 * 1000` constant + `vyve_theme_synced_at` localStorage stamp key.
+- `trySyncFromSupabase()` checks the stamp first; skip the fetch entirely if `Date.now() - stamp < SYNC_TTL_MS`.
+- Stamp updated on every successful response (even null/empty rows — those were the empirical majority).
+- `vyveSetTheme()` refreshes the stamp when it writes through to Supabase, so the next page load sees a fresh stamp and skips the read.
+
+`sw.js` cache key bumped `vyve-cache-v2026-05-08-prefetch-exercise-7` → `vyve-cache-v2026-05-08-theme-throttle-8` so existing members get the new theme.js on next navigation.
+
+**Verification.**
+- `node --check` on theme.js + sw.js: clean.
+- Post-commit Contents-API verification: theme.js 5427 bytes, sw.js 6164 bytes, both match local exactly.
+- First-load path preserved: stamp absent on first ever visit → fetch fires once → stamp set → next 60 minutes skip.
+
+**Edge case.** Cross-device divergence is rare in practice (vyveSetTheme writes through to both surfaces synchronously) and a 1h propagation delay on the rare divergent case is acceptable — themes don't change often. Codified as a §23 hard rule: any other `members`-row preference (notifications, display name, etc.) should follow the same throttled-sync pattern, never per-page-load fetches.
+
+**Time:** ~30 min Claude-assisted.
+
+### What's left from the PM-10 audit
+
+Pre-launch tier still queued:
+- **P0-2** — `recompute_all_member_stats()` LEFT JOIN cartesian explosion rewrite. 1h.
+- **P1-1** — member-dashboard reads state columns + parallelises achievements inflight loop. 4h.
+- **P1-2** — leaderboard snapshot table + cron. 4-6h.
+
+At-scale tier (P2-2, P3-1, P3-2, telemetry shim) remain backlogged.
+
+---
+
 ## 2026-05-08 PM-10 (Full-platform perf audit · static evidence pass · no code shipped)
 
 Working session: end-to-end perf audit post-PM-9. Goal: identify perceived-load-speed bottlenecks at 32 members today and project the curve to 1K / 10K / 100K members. Tier each finding ship-now / pre-launch / at-scale. Ground rule: audit-only, no code shipped unless a finding crossed the ship-now bar (DB-meltdown threshold).

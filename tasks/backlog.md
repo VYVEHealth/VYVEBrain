@@ -1,3 +1,15 @@
+## Added 08 May 2026 PM-11 (P0-1 + P2-1 shipped)
+
+- ✅ **CLOSED P0-1 — `get_charity_total()` → `platform_counters` increment-on-write.** Migration `p0_1_charity_total_incremental_counter`. New table + 6 trigger fns + bump helper + reconcile-and-heal cron (jobid 23, `vyve_charity_reconcile_daily` 02:30 UTC). Backfilled to 444 byte-matching legacy. EXPLAIN ANALYZE 127.5ms → 0.93ms (137× faster, scale-flat). Stress test verified cap=1 and cap=2 paths both correct. New §23 hard rule codified for the incremental-aggregate pattern.
+
+- ✅ **CLOSED P2-1 — `theme.js` skip Supabase fetch if localStorage is fresh.** vyve-site `7ff486f4`. 1h TTL via `vyve_theme_synced_at` stamp; `vyveSetTheme()` refreshes the stamp on write-through. SW cache `prefetch-exercise-7` → `theme-throttle-8`. node --check clean both files. Post-commit Contents-API verification: 5427 + 6164 bytes both match. New §23 hard rule for member-pref throttled-sync pattern.
+
+- 📋 **NEW (low priority) — Generalise the `bump_*_counter` helper.** Currently `bump_charity_total(p_delta)` is hardcoded to `counter_key = 'charity_total'`. When the next platform-wide aggregate ships, refactor into a generic `bump_platform_counter(p_key, p_delta)` so we don't fan out the same SECURITY DEFINER pattern. Not urgent — current shape is fine for one counter.
+
+- 📋 **NEW (low priority) — Sibling-trigger family alignment.** `charity_count_*` family and `increment_*_counter` family share cap math but write to different surfaces. Future cap-rule changes must update BOTH or we get drift between `platform_counters.charity_total` and `members.cert_*_count`. Worth a comment in `set_activity_time_fields` and the cap functions pointing at the two trigger families. ~15 min cleanup.
+
+- 📋 **NEW (low priority) — `replay_views` per-member cert tracking gap.** PM-11 added charity_total tracking for replays, but the per-member `cert_*_count` family still doesn't track replays separately — they fold into `cert_sessions_count` via `replay_views_cert_count_trigger`. Probably correct for current product framing (replays + live sessions = one cert track) but flag for future product reviews.
+
 ## Added 08 May 2026 PM-10 (Perf audit playbook · ship-now and pre-launch items)
 
 Full audit at `/playbooks/perf-audit-2026-05-08.md` — read first before actioning any item below. Each entry below is a one-line pointer; the playbook has EXPLAIN ANALYZE evidence, fix shapes, time + risk + sign-off per item.
