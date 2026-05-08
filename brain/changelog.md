@@ -1,3 +1,48 @@
+## 2026-05-08 PM-13 (SW precache engagement+workouts · habits prefetch out of idle)
+
+Dean reopened the cache-paint perf project after Lewis flagged habits and engagement still feeling slow. The session prompt assumed Session 5 (auth.js defer + Promise) was still pending — pre-flight against the brain showed PM-6 had already shipped that work, plus PM-7 SWR HTML, plus PM-12 had retrofitted engagement and habits with the same cache-paint pattern as index. So architecturally everything was already in place. Drilled into why the symptom persisted.
+
+### Diagnosis
+
+Two concrete gaps caught:
+
+1. **`engagement.html` and `workouts.html` were missing from the SW precache list** (`urlsToCache` in `sw.js`). habits.html and nutrition.html were precached but engagement and workouts weren't. SWR was wired correctly — it just had nothing to revalidate from on first navigation. So the first tap on engagement after install paid full HTML download (~85KB) over the network even with PM-7's SWR live, because there was no cache to fall back to. PM-12 made engagement render fast *given a populated localStorage cache*, but it didn't fix the HTML arrival itself.
+
+2. **The habits prefetch from index.html was idle-gated.** PM-12 added a `_idle()` block in `_vyvePrefetchNextTabs` that fetches `member_habits` + today's `daily_habits` and writes `vyve_habits_cache_v2`. `_idle` resolves to `requestIdleCallback` (or `setTimeout(fn, 1500)` on Safari). For a user tapping habits within ~1.5s of the home page rendering, the prefetch hadn't fired and habits.html had no cache to paint from. The engagement and certs caches don't have this problem — they're populated synchronously in `loadDashboard` by cloning the `member-dashboard` response into their respective keys, no idle gate.
+
+### Site changes (vyve-site `186b432944`)
+
+**sw.js (+47 chars):**
+- Added `/engagement.html` and `/workouts.html` to `urlsToCache`. They join `/habits.html`, `/nutrition.html`, `/exercise.html`, `/sessions.html`, `/movement.html`, `/cardio.html`, `/certificates.html`, `/certificate.html` — the existing precached portal pages. With this commit, the SW caches every member-facing post-login HTML at install time, so SWR has cache to serve from on the first navigation.
+- Cache key bump: `vyve-cache-v2026-05-08-paint-engagement-habits-9` → `vyve-cache-v2026-05-08-precache-engagement-workouts-a`.
+
+**index.html (+309 chars):**
+- Replaced the `_idle(function(){ … habits prefetch … })` block with `Promise.resolve().then(function(){ … habits prefetch … })`. Microtask scheduling — runs after current frame, doesn't block render, fires immediately rather than ~1.5s later. The two REST calls inside (`member_habits` JOIN + `daily_habits`) still run in parallel via `Promise.all`. Members and programme prefetches stay `_idle`-gated — they're heavier, less critical, and worth letting render breathe first.
+
+### What was *not* changed
+
+- engagement and certs caches: already populated synchronously by `loadDashboard` cloning the `member-dashboard` response. Adding them to the prefetch helper would be redundant.
+- workouts.html boot path: still reads `vyve_programme_cache_<email>` via the existing idle-gated prefetch. Workouts is heavier (full programme JSONB), tapped less often than habits immediately after home, and the cache-paint-before-auth pattern there is already correct from PM-3/4. Left alone deliberately.
+
+### Verification
+
+- `node --check` on patched sw.js (clean).
+- All 8 inline scripts in patched index.html parsed clean (`node --check` on each block).
+- Pre-commit SHA refresh on both paths.
+- Post-commit byte-for-byte verification via Contents API (live SHA, not raw CDN per §23 rule): both files match expected content exactly.
+
+### Risks accepted
+
+- SW precache install size grows by ~140KB (engagement.html 86KB + workouts.html 49KB + small overhead). For members on cellular at first install this is a real cost. Trade-off: paying it once at install vs paying it on every cold first-tap to engagement or workouts. The latter is what members notice; the former is invisible.
+- Lifting habits prefetch to microtask means it fires concurrently with the dashboard's own render path. Both calls share the same `jwt` and run against PostgREST — small risk of contention with `member-dashboard` EF on the database side, but member_habits + daily_habits are tiny indexed lookups and dashboard EF is a different code path. Negligible in practice.
+- Did not address the cold-cache-first-visit case (member with no cache, tapping engagement before index has run at all). That requires either eager prefetch on login or a more aggressive SW pre-population strategy. Out of scope here — the dominant complaint is repeat-session slowness, not first-ever-install.
+
+### Closing the perf project (again)
+
+PM-6 closed it. PM-7 closed it. PM-12 closed it. PM-13 closes it. The pattern is: each closure was correct given what was visible at the time, and each subsequent reopen was a real symptom that the prior round didn't anticipate. Shipping this one without the fanfare of "project closed" — if Lewis comes back tomorrow with another symptom, the project reopens.
+
+---
+
 ## 2026-05-08 PM-12 (engagement.html + habits.html cache-paint-before-auth + index habits prefetch)
 
 Lewis reported engagement and habits both loading slowly post-PM-11. Cause was NOT PM-11 — pre-flight grep showed both pages had a paint-timing bug that long predated this week's perf work and only became noticeable as the rest of the platform got faster. Audit-style diagnosis below; fix shipped same session.

@@ -1,3 +1,13 @@
+## Added 08 May 2026 PM-13 (SW precache + habits prefetch out of idle)
+
+- ✅ **CLOSED — engagement.html + workouts.html added to SW precache list.** vyve-site `186b432944`. PM-12 left these two pages un-precached so first-navigation HTML arrival was network-bound even with PM-7 SWR. Now both join habits/nutrition/exercise/sessions/movement/cardio/certificates in `urlsToCache`. Trade-off: ~140KB extra at install for first-tap-no-wait afterwards.
+
+- ✅ **CLOSED — Habits prefetch lifted out of `requestIdleCallback`.** vyve-site `186b432944`. Was `_idle(...)` (~1.5s on Safari via setTimeout fallback). Now microtask via `Promise.resolve().then(...)` — runs after current frame, fires before user can tap habits. Members + programme prefetches stay idle-gated.
+
+- 📋 **NEW (low priority) — Cold-cache-first-visit case for engagement.** Member with no cache who taps engagement before index has run hits full network round trip. Possible fixes: (a) eager prefetch on login (move out of `loadDashboard` into `auth.js` post-getSession), (b) more aggressive SW pre-population. Don't ship until we have evidence it's a real symptom — most users hit home first.
+
+- 📋 **NEW (low priority) — Workouts cold-tap parity.** Workouts.html now in SW precache but the `vyve_programme_cache_<email>` prefetch is still idle-gated. If members report workouts feels slow after engagement is faster, lift it to microtask too. Heavier than habits so left idle-gated for now.
+
 ## Added 08 May 2026 PM-12 (engagement + habits paint-timing fix shipped)
 
 - ✅ **CLOSED — engagement.html + habits.html cache-paint-before-auth.** vyve-site `3fcd9169`. Both pages now discover email from cache synchronously, paint without waiting for auth.js to load, then await auth internally for the network refresh. _vyveWaitAuth() helper added to both. Index prefetch wave extended to warm vyve_habits_cache_v2. SW cache `theme-throttle-8` → `paint-engagement-habits-9`. New §23 hard rule codified.
