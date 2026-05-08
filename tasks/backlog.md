@@ -1,3 +1,13 @@
+## Added 08 May 2026 PM-29 (`bus.js` shipped — Layer 1b foundation for the cache-bus)
+
+- 📋 **OPEN (P0) — PM-30: Layer 1c-1 migration — habits → `bus.publish('habit:logged', ...)`.** First Layer 1c migration. habits.html (3 publish sites: log + autotick + undo) replaces three legacy primitive calls (`invalidateHomeCache` + `recordRecentActivity` + `VYVEAchievements.evaluate`) with one `bus.publish('habit:logged', { habit_id, is_yes, autotick? })`. Wire `vyve_habits_cache_v2` (currently uninvalidated — the scope-fix) as a bus subscriber that merges the just-logged entry into `logsToday`. Subscribers per taxonomy: habits.html (flip card UI), index.html (mark home stale), monthly-checkin.html (refresh week strip), achievements.js (debounced evaluate). PM-30 also adds `<script src="/bus.js" defer>` to habits.html / index.html / monthly-checkin.html script-tag chains since these pages now consume the bus. SW cache bump same commit. Single write surface, atomic commit.
+
+- 📋 **NEW (P3) — Add `<script src="/bus.js" defer>` to remaining portal pages as Layer 1c migrations consume them.** Today only index.html has the tag (PM-29). Each subsequent 1c-* migration adds it to the pages that page-specifically subscribe (e.g. PM-30 adds to habits.html + monthly-checkin.html). Eventually all standard portal pages will carry the script tag. Tracked here for visibility — not actionable as a standalone item; bundles into each 1c-* migration commit.
+
+- 📋 **NEW (P3) — Session-player pages (events-live / events-rp / session-live / session-rp) sign-out skips `auth:signed-out`.** PM-29 documented limitation. The inline `#logoutBtn` click handler bound at `auth.js:L93` (`vyveBindLogout`) does NOT route through `window.vyveSignOut`. If we ever care about consistent sign-out telemetry across all surfaces, replace the inline handler with a call to `window.vyveSignOut`. Low priority — full-screen session contexts are rare and the user is leaving anyway.
+
+- ✅ **CLOSED — PM-29 above.**
+
 ## Added 08 May 2026 PM-28 (cache-bus taxonomy patch · 1c-14 resolved · `vyve_dashboard_cache` deprecated · brain-only)
 
 - 📋 **NEW (P3) — Remove dead read at `achievements.js:L251`.** `replayUnseen()` reads `localStorage.getItem('vyve_dashboard_cache')` expecting shape `cached.data.achievements.unseen`. PM-28 whole-tree audit at HEAD `040c496d` confirmed zero writers tree-wide and zero producers of the `.unseen` shape — read is a no-op every time. Surgical removal of L251 (and the dependent L252-260 block; L262 `if (Array.isArray(unseen)...)` becomes unreachable). Bundle into PM-29 SW bump or a 1c-* migration commit — not worth a one-line standalone.
@@ -16,7 +26,7 @@
 
 - ✅ **CLOSED — PM-28: Cache-bus taxonomy patch committed to VYVEBrain.** Brain-only. Two sub-audits resolved (1c-14 → `workout:shared`, `vyve_dashboard_cache` → dead key) + PM-26 changelog editorial fix folded in (evaluate count corrected 20 → 16, invalidate-line text aligned with audit-history block). 5 surgical edits to `playbooks/cache-bus-taxonomy.md`, 1 prepend + 1 in-place edit to `brain/changelog.md`, 3 backlog mutations.
 
-- 📋 **OPEN (P0) — PM-29: Build `bus.js`.** API: `bus.publish(event, payload)`, `bus.subscribe(event, handler)`, `bus.unsubscribe(...)`. In-tab via CustomEvent on `window`. Cross-tab via `localStorage.setItem('vyve_bus', ...)` + `storage` event listener. Per-event handler chain. SW cache bump in same commit. Layer 1c starts after this.
+- ✅ **CLOSED — PM-29: `bus.js` shipped.** vyve-site `25b112e9`. New file `bus.js` (240 lines) with full publish/subscribe/unsubscribe API on `window.VYVEBus`, in-tab + cross-tab transport via `storage` event, auth bridge wrapping `vyveSignOut`, 43 of 43 self-tests passing. SW cache `pm27-outbox-a` → `pm29-bus-a`; `/bus.js` added to `urlsToCache`; script tag inserted at index.html:L302. No subscribers wired (Layer 1c work). See `playbooks/cache-bus-taxonomy.md` and PM-29 changelog entry.
 
 - ✅ **CLOSED — PM-25's "PM-18 ship-truth drift" finding withdrawn.** Whole-tree audit at PM-26 confirmed nav.js contains the touchstart wiring exactly as the PM-18 changelog claimed. Self-inflicted false negative from hand-picked file subset. New §23 hard rule (PM-26) codifies the audit-method discipline that prevents recurrence.
 

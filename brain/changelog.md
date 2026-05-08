@@ -1,3 +1,44 @@
+## 2026-05-08 PM-29 (`bus.js` shipped — Layer 1b foundation for the cache-bus)
+
+vyve-site `25b112e9`. Layer 1b done. Layer 1c migrations unblock starting PM-30.
+
+**`bus.js` (NEW FILE, 240 lines, ~10KB)** — in-app event bus + cross-tab transport. The single rail every Layer 1c migration publishes/subscribes through. API on `window.VYVEBus`: `publish(eventName, payload)`, `subscribe(eventName, handler)` (returns unsub fn), `unsubscribe(eventName, handler)`, `__inspect()` (debug only). Envelope shape per `playbooks/cache-bus-taxonomy.md`: `{ event, ts, email, origin: 'local'|'remote', txn_id, ...payload }`. `email` captured from `window.vyveCurrentUser` at publish-time. `txn_id` (uuid) reserved for future Layer-3 Realtime echo dedup. Event-name validation: `/^[a-z][a-z0-9_-]*:[a-z][a-z0-9_-]*$/i` — bad names log via `console.warn` and no-op.
+
+**Transport.** In-tab: subscriber map walked in registration order; each handler wrapped in try/catch so one bad handler can't break the chain. Cross-tab: `localStorage.setItem('vyve_bus', JSON.stringify(envelope))` then immediate `removeItem` (storage events fire on the write — value doesn't need to persist; key removal keeps localStorage clean and prevents stale envelope reads by tabs that open later). The `storage` event fires only in OTHER tabs of the same origin, so no echo-loop guard needed. Storage handler filters on `e.key === 'vyve_bus'`, ignores `newValue=null` (the paired removeItem signal), ignores malformed JSON.
+
+**Auth bridge.** Two integrations: (1) `vyveAuthReady` listener publishes `auth:ready` with `user_email`; (2) `window.vyveSignOut` (set by auth.js:L389) is wrapped so `auth:signed-out` publishes BEFORE redirect. Wrap is race-free: tries immediately at module load, falls back to a `vyveAuthReady` listener if `vyveSignOut` not yet defined. In live auth.js order, `vyveSignOut` is set at L389 and `vyveSignalAuthReady` runs at L482, so the auth-ready listener fires after the assignment. Idempotency flag `__busWrapped` prevents double-wrap. The legacy `vyveAuthReady` CustomEvent + `VYVE_AUTH_READY` Promise stay live for back-compat.
+
+**Documented limitation:** session-player pages (events-live, events-rp, session-live, session-rp) use an inline `#logoutBtn` click handler bound at `auth.js:L93` (`vyveBindLogout`) that does NOT route through `vyveSignOut`. Sign-outs from those rare full-screen contexts will not publish `auth:signed-out`. Acceptable; user is leaving the session anyway. Standard portal pages (index/habits/workouts/nutrition/settings/etc.) all route through `vyveSignOut` via nav.js:L311 (avatar panel — the main one users hit), settings.html:L1059, or workouts-config.js:L90.
+
+**Symbol-collision audit at HEAD `040c496d`** (whole-tree per §23): `VYVEBus`, `window.VYVEBus`, `vyve_bus` localStorage key, free `.publish()` and `.subscribe()` calls — only collision was `pushManager.subscribe()` in vapid.js (different object, safe). No conflicts.
+
+**Self-test: 43 of 43 passing** (in two harnesses with browser shims):
+- API surface, basic publish/subscribe, envelope shape (event/ts/email/origin/txn_id all populated correctly), payload spread, email captured at publish-time
+- Multi-subscriber registration-order delivery
+- Unsubscribe via returned fn AND explicit call
+- Bad handler doesn't break chain (verified with intentional throw)
+- Invalid event-name rejection (no colon, two colons, bad chars)
+- Cross-tab broadcast: localStorage write happens, key removed immediately, storage event fires remote delivery with `origin: 'remote'` and payload preserved
+- Storage filtering: non-bus keys ignored, `newValue=null` ignored, malformed JSON ignored without crash
+- Auth bridge in realistic auth.js load ordering: bus.js loads first → auth.js defines `vyveSignOut` → `vyveAuthReady` fires → wrap installs → user clicks logout → `auth:signed-out` published → original `vyveSignOut` still called → redirect proceeds. Idempotency flag verified.
+
+**SW + index.html updates landing in the same atomic commit:**
+- `sw.js` cache version `vyve-cache-v2026-05-08-pm27-outbox-a` → `vyve-cache-v2026-05-08-pm29-bus-a`. `/bus.js` added to `urlsToCache` (pre-cached on SW install).
+- `index.html`: `<script src="/bus.js" defer></script>` inserted at L302 between `auth.js` (L301) and `perf.js` (L303). `defer` so it loads after auth.js — at script-execution time, `vyveSignOut` may or may not be defined yet (depends on the auth.js async chain), but the wrap-after-vyveAuthReady listener catches the late case. Script tag will be added to other portal pages as Layer 1c migrations consume the bus page-by-page (no point adding it to every page now if no consumer is wired).
+
+**What this commit explicitly does NOT do (per Layer 1b scope):**
+- Wire any subscribers — Layer 1c-* work, one write surface per session, starting PM-30 with 1c-1 (habits → `bus.publish('habit:logged', ...)` + `index.html`/`monthly-checkin.html` subscribe to merge into `vyve_habits_cache_v2`)
+- Bridge Supabase Realtime → bus events — Layer 3
+- Optimistic UI delta reconciliation — Layer 4
+- Bridge `nav.js` touchstart → bus `nav:will-change` — Layer 2 work, prefetch.js builds its own listener
+- Touch any portal page beyond the index.html script tag
+
+**Source-of-truth:** vyve-site HEAD pre-commit `040c496d` (PM-27 ship), vyve-site HEAD post-commit `25b112e9` (PM-29 ship). VYVEBrain HEAD pre-commit `b76b9218` (PM-28). Commit message includes the full audit + verification trail. Whole-tree symbol-collision audit method per §23 PM-26 hard rule: 72 source files (.html .js .css; excludes vendor `supabase.min.js`, images, manifest.json, CNAME, dirs) all fetched and grepped for collision-risk symbols.
+
+**Sequence after PM-29:** PM-30 → 1c-1 (habits.html → `bus.publish('habit:logged', ...)`). Per the taxonomy migration plan, the habits write surface today calls three legacy primitives — `invalidateHomeCache` + `recordRecentActivity` + `VYVEAchievements.evaluate`. PM-30 collapses all three into one `bus.publish('habit:logged', ...)` call and wires `vyve_habits_cache_v2` (currently uninvalidated — the scope-fix) as a bus subscriber that merges the just-logged entry into `logsToday`. Index.html and monthly-checkin.html subscribe to the same event for their habit-strip refresh.
+
+---
+
 ## 2026-05-08 PM-28 (cache-bus taxonomy patch · 1c-14 resolved · `vyve_dashboard_cache` deprecated · brain-only)
 
 Brain-only commit. Two sub-audits resolved + editorial fix folded in. No vyve-site change. No SW bump.
