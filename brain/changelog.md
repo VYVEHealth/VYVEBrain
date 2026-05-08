@@ -1,3 +1,57 @@
+## 2026-05-08 PM-6 (auth.js defer + window.VYVE_AUTH_READY Promise · Session 5 of perf project shipped)
+
+**Session shape.** Closing entry for the cache-paint perf project. Last session (PM-5) reframed Session 5 in backlog from "1-2h" to "P1 ~half-day, full portal touch" based on a quick read of consumer refs across 14 portal pages. PM-6 pre-flight expanded the scope to the actual surface (23 in-scope HTML pages + 18 deferred consumer JS modules) and audited every reference, then walked back the reframe entirely. The codebase has been built defensively against this exact change for months — the audit found no real per-page migration was needed.
+
+vyve-site `b089eba3`. Single atomic commit: 37 files (auth.js + sw.js + 35 portal pages).
+
+### Pre-flight audit findings
+
+Walked every `window.vyveSupabase` / `window.vyveCurrentUser` / `getJWT()` reference across the entire vyve-site root (47 HTML files, 21 JS modules) with a depth-tracking walker that distinguished top-level (parse-time) refs from function-body / listener-callback refs. Out of 23 in-scope HTML pages:
+
+- **18 pages had zero top-level refs** — every reference inside listeners, IIFEs, async fns, or arrow callbacks. Already defer-safe.
+- **4 pages** (`cardio.html` L498, `engagement.html` L918, `exercise.html` L295, `movement.html` L338) had `if (window.vyveCurrentUser) { onAuthReady(); } else { addEventListener('vyveAuthReady', onAuthReady, { once: true }); }` at top level. The two-path pattern is defer-safe by construction: with `defer`, the synchronous `if` evaluates `false`, the `else` branch attaches the listener, fires later when auth.js parses + signals.
+- **`leaderboard.html`** — walker flagged 3 refs as top-level (L505, L524, L644) but on inspection they're all inside function bodies (`updateAnonBanner`, `addEventListener('click', ...)` callback, `loadLeaderboard`). The walker's brace-depth tracker doesn't handle template-literal `${...}` expressions, undercounting depth past template-heavy code earlier in the file. False positives.
+- **18 consumer JS modules**: only `workouts-config.js` has a top-level ref, and the comment at L114-116 literally anticipates this exact change ("Two-path wiring: handle both 'auth already fired before this script parsed' and 'auth fires after we attach'"). Already defer-safe.
+
+Every other consumer JS module (theme, nav, achievements, vyve-offline, healthbridge, push-native, vapid, all 7 workouts-*) is already loaded with `defer` — auth.js was the odd one out.
+
+### Site changes (vyve-site `b089eba3`)
+
+**auth.js (+970 chars).** Adds `window.VYVE_AUTH_READY` Promise (resolved with `{ user, supabase }`) and `vyveSignalAuthReady(user)` helper. The helper is idempotent (early-returns on second call) and dispatches the existing `vyveAuthReady` event AND resolves the Promise atomically. Both signal sites in `vyveInitAuth` (fast-path + authoritative session) routed through the helper. Existing event listeners across the codebase keep working unchanged. New code can `await window.VYVE_AUTH_READY` instead of attaching the event.
+
+**35 HTML pages.** Added `defer` to `<script src="auth.js">`. Two existing src forms in the codebase (`auth.js` and `/auth.js`) — both handled by the same patch logic. 4 pages already had `defer` (events-live, events-rp, how-to-pdfs, how-to-videos) and were left alone.
+
+**sw.js.** Cache key `vyve-cache-v2026-05-08-prefetch-4` → `vyve-cache-v2026-05-08-auth-defer-5`.
+
+### Verification
+
+- `node --check` on patched auth.js + sw.js (both clean).
+- Inline-script syntax check on habits.html / workouts.html / index.html / leaderboard.html (most JS-heavy pages, 15 inline blocks total) — all clean.
+- Pre-commit SHA refresh on all 37 paths.
+- Post-commit byte-for-byte verification via Contents API (live SHA, not raw CDN per §23 rule): 37/37 files match expected content exactly.
+
+### Risks accepted
+
+- A page my walker missed could have a hidden top-level ref that bites under `defer`. Mitigation: the canonical two-path pattern is well-established across the codebase, any non-conforming page would already be observably broken on the fast-path race condition. Spot-checked the 5 walker hits + sample of 4 most-JS-heavy pages.
+- `workouts-config.js` `setTimeout(0)` path becomes the dominant boot path (the synchronous fast-path check rarely succeeds when this script's defer parses ahead of auth.js). Difference is sub-millisecond; functionally identical to the listener path.
+- A small set of "passive shell" pages (live/rp pages, sessions.html) load auth.js but have no active references. They get `defer` too — they go faster, no behavioural change.
+
+### What this lands
+
+Auth.js defer means the document-head `<link rel="preload">` hint chain for `supabase.min.js` (and any other preloads) actually runs in parallel with HTML parse instead of being blocked behind the auth.js script execution. Estimated win 150-300ms first paint cold-start; impossible to measure precisely until real-world iOS / Android numbers come back tomorrow.
+
+### Cumulative perf project — closed
+
+- 08 May PM-3 (`29ada8f8`): cache paint before auth on settings/exercise/movement/certificates + certificates cache-write bug fix.
+- 08 May PM-4a (`b4adf8ef`): same migration on nutrition/log-food/leaderboard/engagement/running-plan.
+- 08 May PM-4b (`2d658e0e`): workouts gap-fills (loadExerciseNotes/Library/PausedPlans).
+- 08 May PM-5 (`f42f059d`): index.html prefetches top nav targets.
+- 08 May PM-6 (`b089eba3`): auth.js defer + VYVE_AUTH_READY Promise.
+
+Cache-paint perf project: closed.
+
+---
+
 ## 2026-05-08 PM-5 (Index prefetches top nav targets · Session 4 of perf project shipped)
 
 **Session shape.** Session 4 of the cache-paint-before-auth perf project. Closes the "first-tap-of-the-session" gap that cache-first alone can't fix on its own. Cache-first solves return visits within 24h; prefetch from the home page solves the first time a member taps a tab in any given app session.

@@ -1,3 +1,20 @@
+## Added 08 May 2026 PM-6 (Session 5 shipped · cache-paint perf project closed)
+
+- ✅ **CLOSED — Session 5: auth.js promise refactor.** vyve-site `b089eba3`. Pre-flight audit walked back the PM-5 reframe entirely. Of 23 in-scope HTML pages, every consumer was already defer-safe (two-path if/else, vyveAuthReady listeners, function-body refs). Of 18 consumer JS modules, only `workouts-config.js` had a top-level ref and its comment anticipated this exact change. Zero per-page migration was needed. Single atomic commit: auth.js (+970 chars Promise + signal helper, full back-compat with existing event), sw.js cache bump to `vyve-cache-v2026-05-08-auth-defer-5`, 35 HTML pages get `defer` on auth.js script tag (4 already had it). New §23 hard rule for defer-safety walker pattern. Win estimated ~150-300ms first paint via unblocked head preload chain.
+
+- ✅ **PERF PROJECT CLOSED.** Five sessions in five days:
+    - 08 May PM-3 (`29ada8f8`): cache paint before auth on 4 pages.
+    - 08 May PM-4a (`b4adf8ef`): same migration on 5 more pages.
+    - 08 May PM-4b (`2d658e0e`): workouts gap-fills (loadExerciseNotes/Library/PausedPlans).
+    - 08 May PM-5 (`f42f059d`): index.html prefetches engagement/certs/members/programme caches.
+    - 08 May PM-6 (`b089eba3`): auth.js defer + VYVE_AUTH_READY Promise.
+
+  Net effect: warm-cache portal pages now paint in <50ms via synchronous IIFE → localStorage → DOM, fully ahead of any auth/SDK round-trip. First-tap-of-session cold cache is mitigated by index.html fan-out + prefetch. Cold first-page-of-session paint is improved by ~150-300ms via auth.js defer unblocking the head preload chain.
+
+- 📋 **NEW (low priority) — `paintCacheFirst` helper still drafted, not shipped.** ~110 lines locally at /tmp/_new_helpers.txt covering generic `pageCacheGet/Set/Invalidate` + wrapper. Every page audited had bespoke cache infra worth preserving or used existing `VYVEData.fetchCached`/`cacheGet`/`cacheSet`. Drop the draft unless a future page genuinely needs the pattern.
+
+- 📋 **NEW (cosmetic) — `index.html` loads `vyve-offline.js` non-deferred** while every other page defers it. Inconsistency caught during PM-6 audit. Aligning to `defer` is one-character change but every other script in index.html runs after auth.js so the position relative to auth.js matters. Not blocking; clean up next time index.html is touched.
+
 ## Added 08 May 2026 PM-5 (Index prefetch shipped · Session 5 reframed)
 
 - ✅ **CLOSED — Session 4: prefetch top nav targets from index.html.** vyve-site `f42f059d`. Two-layer approach: (a) free fan-out — index's member-dashboard response now writes into `vyve_engagement_cache` and `vyve_certs_cache` too (shape-compatible, zero extra network); (b) explicit background prefetches via `_vyvePrefetchNextTabs(email, jwt)` — fires `requestIdleCallback`-wrapped, network-gated fetches into `vyve_members_cache_<email>` (nutrition) and `vyve_programme_cache_<email>` (workouts). sw.js bumped to v2026-05-08-prefetch-4.
