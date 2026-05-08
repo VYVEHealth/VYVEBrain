@@ -1,3 +1,9 @@
+## Added 08 May 2026 PM-9 (Index prefetch extended to exercise cache)
+
+- ✅ **CLOSED — Prefetch exercise cache from index.html.** vyve-site `a2c99e46`. `_vyvePrefetchNextTabs` now writes both `vyve_programme_cache_<email>` and `vyve_exercise_cache_v2` from the single `workout_plan_cache` fetch. Zero extra network, both pages paint from warm cache after any home visit.
+
+- 📋 **NEW (medium priority) — Universal touchstart nav-button prefetch.** Currently prefetch fires only from index.html's `_vyvePrefetchNextTabs`. If a member taps Exercise from Nutrition (or any non-home page), the cache might be cold. Right pattern: in `nav.js`, attach `touchstart` listeners to bottom-nav anchors. When a finger lands, fire the prefetch for the destination page; by the time the tap (~80-120ms later) navigates the page, cache is partially or fully warm. Per-destination: home → none, exercise → vyve_exercise_cache_v2 + vyve_programme_cache, nutrition → vyve_members_cache, sessions → no fetch (static). Network gate as PM-5 (`navigator.connection`). Estimated 1h. Universal coverage from any page → any nav target.
+
 ## Added 08 May 2026 PM-8 (RLS auth-function wrap shipped · the actual perf bottleneck)
 
 - ✅ **CLOSED — RLS auth-function wrap migration.** Migration `wrap_auth_functions_in_rls_policies` rewrote 72 policies across ~50 tables to use `(SELECT auth.X())` instead of bare `auth.X()`. Plus 2 redundant `members` policies dropped. EXPLAIN ANALYZE on `workout_plan_cache` primary query: Planning 327.9ms → 11.6ms (28× faster), Execution 19ms → 1.1ms (17× faster). REST endpoint round-trip from remote workbench: ~30000ms cold / 1500-3200ms warm → 307-888ms avg 543ms. Real-device should be 50-200ms.

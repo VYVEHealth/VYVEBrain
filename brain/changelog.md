@@ -1,3 +1,29 @@
+## 2026-05-08 PM-9 (Extend index prefetch to populate exercise cache)
+
+Tiny follow-up to PM-5 + PM-8. Dean asked: "if it's 200-500ms is there a way to have that background cache on load so that when he clicks it, it's already there?" Audit of the prefetch helper from PM-5 showed it populates `vyve_members_cache_<email>` (covers nutrition's hot path) and `vyve_programme_cache_<email>` (covers workouts page) but NOT `vyve_exercise_cache_v2` which is exercise.html's primary cache key with a different shape.
+
+vyve-site `a2c99e46`. Single edit to `_vyvePrefetchNextTabs` in index.html: same `workout_plan_cache` fetch now writes both `vyve_programme_cache_<email>` (existing PM-5 shape `{row, data}`) AND `vyve_exercise_cache_v2` (exercise.html's shape `{data, ts, email}`). One fetch, two cache writes, zero extra network. sw.js cache key bumped `vyve-cache-v2026-05-08-swr-html-6` → `vyve-cache-v2026-05-08-prefetch-exercise-7`.
+
+### Side audit findings (not actioned)
+
+- Nutrition is already covered by PM-5: cache-paint reads `vyve_members_cache_<email>` which the prefetch already populates.
+- `vyve_weight_logs_v1` is a migration-only legacy localStorage key (drains on first nutrition visit and migrates rows to `weight_logs` table). Different shape from the table. Don't touch.
+- Cross-page nav prefetch (touchstart on bottom nav buttons firing the right cache fill from any page, not just home) is the next sensible perf hygiene item. Universal coverage requires a small addition to nav.js. Backlog'd, not shipped this commit.
+
+### Verification
+
+- node --check on all 8 inline scripts in index.html (clean).
+- node --check on sw.js (clean).
+- Post-commit byte-for-byte match on both files.
+
+### What this lands
+
+After PM-8 dropped exercise's PostgREST round trip from ~10s to ~200-500ms, the remaining UX gap was the cold-cache first-visit. Now any time a member loads home FIRST in a session, exercise tab paints from warm cache instantly. Combined with SW SWR, auth.js defer, and the RLS wrap, exercise should feel near-Strava-fast for any member who's hit home in the last few minutes.
+
+The only cold-tap path that still does a full network round trip is "first action of the session is tapping Exercise without going through home" — covered by the touchstart nav prefetch when that ships.
+
+---
+
 ## 2026-05-08 PM-8 (RLS auth-function wrap migration · the actual perf bottleneck)
 
 **Session shape.** Member feedback within minutes of PM-7 brain commit: Lewis hit ~10s on exercise + nutrition tabs from his iPhone. SW SWR alone can't account for 10s — that's REST query latency, not asset loading. Diagnostic walk hit pay dirt almost immediately:
