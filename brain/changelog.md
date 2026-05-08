@@ -1,3 +1,63 @@
+## 2026-05-08 PM-8 (RLS auth-function wrap migration · the actual perf bottleneck)
+
+**Session shape.** Member feedback within minutes of PM-7 brain commit: Lewis hit ~10s on exercise + nutrition tabs from his iPhone. SW SWR alone can't account for 10s — that's REST query latency, not asset loading. Diagnostic walk hit pay dirt almost immediately:
+
+- **`workout_plan_cache` query timed at 30000ms cold, 1500-3200ms warm** via anon-key REST against the production endpoint. Even with anon-key returning 0 rows under RLS, the planner overhead alone was ~3 seconds.
+- `EXPLAIN ANALYZE` of the same query under an authenticated JWT showed **Planning Time: 327.9ms, Execution Time: 19ms**. Plan was a Seq Scan with a `One-Time Filter` containing the unwrapped `auth.email()` evaluation inlined into planning.
+- Audit of `pg_policies`: **71 policies across ~50 tables** all using bare `auth.email()` / `auth.uid()` / `auth.role()` / `auth.jwt()` instead of the wrapped `(SELECT auth.X())` pattern.
+
+The unwrapped pattern forces Postgres to re-evaluate the auth function once per row instead of caching the result via an InitPlan. At our data sizes (370 exercise_logs total, 12 workout_plan_cache rows) the per-row eval isn't the killer — the planner overhead is. With 71 policies all triggering planner-time function inlining, every PostgREST query was paying the cost.
+
+This is the **#1 RLS perf optimisation** in Supabase's official guidance. We had been bleeding ~300ms+ per query for the entire history of the platform.
+
+### Migration shipped (`wrap_auth_functions_in_rls_policies`)
+
+- 72 policies rewritten from `auth.X()` → `(SELECT auth.X())`. Same semantics — RLS still scopes to the authenticated user's email/uid/role.
+- 2 redundant policies dropped: `members_select_own` (covered by `members_own_data` ALL) and `members_update_own` (same). Postgres OR's all permissive policies for a given command, so each redundant one was a wasted auth-function eval per row.
+- Mechanical generation: walked the `pg_policies` rows, regex'd `auth\.(email|uid|jwt|role)\s*\(\s*\)` → `(SELECT auth.\1())`, generated DROP+CREATE per policy. Saved migration to `/tmp/full_migration.sql` for archival reference.
+- Applied via `Supabase:apply_migration` as a single transaction. No partial-execute issues — policy DDL is atomic per-statement and the migration record kept everything together.
+
+### Verification
+
+- Post-migration `pg_policies` audit: `unwrapped_remaining = 0`. Every policy in the public schema now uses the wrapped pattern.
+- Re-run of `EXPLAIN ANALYZE` on the canonical exercise.html primary query (`workout_plan_cache?member_email=eq.<>&is_active=eq.true LIMIT 1`):
+    - **Before:** Planning 327.9ms, Execution 19ms, plan = Seq Scan with One-Time Filter on inlined `auth.email()`.
+    - **After:** Planning 11.6ms, Execution 1.1ms, plan = InitPlan + Seq Scan + One-Time Filter on `(InitPlan 1).col1`. The InitPlan output is cached for the whole query — auth function evaluated once.
+    - **Net: 28× faster planning, 17× faster execution.**
+- REST endpoint round-trip from the remote workbench (~150ms baseline RTT to West EU/Ireland):
+    - workout_plan_cache: was 1500-30000ms, now 307-888ms avg 543ms.
+    - members: was 443-2713ms, now 243-335ms avg 271ms.
+    - On a local UK iPhone with ~30ms baseline RTT, real-device numbers should sit at 50-200ms.
+
+### Why this hadn't been caught
+
+The Supabase audit doc that drove security commits 1-4 (06 May → 07 May) was scoped at "is RLS on, and does it scope correctly". It didn't include the auth-function wrap pattern as a finding. The Supabase performance docs that flag this rule are separate from the security docs — both pages exist, both are official, but a security-focused audit doesn't surface perf-focused linter rules.
+
+### Risks accepted
+
+- Two `members` policies dropped. If any code path relied on a SELECT-only or UPDATE-only policy fitting around a non-ALL `members_own_data`, that path would now have different rules. Verified by reading the `members_own_data` qual = `(email = auth.email())`, same as the dropped ones, scope is identical. Safe.
+- The `cc_*` (Command Centre) tables now have wrapped policies but these tables aren't actively queried by member-facing surfaces yet. The wrap doesn't change semantics, just timing.
+- Multi-statement migration via `apply_migration`. Per §23 the BETA_RUN_SQL pattern is the recommended way for trigger creation, but policy DDL is much simpler — DROP IF EXISTS + CREATE — and is atomic per statement. Verified post-migration count = 0 unwrapped, no partial state.
+
+### Cumulative perf project — actually-actually closed now
+
+- 08 May PM-3 (`29ada8f8`): cache paint before auth on 4 pages.
+- 08 May PM-4a (`b4adf8ef`): same migration on 5 more pages.
+- 08 May PM-4b (`2d658e0e`): workouts gap-fills.
+- 08 May PM-5 (`f42f059d`): index.html prefetches.
+- 08 May PM-6 (`b089eba3`): auth.js defer + VYVE_AUTH_READY Promise.
+- 08 May PM-7 (`3a20fcda` + `e72f672b`): SW HTML stale-while-revalidate.
+- 08 May PM-8 (DB migration `wrap_auth_functions_in_rls_policies`): RLS auth-function wrapping.
+
+PM-8 is the actual cap. PM-3 through PM-7 set up the optimal cache-first paint pipeline AND the SW cache pattern AND the head preload chain — but every PostgREST query hitting the database was paying 300ms+ planner overhead for the entire history of the platform. Member-perceptible perf should now be dramatically better on every page that hits any RLS-protected table — which is most of them.
+
+### What didn't ship this session
+
+- The 29-page script-tag deferring sweep (medium prio in PM-7 backlog) — still open. May not yield a visible win on top of PM-8 but worth doing for hygiene.
+- A Postgres planner-cache warm-up for the `workout_plan_cache` cold path. Even at 11ms planning we're seeing 543ms-avg round trips from the remote workbench, suggesting some other latency in the chain. Real-device numbers from Lewis will tell us if this is worth chasing.
+
+---
+
 ## 2026-05-08 PM-7 (SW HTML stale-while-revalidate · perf project really closed this time)
 
 **Session shape.** Perf project victory lap turned into a real fix. PM-6 brain commit landed at ~17:00 with "perf project closed". A few minutes later, member feedback (Dean, on his own iPhone): "is this definitely all sorted though, i just closed the app, opened exercise tab and the page took 3 seconds to load". Auth.js defer alone can't account for 3 seconds. Diagnostic walk surfaced the real bottleneck — the SW's fetch handler is `network-first` for HTML navigations, so every page open waits a full network round trip on the HTML doc itself before anything else (cache-paint IIFE, auth.js Promise, deferred SDK preload chain) can do anything useful. The cache-paint perf project had quietly been optimising everything *downstream* of HTML arrival while leaving HTML arrival itself blocking on the network.
