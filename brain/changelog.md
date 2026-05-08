@@ -1,3 +1,45 @@
+## 2026-05-08 PM-30 (Layer 1c-1: habits.html → `bus.publish('habit:logged', ...)`)
+
+vyve-site `27eaeafd`. First Layer 1c migration. Three legacy primitives across the three habits write sites collapse into one `bus.publish('habit:logged', ...)` per site; subscribers on habits.html, index.html, monthly-checkin.html replace the inline calls.
+
+**Schema.** `bus.publish('habit:logged', { habit_id, is_yes: true|false|null, autotick?: true })`. `is_yes:true` = manual yes (or autotick when paired with `autotick:true`); `is_yes:false` = no/skip; `is_yes:null` = undo. Achievements eval gates on `is_yes:true || autotick:true` — so no/skip and undo never trigger eval (matches pre-PM-30 behaviour for no/skip; preserves correctness for undo since the evaluator is one-way and shouldn't fire for state removal).
+
+**Three habits.html publish sites collapsed.**
+
+- `logHabit` (around L569 pre-patch): replaces invalidate + record + evaluate (11 lines) with one `bus.publish('habit:logged', { habit_id, is_yes: isYes ? true : false })`. Toast copy and `logsToday` mutation moved into the bus subscriber (via re-render path). Fallback to legacy primitive calls preserved for the rare bus-failed-to-load case.
+- `runAutotickPass` (L905-L924 pre-patch): per-habit `bus.publish` inside the loop on successful insert (replaces the per-habit `recordRecentActivity` call); post-loop bulk `invalidateHomeCache` block dropped — subscriber is idempotent and cheap, per-habit publish covers it. **Bug-fix on the way through:** autotick now grants achievement credit. Pre-PM-30 the autotick path called `recordRecentActivity` and `invalidateHomeCache` but never `VYVEAchievements.evaluate()` — silent gap, an autotick-satisfied habit didn't trigger achievement re-eval until the next manual write somewhere else. Now any `is_yes:true || autotick:true` envelope fires eval (debounced).
+- `undoHabit` (L645-L678 pre-patch): replaces invalidate + breadcrumb scrub + cache delete + logsToday cleanup + sort + render (35 lines) with one `bus.publish('habit:logged', { habit_id, is_yes: null })`. The subscriber owns the cleanup. The post-publish `fetchHabitDates() + renderWeekStrip + updateStats` stays in `undoHabit` because that's the network-fresh date list and the subscriber can't reconstruct it locally.
+
+**Subscriber wiring.**
+
+- `habits.html`: new `_wireHabitsBus()` IIFE called once before `loadHabitsPage()` invocation (L1051 area). Subscriber handles in-memory `logsToday`/`habitsData` mutation, sort, re-render, `vyve_habits_cache_v2` cache write (the scope-fix — cache was uninvalidated before PM-30, so ticking a habit and nav-back showed it unticked until next sign-in), breadcrumb record on yes / scrub on undo, achievements eval on yes/autotick. Origin doesn't matter to the subscriber — local and remote (cross-tab) flow through the same handler.
+- `index.html`: bus.js script tag already present from PM-29. New DOMContentLoaded listener calls `bus.subscribe('habit:logged', ...)` in a body inline script and invokes `VYVEData.invalidateHomeCache(envelope.email)`. Idempotent via `__vyveHomeBusWired` flag (defends against re-evaluation if the inline block runs twice somehow). Email comes from publisher's envelope (captured at publish-time on the publishing tab) — falls back to current user if the envelope is missing email (signed-out edge case).
+- `monthly-checkin.html`: bus.js script tag inserted between auth.js and achievements.js. New IIFE installs subscriber that marks recap stale + refreshes if recap is currently visible (`recap-content` displayed) AND user hasn't progressed past step 1. Achievements eval fires on yes/autotick — the achievements.js debouncer (1.5s) collapses the double-fire across habits.html + monthly-checkin.html into one network call, so over-inclusivity is safe and ensures eval runs from at least one open tab.
+
+**Decision: home-stale signalling stays as option (a) — `invalidateHomeCache` remains the home-stale primitive.** §23 master.md L1275 hard rule says every member-action write MUST call `invalidateHomeCache()` on success. PM-30's index.html bus subscriber preserves that contract by calling the existing primitive internally rather than the publishing site calling it directly. Mixing bus-driven and direct-call home-stale across the 14 1c-* migrations would produce an inconsistent transitional state for 14 sessions; option (a) keeps the contract universal until a named cleanup commit (post-1c-14) eliminates `invalidateHomeCache` as an external surface entirely. Same option-(a) discipline for `recordRecentActivity` — the habits.html subscriber calls it internally, the publishing site doesn't. This locks the transitional pattern for migrations 1c-2 through 1c-14: the publishing site emits `bus.publish` only; the subscribers (one per page) call the existing primitives internally.
+
+**Schema decision: undo as `is_yes:null`** rather than a separate `habit:cleared` event. Single-event-with-discriminator keeps the achievements.js subscriber gating logic simple (`if (is_yes === true || autotick === true)`) and matches the same pattern the taxonomy uses for `kind` discriminators on `cardio:logged`, `workout:logged`, `checkin:submitted`. Two events for log/undo would have meant double-subscriber count and identical subscriber bodies modulo one branch.
+
+**Schema decision: `autotick: true` as a boolean flag rather than `is_yes: 'autotick'`.** Type stays consistent (`is_yes: true|false|null`) and the autotick metadata is additional, not categorical. Subscribers that don't care about origin (manual vs autotick) simply ignore the flag.
+
+**Cross-tab origin handling.**
+
+- habits.html subscriber processes `origin:'local'` and `origin:'remote'` identically — both update in-memory state, write the cache, and (on yes/autotick) fire eval. The cross-tab case (rare in practice — would need habits.html open in two tabs as the same member) flows through cleanly.
+- index.html home-stale handler is also origin-agnostic. Idempotent.
+- monthly-checkin.html refresh is origin-agnostic but visibility/step-gated. If user is on monthly-checkin in tab A, ticks habit in tab B, monthly-checkin re-fetches recap silently in the background.
+
+**Self-test: 33 of 33 passing** in a Node harness with `window`/`localStorage`/`document` shims plus the patched bus.js loaded verbatim. Test groups: (1) bus API surface, (2) local logHabit yes — full subscriber fan-out verified end-to-end, (3) local no/skip — gated correctly (no breadcrumb, no eval), (4) local autotick — bug-fix path verified (eval fires for the first time from this surface), (5) local undo — logsToday cleared, breadcrumb selectively scrubbed (h1 removed, h2 preserved), no eval, home-stale fired, (6) cross-tab via `storage` event — bus.js installed exactly one storage listener, remote envelope delivered through full chain, origin rewritten to 'remote', (7) storage event filtering — non-bus keys / paired removeItem (newValue:null) / malformed JSON all ignored without crash, (8) invalid event-name rejection, (9) monthly-checkin visibility/step gating — no refresh past step 1, no refresh when recap hidden, (10) idempotent subscriber registration via `__vyveHomeBusWired`. Inline JS syntax verified via `node --check` on every `<script>` block in habits.html / monthly-checkin.html / index.html (13 blocks total) plus sw.js — 0 failures.
+
+**Counts after PM-30.** Direct-call surface drops from 13/9/16 to 10/7/13 (invalidate/record/evaluate). habits.html removes all three primitives from its 3 write sites; the other 12 write surfaces stay direct-call until their own 1c-* migration. The whole-tree audit at HEAD `25b112e9` (PM-29 ship) confirmed the three counts match the brain's PM-26/PM-28 corrected figures exactly before patching.
+
+**SW cache.** `vyve-cache-v2026-05-08-pm29-bus-a` → `vyve-cache-v2026-05-08-pm30-habits-a`. Same atomic commit. `/bus.js` already in `urlsToCache` from PM-29.
+
+**Source-of-truth.** vyve-site pre-commit `25b112e9` (PM-29 ship), post-commit `27eaeafd` (PM-30 ship), new tree SHA `f1013b15`. Whole-tree audit method per §23 PM-26: 89 tree entries → 73 source-text files (.html .js .css; excludes vendor `supabase.min.js`, images, manifest.json, CNAME, dirs) → all 73 fetched (1.78M chars decoded) → grep for `invalidateHomeCache` / `recordRecentActivity` / `VYVEAchievements\s*\.\s*evaluate\s*\(` excluding docblock comment lines and function definitions. Post-commit verification per §23: live-SHA fetch via `GITHUB_GET_REPOSITORY_CONTENT` (not raw — CDN-cached), all 4 files: head-200 char match, length match, blob_sha matches `path_status` from the commit response.
+
+**Sequence after PM-30:** PM-31 → 1c-2 (`workouts-session.js` complete handler — `bus.publish('workout:logged', source:'programme'|'custom', ...)` collapsing the three programme/custom write-site primitives). Same option-(a) discipline.
+
+---
+
 ## 2026-05-08 PM-29 (`bus.js` shipped — Layer 1b foundation for the cache-bus)
 
 vyve-site `25b112e9`. Layer 1b done. Layer 1c migrations unblock starting PM-30.
