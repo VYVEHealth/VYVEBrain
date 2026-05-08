@@ -1,3 +1,19 @@
+## Added 08 May 2026 PM-22 (`leaderboard` v17 · SQL-side ranking via `get_leaderboard()` RPC)
+
+- ✅ **CLOSED — Reframing decision: snapshot table → SQL-side ranking.** Pre-flight against the live `leaderboard` source showed v11/v16 was already reading from `member_home_state` (not aggregating activity tables — that work was done when the aggregate was built). The actual cliff is the JS sort + 50MB+ wire payload at 100K members, not live aggregation. Snapshot table would add 24h staleness for no underlying win — the cron still has to sort over all members, and the leaderboard is a feature where real-time position matters. Right fix: push sort + top-100 slice into Postgres window functions, return ~6KB regardless of scale.
+
+- ✅ **CLOSED — Migration `pm22_create_get_leaderboard_rpc` applied.** `public.get_leaderboard(p_email text, p_scope text, p_range text) RETURNS jsonb`. `STABLE`, `SECURITY DEFINER`, `SET search_path = public`. Single CTE chain over `member_home_state` ⋈ `members` ⋈ `employer_members`. Four parallel `ROW_NUMBER()` window orderings (one per metric). Server-side `display_name` resolution from `display_name_preference`. Returns full v11-shape response via `jsonb_build_object`. ~9KB SQL, ~330 lines. `GRANT EXECUTE` to `authenticated, service_role`.
+
+- ✅ **CLOSED — `leaderboard` EF v17 deployed.** Platform v17, ezbr `ee55c3fe3a1e060f0eabb20e895ddab619229a769306287a4d0234a6d0d181c2`. ~110 lines TS — parses params, JWT-validates (with `?email=` back-compat), calls RPC, returns. `verify_jwt:false` at gateway with internal validation per §23 custom-auth pattern. CORS unchanged from v11. Already in `warm-ping` keep-warm list (added 25 April per warm-ping v4) — cold-start exposure mitigated.
+
+- ✅ **CLOSED — Functional parity verified live.** Full v11 contract shape diff: top-level keys, per-metric keys, ranked-entry keys, above-entry keys all match — no missing fields, no extras. Edge cases live-tested: caller in zero bucket (rank against full sorted list, `caller_in_ranked:false`, `gap:0`); caller at #1 (`above:[]`); `scope=company` with no employer (falls back to caller-only); `range=all_time` uses `overall_streak_best`. Portal pages did not need to change.
+
+- ✅ **CLOSED — Timing measured.** 9ms warm over 5 iterations at 15 members. Cold compile 58ms (one-shot plan compilation). At-scale projection: window functions are `O(n)` for top-N over indexed scan vs the v11 JS path's `O(n log n)` × 4 sorts; wire payload bounded by response shape (~6KB) not by table size.
+
+- 📋 **NEW (low priority) — Index on `member_home_state(member_email)` if not already present.** The RPC's `is_caller` lookups inside each `pm_*` CTE materialise via subquery on `email = v_email`. Should be a hash-table probe on the existing pool, not an index seek, but worth checking the EXPLAIN plan once we have a meaningful member count to see whether Postgres picks a different plan at 100K rows.
+
+- 📋 **NEW (low priority) — Consider materialised view if RPC-per-load is the bottleneck at >1M members.** RPC on every load is fine up to ~1M members on the back of `member_home_state`'s incremental aggregate maintenance. Beyond that, a materialised view refreshed every N minutes (still real-time-ish) is the next escalation step before going full snapshot-table. Not now — speculative.
+
 ## Added 08 May 2026 PM-21 (perf telemetry pipeline · `perf_telemetry` + `log-perf` v1 + `perf.js`)
 
 - ✅ **CLOSED — `perf_telemetry` table created.** Migration `pm21_create_perf_telemetry`. Bigserial PK, member_email / page / metric_name / metric_value(double) / nav_type / ua_brief / ts. RLS service-role-only with `(SELECT auth.role())` wrap per §23. Two indexes: `idx_perf_telemetry_page_metric_ts` on `(page, metric_name, ts DESC)`, `idx_perf_telemetry_ts` on `(ts DESC)`.

@@ -1,3 +1,74 @@
+## 2026-05-08 PM-22 (`leaderboard` v17 · SQL-side ranking via `get_leaderboard()` RPC)
+
+The backlog item said "snapshot table + cron." The pre-flight said otherwise. v11/v16 was already reading from `member_home_state` — the aggregation cliff the audit described didn't exist. The actual cliff is different.
+
+### What v11 was doing wrong at scale
+
+v11 pulled the full table from `member_home_state` (one row per member), did the same for `members` and `employer_members`, then in TypeScript:
+
+1. Built a `Map<email, MemberRow>` for name lookups.
+2. Filtered the `member_home_state` array by scope predicate.
+3. For each of four metrics (`all`, `habits`, `workouts`, `streak`) ran `[...ranked].sort(...)` — that's `[100K-element array].sort()` four times.
+4. For each metric, sliced top-100, walked the sorted array to find the caller's index, computed `above[]` / `gap` / `below_count`.
+5. JSON-serialised the whole thing back over the wire.
+
+At 15 members this is 9ms. At 100K members `member_home_state` alone is on the order of 50MB+ over the wire just to compute four ranked top-100s, plus four sorts each scaling as `O(n log n)`. The wire payload is the immediate problem; the sorts are the structural one.
+
+### Why a snapshot table is the wrong fix
+
+The backlog scoping said "snapshot table + nightly cron writes denormalised rank rows; EF reads from snapshot." Two problems with that shape:
+
+1. **24h staleness on a feature where users care about real-time position.** The leaderboard is the carrot. "You moved up 3 places this morning" doesn't work if the snapshot is from yesterday. We'd be paying a UX cost to solve a wire-payload problem we can solve without paying it.
+2. **It doesn't solve the underlying problem, it just relocates it.** The cron still has to do the sort over all members; we'd just be doing it at 03:00 UTC instead of on every load. Marginally cheaper because it's once per day, but: (a) it still grows linearly with member count, (b) we now own a denormalised table that has to be kept in sync, (c) we've added a cron the team has to remember exists.
+
+The actual fix is push the sort to Postgres, where it belongs. Postgres has window functions, indexes, and a planner that can produce a top-N from a window over an indexed scan in `O(n)` not `O(n log n)`. The wire payload becomes the response shape (~6KB) instead of the table contents (~50MB).
+
+### The RPC
+
+`public.get_leaderboard(p_email text, p_scope text, p_range text) RETURNS jsonb`. `STABLE`, `SECURITY DEFINER`, `SET search_path = public`. The body is one CTE chain:
+
+- `base` — joined `member_home_state` ⋈ `members` ⋈ `employer_members` filtered by scope predicate, with per-metric counts already range-resolved.
+- `scoped` — adds `all_count` (sum across the five activity types) and the `excluded_new` flag (the 7-day tenure filter that fires on `range='all_time'` only).
+- `pool` / `pool_named` / `pool_cats` — derive `display_name` from `display_name_preference` server-side (full_name / first_name / initials / anonymous), build the `cats` string from non-zero metric counts.
+- `pm_all`, `pm_habits`, `pm_workouts`, `pm_streak` — four CTEs each adding `ROW_NUMBER() OVER (ORDER BY <metric> DESC, last_activity_at DESC NULLS LAST, email ASC)`. One ordering per metric — they can't share because the ordering keys differ.
+- `agg_*` — per-metric: `total_members`, `zero_count`, `top_active` (for bar%), `caller_rn`, `caller_count`.
+- `ranked_*_json` — top-100 of active rows per metric, `jsonb_agg`'d.
+- `above_*` — active rows ranked above caller (or top-3 if caller absent from active set), capped at 10. Matches v11 contract.
+- `gap_*` — `top_active - caller_count + 1` semantics from v11.
+- `block_*` — final per-metric `jsonb_build_object` with all 10 fields the v11 contract requires.
+
+The outer `SELECT` `jsonb_build_object`s the four metric blocks plus the four top-level keys (`first_name`, `scope`, `range`, `scope_available`). Trailing `COALESCE` fallback returns a zero-shaped response when the scope filter yields zero rows (which happens when `scope=my-team` with no employer row).
+
+### EF rewrite
+
+v17 is 110 lines including the CORS handler. Parses `?scope=` and `?range=`, JWT-validates the caller via `auth.getUser(token)` (with `?email=` back-compat for the legacy clients that haven't been updated yet), creates a service-role Supabase client, calls `sb.rpc('get_leaderboard', ...)`, returns the result. Same CORS pattern as v11. `verify_jwt:false` at the platform with internal validation — same custom-auth pattern as `wellbeing-checkin` v28 / `anthropic-proxy` v16 / `log-activity` v28 / `log-perf` v1.
+
+### Verification
+
+Full v11 contract parity confirmed via shape diff: top-level keys = `{first_name, scope, range, scope_available, all, habits, workouts, streak}`, per-metric keys = `{your_rank, total_members, your_count, above, below_count, gap, ranked, overflow_count, zero_count, new_members_count}`, ranked-entry keys = `{rank, medal, count, cats, bar, display_name, is_caller}`, above-entry keys = `{rank, medal, count, cats, bar, display_name}`. No missing fields, no extras.
+
+Edge cases live-tested:
+
+- **Caller in zero bucket.** Caller has `your_rank` against full sorted list (zeros included), `your_count: 0`, `gap: 0` (v11 contract: caller in zero bucket gets 0 gap), `caller_in_ranked: false` (zeros not in ranked[]), `below_count` reflects other zero-bucket members ranked below.
+- **Caller at #1.** `above: []`, `gap: 0`, `your_rank: 1`. Verified on Vicki's streak.
+- **`scope=company` with no employer row.** Falls back to caller-only — `total_members: 1`, `your_rank: 1`, `scope_available: false`.
+- **`range=all_time`.** Uses `overall_streak_best` for streak counts (vs `overall_streak_current` for `this_month`/`last_30d`).
+
+Timing: 5 warm-cache iterations at 15 members averaged 9ms. Cold compile was 58ms (one-shot plan compilation). `leaderboard` is already in the `warm-ping` cron's keep-warm list (added 25 April per warm-ping v4) so cold-start exposure is already mitigated for production traffic.
+
+### Why not the snapshot table for a future-future world
+
+If the leaderboard ever needs to be ranked over something that DOESN'T live in `member_home_state` — say, all-time engagement-quality scores computed nightly from a richer model — then a snapshot table starts making sense, because the input itself is computed-on-cron. As long as the inputs are real-time, the RPC approach is strictly better.
+
+### Files shipped
+
+- Migration `pm22_create_get_leaderboard_rpc` (~9KB SQL, ~330 lines).
+- `leaderboard` EF v17 (~110 lines TS, ezbr `ee55c3fe…`).
+
+No portal change. Backlog item PM-22 closed; new sibling item opened only if real-world percentile data on `perf_telemetry` shows we need to optimise further (we won't until membership grows by an order of magnitude).
+
+---
+
 ## 2026-05-08 PM-21 (perf telemetry pipeline · `perf_telemetry` table + `log-perf` v1 + `perf.js` client shim)
 
 Three pieces shipped under one ticket — schema, server, client — closing the loop on "we're shipping perf wins but have no production telemetry to confirm them."
