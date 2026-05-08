@@ -1,3 +1,38 @@
+## Added 08 May 2026 PM-10 (Perf audit playbook · ship-now and pre-launch items)
+
+Full audit at `/playbooks/perf-audit-2026-05-08.md` — read first before actioning any item below. Each entry below is a one-line pointer; the playbook has EXPLAIN ANALYZE evidence, fix shapes, time + risk + sign-off per item.
+
+### Ship-now (≤1 day)
+
+- 🚀 **P0-1 — `get_charity_total()` → `platform_counters` increment-on-write.** #1 query in pg_stat_statements (577s total, 190ms mean). 6-table UNION ALL that scales linearly in total platform activity. At 100K members this hits work_mem ceiling and statement_timeout. Already on member-dashboard hot path. Fix: `platform_counters` table, AFTER INSERT/DELETE triggers on the 6 source tables, function body becomes O(1) read. Concrete shape in playbook §P0-1. ~3-4h Claude-assisted, Dean sign-off only, reversible. **Highest-priority perf fix on the platform right now.**
+
+- 🚀 **P2-1 — `theme.js` skip Supabase fetch if localStorage is fresh.** 5247 calls in pg_stat_statements, fires on every page load. Cross-device sync should run once per session via `vyve_theme_synced_at` localStorage timestamp. ~30 min, Dean sign-off only.
+
+### Pre-launch (before public-launch comms)
+
+- 📋 **P0-2 — Rewrite `recompute_all_member_stats()` + `daily-report` + `re-engagement-scheduler` LEFT JOIN cartesian.** EXPLAIN ANALYZE shows 4.9M intermediate rows at 15 members. Same anti-pattern in 3 places. Option A: per-member subqueries (1h, surgical). Option B: add `last_*_at` columns to member_home_state (3-4h, cleaner). Ship Option A first, reconsider B later.
+
+- 📋 **P1-1 — `member-dashboard` v59: drop dormant-column duplicate queries + parallelise achievements inflight + state-path for INLINE counts.** EF still issues 22 outer + 23 inner sequential PostgREST queries. Closes the staged compression from 06 May PM-2. ~4h combined. Dean sign-off, but add a daily reconciliation cron to alert on `member_home_state` vs source-table count drift.
+
+- 📋 **P1-2 — `leaderboard` snapshot table + refresh cron.** EF reads all members + home_state + employer rows unbounded. ~50MB JSON at 100K members. Fix: pre-computed `leaderboard_snapshot` keyed (scope, range, metric, member), refresh cron every 5 min. ~4-6h.
+
+### At-scale (post-1K members)
+
+- 📋 **P2-2 — `refresh_member_home_state()` async pipeline.** 207ms synchronous trigger × 10 source tables × write-burst peaks → 8+ cores burned at 100K members; Pro plan has 4. Convert to pg_notify + LISTEN background drain, debounced 5s per email. Or incremental column updates from triggers.
+
+- 📋 **P3-1 — Lift Pro plan defaults: `work_mem` (2.1MB → 8MB+), `max_connections` (60 → 200+).** Via Supabase support ticket once we have evidence of saturation.
+
+- 📋 **P3-2 — `member_health_samples` partitioning by `start_at` month.** Already 6.8K rows at 4 active HK members; ~5.5B rows/year projected at 100K members. Partition + rollup retention.
+
+- 📋 **Telemetry shim** — `perf.js` + `perf_telemetry` table + `log-perf` EF. Deferred from the audit session because static evidence was sufficient. Build when post-fix measurement matters; gate on `?perf=1` query string for prod deployment.
+
+### Not-worth-it / hygiene only
+
+- ❌ Achievements catalog cross-isolate cache (P2-3 in playbook). Wait for Edge KV GA.
+- ❌ The 5 `ON DELETE NO ACTION` → CASCADE FK standardisations from memory. No perf impact at any scale, hygiene only — keep on the existing pre-launch hygiene list.
+
+---
+
 ## Added 08 May 2026 PM-9 (Index prefetch extended to exercise cache)
 
 - ✅ **CLOSED — Prefetch exercise cache from index.html.** vyve-site `a2c99e46`. `_vyvePrefetchNextTabs` now writes both `vyve_programme_cache_<email>` and `vyve_exercise_cache_v2` from the single `workout_plan_cache` fetch. Zero extra network, both pages paint from warm cache after any home visit.

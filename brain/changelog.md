@@ -1,3 +1,56 @@
+## 2026-05-08 PM-10 (Full-platform perf audit · static evidence pass · no code shipped)
+
+Working session: end-to-end perf audit post-PM-9. Goal: identify perceived-load-speed bottlenecks at 32 members today and project the curve to 1K / 10K / 100K members. Tier each finding ship-now / pre-launch / at-scale. Ground rule: audit-only, no code shipped unless a finding crossed the ship-now bar (DB-meltdown threshold).
+
+**Method.** Decided not to ship the telemetry shim this session. Three independent angles produced enough static evidence to write a fix list with concrete EXPLAIN ANALYZE numbers, row counts, and pg_stat_statements rankings. Telemetry is the right next step *after* P0/P1 ship — to validate projected wins land on real iPhones — not before.
+
+The three angles:
+1. **DB ground truth.** `pg_stat_user_tables` row counts + idx-vs-seqscan ratios. `pg_stat_statements` ranked by total_exec_time, top 40. EXPLAIN ANALYZE on the canonical hot-path queries. Index inventory on every member-scoped table cross-referenced against actual filter predicates.
+2. **Code path read.** Full source of `member-dashboard` v59, `_shared/achievements.ts`, `leaderboard` v11, `theme.js`, `sw.js`, `index.html` prefetch IIFE. Counted actual round-trips per page load.
+3. **Function definitions.** `pg_get_functiondef` on `get_charity_total`, `recompute_all_member_stats`, `recompute_company_summary`, `rebuild_member_activity_daily_incremental`, `refresh_member_home_state`, `tg_refresh_member_home_state`.
+
+### Headline findings
+
+**P0-1 — `get_charity_total()` is the #1 query in pg_stat_statements (577 seconds total, 190ms mean, 3037 calls).** 6-table UNION ALL scan with GROUP BY. Linear in total platform activity. EXPLAIN ANALYZE: 127ms execution at 32 members + 1.7K activities, scans 1382 shared buffers. Projection: 30s+ at 100K members, exceeds work_mem and `statement_timeout` floor. Already on `member-dashboard` hot path. Fix is `platform_counters` table maintained by AFTER INSERT/DELETE triggers — increment-on-write, O(1) read. **Crossed the ship-now bar.** Tracked at audit-only level — flagged not actioned this session, fix to ship in next focused session (3-4h).
+
+**P0-2 — `recompute_all_member_stats()` 5-table LEFT JOIN cartesian explosion.** EXPLAIN ANALYZE at 15 active members: 2,278ms execution, **4,890,146 rows in the intermediate hash join** for a query that returns 15 rows. Same pattern in `daily-report` (1.2s, observed) and `re-engagement-scheduler` (924ms). Cron schedule: every 15 minutes. At 1K members this tips into "cron overruns its 15-min window". Fix: rewrite as per-member subqueries (each indexed lookup, returns 1 row); or add `last_*_at` columns to `member_home_state`. Pre-launch.
+
+**P1-1 — `member-dashboard` v59 still issues ~22 outer + ~24 inner sequential PostgREST queries per home load.** The 06 May PM-2 staging — 5 `*_this_week` columns on `member_home_state` populated by triggers — is live but the EF still parallel-queries the source tables instead of reading state. Achievements payload's 23 INLINE metrics fire `count(*)` calls *serially* inside the inflight calculation (no Promise.all wrap). Combined: drop ~20 round-trips + replace ~15 `count(*)` with state reads. ~4h. Pre-launch.
+
+**P1-2 — `leaderboard` reads ALL members + ALL home_state + ALL employer_members on every call, no pagination.** At 100K members that's 50MB+ JSON per leaderboard load. Fix: `leaderboard_snapshot` table per (scope, range, metric), refresh cron, EF reads top-100 from snapshot. Pre-launch.
+
+**P2-1 — `theme.js` fires a Supabase fetch on every page load** (5247 calls in pg_stat_statements). Cross-device sync should be once-per-session not per-page. Cheap isolated fix, ~30 min. Ship-now.
+
+**P2-2 — `refresh_member_home_state()` 207ms per call, fires synchronously on triggers across 10 source tables.** Member tap-to-log latency dominated by this. At 100K members + write-burst peaks the trigger pipeline burns 8+ cores; Pro plan has 4. Convert to async via `pg_notify` + LISTEN, or maintain home_state via incremental column updates. At-scale.
+
+**P3 — Pro plan defaults: `work_mem = 2.1MB`, `max_connections = 60`.** Both raise via support ticket once we have evidence of saturation. At-scale.
+
+### What was deliberately NOT a problem
+
+Audit confirmed the cache-paint perf project (PM-3 through PM-9) genuinely closed the perceived-load problem at current scale. RLS wrap from PM-8 still intact across all 72 policies (zero drift). SW HTML SWR matches PM-7 spec. Cache key `vyve-cache-v2026-05-08-prefetch-exercise-7` is current. EF connection-reuse is correct (single `createClient` per call, fetch is auto-pooled by Deno). Index coverage on member-scoped hot-path tables is genuinely good; the high seq-scan counts on tiny tables (12-19 rows) are PostgreSQL's correct planner choice — at 12 rows seq scan beats index scan. Switches to index scan automatically at scale.
+
+The audit's primary contribution is the at-scale projection. Ship-now items are narrow.
+
+### Brain drift caught
+
+- §8 portal pages SW cache key listed as `vyve-cache-v2026-04-29h-fullsync-btn`; live is `vyve-cache-v2026-05-08-prefetch-exercise-7`. Updated.
+- §6 `member_home_state` description doesn't flag the 5 dormant `*_this_week` columns. Updated.
+
+### Files touched
+
+`/playbooks/perf-audit-2026-05-08.md` (NEW, 25K chars) — full audit with EXPLAIN ANALYZE evidence, fix shapes per finding, tier classification, time + sign-off + risk per fix.
+`/brain/master.md` — §19 entry for PM-10 (this entry compressed) + §8 SW cache-key drift fix + §6 home_state column note.
+`/tasks/backlog.md` — new ship-now and pre-launch entries with the fix shapes.
+
+### What ships next session (decided this session, not committed)
+
+1. **P0-1** — Charity counter incremental table (3-4h, ship-now)
+2. **P2-1** — Theme.js fetch skip (30 min, ship-now, can land same session)
+
+After those: P0-2 → P1-1 → P1-2 in pre-launch order. Telemetry shim deferred to a post-fix validation session.
+
+---
+
 ## 2026-05-08 PM-9 (Extend index prefetch to populate exercise cache)
 
 Tiny follow-up to PM-5 + PM-8. Dean asked: "if it's 200-500ms is there a way to have that background cache on load so that when he clicks it, it's already there?" Audit of the prefetch helper from PM-5 showed it populates `vyve_members_cache_<email>` (covers nutrition's hot path) and `vyve_programme_cache_<email>` (covers workouts page) but NOT `vyve_exercise_cache_v2` which is exercise.html's primary cache key with a different shape.
