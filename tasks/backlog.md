@@ -1,3 +1,15 @@
+## Added 08 May 2026 PM-3 (Cache-paint-before-auth shipped on 4 pages · perf project ongoing)
+
+- ✅ **CLOSED — Cache paint runs synchronously before auth on settings/exercise/movement/certificates.** Plus `data.error → !data.error` cache-write bug fix on certificates.html. vyve-site `29ada8f8`. SW key `v2026-05-08-cache-paint-early`.
+
+- 📋 **NEW — Session 2: migrate the remaining 8 pages to the cache-paint-before-auth pattern.** Pages: `nutrition.html`, `log-food.html`, `leaderboard.html`, `sessions.html`, `engagement.html`, `monthly-checkin.html`, `wellbeing-checkin.html`, `running-plan.html`. For each: audit current cache state (does the page have one? where is the paint gated?). For pages with no cache at all, ship with the drafted `paintCacheFirst` helper from `vyve-offline.js` (currently NOT shipped — kept locally). For pages with bespoke caches gated on auth, migrate to the synchronous IIFE pattern from §23 hard rule. Estimated ~30 min per page, ~4–5h total session.
+
+- 📋 **NEW — Session 3: workouts targeted gap-fills.** `loadExerciseNotes` (in `workouts-notes-prs.js`), `loadLibrary` and `loadPausedPlans` (in `workouts-library.js`) are uncached. Library tab tap = cold fetch every time. Wrap with cache-first using either the existing bespoke pattern or `paintCacheFirst`. Estimated 1–2h.
+
+- 📋 **NEW — Session 4: prefetch top nav targets.** From `index.html`, fire background fetches for the most likely next-tab destinations after first paint (top 3 nav buttons). Plus `touchstart` prefetch on nav buttons. Wifi-only gate via `navigator.connection.effectiveType`. Closes the "first-tap of the session" gap that even cache-first leaves open. Estimated 2–3h.
+
+- 📋 **NEW — Ship `paintCacheFirst` helper to `vyve-offline.js` once Session 2 has a real consumer.** Drafted 08 May PM-3 (~110 lines: `pageCacheGet/Set/Invalidate` + wrapper). NOT shipped this commit because all 4 target pages already had bespoke working caches. Will land in the same atomic commit as the first uncached-page migration in Session 2 (so it's not dead infra).
+
 ## Added 08 May 2026 PM-2 (Exercise name canonicalisation shipped · library expansion deferred)
 
 - ✅ **CLOSED — Cross-day exercise history fixed for Stu Watts.** 28 April-10 orphan rows on `exercise_logs` rewritten to canonical via the new normaliser. His next Push B will cross-link to his April Push A data. Permanent normaliser system live on `exercise_logs`, `exercise_notes`, `exercise_swaps` (×2 cols), `custom_workouts.exercises`, `shared_workouts.session_data`, `shared_workouts.full_programme_json`, `workout_plan_cache.programme_json`, `workout_plans.exercise_name`.

@@ -1,3 +1,52 @@
+## 2026-05-08 PM-3 (Cache paint runs synchronously, before auth/SDK · 4 pages · 1 bug fix)
+
+**Session shape.** Member feedback: "every page has to load once clicked" — feels slower than Strava. Initial hypothesis was missing per-page caches, but live audit (settings.html, exercise.html, movement.html, certificates.html, workouts modules) showed every page already has its own bespoke cache key with cache-first paint logic. The real bottleneck: cache paint code is gated **inside `onAuthReady`**, so it doesn't run until the Supabase SDK has loaded + initialised + the optimistic fast-path has fired. On a cold page navigation the member waits for HTML parse → JS parse → SDK download (preloaded but still parses ~50–200ms) → SDK parse → client init → fast-path read of `vyve_auth` → dispatch `vyveAuthReady` → the page's `onAuthReady` finally reads cache and paints. The cache paint should happen *before* any of that.
+
+Companion bug spotted in certificates.html during the audit: the cache write is gated on `if (data.error)` (only writes on error responses) instead of `!data.error`. Means the certs cache rarely gets populated even when the EF returns successfully — so the existing cache-first paint was a no-op for most members. Fixed in this commit.
+
+`paintCacheFirst` infra was drafted in `vyve-offline.js` (~110 lines covering generic `pageCacheGet/Set/Invalidate` + a wrapper) but **NOT shipped this commit** — none of the 4 target pages needed it (they all have working bespoke caches). Keeping the draft for Session 2 (the still-uncached pages: nutrition, log-food, leaderboard, sessions, engagement, monthly-checkin, wellbeing-checkin, running-plan).
+
+### Site changes (vyve-site commit `29ada8f8`)
+
+**The pattern (per page).** Replace `onAuthReady` cache-read with a synchronous IIFE that:
+1. Reads `localStorage.getItem('vyve_auth')` directly to derive the email — same row auth.js uses for its fast-path. Sync read, no SDK needed.
+2. Reads the page's existing bespoke cache key.
+3. Calls the page's existing render fn (`populateFromCache`, `renderHero`, `renderPlan`, or `render`) and unhides `#app`.
+
+The auth-ready handler still runs (for the background fetch + render swap) but no longer carries the cache-paint responsibility. An `_earlyPainted` guard prevents double-paint when both early-IIFE and onAuthReady would render.
+
+- `settings.html`: cache paint moved out of `onAuthReady`. Drops the 10-min TTL gate — paints regardless of age, fresh fetch always overwrites (matches home model). +782 chars.
+- `exercise.html`: synchronous IIFE before auth wiring; sets `memberEmail` early so existing `readCache()` resolves; `_earlyPainted` guard. +1,043 chars.
+- `movement.html`: same pattern as exercise.html. +952 chars.
+- `certificates.html`: `paintCertsCacheEarly()` IIFE + bug fix on the cache-write condition (`data.error` → `!data.error`). +958 chars and one truthy-flip.
+- `sw.js`: cache key `vyve-cache-v2026-05-07f-cardio-weekly` → `vyve-cache-v2026-05-08-cache-paint-early`.
+
+### Verification
+
+- Inline scripts on all 4 HTML files pass `node --check`.
+- Stub-runtime test (mocked DOM + storage) for each page's main script block — both cold-cache (vyve_auth=null, returns early) and warm-cache (auth + cache populated, render functions called) scenarios execute cleanly.
+- Post-commit byte-for-byte re-fetch of all 5 files via Contents API (live SHA, not raw CDN). All match prepared payloads.
+
+### Why this matters
+
+Members on iOS native + web both feel the SDK-load gap on every navigation. Strava-feel comes from cache hitting before any code Network/SDK round-trip. With this change, on a warm-cache visit the page paints from localStorage in <50ms (single sync read + DOM write), then Supabase SDK loads in parallel and the fresh fetch swap-in lands silently a few hundred ms later.
+
+For the certs page specifically, this is also a real bug fix: the cache-write condition was inverted, so most members had an empty `vyve_certs_cache` regardless of how often they visited the page. Fixed alongside the paint reorder.
+
+### Risks accepted
+
+- Early paint runs before auth.js validates the session. If session is genuinely invalid (member signed out elsewhere), page paints stale data ~500ms before redirect to login. Same trade-off home dashboard has been making.
+- exercise/movement IIFE references function declarations defined later in the same `<script>` tag (`readCache`, `renderHero`, `renderPlan`, `reveal`). Relies on function-declaration hoisting within the script. Verified by stub-runtime test.
+
+### What's next
+
+- Session 2: the 8 pages we haven't audited yet — nutrition.html, log-food.html, leaderboard.html, sessions.html, engagement.html, monthly-checkin.html, wellbeing-checkin.html, running-plan.html. Each gets the same audit (do they have a cache? is paint gated on auth?) and the appropriate fix.
+- Session 3: workouts targeted gap-fills — `loadExerciseNotes`, `loadLibrary`, `loadPausedPlans` are uncached. Wrap with cache-first using either the existing bespoke pattern or the drafted `paintCacheFirst` infra.
+- Session 4: prefetch — index.html eager-prefetches top 3 nav targets after first paint, plus `touchstart` prefetch on nav buttons. Wifi-only gate via `navigator.connection`.
+- Session 5: auth.js promise refactor (top of backlog as P1) — get auth.js back to `defer`, regain the preconnect/preload perf hints.
+
+---
+
 ## 2026-05-08 PM-2 (Exercise name canonicalisation · cross-day workout history fix · trigger system live)
 
 **Session shape.** Member feedback from Stu Watts via Lewis: "completed Push A, then Push B same exercise, didn't see his previous data on the second session". Diagnosed not as a workouts code bug but as data drift — his April 10 logs were written with the *old* exercise naming convention (`Barbell Bench Press`, `Cable Lateral Raise`, `Seated Dumbbell Shoulder Press`) and his current programme uses the *new* convention (`Bench Press – Barbell`, `Lateral Raise – Cable`, etc.) introduced during the 19 April Exercise Hub work. The history join key in `buildExerciseCard()` is `exerciseHistory[ex.exercise_name]` — exact-string match — so April logs orphaned themselves the moment the library renamed.

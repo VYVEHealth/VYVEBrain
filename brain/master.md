@@ -1,6 +1,6 @@
 # VYVE Health — Brain Master
 
-> Single source of truth for the whole business. Full rewrite 28 April 2026 PM (not a patch). Captures live state through iOS 1.2 approval + autotick sessions 1–3a + push notifications sessions 1 + 2 item 1 + sw.js handler patch inclusive. Supersedes the 24 April rewrite. If this drifts from live reality, rewrite it fully again — do not paper over.
+> Single source of truth for the whole business. Full rewrite 28 April 2026 PM (not a patch). Captures live state through iOS 1.2 approval + autotick sessions 1–3a + push notifications sessions 1 + 2 item 1 + sw.js handler patch inclusive. Patched 8 May PM-3 (§23 cache-paint-before-auth hard rule) without full rewrite. Supersedes the 24 April rewrite. If this drifts from live reality, rewrite it fully again — do not paper over.
 
 ---
 
@@ -1200,6 +1200,42 @@ Every page that writes a row representing a member action (habit tick, workout c
 Heartbeat-style writes (e.g., `tracking.js` PATCH every 15s) are explicit exceptions — only the initial insert invalidates, since subsequent heartbeats don't change today's activity counts. Programme advance counters (e.g., `workout_plan_cache` PATCH after `completeWorkout`) are also exceptions for the same reason — those aren't member activity, they're plan state.
 
 The optimistic overlay in `renderDashboardData` (`VYVEData.getOptimisticActivityToday()` → bump pill strip + counts + activity_log) is the second layer: even with cache wiped and a slow EF round-trip, the dashboard reflects local state immediately. Together: invalidate → skeleton → optimistic-from-outbox → EF authoritative replacement. Member never sees stale state.
+
+### Hard rule (added 08 May PM-3): cache paint runs before auth, not inside `onAuthReady`
+
+Every portal page that has a per-page localStorage cache MUST paint that cache **synchronously on script parse**, NOT inside the `onAuthReady` handler. Cache-paint inside `onAuthReady` waits for the Supabase SDK to load, parse, initialise, and the optimistic fast-path to fire before the member sees anything — that's the bulk of perceived "every page has to load once clicked" lag.
+
+Pattern:
+
+```js
+function _readEmailFromAuthCache() {
+  try {
+    const raw = localStorage.getItem('vyve_auth');
+    if (!raw) return null;
+    const sess = JSON.parse(raw);
+    const inner = (sess && sess.access_token) ? sess : (sess && sess.currentSession);
+    return (inner && inner.user && inner.user.email) || null;
+  } catch (_) { return null; }
+}
+let _earlyPainted = false;
+(function paintCacheEarly() {
+  try {
+    const email = _readEmailFromAuthCache();
+    if (!email) return;
+    // ... read this page's cache, call render fn, reveal #app, set _earlyPainted = true
+  } catch (_) {}
+})();
+```
+
+The auth-ready handler still fires the background fetch + swap, but the `_earlyPainted` guard prevents double-paint.
+
+Rationale: `auth.js` stores its session under `localStorage.vyve_auth` (Supabase's `storageKey: 'vyve_auth'` config). Reading that synchronously gives us the member's email without any SDK round-trip — the fast-path inside `vyveInitAuth` reads the same row a few hundred ms later. We just don't need to wait for it.
+
+Don't use bespoke per-page TTL gates. Paint the cache regardless of age — fresh fetch always overwrites (model: `index.html`). Short TTLs cause unnecessary skeleton flashes mid-day.
+
+Pages that already follow this pattern (post 08 May PM-3): `index.html`, `settings.html`, `exercise.html`, `movement.html`, `certificates.html`. Pages still on the old "paint inside onAuthReady" pattern: `nutrition.html`, `log-food.html`, `leaderboard.html`, `sessions.html`, `engagement.html`, `monthly-checkin.html`, `wellbeing-checkin.html`, `running-plan.html`. These get the migration in Session 2.
+
+Companion rule: when adding a cache-write site, double-check the truthiness gate. The certificates.html bug from 08 May (`if (data.error)` instead of `!data.error`) silently broke cache writes for months. Always test the cache-write path actually fires on a successful response.
 
 ### Hard rule (added 06 May): per-page init must actually be invoked
 
