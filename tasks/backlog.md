@@ -1,3 +1,27 @@
+## Added 08 May 2026 PM-17 (member-dashboard v61 · drop 4 this-week queries · cache 3 INLINE counts)
+
+- ✅ **CLOSED — `member-dashboard` v61 deployed.** Platform v67, ezbr `72ce2bbe…`. Three files: `index.ts` 19004 chars, `_shared/achievements.ts` 13580, `_shared/taxonomy.ts` 4303 (byte-identical). Promise.all gateway shrunk from 22 to 18 entries; 4 this-week PostgREST queries dropped (now read from `state.workouts_this_week` / `cardio_this_week` / `sessions_this_week` / `checkins_this_week`). Three INLINE evaluators (`workouts_logged` / `cardio_logged` / `checkins_completed`) routed through cached `homeStateRow` via extended `HOME_STATE_STREAK_FIELDS`. `habitsThisWeek` query stays — goal-progress meter needs `COUNT(DISTINCT activity_date)` and the column is `COUNT(*)`. Same staleness contract as the totals already served from `member_home_state`. Deno typecheck clean. 401-handler verified live via curl.
+
+- 📋 **NEW (low priority) — Daily `member_home_state` reconciliation alert.** Carry-forward from the now-closed P1-1. Detect drift between `member_home_state.{workouts_total, cardio_total, checkins_total, *_this_week, *_streak_*}` and source-table-derived recomputation. Cron at 03:00 UTC running `recompute_all_member_stats()` against a single canary member, comparing post-write row to a fresh aggregate query, alerting on any mismatch > 0. Cheap insurance now that the dashboard reads from these cols on every load and the achievement evaluators inherit the same staleness. ~1h.
+
+- 📋 **NEW (low priority) — Eager `homeStateRow` fetch from auth.js.** v61 still has the achievements module fetching `member_home_state` independently from the dashboard's own SELECT. Could fan out from `auth.js` post-getSession, prime a sessionStorage cache the EF reads via a header. Marginal gain (one round trip) — measure first.
+
+## Added 08 May 2026 PM-16 (re-engagement-scheduler v11 · scaling fix on dormancy lookup)
+
+- ✅ **CLOSED — `re-engagement-scheduler` v11 deployed and verified.** Platform v31, ezbr `0b58be0d…`. Replaces 4 `.in()` queries against activity tables with single `.in()` against `member_home_state` for the 5 new `last_*_at` cols. At 100K members the old shape pulled millions of rows; new shape pulls one row per active member. Verified live PM-17 via curl: HTTP 200, version: 11, processed 15 / 0 errors, A/B classification working against new shape. The "network proxy blocked test invocation at deploy time" caveat is now closed.
+
+- ✅ **CLOSED — Migrations `pm16_add_last_at_columns_to_member_home_state` + `pm16_extend_refresh_member_home_state_with_last_at`.** Five new nullable timestamptz cols (`last_habit_at` / `last_workout_at` / `last_cardio_at` / `last_session_at` / `last_checkin_at`) + index on `last_activity_at`. Backfilled all 30+ existing rows. `refresh_member_home_state(p_email)` extended to populate the 5 cols on every refresh. Dean's row verified.
+
+- ✅ **CLOSED — New §23 hard rule: perf rewrites of dormant cron functions verify against live source.** PM-16 audit named `recompute_all_member_stats()` and `daily-report` v8 as the cliffs but both were already in their PM-11 incremental shape — audit's diagnosis had been overtaken. Lesson codified in master.md §23.
+
+## Added 08 May 2026 PM-15 (paint-timing audit · 10 candidate pages · 1 fix)
+
+- ✅ **CLOSED — Paint-timing audit completed across 10 candidate pages.** vyve-site `7e5ab3f1`. Pages audited: exercise.html / certificates.html / settings.html / nutrition.html / sessions.html / leaderboard.html / log-food.html / wellbeing-checkin.html / running-plan.html / workouts.html. Eight already correct (paintCacheEarly IIFE pattern, or AI/network-honest by design). One fix: `workouts-programme.js` got a synchronous `paintProgrammeFromCache()` IIFE at the top that reads `vyve_auth` → email, reads `vyve_programme_cache_<email>`, sets module-scope vars, calls `renderProgramme()`. Boot path's `loadProgramme()` still runs on auth for network refresh. SW cache `microtask-workouts-b` → `paint-programme-c`.
+
+## Added 08 May 2026 PM-14 (index.html prefetch fan-out · workouts/exercise lifted to microtask)
+
+- ✅ **CLOSED — Workouts/exercise prefetch in `index.html` lifted from idle to microtask.** vyve-site `3719e305`. Block #2 of `_vyvePrefetchNextTabs` was still wrapped in `_idle(...)` post-PM-13. Lifted to `Promise.resolve().then(...)`. Block #1 (nutrition) stays idle-gated — heavier, less critical. Block #3 (habits) was already on microtask from PM-13. SW cache `precache-engagement-workouts-a` → `microtask-workouts-b`.
+
 ## Added 08 May 2026 PM-13 (SW precache + habits prefetch out of idle)
 
 - ✅ **CLOSED — engagement.html + workouts.html added to SW precache list.** vyve-site `186b432944`. PM-12 left these two pages un-precached so first-navigation HTML arrival was network-bound even with PM-7 SWR. Now both join habits/nutrition/exercise/sessions/movement/cardio/certificates in `urlsToCache`. Trade-off: ~140KB extra at install for first-tap-no-wait afterwards.
@@ -12,7 +36,7 @@
 
 - ✅ **CLOSED — engagement.html + habits.html cache-paint-before-auth.** vyve-site `3fcd9169`. Both pages now discover email from cache synchronously, paint without waiting for auth.js to load, then await auth internally for the network refresh. _vyveWaitAuth() helper added to both. Index prefetch wave extended to warm vyve_habits_cache_v2. SW cache `theme-throttle-8` → `paint-engagement-habits-9`. New §23 hard rule codified.
 
-- 📋 **NEW (medium priority) — Paint-timing audit on every other gated portal page.** PM-12 found two pages with the wrong-paint-timing bug despite both having cache-paint CODE. Need to grep across the rest of the portal for the same anti-pattern: any page where cache-read lives inside a function that's wired to `addEventListener('vyveAuthReady', ...)`. Candidates to check explicitly: workouts.html, exercise.html, leaderboard.html, certificates.html, sessions.html, nutrition.html, log-food.html, settings.html, wellbeing-checkin.html, running-plan.html. Greppable check: `grep -n "vyveAuthReady', () => load" *.html` should return zero hits. Estimate ~30 min to audit, ~30 min per page found to fix. Likely 2-3 pages affected.
+- ✅ **CLOSED — Paint-timing audit completed (PM-15).** All 10 candidate pages audited. Eight already correct. One fix: `workouts-programme.js` got the synchronous paint IIFE pattern. vyve-site `7e5ab3f1`. Cache `paint-programme-c`.
 
 - 📋 **PROMOTED — Telemetry shim from PM-10 audit P2.** Re-tiered up. PM-12 was a paint-timing miss in the static audit; only browser-level timing instrumentation would have caught it. Build the `?perf=1` gated `perf.js` + `perf_telemetry` table + `log-perf` EF when bandwidth allows — it's the only way to catch the next paint-timing drift before users do.
 
@@ -40,9 +64,9 @@ Full audit at `/playbooks/perf-audit-2026-05-08.md` — read first before action
 
 ### Pre-launch (before public-launch comms)
 
-- 📋 **P0-2 — Rewrite `recompute_all_member_stats()` + `daily-report` + `re-engagement-scheduler` LEFT JOIN cartesian.** EXPLAIN ANALYZE shows 4.9M intermediate rows at 15 members. Same anti-pattern in 3 places. Option A: per-member subqueries (1h, surgical). Option B: add `last_*_at` columns to member_home_state (3-4h, cleaner). Ship Option A first, reconsider B later.
+- ✅ **CLOSED P0-2 — `re-engagement-scheduler` LEFT JOIN cartesian fixed.** `recompute_all_member_stats()` and `daily-report` v8 were already in their PM-11 incremental shape (audit was partially stale). The actual cliff was `re-engagement-scheduler` v10 doing 4 parallel `.in()` queries against `daily_habits` / `workouts` / `session_views` / `wellbeing_checkins` and computing `MAX(activity_date)` in JS — millions of rows at 100K members. PM-16 chose Option B (cleaner): added 5 `last_*_at` cols to `member_home_state` + index, extended `refresh_member_home_state` to populate, rewrote v11 to read from `member_home_state` via single `.in()` (one row per active member regardless of activity volume). Migrations `pm16_add_last_at_columns_to_member_home_state` + `pm16_extend_refresh_member_home_state_with_last_at`. EF v11 platform v31, ezbr `0b58be0d…`. Verified live PM-17: HTTP 200, version: 11, processed 15 / 0 errors.
 
-- 📋 **P1-1 — `member-dashboard` v59: drop dormant-column duplicate queries + parallelise achievements inflight + state-path for INLINE counts.** EF still issues 22 outer + 23 inner sequential PostgREST queries. Closes the staged compression from 06 May PM-2. ~4h combined. Dean sign-off, but add a daily reconciliation cron to alert on `member_home_state` vs source-table count drift.
+- ✅ **CLOSED P1-1 — `member-dashboard` v60 + v61 staged compression complete.** PM-13 (v60) parallelised both achievements `INLINE` evaluator passes via `Promise.all` (was 23 serial PostgREST round trips) and pre-fetched the 6 streak fields from `member_home_state` in a single shot. PM-17 (v61) dropped 4 of 5 this-week PostgREST queries (workouts/cardio/sessions/checkins → `state.*_this_week`) and routed 3 INLINE evaluators (`workouts_logged` / `cardio_logged` / `checkins_completed`) through the cached `homeStateRow`. Net: gateway 22 → 18 queries; achievements pass 23 → 20 round trips. v61 platform v67, ezbr `72ce2bbe…`. Daily reconciliation cron for `member_home_state` vs source-table count drift retained as backlog item below.
 
 - 📋 **P1-2 — `leaderboard` snapshot table + refresh cron.** EF reads all members + home_state + employer rows unbounded. ~50MB JSON at 100K members. Fix: pre-computed `leaderboard_snapshot` keyed (scope, range, metric, member), refresh cron every 5 min. ~4-6h.
 

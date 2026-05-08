@@ -1,3 +1,188 @@
+## 2026-05-08 PM-17 (member-dashboard v61 · drop this-week PostgREST queries · cache 3 INLINE counts)
+
+PM-13 paralleled the achievements evaluator passes. PM-17 takes the next bite: the Promise.all gateway in `member-dashboard` was still firing 5 separate this-week queries each round (`daily_habits` / `workouts` / `cardio` / `session_views` / `wellbeing_checkins` all `gte=currentWeekStart`), then mapping the results into `weekly_goals.progress.*`. Pre-flight against the live schema: `member_home_state` already carries `habits_this_week` / `workouts_this_week` / `cardio_this_week` / `sessions_this_week` / `checkins_this_week` populated by `refresh_member_home_state(p_email)` with the same week boundaries. So four of the five can move to the cached row. The fifth stays.
+
+### What stays and why
+
+`habitsThisWeek` query stays. The goal-progress meter uses `COUNT(DISTINCT activity_date)` (the existing v60 code does `new Set(...).size` over activity_date values). `member_home_state.habits_this_week` is `COUNT(*)`. They are not interchangeable: a member who logs three habits on Tuesday and four on Thursday has `habits_this_week=7` but `habitDaysThisWeek=2`. The goal display says "logged habits on 2 of 3 target days this week" — that's a days count, not a row count. Keeping the query is correct. (`refresh_member_home_state` does have a separate `goal_habits_done` column that IS COUNT(DISTINCT, but reading `goal_habits_done` would mean the EF reads two `member_home_state` columns where v60 reads neither — net wash. Keeping `habitsThisWeek` is the smaller diff.)
+
+### What moves to cache
+
+`weekly_goals.progress.exercise` was `(workoutsThisWeek as any[]).length + (cardioThisWeek as any[]).length` — replaced by `Number(state.workouts_this_week ?? 0) + Number(state.cardio_this_week ?? 0)`. Sessions and checkin progress moved similarly. All four had `COUNT(*)` semantics in the original queries — semantically equivalent to the `member_home_state` columns.
+
+### INLINE evaluator routing
+
+Three more INLINE achievement evaluators routed through the cached `homeStateRow`:
+
+- `workouts_logged` → `homeStateFieldFromCtx(c, 'workouts_total')` (was `count(s, 'workouts', e)`)
+- `cardio_logged` → `homeStateFieldFromCtx(c, 'cardio_total')` (was `count(s, 'cardio', e)`)
+- `checkins_completed` → `homeStateFieldFromCtx(c, 'checkins_total')` (was `count(s, 'wellbeing_checkins', e)`)
+
+`HOME_STATE_STREAK_FIELDS` extended to include the three `*_total` columns so they land in the same `member_home_state` round trip as the existing 6 streak fields. The fetch shape stays single-trip; we just `.select()` more columns.
+
+`habits_logged` does NOT move — the achievement metric is row-count of `daily_habits` (every log counts), not days-with-a-log. `member_home_state.habits_total` is `COUNT(DISTINCT activity_date)` per the function definition. Different semantics; would silently undercount achievement progress.
+
+### Net per-dashboard-load saving
+
+- 4 PostgREST queries dropped from the dashboard Promise.all gateway (was 22 entries, now 18).
+- 3 PostgREST count queries dropped from the achievements evaluator pass (was 23 round trips parallel-batched, now 20 with 3 of them served from the cached row).
+
+7 fewer round trips per dashboard load, no shape changes to the response payload, and the achievement evaluators inherit the same `member_home_state` staleness contract as the totals already do — `recompute_all_member_stats()` refresh + on-demand refresh when the row is missing.
+
+### Files
+
+- `index.ts` (19004 chars vs v60 18943; +61 chars net — comment block grew, code shrank from removing 4 query lines and 4 destructure entries).
+- `_shared/achievements.ts` (13580 chars vs v60 13743; -163 chars from comment-rewrite + the three INLINE entries collapsing from `count(s, table, e)` to `homeStateFieldFromCtx(c, field)`).
+- `_shared/taxonomy.ts` (4303 chars, byte-identical to v60).
+
+### Deploy
+
+Native `Supabase:deploy_edge_function` (Composio router doesn't expose this tool — direct MCP call required). All three files in a single deploy call per the multi-file EF rule. Platform v67. ezbr `72ce2bbea98b1a477b9e6883b95ed8776c69f486d19f335ec321e1b78da2964d`. Status ACTIVE. verify_jwt: false (internal `supabase.auth.getUser()` validation per §23 custom-auth pattern).
+
+### Verification
+
+- Deno typecheck on the full EF source pre-deploy: `deno check md_v61/index.ts` clean.
+- Brace + paren balance check on each file.
+- Post-deploy `Supabase:get_edge_function` returned all three files matching what was sent (live source verification, not relying on platform version increment alone).
+- Curl GET against the live function with no Authorization header: HTTP 401, `{"error":"Unauthorized"}` — boot path runs cleanly through to the auth.getUser() check, no 500 from a broken Promise.all destructure or import error.
+
+### Risks
+
+- `member_home_state.workouts_this_week` etc. will lag by up to 30 minutes if the member just logged a workout and `recompute_all_member_stats` hasn't fired since. v60 was already doing this for `*_total` and `engagement_score`, so this is no new staleness — same contract. The on-demand refresh path (when `homeState` row missing) still exists unchanged.
+- The INLINE evaluator changes mean `workouts_logged` / `cardio_logged` / `checkins_completed` achievement progress can lag by the same window. But achievement evaluators run on every dashboard load AND on every `log-activity` call (via inline evaluator), so a member who just hit a milestone won't wait 30 min — `log-activity` fires the evaluator before returning. The achievements UI on the dashboard reflects what `member_home_state` last saw; the toast / unseen flag is driven by the `log-activity`-time evaluation. No regression for unseen-flag freshness.
+
+No portal commit. No SW cache bump. EF-only change.
+
+---
+
+## 2026-05-08 PM-16 (re-engagement-scheduler v11 · scaling fix on dormancy lookup)
+
+Audit was partially stale. The PM-16 prompt named `recompute_all_member_stats()` and `daily-report` v8 as the scaling chokepoints. Pre-flight via `pg_get_functiondef` and `Supabase:get_edge_function` showed both were already in their PM-11 incremental shape — the audit's diagnosis had been overtaken by earlier perf work the audit author wasn't tracking. The actual cliff was elsewhere: `re-engagement-scheduler` v10 was doing 4 parallel `.in()` queries against `daily_habits` / `workouts` / `session_views` / `wellbeing_checkins` for every active member, then computing `MAX(activity_date)` per type per member in JavaScript. At 30 active members it pulls a few hundred rows per table. At 100K it pulls millions. The classification logic only needs one `last_*_at` per member per type — perfect candidate for materialisation.
+
+### Schema migration: `pm16_add_last_at_columns_to_member_home_state`
+
+Added five nullable `timestamptz` columns to `member_home_state`:
+
+- `last_habit_at`
+- `last_workout_at`
+- `last_cardio_at`
+- `last_session_at`
+- `last_checkin_at`
+
+Plus a btree index on the existing `last_activity_at` column (the GREATEST of the five, computed at refresh-time and already present pre-PM-16; index was missing). Backfill query ran in a single transaction across all 30+ existing rows from the source tables — `MAX(logged_at)` per type per member, joined back into `member_home_state`. Verified Dean's row populated correctly post-backfill against direct `MAX(logged_at)` queries on each source table.
+
+### Function migration: `pm16_extend_refresh_member_home_state_with_last_at`
+
+Extended `refresh_member_home_state(p_email)` to populate the 5 new cols. Per-type SELECTs against the five source tables (`MAX(logged_at)` for habits/workouts/cardio/checkins; for sessions, `MAX(ts)` over a UNION of `session_views.logged_at` and `replay_views.logged_at`). The existing `last_activity_at` calc (GREATEST of all five with `'-infinity'::timestamptz` coalesce + null-back-to-NULL on no-activity) stayed unchanged. Both INSERT column list and the ON CONFLICT DO UPDATE branch were extended to include the 5 new cols. Verified by re-running `refresh_member_home_state('deanonbrown@hotmail.com')` and inspecting the row.
+
+### EF v11
+
+`re-engagement-scheduler/index.ts` source comment header bumped to v11. Two structural changes:
+
+1. Replaced the 4 parallel `.in()` queries on activity tables with a single `.in()` query against `member_home_state` selecting `member_email,last_habit_at,last_workout_at,last_session_at,last_checkin_at`. Returns one row per active member regardless of activity volume.
+2. `homeStateMap` keyed on `member_email` lookup; per-member object merge maps `last_habit_at` → `last_habit`, `last_workout_at` → `last_workout`, `last_session_at` → `last_session`, `last_checkin_at` → `last_checkin` (the variable names downstream classification logic uses).
+
+All other behaviour byte-identical to v10 — A/B stream classification, cadence steps, `sentMap` / `suppMap` shape, AI line generation, Brevo send path, `engagement_emails` insert/upsert. Header version bump to v11, all log-prefix labels updated to `[scheduler v11]`.
+
+### Deploy
+
+Native `Supabase:deploy_edge_function` (single file, no _shared dependencies). Platform v31. ezbr `0b58be0df98781fff4448ea4e7a71bdabdaca4e3a4092c9f81ad99c9722ca81c`. Status ACTIVE. verify_jwt: false.
+
+### Verification (deferred to PM-17 due to deploy-time network proxy block)
+
+PM-16 session deploy succeeded but the curl test invocation got proxy-blocked. Tested 08 May PM-17 via curl POST `https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/re-engagement-scheduler -d '{"dry_run":true}'`:
+
+- HTTP 200, `version: 11`, `processed: 15` members, `0 errors`.
+- A/B classification working against the new `last_*_at` shape: stream A members (no consent + no activity) returning `"none"` correctly when consent is present; stream B members (dormant) being correctly identified by max-of-last_*_at < hoursAgo(168).
+- Sample result: `paigecoult98@hotmail.com → stream B → "not yet due or cadence complete"`, `dan.zadeh7@gmail.com → stream A → "overwhelm preference"` (correctly suppressed after 1 send), `vicki.park22@gmail.com → "active — no stream"` (correctly classified as recent activity).
+
+The "network proxy blocked test invocation" caveat is now closed.
+
+### New §23 hard rule
+
+Audit-vs-code drift earned a new hard rule (see master.md §23): when picking up a perf-rewrite ticket against a function that hasn't been touched in days, do not trust the diagnosis embedded in the prompt. Fetch live source via `Supabase:get_edge_function`, run `EXPLAIN ANALYZE` against the actual query, or pull the relevant migration against the schema column you assume exists. Pre-flight is non-negotiable.
+
+No portal commit.
+
+---
+
+## 2026-05-08 PM-15 (paint-timing audit · 10 candidate pages · 1 fix)
+
+PM-12 promoted "paint-timing audit on every other gated portal page" to medium priority after the engagement/habits drift exposed that the §23 cache-paint-before-auth rule was authored as a general principle but only enforced on `index.html`. PM-15 ran the audit.
+
+### Pages audited
+
+`exercise.html`, `certificates.html`, `settings.html`, `nutrition.html`, `sessions.html`, `leaderboard.html`, `log-food.html`, `wellbeing-checkin.html`, `running-plan.html`, `workouts.html`. 10 pages.
+
+### Audit method
+
+For each page: grep for cache-read patterns (`localStorage.getItem('vyve_*_cache')`, `JSON.parse`); grep for `addEventListener('vyveAuthReady', ...)`; grep for `paintCacheEarly`, `paintFromCache`, IIFE patterns at the top of the page-init script. Cross-reference with whether the page actually has a paintable cache (some pages are network-honest by design — checkins, logs, plans).
+
+### Findings
+
+Eight of ten clean:
+
+- `exercise.html`, `certificates.html`, `settings.html`, `nutrition.html`: all four have a `paintCacheEarly()` IIFE at the top of their respective page-init scripts that runs synchronously. Auth-ready listener handles only the network-refresh path. Correct.
+- `sessions.html`, `leaderboard.html`: already paint correctly via different pattern (sessions reads from `member-dashboard` response cloned cache; leaderboard renders snapshot table).
+- `log-food.html`, `wellbeing-checkin.html`, `running-plan.html`: AI/network-honest by design. No cache to paint from. Correct.
+
+`workouts.html` was the one fix.
+
+### Workouts.html drift
+
+`workouts-programme.js` boot path was: `addEventListener('vyveAuthReady', () => loadProgramme())`. `loadProgramme()` was the only function reading `vyve_programme_cache_<email>`. So cache-read was gated behind auth, exact pattern PM-12 fixed on engagement/habits.
+
+### Fix
+
+Added a synchronous `paintProgrammeFromCache()` IIFE at the top of `workouts-programme.js`:
+
+1. Reads `vyve_auth` synchronously, decodes member email.
+2. Reads `vyve_programme_cache_<email>` synchronously, parses JSON.
+3. Sets module-scope `let` vars (`memberEmail`, `cacheRow`, `programmeData` — all declared `let` in `workouts-config.js`, accessible across classic-script scope).
+4. Calls `renderProgramme()` (function declaration in `workouts-programme.js`, hoisted, callable from the IIFE).
+
+Boot path's `loadProgramme()` still runs on `vyveAuthReady` to refresh from network. Two-stage paint: cache → render → wait auth → fetch → re-render.
+
+### SW cache bump
+
+`microtask-workouts-b` → `paint-programme-c`. Same atomic commit as the `workouts-programme.js` patch per the §23 SW-cache-with-portal-change rule.
+
+### Commit
+
+vyve-site `7e5ab3f1`. Files: `workouts-programme.js` (paint IIFE added), `sw.js` (cache key bump). `node --check` clean on both. Post-commit verification via `GITHUB_GET_REPOSITORY_CONTENT` (live SHA, not raw CDN per §23): both files match expected content.
+
+No clinical / member-facing copy changes — pure infra. Dean sign-off only.
+
+---
+
+## 2026-05-08 PM-14 (index.html prefetch fan-out · workouts/exercise lifted to microtask)
+
+PM-13 fixed the habits prefetch (block #3) idle-gating issue but two of the three prefetch blocks in `index.html` were still wrapped in `_idle()` (which resolves to `requestIdleCallback` or `setTimeout(fn, 1500)` on Safari).
+
+### Block layout in `_vyvePrefetchNextTabs` (post-PM-13)
+
+- Block #1: nutrition (heavier, less critical) — `_idle(...)`.
+- Block #2: workouts + exercise prefetch — `_idle(...)`.
+- Block #3: habits + daily_habits prefetch — `Promise.resolve().then(...)` (PM-13).
+
+### Fix
+
+Block #2 lifted from `_idle(...)` to `Promise.resolve().then(...)`. Microtask scheduling — runs after current frame, doesn't block render, fires immediately rather than ~1.5s later. Members tapping workouts or exercise within ~1.5s of home paint now hit a populated cache instead of a network round trip.
+
+Block #1 (nutrition) deliberately stays idle-gated. Heavier payload. Members tap nutrition less often immediately after home paint than they tap workouts or habits. Worth letting render breathe.
+
+### SW cache bump
+
+`precache-engagement-workouts-a` → `microtask-workouts-b`. Same atomic commit.
+
+### Commit
+
+vyve-site `3719e305`. Files: `index.html` (block #2 lifted), `sw.js` (cache key bump). `node --check` clean on both. Post-commit verification via Contents API: both match.
+
+No member-facing changes. Dean sign-off only.
+
+---
+
 ## 2026-05-08 PM-13 (SW precache engagement+workouts · habits prefetch out of idle)
 
 Dean reopened the cache-paint perf project after Lewis flagged habits and engagement still feeling slow. The session prompt assumed Session 5 (auth.js defer + Promise) was still pending — pre-flight against the brain showed PM-6 had already shipped that work, plus PM-7 SWR HTML, plus PM-12 had retrofitted engagement and habits with the same cache-paint pattern as index. So architecturally everything was already in place. Drilled into why the symptom persisted.
