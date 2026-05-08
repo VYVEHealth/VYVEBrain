@@ -1,3 +1,18 @@
+## Added 08 May 2026 PM-7 (SW HTML SWR shipped · perf project actually closed · script-tag deferring sweep opened)
+
+- ✅ **CLOSED — Real perf project closure: SW HTML stale-while-revalidate.** vyve-site `3a20fcda` + cleanup `e72f672b`. The whole cache-paint perf project (PM-3 through PM-6) had been silently bottlenecked by the SW's `network-first` HTML strategy, which waited a full network round trip on the HTML doc itself on every navigation before any downstream optimisation could engage. Caught when Dean reported a 3-second exercise tab load post-PM-6. SWR fixes the cold path: cached HTML returns instantly, background fetch refreshes the cache for next navigation. Cache key `vyve-cache-v2026-05-08-auth-defer-5` → `vyve-cache-v2026-05-08-swr-html-6`. New §23 hard rule for SW HTML caching strategy + theme.js non-defer requirement.
+
+- 📋 **NEW (medium priority) — Script-tag deferring sweep: 29 pages with non-deferred consumer scripts.** Diagnostic walk during PM-7 surfaced an inconsistency: `nav.js`, `offline-manager.js`, `vyve-offline.js`, `tracking.js` are non-deferred on 29 pages where most other pages defer them. theme.js is correctly excluded (FOUC prevention, see §23). Pages affected (by script):
+    - **theme.js (must stay non-deferred — exclude from sweep):** all 29 pages
+    - **nav.js:** certificate, checkin-live, checkin-rp, education-live, education-rp, exercise, how-to-pdfs, how-to-videos, mindfulness-live, mindfulness-rp, monthly-checkin, nutrition-setup (with non-rooted src `nav.js`), podcast-live, podcast-rp, therapy-live, therapy-rp, workouts-live, workouts-rp, yoga-live, yoga-rp
+    - **offline-manager.js:** certificate, exercise, monthly-checkin
+    - **vyve-offline.js:** checkin-live, education-live, events-live, index, log-food, mindfulness-live, podcast-live, running-plan, therapy-live, wellbeing-checkin, workouts-live, yoga-live
+    - **tracking.js:** all -live and -rp pages (16 of them)
+    - **healthbridge.js:** consent-gate
+    Estimated 1-2h. Mechanical defer-attribute additions, single atomic commit covering 29 pages. node --check on each file's inline scripts. Same pattern as PM-6's auth.js sweep but with consumer scripts. May not yield a visible perf win on its own (HTML SWR is the main driver) but cleans up an inconsistency that confuses future audits and shaves head-blocking overhead from cold-cache first-paint.
+
+- 📋 **NEW (low priority) — Cache-key bump enforcement under SWR.** Now that we're SWR for HTML, a missed cache-bump on a portal code change could leave members on stale HTML indefinitely (SWR doesn't force-refresh on schedule). Pre-commit check or CI gate that requires a sw.js cache key bump in any commit that touches portal HTML/JS files. Not urgent — the convention is well-established and PM-3 through PM-7 all bumped correctly. Worth automating before the team grows.
+
 ## Added 08 May 2026 PM-6 (Session 5 shipped · cache-paint perf project closed)
 
 - ✅ **CLOSED — Session 5: auth.js promise refactor.** vyve-site `b089eba3`. Pre-flight audit walked back the PM-5 reframe entirely. Of 23 in-scope HTML pages, every consumer was already defer-safe (two-path if/else, vyveAuthReady listeners, function-body refs). Of 18 consumer JS modules, only `workouts-config.js` had a top-level ref and its comment anticipated this exact change. Zero per-page migration was needed. Single atomic commit: auth.js (+970 chars Promise + signal helper, full back-compat with existing event), sw.js cache bump to `vyve-cache-v2026-05-08-auth-defer-5`, 35 HTML pages get `defer` on auth.js script tag (4 already had it). New §23 hard rule for defer-safety walker pattern. Win estimated ~150-300ms first paint via unblocked head preload chain.

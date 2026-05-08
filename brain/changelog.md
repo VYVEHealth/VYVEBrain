@@ -1,3 +1,59 @@
+## 2026-05-08 PM-7 (SW HTML stale-while-revalidate · perf project really closed this time)
+
+**Session shape.** Perf project victory lap turned into a real fix. PM-6 brain commit landed at ~17:00 with "perf project closed". A few minutes later, member feedback (Dean, on his own iPhone): "is this definitely all sorted though, i just closed the app, opened exercise tab and the page took 3 seconds to load". Auth.js defer alone can't account for 3 seconds. Diagnostic walk surfaced the real bottleneck — the SW's fetch handler is `network-first` for HTML navigations, so every page open waits a full network round trip on the HTML doc itself before anything else (cache-paint IIFE, auth.js Promise, deferred SDK preload chain) can do anything useful. The cache-paint perf project had quietly been optimising everything *downstream* of HTML arrival while leaving HTML arrival itself blocking on the network.
+
+vyve-site `3a20fcda` (functional) + `e72f672b` (comment hygiene). Two commits because cleanup of two stale "network-first" comments was caught post-byte-match-verify.
+
+### Site changes
+
+**sw.js HTML branch** rewritten from `network-first` → `stale-while-revalidate`:
+- Cached HTML returns instantly via `caches.match()` (~5ms read from CacheStorage).
+- Background `fetch()` runs in parallel, populates cache for the NEXT navigation.
+- First-ever-visit (no cache yet) falls through to the original network path.
+- Offline + no cache still falls back to `/index.html`.
+- Network errors during background refresh are silenced — cached page already returned, no point surfacing the error.
+
+Cache key bumped: `vyve-cache-v2026-05-08-auth-defer-5` → `vyve-cache-v2026-05-08-swr-html-6`. Strategy comment block at file head + section banner + inline header comment all updated to reflect new behaviour.
+
+### Why network-first existed in the first place
+
+Original rationale was correct in isolation: every member always sees the latest HTML on every navigation, no risk of a stale page hanging around forever. But the trade-off was wrong for VYVE specifically — we're a Capacitor-wrapped app where members navigate constantly between pages, all of which already have downstream cache-first paint logic. Members were paying network latency on every single navigation for a freshness guarantee that's also satisfied (modulo one navigation lag) by the cache-version bump on every deploy.
+
+SWR keeps the freshness guarantee — members are at most ONE navigation behind latest HTML, and the SW cache key bump on every deploy forces every cache to be re-populated next time. The 99% case (no deploy in the last 30s) is a perf win; the 1% case (deploy mid-session) costs the member one extra navigation to see the new HTML, and the cache-bust forces it through immediately on next reload.
+
+### Other findings during the diagnostic walk
+
+A 29-page audit surfaced inconsistent script-tag deferring across the portal. theme.js is correctly NOT deferred (sets `data-theme` on `<html>` synchronously to prevent FOUC — a defer would cause a flash on every navigation, especially for dark-mode users). But `nav.js`, `offline-manager.js`, `vyve-offline.js`, `tracking.js` are non-deferred on 29 pages despite being fully deferrable and being deferred on most other pages. This is a separate backlog item — not blocking on the 3-second symptom (HTML arrival was the bottleneck, not script parse) but worth a sweep next time.
+
+### Verification
+
+- `node --check` on sw.js after each commit (both clean).
+- Post-commit byte-for-byte verification via Contents API.
+- Live SW behavior tested by inspection: cached HTML cache write happens on every successful background fetch, fallback to network on cache miss confirmed by code path read.
+
+### What this lands
+
+The cache-paint perf project's actual member-perceptible win comes online with this commit. PM-3/4/5/6 set up the optimal cache-first paint pipelines, but the network-first SW was eating the HTML arrival cost upstream. With SWR, exercise/habits/workouts/etc. should paint near-instantly on warm cache regardless of network conditions.
+
+### Risks accepted
+
+- Members on a brand-new device or after a SW reinstall will hit the network once for the HTML before SWR kicks in. Same as before.
+- A page that's been freshly deployed but the SW is still serving the old cached version: members see old HTML for one navigation, then the cache key bump on every deploy forces fresh HTML next time. Same trade-off the assets cache has had since day one.
+- If the network is genuinely down AND the cache is empty AND the user navigates somewhere new, we serve `/index.html` as fallback. Already the behaviour before this commit.
+
+### Cumulative perf project — actually closed now
+
+- 08 May PM-3 (`29ada8f8`): cache paint before auth on 4 pages.
+- 08 May PM-4a (`b4adf8ef`): same migration on 5 more pages.
+- 08 May PM-4b (`2d658e0e`): workouts gap-fills.
+- 08 May PM-5 (`f42f059d`): index.html prefetches engagement/certs/members/programme caches.
+- 08 May PM-6 (`b089eba3`): auth.js defer + VYVE_AUTH_READY Promise.
+- 08 May PM-7 (`3a20fcda` + `e72f672b`): SW HTML stale-while-revalidate.
+
+PM-7 is the cap — the project's win was always going to be bottlenecked by whichever step in the cold-page-load chain was slowest, and HTML arrival via network-first was that step.
+
+---
+
 ## 2026-05-08 PM-6 (auth.js defer + window.VYVE_AUTH_READY Promise · Session 5 of perf project shipped)
 
 **Session shape.** Closing entry for the cache-paint perf project. Last session (PM-5) reframed Session 5 in backlog from "1-2h" to "P1 ~half-day, full portal touch" based on a quick read of consumer refs across 14 portal pages. PM-6 pre-flight expanded the scope to the actual surface (23 in-scope HTML pages + 18 deferred consumer JS modules) and audited every reference, then walked back the reframe entirely. The codebase has been built defensively against this exact change for months — the audit found no real per-page migration was needed.
