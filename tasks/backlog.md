@@ -1,3 +1,18 @@
+## Added 08 May 2026 PM-5 (Index prefetch shipped · Session 5 reframed)
+
+- ✅ **CLOSED — Session 4: prefetch top nav targets from index.html.** vyve-site `f42f059d`. Two-layer approach: (a) free fan-out — index's member-dashboard response now writes into `vyve_engagement_cache` and `vyve_certs_cache` too (shape-compatible, zero extra network); (b) explicit background prefetches via `_vyvePrefetchNextTabs(email, jwt)` — fires `requestIdleCallback`-wrapped, network-gated fetches into `vyve_members_cache_<email>` (nutrition) and `vyve_programme_cache_<email>` (workouts). sw.js bumped to v2026-05-08-prefetch-4.
+
+- 📋 **REFRAMED — Session 5: auth.js promise refactor (P1, ~half-day, full portal touch).** Originally scoped as 1-2h. On closer reading of auth.js + the consuming pages: every inline body script across all 14 portal pages references `window.vyveSupabase`, `window.vyveCurrentUser`, or `getJWT()` synchronously. Add `defer` to auth.js and those refs are `undefined` because they execute before auth.js parses → all 14 pages break. To make auth.js deferrable safely, every page (including the workouts JS modules and the cache-paint IIFEs from PM-3/PM-4) needs to migrate to `await window.VYVE_AUTH_READY` (or equivalent). Plus thorough verification that fast-path → SDK init → vyveAuthReady → consent gate ordering is preserved. Win is still the same (~150-300ms first-paint), but it's a focused half-day with smoke tests on every page, not a 1-2h job. Open this in its own chat with a pre-flight load of the brain.
+
+### Cumulative perf project state — what's shipped this week
+
+- 08 May PM-3 (`29ada8f8`): cache paint before auth on settings/exercise/movement/certificates + certificates cache-write bug fix.
+- 08 May PM-4a (`b4adf8ef`): same migration on nutrition/log-food/leaderboard/engagement/running-plan.
+- 08 May PM-4b (`2d658e0e`): workouts gap-fills (loadExerciseNotes/Library/PausedPlans).
+- 08 May PM-5 (`f42f059d`): index.html prefetches top nav targets.
+
+Sessions 1-4 of the perf project = closed. Session 5 (auth.js promise refactor) = reframed and re-queued as half-day work.
+
 ## Added 08 May 2026 PM-4 (Cache-paint-before-auth migration · 5 more pages + workouts gap-fills shipped)
 
 - ✅ **CLOSED — Session 2: cache paint runs before auth on 5 more pages.** vyve-site `b4adf8ef`. nutrition.html, log-food.html, leaderboard.html, engagement.html, running-plan.html. Three pages skipped as low-value (sessions/monthly-checkin/wellbeing-checkin — see §changelog PM-4 for rationale).

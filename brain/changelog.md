@@ -1,3 +1,57 @@
+## 2026-05-08 PM-5 (Index prefetches top nav targets · Session 4 of perf project shipped)
+
+**Session shape.** Session 4 of the cache-paint-before-auth perf project. Closes the "first-tap-of-the-session" gap that cache-first alone can't fix on its own. Cache-first solves return visits within 24h; prefetch from the home page solves the first time a member taps a tab in any given app session.
+
+vyve-site `f42f059d`. Two layers added to index.html's `loadDashboard()`:
+
+### Layer 1 — free fan-out
+
+After `member-dashboard` returns, write the same response into both `vyve_engagement_cache` and `vyve_certs_cache`. Both pages cache the full member-dashboard EF response under their own keys, so this is shape-compatible (verified by reading both pages' cache-write sites). Means tapping Engagement or Certificates immediately after home paints lands on warm cache instantly — no skeleton, no fetch wait. Zero extra network — just three localStorage writes.
+
+### Layer 2 — explicit background prefetches
+
+New `_vyvePrefetchNextTabs(email, jwt)` helper. Fires two fire-and-forget fetches into the caches the heaviest next-tap pages read from:
+
+- `vyve_members_cache_<email>` ← `/rest/v1/members?email=eq.<>` (consumed by nutrition.html's paintNutritionCacheEarly)
+- `vyve_programme_cache_<email>` ← `/rest/v1/workout_plan_cache?member_email=eq.<>&is_active=eq.true` (consumed by workouts page's loadProgramme)
+
+Both wrapped in `requestIdleCallback` (falls back to setTimeout(1500ms) on iOS Safari) so they don't compete with index render. Network gate via `navigator.connection`: skips on `saveData` mode and any `effectiveType` other than 4g/wifi. Failures are silent — target pages fall back to their own fetch on first visit.
+
+### Why these two specifically
+
+Nutrition + workouts are the two heaviest-traffic next-taps after home, and both have bespoke per-member caches that the prefetch fills directly. Sessions/leaderboard/settings either share caches with the fan-out (engagement, certs) or have static data that doesn't benefit from prefetch.
+
+### Session 5 NOT shipped — reframed
+
+Session 5 was originally scoped as the auth.js promise refactor (top of backlog as P1, ~1-2h estimated). On reading auth.js + the consuming pages end-to-end, the refactor turned out to be a 14-page portal-wide migration, not a 1-2h job. Every inline body script across all 14 portal pages references `window.vyveSupabase`, `window.vyveCurrentUser`, or `getJWT()` synchronously. Add `defer` to auth.js and those refs are `undefined` because they execute before auth.js parses → all 14 pages break.
+
+To make auth.js deferrable safely, every page that references `window.vyveSupabase` synchronously needs to migrate to `await window.VYVE_AUTH_READY` (or equivalent). Including the workouts JS modules and the cache-paint IIFEs from PM-3/PM-4. Plus thorough verification that the order of fast-path → SDK init → vyveAuthReady → consent gate is preserved.
+
+This is a focused session of its own — at minimum a half-day of careful per-page migration with smoke tests on every page. Reframed in backlog from "P1 ~1-2h" to "P1 ~half-day, full portal touch".
+
+### Verification
+
+- node --check on all 8 inline `<script>` blocks in index.html — clean.
+- node --check on sw.js — clean.
+- Post-commit byte-for-byte re-fetch of both files — match.
+
+### Risks accepted
+
+- Prefetched data is stale by the time the member navigates (could be <1s, could be never). Standard cache-first behaviour: cached data paints, fresh fetch swaps in if different.
+- Two extra REST calls per home visit on wifi. Negligible at current scale (31 members) and gated for cost on cellular.
+- `vyve_engagement_cache` and `vyve_certs_cache` get populated even if the member never visits those tabs. ~100KB localStorage cost per member. Negligible (5-10MB origin quota).
+
+### Cumulative perf project state — what's shipped this week
+
+- 08 May PM-3 (`29ada8f8`): cache paint before auth on settings/exercise/movement/certificates + certificates cache-write bug fix.
+- 08 May PM-4a (`b4adf8ef`): same migration on nutrition/log-food/leaderboard/engagement/running-plan.
+- 08 May PM-4b (`2d658e0e`): workouts gap-fills (loadExerciseNotes/Library/PausedPlans).
+- 08 May PM-5 (`f42f059d`): index.html prefetches top nav targets.
+
+Sessions 1-4 of the perf project = closed. Session 5 (auth.js promise refactor) = reframed and re-queued.
+
+---
+
 ## 2026-05-08 PM-4 (Cache-paint-before-auth: 5 more pages + workouts gap-fills)
 
 **Session shape.** Continuation of PM-3. Migrate the cache-paint-before-auth pattern across the remaining portal pages members hit frequently, then close the workouts gap-fills (`loadExerciseNotes`, `loadLibrary`, `loadPausedPlans` were the three uncached loaders identified during the PM-3 audit).

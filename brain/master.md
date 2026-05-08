@@ -1,6 +1,6 @@
 # VYVE Health — Brain Master
 
-> Single source of truth for the whole business. Full rewrite 28 April 2026 PM (not a patch). Captures live state through iOS 1.2 approval + autotick sessions 1–3a + push notifications sessions 1 + 2 item 1 + sw.js handler patch inclusive. Patched 8 May PM-3/PM-4 (§23 cache-paint-before-auth hard rule + 5 more pages migrated + workouts gap-fills) without full rewrite. Supersedes the 24 April rewrite. If this drifts from live reality, rewrite it fully again — do not paper over.
+> Single source of truth for the whole business. Full rewrite 28 April 2026 PM (not a patch). Captures live state through iOS 1.2 approval + autotick sessions 1–3a + push notifications sessions 1 + 2 item 1 + sw.js handler patch inclusive. Patched 8 May PM-3/PM-4/PM-5 (§23 cache-paint-before-auth hard rule + 10 pages migrated + workouts gap-fills + index.html prefetch fan-out) without full rewrite. Supersedes the 24 April rewrite. If this drifts from live reality, rewrite it fully again — do not paper over.
 
 ---
 
@@ -1200,6 +1200,18 @@ Every page that writes a row representing a member action (habit tick, workout c
 Heartbeat-style writes (e.g., `tracking.js` PATCH every 15s) are explicit exceptions — only the initial insert invalidates, since subsequent heartbeats don't change today's activity counts. Programme advance counters (e.g., `workout_plan_cache` PATCH after `completeWorkout`) are also exceptions for the same reason — those aren't member activity, they're plan state.
 
 The optimistic overlay in `renderDashboardData` (`VYVEData.getOptimisticActivityToday()` → bump pill strip + counts + activity_log) is the second layer: even with cache wiped and a slow EF round-trip, the dashboard reflects local state immediately. Together: invalidate → skeleton → optimistic-from-outbox → EF authoritative replacement. Member never sees stale state.
+
+### Hard rule (added 08 May PM-5): home page fans out and prefetches for top nav targets
+
+When `member-dashboard` returns on `index.html`, it MUST also write the same response into `vyve_engagement_cache` and `vyve_certs_cache`. Both pages cache the full member-dashboard EF response under their own keys, so this is shape-compatible. Free warm-cache for the next tab the member taps.
+
+Background prefetch via `_vyvePrefetchNextTabs(email, jwt)` fires fire-and-forget fetches into the heaviest next-tap pages' caches:
+- `vyve_members_cache_<email>` ← /rest/v1/members?email=eq.<> (nutrition.html)
+- `vyve_programme_cache_<email>` ← /rest/v1/workout_plan_cache?member_email=eq.<>&is_active=eq.true (workouts page)
+
+Wrapped in `requestIdleCallback` so it doesn't compete with index render. Network gate via `navigator.connection`: skips on saveData mode and any effectiveType other than 4g/wifi. Failures are silent — target pages fall back to their own fetch.
+
+If a new heavy-traffic page is added to the portal AND the member-dashboard EF response doesn't already include the data it needs, add a third prefetch call inside `_vyvePrefetchNextTabs` that fills that page's cache key. Don't fan-out unrelated EF calls; pick the smallest fetch that fills the target cache.
 
 ### Hard rule (added 08 May PM-3): cache paint runs before auth, not inside `onAuthReady`
 
