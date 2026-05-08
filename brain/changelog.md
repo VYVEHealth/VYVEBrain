@@ -1,3 +1,28 @@
+## 2026-05-08 PM-27 (`vyve-offline.js` outbox keys email-keyed · pre-bus floorboard 2 of 2)
+
+Migrated `vyve_outbox` / `vyve_outbox_dead` localStorage keys from flat to per-member: `vyve_outbox_<email>` / `vyve_outbox_dead_<email>`. Closes the shared-device cross-member flush bug — RLS catches it server-side (member_email mismatch on body) but the client UX is wrong: queued writes silently fail and the breadcrumb store shows phantom logs. Per-member keying scopes the queue to whoever owns it.
+
+One-shot adoption inside `outboxList()` and `deadList()` migrates pre-PM-27 flat-keyed rows. For each legacy row: parse `body.member_email`, append to current-email key on match, discard on mismatch / unparseable / missing-field. Then remove the legacy key. `vyve_outbox_adopted_<email>` localStorage flag short-circuits subsequent calls — adoption is at most O(legacy-row-count) per (tab, email). Cross-tab races collapse via the existing `Prefer: resolution=ignore-duplicates` doctrine on every queued POST. Mismatched/unparseable discards are silent: every modern queued write carries `member_email` in body (whole-tree audit at vyve-site `df41d7cb` verified across log-food, habits, nutrition, workouts-session), so anything we can't classify was already destined to fail RLS.
+
+`vyve-offline.js` rewrites:
+- Module constants `OUTBOX_KEY` / `DEAD_KEY` → email-derived keys via `getCurrentEmail()` (resolves from `window.vyveCurrentUser.email`, no Supabase round-trip). New helpers `outboxKeyFor(email)` / `deadKeyFor(email)` / `adoptedFlagFor(email)` / `adoptLegacyOutbox(email)`.
+- All five outbox primitives (`outboxList`, `outboxSave`, `deadList`, `deadAppend`, `outboxClear`) now resolve email first; pre-auth/signed-out reads return `[]`, writes no-op.
+- `outboxFlush` short-circuits on `!getCurrentEmail()`. New `vyveAuthReady` listener triggers `outboxFlush` once auth fan-out populates `vyveCurrentUser`, so a flush attempted at boot before the email is known retries automatically.
+- `getOptimisticActivityToday()` was the one inline reader of the constant — switched to `outboxList()` so the rename doesn't break the home-overlay path.
+- New public `VYVEData.outboxReplace(items)` for callers that mutate the queue in place (only consumer today: log-food.html cancel-pending-insert path).
+
+`log-food.html`: cancel-pending-insert path stops poking `localStorage.vyve_outbox` directly (the only direct-string consumer outside the data layer in the entire portal), switches to `VYVEData.outboxReplace(remaining)`. No other portal page or module needed updating — habits, nutrition, workouts-session, log-food's other paths, index.html overlay all already use the public abstractions, so the rename is invisible to them.
+
+SW cache `vyve-cache-v2026-05-08-perf-shim-f` → `vyve-cache-v2026-05-08-pm27-outbox-a`. vyve-site commit [`040c496d`](https://github.com/VYVEHealth/vyve-site/commit/040c496d6b1651359cad76f550d54fdf9fd63d05). 3 files. Verified: `node --check` passes on patched JS, adoption logic self-tested across alice/bob/signed-out/re-auth sequences (3 expected rows adopted, mismatch + unparseable + missing-email rows correctly dropped, signed-out reads return `[]`, signed-out writes don't perturb the queue, re-auth preserves state via the adopted-flag).
+
+**Out of scope (decisions held from PM-26):** `vyve_recent_activity_v1` not email-keyed today either, but rolls into bus migration 1c-1 (habits) — separate commit. `vyve_checkin_outbox` in `wellbeing-checkin.html` has the same shape of bug, separate surface; not addressed here.
+
+**Editorial note for PM-28:** the PM-26 changelog entry below currently says invalidate count went 14→13 because PM-25 had "a stray comment-line in the count." Re-read confirms that explanation isn't accurate — the original PM-25 count was just wrong. The audit-history block in `playbooks/cache-bus-taxonomy.md` is honest about this; the changelog summary should be brought into line. Fold into the PM-28 brain commit when the taxonomy lands.
+
+Sequence after PM-27: PM-28 commits `playbooks/cache-bus-taxonomy.md` to VYVEBrain (brain-only) with that editorial fix + the workouts-programme.js line 391 sub-audit + the `vyve_dashboard_cache` spike. Then PM-29 builds `bus.js`.
+
+---
+
 ## 2026-05-08 PM-26 (whole-tree audit method · §23 hard rule + cache-bus taxonomy patch · brain-only)
 
 PM-25 drafted the cache-bus taxonomy at `playbooks/cache-bus-taxonomy.md` against a hand-picked 23-file subset of vyve-site, then flagged "PM-18 ship-truth drift" — claim that nav.js's universal touchstart-nav prefetch had never wired up despite the changelog claiming it shipped. PM-26 ran the audit at full fidelity (`GITHUB_GET_A_TREE` recursive on vyve-site main, all 73 source files fetched and grepped) and the "drift" was self-inflicted: nav.js contains the entire `_pfHandleTouchStart` delegated listener with the `_PF_ROUTES` map, network-OK gate, 5s hot-dedupe, and a `mousedown` mirror. nav.js was just one of the 50+ files I hadn't fetched in PM-25. PM-18 shipped exactly what its changelog claimed.
