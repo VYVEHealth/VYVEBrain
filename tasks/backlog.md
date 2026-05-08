@@ -1,3 +1,55 @@
+## Added 08 May 2026 PM-21 (perf telemetry pipeline · `perf_telemetry` + `log-perf` v1 + `perf.js`)
+
+- ✅ **CLOSED — `perf_telemetry` table created.** Migration `pm21_create_perf_telemetry`. Bigserial PK, member_email / page / metric_name / metric_value(double) / nav_type / ua_brief / ts. RLS service-role-only with `(SELECT auth.role())` wrap per §23. Two indexes: `idx_perf_telemetry_page_metric_ts` on `(page, metric_name, ts DESC)`, `idx_perf_telemetry_ts` on `(ts DESC)`.
+
+- ✅ **CLOSED — `log-perf` v1 deployed.** Platform v1, ezbr `9df3ce50315f7c7ad6592ab4f8c350a0c749667bb7d758c7d46700992be9afcb`. `verify_jwt:false` at gateway with internal `getAuthEmail()` JWT validation per §23 custom-auth pattern. 100KB payload cap, 50 metrics/request max, CORS default-origin, returns 204 on success. Curl with no auth → HTTP 401 confirmed live. Email derived from JWT, never read from body.
+
+- ✅ **CLOSED (partial) — `perf.js` client shim shipped on `index.html`.** vyve-site HEAD `df41d7cb`. Default-off in production, opt-in via `?perf=1` URL once (persists in `localStorage.vyve_perf_enabled='1'`). Captures TTFB / DOM done / load / FP / FCP / LCP / INP plus VYVE-custom `auth_rdy` (vyveAuthReady vs fetchStart) and `paint_done` ('vyvePaintDone' event vs fetchStart). `fetch + keepalive` on pagehide (sendBeacon can't carry Authorization). 12s fallback flush. Script tag added after auth.js with defer. SW cache `monthly-defer-e` → `perf-shim-f`.
+
+- 📋 **OPEN — PM-21 follow-up: extend `<script src="/perf.js" defer>` across the rest of the portal.** Trigger after a few days of index.html data confirm the shim is overhead-neutral (specifically: paint metrics on instrumented sessions match paint metrics on uninstrumented sessions within noise). Pages to wire: `habits.html`, `workouts.html`, `exercise.html`, `nutrition.html`, `sessions.html`, `engagement.html`, `leaderboard.html`. Trivial — script tag injection per page + SW cache bump in the same commit. ~30 min for the lot.
+
+- 📋 **OPEN — Read query for daily percentile rollup.** Not a build item, just the canonical query to keep next to the table:
+  ```sql
+  SELECT page, metric_name,
+    percentile_cont(0.5)  WITHIN GROUP (ORDER BY metric_value) AS p50,
+    percentile_cont(0.95) WITHIN GROUP (ORDER BY metric_value) AS p95,
+    COUNT(*) AS n
+  FROM perf_telemetry
+  WHERE ts > now() - interval '1 day'
+  GROUP BY 1, 2 ORDER BY 1, 2;
+  ```
+  Wrap into a `\set` or a saved view if it gets used daily.
+
+## Added 08 May 2026 PM-20 (`monthly-checkin.html` · nav.js + offline-manager.js → defer)
+
+- ✅ **CLOSED — Defer lift on monthly-checkin.html.** vyve-site `2bfc4478`. `nav.js` and `offline-manager.js` lifted to `defer`; `theme.js` stayed sync per §23 PM-7 (FOUC). SW cache `eager-prefetch-d` → `monthly-defer-e`. Verified via GitHub Contents API on the new HEAD.
+
+- 📋 **OPEN (P2) — `vyve-offline.js` defer-safe rewrite across 8 portal pages.** Audit during PM-20 surfaced 8 pages with `<script src="/vyve-offline.js">` un-deferred in head, consumed by inline blocks on the host pages via `window.VYVEData` references. Lifting to defer requires the inline consumers to be rewritten to await a ready signal — defer reorders execution past inline parse-time references. Affected: `events-live.html` (3 refs), `index.html` (4 refs), `log-food.html` (25 refs — biggest lift), `running-plan.html` (3 refs). Same anti-pattern with `/supabase.min.js` on `hk-diagnostic.html`, `login.html`, `set-password.html`. Real refactor not a sweep. Tag P2.
+
+- 📋 **OPEN — `theme.js` defer drift on `index.html` — INVESTIGATE before assuming it's a bug.** §23 PM-7 hard rule says theme.js must NEVER carry `defer` (FOUC prevention). index.html main HEAD `df41d7cb` has `<script src="/theme.js" defer>` shipped. Two possibilities: (a) the rule is overly strict and theme.js's apply-from-localStorage IIFE is effectively-sync-enough under defer for the FOUC case to not visually trigger — codify the exception; (b) bona-fide drift that snuck in during PM-18 — revert and bump SW cache. Don't paper over either way. Read theme.js source, test in fresh incognito with throttled CPU, decide. ~30 min.
+
+## Added 08 May 2026 PM-19 (`log-activity` v29 · write-response `home_state` payload + optimistic delta)
+
+- ✅ **CLOSED — `log-activity` v29 deployed.** Source v29 / platform v34, ezbr `68d62d9c0c94dd75b2221f1cd91cc739083faf50cf224f31907a9e937cbf6762`. Write paths return post-write `member_home_state` row + optimistic delta for the just-logged type. `evaluate_only:true` short-circuit and cap-skip path also return `home_state` (delta null on cap-skip). One response shape across all write paths.
+
+- 📋 **OPEN — Portal-side opportunistic update consumer.** The follow-up that earns the win: after a habit / workout / cardio log, paint the next dashboard nav from the `home_state` returned by `log-activity` rather than round-tripping `member-dashboard`. Touches every trigger page (habits / workouts / cardio / sessions). Scope after a few days of `perf_telemetry` data show where the round-trip cost actually surfaces. Don't speculate — measure first.
+
+## Added 08 May 2026 PM-18 hotfix (home cache key alignment)
+
+- ✅ **CLOSED — Cache-key writer renamed `vyve_home_cache_<email>` → `vyve_home_v3_<email>`.** vyve-site `81908633`. PM-18 fan-out was writing to a key the home-page reader didn't read; rename aligned them. Verified end-to-end: sign-in → fan-out write → next nav paints from cache zero-RTT.
+
+## Added 08 May 2026 PM-18 (eager prefetch fan-out + universal touchstart-nav prefetch)
+
+- ✅ **CLOSED — Eager prefetch fan-out in `auth.js`.** Post-getSession microtask prefetches `member-dashboard` payload + the major secondary caches (`vyve_workouts_v1`, `vyve_exercise_v1`, etc.) so first internal nav after sign-in paints from cache zero-RTT.
+
+- ✅ **CLOSED — Universal touchstart-nav prefetch.** Delegated `touchstart` listener watches in-app nav anchors and kicks off destination prefetch immediately — typical 150-300ms tap-to-click window absorbs most prefetch latency. Pairs with cache-paint-then-revalidate on the destination for the cases where prefetch doesn't beat the nav.
+
+- 🔧 **Hotfix follow-up captured separately above.** First-evening post-ship caught a cache-key drift between the writer (PM-18) and the reader (cache-paint-before-auth migration); fixed in PM-18 hotfix.
+
+## Still pending (not started)
+
+- 📋 **PM-22 — leaderboard snapshot table + cron + EF rewrite.** ~4-6h. The current leaderboard EF computes ranks live on every load against full activity tables; at 100K members this is the next scaling cliff after the PM-16 re-engagement fix. Snapshot pattern: nightly cron writes a denormalised `leaderboard_snapshot` row per member with `(rank, score, period, computed_at)`, EF reads from snapshot only and serves stale-by-up-to-24h. Same pattern as `member_home_state`. Spec the migration + cron + EF rewrite together; ship the table first then flip the EF.
+
 ## Added 08 May 2026 PM-17 (member-dashboard v61 · drop 4 this-week queries · cache 3 INLINE counts)
 
 - ✅ **CLOSED — `member-dashboard` v61 deployed.** Platform v67, ezbr `72ce2bbe…`. Three files: `index.ts` 19004 chars, `_shared/achievements.ts` 13580, `_shared/taxonomy.ts` 4303 (byte-identical). Promise.all gateway shrunk from 22 to 18 entries; 4 this-week PostgREST queries dropped (now read from `state.workouts_this_week` / `cardio_this_week` / `sessions_this_week` / `checkins_this_week`). Three INLINE evaluators (`workouts_logged` / `cardio_logged` / `checkins_completed`) routed through cached `homeStateRow` via extended `HOME_STATE_STREAK_FIELDS`. `habitsThisWeek` query stays — goal-progress meter needs `COUNT(DISTINCT activity_date)` and the column is `COUNT(*)`. Same staleness contract as the totals already served from `member_home_state`. Deno typecheck clean. 401-handler verified live via curl.

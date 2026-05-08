@@ -1,3 +1,74 @@
+## 2026-05-08 PM-21 (perf telemetry pipeline · `perf_telemetry` table + `log-perf` v1 + `perf.js` client shim)
+
+Three pieces shipped under one ticket — schema, server, client — closing the loop on "we're shipping perf wins but have no production telemetry to confirm them."
+
+### Schema: `perf_telemetry`
+
+Migration `pm21_create_perf_telemetry` applied. Columns: `id bigserial PK`, `member_email text`, `page text`, `metric_name text`, `metric_value double precision`, `nav_type text`, `ua_brief text`, `ts timestamptz DEFAULT now()`. RLS service-role-only — policy `qual` is `(SELECT auth.role()) = 'service_role'` per the §23 PM-8 wrap rule. Two indexes: `idx_perf_telemetry_page_metric_ts` on `(page, metric_name, ts DESC)` for the percentile rollup query that's the primary read shape, and `idx_perf_telemetry_ts` on `(ts DESC)` for housekeeping. No member-readable path — telemetry is a one-way pipe from the client into a service-role-only sink.
+
+### EF: `log-perf` v1
+
+Deployed via native `Supabase:deploy_edge_function` because the Composio router doesn't expose deploy. Platform v1, ezbr `9df3ce50315f7c7ad6592ab4f8c350a0c749667bb7d758c7d46700992be9afcb`. `verify_jwt:false` at gateway with internal `getAuthEmail()` JWT validation per the §23 custom-auth pattern (matches `wellbeing-checkin` v28 / `anthropic-proxy` v16 / `log-activity` v28). Member email derived from the JWT, never read from the body — body-supplied email would let any authenticated member spoof telemetry as another. 100KB payload cap, 50 metrics per request max (the shim batches all paint metrics into a single pagehide flush so the cap is generous). CORS default-origin pattern. Returns 204 on success — no body, no read-after-write, the only thing the client cares about is whether the write committed. Verification: curl with no auth header → HTTP 401, with valid JWT and a 5-metric payload → HTTP 204. ~155 lines source.
+
+### Client: `perf.js` shim
+
+Gated double-default-off: enabled only when the page URL has `?perf=1` OR `localStorage.vyve_perf_enabled === '1'`. The `?perf=1` visit sets the localStorage flag so subsequent visits stay opted in without the query param. Production traffic ships dark. Captures: TTFB (`responseStart - requestStart` from PerformanceNavigationTiming), DOM done (`domContentLoadedEventEnd`), load (`loadEventEnd`), FP / FCP (PerformancePaintTiming), LCP (PerformanceObserver buffered), INP (PerformanceEventTiming, the worst event-duration over the page lifetime), and two VYVE-custom metrics: `auth_rdy` (timestamp of `window.vyveAuthReady` event relative to `performance.timing.fetchStart`) and `paint_done` (timestamp of `vyvePaintDone` custom event, same baseline). Posts on `pagehide` via `fetch(..., {keepalive: true})` — `navigator.sendBeacon` was ruled out because it can't carry an `Authorization` header and the EF requires a JWT. 12-second fallback flush via `setTimeout` covers the case where the user keeps the tab open indefinitely. Index.html ships the `<script src="/perf.js" defer>` tag after auth.js. SW cache key bumped from `monthly-defer-e` → `perf-shim-f`. Other portal pages deliberately not wired this session — extending the shim across the whole portal before knowing what the metric values look like would be premature; we'll watch index.html for a few days, confirm it's overhead-neutral, then fan out per the open backlog item.
+
+### Read pattern
+
+```sql
+SELECT page, metric_name,
+  percentile_cont(0.5)  WITHIN GROUP (ORDER BY metric_value) AS p50,
+  percentile_cont(0.95) WITHIN GROUP (ORDER BY metric_value) AS p95,
+  COUNT(*) AS n
+FROM perf_telemetry
+WHERE ts > now() - interval '1 day'
+GROUP BY 1, 2
+ORDER BY 1, 2;
+```
+
+Index `idx_perf_telemetry_page_metric_ts` covers the `WHERE ts > ...` + `GROUP BY page, metric_name` shape directly.
+
+---
+
+## 2026-05-08 PM-20 (`monthly-checkin.html` · nav.js + offline-manager.js → defer · theme.js stays sync)
+
+vyve-site `2bfc4478`. Surgical defer-tag lift on a low-traffic page. `nav.js` and `offline-manager.js` were both sync-in-head — neither has anything that needs to run before first paint, neither is consumed by inline blocks on monthly-checkin.html. Lifted both to `defer`. `theme.js` stayed sync per the §23 PM-7 hard rule (the IIFE that applies the stored theme token before paint must run before the body parses, otherwise the page flashes the default theme then snaps to the stored one). SW cache key bumped `eager-prefetch-d` → `monthly-defer-e` so the new HTML invalidates the old cached copy. Verified live via GitHub Contents API on the `df41…` HEAD.
+
+The wider audit pass that produced this single-page fix also revealed the broader head-defer-safety problem on the rest of the portal — eight pages have un-deferred `<script src="/vyve-offline.js">` in head, and each of those pages has inline blocks that consume `window.VYVEData` (and other globals) at parse time. That's a real refactor (rewrite the inline consumers to await a ready signal) not a sweep, and it's now the new §23 hard-rule template plus a P2 backlog item.
+
+---
+
+## 2026-05-08 PM-19 (`log-activity` v29 · write-response `home_state` payload + optimistic delta)
+
+Source v29 / platform v34, ezbr `68d62d9c0c94dd75b2221f1cd91cc739083faf50cf224f31907a9e937cbf6762`. Foundation for client-side opportunistic update: every `log-activity` response now carries the post-write `member_home_state` row plus an optimistic delta for the just-logged activity type. With the trigger maintenance on `member_home_state` (PM-11 / PM-13 territory), the row in the response IS the authoritative post-write aggregate state — no race, no separate read. The `evaluate_only:true` short-circuit and the cap-skip path return the same `home_state` shape so the client consumer is one-shape; the delta is null on cap-skip (no state change to optimistically apply) and present on every real write.
+
+No portal wiring this session. The actual client win — "after a habit / workout / cardio log, paint the next dashboard from the EF response without round-tripping `member-dashboard`" — is a follow-up that touches every trigger page and is more carefully scoped after a few days of `perf_telemetry` data tells us where the round-trip cost actually shows up.
+
+---
+
+## 2026-05-08 PM-18 hotfix (home cache key alignment)
+
+vyve-site `81908633`. PM-18's eager-prefetch fan-out wrote the home payload to localStorage under `vyve_home_cache_<email>`, but the home-page first-paint reader was on `vyve_home_v3_<email>` — the v3 cache key was the canonical one for the cache-paint-before-auth path. Two writers, two readers, no overlap, so the fan-out wasn't actually feeding first-paint. Renamed the writer to `vyve_home_v3_<email>` to match. Verified end-to-end: sign-in → fan-out write → next nav to home paints from cache zero-RTT.
+
+The lesson is small but worth coding: cache-key drift between the writer and the reader is silent — the writer thinks it's helping, the reader sees no entry and falls through to the network, and there's no error to alert on. When adding a new writer to an existing cache namespace, grep for the reader before deciding the key shape.
+
+---
+
+## 2026-05-08 PM-18 (eager prefetch fan-out + universal touchstart-nav prefetch)
+
+Builds directly on PM-14's microtask prefetch fan-out for index.html — extends the same idea to the rest of the portal and to in-app nav. Two pieces in `auth.js`:
+
+1. **First-sign-in fan-out.** Post-getSession, schedule a microtask that prefetches the `member-dashboard` payload (the largest read on every page) and writes it to the home cache. The other major page caches (`vyve_workouts_v1`, `vyve_exercise_v1`, etc.) prefetch in parallel from their respective EFs. The user is still on the login → redirect transition, so the network is otherwise idle.
+
+2. **Universal touchstart-nav prefetch.** Wired a delegated `touchstart` listener on the document that watches for any in-app nav anchor (the `data-vyve-nav` attribute pattern). On touchstart, kick off the destination's prefetch immediately — the user takes another ~150-300ms to lift their finger and trigger the actual click navigation, which is enough headroom for most prefetches to land before route-change paints. When prefetch lands first, the destination paints from cache zero-RTT. When it doesn't, the destination's own cache-paint-then-revalidate path absorbs the rest.
+
+Net effect on a warm session: most internal navigations now feel instant on the test devices. SW cache bumped in the same commit.
+
+The hotfix that followed (cache-key alignment) was caught the same evening — the eager fan-out was writing under the wrong key, so item 1 wasn't actually working until the rename landed. Item 2 (touchstart prefetch) was correct on first ship.
+
+---
+
 ## 2026-05-08 PM-17 (member-dashboard v61 · drop this-week PostgREST queries · cache 3 INLINE counts)
 
 PM-13 paralleled the achievements evaluator passes. PM-17 takes the next bite: the Promise.all gateway in `member-dashboard` was still firing 5 separate this-week queries each round (`daily_habits` / `workouts` / `cardio` / `session_views` / `wellbeing_checkins` all `gte=currentWeekStart`), then mapping the results into `weekly_goals.progress.*`. Pre-flight against the live schema: `member_home_state` already carries `habits_this_week` / `workouts_this_week` / `cardio_this_week` / `sessions_this_week` / `checkins_this_week` populated by `refresh_member_home_state(p_email)` with the same week boundaries. So four of the five can move to the cached row. The fifth stays.
