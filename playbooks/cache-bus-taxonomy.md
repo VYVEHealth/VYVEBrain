@@ -40,7 +40,7 @@ The point: the bus should not become a parallel system next to a working one. Wh
 | `VYVEData.getOptimisticActivityToday()` | Reads outbox + breadcrumbs. Consumer: `index.html:763` only. | `vyve-offline.js:448` |
 | `vyvePrefetchAfterAuth(user)` | Eager fan-out at sign-in. Once-per-session-per-email, network-gated. Writes home / engagement / certs / programme / exercise / habits / members caches. | `auth.js:336` |
 | `window.__vyvePrefetch.{home,engagement,certs,exercise,habits,members}` | Per-destination prefetch helpers. **Wired to nav.js delegated `touchstart` + `mousedown` listener with route-table → helper map, network-OK gate, 5s hot-dedupe.** Live and active; PM-18 ship-truth confirmed PM-26 via whole-tree audit. | exposed in `auth.js:328`, invoked in `nav.js _pfHandleTouchStart` |
-| `VYVEAchievements.evaluate()` | Debounced 1.5s call to `log-activity?evaluate_only=true`. **Whole-tree count: 20 call sites across 11 files** — habits, cardio, log-food (×2), monthly-checkin, movement (×2), nutrition, wellbeing-checkin, workouts-builder, workouts-programme, workouts-session (×5+), plus internal achievements.js (×4). | `achievements.js:238` |
+| `VYVEAchievements.evaluate()` | Debounced 1.5s call to `log-activity?evaluate_only=true`. **Whole-tree count: 16 call sites across 10 files** — habits, cardio, log-food (×2), monthly-checkin, movement (×2), nutrition, wellbeing-checkin, workouts-builder, workouts-programme, workouts-session (×5). The PM-26 figure of 20 over-counted by including 3 docblock-comment lines in `achievements.js` (L6, L11, L20) that demonstrate the API; corrected at PM-28. | `achievements.js:238` |
 | `VYVEData.writeQueued(args)` | Outbox-buffered write for log-food + workouts-session. Auto-flushes on `online` event. | `vyve-offline.js:144` |
 
 ### Existing cache keys
@@ -49,7 +49,7 @@ The point: the bus should not become a parallel system next to a working one. Wh
 
 - **6 caches with no explicit invalidator on writes:** `vyve_engagement_cache`, `vyve_certs_cache`, `vyve_programme_cache_<email>`, `vyve_exercise_cache_v2`, `vyve_members_cache_<email>`, `vyve_habits_cache_v2`. Refreshed only by once-per-session `auth.js` fan-out. The biggest stale-paint vector.
 - **2 caches not email-keyed (security-shaped):** `vyve_outbox`, `vyve_outbox_dead`. PM-27 fixes.
-- **`vyve_dashboard_cache`:** grep-hit-only, possibly legacy duplicate of home. Investigate before bus extension.
+- **`vyve_dashboard_cache`:** **DEAD KEY (resolved PM-28 sub-audit).** Whole-tree audit at HEAD `040c496d` found a single read at `achievements.js:251` (`localStorage.getItem('vyve_dashboard_cache')` inside `replayUnseen()`, expecting shape `cached.data.achievements.unseen`) and **zero writers** — no `setItem` literal, no template-string variant, no `removeItem` — and the `.unseen` shape is referenced nowhere else in the tree. The read is a no-op every time. **Out of scope for the `auth:signed-out` bus cleanup handler — there is no live cache to evict.** Surgical removal of the dead read is a P3 backlog item, not bus-blocking.
 - **`vyve_recent_activity_v1`:** not email-keyed but covered by 2-min TTL. Lower-stakes; rolls into 1c-1.
 
 ---
@@ -272,11 +272,11 @@ Cross-tab: every event published as `localStorage.setItem('vyve_bus', JSON.strin
 | 1c-11 | wellbeing-checkin.html submit + flush | invalidate + evaluate | `bus.publish('checkin:submitted', kind:'weekly', ...)` | REFACTOR + scope-fix (engagement_cache) |
 | 1c-12 | **monthly-checkin.html submit (NEW publish site)** | evaluate only (no invalidate today — defect) | `bus.publish('checkin:submitted', kind:'monthly', ...)` | REFACTOR + scope-fix |
 | 1c-13 | tracking.js session view | invalidate + record + evaluate | `bus.publish('session:viewed', ...)` | REFACTOR + scope-fix (engagement_cache) |
-| 1c-14 | workouts-programme.js (1× evaluate, line 391) | evaluate only — investigate context | TBD: likely subsumed by `workout:logged`, verify before assuming | TBD pending sub-audit |
+| 1c-14 | **workouts-programme.js:391 `shareProgramme` + workouts-session.js:733 `shareWorkout` (two publish sites, one event)** | evaluate only after successful `share-workout` EF POST | `bus.publish('workout:shared', kind:'session'\|'programme', ...)` | REFACTOR (decouple) |
 
 After 1c-14, all three legacy surfaces become dead. Final cleanup commit removes them.
 
-**Counts after corrected ruthlessness pass:** 1 pure REFACTOR (decouple), 9 REFACTOR + scope-fix, 2 REFACTOR + race-fix-or-scope-fix, 2 ADD, 1 TBD. Of the 14 migrations, 13 fix something real on the way through. Campaign value framing strengthens after the audit.
+**Counts after PM-28 sub-audit pass:** 2 pure REFACTOR (decouple), 9 REFACTOR + scope-fix, 2 REFACTOR + race-fix-or-scope-fix, 2 ADD. Of the 14 migrations, 12 fix something real on the way through (the 2 decouples are clean renames, no defect underneath); the bus is still the right shape. Campaign value framing holds after the audit.
 
 ---
 
@@ -300,13 +300,21 @@ After PM-27, this taxonomy commits as PM-28, then `bus.js` lands as PM-29.
 
 ## Source-of-truth (live-verified at PM-26 audit time)
 
-- vyve-site `df41d7cb` (HEAD as of 08 May 2026 PM-26)
-- VYVEBrain `master.md` `dce06959` § 6 / § 7 / § 19 / § 23
-- **Whole-tree pull:** `GITHUB_GET_A_TREE` recursive on main → 86 blobs → 73 source files (.html .js .ts .css .mjs) → all 73 fetched and grepped
-- 13 `invalidateHomeCache` call sites (whole-tree count via `grep -hE 'invalidateHomeCache' *.html *.js | grep -v 'function invalid' | grep -v 'typeof VYVEData' | wc -l`)
-- 9 `recordRecentActivity` call sites (same method)
-- 20 `VYVEAchievements.evaluate` call sites (same method)
+- vyve-site `df41d7cb` (PM-26 audit base) → extended to `040c496d` (PM-28 sub-audits, post-PM-27 ship)
+- VYVEBrain `master.md` `dce06959` § 6 / § 7 / § 19 / § 23 (pre-PM-28; refresh on commit)
+- **Whole-tree pull (PM-26):** `GITHUB_GET_A_TREE` recursive on main → 86 blobs → 73 source-text candidates → all fetched and grepped
+- **Whole-tree pull (PM-28 extension):** `GITHUB_GET_A_TREE` recursive on main at `040c496d` → 89 entries → 72 source-text files (.html .js .css; excludes vendor `supabase.min.js`, `test-schema-check.txt`, images, manifest.json, CNAME, dirs) → all 72 fetched and grepped (1.77M chars decoded)
+- 13 `invalidateHomeCache` call sites (PM-26 whole-tree count via `grep -hE 'invalidateHomeCache' *.html *.js | grep -v 'function invalid' | grep -v 'typeof VYVEData' | wc -l`)
+- 9 `recordRecentActivity` call sites (PM-26, same method)
+- **16** `VYVEAchievements.evaluate` call sites (PM-28 corrected: regex `\bVYVEAchievements\s*\.\s*evaluate\s*\(` excluding docblock comment matches in `achievements.js` itself; PM-26 figure of 20 was inflated by 3 commented-out API examples)
 - nav.js read confirms `_pfHandleTouchStart` + `document.body.addEventListener('touchstart', ..., {capture:true, passive:true})` + `mousedown` mirror — touchstart prefetch wired and active
+- **PM-28 sub-audit grep commands:**
+  - `vyve_dashboard_cache` literal: 1 read site (`achievements.js:251`), 0 writers, 0 removers
+  - dynamic key construction: 0 hits on `setItem(\`...dashboard...\`)` template-strings or `localStorage[ ... dashboard ... ]` index access
+  - `.unseen` shape consumers: 1 site (the `achievements.js:254` read itself)
+  - workouts-programme.js:391 in context: lives inside `shareProgramme(btn)`, fires after successful `share-workout` EF POST
+  - workouts-session.js:733 in context: lives inside `shareWorkout`, same pattern as L391; sibling publish site for the same `workout:shared` event
+  - workouts-session.js:742 `shareCustomWorkout`: no `evaluate()` call (silent gap; not a defect blocking PM-29 — separate question for Lewis on whether custom shares should grant achievements)
 
 If any of the above drifts, this taxonomy needs a re-pre-flight before extension. Don't paper.
 
@@ -316,3 +324,4 @@ If any of the above drifts, this taxonomy needs a re-pre-flight before extension
 
 - **PM-25 draft.** Initial taxonomy. Audit method: hand-picked subset of 23 files. Drift introduced: nav.js missed → touchstart wiring claimed absent (PM-18 ship-truth was actually correct). Movement / workouts-builder / 13 of 20 evaluate sites all missed for the same reason — grepped what I had, not what existed.
 - **PM-26 patch.** Whole-tree audit. All 73 source files fetched and grepped. PM-25 findings re-verified against full tree. Errata captured. New §23 hard rule on whole-tree audit method. Touchstart-wiring deliverable removed (already shipped). Migration plan extended from 10 to 14 rows. Counts corrected throughout.
+- **PM-28 patch.** Two sub-audits resolved: 1c-14 lands as `workout:shared` (REFACTOR-decouple, two publish sites — workouts-programme.js:391 + workouts-session.js:733 — collapsing into one event with `kind:'session'|'programme'`); `vyve_dashboard_cache` confirmed dead via whole-tree grep at HEAD `040c496d` (read at achievements.js:251, zero writers anywhere) and removed from bus cleanup scope. Editorial fix to PM-26 changelog: original PM-25 invalidate count was simply wrong (no stray comment-line); evaluate count corrected from 20 to 16 after excluding 3 docblock-comment lines in achievements.js. Source-of-truth extended to `040c496d`. No vyve-site change.
