@@ -1,3 +1,54 @@
+## 2026-05-08 PM-24 (drift audit remediation · 14 master fixes + backlog cleanup)
+
+PM-23's audit surfaced 19 hits across 5 severity buckets. PM-24 closes 13 of the 14 actionable ones in a single atomic commit (Hit 14 — iOS 1.2 cross-check — needs App Store Connect access we don't have wired, deferred). Hit 8 was de-scoped on second pass: the §7 cron `vyve_charity_reconcile_daily` row is already in clean pipe-table format, the audit mis-flagged it. One bonus fix snuck in (§11 status table claimed `wellbeing-checkin` v35; live is source v28 / platform v43 — fixed in passing).
+
+### Critical tier (3)
+
+**Hit 1 + Hit 11 — `member_home_state` trigger claim, both copies.** Master §6 line 216 and §23 line 1130 both said the writer is fired by `tg_refresh_member_home_state` triggers across 10 source tables including the 3 healthkit tables. Live truth from `pg_trigger` join `pg_class`: 8 source tables (`cardio`, `daily_habits`, `replay_views`, `session_views`, `weekly_goals`, `weekly_scores`, `wellbeing_checkins`, `workouts`); the 3 `member_health_*` tables do NOT carry the trigger; `weekly_scores` does and was missing from master's list; the actual trigger NAME is `zzz_refresh_home_state` (the `zzz_` prefix forces last-fire ordering); `tg_refresh_member_home_state` is the trigger FUNCTION, not the trigger. Both copies of the claim rewritten with the corrected list and the function-vs-trigger distinction explicit. The healthkit-not-triggered detail matters — autotick writes through to the activity tables and inherits the refresh, so the existing autotick path is correct and didn't need any fix; if anyone in a future session sees "healthkit table mutation" and reaches for a trigger fix, this rewrite saves the wasted cycle.
+
+**Hit 2 — §6 header 76 → 85 tables.** Canary line corrected. The 9-table delta covers the 5 PM-23 audit-found undocumented tables (`gdpr_erasure_requests`, `gdpr_export_requests`, `perf_telemetry`, `exercise_canonical_names`, `exercise_name_misses`) plus 4 already in §6 prose but apparently not in the count when the previous full-rewrite ran the tally.
+
+**Hit 5 — §7 6 GDPR EFs added to Core operational.** `gdpr-export-request`, `gdpr-export-execute`, `gdpr-erase-request`, `gdpr-erase-cancel`, `gdpr-erase-status`, `gdpr-erase-execute` all now have rows in §7 with versions, JWT posture, purposes drawn from the 07 May PM-3 changelog entry. Anchored after `debug-exercise-search` so the table reads in roughly chronological order at the bottom.
+
+### High tier (2)
+
+**Hit 3 — §6 5 missing tables added.** Three placements: a new GDPR subsection inserted between Notifications and Admin (covers `gdpr_export_requests` + `gdpr_erasure_requests`); `perf_telemetry` row appended to Dashboard + aggregation; `exercise_canonical_names` and `exercise_name_misses` rows appended to Workouts/exercise/programmes.
+
+**Hit 10 — §19 PM-1 trailer.** Trailing parenthetical added: "EF count subsequently rose to 96 in same-day PM-21 / PM-22 sessions as `log-perf` v1 and the `get_leaderboard` RPC artefacts shipped — the 93 figure here was correct as of mid-day PM-1."
+
+### Medium tier (5)
+
+- Hit 4: `member_home_state` 58 → 65 columns, with extension dates inline (5 `*_this_week` cols 06 May PM-2; 5 `last_*_at` cols 08 May PM-16).
+- Hit 6: §7 EF total 86 → 96, ~32 → ~64 actively operational reflecting the 6 GDPR EFs + `log-perf`.
+- Hit 7: §7 cron header (19 active) → (20 active).
+- Hit 12: §24 SW cache row replaced with a pointer to `vyve-site/sw.js` and a parenthetical noting the latest value at this rewrite — bumps every commit so an inline value is by definition stale.
+- Hit 13: §24 Stripe redirect target flagged with a verify-next-session note pending Stripe-dashboard read; brain prose now explicitly says drift is suspected rather than asserting either value.
+
+### Low tier (2)
+
+- Hit 9: §7 versioning-note disclaimer's stale numerical examples (`send-email` v22 vs v4, `wellbeing-checkin` v35 vs v25) replaced with a one-liner — the principle holds without numbers that themselves drift.
+- Hit 9b (bonus): §11 "Weekly check-in recommendations" status row was claiming `wellbeing-checkin` v35; refreshed to source v28 / platform v43 with the 07 May commit 1B context. Found in passing while reviewing the §7 versioning fix.
+
+### Backlog cleanup
+
+The "Still pending — PM-22 leaderboard snapshot table + cron + EF rewrite" entry was the original framing pre-reframe. PM-22 actually shipped as the `get_leaderboard()` RPC, captured in the closed-items section at the top. Old entry replaced with an HTML comment noting the removal, so a future grep for `PM-22` in backlog finds the trail without finding stale spec.
+
+### What's left
+
+**Hit 14** — iOS App Store version 1.2 approval claim in §24 needs cross-check via App Store Connect. Not blocking, captured in PM-23 audit's prioritised list as a Low-tier next-pass item.
+
+**Hit 8** — de-scoped after second look. The audit's flag of "`vyve_charity_reconcile_daily` row needs reformat" doesn't match the live row, which is already in proper pipe-table format. Lesson: even an audit can mis-read a table row when the section's prose is dense.
+
+### Sizes shipped
+
+- `master.md`: 228,977 → 234,835 chars (Δ +5,858 — almost entirely the GDPR EF rows in §7 and the new §6 GDPR subsection)
+- `changelog.md`: this entry
+- `tasks/backlog.md`: 146,385 → 146,026 chars (Δ -359 — stale PM-22 entry replaced with a removal-note comment)
+
+Atomic commit. Master, changelog, backlog all updated in one shot. PM-23 audit report at `brain/audits/2026-05-08_drift_audit.md` left unchanged — historical record of what the audit found, the fixes are documented here.
+
+---
+
 ## 2026-05-08 PM-22 (`leaderboard` v17 · SQL-side ranking via `get_leaderboard()` RPC)
 
 The backlog item said "snapshot table + cron." The pre-flight said otherwise. v11/v16 was already reading from `member_home_state` — the aggregation cliff the audit described didn't exist. The actual cliff is different.

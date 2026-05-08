@@ -78,7 +78,7 @@
 
 ## Still pending (not started)
 
-- 📋 **PM-22 — leaderboard snapshot table + cron + EF rewrite.** ~4-6h. The current leaderboard EF computes ranks live on every load against full activity tables; at 100K members this is the next scaling cliff after the PM-16 re-engagement fix. Snapshot pattern: nightly cron writes a denormalised `leaderboard_snapshot` row per member with `(rank, score, period, computed_at)`, EF reads from snapshot only and serves stale-by-up-to-24h. Same pattern as `member_home_state`. Spec the migration + cron + EF rewrite together; ship the table first then flip the EF.
+<!-- PM-22 "leaderboard snapshot table + cron + EF rewrite" entry removed 08 May PM-23 — the work shipped as the get_leaderboard() RPC reframe, captured in the closed-items section above and in §19. -->
 
 ## Added 08 May 2026 PM-17 (member-dashboard v61 · drop 4 this-week queries · cache 3 INLINE counts)
 
