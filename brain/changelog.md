@@ -1,3 +1,70 @@
+## 2026-05-09 PM-37 (Layer 1c-8: nutrition.html weight log → `bus.publish('weight:logged', ...)`)
+
+vyve-site `c1c731a1df61e69871626794b06e4bd8b0e210b8` (new tree `8883b41348da3c8ad9ccbcacf372b801972a6af5`). Eighth Layer 1c migration. Single publishing surface (`saveWtLog` at `nutrition.html:631-673`), SYMMETRIC fallback, NEW event name `weight:logged` (taxonomy ADD; doesn't exist pre-PM-37). Smaller commit than PM-36 by design — one publishing surface, no two-event split, no PM-12-style outbox-cancellation logic to preserve. Closer in shape to PM-35 (`workouts-builder.js`) than PM-36 (`log-food.html` 3 surfaces).
+
+**Pre-flight scope corrections vs the taxonomy 1c-8 row.** Whole-tree audit at HEAD `640c9d69` (the PM-36 ship) surfaced two editorial errors in the taxonomy:
+
+- **`wb_last` is the wellbeing-score-last cache, NOT weight.** Taxonomy 1c-8 row "scope-fix on `members + wb_last`" implied `wb_last` was a weight cache requiring invalidation. Whole-tree grep confirmed: `vyve_wb_last` is present at `engagement.html:799/915/917` and `index.html:839`, but it stores the most recent weekly wellbeing score (1-10) used as the Wellbeing component of the engagement score. Has nothing to do with weight. The actual weight cache is `vyve_wt_cache_<email>` in nutrition.html only — already correctly maintained by the existing `loadWtLogs` re-fetch + read-through write in `saveWtLog`. Strike `wb_last` from the 1c-8 taxonomy row.
+
+- **`saveWtLog` does NOT write to `members`, only to `weight_logs`.** The `members.weight_kg` write happens in the TDEE recalculator at `nutrition.html:1302` (the "Save updated targets" button), which is a separate feature with its own save handler. PM-37 does not touch the recalculator. Strike `members` from the 1c-8 scope-fix list.
+
+**Net taxonomy correction:** 1c-8 is **REFACTOR + race-fix only, no scope-fix**. The "scope-fix" framing in the taxonomy row was a mistake. Mirror of PM-33's `vyve_cardio_cache` correction, PM-35's `exercise.html / achievements.js` corrections, and PM-36's "three publish surfaces, not two" + "deleteLog had ZERO primitives, not evaluate-only" corrections.
+
+**Pre-bus primitives at the publish site (L658-663).** Two: `VYVEData.invalidateHomeCache()` + `VYVEAchievements.evaluate()`, both fired unconditionally after the writeQueued/supa POST. No `recordRecentActivity` (consistent with the existing comment at L658: "weight_today/recent activity reflects the new entry on the **next** home dashboard visit"). Three callers of `saveWtLog`: `logWeight()` at L1214 (primary user-facing — the Save button), `migrateOldWtLogs()` at L687 (one-time localStorage→Supabase migration backfill loop), and the initial seeding fallback at L1017 (when zero `weight_logs` rows exist but `members.weight_kg` is non-null). All three flow through `saveWtLog`, the single publish site.
+
+**Race-fix mechanic.** Same as PM-33/PM-34/PM-35/PM-36: `bus.publish` lands BEFORE the writeQueued/supa POST. Synchronous in-tab dispatch + microsecond cross-tab broadcast via `vyve_bus` localStorage round-trip. Subscribers stale `vyve_home_v3_<email>` optimistically; queue resolution decoupled from local UI propagation. Self-test 3.1/3.2 verifies `publish.ts ≤ writeQueued.ts` on both the writeQueued path AND the supa fallback path.
+
+**Subscribers wired.**
+
+- **`index.html:1313` `_markHomeStale`** — extends source-agnostic handler to `weight:logged`, identical pattern to the six prior events (habit/workout/set/cardio/food:logged + food:deleted). The home dashboard's `vyve_home_v3_<email>` cache stales on weight write. Today's home page surfaces a "current weight" via the prefetched `vyve_members_cache_<email>` (populated at L922 from `members.weight_kg`); the prefetch itself is unaffected by the bus subscriber, but staling the home cache means recent-activity breadcrumbs reflect the weight log on next render.
+
+- **`nutrition.html` self-subscriber** (NEW pattern) — subscribes to `weight:logged` for achievements eval. Pattern matches `workouts.html:575/612` owning `workout:logged` and `set:logged` eval. **NEW pattern: self-subscribe for page-owned achievement journeys.** Sets the precedent for 1c-9 onwards (settings.html persona switch will likely use the same pattern for any settings-page-owned eval). Idempotent via `__vyveNutritionBusWired` flag. Eval is debounced 1.5s in `achievements.js`, so rapid loops (`migrateOldWtLogs`) coalesce into one eval call.
+
+- **`engagement.html`** — **NOT WIRED. Intentional non-touch.** Engagement scoring (Activity / Consistency / Variety / Wellbeing components, 12.5pts each, base 50) has no weight component. Verified via whole-tree grep + scoring-model audit at engagement.html L344-388, L430-446. Logging weight does not change the engagement score. Self-test 4.3 verifies engagement-stale does NOT fire on weight:logged. First Layer 1c migration where engagement.html is intentionally not extended — every prior 1c migration (PM-30..PM-36) added an engagement subscriber. Documented as expected.
+
+**bus.js script tag added to nutrition.html** between auth.js (L21) and achievements.js (L22) per PM-31 convention. **First new bus.js wiring since PM-36 (log-food.html).** index.html and engagement.html already had bus.js loaded since PM-30 / PM-33.
+
+**Symmetric fallback.** Pre-PM-37 had `invalidateHomeCache` + `VYVEAchievements.evaluate` firing unconditionally. Bus path moves both behind `if (!window.VYVEBus)` else-branch. !VYVEBus path produces invalidate + evaluate — semantically identical to pre-bus. Bus path produces zero direct primitives (subscribers handle both). Self-tests 5.1/5.2/5.3/5.4 verify all four paths: !VYVEBus fires both inline; VYVEBus alone fires neither; !VYVEBus still fires writeQueued; VYVEBus + subscribers wired produces exactly one invalidate + one evaluate via subscribers.
+
+**Schema.** `weight:logged`: `{ weight_kg: number, logged_date: 'YYYY-MM-DD' }`. `weight_kg` is post-unit-conversion (from kg/st/lb input), rounded to 1dp — same value written to `weight_logs.weight_kg`. `logged_date` is the YYYY-MM-DD string from `todayStr()` (or the historic date in `migrateOldWtLogs`). Both fields carried because weight is timeline-anchored — the nutrition.html weight chart (7d/30d/90d trend) stales by date; future consumers (a hypothetical weight-trend cache, or Layer 4 reconcile logic) need to know which day staled.
+
+**31 of 31 self-tests passing** in `/tmp/pm37_test.js` (11 groups, 410 lines):
+
+1. Bus API regression smoke (3 tests)
+2. saveWtLog publish fan-out (4 envelope tests: count, event name, weight_kg carries, logged_date carries)
+3. **Race-fix verification on BOTH paths** — publish.ts ≤ writeQueued.ts AND publish.ts ≤ supa-fallback.ts (2 tests)
+4. Subscriber fan-out simulator (5: home-stale fires once; nutrition-eval-stale fires once; engagement-stale does NOT fire on weight:logged; PM-33/PM-36 regression on cardio:logged + food:logged)
+5. **Symmetric fallback** (4: !VYVEBus fires invalidate + evaluate inline; VYVEBus present fires NEITHER inline; !VYVEBus path still fires writeQueued; VYVEBus + subscribers fires both via subscribers)
+6. Cross-tab origin:remote preserves event name + payload + drives subscriber fan-out (2)
+7. Validation guards (1: empty email early-returns without publish or writeQueued)
+8. Migration loop fan-out (1: N saveWtLog calls produce N publishes; debouncer is achievements.js not bus)
+9. PM-30/31/32/36 regression — habit/workout/set/food:deleted still drive home + engagement (4)
+10. Schema enforcement (3: weight_kg is number, logged_date is YYYY-MM-DD string, email matches publisher)
+11. Event isolation (2: weight:logged subscriber doesn't fire on food:logged or cardio:logged)
+
+`node --check` clean on all 11 inline JS blocks across the three patched files (nutrition.html: 3 blocks, index.html: 8 blocks, sw.js: full file).
+
+**SW cache.** `vyve-cache-v2026-05-09-pm36-food-a` → `vyve-cache-v2026-05-09-pm37-weight-a`.
+
+**Source-of-truth.** vyve-site pre-commit `640c9d69818bf136b657f52bf17f3644598ce117` (PM-36 ship), post-commit `c1c731a1df61e69871626794b06e4bd8b0e210b8` (PM-37 ship), new tree `8883b41348da3c8ad9ccbcacf372b801972a6af5`. Whole-tree audit per §23 PM-26 + typeof/docblock/function-def exclusions per PM-32 + PM-28 + asymmetric-fallback discipline per PM-35 + mixed-fallback discipline per PM-36 + symmetric-fallback simplicity per PM-33/PM-34. Post-commit verification per §23: 9 marker presence checks across all 3 files via live-SHA fetch (not raw — CDN-cached). Live blob SHAs: nutrition.html `6f6ee1d61b58`, index.html `dfd1c98b96b5`, sw.js `2fd9054c3f6a`.
+
+**Audit-count methodology recon resolved (P3 backlog item from PM-35 close).** Post-PM-36 publishing-surface primitive counts at HEAD `640c9d69` with PM-32 exclusions applied:
+- `VYVEData.invalidateHomeCache()` calls: **11**
+- `VYVEData.recordRecentActivity()` calls: **8**
+- `VYVEAchievements.evaluate()` calls: **19**
+- `VYVEBus.publish()` calls: **13**
+- `VYVEBus.subscribe()` calls: **17**
+
+PM-35 close numbers (11/8/19) match canonically. The earlier "13/8/15" discrepancy was a different methodology (likely included subscriber-internal calls or comment lines). **Canonical classifier rule (NEW §23 sub-rule below):** "publish-site primitive count" = any non-comment, non-typeof-guard, non-function-definition line that contains a call to `VYVEData.invalidateHomeCache(`, `VYVEData.recordRecentActivity(`, or `VYVEAchievements.evaluate[Now](`. Subscriber-internal calls count (they're real call sites). Comments and docblocks don't (PM-26 / PM-28). Function definitions in `vyve-offline.js` etc. don't (PM-28). Closes the recon backlog item.
+
+**New §23 hard rule (audit-count classification + self-subscribe pattern):**
+
+- **Audit-count classification (NEW sub-rule).** "Publish-site primitive" = any non-comment, non-`typeof`-guard, non-function-definition line containing a call to `VYVEData.invalidateHomeCache(`, `VYVEData.recordRecentActivity(`, `VYVEAchievements.evaluate[Now](`. Bus calls (`VYVEBus.publish(` / `VYVEBus.subscribe(`) counted separately. Subscriber-internal calls count. Mirrors PM-32 typeof exclusion + PM-28 function-def + comment exclusion. Canonical post-PM-37 counts will be reported in PM-38 pre-flight.
+
+- **Self-subscribe pattern for page-owned achievement journeys (NEW sub-rule).** When a publishing page owns the achievement track for its event (e.g. nutrition.html owns weight tracking, workouts.html owns workout tracking, log-food.html owns nutrition tracking), the page self-subscribes to its own event for `VYVEAchievements.evaluate()`. This is cleaner than wedging eval into the publishing function's symmetric-fallback else-branch, and it gets cross-tab eval coherence for free (tab B's open page picks up freshly-earned tiers when tab A logs). Pattern: `document.addEventListener('DOMContentLoaded', () => { if (!VYVEBus || __vyveXBusWired) return; __vyveXBusWired = true; VYVEBus.subscribe('event:name', () => VYVEAchievements.evaluate()); });`. Idempotency flag is per-page (`__vyveNutritionBusWired`, `__vyveSettingsBusWired`, etc.). PM-37 establishes the pattern; 1c-9 onwards uses it.
+
+**Sequence after PM-37:** Eight Layer 1c migrations down (1c-1 through 1c-8), six to go (1c-9 settings.html persona switch → 1c-14 share-workout). Past halfway by surface count. Diversity peak well behind us — the remaining 6 are mostly small surfaces. Then option-(b) cleanup commit closes Layer 1. Next session = PM-38, likely 1c-9 (settings.html persona switch → `bus.publish('persona:switched', ...)` — taxonomy ADD).
+
 ## 2026-05-09 PM-36 (Layer 1c-7: log-food.html 3 publish surfaces → `bus.publish('food:logged' | 'food:deleted', ...)`)
 
 vyve-site `640c9d69818bf136b657f52bf17f3644598ce117` (new tree `0c0195845070241c64239b9cccd4c45b4c33730c`). Seventh Layer 1c migration. **First 1c migration shipping two distinct event names from one publishing page** (food:logged + food:deleted), and **first to ship MIXED fallback shapes in one commit** (symmetric on inserts, asymmetric on delete). Three publishing surfaces in log-food.html — `logSelectedFood` (search-based, L1045-L1121), `logQuickAdd` (manual entry, L1124-L1167), `deleteLog` (L780-L839) — all collapse to bus.publish published BEFORE the writeQueued fire. Both event names are taxonomy ADDs; neither existed pre-PM-36.
