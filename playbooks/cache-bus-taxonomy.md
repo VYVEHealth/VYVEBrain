@@ -103,7 +103,7 @@ Umbrella event. Subscribers that don't care about type listen here.
 
 | Caches | Subscribers |
 |---|---|
-| `vyve_home_v3_<email>`, `vyve_programme_cache_<email>` (only when `source: 'programme'`) | index.html, exercise.html, workouts.html, achievements.js |
+| `vyve_home_v3_<email>`, `vyve_programme_cache_<email>` (only when `source: 'programme'`), `vyve_engagement_cache` | index.html, workouts.html, engagement.html |
 
 → **REFACTOR + scope-fix** (programme_cache).
 
@@ -284,7 +284,7 @@ Cross-tab: every event published as `localStorage.setItem('vyve_bus', JSON.strin
 | 1c-3 | workouts-session.js exercise_log save | direct fetch + invalidate | `bus.publish('set:logged', ...)` | REFACTOR (decouple) |
 | 1c-4 ✅ | cardio.html log | three calls | `bus.publish('cardio:logged', source:'cardio_page', ...)` | REFACTOR + race-fix + scope-fix — shipped PM-33 |
 | 1c-5 ✅ | **movement.html walk + non-walk paths (NEW)** | three calls × 2 paths | walks → `cardio:logged` source:'movement_walk'; non-walks → `workout:logged` source:'movement' | REFACTOR + scope-fix — shipped PM-34 |
-| 1c-6 | **workouts-builder.js custom workout creation (NEW)** | evaluate only | `bus.publish('workout:logged', source:'builder', ...)` | REFACTOR + scope-fix (no current invalidation = real bug) |
+| 1c-6 ✅ | **workouts-builder.js custom workout creation (NEW)** | evaluate only | `bus.publish('workout:logged', source:'builder', ...)` | REFACTOR + scope-fix (no current invalidation = real bug) — shipped PM-35 |
 | 1c-7 | log-food.html insert + delete | inline cache writes + 2× evaluate | `bus.publish('food:logged'/'food:deleted', ...)` | REFACTOR + race-fix |
 | 1c-8 | nutrition.html weight log | invalidate + evaluate | `bus.publish('weight:logged', ...)` | REFACTOR + scope-fix (members + wb_last) |
 | 1c-9 | settings.html persona switch | direct fetch only | `bus.publish('persona:switched', ...)` | ADD |
@@ -320,7 +320,7 @@ After PM-27, this taxonomy commits as PM-28, then `bus.js` lands as PM-29.
 
 ## Source-of-truth (live-verified at PM-26 audit time)
 
-- vyve-site `df41d7cb` (PM-26 audit base) → extended to `040c496d` (PM-28 sub-audits, post-PM-27 ship) → `27eaeafd` (PM-30 ship, PM-31 pre-flight) → `ee0497a5` (PM-31 ship)
+- vyve-site `df41d7cb` (PM-26 audit base) → extended to `040c496d` (PM-28 sub-audits, post-PM-27 ship) → `27eaeafd` (PM-30 ship, PM-31 pre-flight) → `ee0497a5` (PM-31 ship) → `392316a8` (PM-32 ship, PM-33 pre-flight) → `fe7e06ce` (PM-33 ship) → `5e4040797ddce859026c4c61def20448723228a6` (PM-34 ship, PM-35 pre-flight) → `218dfe8be75c3e97f6920ae45f680fec032438b3` (PM-35 ship)
 - VYVEBrain `master.md` `dce06959` § 6 / § 7 / § 19 / § 23 (pre-PM-28; refresh on commit)
 - **Whole-tree pull (PM-26):** `GITHUB_GET_A_TREE` recursive on main → 86 blobs → 73 source-text candidates → all fetched and grepped
 - **Whole-tree pull (PM-28 extension):** `GITHUB_GET_A_TREE` recursive on main at `040c496d` → 89 entries → 72 source-text files (.html .js .css; excludes vendor `supabase.min.js`, `test-schema-check.txt`, images, manifest.json, CNAME, dirs) → all 72 fetched and grepped (1.77M chars decoded)
@@ -341,6 +341,23 @@ If any of the above drifts, this taxonomy needs a re-pre-flight before extension
 ---
 
 ## Audit history
+
+**PM-35 (09 May 2026)** — Layer 1c-6 ship. Live-source whole-tree audit at HEAD `5e4040797ddce859026c4c61def20448723228a6` (the PM-34 ship; 90 tree entries → 74 source-text files including the new `workouts-builder.js` host-page wiring already shipped on workouts.html since PM-31).
+
+- **Migration plan row 1c-6** — marked shipped (PM-35).
+- **`workout:logged` Subscribers column** — patched. Pre-PM-35 listed `index.html, exercise.html, workouts.html, achievements.js`. Whole-tree grep at HEAD `5e404079` proved two of those wrong (mirror of PM-32's set:logged corrections):
+  - **exercise.html** has zero VYVEBus references and doesn't load bus.js. It's the Exercise Hub landing page that reads `workout_plan_cache` (programme structure) not workout completion events. Removed.
+  - **achievements.js** has zero VYVEBus references — it's invoked via direct `VYVEAchievements.evaluate()` calls from page-level subscribers (the option-(a) discipline introduced PM-30). Same correction PM-33 applied to cardio:logged. Removed.
+  - **engagement.html** missing from the list despite being a confirmed `workout:logged` subscriber since PM-33's bonus fix (engagement.html:1655 subscribes source-agnostic). Added.
+- **`workout:logged` Caches column** — `vyve_engagement_cache` added to reflect PM-33's bonus subscriber wiring (engagement_cache stales on every workout:logged source-agnostic). Pre-PM-35 the column listed only `vyve_home_v3_<email>` + `vyve_programme_cache_<email>` (gated). Editorial-only — the cache was already being staled via the engagement.html subscriber since PM-33 ship; the taxonomy just hadn't been updated.
+
+The PM-35 ship verified via 43-test self-test harness in `/mnt/files/pm35_test.js` covering bus API regression, POST publish fan-out, race-fix mechanic (publish ts ≤ fetch resolve ts), subscriber fan-out (home-stale + engagement-stale + workouts.html eval all fire; programme stale BYPASSED, render BYPASSED for source:'builder'), source discriminator integrity for all 4 sources, cross-tab origin:remote preservation, **asymmetric fallback verification** (NEW classification — !VYVEBus path fires evaluate ONLY, not invalidate or record; VYVEBus present fires NO direct evaluate), PATCH/edit path silence, envelope shape, PM-30/31/32/33/34 regression, schema widening preservation, validation guards, count discipline.
+
+**Asymmetric fallback (NEW §23 hard rule).** PM-35 is the first 1c migration to ship an asymmetric bus-fallback else-branch. Symmetric-fallback discipline (PM-33 §23 sub-rule) covers the case where the publish site has pre-existing primitives that the fallback mirrors one-for-one. Asymmetric-fallback covers the case where the publish site is missing primitives that the bus path closes via subscribers — the fallback intentionally does NOT add them, since pre-bus didn't fire them. Classification at pre-flight time: what was firing pre-bus at the publish site? PM-35 had only `evaluate` at workouts-builder.js:109; bus path adds `invalidate` + `record` via subscribers; fallback preserves evaluate-only.
+
+**Whole-tree primitive audit at HEAD `5e404079`** with PM-32 typeof-guard exclusion + PM-28 docblock-comment exclusion + function-definition exclusion: invalidate **11**, record **8**, evaluate **19**. Reconciled against the prompt's stated 13/8/15 post-PM-34: record matches; invalidate -2, evaluate +4. Suspected drivers: subscriber-internal evaluate calls in workouts.html PM-31/PM-32 subscriber bodies (lines 588, 614) counted as raw call sites by my regex, and possibly share-flow evaluate calls (workouts-session.js:417, :767, workouts-programme.js:391) which a stricter "1c-migratable publish-site primitive" classifier would exclude. Methodology recon item raised in backlog (P3) for resolution before PM-36; not blocking PM-35.
+
+PM-35 shipped as vyve-site `218dfe8be75c3e97f6920ae45f680fec032438b3`. Migration plan stays at 14 rows; 1c-6 row marked ✅. Source-of-truth extended to `218dfe8be75c3e97f6920ae45f680fec032438b3`.
 
 **PM-34 (09 May 2026)** — Layer 1c-5 ship correction. Live-source whole-tree audit at HEAD `392316a8` (the PM-33 ship), live-fetched movement.html at the same HEAD to confirm the local copy in the audit cache matched.
 

@@ -1,3 +1,67 @@
+## 2026-05-09 PM-35 (Layer 1c-6: workouts-builder.js custom workout creation → `bus.publish('workout:logged', source:'builder', ...)`)
+
+vyve-site `218dfe8be75c3e97f6920ae45f680fec032438b3` (new tree `09cfa5b2d1dee3cb0d64e3ac2fb24b02f88dc3b5`). Sixth Layer 1c migration; smallest commit in the campaign so far (one publishing site, ~30 lines changed). The single existing primitive — `if (window.VYVEAchievements) VYVEAchievements.evaluate();` at `workouts-builder.js:109` on the POST/create path — collapses into `bus.publish('workout:logged', { workout_id: null, completed: true, duration_min: null, source: 'builder' })` published BEFORE the fetch (race-fix mechanic, same as PM-33/PM-34). Per the taxonomy 1c-6 row: REFACTOR + scope-fix migration where the bus path closes a real bug — pre-PM-35 saveCustomWorkout had ZERO invalidate/record primitives, so the home dashboard "today's workouts" count and engagement_cache score component never refreshed after a custom workout creation until next sign-in.
+
+**Asymmetric fallback (NEW §23 hard rule).** This is the first Layer 1c migration to ship an asymmetric fallback. PM-30/31/32/33/34 all used **symmetric** fallback else-branches: the !VYVEBus path mirrored the pre-existing primitives one-for-one because those primitives were present at the publish site pre-bus. PM-35 differs structurally — pre-PM-35 had only `evaluate` at the publish site (no `invalidate`, no `record`). The bus path closes that gap by routing through subscribers (`index.html` `_markHomeStale`, `engagement.html` `_markEngagementStale`, `workouts.html` eval) that internally call the missing primitives. The `!VYVEBus` else-branch intentionally does NOT add `invalidate` or `record` back, since pre-PM-35 didn't fire them — adding them in the fallback would silently change behaviour for the rare case bus.js failed to load, breaking the "fallback preserves prior shipping code semantics" invariant. Codified as a new §23 hard rule: future bus migrations must classify the fallback shape (symmetric vs asymmetric) during pre-flight based on what was firing pre-bus at the publish site, not after the patch.
+
+**PATCH/edit path untouched.** saveCustomWorkout has two branches: PATCH (edit, lines 97-102) and POST (create, lines 103-110). Pre-PM-35 only the POST path fired `evaluate()` — editing a custom workout fired no primitive at all. PM-35 preserves this asymmetry exactly: the bus migration only touches the POST path, leaving PATCH silent both before and after. Editing a custom workout is a definition-tier change (modifying a template), not a completion event; the `workout:logged` semantic ("a workout was logged/completed") doesn't apply. POST-only matches today's eval semantic and stays consistent with the event name. Self-test group 8 (4 tests) verifies PATCH stays silent under both bus and !VYVEBus paths.
+
+**Pre-flight scope decision: NO new subscribers needed.** Whole-tree audit at HEAD `5e404079` (74 source-text files at the new tree) confirmed all three downstream subscribers already wired:
+
+- `index.html:1287` `_markHomeStale` on `workout:logged` — source-agnostic, fires for all 4 sources (programme/custom/movement/builder).
+- `engagement.html:1655` `_markEngagementStale` on `workout:logged` — source-agnostic, wired by PM-33's bonus fix.
+- `workouts.html:575` eval unconditional + programme_cache stale gated on `source === 'programme'` (line 582) + renderProgramme gated on `source === 'programme'` (line 593). Both gates correctly bypass for `source: 'builder'` — verified self-test 4.3.
+
+bus.js already loaded on workouts.html (the host page that loads workouts-builder.js) at workouts.html:16 since PM-31 — no new script tag needed. Pure publishing-site migration. Single file commit + sw.js bump.
+
+**Schema.** `{ workout_id: null, completed: true, duration_min: null, source: 'builder' }`. Both `workout_id` and `duration_min` null at this site. POST uses `Prefer: return=minimal` so no server PK comes back; custom workout creation isn't a timed event (it's a template definition step, not a completion). PM-34's nullable widening on both fields covers this without further taxonomy schema changes.
+
+**Taxonomy editorial fixes on the way through.** The `workout:logged` Subscribers column in `playbooks/cache-bus-taxonomy.md` listed `index.html, exercise.html, workouts.html, achievements.js`. Whole-tree audit at HEAD `5e404079` proved two of those wrong (mirror of the kind of corrections PM-32 applied to set:logged):
+
+- **exercise.html has zero VYVEBus references** — whole-tree grep returned no hits for `VYVEBus` or `bus.js` script-tag references. exercise.html is the Exercise Hub landing page, reads `workout_plan_cache` not workout completion events. Not a subscriber.
+- **achievements.js has zero VYVEBus references** — it's invoked via direct `VYVEAchievements.evaluate()` calls from page-level subscribers, not via bus subscription. Same option-(a) discipline mirror PM-33 applied to cardio:logged.
+- **engagement.html missing from the column** despite being a confirmed `workout:logged` subscriber since PM-33's bonus fix (engagement.html:1655 subscribes source-agnostic).
+
+Subscribers column patched: `index.html, workouts.html, engagement.html` — three subscribers, all source-agnostic for `workout:logged` (workouts.html's source-gated programme_cache stale is internal to that subscriber's handler, not a separate subscriber). Editorial-only correction; no implementation impact.
+
+**Workouts-builder.js publishing site (`saveCustomWorkout` L89-L139 region post-patch, was L89-L115 pre-patch).**
+
+- L109 `if (window.VYVEAchievements) VYVEAchievements.evaluate();` — moved into the bus-fallback else-branch (asymmetric: only `evaluate` preserved, NOT `invalidate` or `record`).
+- Pre-fetch at L116-L125: new `if (window.VYVEBus) { try { VYVEBus.publish('workout:logged', { workout_id: null, completed: true, duration_min: null, source: 'builder' }); } catch (_) {} }` block.
+- Post-fetch at L131-L133: new `if (!window.VYVEBus && window.VYVEAchievements) { try { VYVEAchievements.evaluate(); } catch (_) {} }` fallback.
+
+PATCH/edit path (L97-L102) untouched. `try { ... } catch(e) {}` outer wrapper preserved at L96 / L137.
+
+**Race-fix mechanic.** Same as PM-33/PM-34: `bus.publish` lands BEFORE the POST fetch. Synchronous in-tab dispatch + microsecond cross-tab broadcast via the `vyve_bus` localStorage round-trip. Subscribers stale caches optimistically; fetch resolution is decoupled from local UI propagation. Self-test 3.1 verifies `publish.ts ≤ fetch.resolveAt`; self-test 3.2 verifies `publish.ts ≤ fetch.calledAt` (publish recorded before fetch call recorded).
+
+**43 of 43 self-tests passing** in `/mnt/files/pm35_test.js` with the patched `saveCustomWorkout` extracted via regex and run inside a Node sandbox with browser-equivalent global scope. Sandbox exposes `VYVEBus` and `VYVEAchievements` as bare identifiers alongside `window.VYVEBus` / `window.VYVEAchievements` to mirror browser-global resolution semantics (initial harness run failed one fallback test because `Function`-constructor scope doesn't auto-resolve bare identifiers from `ctx.window`; second run with bare-identifier injection passing 43/43). Test groups:
+
+1. bus API regression smoke
+2. POST publish fan-out (6 envelope-shape tests: count, event name, source, workout_id, duration_min, completed)
+3. race-fix verification (publish ts ≤ fetch resolve ts AND publish recorded before fetch call recorded)
+4. subscriber fan-out simulator (home-stale + engagement-stale + workouts.html eval all fire once on builder publish; workouts.html simulator: programme stale BYPASSED, render BYPASSED; full 3-subscriber fan-out)
+5. source discriminator integrity (programme STILL stales programme_cache, custom/movement/builder all bypass — proves the `source === 'programme'` gate distinguishes correctly)
+6. cross-tab origin:remote preserves source:'builder'
+7. **asymmetric fallback verification** (4 tests: !VYVEBus fires evaluate exactly once; !VYVEBus does NOT call invalidate or record; !VYVEBus + !VYVEAchievements no-op; VYVEBus present fires NO direct evaluate — confirms asymmetry)
+8. PATCH/edit path silent (4 tests: no publish, uses PATCH method, no direct eval, no fallback fire even with !VYVEBus)
+9. envelope shape (email, txn_id non-empty string, ts number, origin:'local')
+10. PM-30/31/32/33/34 regression (8 tests: habit:logged + workout:logged all 4 sources + set:logged + cardio:logged 2 sources flow; all 4 workout:logged sources delivered to source-agnostic subscriber in order)
+11. PM-34 schema widening preserved (workout_id and duration_min nullable at builder site)
+12. validation guards (empty name + empty exercises return early without publish, fetch, or eval)
+13. bus path achievement count discipline (1 publish, 0 direct eval, 1 fetch — publishing-surface count change is 0/0/0)
+
+`node --check` clean on `workouts-builder.js`.
+
+**Whole-tree primitive audit at HEAD `5e404079`.** Methodology: typeof guards excluded (PM-32 §23 sub-rule), docblock comments excluded (PM-28 §23 sub-rule), function definitions excluded. Result: invalidate **11**, record **8**, evaluate **19**. Reconciled against the prompt's stated 13/8/15 post-PM-34: record matches; invalidate is 2 lower; evaluate is 4 higher because subscriber-block evaluate calls inside `workouts.html:588` and `workouts.html:614` (the PM-31 / PM-32 subscriber bodies) are publish-surface-irrelevant but counted as raw call sites in this audit. **The PM-35 publishing-surface count change at `workouts-builder.js` is 0/0/0** (pre-PM-35: 1 evaluate, 0 invalidate, 0 record at line 109; post-PM-35: 1 evaluate-in-fallback, 0 invalidate, 0 record). Methodology drift against the broader portal is flagged but doesn't block PM-35 — separate audit-recon commit before PM-36 will reconcile against PM-31/PM-32/PM-33/PM-34 audits to nail down the exact ruleset (subscriber-internal eval calls inside subscriber bodies probably need their own classification).
+
+**SW cache.** `vyve-cache-v2026-05-09-pm34-movement-a` → `vyve-cache-v2026-05-09-pm35-builder-a`. Same atomic commit.
+
+**Source-of-truth.** vyve-site pre-commit `5e4040797ddce859026c4c61def20448723228a6` (PM-34 ship), post-commit `218dfe8be75c3e97f6920ae45f680fec032438b3` (PM-35 ship), new tree `09cfa5b2d1dee3cb0d64e3ac2fb24b02f88dc3b5`. Whole-tree audit per §23 PM-26 + typeof-guard exclusion per PM-32 + docblock-comment exclusion per PM-28 + asymmetric-fallback discipline per PM-35 (this commit). Post-commit verification per §23: live-SHA fetch via GITHUB_GET_REPOSITORY_CONTENT (not raw — CDN-cached), markers verified across workouts-builder.js (bus.publish('workout:logged' literal + source:'builder' literal + PM-35: Layer 1c-6 marker — all live, blob SHA `c9173586828b`) and sw.js (cache literal live, blob SHA `e80a4cb77d79`).
+
+**Sequence after PM-35:** Six Layer 1c migrations down (1c-1 through 1c-6), eight to go (1c-7 log-food.html through 1c-14 share-workout). Then option-(b) cleanup commit closes Layer 1. Next session = PM-36, likely 1c-7 (log-food.html insert + delete; race-fix migration with `food:logged` + `food:deleted` as paired events — first 1c migration shipping two distinct event names from one publishing surface, taxonomy ADD on both since neither event exists today).
+
+---
+
 ## 2026-05-09 PM-34 (Layer 1c-5: movement.html walk + non-walk paths → `bus.publish('cardio:logged' | 'workout:logged', ...)`)
 
 vyve-site `5e4040797ddce859026c4c61def20448723228a6` (new tree `ee1ea552683029b97a5d7836c214fcf675814d9d`). Fifth Layer 1c migration. Two publishing surfaces in movement.html (`markDone` programme-completion + `logMovement` quick-log) collapse to bus.publish per the taxonomy 1c-5 row. Both surfaces share the same primitives shape structurally — three primitives (evaluate / invalidateHomeCache / recordRecentActivity) fired unconditionally after each fetch — so they fold into one commit. The discriminator is event-name, not commit-name: `markDone` always publishes `workout:logged source:'movement'`; `logMovement` publishes `cardio:logged source:'movement_walk'` (walk pill) or `workout:logged source:'movement'` (non-walk pills) based on `isWalk`.
