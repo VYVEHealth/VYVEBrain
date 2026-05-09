@@ -1,3 +1,71 @@
+## 2026-05-09 PM-32 (Layer 1c-3: workouts-session.js saveExerciseLog → `bus.publish('set:logged', ...)`)
+
+vyve-site `392316a86bd94f01fe3a44ef38837ce1ed857d2c` (new tree `bcb5f1538b81ed830f63029d72e9197011e1fcd6`). Third Layer 1c migration. Three primitive sites in `saveExerciseLog` (L405 invalidate + L406 evaluate writeQueued path; L412 evaluate legacy fallback) collapse into one shared `_publishSetLogged()` helper called from both write paths. Same option-(a) bus migration discipline as PM-30/PM-31: publishing site emits `bus.publish` only; subscribers call existing primitives internally.
+
+**Pre-flight scope corrections.** Taxonomy's `set:logged` row listed subscribers as "exercise.html (PR strip), workouts-session.js (next-set)". Whole-tree audit at HEAD `ee0497a5` (90 tree entries → 73 source-text files → 1,795,025 chars decoded) proved both wrong:
+
+- **exercise.html is not a `set:logged` consumer.** It's the Exercise Hub landing page — three stream cards (Movement / Workouts / Cardio) plus a programme hero card. Reads `workout_plan_cache`, NOT `exercise_logs`. Has no PR strip. Its `vyve_exercise_cache_v2` cache holds programme JSON and is correctly staled by `programme:updated` (open ADD migration), not `set:logged`.
+- **The actual `comp-pr-strip` element lives on workouts.html** and is populated by `renderCompletionView` inside `completeWorkout` — already shipped under PM-31. Per-set per-page refresh isn't its concern.
+- **The "PRs tab" (`#prs-view` populated by `workouts-notes-prs.js`)** is read-only and re-loads on `openPrsView()`. No live coupling to `set:logged`.
+- **The "next-set hint" is `checkProgressNudge` + `checkOverloadNudge`** — these fire BEFORE `saveExerciseLog` runs, reading from in-memory `exerciseHistory`. Not reactive subscribers; they're pre-save evaluators. `exerciseHistory` is intentionally NOT updated mid-session because nudges compare against the previous session's bests, not against today's just-logged sets.
+
+Net: there is no live UI today that needs to refresh on `set:logged` per-set. The two real consequences are home-stale (engagement variety/score component on the home dashboard score ring) and achievements eval. Both were inline-coupled to the save handler pre-PM-32; PM-32 routes them through the bus.
+
+**Bug-fix on the way through.** Pre-PM-32 the legacy fallback path (L411-L413, fires when `!VYVEData.writeQueued`) only called `VYVEAchievements.evaluate()` — it was missing the `invalidateHomeCache()` that the writeQueued path called on L405. The new `_publishSetLogged()` helper is symmetric across both paths, so the legacy path now stales home correctly via the bus subscriber chain. Same kind of "free fix on the migration" PM-30's autotick-evaluate gap closed.
+
+**Schema.** `bus.publish('set:logged', { exercise_log_id, exercise_name, set_number, reps, weight_kg })`. `exercise_log_id` is `payload.client_id` (writeQueued uses `Prefer: return=minimal`, no server PK; client UUID is the stable identifier). `set_number` is `setsCompleted` from the function signature, but renamed in the envelope for clarity — the parameter name is misleading because what's actually passed at the call site (`saveExerciseLog(ex.exercise_name, kg, reps, setIdx + 1)`) is a 1-based set INDEX, not a cumulative count of completed sets. `weight_kg` falls to `null` for bodyweight exercises (`weightKg || null`). Taxonomy schema patched in same brain commit to widen `exercise_log_id` from `<int>` to `<string>` and rename `sets` → `set_number`.
+
+**workouts-session.js publishing site (saveExerciseLog L373-L414):**
+
+- L405 `if (typeof VYVEData.invalidateHomeCache === 'function') VYVEData.invalidateHomeCache();` (writeQueued path) — removed.
+- L406 `if (window.VYVEAchievements) VYVEAchievements.evaluate();` (writeQueued path) — removed.
+- L412 `if (window.VYVEAchievements) VYVEAchievements.evaluate();` (legacy fallback) — removed.
+
+Replaced with a `_publishSetLogged()` helper inside `saveExerciseLog` body, called from both write paths after the actual write resolves:
+
+```js
+function _publishSetLogged() {
+  if (window.VYVEBus) {
+    VYVEBus.publish('set:logged', {
+      exercise_log_id: payload.client_id,
+      exercise_name: exerciseName,
+      set_number: setsCompleted,
+      reps: repsCompleted,
+      weight_kg: weightKg || null
+    });
+  } else {
+    // Fallback for the rare case bus.js failed to load.
+    if (window.VYVEData && typeof VYVEData.invalidateHomeCache === 'function') VYVEData.invalidateHomeCache();
+    if (window.VYVEAchievements) VYVEAchievements.evaluate();
+  }
+}
+```
+
+**Subscriber wiring.**
+
+- `index.html` (L1271-L1291 region): existing `_markHomeStale` handler in the `__vyveHomeBusWired` block extended with one more `subscribe('set:logged', _markHomeStale)` line. Same handler body fires for `habit:logged`, `workout:logged`, and `set:logged` — they all stale `vyve_home_v3_<email>` identically. Idempotent, origin-agnostic.
+- `workouts.html` (L572-L601 region): added a second `subscribe('set:logged', ...)` inside the existing `__vyveWorkoutsBusWired` block (alongside the PM-31 `workout:logged` subscriber). Achievements eval only — no cache to stale (exercise_logs has no client-side cache, in-memory `exerciseHistory` intentionally NOT updated mid-session). Per-set fan-in is collapsed by the achievements.js debouncer (1.5s), so a typical 12-30-publish session results in one network eval call.
+
+**No new bus.js script tag.** Both index.html (PM-29) and workouts.html (PM-31) already carry `<script src="/bus.js" defer>`.
+
+**Cross-tab origin handling.** Both subscribers are origin-agnostic per option-(a) discipline. Index home-stale fires identically on local + remote (idempotent localStorage write). Workouts.html eval fires identically on local + remote; cross-tab case (workouts-session open in tab A, workouts.html visible in tab B) ticks set on A → eval fires once on B (debouncer collapse).
+
+**Plan-cache heartbeat boundary preserved.** workout_plan_cache PATCH (current_session/current_week advancement) remains a programme counter — saveExerciseLog doesn't touch it (only completeWorkout does, and that's PM-31 territory which was verified to keep silent at the heartbeat boundary).
+
+**Whole-tree primitive audit at HEAD ee0497a5 reconciliation.** PM-31's audit reported (15 invalidate / 12 record / 18 evaluate) but PM-32's re-audit at the same HEAD found **(14 invalidate / 8 record / 18 evaluate)** publishing-surface call sites. The difference is `typeof X === 'function'` guard lines that PM-31 incorrectly counted as call sites. Evaluate count was correct because evaluate guards use property checks (`if (window.VYVEAchievements)`), not `typeof === 'function'` checks. Codified as a §23 sub-rule under PM-26: primitive call-site audits exclude `typeof` guard lines.
+
+**After PM-32 ship:** invalidate publishing-surface count = **13** (saveExerciseLog L405 removed; the L592 fallback inside completeWorkout's bus-publish helper is preserved structurally; saveExerciseLog's new bus-fallback else-branch adds one site → net -1 from the saveExerciseLog migration). Evaluate publishing-surface count = **15** (L406 + L412 removed; L597 inside completeWorkout's bus-publish fallback preserved; L744 inside afterCompletion preserved as a separate concern; saveExerciseLog's new bus-fallback else-branch adds one site → net -2 from the saveExerciseLog migration).
+
+**Self-test: 20 of 20 passing** in a Node harness with browser shims (`window`, `document`, `localStorage`, `CustomEvent`, `StorageEvent`) plus the unchanged bus.js loaded verbatim. Test groups: (1) bus API regression, (2) idempotent subscriber wiring, (3) writeQueued path full subscriber fan-out — home invalidate + eval + correctly NO recordRecentActivity, (4) envelope shape — all schema fields preserved, (5) bodyweight `weight_kg: null`, (6) cross-tab origin:'remote' delivery via storage event with `vyve_bus` BUS_KEY, (7) storage event noise filtering — non-bus key / paired removeItem newValue:null / malformed JSON, (8) per-set rapid-succession (5 sets → 5 invalidates + 5 evaluates raw; debouncer collapse not simulated in harness), (9) fallback path `!window.VYVEBus` → primitive triplet still fires, (10) regression on PM-30 habit:logged + PM-31 workout:logged subscribers, (11) subscriber isolation — `set:logged` does NOT touch `vyve_programme_cache_<email>`, (12) event-name validation — invalid names warn-and-no-op (not throw, per bus.js publish() implementation), valid `set:logged` passes. `node --check` clean on workouts-session.js, sw.js, and 10 inline `<script>` blocks across index.html (8) + workouts.html (2).
+
+**SW cache.** `vyve-cache-v2026-05-09-pm31-workouts-a` → `vyve-cache-v2026-05-09-pm32-exerciselog-a`. Same atomic commit. `/bus.js` already in `urlsToCache` from PM-29.
+
+**Source-of-truth.** vyve-site pre-commit `ee0497a5` (PM-31 ship), post-commit `392316a86bd94f01fe3a44ef38837ce1ed857d2c` (PM-32 ship), new tree SHA `bcb5f1538b81ed830f63029d72e9197011e1fcd6`. Whole-tree audit per §23 PM-26: `GITHUB_GET_A_TREE` recursive on main → 90 entries → 73 source-text files (.html .js .css; excludes vendor `supabase.min.js`, `test-schema-check.txt`, manifest.json, CNAME, images, dirs) → all 73 fetched (1,795,025 chars decoded) → grep for `invalidateHomeCache` / `recordRecentActivity` / `VYVEAchievements\s*\.\s*evaluate\s*\(` excluding comment lines AND `typeof X === 'function'` guard lines (PM-32 §23 sub-rule). Post-commit verification per §23: live-SHA fetch via `GITHUB_GET_REPOSITORY_CONTENT` (not raw), all 4 files: head-100 char match, char-count match, blob_sha matches `path_status` from the commit response. Post-commit blobs: workouts-session.js `b60a2ad4fa62a1736897dbedf8504f75bf524964`, index.html `983a4bbcf56cdcc12c1b9f033ecc60d71240be7f`, workouts.html `457cef1ea9424b17a0b6e168087c03cf3417c653`, sw.js `f58be5e50c372b704772e9c83d53898ef09eb52a`.
+
+**Sequence after PM-32:** PM-33 → 1c-4 (`cardio.html` log → `bus.publish('cardio:logged', source:'cardio_page', ...)`). REFACTOR + race-fix + scope-fix per taxonomy 1c-7 row (the 200-800ms post-await invalidate gap is the race; cardio_cache and engagement_cache are the scope-fixes). Distinct file from workouts-session.js — bus migration moves to a different write surface.
+
+---
+
 ## 2026-05-09 PM-31 (Layer 1c-2: workouts-session.js completeWorkout → `bus.publish('workout:logged', source:'programme'|'custom', ...)`)
 
 vyve-site `ee0497a5cca1957ca1b3f2aa1f9aa4181e2e7ed7`. Second Layer 1c migration. Single publish site collapses three primitives at the post-write block; subscribers on workouts.html and index.html replace the inline calls; option-(a) bus migration discipline (PM-30 §23) preserved.
