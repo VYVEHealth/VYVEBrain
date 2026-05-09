@@ -151,15 +151,23 @@ Umbrella event. Subscribers that don't care about type listen here.
 
 #### `cardio:logged`
 ```js
-{ ...envelope, cardio_id: <int>, cardio_type: 'walking'|'running'|..., duration_min: <num>, distance_km: <num>|null, source: 'cardio_page'|'movement_walk' }
+{ ...envelope, cardio_id: <int>?, cardio_type: 'walking'|'running'|..., duration_min: <num>, distance_km: <num>|null, source: 'cardio_page'|'movement_walk' }
 ```
 **Two publish sites:** cardio.html + movement.html walk pill (PM-15 04 May routed walks-as-cardio). One event with `source` discriminator.
 
 | Caches | Subscribers |
 |---|---|
-| `vyve_home_v3_<email>`, `vyve_cardio_cache`, `vyve_engagement_cache` | index.html, cardio.html, engagement.html, achievements.js |
+| `vyve_home_v3_<email>`, `vyve_engagement_cache` | index.html, cardio.html, engagement.html |
 
 → **REFACTOR + race-fix + scope-fix.** Race: cardio.html does direct fetch then post-await invalidate — 200–800ms gap where home reads pre-tick state. Bus version publishes optimistically before fetch.
+
+**PM-33 corrections to the original taxonomy row.** Pre-PM-33 this row listed `vyve_cardio_cache` in the Caches column and `achievements.js` in the Subscribers column. Both wrong against live source at HEAD `392316a8`:
+
+- `vyve_cardio_cache` is **page-local to cardio.html** (single hit at cardio.html:252). The page already self-busts via `localStorage.removeItem(CACHE_KEY)` + re-fetch in the post-await flow inside `logCardio`. No other page reads it. The cross-page "scope-fix to cardio_cache" framing in the original draft was a false positive. Cache column patched to remove cardio_cache.
+- The actual scope-fix is `vyve_engagement_cache`. Read by engagement.html (5 sites, 24h TTL gate) and written by auth.js (sign-in fan-out). Pre-PM-33 it had ZERO invalidators on writes. PM-33 closes this gap on cardio:logged AND folds in subscribers for habit/workout/set:logged (closing the same gap on the three earlier-shipped events).
+- `achievements.js` is the debouncer/eval implementation, not a subscriber per option-(a) discipline. The journey-owning page (cardio.html for cardio:logged) calls `evaluate()` from its in-page subscriber. Subscriber column patched to drop achievements.js (consistent with the workouts.html-owns-eval pattern in the `set:logged` and `workout:logged` rows).
+
+**Schema corrections.** `cardio_id` widened from `<int>` to `<int>?` (optional/nullable). cardio.html POSTs with `Prefer: return=minimal` so no server PK comes back; `movement.html` walk pill same. No current consumer needs the cardio_id.
 
 ### Profile / settings events
 
@@ -274,7 +282,7 @@ Cross-tab: every event published as `localStorage.setItem('vyve_bus', JSON.strin
 | 1c-1 | habits.html log + autotick + undo | invalidate + record + evaluate | `bus.publish('habit:logged', ...)` | REFACTOR + scope-fix (habits_cache_v2) |
 | 1c-2 ✅ | workouts-session.js complete handler (one unified `completeWorkout()`) | three calls + 1 fallback evaluate | `bus.publish('workout:logged', source:'programme'\|'custom', ...)` | REFACTOR + scope-fix (programme_cache) — shipped PM-31 |
 | 1c-3 | workouts-session.js exercise_log save | direct fetch + invalidate | `bus.publish('set:logged', ...)` | REFACTOR (decouple) |
-| 1c-4 | cardio.html log | three calls | `bus.publish('cardio:logged', source:'cardio_page', ...)` | REFACTOR + race-fix + scope-fix |
+| 1c-4 ✅ | cardio.html log | three calls | `bus.publish('cardio:logged', source:'cardio_page', ...)` | REFACTOR + race-fix + scope-fix — shipped PM-33 |
 | 1c-5 | **movement.html walk + non-walk paths (NEW)** | three calls × 2 paths | walks → `cardio:logged` source:'movement_walk'; non-walks → `workout:logged` source:'movement' | REFACTOR + scope-fix |
 | 1c-6 | **workouts-builder.js custom workout creation (NEW)** | evaluate only | `bus.publish('workout:logged', source:'builder', ...)` | REFACTOR + scope-fix (no current invalidation = real bug) |
 | 1c-7 | log-food.html insert + delete | inline cache writes + 2× evaluate | `bus.publish('food:logged'/'food:deleted', ...)` | REFACTOR + race-fix |
@@ -333,6 +341,16 @@ If any of the above drifts, this taxonomy needs a re-pre-flight before extension
 ---
 
 ## Audit history
+
+**PM-33 (09 May 2026)** — Layer 1c-4 ship correction. Live-source whole-tree audit at HEAD `392316a8` (73 source-text files, 1,743,473 chars decoded; typeof guard lines excluded per PM-32 §23 sub-rule):
+
+- **`cardio:logged` Caches column** — `vyve_cardio_cache` removed (page-local to cardio.html, no cross-page consumer; whole-tree grep returned ONE hit at cardio.html:252; page already self-busts via post-await `localStorage.removeItem(CACHE_KEY)` + re-fetch inside `logCardio`). Cache column now lists `vyve_home_v3_<email>` + `vyve_engagement_cache` only.
+- **`cardio:logged` Subscribers column** — `achievements.js` removed (per option-(a) discipline, achievements.js is the debouncer/eval implementation; the journey-owning page cardio.html calls `evaluate()` from its in-page subscriber, mirroring the `set:logged` and `workout:logged` rows where workouts.html owns eval).
+- **`cardio:logged` schema** — `cardio_id` widened from `<int>` to `<int>?`. cardio.html and movement.html walk pill both POST with `Prefer: return=minimal` so no server PK comes back; no current consumer needs the cardio_id.
+- **Migration plan row 1c-4** — marked shipped (PM-33).
+
+The actual scope-fix shipped in PM-33 is `vyve_engagement_cache` invalidation on cardio:logged (engagement.html had ZERO invalidators on writes pre-PM-33, with a 24h TTL on its cache reads — log activity, navigate to engagement within 24h, see stale scores). PM-33 also folded in engagement-stale subscribers for habit/workout/set:logged, closing the same gap on the three earlier-shipped events.
+
 
 - **PM-25 draft.** Initial taxonomy. Audit method: hand-picked subset of 23 files. Drift introduced: nav.js missed → touchstart wiring claimed absent (PM-18 ship-truth was actually correct). Movement / workouts-builder / 13 of 20 evaluate sites all missed for the same reason — grepped what I had, not what existed.
 - **PM-26 patch.** Whole-tree audit. All 73 source files fetched and grepped. PM-25 findings re-verified against full tree. Errata captured. New §23 hard rule on whole-tree audit method. Touchstart-wiring deliverable removed (already shipped). Migration plan extended from 10 to 14 rows. Counts corrected throughout.
