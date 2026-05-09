@@ -95,7 +95,7 @@ Umbrella event. Subscribers that don't care about type listen here.
 
 #### `workout:logged`
 ```js
-{ ...envelope, workout_id: <int|string>, completed: true, duration_min: <num>, source: 'programme'|'custom'|'movement'|'builder' }
+{ ...envelope, workout_id: <int|string>?, completed: true, duration_min: <num>?, source: 'programme'|'custom'|'movement'|'builder' }
 ```
 
 > PM-31 patch: `workout_id` accepts string (the writeQueued client UUID `_workoutClientId`) as well as int (server-side `workouts.id` when later 1c-* migrations route through paths that have it). Today's PM-31 ship uses the client UUID — writeQueued returns `Prefer: return=minimal` so no server PK is available, and no current consumer needs it.
@@ -283,7 +283,7 @@ Cross-tab: every event published as `localStorage.setItem('vyve_bus', JSON.strin
 | 1c-2 ✅ | workouts-session.js complete handler (one unified `completeWorkout()`) | three calls + 1 fallback evaluate | `bus.publish('workout:logged', source:'programme'\|'custom', ...)` | REFACTOR + scope-fix (programme_cache) — shipped PM-31 |
 | 1c-3 | workouts-session.js exercise_log save | direct fetch + invalidate | `bus.publish('set:logged', ...)` | REFACTOR (decouple) |
 | 1c-4 ✅ | cardio.html log | three calls | `bus.publish('cardio:logged', source:'cardio_page', ...)` | REFACTOR + race-fix + scope-fix — shipped PM-33 |
-| 1c-5 | **movement.html walk + non-walk paths (NEW)** | three calls × 2 paths | walks → `cardio:logged` source:'movement_walk'; non-walks → `workout:logged` source:'movement' | REFACTOR + scope-fix |
+| 1c-5 ✅ | **movement.html walk + non-walk paths (NEW)** | three calls × 2 paths | walks → `cardio:logged` source:'movement_walk'; non-walks → `workout:logged` source:'movement' | REFACTOR + scope-fix — shipped PM-34 |
 | 1c-6 | **workouts-builder.js custom workout creation (NEW)** | evaluate only | `bus.publish('workout:logged', source:'builder', ...)` | REFACTOR + scope-fix (no current invalidation = real bug) |
 | 1c-7 | log-food.html insert + delete | inline cache writes + 2× evaluate | `bus.publish('food:logged'/'food:deleted', ...)` | REFACTOR + race-fix |
 | 1c-8 | nutrition.html weight log | invalidate + evaluate | `bus.publish('weight:logged', ...)` | REFACTOR + scope-fix (members + wb_last) |
@@ -341,6 +341,13 @@ If any of the above drifts, this taxonomy needs a re-pre-flight before extension
 ---
 
 ## Audit history
+
+**PM-34 (09 May 2026)** — Layer 1c-5 ship correction. Live-source whole-tree audit at HEAD `392316a8` (the PM-33 ship), live-fetched movement.html at the same HEAD to confirm the local copy in the audit cache matched.
+
+- **Migration plan row 1c-5** — marked shipped (PM-34).
+- **`workout:logged` schema** — `workout_id` widened from `<int|string>` to `<int|string>?` (explicit nullable). `duration_min` widened from `<num>` to `<num>?` (movement.html `markDone` may compute null when `activities.reduce` falls through to the `|| null` fallback). Both reflect that movement.html publishes without a client UUID — workouts-session.js generates `_workoutClientId` for shareable workout deep-links; movement.html has no equivalent; POST uses `Prefer: return=minimal` so no server PK comes back. No current consumer needs the workout_id (workouts.html PM-31 subscriber only reads `source` and `email`).
+
+The PM-34 ship verified via self-test 11.1 that movement.html's `markDone` programme-completion handler publishes exactly ONE bus event total across the full flow (POST /workouts + PATCH /workout_plan_cache + localStorage.removeItem(CACHE_KEY)) — the workout_plan_cache PATCH stays SILENT per the PM-31 programme heartbeat boundary invariant, NOT a bus event. The taxonomy's `workout:logged` row continues to NOT list workout_plan_cache as a subscriber-side cache because the cache is page-local to workouts.html and is correctly handled by the existing PM-31 subscriber's source-discriminated stale (`source: 'programme'` only — `source: 'movement'` correctly bypasses, verified self-test 3.6).
 
 **PM-33 (09 May 2026)** — Layer 1c-4 ship correction. Live-source whole-tree audit at HEAD `392316a8` (73 source-text files, 1,743,473 chars decoded; typeof guard lines excluded per PM-32 §23 sub-rule):
 

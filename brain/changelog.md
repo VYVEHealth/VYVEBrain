@@ -1,3 +1,61 @@
+## 2026-05-09 PM-34 (Layer 1c-5: movement.html walk + non-walk paths → `bus.publish('cardio:logged' | 'workout:logged', ...)`)
+
+vyve-site `5e4040797ddce859026c4c61def20448723228a6` (new tree `ee1ea552683029b97a5d7836c214fcf675814d9d`). Fifth Layer 1c migration. Two publishing surfaces in movement.html (`markDone` programme-completion + `logMovement` quick-log) collapse to bus.publish per the taxonomy 1c-5 row. Both surfaces share the same primitives shape structurally — three primitives (evaluate / invalidateHomeCache / recordRecentActivity) fired unconditionally after each fetch — so they fold into one commit. The discriminator is event-name, not commit-name: `markDone` always publishes `workout:logged source:'movement'`; `logMovement` publishes `cardio:logged source:'movement_walk'` (walk pill) or `workout:logged source:'movement'` (non-walk pills) based on `isWalk`.
+
+**Race-fix mechanic.** Same as PM-33: `bus.publish` lands BEFORE the POST fetch in both surfaces. Synchronous in-tab dispatch + microsecond cross-tab broadcast via the `vyve_bus` localStorage round-trip. Decouples local UI staleness propagation from the fetch round-trip — a tab-switch during the 200-800ms POST window sees post-tick state. First migration in the campaign that ships TWO race-fixes from the same page in one commit.
+
+**Programme heartbeat boundary preserved (PM-31 invariant).** `markDone`'s flow is: POST /workouts → publish workout:logged → ... → PATCH /workout_plan_cache (advance current_session/current_week) → localStorage.removeItem(CACHE_KEY). PM-31 codified that the workout_plan_cache PATCH stays SILENT — no bus.publish, no member-activity event — because it's a programme counter, not a member action. PM-34 keeps that boundary: only the workouts POST publishes; the PATCH is a heartbeat. Verified structurally in self-test 11.1 — markDone produces exactly ONE bus event total across the full handler flow.
+
+**Distance hoist refactor in `logMovement`.** Pre-PM-34 the walk-pill distance computation lived inside the `if (isWalk)` branch (the only path that uses it). PM-34 hoists `walkDistanceKm` to a `let` before the publish block so the bus envelope can carry the same value the POST body will. Pure code move — same input parsing logic, same DOM read, same validation bounds (`d > 0 && d <= 100`). Verified by post-patch read.
+
+**Pre-flight scope decision: NO new subscribers needed.** All four downstream subscribers were already wired by prior commits:
+
+- `index.html` `_markHomeStale` extends to both events from PM-31 (`workout:logged`) and PM-33 (`cardio:logged`). Source-agnostic — fires identically for `'programme'` / `'custom'` / `'movement'` (workout:logged) and `'cardio_page'` / `'movement_walk'` (cardio:logged).
+- `engagement.html` `_markEngagementStale` subscribes to all four event names from PM-33's bonus fix. Source-agnostic.
+- `workouts.html` PM-31 subscriber stales `vyve_programme_cache_<email>` only when `source === 'programme'`, fires eval unconditionally on `workout:logged`. Pre-flight verified that `source: 'movement'` correctly bypasses the programme_cache stale (movement.html doesn't write to programme_cache; workout_plan_cache PATCH on movement.html is a different cache key with a different shape) — verified self-test 3.6 / 3.7. Eval still fires correctly on movement-source events — self-test 3.5 / 4.3.
+- `cardio.html` PM-33 subscriber fires eval on `cardio:logged`. Source-agnostic.
+
+Pure publishing-site migration. Smallest commit in the 1c series so far.
+
+**Schema.** `cardio_id` and `workout_id` both omitted from envelopes — movement.html doesn't carry a client UUID like workouts-session.js does (workouts-session.js generates `_workoutClientId` for shareable workout deep-links; movement.html has no equivalent), and POST uses `Prefer: return=minimal` so no server PK comes back. Taxonomy schema patched in same brain commit to widen `workout_id` to `<int|string>?` (was `<int|string>` post-PM-31; now explicit nullable to match cardio_id's `<int>?` shape from PM-33).
+
+**movement.html publishing sites.**
+
+- `markDone` L466 region: three primitives at L486 (evaluate) + L490-L492 (invalidate) + L493-L495 (record('workout')). Replaced with one pre-fetch `bus.publish('workout:logged', { completed:true, duration_min, source:'movement' })` + post-await `if (!window.VYVEBus) { ...primitives... }` else-branch.
+- `logMovement` L687-L697 region: three primitives after the if/else at L688 (evaluate) + L693-L695 (invalidate) + L696-L698 (record(isWalk?'cardio':'workout')). Replaced with one pre-if/else discriminated `bus.publish` block (walk → cardio:logged, non-walk → workout:logged) + post-await `if (!window.VYVEBus) { ...primitives with isWalk ternary... }` else-branch.
+
+**One new bus.js script tag** at movement.html L116 (between auth.js L115 and achievements.js L117).
+
+**Cross-tab origin handling.** Both event names verified end-to-end in cross-tab self-test 7.1-7.6: cardio:logged + workout:logged published from tab A, received in tab B with `origin: 'remote'` and `source` field preserved.
+
+**Whole-tree primitive audit at HEAD `392316a8` (the PM-33 ship), pre-PM-34: invalidate 13, record 8, evaluate 15.** After PM-34 ship: counts unchanged at **13/8/15**. Two markDone primitives (invalidate + record + evaluate) and two logMovement primitives (after the unconditional if/else, fired for both walk and non-walk) collapse to bus.publish with symmetric bus-fallback else-branches. Same symmetric-fallback explanation as PM-33: the !VYVEBus path adds back the same three primitives one-for-one, so net change is zero. Codified in PM-33's §23 hard rule: pure REFACTOR + race-fix migrations don't drop the count, which is correct, not a bug. Future audits should not flag this as a regression.
+
+**47 of 47 self-tests passing** in `/tmp/pm34_harness.js` with bus.js loaded verbatim and browser shims (`window`, `document`, `localStorage`, custom `_dispatchStorage` cross-tab routing). Test groups:
+
+1. bus API regression
+2. walk-pill cardio:logged fan-out — home-stale + engagement-stale + cardio.html eval, source:'movement_walk' preserved through the envelope, engagement_cache removed
+3. non-walk workout:logged fan-out — home-stale + engagement-stale + workouts.html eval, source:'movement' correctly bypasses programme_cache stale
+4. programme markDone publishing the same shape as the non-walk path — both surfaces produce the same downstream effect for source:'movement'
+5. **race-fix verification** — walk publish lands BEFORE mock fetch resolves
+6. dual-publish from same page — member taps walk pill then stretch pill in succession; two correct events fire with no cross-pollination (cardio.html eval fires once, workouts.html eval fires once, two home-stale + two engagement-stale)
+7. cross-tab origin:'remote' delivery for BOTH event names with source preserved
+8. fallback path — three sub-tests across walk / non-walk / markDone, each preserving the original three primitives one-for-one with correct `recordRecentActivity` arg discrimination ('cardio' for walk, 'workout' for non-walk and markDone)
+9. regression — PM-31 source:'programme' still stales programme_cache (proves the source discriminator on workouts.html subscriber correctly distinguishes 'programme' vs 'movement')
+10. regression — all four prior event names (habit/workout/set/cardio:logged) still flow through home-stale + engagement-stale subscribers, source values preserved across the chain
+11. **workout_plan_cache PATCH heartbeat boundary** — markDone produces exactly 1 bus event total despite the handler doing POST + PATCH + removeItem; the PATCH is silent
+
+`node --check` clean on movement.html (2 inline JS blocks) + sw.js.
+
+**SW cache.** `vyve-cache-v2026-05-09-pm33-cardio-a` → `vyve-cache-v2026-05-09-pm34-movement-a`. Same atomic commit.
+
+**Source-of-truth.** vyve-site pre-commit `fe7e06ce` (PM-33 ship), post-commit `5e4040797ddce859026c4c61def20448723228a6` (PM-34 ship), new tree `ee1ea552683029b97a5d7836c214fcf675814d9d`. Whole-tree audit method per §23 PM-26 (typeof-guard exclusion per PM-32 §23 sub-rule, fully-symmetric-fallback count discipline per PM-33 §23 sub-rule). Post-commit verification per §23: live-SHA fetch via GITHUB_GET_REPOSITORY_CONTENT (not raw — CDN-cached), markers verified across both files (movement.html: bus.js script tag + cardio:logged publish + 2× workout:logged publish + 'movement_walk' + 'movement' + PM-34 marker; sw.js: cache version literal). Live SHAs: movement.html `6c0b8292035db1cc35f84010588e1d3112d90e40`, sw.js `59aa7021...`.
+
+**Sequence after PM-34:** Five 1c migrations done (1c-1 through 1c-5). Nine to go: 1c-6 workouts-builder.js, 1c-7 log-food.html insert + delete, 1c-8 nutrition.html weight log, 1c-9 settings.html persona switch (ADD), 1c-10 settings.html save (ADD), 1c-11 wellbeing-checkin.html submit + flush, 1c-12 monthly-checkin.html submit, 1c-13 tracking.js session view, 1c-14 share-workout (programme + session). Then the option-(b) cleanup commit closes Layer 1.
+
+**Halfway-point reflection.** PM-30 / PM-31 / PM-32 were pure REFACTOR with bug-fixes-on-the-way-through. PM-33 / PM-34 introduced race-fix mechanics and the symmetric-fallback count discipline. The next stretch (1c-6 onwards) returns to mostly-REFACTOR migrations on smaller surfaces (settings, monthly-checkin, share-workout). Pacing intent: ship one publishing site per session, end on a passing harness + atomic brain commit.
+
+---
+
 ## 2026-05-09 PM-33 (Layer 1c-4: cardio.html log → `bus.publish('cardio:logged', ...)`)
 
 vyve-site `fe7e06ce52abb42e55034cfb0145c2297ce9ccbc` (new tree `18b111fd2e60ef98cf8e9ffe4ba97884ea11a634`). Fourth Layer 1c migration. Three primitive sites in `cardio.html` `logCardio` (L643 `invalidateHomeCache` + L646 `recordRecentActivity('cardio')` + L648 `VYVEAchievements.evaluate()`) collapse into one `bus.publish('cardio:logged', { cardio_type, duration_min, distance_km, source: 'cardio_page' })` published OPTIMISTICALLY before the POST fetch. Same option-(a) bus migration discipline as PM-30/PM-31/PM-32: publishing site emits `bus.publish` only; subscribers call existing primitives internally. First migration in the campaign that ships a real race-fix (PM-30/PM-31/PM-32 were all pure REFACTOR with bug-fixes-on-the-way-through).
