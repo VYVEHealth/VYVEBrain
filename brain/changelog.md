@@ -1,3 +1,68 @@
+## 2026-05-09 PM-31 (Layer 1c-2: workouts-session.js completeWorkout → `bus.publish('workout:logged', source:'programme'|'custom', ...)`)
+
+vyve-site `ee0497a5cca1957ca1b3f2aa1f9aa4181e2e7ed7`. Second Layer 1c migration. Single publish site collapses three primitives at the post-write block; subscribers on workouts.html and index.html replace the inline calls; option-(a) bus migration discipline (PM-30 §23) preserved.
+
+**Scope correction caught at pre-flight.** Original taxonomy and PM-30 sequencing both spoke of "two complete handlers, programme + custom, each calling three primitives" — language inherited from the PM-25 hand-picked-subset draft. Whole-tree audit at HEAD `27eaeafd` (tree SHA `27eaeafd`, 73 source-text files, 1,821,887 chars) showed live source has **one** unified `completeWorkout()` at L531, invoked from a single inline `onclick` at L196. Both programme and custom completions route through the same function; the discriminator is computed at runtime as `(programmeData && cacheRow) ? 'programme' : 'custom'`. PM-31 ships one `bus.publish` not two. Brain entry corrected; taxonomy 1c-2 row left as-is (the migration label "complete (programme + custom)" is still accurate as a description of what the migration covers; the implementation is just simpler than the row implied).
+
+**Schema.** `bus.publish('workout:logged', { workout_id, completed: true, duration_min, source: 'programme'|'custom' })`. `workout_id` is `_workoutClientId` (the client-generated UUID in the workouts-row payload), not a server-issued `workouts.id` — writeQueued returns `Prefer: return=minimal`, no row back, and no current consumer needs the server PK. Taxonomy spec patched in same brain commit to widen `workout_id` type from `<int>` to `<int|string>` for forward-compat (later 1c-* migrations may go through routes that DO have a server PK; either is acceptable). `source` discriminator gates programme_cache invalidation on the workouts.html subscriber (custom workouts don't live in programme_cache, so `source:'custom'` does NOT touch `vyve_programme_cache_<email>`).
+
+**Single publish site collapsed (workouts-session.js).**
+
+- L569 `if (window.VYVEAchievements) VYVEAchievements.evaluate();` (writeQueued path) — removed.
+- L573 `if (window.VYVEAchievements) VYVEAchievements.evaluate();` (legacy fallback after direct fetch) — removed.
+- L581 `VYVEData.invalidateHomeCache();` (post-write) — removed.
+- L586 `VYVEData.recordRecentActivity('workout');` (post-write) — removed.
+
+Replaced with one block after the workouts-row write (`if/else writeQueued/legacy` resolved) and BEFORE the workout_plan_cache PATCH:
+
+```js
+const _busSource = (programmeData && cacheRow) ? 'programme' : 'custom';
+if (window.VYVEBus) {
+  VYVEBus.publish('workout:logged', {
+    workout_id: _workoutClientId,
+    completed: true,
+    duration_min: durationMins,
+    source: _busSource
+  });
+} else {
+  // Fallback for the rare case bus.js failed to load.
+  if (window.VYVEData && typeof VYVEData.invalidateHomeCache === 'function') VYVEData.invalidateHomeCache();
+  if (window.VYVEData && typeof VYVEData.recordRecentActivity === 'function') VYVEData.recordRecentActivity('workout');
+  if (window.VYVEAchievements) VYVEAchievements.evaluate();
+}
+```
+
+**Subscriber wiring.**
+
+- `workouts.html`: new `<script src="/bus.js" defer>` inserted between `auth.js` and `achievements.js` (matching habits.html PM-30 pattern). New `DOMContentLoaded` IIFE gated on `window.__vyveWorkoutsBusWired`. Subscriber on `workout:logged`: (a) if `envelope.source === 'programme'` AND `email` resolved, `localStorage.removeItem('vyve_programme_cache_' + email)` — closes the nav-back-without-dismissing-completion-screen gap left open by `afterCompletion`'s L690 removeItem (that path only fires when the user clicks "done" on the completion screen; gesture-back or tab-close before that left programme_cache stale until next sign-in); (b) always fire `VYVEAchievements.evaluate()` per option-(a) discipline (publishing site doesn't, subscriber does); (c) call `window.renderProgramme()` only when `document.visibilityState === 'visible'` AND `#programme-content` is the active tab (style.display !== 'none'). Origin-agnostic — local and remote (cross-tab) flow through identical code paths.
+- `index.html`: existing PM-30 `DOMContentLoaded` home-stale subscriber refactored to extract a `_markHomeStale(envelope)` handler then call `subscribe('habit:logged', _markHomeStale)` AND `subscribe('workout:logged', _markHomeStale)`. Same `__vyveHomeBusWired` flag (idempotency preserved). Both events stale `vyve_home_v3_<email>` identically; achievements eval is owned by per-page subscribers (workouts.html for workout:logged, habits.html for habit:logged), not by index.
+
+**Decisions held against the prompt's PM-31 plan:**
+
+- **exercise.html dropped from PM-31 scope.** Prompt's step 3 wanted exercise.html to mark `vyve_exercise_cache_v2` stale on `workout:logged`. Taxonomy reserves exercise_cache_v2 staleness for `set:logged` (1c-3) and `programme:updated` (open ADD migration). Completing a workout doesn't mutate exercise data — only saving exercise logs does, and that's 1c-3. Wiring exercise.html now would be a no-op subscriber. Lands in 1c-3 instead. No bus.js script tag added to exercise.html this session.
+- **One publish site, not two.** Per scope correction above.
+
+**Cross-tab origin handling.**
+
+- workouts.html subscriber processes `origin:'local'` and `origin:'remote'` identically — both stale programme_cache (when source:'programme'), both fire eval, both attempt visibility-gated repaint. Cross-tab case: complete workout on tab A, view workouts on tab B → tab B's subscriber stales programme_cache + repaints if programme tab is visible.
+- index.html home-stale handler is also origin-agnostic. Idempotent (cache-mark with same key).
+
+**Plan-cache heartbeat boundary preserved.** workout_plan_cache PATCH at L596+ stays silent — no bus.publish. The heartbeat path (current_session/current_week advancement) remains a programme counter, not member activity, per PM-13 04 May invariant. Verified structurally in self-test 12: bus.publish lands BEFORE the plan_cache PATCH block.
+
+**afterCompletion's L690 `removeItem` preserved.** Belt-and-braces: bus subscriber on workouts.html closes the gesture-back gap; afterCompletion's removeItem closes the dismiss-time gap. Both fire are idempotent (removeItem on already-absent key is a no-op).
+
+**Self-test: 46 of 46 passing** in a Node harness with browser shims (`window`, `document`, `localStorage`, `CustomEvent`, `StorageEvent`) plus the unchanged bus.js loaded verbatim. Test groups: (1) bus API regression, (2) local programme completion full subscriber fan-out — home invalidate + eval + renderProgramme + programme_cache cleared, (3) local custom completion — home invalidate + eval + renderProgramme NOT called + programme_cache PRESERVED, (4) visibility gate — page hidden: cache+eval still fire, no repaint, (5) programme tab not visible — repaint gated, cache+eval fire regardless, (6) cross-tab via storage event — origin:'remote' delivery, full chain, (7-9) storage event filtering: non-bus key / newValue:null / malformed JSON, (10) idempotent re-registration via `__vyveHomeBusWired` + `__vyveWorkoutsBusWired`, (11) envelope shape — workout_id / completed / duration_min / source / email / origin / ts / txn_id all preserved, (12) plan_cache heartbeat boundary structural check, (13) fallback path regression — `!window.VYVEBus` → primitive triplet still fires. `node --check` clean on workouts-session.js, sw.js, and all 10 inline `<script>` blocks across workouts.html (2 blocks) + index.html (8 blocks).
+
+**Counts after PM-31.** workouts-session.js publishing surface: `completeWorkout` direct-call sites for the three primitives drop from 4 (1 invalidate + 1 record + 2 evaluate, the second was the legacy fetch fallback) to 0. Bus publish: 0 → 1. Fallback-branch primitive triplet: 0 → 3 (only fires when `!window.VYVEBus`). Whole-tree call counts move accordingly; live numbers reconcile against PM-30 brain figures once subscriber-internal calls and bus-fallback branches are excluded from the publishing-surface count (PM-31 audit: 15 invalidate / 12 record / 18 evaluate live, of which the workouts-session.js completeWorkout publishing-surface contribution is now 0).
+
+**SW cache.** `vyve-cache-v2026-05-08-pm30-habits-a` → `vyve-cache-v2026-05-09-pm31-workouts-a`. Same atomic commit. `/bus.js` already in `urlsToCache` from PM-29.
+
+**Source-of-truth.** vyve-site pre-commit `27eaeafd` (PM-30 ship), post-commit `ee0497a5` (PM-31 ship), new tree SHA `2584c099`. Whole-tree audit method per §23 PM-26: `GITHUB_GET_A_TREE` recursive on main → 89 entries → 73 source-text files (.html .js .css; excludes vendor `supabase.min.js`, `test-schema-check.txt`, manifest.json, CNAME, images, dirs) → all 73 fetched (1,821,887 chars decoded) → grep for `invalidateHomeCache` / `recordRecentActivity` / `VYVEAchievements\s*\.\s*evaluate\s*\(` excluding docblock comment lines and function definitions. Post-commit verification per §23: live-SHA fetch via `GITHUB_GET_REPOSITORY_CONTENT` (not raw — CDN-cached), all 4 files: head-100 char match, char-count match, blob_sha matches `path_status` from the commit response (workouts-session.js blob `36daaf459c85b9a67cc0817f3121cf37abbaf32e` confirmed live).
+
+**Sequence after PM-31:** PM-32 → 1c-3 (`workouts-session.js` `saveExerciseLog` L406/L412/L405 — `bus.publish('set:logged', { exercise_log_id, exercise_name, sets, reps, weight_kg })`). REFACTOR (decouple). Same option-(a) discipline. Subscribers per taxonomy: exercise.html (PR strip refresh), workouts-session.js (next-set hint). Adds `<script src="/bus.js">` to exercise.html.
+
+---
+
 ## 2026-05-08 PM-30 (Layer 1c-1: habits.html → `bus.publish('habit:logged', ...)`)
 
 vyve-site `27eaeafd`. First Layer 1c migration. Three legacy primitives across the three habits write sites collapse into one `bus.publish('habit:logged', ...)` per site; subscribers on habits.html, index.html, monthly-checkin.html replace the inline calls.

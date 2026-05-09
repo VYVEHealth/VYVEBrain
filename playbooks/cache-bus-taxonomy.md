@@ -95,8 +95,10 @@ Umbrella event. Subscribers that don't care about type listen here.
 
 #### `workout:logged`
 ```js
-{ ...envelope, workout_id: <int>, completed: true, duration_min: <num>, source: 'programme'|'custom'|'movement'|'builder' }
+{ ...envelope, workout_id: <int|string>, completed: true, duration_min: <num>, source: 'programme'|'custom'|'movement'|'builder' }
 ```
+
+> PM-31 patch: `workout_id` accepts string (the writeQueued client UUID `_workoutClientId`) as well as int (server-side `workouts.id` when later 1c-* migrations route through paths that have it). Today's PM-31 ship uses the client UUID — writeQueued returns `Prefer: return=minimal` so no server PK is available, and no current consumer needs it.
 **Sources:** `programme` + `custom` from workouts-session.js, `movement` from movement.html non-walk pills, `builder` from workouts-builder.js custom workout creation. Four publish sites collapse to one event with `source` discriminator.
 
 | Caches | Subscribers |
@@ -260,7 +262,7 @@ Cross-tab: every event published as `localStorage.setItem('vyve_bus', JSON.strin
 | # | Surface | Today's call shape | Bus event | Migration label |
 |---|---|---|---|---|
 | 1c-1 | habits.html log + autotick + undo | invalidate + record + evaluate | `bus.publish('habit:logged', ...)` | REFACTOR + scope-fix (habits_cache_v2) |
-| 1c-2 | workouts-session.js complete (programme + custom) | three calls | `bus.publish('workout:logged', source:'programme'\|'custom', ...)` | REFACTOR + scope-fix (programme_cache) |
+| 1c-2 ✅ | workouts-session.js complete handler (one unified `completeWorkout()`) | three calls + 1 fallback evaluate | `bus.publish('workout:logged', source:'programme'\|'custom', ...)` | REFACTOR + scope-fix (programme_cache) — shipped PM-31 |
 | 1c-3 | workouts-session.js exercise_log save | direct fetch + invalidate | `bus.publish('set:logged', ...)` | REFACTOR (decouple) |
 | 1c-4 | cardio.html log | three calls | `bus.publish('cardio:logged', source:'cardio_page', ...)` | REFACTOR + race-fix + scope-fix |
 | 1c-5 | **movement.html walk + non-walk paths (NEW)** | three calls × 2 paths | walks → `cardio:logged` source:'movement_walk'; non-walks → `workout:logged` source:'movement' | REFACTOR + scope-fix |
@@ -300,7 +302,7 @@ After PM-27, this taxonomy commits as PM-28, then `bus.js` lands as PM-29.
 
 ## Source-of-truth (live-verified at PM-26 audit time)
 
-- vyve-site `df41d7cb` (PM-26 audit base) → extended to `040c496d` (PM-28 sub-audits, post-PM-27 ship)
+- vyve-site `df41d7cb` (PM-26 audit base) → extended to `040c496d` (PM-28 sub-audits, post-PM-27 ship) → `27eaeafd` (PM-30 ship, PM-31 pre-flight) → `ee0497a5` (PM-31 ship)
 - VYVEBrain `master.md` `dce06959` § 6 / § 7 / § 19 / § 23 (pre-PM-28; refresh on commit)
 - **Whole-tree pull (PM-26):** `GITHUB_GET_A_TREE` recursive on main → 86 blobs → 73 source-text candidates → all fetched and grepped
 - **Whole-tree pull (PM-28 extension):** `GITHUB_GET_A_TREE` recursive on main at `040c496d` → 89 entries → 72 source-text files (.html .js .css; excludes vendor `supabase.min.js`, `test-schema-check.txt`, images, manifest.json, CNAME, dirs) → all 72 fetched and grepped (1.77M chars decoded)
@@ -325,3 +327,4 @@ If any of the above drifts, this taxonomy needs a re-pre-flight before extension
 - **PM-25 draft.** Initial taxonomy. Audit method: hand-picked subset of 23 files. Drift introduced: nav.js missed → touchstart wiring claimed absent (PM-18 ship-truth was actually correct). Movement / workouts-builder / 13 of 20 evaluate sites all missed for the same reason — grepped what I had, not what existed.
 - **PM-26 patch.** Whole-tree audit. All 73 source files fetched and grepped. PM-25 findings re-verified against full tree. Errata captured. New §23 hard rule on whole-tree audit method. Touchstart-wiring deliverable removed (already shipped). Migration plan extended from 10 to 14 rows. Counts corrected throughout.
 - **PM-28 patch.** Two sub-audits resolved: 1c-14 lands as `workout:shared` (REFACTOR-decouple, two publish sites — workouts-programme.js:391 + workouts-session.js:733 — collapsing into one event with `kind:'session'|'programme'`); `vyve_dashboard_cache` confirmed dead via whole-tree grep at HEAD `040c496d` (read at achievements.js:251, zero writers anywhere) and removed from bus cleanup scope. Editorial fix to PM-26 changelog: original PM-25 invalidate count was simply wrong (no stray comment-line); evaluate count corrected from 20 to 16 after excluding 3 docblock-comment lines in achievements.js. Source-of-truth extended to `040c496d`. No vyve-site change.
+- **PM-31 patch.** Whole-tree audit at HEAD `27eaeafd` (PM-30 ship) for the 1c-2 pre-flight surfaced a scope correction: live source has ONE unified `completeWorkout()` at workouts-session.js:L531, not two (`completeProgrammeSession` + `completeCustomWorkout`). The single function routes both programme and custom completions via runtime check on `(programmeData && cacheRow)`. The taxonomy's "complete (programme + custom)" label is still accurate as a description of what 1c-2 covers, but the implementation collapses to one `bus.publish` site, not two. `workout_id` type widened from `<int>` to `<int|string>` to accept the writeQueued client UUID (`_workoutClientId`) — writeQueued returns `Prefer: return=minimal` with no server PK; later 1c-* migrations may route through paths with int IDs. PM-31 shipped as vyve-site `ee0497a5`. Migration plan stays at 14 rows; 1c-2 row marked ✅. Source-of-truth extended to `ee0497a5`.
