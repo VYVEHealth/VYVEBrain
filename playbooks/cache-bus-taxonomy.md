@@ -107,6 +107,32 @@ Umbrella event. Subscribers that don't care about type listen here.
 
 → **REFACTOR + scope-fix** (programme_cache).
 
+#### `food:logged`
+```js
+{ ...envelope, client_id: '<string>', meal_type: 'breakfast'|'lunch'|'dinner'|'snacks', calories_kcal: <num>, kind: 'search'|'quickadd' }
+```
+
+> Added PM-36 (09 May 2026). Two publish sites in log-food.html: `logSelectedFood` (search-based food logging via Open Food Facts results) → `kind: 'search'`; `logQuickAdd` (manual entry of name + calories + macros) → `kind: 'quickadd'`. Both paths share identical payload shape and writeQueued contract; the `kind` discriminator is forward-looking — no current consumer differentiates on it.
+
+| Caches | Subscribers |
+|---|---|
+| `vyve_home_v3_<email>`, `vyve_engagement_cache` | index.html (`_markHomeStale`), engagement.html (`_markEngagementStale`) |
+
+→ **REFACTOR + race-fix** (publish-before-fetch — same mechanic as PM-33/34/35 across cardio/movement/builder).
+
+#### `food:deleted`
+```js
+{ ...envelope, client_id: '<string>', meal_type: 'breakfast'|'lunch'|'dinner'|'snacks' }
+```
+
+> Added PM-36 (09 May 2026). Single publish site: `deleteLog` in log-food.html. Carries no calorie data — the row is gone. The event semantic is "remove this row from local UI projections + stale cross-page caches"; consumers that need to know the calorie delta should re-fetch from the source of truth (nutrition_logs).
+
+| Caches | Subscribers |
+|---|---|
+| `vyve_home_v3_<email>`, `vyve_engagement_cache` | index.html (`_markHomeStale`), engagement.html (`_markEngagementStale`) |
+
+→ **REFACTOR + scope-fix** (deleteLog had ZERO primitives pre-PM-36 — home dashboard's today's calorie ring + engagement_cache score component never refreshed after a delete until next sign-in; bus path closes that gap via subscribers).
+
 #### `set:logged`
 ```js
 { ...envelope, exercise_log_id: '<string>', exercise_name: '<str>', set_number: <int>, reps: <num>, weight_kg: <num>|null }
@@ -285,7 +311,7 @@ Cross-tab: every event published as `localStorage.setItem('vyve_bus', JSON.strin
 | 1c-4 ✅ | cardio.html log | three calls | `bus.publish('cardio:logged', source:'cardio_page', ...)` | REFACTOR + race-fix + scope-fix — shipped PM-33 |
 | 1c-5 ✅ | **movement.html walk + non-walk paths (NEW)** | three calls × 2 paths | walks → `cardio:logged` source:'movement_walk'; non-walks → `workout:logged` source:'movement' | REFACTOR + scope-fix — shipped PM-34 |
 | 1c-6 ✅ | **workouts-builder.js custom workout creation (NEW)** | evaluate only | `bus.publish('workout:logged', source:'builder', ...)` | REFACTOR + scope-fix (no current invalidation = real bug) — shipped PM-35 |
-| 1c-7 | log-food.html insert + delete | inline cache writes + 2× evaluate | `bus.publish('food:logged'/'food:deleted', ...)` | REFACTOR + race-fix |
+| 1c-7 ✅ | log-food.html insert (×2: search + quickadd) + delete | 2× (evaluate + invalidate) on inserts; **ZERO primitives on delete (real bug)** | `bus.publish('food:logged' kind:'search'\|'quickadd' / 'food:deleted', ...)` | REFACTOR + race-fix + scope-fix (deleteLog) — shipped PM-36 |
 | 1c-8 | nutrition.html weight log | invalidate + evaluate | `bus.publish('weight:logged', ...)` | REFACTOR + scope-fix (members + wb_last) |
 | 1c-9 | settings.html persona switch | direct fetch only | `bus.publish('persona:switched', ...)` | ADD |
 | 1c-10 | settings.html save | direct fetch only | `bus.publish('settings:saved', ...)` | ADD |
@@ -320,7 +346,7 @@ After PM-27, this taxonomy commits as PM-28, then `bus.js` lands as PM-29.
 
 ## Source-of-truth (live-verified at PM-26 audit time)
 
-- vyve-site `df41d7cb` (PM-26 audit base) → extended to `040c496d` (PM-28 sub-audits, post-PM-27 ship) → `27eaeafd` (PM-30 ship, PM-31 pre-flight) → `ee0497a5` (PM-31 ship) → `392316a8` (PM-32 ship, PM-33 pre-flight) → `fe7e06ce` (PM-33 ship) → `5e4040797ddce859026c4c61def20448723228a6` (PM-34 ship, PM-35 pre-flight) → `218dfe8be75c3e97f6920ae45f680fec032438b3` (PM-35 ship)
+- vyve-site `df41d7cb` (PM-26 audit base) → extended to `040c496d` (PM-28 sub-audits, post-PM-27 ship) → `27eaeafd` (PM-30 ship, PM-31 pre-flight) → `ee0497a5` (PM-31 ship) → `392316a8` (PM-32 ship, PM-33 pre-flight) → `fe7e06ce` (PM-33 ship) → `5e4040797ddce859026c4c61def20448723228a6` (PM-34 ship, PM-35 pre-flight) → `218dfe8be75c3e97f6920ae45f680fec032438b3` (PM-35 ship, PM-36 pre-flight) → `640c9d69818bf136b657f52bf17f3644598ce117` (PM-36 ship)
 - VYVEBrain `master.md` `dce06959` § 6 / § 7 / § 19 / § 23 (pre-PM-28; refresh on commit)
 - **Whole-tree pull (PM-26):** `GITHUB_GET_A_TREE` recursive on main → 86 blobs → 73 source-text candidates → all fetched and grepped
 - **Whole-tree pull (PM-28 extension):** `GITHUB_GET_A_TREE` recursive on main at `040c496d` → 89 entries → 72 source-text files (.html .js .css; excludes vendor `supabase.min.js`, `test-schema-check.txt`, images, manifest.json, CNAME, dirs) → all 72 fetched and grepped (1.77M chars decoded)
@@ -341,6 +367,19 @@ If any of the above drifts, this taxonomy needs a re-pre-flight before extension
 ---
 
 ## Audit history
+
+**PM-36 (09 May 2026)** — Layer 1c-7 ship. Live-source whole-tree audit at HEAD `218dfe8be75c3e97f6920ae45f680fec032438b3` (the PM-35 ship; 90 tree entries → 74 source-text files).
+
+- **Migration plan row 1c-7** — marked shipped (PM-36). Updated row text reflects two scope corrections from pre-flight: three publish surfaces (not two — `logSelectedFood` + `logQuickAdd` are functionally identical inserts that fold into one event with `kind:'search'|'quickadd'` discriminator, plus `deleteLog`); deleteLog had ZERO primitives pre-bus (not "evaluate-only" as the migration plan summary implied — real cache-staleness bug).
+- **NEW event entries: `food:logged` and `food:deleted`.** Both are taxonomy ADDs added in PM-36. The decision to ship as two distinct events (rather than one `food:changed` event with `kind:'insert'|'delete'` discriminator) was made at PM-36 pre-flight time per the precedent in PM-26 schema discipline: undo/variant/source-of-publish go through the same event with a discriminator (e.g. habit:logged is_yes:false for undo) BUT distinct semantic events (insert is the addition of state, delete is the subtraction of state) get distinct event names. This makes future event-specific consumers (e.g. an achievement firing on insert but not delete) cleaner to wire.
+- **Subscribers wired in same vyve-site commit:** `index.html` `_markHomeStale` extended to both food events (source-agnostic, mirrors the four prior events); `engagement.html` `_markEngagementStale` extended to both food events (source-agnostic).
+- **bus.js script tag added** to `log-food.html` between auth.js (L20) and achievements.js (L21) per PM-31 convention. First new bus.js wiring since PM-34 (movement.html).
+
+The PM-36 ship verified via 51-test self-test harness in `/mnt/files/pm36_test.js` (15 groups, 505 lines) covering bus API regression, three-surface publish fan-out (12 envelope tests), race-fix verification across all 3 surfaces, subscriber fan-out simulator with event-isolation tests, **symmetric fallback** verification on insert paths (5 tests), **asymmetric fallback** verification on delete path (3 tests), cross-tab origin:remote preservation, validation guards, **PM-12 outbox-cancellation logic preserved**, PM-30/31/32/33/34/35 regression, two-event distinction, writeQueued contract preserved, and **mixed-fallback count discipline** (4 tests verifying per-surface VYVEBus-vs-!VYVEBus deltas).
+
+**Mixed fallback (NEW §23 sub-rule).** PM-36 ships both symmetric (insert paths) and asymmetric (delete path) fallbacks in one commit. The classification rule: **what was firing pre-bus at THIS publish site?** logSelectedFood and logQuickAdd had `evaluate` always + `invalidateHomeCache` (writeQueued branch only) → mirror in fallback (symmetric). deleteLog had no primitives → preserve nothing in fallback (asymmetric). Per-surface, not per-commit. Future migrations on multi-surface pages will likely follow the same per-surface pattern; pre-flight discipline is to audit each publish site separately before deciding the fallback shape.
+
+PM-36 shipped as vyve-site `640c9d69818bf136b657f52bf17f3644598ce117`. Migration plan stays at 14 rows; 1c-7 row marked ✅. Source-of-truth extended to `640c9d69818bf136b657f52bf17f3644598ce117`.
 
 **PM-35 (09 May 2026)** — Layer 1c-6 ship. Live-source whole-tree audit at HEAD `5e4040797ddce859026c4c61def20448723228a6` (the PM-34 ship; 90 tree entries → 74 source-text files including the new `workouts-builder.js` host-page wiring already shipped on workouts.html since PM-31).
 

@@ -1,3 +1,65 @@
+## 2026-05-09 PM-36 (Layer 1c-7: log-food.html 3 publish surfaces → `bus.publish('food:logged' | 'food:deleted', ...)`)
+
+vyve-site `640c9d69818bf136b657f52bf17f3644598ce117` (new tree `0c0195845070241c64239b9cccd4c45b4c33730c`). Seventh Layer 1c migration. **First 1c migration shipping two distinct event names from one publishing page** (food:logged + food:deleted), and **first to ship MIXED fallback shapes in one commit** (symmetric on inserts, asymmetric on delete). Three publishing surfaces in log-food.html — `logSelectedFood` (search-based, L1045-L1121), `logQuickAdd` (manual entry, L1124-L1167), `deleteLog` (L780-L839) — all collapse to bus.publish published BEFORE the writeQueued fire. Both event names are taxonomy ADDs; neither existed pre-PM-36.
+
+**Pre-flight scope corrections vs the taxonomy 1c-7 row.** Whole-tree audit at HEAD `218dfe8b` (the PM-35 ship) surfaced two errors:
+
+- **Three publish surfaces, not two.** Taxonomy row says "log-food.html insert + delete" (two). Live source has TWO insert paths: `logSelectedFood` (search-based food logging via Open Food Facts results) AND `logQuickAdd` (manual entry of name + calories + macros). Both paths have functionally identical primitive shapes — same payload structure, same writeQueued contract, same invalidate placement (writeQueued branch only). They fold into one `food:logged` event with a `kind:'search'|'quickadd'` discriminator carried in the envelope. No current consumer differentiates on `kind` (both home-stale and engagement-stale fire identically); the discriminator is forward-looking for any future consumer that wants to (e.g. an achievement firing on `kind:'search'` only — "you tried 10 different foods this week!" — vs `kind:'quickadd'`).
+
+- **deleteLog had ZERO primitives, not "evaluate-only".** The taxonomy framing of "inline cache writes + 2× evaluate" was approximately right for the inserts (each has 1 evaluate before the writeQueued + 1 invalidate inside the writeQueued branch) but wrong for delete. deleteLog had no `evaluate`, no `invalidateHomeCache`, no `recordRecentActivity`. Real bug — the home dashboard's today's calories ring, today's nutrition strip, and engagement_cache score component never refreshed after a delete until next sign-in. PM-36 closes this gap via subscribers (the bus path); the !VYVEBus fallback intentionally preserves the zero-primitive behaviour to keep prior shipping code semantics exact.
+
+**Mixed fallback discipline (NEW §23 sub-rule).** PM-35 introduced asymmetric-fallback as a counterpoint to PM-33/PM-34 symmetric-fallback. PM-36 ships BOTH in one commit, classified per surface by what was firing pre-bus at each publish site:
+
+- **logSelectedFood: SYMMETRIC fallback.** Pre-PM-36 had `evaluate` (always, before writeQueued) + `invalidateHomeCache` (inside writeQueued branch only). Bus path: `if (window.VYVEBus) { publish } else { evaluate }` pre-fetch + `if (!window.VYVEBus && VYVEData) invalidateHomeCache()` post-writeQueued. !VYVEBus path produces evaluate + invalidate — semantically identical to pre-bus.
+- **logQuickAdd: SYMMETRIC fallback** (same shape as logSelectedFood — the two functions are structurally identical for this migration).
+- **deleteLog: ASYMMETRIC fallback.** Pre-PM-36 had no primitives at all. Bus path: `if (window.VYVEBus) { publish }` pre-fetch + nothing else. !VYVEBus path produces zero primitives — preserves pre-bus zero-primitive behaviour exactly. The bug fix lives entirely in the bus path (via subscribers); the fallback intentionally does NOT add invalidate or record back, since pre-bus didn't fire them.
+
+The classification rule: **what was firing pre-bus at THIS publish site?** Not per-commit, per-surface. PM-36 was the first commit to need different shapes within itself; future migrations will likely follow the same per-surface pattern as page-level functions diverge (e.g. settings.html persona-switch ADD vs save ADD will both be ADDs, asymmetric, but with different envelope shapes; vs nutrition.html weight-log REFACTOR which has its own pre-bus primitives to mirror).
+
+**Race-fix mechanic.** Same as PM-33/PM-34/PM-35: bus.publish lands BEFORE the writeQueued fire on all three surfaces. Synchronous in-tab dispatch + microsecond cross-tab broadcast via `vyve_bus` localStorage round-trip. Subscribers stale caches optimistically; queue resolution decoupled from local UI propagation. Self-test 5.1/5.2/5.3 verifies `publish.ts ≤ writeQueued.ts` on all three surfaces.
+
+**Two new subscribers wired** (extending existing handlers, not new bus subscriptions):
+
+- `index.html:1303-onwards` — `_markHomeStale` extended to `food:logged` and `food:deleted`. Source-agnostic, idempotent, mirrors the four prior events (habit/workout/set/cardio:logged). The home dashboard reads `vyve_home_v3_<email>` for the calorie ring and nutrition strip; both invalidate identically on insert and delete.
+- `engagement.html:1656-onwards` — `_markEngagementStale` extended to `food:logged` and `food:deleted`. Source-agnostic. The engagement_cache covers nutrition variety contribution to the engagement score component.
+
+**bus.js script tag added to log-food.html** between auth.js (L20) and achievements.js (L21) per PM-31 convention. **First new bus.js wiring since PM-34 (movement.html).** This is the only host page touched in PM-36; the host pages for the existing subscribers (index.html, engagement.html) already had bus.js loaded since PM-30 / PM-33.
+
+**Schema.**
+
+- `food:logged`: `{ client_id, meal_type, calories_kcal, kind: 'search' | 'quickadd' }`. `client_id` is the row identity (every nutrition_logs row has had one since PM-12 — see `bus.client_id` matches `writeQueued.client_id` in self-test 14.4). `meal_type` is `'breakfast' | 'lunch' | 'dinner' | 'snacks'`. `calories_kcal` is the per-row contribution (post-servings multiplication for logSelectedFood; flat for logQuickAdd). `kind` discriminates the publish site for future consumers; no current consumer reads it.
+- `food:deleted`: `{ client_id, meal_type }`. Calories not carried — the row is gone.
+
+**PM-12 outbox-cancellation logic preserved.** deleteLog's pre-DELETE step walks `vyve_outbox` and drops POSTs to `/nutrition_logs` whose `body.client_id` matches the deletion target — handles the race where a member taps Log → Remove before the queued POST has flushed. PM-36 publishes `food:deleted` BEFORE this outbox walk completes, but the publish doesn't need outbox state — it's an optimistic UI signal independent of queue cancellation. Self-test 11.1 / 11.2 verifies the outbox walk + drop logic still works correctly post-bus.
+
+**51 of 51 self-tests passing** in `/mnt/files/pm36_test.js` (15 groups, 505 lines). Test groups:
+
+1. Bus API regression smoke
+2. logSelectedFood publish fan-out (6 envelope tests: count, event name, kind:'search', meal_type carries through, client_id non-empty, calories_kcal carries through)
+3. logQuickAdd publish fan-out (3 tests: kind:'quickadd', currentMeal carries, calories_kcal carries)
+4. deleteLog publish fan-out (3 tests: count, client_id, meal_type)
+5. **Race-fix verification** — publish.ts ≤ writeQueued.ts on all 3 surfaces
+6. Subscriber fan-out simulator (home-stale fires once per surface; engagement-stale fires for both events; **event isolation** — food:logged subscriber doesn't fire on food:deleted, and vice versa)
+7. **Symmetric fallback** for logSelectedFood + logQuickAdd (5 tests: !VYVEBus fires evaluate + invalidate; VYVEBus present fires NO direct primitives)
+8. **Asymmetric fallback** for deleteLog (3 tests: !VYVEBus fires NOTHING new; !VYVEBus path still fires the DELETE; VYVEBus path fires only publish)
+9. Cross-tab origin:remote preserves both event names + payload fields
+10. Validation guards (3: empty selectedFood, empty qa-name, empty clientId all early-return without publish or writeQueued)
+11. **PM-12 outbox-cancellation logic preserved** (2 tests: matching client_id POST gets cancelled; non-matching outbox left alone)
+12. PM-30/31/32/33/34/35 regression (4 tests: habit/workout source:builder/cardio source:movement_walk/set still flow)
+13. Two-event distinction (food:logged + food:deleted reach different subscribers; source-agnostic _markHomeStale subscriber receives all 3 publishes)
+14. writeQueued contract preserved (4 tests: table:nutrition_logs, method POST/DELETE, client_id matches publish envelope)
+15. **Mixed-fallback count discipline** (4 tests verifying the per-surface VYVEBus-vs-!VYVEBus deltas)
+
+`node --check` clean on all 16 inline JS blocks across the three patched HTML files (log-food.html: 3 blocks, index.html: 8, engagement.html: 5).
+
+**SW cache.** `vyve-cache-v2026-05-09-pm35-builder-a` → `vyve-cache-v2026-05-09-pm36-food-a`. Same atomic commit.
+
+**Source-of-truth.** vyve-site pre-commit `218dfe8be75c3e97f6920ae45f680fec032438b3` (PM-35 ship), post-commit `640c9d69818bf136b657f52bf17f3644598ce117` (PM-36 ship), new tree `0c0195845070241c64239b9cccd4c45b4c33730c`. Whole-tree audit per §23 PM-26 + typeof/docblock/function-def exclusions + asymmetric-fallback per PM-35 + mixed-fallback per PM-36 (this commit). Post-commit verification per §23: 9 marker presence checks across all 4 files via live-SHA fetch (GITHUB_GET_REPOSITORY_CONTENT, not raw — CDN-cached). All 9 green: log-food.html (food:logged publish + food:deleted publish + bus.js script tag + PM-36 marker), index.html (food:logged subscribe + food:deleted subscribe), engagement.html (food:logged subscribe + food:deleted subscribe), sw.js (cache literal). Live blob SHAs: log-food.html `bfda139bc647`, index.html `44c0027527d2`, engagement.html `75d4d45291f8`, sw.js `d3a5cbe31420`.
+
+**Sequence after PM-36:** Seven Layer 1c migrations down (1c-1 through 1c-7), seven to go. Halfway exactly through Layer 1c by surface count; the diversity peak is past us — remaining surfaces (1c-8 nutrition.html weight, 1c-9/10 settings persona+save, 1c-11 weekly checkin, 1c-12 monthly checkin, 1c-13 tracking session view, 1c-14 share-workout) are mostly smaller and more uniform. Next session = PM-37, likely 1c-8 (nutrition.html weight log → `bus.publish('weight:logged', ...)`; taxonomy row says REFACTOR + scope-fix on `members + wb_last`; pre-flight against live source needed to confirm primitive shape and whether the scope-fix targets are still accurate).
+
+---
+
 ## 2026-05-09 PM-35 (Layer 1c-6: workouts-builder.js custom workout creation → `bus.publish('workout:logged', source:'builder', ...)`)
 
 vyve-site `218dfe8be75c3e97f6920ae45f680fec032438b3` (new tree `09cfa5b2d1dee3cb0d64e3ac2fb24b02f88dc3b5`). Sixth Layer 1c migration; smallest commit in the campaign so far (one publishing site, ~30 lines changed). The single existing primitive — `if (window.VYVEAchievements) VYVEAchievements.evaluate();` at `workouts-builder.js:109` on the POST/create path — collapses into `bus.publish('workout:logged', { workout_id: null, completed: true, duration_min: null, source: 'builder' })` published BEFORE the fetch (race-fix mechanic, same as PM-33/PM-34). Per the taxonomy 1c-6 row: REFACTOR + scope-fix migration where the bus path closes a real bug — pre-PM-35 saveCustomWorkout had ZERO invalidate/record primitives, so the home dashboard "today's workouts" count and engagement_cache score component never refreshed after a custom workout creation until next sign-in.
