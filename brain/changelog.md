@@ -1,3 +1,129 @@
+## 2026-05-09 PM-42 (Layer 1c-13: `workouts-programme.js` `confirmImportPlan` → `bus.publish('programme:imported', ...)` + `bus.publish('workout:logged', { source: 'builder' })`)
+
+vyve-site `b053cd8ac11bebfc783884e088a7b6f6ca4ce740` (new tree `3d48421d939aaec10fe606023fa840342d590853`). Thirteenth Layer 1c migration. **Single function, two publish sites, two semantically distinct events** — first migration where one function emits two different event names gated on a runtime branch. Mirrors PM-39 (one function, two surfaces) but with two events instead of one event with discriminator, per PM-36 schema discipline (semantically distinct branches → distinct event names).
+
+**Real bug fix on the way through.** Pre-PM-42 the import flow had **ZERO cache invalidation primitives** at the publish site (`confirmImportPlan` L530-560). The manual `setTimeout(() => loadProgramme(), 800)` at L548 was the only invalidation — a workaround for the missing primitive. The 800ms delay made the receiver UI feel laggy on programme import (member confirms import → 800ms blank → programme appears). Bus path closes the gap properly with a synchronous self-subscriber: import succeeds → `programme:imported` publish → workouts.html self-subscriber instantly busts `vyve_programme_cache` + calls `loadProgramme()` directly. **800ms polling delay becomes immediate render on import success — perceived premium-feel UX win.**
+
+**Two publish sites in one function, gated on `isProg`:**
+
+- **`isProg === true` → `programme:imported`** (NEW event; taxonomy ADD). Receiver added someone else's full 8-week programme to their `workout_plan_cache`. Schema: `{ share_id, source_programme_name }`. Asymmetric fallback (zero primitives pre-PM-42 except the 800ms setTimeout, which is preserved on the `!VYVEBus` branch).
+- **`isProg === false` → `workout:logged source:'builder'`** (REUSES PM-35 schema). Receiver saved a shared session into `custom_workouts` — same destination table and same downstream effects as `workouts-builder.js` create. Per PM-35 precedent the event semantics are loose ("logged" includes "saved to library"); reusing the schema avoids fragmenting the workout namespace. Asymmetric fallback (zero primitives pre-PM-42 — receiver had no notification of save other than the toast).
+
+**Race-fix mechanic — confirmer pattern both branches.** Per PM-39 §23 race-fix-ordering rule: import write may fail and re-queue is not in scope (no offline-import flow), so publish lands AFTER `resp.ok` confirms server-side write. Standard initiator pattern (publish-before-fetch) is wrong here — publishing optimistically would claim cache-stale on a programme import that hasn't actually been written. Self-tests 4.1 + 4.2 verify `publish.ts > fetch.ts` for both branches. Same shape as PM-39 flushCheckinOutbox.
+
+**Subscribers wired (three layers):**
+
+- **`index.html` `_markHomeStale`** — extends source-agnostic to `programme:imported`. **12th event** on the same handler. **Real bug fix:** today's home dashboard "Up next" + current week display read from `workout_plan_cache` which is overwritten on programme import. Pre-PM-42 the home cache was NEVER busted on programme import — receiver saw stale "Up next" until either the 24h cache TTL expired or another activity event fired _markHomeStale via PM-30..41 subscribers. PM-42 closes the gap.
+
+- **`workouts.html` self-subscriber** (PM-37/PM-39/PM-40 self-subscribe pattern) — page-owned programme rendering. Wired in the existing PM-31 DOMContentLoaded block alongside the workout:logged + set:logged subscribers. Owns three consequences: (1) bust `vyve_programme_cache_<email>` so `renderProgramme` reads fresh state, (2) call `loadProgramme()` directly (replaces the pre-bus 800ms setTimeout workaround), (3) trigger `achievements.evaluate` (importing a programme is achievement-track-adjacent — matches workout:logged precedent). Visibility-gated re-render not strictly necessary because `loadProgramme()` itself handles the re-render; the busted cache + direct call cover both visible and hidden states. Cross-tab safe via `origin: 'remote'` envelopes — self-tests 9.1-9.4 verify the remote-origin path fires the same fan-out.
+
+- **`engagement.html`** — NOT WIRED. **Fifth intentional engagement non-touch** after PM-37 weight, PM-38 persona, PM-40 monthly, PM-41 share. Engagement scoring components (Activity / Consistency / Variety / Wellbeing) don't read from `workout_plan_cache`; programme switch has no scoring impact. Verified via whole-tree audit.
+
+- **`workout:logged source:'builder'` fan-out unchanged from PM-35.** Already wired since PM-35: index._markHomeStale, engagement._markEngagementStale, workouts.html PM-31 subscriber (achievements eval; source:'programme' guard skips programme cache bust), achievements.js eval. Adding a third publish call site doesn't change the fan-out shape.
+
+**bus.js script tag: NOT needed.** workouts.html already loads bus.js. workouts-programme.js is loaded by workouts.html. **Third post-PM-30 migration with no new bus.js wiring** after PM-40 + PM-41.
+
+**Pre-bus 800ms setTimeout removed from bus path.** The `if (isProg) setTimeout(() => loadProgramme(), 800);` is now in the `!VYVEBus` else-branch only. On the bus path, the workouts.html self-subscriber fires `loadProgramme()` synchronously — no 800ms wait. Self-tests 7.7 + 7.8 verify `setTimeoutCalls === 0` and `loadProgrammeCalls === 1` on the bus path, while 7.1 + 7.2 verify the fallback path still uses setTimeout. Asymmetric-fallback discipline strictly preserved per PM-38 §23.
+
+**55 of 55 self-tests passing** in `/tmp/pm42/test.js` (12 groups, ~470 lines):
+
+1. Bus API regression smoke (1)
+2. Programme branch publish fan-out (4: count, event name, share_id, source_programme_name)
+3. Session branch publish fan-out (6: count, event name, source, completed, workout_id, duration_min — all PM-35 schema verifiers)
+4. Race-fix on both branches (2: publish.ts > fetch.ts each)
+5. **programme:imported subscriber fan-out** (6: home-stale fires once, engagement-stale NOT fired, self-sub fires, programme cache busted, loadProgramme called, achievements eval fires)
+6. **session-save subscriber fan-out via PM-35 wiring** (5: home + engagement fire, workouts.html PM-31 sub fires, programme cache NOT busted on source:'builder', eval fires)
+7. **Asymmetric fallback both branches** (8: programme branch !VYVEBus preserves setTimeout; session branch !VYVEBus zero primitives; bus path NO inline setTimeout, self-sub handles loadProgramme synchronously)
+8. Error-path guards (4: !resp.ok no publish, no home-stale, no loadProgramme, no fallback setTimeout)
+9. Cross-tab origin:remote (4: remote-origin programme:imported fires home + self-sub + cache bust + loadProgramme)
+10. PM-30..41 regression (4)
+11. Schema enforcement (7: programme:imported 2-field shape; workout:logged source/completed/workout_id/duration_min preserved per PM-35)
+12. Event isolation (4: workout:logged ≠ programme:imported and vice versa)
+
+`node --check` clean on workouts-programme.js + sw.js + 8 inline blocks in index.html + 2 inline blocks in workouts.html.
+
+**SW cache.** `vyve-cache-v2026-05-09-pm41-share-a` → `vyve-cache-v2026-05-09-pm42-import-a`.
+
+**Source-of-truth.** vyve-site pre-commit `e3cf1fcf930440c53c6a5df55b1715387475470d` (PM-41 ship), post-commit `b053cd8ac11bebfc783884e088a7b6f6ca4ce740` (PM-42 ship), new tree `3d48421d939aaec10fe606023fa840342d590853`. Whole-tree audit per §23 PM-26 + asymmetric-fallback per PM-35/PM-38 + per-surface race-fix ordering per PM-39 + audit-count per PM-37/PM-40 + new schema discipline sub-rule (this commit). Post-commit verification: 9/9 markers presence checks. Live blob SHAs: workouts-programme.js `252d47f62d53`, workouts.html `d635382874e1`, index.html `3e05d72f8861`, sw.js `150bb129b944`.
+
+**Certificate dropped from Layer 1c campaign.** Pre-flight at PM-42 read certificate.html + certificates.html and confirmed both are read-only viewers — zero primitives, no bus.js, no publish site. The actual write happens server-side in `certificate-checker` EF v9 (daily cron at 09:00 UTC). **Layer 1c migrates direct-call client primitives at publishing sites; certificate has no such site on the client.** Forcing the migration just to honour a row count would violate the discipline. Codified as new §23 sub-rule below. Active.md §3.1 row 1c-13 was the certificate slot — repurposed for `programme:imported` (this commit). Live-sessions remains 1c-14.
+
+**Audit-count delta vs post-PM-41 baseline (HEAD `e3cf1fcf` → HEAD `b053cd8a`).**
+- `invalidateHomeCache(` **11** — unchanged (no invalidate primitives at the import site pre or post-PM-42)
+- `recordRecentActivity(` **8** — unchanged
+- `VYVEAchievements.evaluate(` **19** — unchanged (the eval calls in the workouts.html self-subscriber and workouts-programme.js fallback don't add new sites; they're inside subscriber callbacks which by PM-40 audit-count rule count as subscriber-internal helpers, not publishing-site primitives)
+- `VYVEBus.publish(` **20 → 22** (+2: one `programme:imported` + one `workout:logged source:'builder'`)
+- `VYVEBus.subscribe(` **25 → 27** (+2: index._markHomeStale extension + workouts.html `programme:imported` self-subscriber)
+
+Cumulative bus surface across PM-30..PM-42: 22 publishers, 27 subscribers.
+
+**TWO new §23 sub-rules codified this commit:**
+
+1. **Server-side cron-driven write surfaces are out of scope for Layer 1c.** Layer 1c migrates direct-call client primitives at publishing sites. If the write happens server-side via cron (e.g. certificate-checker EF v9 generating certificates daily), the client has NO publish surface — there's no inline `evaluate`/`invalidate`/`record` call to migrate. Cross-tab/cross-device staleness for these surfaces is a Layer 2 concern (cache-coherence) or Layer 3 concern (server-push notifications), not Layer 1c. PM-42 dropped certificate from the campaign with this rationale; row 1c-13 was repurposed for `programme:imported`. The discriminator: **does the client invoke a write that fires inline cache primitives?** If no, it's not a Layer 1c surface.
+
+2. **Multi-event single-function migrations are valid** when the function has semantically distinct branches that should fire distinct events. PM-42 confirmImportPlan: `programme:imported` for isProg=true, `workout:logged source:'builder'` for isProg=false. Per-branch race-fix and fallback discipline apply independently. **Schema test:** if branches differ only in *source/origin/variant* of the same semantic action, use one event with discriminator (PM-36 food:logged kind:'search'|'quickadd'; PM-39 wellbeing:logged kind:'live'|'flush'; PM-41 workout:shared kind:'session'|'custom'|'programme'). If branches differ in *what semantic action is happening*, use distinct event names (PM-42: importing-a-programme vs saving-a-session-to-library are different actions, even though they share a function and a fetch URL). Reuse existing event schemas where the semantic action matches an established event (PM-42 session-save → PM-35 workout:logged source:'builder' precedent).
+
+**Sequence after PM-42:** Thirteen Layer 1c migrations down (1c-1 through 1c-13). One remaining (1c-14: live-sessions via session-live.js — eight live pages share one module, ONE shared publish surface, multiple consumer pages, most complex of the remaining surfaces). After 1c-14: option-(b) cleanup commit removes the three legacy direct-call surfaces (`VYVEData.invalidateHomeCache`, `VYVEData.recordRecentActivity`, `VYVEAchievements.evaluate` from publishing sites) — they remain available as subscriber-internal helpers. PM-30 §23 rule transitions from option (a) to option (b). Layer 1 closes.
+
+## 2026-05-09 PM-41 (Layer 1c-12: workout sharing → `bus.publish('workout:shared', { kind: 'session' | 'custom' | 'programme', ... })`)
+
+vyve-site `e3cf1fcf930440c53c6a5df55b1715387475470d` (new tree `b3f4efa1d045a3082b4dd8537eaddbca71bab435`). Twelfth Layer 1c migration. **THREE publishing surfaces** with **mixed fallback shapes** — third mixed-fallback migration in the campaign after PM-36 (log-food, three surfaces) and PM-39 (wellbeing-checkin, two surfaces). NEW event `workout:shared` (taxonomy ADD) with `kind` discriminator. Single event for three semantically-similar surfaces (sharing a session, custom workout, or programme — all "member made a shareable artifact public"); per PM-36 schema discipline (distinct semantics → distinct event names; same semantics with variants → discriminator).
+
+**Three publish sites, per-surface classification:**
+
+- **A. `workouts-session.js` `shareWorkout()` L735-778** — session-from-programme share. Pre-bus had 1 evaluate at L771 (post-`res.ok`). **Symmetric fallback** (PM-33 lineage) — `kind: 'session'`.
+- **B. `workouts-session.js` `shareCustomWorkout()` L780-822** — share a custom workout. Pre-bus had **ZERO primitives** (real bug surface — custom-share fired no eval, no invalidate). **Asymmetric fallback** (PM-35 lineage) — `kind: 'custom'`. Bus path closes the missing gap; `!VYVEBus` fallback strictly preserves pre-bus zero-primitive shape per PM-38 §23 fallback discipline.
+- **C. `workouts-programme.js` `shareProgramme()` L351-405** — full-programme share. Pre-bus had 1 evaluate at L397 (post-`res.ok`). **Symmetric fallback** — `kind: 'programme'`.
+
+**Race-fix mechanic — confirmer pattern on all three surfaces.** Per PM-39 §23 race-fix-ordering rule: standard initiator pattern (publish-before-fetch) doesn't apply because the publish payload carries `share_code`, which only exists on the EF response. Publish-after-`res.ok` is the only viable shape — publish must wait for server confirmation. All three surfaces follow the same ordering. Self-tests 5.1, 5.2, 5.3 verify `publish.ts > fetch.ts` for each.
+
+**Subscribers wired:**
+
+- **`index.html` `_markHomeStale`** — extends source-agnostic to `workout:shared`. **11th event** on the same handler. Defensive home-cache bust: today's home dashboard does NOT render a share count or social activity surface, so this isn't closing a real cache-staleness bug. The bust is cheap, idempotent, and matches the established 1c pattern for any future home surface that shows share counts or social activity. Mirror of the established pattern (PM-37 weight, PM-38 persona, PM-40 monthly all defensive).
+
+- **`engagement.html`** — NOT WIRED. **Fourth intentional engagement non-touch in the Layer 1c campaign** after PM-37 weight, PM-38 persona, PM-40 monthly. Sharing has zero engagement-scoring component (Activity / Consistency / Variety / Wellbeing — none derive from shared_workouts table). Verified via whole-tree audit: zero `share|social|sharing` hits in engagement.html scoring components.
+
+- **No self-subscriber.** Sharing not on any achievement track (verified zero `share` hits in achievements.js). The pre-bus inline `evaluate` calls on Surfaces A and C were defensive — original author thought sharing might unlock an achievement, but no track exists. Bus path drops the eval; `!VYVEBus` fallback preserves it for symmetry.
+
+**bus.js script tag: NOT needed.** workouts.html already loads bus.js at L16 since the PM-32 era (workouts-session.js subscriber). Both publishing files (workouts-session.js, workouts-programme.js) are loaded by workouts.html which already has bus.js. **Second post-PM-30 migration with no new bus.js wiring** after PM-40 — the sharing surfaces inherited bus-awareness from the broader workouts page since PM-32.
+
+**Schema.** `workout:shared`: `{ kind: 'session' | 'custom' | 'programme', share_code: string, share_url: string, session_name: string }`. `kind` discriminator covers the three surface variants. `share_code` and `share_url` carry the EF response identifiers (4-char alphanumeric code for code-import, full https URL for share-modal). `session_name` is the user-facing artifact name.
+
+**Incidental UX polish.** `shareCustomWorkout` previously called `_showShareModal(share_url, w.workout_name)` with no third arg, hiding the share code. Now passes `customCode` so custom-workout shares display the share code identically to session shares (parity). `_showShareModal(shareUrl, sessionName, shareCode)` already accepts the third arg and renders it conditionally with `${shareCode ? ... : ''}` — zero risk patch.
+
+**54 of 54 self-tests passing** in `/tmp/pm41/test.js` (13 groups, ~430 lines):
+
+1. Bus API regression smoke (2)
+2. Surface A (kind:session) publish fan-out (6)
+3. Surface B (kind:custom) publish fan-out (4)
+4. Surface C (kind:programme) publish fan-out (3)
+5. Race-fix verification on all three surfaces — publish.ts > fetch.ts (3)
+6. Subscriber fan-out — _markHomeStale fires once per share, _markEngagementStale ZERO (6: 2 per surface)
+7. **Mixed-fallback discipline** (7: A symmetric preserves eval, B asymmetric NO eval, C symmetric preserves eval, plus VYVEBus+Ach combined verifies bus path skips inline eval)
+8. Error-path guards (4: !resp.ok throws, no publish, no _markHomeStale, no fallback eval)
+9. Cross-tab origin:remote (1)
+10. PM-30..40 regression (5: prior events still drive their fan-outs incl. PM-37/38/40 non-touches)
+11. Schema enforcement (5: kind/share_code/share_url/session_name types + kind enum)
+12. Event isolation (3: workout:logged ≠ workout:shared, food:logged ≠ workout:shared)
+13. Audit-count discipline documentation (5: per-surface call site preservation in fallback)
+
+`node --check` clean on workouts-session.js + workouts-programme.js + sw.js + 8 inline JS blocks in index.html.
+
+**SW cache.** `vyve-cache-v2026-05-09-pm40-monthly-a` → `vyve-cache-v2026-05-09-pm41-share-a`.
+
+**Source-of-truth.** vyve-site pre-commit `21bb6f3cd58fc3f628a67c60b5e619e106079d49` (PM-40 ship), post-commit `e3cf1fcf930440c53c6a5df55b1715387475470d` (PM-41 ship), new tree `b3f4efa1d045a3082b4dd8537eaddbca71bab435`. Whole-tree audit per §23 PM-26 + typeof/docblock/function-def exclusions per PM-32 + PM-28 + symmetric/asymmetric/mixed-fallback discipline per PM-33/PM-35/PM-36/PM-38 + audit-count classification per PM-37/PM-40 + per-surface race-fix ordering per PM-39. Post-commit verification: 9/9 markers presence checks across all 4 files via live-SHA fetch. Live blob SHAs: workouts-session.js `c68c361f6ead`, workouts-programme.js `c0c208c46fea`, index.html `70b3587086b6`, sw.js `416df4ac4b57`.
+
+**Audit-count delta vs post-PM-40 baseline (HEAD `21bb6f3c` → HEAD `e3cf1fcf`).**
+- `invalidateHomeCache(` **11** — unchanged (no invalidate primitives at any share surface pre or post-PM-41)
+- `recordRecentActivity(` **8** — unchanged
+- `VYVEAchievements.evaluate(` **19** — unchanged (Surfaces A and C had 1 evaluate each pre-PM-41 = 2 sites; both preserved in `if (!window.VYVEBus)` else-branches per PM-40 §23 audit-count classification rule)
+- `VYVEBus.publish(` **17 → 20** (+3: three new publish call sites, all `'workout:shared'`)
+- `VYVEBus.subscribe(` **24 → 25** (+1: index._markHomeStale extension)
+
+Cumulative bus surface across PM-30..PM-41: 20 publishers (call sites; some shared event names), 25 subscribers.
+
+**Sequence after PM-41:** Twelve Layer 1c migrations down (1c-1 through 1c-12). Two remaining (1c-13, 1c-14). 86% complete by surface count. Next session = PM-42, candidate surfaces: shared-workout viewer (no — confirmed read-only viewer, zero primitives, no publish site); certificate.html / certificates.html (no — server-side cron-driven, no client publish site, dropped from campaign per PM-42 §23 sub-rule); `programme:imported` via workouts-programme.js confirmImportPlan (real bug fix — manual setTimeout(loadProgramme, 800) is the symptom of a missing primitive; recommended); live-session pages via session-live.js (most complex, last). PM-42 picks `programme:imported` per current backlog ordering.
+
 ## 2026-05-09 PM-37-Setup (Brain commit only — new session-loading protocol; cuts session context tax by ~91%)
 
 VYVEBrain commit only. **No vyve-site changes; no 1c migration; no portal deploy.** This is brain-only setup work to make future sessions ship 4-6 1c migrations cleanly instead of 1-2.

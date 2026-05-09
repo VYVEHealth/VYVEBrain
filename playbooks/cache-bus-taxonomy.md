@@ -322,6 +322,45 @@ Cross-tab: every event published as `localStorage.setItem('vyve_bus', JSON.strin
 
 After 1c-14, all three legacy surfaces become dead. Final cleanup commit removes them.
 
+### Shipping reconciliation (PM-30..PM-42 — the original plan vs reality)
+
+> The original plan numbering above is the PM-25/PM-26 draft. PM-30..PM-42 actually shipped against a corrected plan tracked in `brain/active.md` §3.1. This block reconciles the two views. After 1c-14 + cleanup ships, this taxonomy file becomes OBSOLETE per `playbooks/1c-migration-template.md` stop-date.
+
+**Shipped 1c migrations (PM-30..PM-42, 13 of 14 surfaces):**
+
+| Active.md row | PM ship | Surface | Event(s) emitted | Original taxonomy row |
+|---|---|---|---|---|
+| 1c-1 | PM-30 | habits.html log + autotick + undo | `habit:logged` | matches taxonomy 1c-1 |
+| 1c-2 | PM-31 | workouts-session.js completeWorkout | `workout:logged` source:'programme' | matches taxonomy 1c-2 |
+| 1c-3 | PM-32 | workouts-session.js saveExerciseLog | `set:logged` | matches taxonomy 1c-3 |
+| 1c-4 | PM-33 | cardio.html log | `cardio:logged` | matches taxonomy 1c-4 |
+| 1c-5 | PM-34 | movement.html walk + non-walk | `cardio:logged` movement_walk + `workout:logged` source:'movement' | matches taxonomy 1c-5 |
+| 1c-6 | PM-35 | workouts-builder.js custom create | `workout:logged` source:'builder' | matches taxonomy 1c-6 |
+| 1c-7 | PM-36 | log-food.html insert ×2 + delete | `food:logged` kind:'search'/'quickadd' + `food:deleted` | matches taxonomy 1c-7 |
+| 1c-8 | PM-37 | nutrition.html weight log | `weight:logged` | matches taxonomy 1c-8 (taxonomy mentioned `wb_last` scope-fix; verified absent in live tree, editorial correction) |
+| 1c-9 | PM-38 | settings.html persona switch | `persona:switched` | matches taxonomy 1c-9; original taxonomy 1c-10 row ("settings save") MERGED into 1c-9 (settings save IS persona save in practice today, no separate publish surface) |
+| 1c-10 | PM-39 | wellbeing-checkin.html submit + flush | `wellbeing:logged` kind:'live'/'flush' | matches taxonomy 1c-11; renamed slot from `checkin:submitted` to `wellbeing:logged` (avoids namespace collision with monthly checkin's distinct event) |
+| 1c-11 | PM-40 | monthly-checkin.html submit | `monthly_checkin:submitted` | matches taxonomy 1c-12; renamed from `checkin:submitted kind:'monthly'` to dedicated event name (per PM-36 §23 schema discipline — distinct semantic events get distinct names) |
+| 1c-12 | PM-41 | workouts-session.js shareWorkout + shareCustomWorkout, workouts-programme.js shareProgramme | `workout:shared` kind:'session'/'custom'/'programme' | matches taxonomy 1c-14 (early ship); third surface `shareCustomWorkout` was uncalled-out in original taxonomy |
+| 1c-13 | PM-42 | workouts-programme.js confirmImportPlan | `programme:imported` (NEW) + `workout:logged source:'builder'` (PM-35 reuse) | **DOES NOT MATCH ORIGINAL TAXONOMY** — original 1c-13 row was `tracking.js session:viewed` (now 1c-14); certificate had no row. PM-42 dropped certificate from campaign (server-side cron-driven write, §23 PM-42 rule); slot repurposed for `programme:imported` (real bug fix surface) |
+
+**Remaining (1c-14):** session-live.js (shared by 8 live-* pages) → likely `session:viewed` per original taxonomy 1c-13 slot. Most complex of the campaign, intentionally last.
+
+**Editorial corrections to original taxonomy (codified during PM-30..PM-42):**
+
+- 1c-2 scope-fix `programme_cache`: confirmed live (PM-31)
+- 1c-4 scope-fix `vyve_cardio_cache`: ORIGINAL TAXONOMY ERROR — no such cache key in tree; corrected to no-op (PM-33)
+- 1c-5 scope-fix exercise.html / achievements.js: ORIGINAL TAXONOMY ERROR — exercise.html is not a subscriber (PM-34/PM-35 corrections)
+- 1c-7 delete: confirmed real bug surface (PM-36)
+- 1c-8 scope-fix `wb_last`: ORIGINAL TAXONOMY ERROR — no such cache key in tree (PM-37)
+- 1c-9 vs 1c-10 merge: settings save IS persona save (PM-37/PM-38 reconciliation)
+- 1c-12 PM-41 third surface: original taxonomy had two share surfaces (programme + session); shareCustomWorkout was missed in PM-25 audit
+- 1c-13 PM-42 reshape: certificate dropped (no client publish site), confirmImportPlan added (real bug fix surface)
+
+**Audit-count baseline post-PM-42 (HEAD `b053cd8a`):** invalidate 11, record 8, evaluate 19, publish 22, subscribe 27. Deltas tracked per migration in changelog.md.
+
+
+
 **Counts after PM-28 sub-audit pass:** 2 pure REFACTOR (decouple), 9 REFACTOR + scope-fix, 2 REFACTOR + race-fix-or-scope-fix, 2 ADD. Of the 14 migrations, 12 fix something real on the way through (the 2 decouples are clean renames, no defect underneath); the bus is still the right shape. Campaign value framing holds after the audit.
 
 ---

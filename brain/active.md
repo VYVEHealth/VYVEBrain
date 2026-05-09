@@ -49,14 +49,14 @@
 > Refresh the SHA + version rows at the top of every session via a parallel pre-flight. The rest of this section is stable across sessions.
 
 **HEADs (refresh at session start):**
-- vyve-site main: `21bb6f3c` (PM-40 ship — last shipped 09 May 2026)
+- vyve-site main: `b053cd8a` (PM-42 ship — last shipped 09 May 2026)
 - VYVEBrain main: `(set after this commit lands)`
 - vyve-capacitor main: stub (Apr 18 2026 base) — local working tree not yet pushed
 - Test-Site-Finalv3 main: marketing site, less active
 
 **Cache-bus key currently live:**
 - Pattern: `vyve-cache-v2026-05-09-pmNN-X-Y` (date prefix from PM-30)
-- Last shipped: `vyve-cache-v2026-05-09-pm40-...`
+- Last shipped: `vyve-cache-v2026-05-09-pm42-import-a`
 - P3 carried: convention drift (date prefix may not match wall clock — decide on calendar advance)
 
 **Mobile binaries:**
@@ -68,16 +68,16 @@
 - First paying B2C: Paige Coult, joined 13 April 2026, £20/month
 - 3 admin operators in `admin_users`
 
-**Audit-count baseline (publishing-surface call sites at HEAD `21bb6f3c`, post-PM-40):**
+**Audit-count baseline (publishing-surface call sites at HEAD `b053cd8a`, post-PM-42):**
 - See §3.2 for the canonical numbers — they are the pre-flight reference for PM-41
 
 ---
 
 ## 3. Layer 1c migration campaign — the active workstream
 
-The 1c-* campaign migrates every direct-call cache primitive (`invalidateHomeCache`, `recordRecentActivity`, `evaluate`) onto the typed event bus (`bus.publish`). 14 surface migrations, 11 shipped, 3 remaining.
+The 1c-* campaign migrates every direct-call cache primitive (`invalidateHomeCache`, `recordRecentActivity`, `evaluate`) onto the typed event bus (`bus.publish`). 14 surface migrations originally planned; **PM-42 reshape**: certificate dropped from campaign (server-side cron-driven write, no client publish site → §23 PM-42 rule), 1c-13 row repurposed for `programme:imported`. **13 surfaces shipped, 1 remaining (1c-14 live-sessions). Cleanup commit closes Layer 1.**
 
-### 3.1 The 14-row plan — reconciled
+### 3.1 The 14-row plan — reconciled (post-PM-42)
 
 | # | Surface | PM tag | Status | Event | Pre-bus shape | Fallback | Notes |
 |---|---|---|---|---|---|---|---|
@@ -93,35 +93,38 @@ The 1c-* campaign migrates every direct-call cache primitive (`invalidateHomeCac
 | 1c-9b | ~~settings.html save~~ | n/a | **MERGED** into 1c-9 | — | — | — | The original taxonomy 1c-10 row "settings save" was dropped from the campaign post-PM-37; backlog and changelog both renumbered. Settings save IS persona save in practice today — no separate publish surface exists |
 | 1c-10 | wellbeing-checkin.html submit + flush | PM-39 | ✅ shipped | `wellbeing:logged` kind:`live`/`flush` | live: invalidate + evaluate; flush: invalidate only | symmetric (mixed pre-bus shape) | First initiator + confirmer pattern; PM-39 §23 race-fix-ordering rule |
 | 1c-11 | monthly-checkin.html submit | PM-40 | ✅ shipped | `monthly_checkin:submitted` | evaluate only | **asymmetric** | First post-PM-30 migration with NO new bus.js wiring (page already loaded bus.js) |
-| 1c-12 | **TBD — pick at session start** | PM-41 | 📋 next P0 | — | — | — | Backlog recommends `shared-workout.html` (smallest blast radius, clean asymmetric) |
-| 1c-13 | **TBD — second-to-last** | TBD | 📋 open | likely `certificate:earned` or `certificate:viewed` | — | — | certificate.html / certificates.html — achievement-adjacent, self-subscribe pattern likely fits |
-| 1c-14 | **TBD — last (most care)** | TBD | 📋 open | likely `session:viewed` or `session:joined` | tracking.js session-view per `playbooks/cache-bus-taxonomy.md` migration plan | — | Eight live-session pages all share `session-live.js` — ONE shared module = one publish surface, multiple consumer pages. Most complex of the three remaining |
+| 1c-12 | workouts-session.js shareWorkout + shareCustomWorkout, workouts-programme.js shareProgramme | PM-41 | ✅ shipped | `workout:shared` kind:`session`/`custom`/`programme` | A: eval; B: ZERO; C: eval | mixed | Three publish surfaces, one event with discriminator. shared-workout.html is read-only viewer (no publish site). Mirror of PM-36 + PM-39 mixed. Confirmer pattern (publish-after-res.ok) — payload carries share_code from EF response. Engagement non-touch (4th). |
+| 1c-13 | workouts-programme.js confirmImportPlan | PM-42 | ✅ shipped | `programme:imported` (NEW) + `workout:logged source:'builder'` (REUSES PM-35) | ZERO both branches | asymmetric both | **Certificate dropped from campaign** (server-side cron-driven write, §23 PM-42 rule). Slot repurposed for confirmImportPlan — single function, two events gated on isProg. Real bug fix: 800ms setTimeout(loadProgramme) workaround replaced with synchronous self-subscriber. Engagement non-touch (5th). |
+| 1c-14 | session-live.js (shared by 8 live-* pages) | TBD | 📋 next P0 | likely `session:viewed` (with `kind:'live'\|'replay'` discriminator? — pre-flight decides) | TBD pre-flight | TBD | Eight live-session pages all share `session-live.js` — ONE shared module = one publish surface, multiple consumer pages. Most complex of the campaign and intentionally last. Pre-flight: confirm session-live.js is the single write surface (or whether each *-live.html has its own publish-side calls); decide whether session_views vs replay_views need distinct events or one event with kind discriminator (mirror of PM-39 wellbeing). |
 
 **After 1c-14 ships:** named cleanup commit removes the three legacy direct-call surfaces (`VYVEData.invalidateHomeCache`, `VYVEData.recordRecentActivity`, `VYVEAchievements.evaluate` from publishing sites — they remain available as subscriber-internal helpers). PM-30 §23 rule transitions from option (a) to option (b).
 
-### 3.2 Audit-count baseline (post-PM-40, HEAD `21bb6f3c`)
+### 3.2 Audit-count baseline (post-PM-42, HEAD `b053cd8a`)
 
 > The publishing-surface call-site count for each primitive across the whole vyve-site tree, computed under the PM-37 audit-count classification rule (PM-40 sub-rule: count source-code call sites unconditionally regardless of runtime branch).
 
 | Primitive | Count | Notes |
 |---|---|---|
-| `VYVEData.invalidateHomeCache(` | 11 | Stable from PM-37 ship |
+| `VYVEData.invalidateHomeCache(` | 11 | Stable from PM-37 ship; PM-41 + PM-42 added zero |
 | `VYVEData.recordRecentActivity(` | 8 | Stable from PM-37 ship |
-| `VYVEAchievements.evaluate(` | 19 | Stable from PM-37 ship |
-| `VYVEBus.publish(` | 17 | +1 at PM-40 (monthly_checkin:submitted ADD) |
-| `VYVEBus.subscribe(` | 24 | +2 at PM-40 (index._markHomeStale extension + monthly-checkin self-subscriber) |
+| `VYVEAchievements.evaluate(` | 19 | Stable from PM-37 ship; PM-41 preserved 2 sites in if(!VYVEBus) else-branches; PM-42 added zero (subscriber-internal evals don't count per PM-40 audit rule) |
+| `VYVEBus.publish(` | 22 | +5 across PM-41/PM-42 (PM-41 +3 workout:shared call sites; PM-42 +2 programme:imported + workout:logged source:'builder') |
+| `VYVEBus.subscribe(` | 27 | +3 across PM-41/PM-42 (PM-41 +1 _markHomeStale extension; PM-42 +2 _markHomeStale extension + workouts.html self-sub) |
 
-**Use these as the pre-flight reference for PM-41.** Whole-tree audit at session start (deferred from pre-flight per §4.9 below) confirms the numbers are unchanged or computes the new baseline.
+**Use these as the pre-flight reference for PM-43.** Whole-tree audit at session start (deferred from pre-flight per §4.9 below) confirms the numbers are unchanged or computes the new baseline.
 
 ### 3.3 Methodology questions — resolved + open
 
 **Resolved:**
 - PM-37: audit-count classification — count any non-comment, non-`typeof`-guard, non-function-definition line containing a call to one of the four primitives
 - PM-40: in-fallback-branch counting — calls inside `if (!window.VYVEBus) { ... }` else-branches still count (source-code call sites at static analysis time, not runtime invocation paths)
+- PM-42: campaign scope — server-side cron-driven write surfaces (e.g. certificate-checker EF v9 daily certificate generation) have NO client publish site and are therefore out of scope for Layer 1c. Cross-tab/cross-device staleness for these surfaces is a Layer 2 concern (cache-coherence) or Layer 3 concern (server-push). Discriminator: does the client invoke a write that fires inline cache primitives? If no, not 1c.
+- PM-42: multi-event single-function migrations — when one function has semantically distinct branches (importing-a-programme vs saving-a-session-to-library), emit distinct event names per branch. Use one event with discriminator only when branches differ in *source/origin/variant* of the same semantic action. Per-branch race-fix and fallback discipline apply independently. Reuse existing event schemas when the semantic action matches (PM-42 session-save → PM-35 workout:logged source:'builder' precedent).
 
 **Open (P3, decide-and-codify when triggered):**
-- Cache-version date convention drift — `vyve-cache-v2026-05-09-pmNN-X-Y` carries date prefix from PM-30. Decide before next deploy that crosses midnight UK time
+- Cache-version date convention drift — `vyve-cache-v2026-05-09-pmNN-X-Y` carries date prefix from PM-30 through PM-42. Decide before next deploy that crosses midnight UK time
 - log-food.html cross-tab diary-cache coherence — same shape as PM-33 cross-tab cardio.html. Punt to Layer 3 unless Lewis flags real cross-tab diary editing patterns
+- Certificate cross-tab/cross-device cache coherence — Layer 2 follow-up from PM-42 certificate drop. When certificate-checker cron inserts a new row, certificates.html shows stale "0 certificates" until manual refresh. Punt to Layer 2 unless members complain
 
 ---
 
@@ -223,10 +226,7 @@ The 1c-* campaign migrates every direct-call cache primitive (`invalidateHomeCac
 
 ### P0 (next session)
 
-- **PM-41 / 1c-12: pick at session start.** Three remaining 1c surfaces. Backlog recommends:
-  1. **shared-workout.html** (smallest blast radius) — single page, zero primitives → ASYMMETRIC, likely emits `workout:shared` (taxonomy ADD). bus.js NOT loaded yet — first new wiring since PM-39.
-  2. **certificate.html / certificates.html** — zero primitives → ASYMMETRIC. May emit `certificate:earned` or `certificate:viewed`. Achievement-adjacent — self-subscribe pattern likely fits.
-  3. **live-session pages** (1c-14, last) — eight pages share `session-live.js`. ONE shared module = one publish surface, multiple consumer pages. Most complex; should be last.
+- **PM-43 / 1c-14 + Layer 1 cleanup commit.** ONE Layer 1c migration remaining: **live-session pages via `session-live.js`**. Eight live pages (yoga-live, mindfulness-live, therapy-live, events-live, education-live, podcast-live, workouts-live, checkin-live) all share one module — ONE shared publish surface, multiple consumer pages. Most complex of the campaign and intentionally last (most care). Likely emits `session:viewed` per cache-bus-taxonomy.md. Pre-flight at session start to (a) confirm session-live.js is the single write surface or whether each *-live.html has its own publish-side calls, (b) classify symmetric/asymmetric/mixed fallback per surface, (c) decide event name (likely `session:viewed` matches the `session_views` table semantics; possibly `kind:'live'|'replay'` discriminator covers session_views vs replay_views — mirror of PM-39 wellbeing kind:'live'|'flush'). After 1c-14 ships, **option-(b) cleanup commit** closes Layer 1: removes the three legacy direct-call publishing surfaces (`VYVEData.invalidateHomeCache`, `VYVEData.recordRecentActivity`, `VYVEAchievements.evaluate` from publishing sites — they remain available as subscriber-internal helpers). PM-30 §23 rule transitions from option (a) to option (b). Layer 1 closes; Layer 2 (cross-tab/cross-device cache coherence) campaign opens.
 
 ### P1 (working set)
 
