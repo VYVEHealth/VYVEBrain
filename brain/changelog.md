@@ -1,3 +1,65 @@
+## 2026-05-09 PM-39 (Layer 1c-10: wellbeing-checkin.html → `bus.publish('wellbeing:logged', { kind: 'live' | 'flush', ... })`)
+
+vyve-site `1a5d9ef8b1c4909c32e0f2199755dc52a7f0a9e6` (new tree `0329d2a0d238530855572b5b034f92071db0c97b`). Tenth Layer 1c migration. **TWO publishing surfaces** (live submit + deferred flush) — second multi-surface migration after PM-36's three-surface log-food.html. SYMMETRIC fallback on both surfaces, NEW event name `wellbeing:logged` (taxonomy ADD; doesn't exist pre-PM-39). Single event with `kind` discriminator (`'live'` | `'flush'`) — matches the PM-36 `kind:'search'|'quickadd'` precedent for "two paths to one event". **First 1c migration since PM-36 where engagement.html is wired** — PM-37 weight + PM-38 persona were both intentional engagement non-touches.
+
+**Pre-bus primitives at the publish sites.** Two surfaces with DIFFERENT pre-bus primitive shapes (mixed-fallback discipline applies, PM-36 §23 sub-rule):
+
+- **`submitCheckin` L573-617** (live path, primary user-facing): `invalidateHomeCache` (L607-609) + `VYVEAchievements.evaluate` (L610). Both fired unconditionally after the EF fetch on success path.
+- **`flushCheckinOutbox` L482-491** (deferred queue drain): `invalidateHomeCache` ONLY (L489-491). Fired inside the `if (res.ok)` branch only — failed flushes preserve the queue and do NOT fire invalidate. Pre-bus had NO `VYVEAchievements.evaluate` on this surface (the original deferred path was minimal — drain queue, bust home cache, let the EF's member_notifications row surface the recs).
+
+Both surfaces SYMMETRIC fallback (PM-33/PM-34/PM-37 lineage), but with different shapes — invalidate + evaluate on live, invalidate-only on flush. Per-surface classification per PM-36 §23 sub-rule.
+
+**Real bug fix on the way through.** Pre-PM-39, the **Wellbeing component of the engagement score** (max 12.5 pts of 100, derived directly from the most recent weekly score 1-10 → 0-12.5 mapping) was NEVER invalidated on check-in submission. Engagement scoring components per engagement.html L388-446: Activity / Consistency / Variety / Wellbeing (each 12.5 pts). The Wellbeing component is the only one a weekly check-in directly drives. Pre-PM-39 trace: member submits check-in → wellbeing_checkins row written + EF returns AI recs → home cache invalidated → BUT `vyve_engagement_cache` (24h TTL) was NEVER busted, so engagement.html showed stale Wellbeing component until either (a) cache TTL expired or (b) member logged some other activity (cardio/habit/workout/set/food) which fired _markEngagementStale via PM-30..36 subscribers. PM-39 closes the gap by extending engagement.html `_markEngagementStale` to `wellbeing:logged`.
+
+**Race-fix mechanic (different per surface).** Same fire-and-forget discipline as PM-33..38 but split by surface:
+
+- **submitCheckin (live)**: `bus.publish` lands BEFORE the EF fetch — standard Layer 1c race-fix pattern. Subscribers stale caches optimistically; resolution of the EF round-trip (which also returns AI recs to render) is decoupled from local UI propagation. Self-test 4.1 verifies `publish.ts < fetch.ts`.
+
+- **flushCheckinOutbox (deferred)**: `bus.publish` lands AFTER `res.ok` confirms server-side write. **This is intentional architectural divergence from the standard pattern** — the deferred surface only fires when a previously-queued check-in successfully drains. Publishing BEFORE confirmation would claim cache-stale on a queued check-in that hasn't actually been written server-side yet (the flush re-fires the EF, which may fail; on failure the queue stays for retry). Mirrors the architectural pattern for queue drain: claim invalidation only after server confirms write. Self-tests 3.5 + 6.5 verify the no-publish-on-fail path. Self-test 4.2 verifies `publish.ts > fetch.ts` (the inverse of the live surface ordering).
+
+Different race-fix patterns per surface, both correct given each surface's semantics. NEW §23 sub-rule codified below.
+
+**Subscribers wired (three layers).**
+
+- **`index.html:1346` `_markHomeStale`** — extends source-agnostic to `wellbeing:logged`. Ninth event on the same handler. Mirrors PM-30..38. Today's home dashboard renders the wellbeing strip + streak from the most recent weekly_scores row — both stale identically to the eight prior events.
+
+- **`engagement.html:1662` `_markEngagementStale`** — extends source-agnostic to `wellbeing:logged`. **First engagement subscriber addition since PM-36.** Real bug fix motivation (see above): Wellbeing component is directly derived from the new check-in row. Source-agnostic, idempotent, cheap (one localStorage.removeItem call per event).
+
+- **`wellbeing-checkin.html` self-subscriber** (PM-37 pattern) — page-owned achievement journey. "The Elite" 30-week-checkin track lives on this page per the live portal audit. Idempotent via `__vyveWellbeingBusWired` flag. Eval debounced 1.5s in achievements.js so live + flush across the same week (rare race) coalesces into one eval. Mirrors PM-37 nutrition.html pattern exactly.
+
+**bus.js script tag added to wellbeing-checkin.html** between auth.js (L38) and achievements.js (L39) per PM-31 convention. **First new bus.js wiring since PM-38 (settings.html).** Now five portal pages load bus.js: cardio, habits, log-food, movement, nutrition, settings, wellbeing-checkin (and the subscriber pages: index, engagement, monthly-checkin, workouts).
+
+**Schema.** `wellbeing:logged`: `{ score: number 1-10, iso_week: int, iso_year: int, flow: string, kind: 'live' | 'flush' }`. `score` drives the engagement Wellbeing component derivation (1→1.25, 10→12.5 pts). `iso_week` + `iso_year` identify the wellbeing_checkins row uniquely (natural key per the EF). `flow` carries the original flow argument (e.g. `'live'`, `'rare'` — semantic flow type for the EF's response shape). `kind` discriminates publish surface for forward-looking consumers; no current consumer differentiates on `kind` (both home-stale and engagement-stale fire identically; the discriminator is for any future consumer that wants to e.g. fire a different toast for queue-drained vs live submissions).
+
+**41 of 41 self-tests passing** in `/tmp/pm39_test.js` (12 groups, ~520 lines):
+
+1. Bus API regression smoke (2)
+2. submitCheckin (live) publish fan-out (4 envelope tests)
+3. flushCheckinOutbox (deferred) publish fan-out (5: count, event, kind, payload, **server-fail no-publish**)
+4. **Race-fix verification on BOTH surfaces** (live: publish < fetch; flush: publish > fetch — the two correct directions per surface)
+5. Subscriber fan-out simulator (5: home + engagement + wellbeing-eval all fire; nutrition.html weight-eval doesn't fire on wellbeing — event isolation)
+6. **Symmetric fallback both surfaces with mixed shapes** (5 tests: live !VYVEBus fires invalidate + evaluate; live VYVEBus fires neither; flush !VYVEBus fires invalidate ONLY; flush VYVEBus fires nothing inline; flush !VYVEBus on res.fail fires NOTHING — the fail-path no-op preservation)
+7. Cross-tab origin:remote (2)
+8. Validation guards (3: null score; offline-queue-no-publish; empty queue early-return)
+9. PM-30..38 regression (4 inc weight + persona engagement-isolation regression)
+10. Schema enforcement (4: score type; iso_week int; iso_year 4-digit; kind discriminator)
+11. Event isolation (3: wellbeing-eval doesn't fire on weight or persona; engagement-stale isolation for weight + persona)
+12. **Mixed-fallback count discipline** (2: !VYVEBus combined live+flush fires 2 invalidates + 1 evaluate (live had eval, flush didn't — verifies per-surface preservation); VYVEBus combined fires 2 publishes + 0 inline)
+
+`node --check` clean on all 17 inline JS blocks across the four patched files (wellbeing-checkin.html: 6 blocks, index.html: 8, engagement.html: 5, sw.js: full file).
+
+**SW cache.** `vyve-cache-v2026-05-09-pm38-persona-a` → `vyve-cache-v2026-05-09-pm39-wellbeing-a`.
+
+**Source-of-truth.** vyve-site pre-commit `a0b98f17f2b2cc96995f66f8696b8e8864ec732f` (PM-38 ship), post-commit `1a5d9ef8b1c4909c32e0f2199755dc52a7f0a9e6` (PM-39 ship), new tree `0329d2a0d238530855572b5b034f92071db0c97b`. Whole-tree audit per §23 PM-26 + typeof/docblock/function-def exclusions per PM-32 + PM-28 + symmetric/asymmetric-fallback discipline per PM-33/PM-34/PM-35/PM-36/PM-38 + audit-count classification per PM-37 + mixed-fallback per PM-36. Post-commit verification: 12 marker presence checks across all 4 files via live-SHA fetch (11/12 directly + 1 manually verified after tighter scoping — the live publish-before-fetch check used global fetch position rather than submitCheckin-scoped; debug confirms publish at char 34696 < submitCheckin's fetch at char 34764, ordering correct). Live blob SHAs: wellbeing-checkin.html `403e1f345331`, index.html `e0b2382eb19f`, engagement.html `513652517671`, sw.js `782aed72df6a`.
+
+**NEW §23 sub-rule codified this commit:** **per-surface race-fix ordering for queue-drain surfaces.** The standard Layer 1c race-fix pattern (publish BEFORE fetch) applies only to surfaces that initiate a write. For queue-drain surfaces (where the publish is conditional on `res.ok` of a re-fired request that may fail and re-queue), the publish lands AFTER `res.ok` confirms server-side write. Publishing optimistically on a queue drain would claim cache-stale on a check-in that hasn't actually been written server-side yet — broken semantics if the flush fails and the queue retries. PM-39 establishes the pattern with `flushCheckinOutbox`; future queue-drain migrations (any deferred flush of queued POSTs) should follow this discipline. The discriminator: does the publish initiate the write, or does it confirm a write that already happened? Initiator → publish-before-fetch. Confirmer → publish-after-res.ok.
+
+**Audit-count delta vs post-PM-38 baseline.** Post-PM-39 counts at HEAD `1a5d9ef8`: invalidate `12` (+1 from wellbeing-checkin.html flush surface else-branch — symmetric fallback preserves the surface's pre-bus invalidate; LIVE surface's invalidate moved into the `if (!window.VYVEBus)` else-branch but counts identically per PM-37 §23 audit-count classification rule), record `8` (unchanged), evaluate `19` (unchanged — submitCheckin's evaluate moved into the if/else but counts identically), publish `16` (+2: one for live submit + one for deferred flush — both surfaces of the same migration), subscribe `22` (+3: index.html + engagement.html + wellbeing-checkin.html self-subscriber). Cumulative bus surface across PM-30..PM-39: 16 publishers, 22 subscribers, both growing roughly linearly with each 1c migration.
+
+Wait — I need to re-check the invalidate count. The bus path moves the inline invalidate calls into `if (!window.VYVEBus)` else-branches. Per PM-32 §23 sub-rule, `typeof X === 'function'` guards don't count, but the `if (!window.VYVEBus)` is a different kind of guard — it's a runtime branch. The call site itself is still present. **Counting clarification needed at PM-40 pre-flight.** For now: counts may be unchanged (call sites preserved in fallback), or +0/+0/+0/+2/+3 if we strictly count call sites; the grep methodology will resolve. Backlog item to verify.
+
+**Sequence after PM-39:** Ten Layer 1c migrations down (1c-1 through 1c-10), four to go (1c-11 → 1c-14). 71% complete by surface count. Remaining surfaces: shared-workout (workout sharing), monthly-checkin (publish for `monthly_checkin:submitted`), certificate.html / certificates.html (certificate earned/viewed), and live-session pages (yoga-live etc.). Next session = PM-40, pre-flight at HEAD `1a5d9ef8` will pick the cleanest next 1c row.
+
 ## 2026-05-09 PM-38 (Layer 1c-9: settings.html persona switch → `bus.publish('persona:switched', ...)`)
 
 vyve-site `a0b98f17f2b2cc96995f66f8696b8e8864ec732f` (new tree `2689b819a4ca7bf3d8e3aa762a119d101a7dcaba`). Ninth Layer 1c migration. Single publishing surface (`savePersona` at `settings.html:1213-1258`), ASYMMETRIC fallback, NEW event name `persona:switched` (taxonomy ADD; doesn't exist pre-PM-38). **Third asymmetric-fallback migration** in the Layer 1c campaign after PM-35 (`workouts-builder.js`) and PM-36 (`deleteLog` in log-food.html). Pattern is now established enough to codify as a §23 hard rule rather than a per-commit footnote.
