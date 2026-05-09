@@ -1,3 +1,60 @@
+## 2026-05-09 PM-37-Setup (Brain commit only — new session-loading protocol; cuts session context tax by ~91%)
+
+VYVEBrain commit only. **No vyve-site changes; no 1c migration; no portal deploy.** This is brain-only setup work to make future sessions ship 4-6 1c migrations cleanly instead of 1-2.
+
+**The premium-feel framing.** Every kilobyte of context burned at session start is a kilobyte that can't be spent on the actual problem. The old "Load VYVE brain" routine pre-loaded ~1.27MB across master.md (305KB) + changelog.md (744KB) + tasks/backlog.md (180KB) + cache-bus-taxonomy.md (42KB) every session — most of it never referenced. Same architectural pattern as the portal's pre-PM-7 network-first HTML strategy: wait for the network round-trip before paint, regardless of whether the cached version was already correct. PM-7 fixed it for HTML via stale-while-revalidate. PM-37-Setup fixes it for brain via the working-set pattern.
+
+**Three new files shipped.**
+
+- **`brain/active.md`** (NEW, 42KB curated working set) — replaces the master.md + changelog.md full load at session start. Sections:
+  - §0 How to use this file (the rebuild vs patch discipline)
+  - §1 Source-of-truth chain (resolves brain/backlog.md vs tasks/backlog.md disagreement: tasks/ wins on backlog state, brain/ flagged STALE)
+  - §2 Live state snapshot (HEAD SHAs, mobile binaries, cache-bus key — refreshed per session)
+  - §3 Layer 1c migration campaign — the active workstream (3.1 the 14-row plan reconciled, 3.2 audit-count baseline post-PM-40 = 11/8/19/17/24, 3.3 methodology resolved + open)
+  - §4 §23 hard rules concise quick-reference (9 categories: bus migration, GitHub/brain commit, schema/RLS/SQL, Edge Functions/API, portal/client/cache, notification routing, HealthKit/iOS, operational discipline, new rules from this session)
+  - §5 Backlog top working set (P0/P1 only — full P2/P3 tail stays in tasks/backlog.md)
+  - §6 Credentials, URLs & references (working-set only)
+  - §7 What's NOT in this file (lookup table with 30+ entries pointing to canonical sources)
+  - §8 Editorial notes (rebuild triggers, patch discipline)
+
+- **`playbooks/1c-migration-template.md`** (NEW, 16KB) — captures the now-stable Layer 1c migration shape after PM-30..PM-40. Covers: pre-flight checklist (live tree fetch via GET_REPOSITORY_CONTENT not raw, target-file fetch only — NOT whole-tree pre-flight, primitive grep, fallback classification with discriminator), patch shape (publish-before-fetch initiator default vs publish-after-res.ok confirmer for queue-drain, bus-fallback else-branch with symmetric/asymmetric/mixed shapes, subscriber extension on _markHomeStale + _markEngagementStale, self-subscribe pattern for page-owned achievements, sw.js bump in same atomic commit), self-test harness skeleton (the 13-15 group structure proven across PM-35/PM-36), commit message template (PM-NN — Layer 1c-X: ... format with audit-count delta block required), post-commit verification (re-fetch via live SHA not raw, 9-marker check, fresh incognito on live URL), brain commit shape (master entry + changelog entry + backlog patch + taxonomy patch + active.md patches all atomic via GITHUB_COMMIT_MULTIPLE_FILES), common pitfalls codified across PM-30..PM-40, and a stop-date: when 1c-14 + cleanup commit lands, the template is OBSOLETE.
+
+- **`playbooks/session-loading-protocol.md`** (NEW, 9KB) — codifies the new "Load VYVE brain" routine. Old protocol (~1.27MB load) replaced with new protocol (~70-90KB load): (1) read brain/active.md, (2) read relevant playbook(s) matched to session goal via lookup table, (3) read last 3 changelog entries via grep on `## 2026-` headers + targeted slice — NOT full file read, (4) optional pre-flight live state when active.md §2 is stale. Documents the deferred-fetch pattern: pre-flight fetches only the files the migration touches; whole-tree audit runs AFTER the patch ships, in parallel with writing the brain commit. Documents when to break the protocol (first session after long gap, cross-domain investigation, pre-PM-30 historical work, major incident, brain sync session). Documents the load-confirmation response shape (short, definitive, no filler — fact-check not recap).
+
+**Three new §23 hard rules codified in master.md** (see master.md §23 for full text):
+
+1. **Session loading discipline.** Active file = working set; canonical files = on-demand fetch via active.md §7 lookup table. Same architectural principle as the portal's SWR strategy.
+
+2. **Deferred whole-tree audit.** Whole-tree primitive audits run AFTER the patch ships, in parallel with the brain commit. Pre-flight fetches only target files. Trade-off: slight risk of missing a publishing site outside the pre-flight scope, mitigated by post-ship audit catching it before brain commit.
+
+3. **Migration template stability post-PM-36.** Layer 1c migrations follow a stable shape captured in `playbooks/1c-migration-template.md`. Pre-flight references the template rather than re-deriving the migration mechanics every session. Stop-date: 1c-14 + cleanup commit makes the template OBSOLETE.
+
+**Pre-flight discipline followed for this commit (the only full-brain load before the new protocol takes over).**
+
+- Read full master.md (305KB) once to extract content for active.md curation. This is the LAST session that needs the full brain load — every session afterwards loads active.md instead.
+- Read full changelog.md (744KB) tail (last 11 PM-NN entries: PM-30 through PM-40) to extract the working-set references active.md needs in §3 and §4.
+- Read full §23 from master.md to write the concise version into active.md §4 (9 categories, line-numbered cross-references).
+- Read full playbooks/cache-bus-taxonomy.md (42KB) — already at the right size to load directly each 1c session, no slim version needed.
+- Read brain/backlog.md vs tasks/backlog.md to resolve canonical-vs-stale: tasks/ wins (last touched today; brain/ last touched 28 April).
+- Read PM-38 changelog entry to verify whether settings save was folded into PM-38 alongside persona — confirmed yes, the original taxonomy 1c-10 row "settings save" was dropped from the campaign post-PM-37; backlog and changelog both renumbered. Settings save IS persona save in practice today. Folded into 1c-9 in active.md §3.1 with explicit MERGED note.
+
+**Patches in this commit (atomic, single GITHUB_COMMIT_MULTIPLE_FILES):**
+
+- NEW: `brain/active.md` (42KB)
+- NEW: `playbooks/1c-migration-template.md` (16KB)
+- NEW: `playbooks/session-loading-protocol.md` (9KB)
+- PATCH: `brain/master.md` §23 with three new sub-rules above (prepended at top of §23 in reverse-chrono order, +3 rules, +6 lines)
+- PATCH: `brain/changelog.md` with this PM-37-Setup entry (prepended)
+- PATCH: `tasks/backlog.md` with PM-37-Setup closed + PM-41 (1c-12) carried as next P0 (under the new loading protocol)
+
+**No vyve-site changes.** Pure brain commit. The investment pays out from PM-41 onwards.
+
+**Testing.** Verification of the new protocol happens implicitly at the start of PM-41: opening that session with "Load VYVE brain" should trigger the new routine (active.md + cache-bus-taxonomy.md + 1c-migration-template.md + last 3 changelog entries via grep), pre-flight only the target file for the picked 1c-12 surface (recommended: shared-workout.html), and ship cleanly. If the protocol works as specified, PM-41 will close in less time than PM-40 with more headroom for PM-42 + PM-43 in the same session. If something is missing from active.md that PM-41 needs, that's the rebuild signal — patch active.md in PM-41's brain commit and codify the gap.
+
+**Sequence after PM-37-Setup:** Eleven 1c migrations down (1c-1 through 1c-11). Three remaining (shared-workout, certificate, live-session sets). PM-41 picks the next surface at session start — backlog recommends shared-workout (smallest blast radius, clean asymmetric pattern, single page, zero primitives, first new bus.js wiring since PM-39).
+
+---
+
 ## 2026-05-09 PM-40 (Layer 1c-11: monthly-checkin.html → `bus.publish('monthly_checkin:submitted', { iso_month })`)
 
 vyve-site `21bb6f3cd58fc3f628a67c60b5e619e106079d49` (new tree `9d0b495ab48bb4ffe281ee833e644bbb94d9e884`). Eleventh Layer 1c migration. Single publishing surface (`submitCheckin` at `monthly-checkin.html:728-810`), ASYMMETRIC fallback, NEW event name `monthly_checkin:submitted` (taxonomy ADD; doesn't exist pre-PM-40). **Fourth asymmetric-fallback migration in the campaign** after PM-35 (`workouts-builder.js`), PM-36 `deleteLog`, and PM-38 (settings.html persona). Same shape as PM-35 — single-evaluate pre-bus.
