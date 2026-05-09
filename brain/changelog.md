@@ -1,3 +1,56 @@
+## 2026-05-09 PM-38 (Layer 1c-9: settings.html persona switch → `bus.publish('persona:switched', ...)`)
+
+vyve-site `a0b98f17f2b2cc96995f66f8696b8e8864ec732f` (new tree `2689b819a4ca7bf3d8e3aa762a119d101a7dcaba`). Ninth Layer 1c migration. Single publishing surface (`savePersona` at `settings.html:1213-1258`), ASYMMETRIC fallback, NEW event name `persona:switched` (taxonomy ADD; doesn't exist pre-PM-38). **Third asymmetric-fallback migration** in the Layer 1c campaign after PM-35 (`workouts-builder.js`) and PM-36 (`deleteLog` in log-food.html). Pattern is now established enough to codify as a §23 hard rule rather than a per-commit footnote.
+
+**Pre-bus primitives at the publish site: ZERO.** No `invalidateHomeCache`, no `recordRecentActivity`, no `VYVEAchievements.evaluate`, no `VYVEBus.publish`. The pre-bus `savePersona` body simply chained three sequential `supaFetch` calls (members PATCH at L1224 → persona_switches POST at L1229 → ai_decisions POST at L1235), updated DOM elements, and self-busted its own `vyve_settings_cache` at L1247. Same shape as PM-36 `deleteLog` and PM-35 `workouts-builder.js` — third asymmetric-fallback migration in the campaign.
+
+**Real bug fix on the way through.** Pre-PM-38, a member who switched persona (e.g. SPARK → NOVA) saw stale per-persona protein-guidance copy on `nutrition.html` until next sign-in. Trace: `savePersona` PATCHes `members.persona`, but the `vyve_members_cache_<email>` cache (written by `auth.js:265` and `index.html:927`, read by `nutrition.html:708/896`) is never invalidated. `nutrition.html:842 populatePage()` reads `m.persona` from that cache to drive `renderInsight(pers, ...)` at L865 — the per-persona protein-guidance copy line. Without invalidation, the member sees their old persona's voice on the protein insight until the next home-page visit re-fetches and overwrites the cache. PM-38 closes this gap via the new `_markMembersCacheStale` subscriber on `index.html` (busts the key directly).
+
+**Pre-flight scope confirmation.** Whole-tree audit at HEAD `c1c731a1` (PM-37 ship). settings.html persona-switch publish site is the single `savePersona` function — no other functions touch `members.persona` writes (the `_currentPersona = _selectedPersona` reassignment at L1241 is local state only). Three table writes per call: members PATCH + persona_switches POST + ai_decisions POST. All three preserved verbatim — PM-38 is REFACTOR + race-fix only, no scope changes to the network writes themselves. Cache consumers identified: `vyve_members_cache_<email>` (read by nutrition.html, leaderboard.html does NOT carry persona — only `display_name_preference`), `vyve_home_v3_<email>` (carries persona in the prefetch SELECT but doesn't render it), `vyve_settings_cache` (already self-busted in savePersona body). PM-38 targets `vyve_members_cache_<email>` and `vyve_home_v3_<email>` for invalidation; `vyve_settings_cache` self-bust preserved unchanged.
+
+**Race-fix mechanic.** Same as PM-33/PM-34/PM-35/PM-36/PM-37: `bus.publish` lands BEFORE the three sequential supaFetch calls. Self-test 3.1 verifies `publish.ts < firstSupaFetch.ts`; self-test 3.2 verifies all three supaFetch calls fire in their original sequence (members PATCH → persona_switches POST → ai_decisions POST) after the publish. Subscribers stale caches optimistically; queue resolution decoupled from local UI propagation.
+
+**Subscribers wired.**
+
+- **`index.html` `_markHomeStale`** — extends source-agnostic to `persona:switched`. Eighth event on the same handler. The home cache itself doesn't render persona, but staling it forces a fresh re-fetch on next home visit, which re-populates `vyve_members_cache_<email>` via the auth.js prefetch chain at L922-931. Defence-in-depth alongside the direct members-cache bust below.
+
+- **`index.html` `_markMembersCacheStale`** (NEW handler in same DOMContentLoaded block) — busts `vyve_members_cache_<email>` directly so nutrition.html `populatePage` re-fetches members data with the fresh persona on next visit. Source-agnostic, idempotent (`localStorage.removeItem` is a no-op if the key is absent). Uses the envelope email (cross-tab safe) with current-user fallback. Subscribed to `persona:switched` only; no other events route through this handler.
+
+- **`engagement.html`** — NOT WIRED. Engagement scoring components (Activity / Consistency / Variety / Wellbeing) have no persona component. Verified via whole-tree grep + scoring-model audit. Logging persona changes does not change the engagement score. Self-test 4.3 verifies engagement-stale does NOT fire on persona:switched. Mirrors PM-37 weight:logged engagement non-touch — second Layer 1c migration where engagement.html is intentionally not extended.
+
+- **`nutrition.html` self-subscriber** (PM-37 pattern) — NOT WIRED for persona:switched. Persona switching is not an achievement event (no `weight tracker`-style track exists for persona changes). PM-37's self-subscribe pattern applies only when the publishing page owns an achievement journey for its event. Confirmed: zero `VYVEAchievements` references in settings.html. Self-test 4.4 verifies nutrition weight-eval does NOT fire on persona:switched.
+
+**bus.js script tag added to settings.html** between `auth.js` (L20) and `achievements.js` (L21) per PM-31 convention. **First new bus.js wiring since PM-37 (nutrition.html).**
+
+**Asymmetric fallback.** `!VYVEBus` path preserves pre-PM-38 zero-primitive semantics exactly. The bus path closes the cache-staleness gap via subscribers; the fallback intentionally does NOT add invalidate or evaluate, since pre-bus didn't fire them. Self-tests 5.1/5.2/5.3 verify all three states: !VYVEBus fires nothing extra; !VYVEBus path still fires the three supaFetch calls; VYVEBus path fires only publish + supaFetches (no inline primitives).
+
+**Schema.** `persona:switched`: `{ from_persona: string, to_persona: string }`. Both fields available at the publish site (already JSON-stringified for the `persona_switches` table at L1231). Future consumers can discriminate "switched away from NOVA" vs "switched into HAVEN" — useful for audit logging, persona-specific UI shifts, or forthcoming Phil-clinical-sign-off HAVEN promotion logic.
+
+**30 of 30 self-tests passing** in `/tmp/pm38_test.js` (10 groups, 320 lines):
+
+1. Bus API regression smoke (3)
+2. savePersona publish fan-out (4 envelope tests: count, event name, from_persona carries, to_persona carries)
+3. Race-fix verification (2: publish.ts < first supaFetch; all three supaFetches fire in order)
+4. Subscriber fan-out simulator (5: home-stale fires; members-cache-stale fires; localStorage key actually removed; engagement-stale doesn't fire; nutrition weight-eval doesn't fire)
+5. **Asymmetric fallback** (3: !VYVEBus fires nothing extra; !VYVEBus still fires supaFetches; VYVEBus path fires only publish + supaFetches)
+6. Cross-tab origin:remote (2: envelope preservation; remote drives same fan-out as local)
+7. Validation guards (2: same-persona no-op early-returns; empty selected early-returns)
+8. PM-30..37 regression (4: weight/cardio/food/habit events still drive their fan-outs; members-stale does NOT fire on them — event isolation)
+9. Schema enforcement (3: from_persona non-empty string; to_persona non-empty string; envelope email matches publisher)
+10. Event isolation (2: persona-cache-stale subscriber doesn't fire on cardio:logged or weight:logged)
+
+`node --check` clean on all 12 inline JS blocks across the three patched files (settings.html: 4 blocks, index.html: 8 blocks, sw.js: full file).
+
+**SW cache.** `vyve-cache-v2026-05-09-pm37-weight-a` → `vyve-cache-v2026-05-09-pm38-persona-a`.
+
+**Source-of-truth.** vyve-site pre-commit `c1c731a1df61e69871626794b06e4bd8b0e210b8` (PM-37 ship), post-commit `a0b98f17f2b2cc96995f66f8696b8e8864ec732f` (PM-38 ship), new tree `2689b819a4ca7bf3d8e3aa762a119d101a7dcaba`. Whole-tree audit per §23 PM-26 + typeof/docblock/function-def exclusions per PM-32 + PM-28 + asymmetric-fallback discipline per PM-35/PM-36/PM-38 + audit-count classification per PM-37. Post-commit verification: 9 marker presence checks across all 3 files via live-SHA fetch (8/9 directly + 1 manually verified after tighter scoping — the `publish-before-supaFetch` ordering check used global supaFetch position rather than savePersona-scoped). Live blob SHAs: settings.html `7a5d516451ac`, index.html `1676b9a2b8ef`, sw.js `ff400b30ecd1`.
+
+**NEW §23 hard rule codified this commit:** asymmetric-fallback discipline for cache-staleness gap migrations. Three asymmetric migrations in the campaign (PM-35 workouts-builder, PM-36 deleteLog, PM-38 persona) confirm the pattern is established, not an exception. The rule: when a publishing site has ZERO pre-bus primitives but the bus path is genuinely closing a cache-staleness bug, the asymmetric fallback (no inline primitives in the `!VYVEBus` else-branch) is the correct shape. The bug fix lives in subscribers; the fallback preserves pre-bus zero-primitive semantics exactly. Distinguishes from PM-35's broader "symmetric vs asymmetric" framing, which still applies as the pre-flight discriminator (what was firing pre-bus at this publish site?). PM-38 elevates this from a recurring pattern to a hard rule.
+
+**Audit-count delta vs post-PM-37 baseline (per PM-37 §23 audit-count classification rule).** Post-PM-38 counts at HEAD `a0b98f17`: invalidate `11` (unchanged — PM-38 added zero), record `8` (unchanged), evaluate `19` (unchanged), publish `14` (+1 — settings.html L1231-region adds `VYVEBus.publish('persona:switched', ...)`), subscribe `19` (+2 — index.html DOMContentLoaded block adds two subscribes for persona:switched: one to `_markHomeStale`, one to `_markMembersCacheStale`). Cumulative +1 publish, +2 subscribe, zero net change to the three publish-site primitives — consistent with asymmetric-fallback discipline (bus path adds publish + subscribers, fallback adds zero primitives).
+
+**Sequence after PM-38:** Nine Layer 1c migrations down (1c-1 through 1c-9), five to go (1c-10 → 1c-14). Past two-thirds by surface count. Diversity peak well behind us. Then option-(b) cleanup commit closes Layer 1. Next session = PM-39, likely 1c-10 (TBD which row — depends on taxonomy ordering; candidates include shared-workout, monthly-checkin, certificate, or one of the live-session pages).
+
 ## 2026-05-09 PM-37 (Layer 1c-8: nutrition.html weight log → `bus.publish('weight:logged', ...)`)
 
 vyve-site `c1c731a1df61e69871626794b06e4bd8b0e210b8` (new tree `8883b41348da3c8ad9ccbcacf372b801972a6af5`). Eighth Layer 1c migration. Single publishing surface (`saveWtLog` at `nutrition.html:631-673`), SYMMETRIC fallback, NEW event name `weight:logged` (taxonomy ADD; doesn't exist pre-PM-37). Smaller commit than PM-36 by design — one publishing surface, no two-event split, no PM-12-style outbox-cancellation logic to preserve. Closer in shape to PM-35 (`workouts-builder.js`) than PM-36 (`log-food.html` 3 surfaces).
