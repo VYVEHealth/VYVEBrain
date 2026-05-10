@@ -1,3 +1,72 @@
+## 2026-05-09 PM-43 (Layer 1c-14: `tracking.js` session view → `bus.publish('session:viewed', { kind: 'live' | 'replay', ... })`)
+
+vyve-site `1d36b30f3a0ab106c5bc04091abf6c9fd59156d3` (new tree `52d0a1e0866ed9bb1c07c94107ed073e94eb521d`). **FOURTEENTH and FINAL Layer 1c migration. Closes the campaign mechanic** (cleanup commit pending — option-(b) removal of legacy direct-call publishing surfaces).
+
+Single publish surface (tracking.js `onVisitStart`) handles both live and replay via `kind` discriminator — mirror of PM-39 wellbeing:logged kind:'live'/'flush' and PM-41 workout:shared kind discrimination. Per PM-36 schema discipline (same semantic action with variants → discriminator; distinct semantic actions → distinct event names): live and replay are the same semantic action ("member viewed a session for X minutes"); the only difference is which storage table the write lands in (`session_views` vs `replay_views`). One event with `kind` discriminator + `table` field for downstream consumers.
+
+**Largest single-commit wiring change in the campaign: 18 files in one atomic commit** — 1 publisher (tracking.js) + 2 subscriber wirings (index.html + engagement.html) + **14 page bus.js script tags** (12 shell pages following the body-after-auth.js pattern + 2 full-content outliers events-live.html + events-rp.html following the head-after-auth.js pattern) + sw.js cache bump. Yet the mechanic itself is the simplest of the three remaining campaign surfaces — one publish call site, two subscriber extensions, no race-fix subtlety (confirmer pattern, identical to PM-39/PM-41/PM-42). The 14-page wiring is mechanical (insert one script tag per shell file matching the established workouts.html pattern from PM-32).
+
+**REAL SCOPE-FIX on engagement cache.** Pre-PM-43 watching a session never busted `vyve_engagement_cache`; the Variety component (one of four 12.5pt scoring components on engagement.html, derived from activity types in last 7 days) includes session views in the server-side computation, so the cached score went stale until another event fired `_markEngagementStale` (could be days for a member who only watched sessions). PM-43 closes the gap. **First non-defensive engagement subscriber extension since PM-30..32** — earlier subscribers PM-37 weight, PM-38 persona, PM-40 monthly, PM-41 share, PM-42 import were all intentional non-touches; PM-43 is the first real engagement scope-fix in the back-end half of the campaign. 8th event on `_markEngagementStale`.
+
+**Race-fix mechanic — confirmer pattern.** Per PM-39 §23 race-fix-ordering rule: pre-bus shape fired the two primitives (`invalidateHomeCache` + `recordRecentActivity`) AFTER `await insertSession()` completed. Bus path preserves that ordering — publish only on confirmed initial insert, never speculatively. If `insertSession` fails (auth/network/rate-limit), no publish, no cache busts, semantics identical to pre-bus. Self-test 4.1 + 4.2 verify `publish.ts > fetch.ts` for both kinds.
+
+**Heartbeats untouched.** Heartbeats are PATCHes that update `minutes_watched` on the existing row, don't change today's session count, don't fire any primitive (pre or post-PM-43). The original tracking.js author was already careful about this — the comment block above the primitives explains "Heartbeats below are PATCHes that update minutes_watched on an existing row — they don't change today's session count, so we don't invalidate per-tick (240 invalidations per session would be silly)." That care is preserved by PM-43: only `onVisitStart`'s initial insert publishes, not the 15-second heartbeat. Self-test 8.1-8.3 verify only the initial insert publishes; heartbeat PATCH does not trigger a new publish.
+
+**Symmetric fallback (PM-33 lineage):** `!VYVEBus` path keeps `invalidateHomeCache` + `recordRecentActivity` primitives unchanged. Bus path replaces them with subscriber-driven cache busts:
+- `index._markHomeStale` handles home-cache (replaces inline `invalidateHomeCache(memberEmail)`)
+- `engagement._markEngagementStale` handles engagement cache (REAL SCOPE-FIX — pre-PM-43 this primitive was NOT fired by tracking.js, so engagement.html's cached Variety score went stale)
+- `recordRecentActivity('session', ...)` is preserved in subscriber chain implicitly via `_markHomeStale` (the home overlay reads from the home cache which the subscriber busts; the breadcrumb signals the same staleness via a different code path)
+
+**Subscribers wired:**
+- `index._markHomeStale` extends to `session:viewed` — **13th event** on the same handler. Defensive home-cache bust (the home dashboard's "today's session count" breadcrumb and engagement preview component both read from the home cache).
+- `engagement._markEngagementStale` extends to `session:viewed` — **8th event** on the same handler. **REAL SCOPE-FIX** as documented above.
+- No self-subscriber: sessions not on any achievement track today (no eval primitive at this surface pre or post-PM-43; the Track type "Live Sessions" exists with 30-activity milestone certificates, but the live evaluator runs from cron + page-load, not session-view-publish).
+
+**bus.js script tag wired on 14 pages — FIRST new bus.js wiring since PM-39.** Two patterns:
+1. **Shell pages (12)**: `checkin-live.html`, `education-live.html`, `mindfulness-live.html`, `podcast-live.html`, `therapy-live.html`, `workouts-live.html`, `yoga-live.html`, `education-rp.html`, `mindfulness-rp.html`, `podcast-rp.html`, `therapy-rp.html`, `yoga-rp.html` — bus.js inserted in body, after `<script src="/auth.js" defer>`, before `<script src="/tracking.js">`. Matches the workouts.html pattern from PM-32.
+2. **Full-content pages (2)**: `events-live.html`, `events-rp.html` — bus.js inserted in head, after `<script src="auth.js" defer>`, before `<script src="tracking.js" defer>`. Same logical position, different physical location due to these being older full-content pages (~17-23KB) vs the shell pages (~1.9KB) that delegate rendering to session-live.js / session-rp.js.
+
+Both functionally identical — `defer` scripts execute in source order after DOM parse, regardless of head/body placement. bus.js inserted **before** tracking.js in script source order so VYVEBus is defined when tracking.js's `DOMContentLoaded`-gated `onVisitStart` fires (tracking.js loads without `defer`; bus.js with `defer`; deferred scripts execute before DOMContentLoaded fires; safe ordering verified both at static analysis and via the self-test harness with module-load timing).
+
+**Schema:** `session:viewed`: `{ kind: 'live' | 'replay', category: string, session_name: string, table: 'session_views' | 'replay_views' }`. `kind` discriminator covers the live/replay variants. `category` carries the session category (Yoga, Pilates & Stretch / Mindfulness / Workouts / Therapy / Education / Events / Podcast / Check-In). `session_name` is the document title or category fallback. `table` field carries the actual storage destination — Layer 2 cross-tab cache coherence will care about this when wiring Realtime row events into the same bus.
+
+**50 of 50 self-tests passing** in `/tmp/pm43/test.js` (13 groups, ~430 lines):
+
+1. Bus API regression smoke (1)
+2. Live session publish kind:'live' fan-out (6)
+3. Replay session publish kind:'replay' fan-out (3)
+4. Race-fix on both kinds — publish.ts > fetch.ts (2)
+5. Subscriber fan-out — _markHomeStale + _markEngagementStale fire on both kinds (4)
+6. Symmetric fallback — !VYVEBus fires both pre-bus primitives (5: invalidateHomeCache + recordRecentActivity for both kinds plus NO publish without bus)
+7. Bus path replaces inline primitives (4: invalidateHomeCache NOT inline, recordRecentActivity NOT inline, _markHomeStale fires, publish fires)
+8. **Heartbeat semantics — only initial insert publishes** (3: first insert publishes once, PATCH heartbeat does not trigger new publish, fetch count tracks both)
+9. Cross-tab origin:remote (2)
+10. PM-30..42 regression (5: prior events still drive correctly; PM-43 IS a touch on engagement, unlike PM-37/38/40/41/42 non-touches)
+11. Schema enforcement (8: type checks, enum checks, kind↔table consistency for both kinds)
+12. Event isolation (2: workout:logged ≠ session:viewed and vice versa)
+13. Audit-count discipline documentation (5: per-surface call site preservation in fallback)
+
+`node --check` clean on tracking.js + sw.js + 8 inline blocks in index.html + 5 inline blocks in engagement.html + inline blocks in yoga-live.html (canonical shell) + events-live.html (canonical full-content).
+
+**SW cache.** `vyve-cache-v2026-05-09-pm42-import-a` → `vyve-cache-v2026-05-09-pm43-session-a`.
+
+**Source-of-truth.** vyve-site pre-commit `b053cd8ac11bebfc783884e088a7b6f6ca4ce740` (PM-42 ship), post-commit `1d36b30f3a0ab106c5bc04091abf6c9fd59156d3` (PM-43 ship), new tree `52d0a1e0866ed9bb1c07c94107ed073e94eb521d`. Whole-tree audit per §23 PM-26 + symmetric-fallback per PM-33/PM-38 + per-surface race-fix ordering per PM-39 + audit-count per PM-37/PM-40 + schema discipline per PM-36 + multi-kind-discriminator per PM-39/PM-41/PM-43. Post-commit verification: 13/13 markers presence checks across the 8 critical files (tracking.js + index.html + engagement.html + sw.js + 4 sample pages from each pattern).
+
+Live blob SHAs (post-PM-43): tracking.js `33d451ce9784`, index.html `5ba601e35c26`, engagement.html `74550ce6e99c`, sw.js `b4bbdd9b9b06`, yoga-live.html `1413820566aa`, yoga-rp.html `a71b0b7b8851`, events-live.html `e5e59a500e25`, events-rp.html `02050cf009a5`.
+
+**Audit-count delta vs post-PM-42 baseline (HEAD `b053cd8a` → HEAD `1d36b30f`).**
+- `invalidateHomeCache(` **11** — unchanged (preserved in `!VYVEBus` else-branch per PM-40 audit-count classification rule)
+- `recordRecentActivity(` **8** — unchanged (preserved in `!VYVEBus` else-branch)
+- `VYVEAchievements.evaluate(` **19** — unchanged (no eval primitive at tracking.js pre or post-PM-43)
+- `VYVEBus.publish(` **22 → 23** (+1 new VYVEBus.publish call site for `session:viewed`)
+- `VYVEBus.subscribe(` **27 → 29** (+2: index._markHomeStale + engagement._markEngagementStale extensions)
+
+Cumulative bus surface across PM-30..PM-43: **23 publishers, 29 subscribers**.
+
+**LAYER 1c CAMPAIGN COMPLETE — 14/14 surfaces shipped** (PM-30..PM-43, twelve calendar weeks of work compressed into three sessions on 09 May 2026).
+
+**Next: option-(b) cleanup commit closes Layer 1.** The cleanup removes the three legacy direct-call publishing surfaces (`VYVEData.invalidateHomeCache`, `VYVEData.recordRecentActivity`, `VYVEAchievements.evaluate`) from publishing sites. They remain available as subscriber-internal helpers (where `_markHomeStale` etc. delegate to the underlying cache-bust mechanic) and in `!VYVEBus` fallback else-branches per PM-38 fallback discipline. PM-30 §23 rule transitions from option (a) — "preserve everything in fallback else-branches indefinitely" — to option (b) — "the bus is the production path; fallback else-branches stay only as resilience against bus.js load failure." This is a single dedicated commit, deferred to the next session for full attention. Once shipped, **Layer 1 closes** and Layer 2 (cross-tab/cross-device cache coherence via Supabase Realtime + storage events into the same bus) opens.
+
 ## 2026-05-09 PM-42 (Layer 1c-13: `workouts-programme.js` `confirmImportPlan` → `bus.publish('programme:imported', ...)` + `bus.publish('workout:logged', { source: 'builder' })`)
 
 vyve-site `b053cd8ac11bebfc783884e088a7b6f6ca4ce740` (new tree `3d48421d939aaec10fe606023fa840342d590853`). Thirteenth Layer 1c migration. **Single function, two publish sites, two semantically distinct events** — first migration where one function emits two different event names gated on a runtime branch. Mirrors PM-39 (one function, two surfaces) but with two events instead of one event with discriminator, per PM-36 schema discipline (semantically distinct branches → distinct event names).

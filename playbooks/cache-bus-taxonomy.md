@@ -344,7 +344,13 @@ After 1c-14, all three legacy surfaces become dead. Final cleanup commit removes
 | 1c-12 | PM-41 | workouts-session.js shareWorkout + shareCustomWorkout, workouts-programme.js shareProgramme | `workout:shared` kind:'session'/'custom'/'programme' | matches taxonomy 1c-14 (early ship); third surface `shareCustomWorkout` was uncalled-out in original taxonomy |
 | 1c-13 | PM-42 | workouts-programme.js confirmImportPlan | `programme:imported` (NEW) + `workout:logged source:'builder'` (PM-35 reuse) | **DOES NOT MATCH ORIGINAL TAXONOMY** — original 1c-13 row was `tracking.js session:viewed` (now 1c-14); certificate had no row. PM-42 dropped certificate from campaign (server-side cron-driven write, §23 PM-42 rule); slot repurposed for `programme:imported` (real bug fix surface) |
 
-**Remaining (1c-14):** session-live.js (shared by 8 live-* pages) → likely `session:viewed` per original taxonomy 1c-13 slot. Most complex of the campaign, intentionally last.
+**1c-14 PM-43 (shipped 09 May 2026):** tracking.js onVisitStart → `session:viewed` kind:'live'/'replay' (with `table` field). **Pre-flight correction:** actual surface was tracking.js (not session-live.js — session-live.js is a consumer that calls tracking.js, not a publisher). One publish surface in tracking.js handles both live + replay via the `table` variable. 14 new bus.js script tags wired (12 shell + 2 full-content patterns). REAL engagement scope-fix (8th _markEngagementStale event — first non-defensive engagement extension since PM-30..32). Symmetric fallback. Heartbeats untouched (only initial insert publishes, not the 15s heartbeat PATCH).
+
+**LAYER 1c CAMPAIGN COMPLETE — 14/14 surfaces shipped (PM-30..PM-43, 09 May 2026).**
+
+**Cumulative bus surface PM-30..PM-43:** 23 publishers (call sites; ~12 distinct event names), 29 subscribers. Audit-count baseline at HEAD `1d36b30f`: invalidate 11, record 8, evaluate 19, publish 23, subscribe 29.
+
+**Next: PM-44 cleanup commit closes Layer 1.** Removes legacy direct-call publishing surfaces. Once shipped, this taxonomy file becomes OBSOLETE per `playbooks/1c-migration-template.md` stop-date (codified at PM-37-Setup).
 
 **Editorial corrections to original taxonomy (codified during PM-30..PM-42):**
 
