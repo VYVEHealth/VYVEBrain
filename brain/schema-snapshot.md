@@ -2,13 +2,13 @@
 
 > Auto-generated from live Supabase project `ixjfklpckgxrwjlfsaaz`.
 > DO NOT EDIT — overwritten weekly by the `schema-snapshot-refresh` Edge Function.
-> Last refresh: 2026-05-03T03:00:18.626Z
+> Last refresh: 2026-05-10T03:00:21.443Z
 
-**Totals:** 77 tables (77 with RLS) · 925 columns · 28 FKs · 161 triggers · 40 public functions · 83 RLS policies · 190 indexes · 14 cron jobs
+**Totals:** 85 tables (85 with RLS) · 1017 columns · 28 FKs · 195 triggers · 60 public functions · 87 RLS policies · 219 indexes · 20 cron jobs
 
 ---
 
-## Tables (77)
+## Tables (85)
 
 ### `achievement_metrics` · RLS
 
@@ -75,7 +75,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `activity_dedupe_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `activity_dedupe_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `activity_dedupe_pkey`
@@ -139,7 +139,7 @@
 | `created_at` | timestamp with time zone | NO | now() |  |  |
 
 **RLS policies:**
-- `member_own_decisions` (SELECT, roles: public) — (auth.email() = member_email)
+- `member_own_decisions` (SELECT, roles: public) — (( SELECT auth.email() AS email) = member_email)
 - `service_insert_decisions` (INSERT, roles: public) — — / CHECK: true
 
 **Indexes:**
@@ -161,7 +161,7 @@
 | `decision_log` | jsonb | YES |  |  |  |
 
 **Check constraints:**
-- `ai_interactions_triggered_by_check`: CHECK ((triggered_by = ANY (ARRAY['weekly_checkin'::text, 'onboarding'::text, 'running_plan'::text, 'milestone'::text, 'manual'::text])))
+- `ai_interactions_triggered_by_check`: CHECK ((triggered_by = ANY (ARRAY['weekly_checkin'::text, 'onboarding'::text, 'running_plan'::text, 'milestone'::text, 'manual'::text, 're_engagement'::text])))
 
 **Foreign keys:**
 - `member_email` → `members.email` (`ai_interactions_member_email_fkey`)
@@ -170,7 +170,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `ai_interactions_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `ai_interactions_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `ai_interactions_pkey`
@@ -192,6 +192,7 @@
 | `distance_km` | numeric | YES |  |  |  |
 | `logged_at` | timestamp with time zone | YES | now() |  |  |
 | `source` | text | NO | 'manual'::text |  |  |
+| `client_id` | uuid | YES |  |  |  |
 
 **Check constraints:**
 - `cardio_time_of_day_check`: CHECK ((time_of_day = ANY (ARRAY['morning'::text, 'afternoon'::text, 'evening'::text, 'night'::text])))
@@ -201,6 +202,7 @@
 
 **Triggers:**
 - `auto_time_fields_cardio` — BEFORE INSERT
+- `charity_count_cardio` — AFTER DELETE/INSERT
 - `counter_cardio` — AFTER INSERT
 - `enforce_cap_cardio` — BEFORE INSERT
 - `zz_lc_email` — BEFORE INSERT/UPDATE
@@ -208,9 +210,10 @@
 - `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
-- `cardio_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `cardio_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
+- `cardio_member_client_uniq`
 - `cardio_pkey`
 - `idx_cardio_email_logged_at`
 - `idx_cardio_logged_at`
@@ -242,7 +245,7 @@
 - `cc_clients_updated_at` — BEFORE UPDATE
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — ((auth.email() = created_by) OR (auth.email() = 'team@vyvehealth.co.uk'::text)) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — ((( SELECT auth.email() AS email) = created_by) OR (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_clients_pkey`
@@ -261,7 +264,7 @@
 | `created_at` | timestamp with time zone | YES | now() |  |  |
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_decisions_pkey`
@@ -280,7 +283,7 @@
 | `created_at` | timestamp with time zone | YES | now() |  |  |
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_documents_pkey`
@@ -307,7 +310,7 @@
 - `cc_episodes_updated_at` — BEFORE UPDATE
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_episodes_pkey`
@@ -327,7 +330,7 @@
 | `created_at` | timestamp with time zone | YES | now() |  |  |
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_finance_pkey`
@@ -354,7 +357,7 @@
 - `cc_grants_updated_at` — BEFORE UPDATE
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_grants_pkey`
@@ -377,7 +380,7 @@
 - `cc_intel_type_check`: CHECK ((type = ANY (ARRAY['grants'::text, 'legislation'::text, 'research'::text, 'competitors'::text, 'market'::text, 'daily'::text])))
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_intel_pkey`
@@ -407,7 +410,7 @@
 - `cc_investors_updated_at` — BEFORE UPDATE
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_investors_pkey`
@@ -433,7 +436,7 @@
 - `cc_invoices_updated_at` — BEFORE UPDATE
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_invoices_pkey`
@@ -459,7 +462,7 @@
 - `cc_knowledge_updated_at` — BEFORE UPDATE
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_knowledge_pkey`
@@ -488,7 +491,7 @@
 - `cc_leads_updated_at` — BEFORE UPDATE
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_leads_pkey`
@@ -516,7 +519,7 @@
 - `cc_okrs_updated_at` — BEFORE UPDATE
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_okrs_pkey`
@@ -538,7 +541,7 @@
 | `updated_at` | timestamp with time zone | YES | now() |  |  |
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_partners_pkey`
@@ -565,7 +568,7 @@
 - `cc_posts_updated_at` — BEFORE UPDATE
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_posts_pkey`
@@ -587,7 +590,7 @@
 - `cc_revenue_type_check`: CHECK ((type = ANY (ARRAY['recurring'::text, 'one-off'::text, 'grant'::text])))
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_revenue_pkey`
@@ -607,7 +610,7 @@
 | `created_at` | timestamp with time zone | YES | now() |  |  |
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_sessions_pkey`
@@ -626,7 +629,7 @@
 - `cc_swot_quadrant_check`: CHECK ((quadrant = ANY (ARRAY['s'::text, 'w'::text, 'o'::text, 't'::text])))
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_swot_pkey`
@@ -654,7 +657,7 @@
 - `cc_tasks_updated_at` — BEFORE UPDATE
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (auth.email() = 'team@vyvehealth.co.uk'::text) / CHECK: (auth.email() = 'team@vyvehealth.co.uk'::text)
+- `cc_team_only` (ALL, roles: public) — (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text) / CHECK: (( SELECT auth.email() AS email) = 'team@vyvehealth.co.uk'::text)
 
 **Indexes:**
 - `cc_tasks_pkey`
@@ -683,7 +686,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `certificates_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `certificates_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `certificates_pkey`
@@ -727,10 +730,11 @@
 - `member_email` → `members.email` (`custom_workouts_member_email_fkey`)
 
 **Triggers:**
+- `custom_workouts_canonical_normalise_trg` — BEFORE INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `custom_workouts_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `custom_workouts_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `custom_workouts_pkey`
@@ -748,6 +752,7 @@
 | `notes` | text | YES |  |  |  |
 | `habit_id` | uuid | YES |  |  | ✓ |
 | `habit_completed` | boolean | NO | true |  |  |
+| `client_id` | uuid | YES |  |  |  |
 
 **Check constraints:**
 - `daily_habits_time_of_day_check`: CHECK ((time_of_day = ANY (ARRAY['morning'::text, 'afternoon'::text, 'evening'::text, 'night'::text])))
@@ -758,6 +763,7 @@
 
 **Triggers:**
 - `auto_time_fields_daily_habits` — BEFORE INSERT
+- `charity_count_daily_habits` — AFTER DELETE/INSERT
 - `counter_daily_habits` — AFTER INSERT
 - `enforce_cap_daily_habits` — BEFORE INSERT
 - `zz_lc_email` — BEFORE INSERT/UPDATE
@@ -765,9 +771,10 @@
 - `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
-- `daily_habits_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `daily_habits_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
+- `daily_habits_member_client_uniq`
 - `daily_habits_member_habit_date_unique`
 - `daily_habits_pkey`
 - `idx_daily_habits_email_logged_at`
@@ -791,7 +798,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `employer_members_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `employer_members_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `employer_members_member_email_employer_name_key`
@@ -822,13 +829,32 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `engagement_emails_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `engagement_emails_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `engagement_emails_pkey`
 - `idx_engagement_emails_member_email`
 - `idx_engagement_emails_stream_sent`
 - `uq_engagement_email`
+
+### `exercise_canonical_names` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `alias_key` | text | NO |  | ✓ |  |
+| `canonical_name` | text | NO |  |  |  |
+| `source` | text | NO | 'manual'::text |  |  |
+| `similarity_score` | numeric | YES |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `exercise_canonical_names_alias_key_check`: CHECK ((alias_key = lower(TRIM(BOTH FROM alias_key))))
+
+**RLS policies:**
+- `exercise_canonical_names_select` (SELECT, roles: authenticated) — true
+
+**Indexes:**
+- `exercise_canonical_names_pkey`
 
 ### `exercise_logs` · RLS
 
@@ -843,20 +869,40 @@
 | `weight_kg` | numeric | YES |  |  |  |
 | `notes` | text | YES |  |  |  |
 | `logged_at` | timestamp with time zone | YES | now() |  |  |
+| `client_id` | uuid | YES |  |  |  |
 
 **Foreign keys:**
 - `member_email` → `members.email` (`exercise_logs_member_email_fkey`)
 
 **Triggers:**
+- `exercise_logs_canonical_normalise_trg` — BEFORE INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `exercise_logs_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `exercise_logs_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
+- `exercise_logs_member_client_uniq`
 - `exercise_logs_pkey`
 - `idx_exercise_logs_member_date`
 - `idx_exercise_logs_member_exercise`
+
+### `exercise_name_misses` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `exercise_name` | text | NO |  |  |  |
+| `observed_at` | timestamp with time zone | NO | now() |  |  |
+| `resolved` | boolean | NO | false |  |  |
+
+**RLS policies:** _(none — service-role only)_
+
+**Indexes:**
+- `exercise_name_misses_pkey`
+- `idx_exercise_name_misses_by_name`
+- `idx_exercise_name_misses_unresolved`
 
 ### `exercise_notes` · RLS
 
@@ -869,10 +915,11 @@
 | `updated_at` | timestamp with time zone | NO | now() |  |  |
 
 **Triggers:**
+- `exercise_notes_canonical_normalise_trg` — BEFORE INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `members can manage own notes` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `members can manage own notes` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `exercise_notes_exercise_idx`
@@ -893,14 +940,88 @@
 - `member_email` → `members.email` (`exercise_swaps_member_email_fkey`)
 
 **Triggers:**
+- `exercise_swaps_orig_canonical_normalise_trg` — BEFORE INSERT/UPDATE
+- `exercise_swaps_repl_canonical_normalise_trg` — BEFORE INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `exercise_swaps_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `exercise_swaps_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `exercise_swaps_member_email_original_exercise_key`
 - `exercise_swaps_pkey`
+
+### `gdpr_erasure_requests` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `requested_at` | timestamp with time zone | NO | now() |  |  |
+| `requested_by` | text | NO |  |  |  |
+| `request_kind` | text | NO |  |  |  |
+| `reason` | text | YES |  |  |  |
+| `scheduled_for` | timestamp with time zone | NO |  |  |  |
+| `cancel_token` | text | NO |  |  | ✓ |
+| `cancelled_at` | timestamp with time zone | YES |  |  |  |
+| `cancelled_by` | text | YES |  |  |  |
+| `cancellation_reason` | text | YES |  |  |  |
+| `executed_at` | timestamp with time zone | YES |  |  |  |
+| `execution_summary` | jsonb | YES |  |  |  |
+| `stripe_handled` | boolean | NO | false |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `attempt_count` | integer | NO | 0 |  |  |
+| `queued_at` | timestamp with time zone | YES |  |  |  |
+| `failure_reason` | text | YES |  |  |  |
+| `failed_at` | timestamp with time zone | YES |  |  |  |
+
+**Check constraints:**
+- `gdpr_erasure_requests_request_kind_check`: CHECK ((request_kind = ANY (ARRAY['member_self'::text, 'admin'::text])))
+
+**Triggers:**
+- `zz_lc_email` — BEFORE INSERT/UPDATE
+
+**RLS policies:** _(none — service-role only)_
+
+**Indexes:**
+- `gdpr_erasure_requests_cancel_token_key`
+- `gdpr_erasure_requests_due`
+- `gdpr_erasure_requests_pending_unique`
+- `gdpr_erasure_requests_pkey`
+
+### `gdpr_export_requests` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `requested_by` | text | NO |  |  |  |
+| `request_kind` | text | NO |  |  |  |
+| `requested_at` | timestamp with time zone | NO | now() |  |  |
+| `queued_at` | timestamp with time zone | YES |  |  |  |
+| `delivered_at` | timestamp with time zone | YES |  |  |  |
+| `failed_at` | timestamp with time zone | YES |  |  |  |
+| `failure_reason` | text | YES |  |  |  |
+| `attempt_count` | integer | NO | 0 |  |  |
+| `file_path` | text | YES |  |  |  |
+| `signed_url_expires_at` | timestamp with time zone | YES |  |  |  |
+| `size_bytes` | bigint | YES |  |  |  |
+| `tables_included` | integer | YES |  |  |  |
+| `brevo_message_id` | text | YES |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `gdpr_export_requests_request_kind_check`: CHECK ((request_kind = ANY (ARRAY['member_self'::text, 'admin'::text])))
+
+**Triggers:**
+- `zz_lc_email` — BEFORE INSERT/UPDATE
+
+**RLS policies:** _(none — service-role only)_
+
+**Indexes:**
+- `gdpr_export_requests_by_member`
+- `gdpr_export_requests_pending`
+- `gdpr_export_requests_pkey`
 
 ### `habit_library` · RLS
 
@@ -923,10 +1044,10 @@
 
 **RLS policies:**
 - `habit_library_public_read` (SELECT, roles: public) — true
-- `members_delete_own_custom_habits` (DELETE, roles: public) — (created_by = auth.email())
-- `members_insert_own_custom_habits` (INSERT, roles: public) — — / CHECK: (created_by = auth.email())
-- `members_select_own_custom_habits` (SELECT, roles: public) — (created_by = auth.email())
-- `members_update_own_custom_habits` (UPDATE, roles: public) — (created_by = auth.email()) / CHECK: (created_by = auth.email())
+- `members_delete_own_custom_habits` (DELETE, roles: public) — (created_by = ( SELECT auth.email() AS email))
+- `members_insert_own_custom_habits` (INSERT, roles: authenticated) — — / CHECK: (created_by = ( SELECT auth.email() AS email))
+- `members_select_own_custom_habits` (SELECT, roles: public) — (created_by = ( SELECT auth.email() AS email))
+- `members_update_own_custom_habits` (UPDATE, roles: public) — (created_by = ( SELECT auth.email() AS email)) / CHECK: (created_by = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `habit_library_created_by_idx`
@@ -991,8 +1112,8 @@
 - `metric_slug` → `achievement_metrics.slug` (`member_achievements_metric_slug_fkey`)
 
 **RLS policies:**
-- `member_read_own_achievements` (SELECT, roles: authenticated) — (lower(member_email) = lower(COALESCE(auth.email(), ''::text)))
-- `member_update_own_seen` (UPDATE, roles: authenticated) — (lower(member_email) = lower(COALESCE(auth.email(), ''::text))) / CHECK: (lower(member_email) = lower(COALESCE(auth.email(), ''::text)))
+- `member_read_own_achievements` (SELECT, roles: authenticated) — (lower(member_email) = lower(COALESCE(( SELECT auth.email() AS email), ''::text)))
+- `member_update_own_seen` (UPDATE, roles: authenticated) — (lower(member_email) = lower(COALESCE(( SELECT auth.email() AS email), ''::text))) / CHECK: (lower(member_email) = lower(COALESCE(( SELECT auth.email() AS email), ''::text)))
 
 **Indexes:**
 - `idx_member_achievements_email`
@@ -1073,7 +1194,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `member_habits_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `member_habits_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `member_habits_email_idx`
@@ -1100,7 +1221,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `member_health_connections_self_select` (SELECT, roles: public) — (auth.email() = member_email)
+- `member_health_connections_self_select` (SELECT, roles: public) — (( SELECT auth.email() AS email) = member_email)
 
 **Indexes:**
 - `member_health_connections_active_idx`
@@ -1120,7 +1241,7 @@
 | `ingested_at` | timestamp with time zone | NO | now() |  |  |
 
 **RLS policies:**
-- `members read own daily health` (SELECT, roles: public) — (auth.email() = member_email)
+- `members read own daily health` (SELECT, roles: public) — (( SELECT auth.email() AS email) = member_email)
 
 **Indexes:**
 - `member_health_daily_lookup_idx`
@@ -1155,7 +1276,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `member_health_samples_self_select` (SELECT, roles: public) — (auth.email() = member_email)
+- `member_health_samples_self_select` (SELECT, roles: public) — (( SELECT auth.email() AS email) = member_email)
 
 **Indexes:**
 - `member_health_samples_member_email_source_native_uuid_key`
@@ -1188,7 +1309,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `member_health_write_ledger_self_select` (SELECT, roles: public) — (auth.email() = member_email)
+- `member_health_write_ledger_self_select` (SELECT, roles: public) — (( SELECT auth.email() AS email) = member_email)
 
 **Indexes:**
 - `member_health_write_ledger_native_uuid_idx`
@@ -1255,6 +1376,16 @@
 | `checkins_this_month` | integer | NO | 0 |  |  |
 | `last_activity_at` | timestamp with time zone | YES |  |  |  |
 | `recent_checkins_30d` | integer | NO | 0 |  |  |
+| `habits_this_week` | integer | NO | 0 |  |  |
+| `workouts_this_week` | integer | NO | 0 |  |  |
+| `cardio_this_week` | integer | NO | 0 |  |  |
+| `sessions_this_week` | integer | NO | 0 |  |  |
+| `checkins_this_week` | integer | NO | 0 |  |  |
+| `last_habit_at` | timestamp with time zone | YES |  |  |  |
+| `last_workout_at` | timestamp with time zone | YES |  |  |  |
+| `last_cardio_at` | timestamp with time zone | YES |  |  |  |
+| `last_session_at` | timestamp with time zone | YES |  |  |  |
+| `last_checkin_at` | timestamp with time zone | YES |  |  |  |
 
 **Foreign keys:**
 - `member_email` → `members.email` (`member_home_state_member_email_fkey`)
@@ -1263,10 +1394,11 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `member_home_state_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
-- `member_home_state_select_own` (SELECT, roles: authenticated) — (lower(member_email) = lower(auth.email()))
+- `member_home_state_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
+- `member_home_state_select_own` (SELECT, roles: authenticated) — (lower(member_email) = lower(( SELECT auth.email() AS email)))
 
 **Indexes:**
+- `member_home_state_last_activity_at_idx`
 - `member_home_state_pkey`
 
 ### `member_notifications` · RLS
@@ -1286,7 +1418,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `member own notifications` (ALL, roles: public) — (auth.email() = member_email) / CHECK: (auth.email() = member_email)
+- `member own notifications` (ALL, roles: public) — (( SELECT auth.email() AS email) = member_email) / CHECK: (( SELECT auth.email() AS email) = member_email)
 
 **Indexes:**
 - `idx_member_notifications_created_at`
@@ -1323,7 +1455,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `member_running_plans_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `member_running_plans_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `member_running_plans_email_idx`
@@ -1508,9 +1640,7 @@
 - `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
-- `members_own_data` (ALL, roles: public) — (email = auth.email()) / CHECK: (email = auth.email())
-- `members_select_own` (SELECT, roles: public) — (auth.email() = email)
-- `members_update_own` (UPDATE, roles: public) — (auth.email() = email) / CHECK: (auth.email() = email)
+- `members_own_data` (ALL, roles: public) — (email = ( SELECT auth.email() AS email)) / CHECK: (email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `members_email_key`
@@ -1561,9 +1691,9 @@
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
-- `monthly_checkins_member_insert` (INSERT, roles: public) — — / CHECK: (auth.email() = member_email)
-- `monthly_checkins_member_select` (SELECT, roles: public) — (auth.email() = member_email)
-- `monthly_checkins_member_update` (UPDATE, roles: public) — (auth.email() = member_email) / CHECK: (auth.email() = member_email)
+- `monthly_checkins_member_insert` (INSERT, roles: authenticated) — — / CHECK: (( SELECT auth.email() AS email) = member_email)
+- `monthly_checkins_member_select` (SELECT, roles: public) — (( SELECT auth.email() AS email) = member_email)
+- `monthly_checkins_member_update` (UPDATE, roles: public) — (( SELECT auth.email() AS email) = member_email) / CHECK: (( SELECT auth.email() AS email) = member_email)
 
 **Indexes:**
 - `idx_monthly_checkins_created_at`
@@ -1621,6 +1751,7 @@
 | `serving_size_g` | numeric | YES |  |  |  |
 | `serving_unit` | text | YES |  |  |  |
 | `servings` | numeric | NO | 1 |  |  |
+| `client_id` | uuid | YES |  |  |  |
 
 **Check constraints:**
 - `nutrition_logs_meal_type_check`: CHECK ((meal_type = ANY (ARRAY['breakfast'::text, 'lunch'::text, 'dinner'::text, 'snacks'::text])))
@@ -1632,10 +1763,11 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `nutrition_logs_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `nutrition_logs_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `idx_nutrition_logs_email_date`
+- `nutrition_logs_member_client_uniq`
 - `nutrition_logs_pkey`
 
 ### `nutrition_my_foods` · RLS
@@ -1664,12 +1796,33 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `nutrition_my_foods_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `nutrition_my_foods_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `idx_nutrition_my_foods_email`
 - `nutrition_my_foods_member_email_food_name_brand_key`
 - `nutrition_my_foods_pkey`
+
+### `perf_telemetry` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | bigint | NO | nextval('perf_telemetry_id_seq'::regclass) | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `page` | text | NO |  |  |  |
+| `metric_name` | text | NO |  |  |  |
+| `metric_value` | double precision | NO |  |  |  |
+| `nav_type` | text | YES |  |  |  |
+| `ua_brief` | text | YES |  |  |  |
+| `ts` | timestamp with time zone | NO | now() |  |  |
+
+**RLS policies:**
+- `perf_telemetry_service_role_all` (ALL, roles: anon,authenticated) — (( SELECT auth.role() AS role) = 'service_role'::text) / CHECK: (( SELECT auth.role() AS role) = 'service_role'::text)
+
+**Indexes:**
+- `idx_perf_telemetry_page_metric_ts`
+- `idx_perf_telemetry_ts`
+- `perf_telemetry_pkey`
 
 ### `persona_switches` · RLS
 
@@ -1689,7 +1842,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `persona_switches_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `persona_switches_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `persona_switches_pkey`
@@ -1750,6 +1903,20 @@
 - `idx_platform_alerts_recent`
 - `idx_platform_alerts_unresolved`
 - `platform_alerts_pkey`
+
+### `platform_counters` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `counter_key` | text | NO |  | ✓ |  |
+| `counter_value` | bigint | NO | 0 |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**RLS policies:**
+- `platform_counters_service_only` (ALL, roles: public) — false
+
+**Indexes:**
+- `platform_counters_pkey`
 
 ### `platform_metrics_daily` · RLS
 
@@ -1823,7 +1990,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `member own push subscriptions` (ALL, roles: public) — (auth.email() = member_email) / CHECK: (auth.email() = member_email)
+- `member own push subscriptions` (ALL, roles: public) — (( SELECT auth.email() AS email) = member_email) / CHECK: (( SELECT auth.email() AS email) = member_email)
 
 **Indexes:**
 - `idx_push_subscriptions_member_email`
@@ -1857,7 +2024,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `member can manage own native push token` (ALL, roles: public) — (auth.email() = member_email) / CHECK: (auth.email() = member_email)
+- `member can manage own native push token` (ALL, roles: public) — (( SELECT auth.email() AS email) = member_email) / CHECK: (( SELECT auth.email() AS email) = member_email)
 
 **Indexes:**
 - `push_subscriptions_native_active_member_idx`
@@ -1879,7 +2046,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `qa_submissions_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `qa_submissions_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `qa_submissions_pkey`
@@ -1909,6 +2076,7 @@
 
 **Triggers:**
 - `auto_time_fields_replay_views` — BEFORE INSERT
+- `charity_count_replay_views` — AFTER DELETE/INSERT
 - `enforce_cap_replay_views` — BEFORE INSERT
 - `replay_views_cert_count_trigger` — AFTER DELETE/INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
@@ -1916,7 +2084,7 @@
 - `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
-- `replay_views_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `replay_views_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `idx_replay_views_email_logged_at`
@@ -1942,13 +2110,40 @@
 | `use_count` | integer | YES | 1 |  |  |
 
 **RLS policies:**
-- `running_plan_cache_public_insert` (INSERT, roles: public) — — / CHECK: true
-- `running_plan_cache_public_read` (SELECT, roles: public) — true
-- `running_plan_cache_public_update` (UPDATE, roles: public) — true / CHECK: true
+- `running_plan_cache_authenticated_insert` (INSERT, roles: authenticated) — — / CHECK: true
+- `running_plan_cache_authenticated_read` (SELECT, roles: authenticated) — true
+- `running_plan_cache_authenticated_update` (UPDATE, roles: authenticated) — true / CHECK: true
 
 **Indexes:**
 - `plan_cache_cache_key_key`
 - `plan_cache_pkey`
+
+### `scheduled_pushes` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | bigint | NO | nextval('scheduled_pushes_id_seq'::regclass) | ✓ |  |
+| `member_email` | text | NO |  |  | ✓ |
+| `fire_at` | timestamp with time zone | NO |  |  |  |
+| `type` | text | NO |  |  |  |
+| `title` | text | NO |  |  |  |
+| `body` | text | NO |  |  |  |
+| `data` | jsonb | NO | '{}'::jsonb |  |  |
+| `dedupe_key` | text | NO |  |  | ✓ |
+| `fired_at` | timestamp with time zone | YES |  |  |  |
+| `cancelled_at` | timestamp with time zone | YES |  |  |  |
+| `last_error` | text | YES |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**RLS policies:**
+- `scheduled_pushes_self_insert` (INSERT, roles: authenticated) — — / CHECK: (( SELECT auth.email() AS email) = member_email)
+- `scheduled_pushes_self_select` (SELECT, roles: public) — (( SELECT auth.email() AS email) = member_email)
+- `scheduled_pushes_self_update` (UPDATE, roles: public) — (( SELECT auth.email() AS email) = member_email)
+
+**Indexes:**
+- `idx_scheduled_pushes_due`
+- `scheduled_pushes_dedupe`
+- `scheduled_pushes_pkey`
 
 ### `service_catalogue` · RLS
 
@@ -1992,8 +2187,8 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `members can insert chat` (INSERT, roles: public) — — / CHECK: (auth.email() = member_email)
-- `session_chat_authenticated_read` (SELECT, roles: public) — (auth.role() = 'authenticated'::text)
+- `members can insert chat` (INSERT, roles: authenticated) — — / CHECK: (( SELECT auth.email() AS email) = member_email)
+- `session_chat_authenticated_read` (SELECT, roles: public) — (( SELECT auth.role() AS role) = 'authenticated'::text)
 
 **Indexes:**
 - `session_chat_pkey`
@@ -2024,6 +2219,7 @@
 
 **Triggers:**
 - `auto_time_fields_session_views` — BEFORE INSERT
+- `charity_count_session_views` — AFTER DELETE/INSERT
 - `counter_sessions` — AFTER INSERT
 - `enforce_cap_session_views` — BEFORE INSERT
 - `session_views_cert_count_trigger` — AFTER DELETE/INSERT/UPDATE
@@ -2032,7 +2228,7 @@
 - `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
-- `session_views_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `session_views_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `idx_session_views_email_logged_at`
@@ -2060,9 +2256,13 @@
 **Foreign keys:**
 - `shared_by` → `members.email` (`shared_workouts_shared_by_fkey`)
 
+**Triggers:**
+- `shared_workouts_programme_canonical_normalise_trg` — BEFORE INSERT/UPDATE
+- `shared_workouts_session_canonical_normalise_trg` — BEFORE INSERT/UPDATE
+
 **RLS policies:**
-- `Members can insert own shares` (INSERT, roles: public) — — / CHECK: (shared_by = auth.email())
-- `Members can view own shares` (SELECT, roles: public) — (shared_by = auth.email())
+- `Members can insert own shares` (INSERT, roles: authenticated) — — / CHECK: (shared_by = ( SELECT auth.email() AS email))
+- `Members can view own shares` (SELECT, roles: public) — (shared_by = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `idx_shared_workouts_id`
@@ -2084,6 +2284,24 @@
 **Indexes:**
 - `vyve_job_runs_pkey`
 
+### `watchdog_alerts` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `code` | text | NO |  |  |  |
+| `severity` | text | NO |  |  |  |
+| `title` | text | NO |  |  |  |
+| `detail` | text | YES |  |  |  |
+| `fired_at` | timestamp with time zone | NO | now() |  |  |
+
+**RLS policies:** _(none — service-role only)_
+
+**Indexes:**
+- `idx_watchdog_alerts_code_fired`
+- `idx_watchdog_alerts_fired_at`
+- `watchdog_alerts_pkey`
+
 ### `weekly_goals` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -2098,13 +2316,14 @@
 | `checkin_target` | integer | NO | 1 |  |  |
 | `created_at` | timestamp with time zone | NO | now() |  |  |
 | `movement_target` | integer | NO | 0 |  |  |
+| `exercise_target` | integer | NO | 3 |  |  |
 
 **Triggers:**
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
-- `weekly_goals_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `weekly_goals_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `weekly_goals_member_email_week_start_key`
@@ -2132,7 +2351,7 @@
 - `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
-- `weekly_scores_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `weekly_scores_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `weekly_scores_member_email_iso_week_iso_year_key`
@@ -2149,16 +2368,18 @@
 | `weight_kg` | numeric | NO |  |  |  |
 | `logged_at` | timestamp with time zone | NO | now() |  |  |
 | `native_uuid` | text | YES |  |  |  |
+| `client_id` | uuid | YES |  |  |  |
 
 **Triggers:**
 - `queue_health_write_back_weight` — AFTER INSERT
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `weight_logs_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `weight_logs_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `weight_logs_logged_date_idx`
+- `weight_logs_member_client_uniq`
 - `weight_logs_member_date_unique`
 - `weight_logs_member_email_idx`
 - `weight_logs_native_uuid_idx`
@@ -2189,6 +2410,7 @@
 | `flow_type` | text | YES |  |  |  |
 | `logged_at` | timestamp with time zone | YES | now() |  |  |
 | `engagement_score` | integer | YES |  |  |  |
+| `client_id` | uuid | YES |  |  |  |
 
 **Check constraints:**
 - `wellbeing_checkins_flow_type_check`: CHECK ((flow_type = ANY (ARRAY['active'::text, 'quiet'::text])))
@@ -2208,18 +2430,20 @@
 **Triggers:**
 - `auto_iso_week_wellbeing_checkins` — BEFORE INSERT
 - `auto_time_fields_wellbeing_checkins` — BEFORE INSERT
+- `charity_count_wellbeing_checkins` — AFTER DELETE/INSERT
 - `counter_checkins` — AFTER INSERT
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
 - `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
-- `wellbeing_checkins_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `wellbeing_checkins_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `idx_wellbeing_checkins_email_logged_at`
 - `idx_wellbeing_checkins_logged_at`
 - `idx_wellbeing_checkins_member_email`
+- `wellbeing_checkins_member_client_uniq`
 - `wellbeing_checkins_member_week_unique`
 - `wellbeing_checkins_pkey`
 
@@ -2243,10 +2467,11 @@
 - `member_email` → `members.email` (`workout_plan_cache_member_email_fkey`)
 
 **Triggers:**
+- `workout_plan_cache_canonical_normalise_trg` — BEFORE INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
-- `workout_plan_cache_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `workout_plan_cache_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `idx_wpc_active`
@@ -2282,6 +2507,9 @@
 - `workout_plans_difficulty_check`: CHECK ((difficulty = ANY (ARRAY['beginner'::text, 'intermediate'::text, 'advanced'::text, 'all_levels'::text])))
 - `workout_plans_plan_type_check`: CHECK ((plan_type = ANY (ARRAY['PPL'::text, 'Upper_Lower'::text, 'Full_Body'::text, 'Home'::text, 'Movement_Wellbeing'::text])))
 
+**Triggers:**
+- `workout_plans_canonical_normalise_trg` — BEFORE INSERT/UPDATE
+
 **RLS policies:**
 - `workout_plans_public_read` (SELECT, roles: public) — true
 
@@ -2304,6 +2532,7 @@
 | `duration_minutes` | integer | YES |  |  |  |
 | `logged_at` | timestamp with time zone | YES | now() |  |  |
 | `source` | text | NO | 'manual'::text |  |  |
+| `client_id` | uuid | YES |  |  |  |
 
 **Check constraints:**
 - `workouts_time_of_day_check`: CHECK ((time_of_day = ANY (ARRAY['morning'::text, 'afternoon'::text, 'evening'::text, 'night'::text])))
@@ -2313,6 +2542,7 @@
 
 **Triggers:**
 - `auto_time_fields_workouts` — BEFORE INSERT
+- `charity_count_workouts` — AFTER DELETE/INSERT
 - `counter_workouts` — AFTER INSERT
 - `enforce_cap_workouts` — BEFORE INSERT
 - `queue_health_write_back_workouts` — AFTER INSERT
@@ -2321,31 +2551,49 @@
 - `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
 
 **RLS policies:**
-- `workouts_own_data` (ALL, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+- `workouts_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
 - `idx_workouts_email_logged_at`
 - `idx_workouts_logged_at`
 - `idx_workouts_member_email`
+- `workouts_member_client_uniq`
 - `workouts_pkey`
 
 ---
 
-## Public Functions (40)
+## Public Functions (60)
 
 - `_vyve_daily_streak(p_dates date[], p_today date)` — func
 - `_vyve_daily_streak_best(p_dates date[])` — func
 - `backfill_platform_metrics(p_days integer)` — func
+- `bump_charity_total(p_delta integer)` — func
 - `bump_member_activity(p_email text, p_type text, p_date date, p_at timestamp with time zone)` — func
 - `cap_cardio()` — func
 - `cap_daily_habits()` — func
 - `cap_replay_views()` — func
 - `cap_session_views()` — func
 - `cap_workouts()` — func
+- `charity_count_cardio()` — func
+- `charity_count_daily_habits()` — func
+- `charity_count_replay_views()` — func
+- `charity_count_session_views()` — func
+- `charity_count_wellbeing_checkins()` — func
+- `charity_count_workouts()` — func
+- `charity_total_reconcile()` — func
+- `charity_total_reconcile_and_heal()` — func
 - `compute_engagement_components(p_last_activity_at timestamp with time zone, p_active_days_30d integer, p_distinct_types_7d integer, p_latest_wellbeing integer)` — func
 - `compute_engagement_score(p_last_activity_at timestamp with time zone, p_active_days_30d integer, p_distinct_types_7d integer, p_latest_wellbeing integer)` — func
+- `exercise_logs_canonical_normalise()` — func
+- `exercise_name_canonical_normalise_generic()` — func
+- `gdpr_erase_purge_subject(subject_email text)` — func
+- `gdpr_erasure_lc_email()` — func
+- `gdpr_erasure_pick_due(limit_n integer)` — func
+- `gdpr_erasure_purge(p_email text)` — func
+- `gdpr_export_pick_due(limit_n integer)` — func
 - `get_capped_activity_count(p_email text, p_activity_type text)` — func
 - `get_charity_total()` — func
+- `get_leaderboard(p_email text, p_scope text, p_range text)` — func
 - `increment_cardio_counter()` — func
 - `increment_checkin_counter()` — func
 - `increment_habit_counter()` — func
@@ -2353,6 +2601,8 @@
 - `increment_workout_counter()` — func
 - `member_age(birth_date date)` — func
 - `next_certificate_number()` — func
+- `normalise_exercise_names_in_jsonb(p_doc jsonb, p_member_email text)` — func
+- `normalise_exercise_names_jsonb_trigger()` — func
 - `queue_health_write_back()` — func
 - `rebuild_member_activity_daily()` — func
 - `rebuild_member_activity_daily_incremental()` — func
@@ -2373,16 +2623,20 @@
 - `vyve_lc_email()` — func
 - `vyve_refresh_daily(p_email text, p_date date)` — func
 - `vyve_sync_activity_log()` — func
+- `watchdog_cron_failures(hours_back integer)` — func
 
 ---
 
-## Cron Jobs (14)
+## Cron Jobs (20)
 
 | Job | Schedule | Active | Command preview |
 |---|---|---|---|
+| `email-watchdog` | `*/30 * * * *` | ✓ | `SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions` |
 | `habit-reminder-daily` | `0 20 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `monthly-report` | `15 8 1 * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
+| `process-scheduled-pushes` | `*/5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `streak-reminder-daily` | `0 18 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `vyve_charity_reconcile_daily` | `30 2 * * *` | ✓ | ` SELECT public.charity_total_reconcile_and_heal(); ` |
 | `vyve_platform_metrics` | `15 2 * * *` | ✓ | `SELECT public.recompute_platform_metrics();` |
 | `vyve_rebuild_mad_incremental` | `*/30 * * * *` | ✓ | `SELECT public.rebuild_member_activity_daily_incremental();` |
 | `vyve_recompute_company_summary` | `0 2 * * *` | ✓ | `SELECT public.recompute_company_summary();` |
@@ -2391,7 +2645,10 @@
 | `vyve-achievements-sweep-daily` | `0 22 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-certificate-checker` | `0 9 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-daily-report` | `5 8 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `vyve-gdpr-erase-daily` | `0 3 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `vyve-gdpr-export-tick` | `*/15 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-reengagement-daily` | `0 8 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `vyve-seed-weekly-goals` | `1 0 * * 1` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `warm-ping-every-5min` | `*/5 * * * *` | ✓ | ` select net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `weekly-report` | `10 8 * * 1` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
 
