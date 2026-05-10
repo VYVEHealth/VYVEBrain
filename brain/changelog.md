@@ -1,3 +1,93 @@
+## 2026-05-10 PM-45 (Layer 2 infrastructure: bus.js Realtime bridge + 11-table publication migration)
+
+vyve-site `073b1a80631f399c4d694a9b6d3c69cabca6fc7c` (new tree `f71003b0c372d485a6729be9e4edbb7980dc6bbf`). VYVEBrain main `(set after this commit lands)`. **LAYER 2 OPENS.** First commit in the cross-tab/cross-device cache coherence campaign that follows the closed Layer 1c. Pure infrastructure: bus.js gains the Realtime bridge API + auth lifecycle hooks + self-suppression dedupe + mock test-harness; Supabase publication enables Realtime for 11 active tables; no member-facing wiring yet — that's PM-46+ one-table-at-a-time using `playbooks/realtime-bus-bridge.md`.
+
+**Atomic commits (3):**
+
+1. **vyve-site** `073b1a80` — bus.js v2 (+9298 chars, 9986 → 19284) + sw.js cache key bump (`vyve-cache-v2026-05-09-pm44-cleanup-a` → `vyve-cache-v2026-05-10-pm45-realtime-bridge-a`).
+2. **Supabase migration** `pm45_layer2_realtime_publication_enable` — adds 11 tables to `supabase_realtime` publication via `ALTER PUBLICATION supabase_realtime ADD TABLE`.
+3. **VYVEBrain** `(this commit)` — active.md Layer 2 rebuild for §3, §2 SHA bump, §4.9 new working-set rules, §5 backlog mirror, new playbook `playbooks/realtime-bus-bridge.md`, changelog this entry, backlog patches.
+
+**bus.js v2 API surface additions:**
+
+- `origin: 'realtime'` — third value alongside `'local'` and `'remote'`. Indicates a bus event was bridged from a Supabase Realtime row event (cross-device echo).
+- `installTableBridges(supabase, config)` — registers per-table Realtime channels. Defers actual `channel.subscribe()` until the bus's own `auth:ready` event (or fires immediately if auth has already fired). On `auth:signed-out`, every channel unsubscribes via `supabase.removeChannel`. Idempotent across re-auth — calling twice while installed is a warned-and-ignored no-op.
+- `recordWrite(table, primary_key)` — writing-side call to suppress the Realtime echo of own writes. ~5s TTL device-local map keyed by `(table, primary_key)`. Lazy GC on every Realtime delivery.
+- `__mockRealtimeFire(table, op, row)` — test-harness only, gated on `window.__VYVE_BUS_MOCK_REALTIME`. Fires a synthetic `postgres_changes` payload into the bridge as if Supabase had delivered it. Production code path can never be triggered without the flag.
+- `__inspect()` — extended to return `bridge_installed` / `bridge_channels` / `bridge_config_size` / `recent_writes` count alongside the existing subscriber-count map.
+
+**Self-suppression rationale + semantics:**
+
+A single member write under Layer 2 fires up to three events: `local` (writing device own publish), `remote` (storage event echo to other tabs of same browser), `realtime` (Supabase echo to every signed-in device including the writer). The third leg double-fires subscribers on the writing device — wasteful, and breaks any subscriber that uses `origin` to drive UX text.
+
+The fix is a device-local recent-write map. Every publish site that writes to a bridged table calls `VYVEBus.recordWrite(table, pk)` immediately after the row insert resolves. The bridge consults this map on every Realtime delivery; a hit means "this device just wrote this row, suppress the echo" and the bus event is dropped before any subscriber sees it. TTL is 5000ms (Supabase Realtime delivery is typically <2s; 5s gives generous headroom without unbounded growth). Different row IDs are not suppressed — the suppression is per-(table, PK) tuple.
+
+This is **not a CRDT.** It's a coherence layer. Two devices writing the same primary key within 5s would mutually suppress, but in practice that requires PK collision (rare with sequence-generated PKs). Reconcile-and-revert on POST failure stays in Layer 4 territory; missed-event catch-up sweeps stay in Layer 3 territory; ordering guarantees across devices are explicitly out of scope. Layer 2 is "the same lag-free contract Layer 1 made within the writing tab, extended to every other device the member is on."
+
+**Auth lifecycle:**
+
+`installTableBridges` does not call `channel.subscribe()` synchronously. It registers the config, then waits for the next `auth:ready` bus event. This handles three boot orderings cleanly: (a) install-before-auth (deferred until ready), (b) install-after-auth (the immediate `currentEmail()` check fires the channels right away), (c) sign-out-then-sign-in within page lifetime (`auth:signed-out` listener tears channels down; `auth:ready` listener re-installs them). The wiring is idempotent in every direction — double-calls warn and skip; sign-out without prior install is a no-op.
+
+Each channel name is `vyve_bridge_<table>` and is filtered server-side via `member_email=eq.<currentEmail>`. RLS is the safety net underneath. Server-side filter is cheap and reduces the volume of WAL-deltas the client has to evaluate.
+
+**Supabase publication migration (`pm45_layer2_realtime_publication_enable`):**
+
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE
+  public.daily_habits, public.workouts, public.exercise_logs, public.cardio,
+  public.nutrition_logs, public.weight_logs, public.wellbeing_checkins, public.monthly_checkins,
+  public.session_views, public.replay_views, public.certificates;
+```
+
+Verified post-apply via `pg_publication_tables` — all 11 tables landed. RLS already enabled on every one (verified in pre-flight); Realtime respects RLS by default per Supabase docs.
+
+**Three tables intentionally deferred:**
+
+- `shared_workouts` — no `member_email` column. Uses `shared_by` (sharer's email). The cross-device case is "I shared a workout from my phone, my desktop's My Shares list shows it" — low-frequency action, low-value coherence gap. Bridge contract stays uniform: every bridged table has `member_email`, filtered server-side. Revisit at PM-46+ if a real gap emerges.
+- `members` UPDATE — high-volume non-coherent UPDATE traffic. Every login bumps `last_login_at`, every settings save bumps something. Subscribing every device to every UPDATE produces continuous Realtime delivery for marginal coherence benefit. Cross-device persona switch is a rare-event nice-to-have. Defer until needed.
+- `workout_plan_cache` UPDATE — already covered by per-event bridges. `workouts` INSERT covers per-workout state changes; PM-42 `programme:imported` event covers programme imports. The cross-device case is handled via the table that fired the event, not via the cache-shaped UPDATE on `workout_plan_cache`. Bonus: avoids needing `REPLICA IDENTITY FULL` on either members or workout_plan_cache; PM-45 ships entirely on default replica identity. Simpler migration, fewer §23 gotchas.
+
+The deferral discussion is the most important quality-of-design call this session. The naive draft would have wired all 14 tables; the actual ship wires 11 with documented reasons for the three exceptions. Each exception is a different shape of "this is not the right layer for this concern" — the discipline is the same as PM-42 (server-side cron-driven write surfaces are out of scope for Layer 1c) and PM-43 (intentional engagement non-touches): not every gap is a Layer-N gap.
+
+**Self-test harness (45/45 passing across 10 groups):**
+
+`/tmp/bus_v2_test.js` — Node script with a JSDOM-style window mock, mock Supabase client (channel/subscribe/removeChannel surface), bus.js v2 evaluated into the global scope.
+
+1. **Public API surface** (7) — `publish`, `subscribe`, `unsubscribe`, `recordWrite` (NEW), `installTableBridges` (NEW), `__inspect`, `__mockRealtimeFire` (NEW)
+2. **Auth lifecycle wiring** (4) — no channels before auth; channel subscribed after `auth:ready`; filter is `member_email=eq.<email>` scoped; `channel.subscribe()` was called
+3. **Mock Realtime fan-out** (7) — one event delivered; `origin === 'realtime'`; email populated from `row.member_email`; `payload_from_row` applied (multi-field check); event field set; txn_id present
+4. **Self-suppression — own writes** (5) — local publish delivered; local origin; Realtime echo suppressed (no second delivery); different row id NOT suppressed; ...with `origin:'realtime'`
+5. **Self-suppression — TTL expiry** (2) — within TTL: suppressed; after TTL: delivered as realtime
+6. **Per-entry filter function** (3) — filter consulted on UPDATE; filter return false → no delivery; filter was called
+7. **DELETE event handling** (3) — DELETE event delivered; payload uses old row; origin realtime
+8. **Sign-out unsubscribes channels** (5) — bridge installed; 1 channel subscribed; bridge uninstalled after sign-out; channels list cleared; channel.unsubscribe() called
+9. **Idempotency / regression guards** (3) — double `installTableBridges` does not duplicate channels; empty config rejected; null supabase rejected
+10. **PM-30..PM-44 regression** (6) — publish/subscribe still works; publish origin still 'local'; payload still spread; invalid event name rejected; unsubscribe via returned fn works; mock fire without flag is no-op
+
+`node --check` clean on bus.js v2 + sw.js v2.
+
+**Pre-flight discipline calls codified during the session:**
+
+- Realtime publication state must be checked before any subscriber wiring. A table not in `supabase_realtime` publication never fires Realtime events regardless of RLS — subscribers receive nothing silently. Pre-flight `SELECT tablename FROM pg_publication_tables WHERE pubname='supabase_realtime' AND schemaname='public' AND tablename = ANY(...)` is mandatory before any PM-46+ table-bridge wiring assumes a table is bridged.
+- The same write fires up to 3 origins (`local` then `remote` then `realtime`); subscribers must be idempotent or self-suppressed. Bus.js v2 ships self-suppression; subscriber idempotency is a Layer 1c invariant we already hold (cache-bust is idempotent by definition; achievement debounce 1.5s eats triple-fires).
+- `member_email` column presence is a uniformity invariant for the bridge config. Tables without it are out of scope for the standard bridge filter and need a per-table custom filter approach if/when wired (probably never — `shared_workouts` is the only non-conforming table in scope and was deferred).
+
+**One new §23 hard rule codified:**
+
+- **Layer 2 publication-enable pre-flight is mandatory before subscriber wiring (added 10 May 2026 PM-45).** Before wiring any subscriber to a Realtime row event, verify the table is in the `supabase_realtime` publication via `pg_publication_tables`. RLS being on does NOT mean Realtime events fire — publication membership is independent of RLS. PM-45 shipped 11 tables in the publication; `shared_workouts`, `members`, `workout_plan_cache` are intentionally NOT in the publication. The discriminator: does the migration `pm45_layer2_realtime_publication_enable` (or a successor migration) include this table? If no, the table doesn't fire Realtime events and any bridge config entry will silently receive nothing.
+
+**Source-of-truth.** vyve-site pre-commit `66b14ee1a56831cd5dbb15f4490cb5aa0e011bf2` (PM-44 ship), post-commit `073b1a80631f399c4d694a9b6d3c69cabca6fc7c` (PM-45 ship), new tree `f71003b0c372d485a6729be9e4edbb7980dc6bbf`. Live blob SHAs (post-PM-45): bus.js `285d7738fe90`, sw.js `329678861dd7`. Supabase migration name `pm45_layer2_realtime_publication_enable`, applied via `Supabase:apply_migration`, verified via `pg_publication_tables` post-apply (11/11 tables landed). Self-test harness 45/45 passing across 10 groups; full output documented above. Whole-tree audit-count discipline per PM-26: deferred to PM-46 (this commit ships infrastructure only — no new publish/subscribe sites — so the post-PM-44 baseline carries through unchanged: invalidate=1, record=1, evaluate=12, publish=23, subscribe=29 + new `recordWrite=0` row, no `recordWrite` calls until PM-46 wires the first table). Brain commit completes the atomic story; the playbook `playbooks/realtime-bus-bridge.md` is the canonical Layer 2 reference replacing the OBSOLETE `1c-migration-template.md` and `cache-bus-taxonomy.md`.
+
+**Layer 2 ledger so far (PM-45 only):**
+
+- 0/11 tables wired to subscribers
+- 11/11 tables in `supabase_realtime` publication
+- 1/1 infrastructure commit shipped (bus.js v2 + sw.js bump + Supabase migration + brain)
+- 0 real bug fixes shipped en route (none expected; pure infrastructure)
+- 1 new §23 hard rule codified (publication-enable pre-flight)
+
+**Next: PM-46 — first table-bridge wiring (`daily_habits`).** Smallest possible commit to validate the end-to-end loop on a real surface. After it ships, PM-47..PM-56 wire the remaining 10 tables one per session on the same template, plus the certificate cron-INSERT subscriber as a Layer 2 surface that has no own-write to suppress.
+
 ## 2026-05-10 PM-44 (Layer 1 cleanup commit — option (b) transition closes the campaign)
 
 vyve-site `66b14ee1a56831cd5dbb15f4490cb5aa0e011bf2` (new tree `79b8a3f0622f42304fa724bf140e81617f82733b`). **LAYER 1 CLOSED.** Cleanup commit transitions the campaign from option (a) — "preserve everything in fallback else-branches indefinitely" — to option (b) — "the bus is the production path; bus.js is required infrastructure." PM-30 §23 rule executed as planned.

@@ -49,15 +49,15 @@
 > Refresh the SHA + version rows at the top of every session via a parallel pre-flight. The rest of this section is stable across sessions.
 
 **HEADs (refresh at session start):**
-- vyve-site main: `66b14ee1` (PM-44 ship — last shipped 10 May 2026 00:22 UTC; **🎉 LAYER 1 CLOSED**)
+- vyve-site main: `073b1a80` (PM-45 ship — last shipped 10 May 2026; **LAYER 2 OPENS**)
 - VYVEBrain main: `(set after this commit lands)`
 - vyve-capacitor main: stub (Apr 18 2026 base) — local working tree not yet pushed
 - Test-Site-Finalv3 main: marketing site, less active
 
 **Cache-bus key currently live:**
 - Pattern: `vyve-cache-v2026-05-09-pmNN-X-Y` (date prefix from PM-30)
-- Last shipped: `vyve-cache-v2026-05-09-pm44-cleanup-a` (date prefix is campaign-namespace not wall-clock per §23 PM-44)
-- P3 carried: convention drift (date prefix may not match wall clock — decide on calendar advance)
+- Last shipped: `vyve-cache-v2026-05-10-pm45-realtime-bridge-a` (Layer 2 campaign opens fresh date prefix per §23 PM-44 sub-rule)
+- P3 carried RESOLVED: PM-45 used wall-clock date for new campaign per PM-44 §23 sub-rule
 
 **Mobile binaries:**
 - iOS App Store: 1.2(1) **APPROVED** 28 April 2026 — bundles HealthKit + native push permission flow
@@ -68,76 +68,106 @@
 - First paying B2C: Paige Coult, joined 13 April 2026, £20/month
 - 3 admin operators in `admin_users`
 
-**Audit-count baseline (publishing-surface call sites at HEAD `66b14ee1`, post-PM-44 cleanup):**
-- See §3.2 for the canonical numbers — they are the pre-flight reference for PM-41
+**Audit-count baseline (publishing-surface call sites at HEAD `073b1a80`, Layer 2 opens — same primitive counts as post-PM-44 cleanup since PM-45 is infrastructure-only with no new publish/subscribe sites):**
+- `VYVEData.invalidateHomeCache(`: 1 (subscriber-internal helper, in vyve-data.js)
+- `VYVEData.recordRecentActivity(`: 1 (subscriber-internal helper, in vyve-data.js)
+- `VYVEAchievements.evaluate(`: 12 (subscriber-internal helpers across achievement-handling subscribers)
+- `VYVEBus.publish(`: 23 (across 14 publishing surfaces, post-PM-30..PM-44)
+- `VYVEBus.subscribe(`: 29 (across the subscriber files)
+- `VYVEBus.recordWrite(`: 0 (Layer 2 primitive; +N expected at each PM-46+ table-bridge wiring)
+
+PM-45 ships infrastructure only — no member-write surface changed, no publish/subscribe call site added or removed. Use these as the pre-flight reference for PM-46+ Layer 2 wirings
 
 ---
 
-## 3. Layer 1c migration campaign — the active workstream
+## 3. Layer 2 Realtime bridge campaign — the active workstream
 
-The 1c-* campaign migrated every direct-call cache primitive (`invalidateHomeCache`, `recordRecentActivity`, `evaluate`) onto the typed event bus (`bus.publish`). **🎉 CAMPAIGN COMPLETE — 14/14 surfaces shipped + cleanup commit landed (PM-30..PM-44, 09-10 May 2026, three working sessions).** PM-44 closed Layer 1 with the option (a) → option (b) transition: removed all fallback else-branch primitive call sites (34 sites across 11 files), kept subscriber-internal helpers, kept defensive `if (window.VYVEBus)` publish guards.
+Layer 2 extends the lag-free contract to cross-device coherence. Phone logs habit → desktop tab reflects within ~2s without manual refresh. Mechanism: Supabase Realtime subscribes per-table-per-member; row events translate to bus events of the same name a local write would publish, with `origin: 'realtime'`. Self-suppression on the writing device prevents triple-firing of subscribers (`local` then `remote` then `realtime`). Layer 2 opened at PM-45.
 
-**This whole §3 section deprecates next session.** The active.md §3 will be replaced with Layer 2 scope (Supabase Realtime → bus event bridge) when PM-45 begins. Keeping this section intact through PM-44 for traceability of the closing audit.
+**Layer 1c is closed.** §3.4 below carries forward the campaign closing summary for traceability; the canonical Layer 1c history lives in changelog PM-30..PM-44 entries and the now-OBSOLETE `playbooks/cache-bus-taxonomy.md` + `playbooks/1c-migration-template.md` (kept for historical reference only).
 
-### 3.1 The 14-row plan — final state (post-PM-44 cleanup, Layer 1 closed)
+### 3.1 The 11-table plan — running state
 
-| # | Surface | PM tag | Status | Event | Pre-bus shape | Fallback | Notes |
-|---|---|---|---|---|---|---|---|
-| 1c-1 | habits.html log + autotick + undo | PM-30 | ✅ shipped | `habit:logged` | invalidate + record + evaluate | symmetric | First migration; bus.js shipped same era |
-| 1c-2 | workouts-session.js completeWorkout | PM-31 | ✅ shipped | `workout:logged` source:`programme`/`custom` | 3 calls + 1 fallback evaluate | symmetric | + scope-fix programme_cache |
-| 1c-3 | workouts-session.js saveExerciseLog | PM-32 | ✅ shipped | `set:logged` | direct fetch + invalidate | symmetric | Pure decouple |
-| 1c-4 | cardio.html log | PM-33 | ✅ shipped | `cardio:logged` source:`cardio_page` | 3 calls | symmetric | + race-fix + scope-fix |
-| 1c-5 | movement.html walk + non-walk | PM-34 | ✅ shipped | `cardio:logged` movement_walk / `workout:logged` source:`movement` | 3 calls × 2 paths | symmetric | + scope-fix |
-| 1c-6 | workouts-builder.js custom workout create | PM-35 | ✅ shipped | `workout:logged` source:`builder` | evaluate only | **asymmetric** | First asymmetric; + scope-fix (no current invalidation = real bug) |
-| 1c-7 | log-food.html insert ×2 + delete | PM-36 | ✅ shipped | `food:logged` kind:`search`/`quickadd` / `food:deleted` | inserts: eval + invalidate; **delete: ZERO primitives (real bug)** | **mixed** | First commit shipping mixed fallback shapes |
-| 1c-8 | nutrition.html weight log | PM-37 | ✅ shipped | `weight:logged` | invalidate + evaluate | symmetric | Self-subscribe pattern established |
-| 1c-9 | settings.html persona switch | PM-38 | ✅ shipped | `persona:switched` | direct fetch only | **asymmetric** | + scope-fix (members_cache + home_v3 staleness on persona change was a real bug) |
-| 1c-9b | ~~settings.html save~~ | n/a | **MERGED** into 1c-9 | — | — | — | The original taxonomy 1c-10 row "settings save" was dropped from the campaign post-PM-37; backlog and changelog both renumbered. Settings save IS persona save in practice today — no separate publish surface exists |
-| 1c-10 | wellbeing-checkin.html submit + flush | PM-39 | ✅ shipped | `wellbeing:logged` kind:`live`/`flush` | live: invalidate + evaluate; flush: invalidate only | symmetric (mixed pre-bus shape) | First initiator + confirmer pattern; PM-39 §23 race-fix-ordering rule |
-| 1c-11 | monthly-checkin.html submit | PM-40 | ✅ shipped | `monthly_checkin:submitted` | evaluate only | **asymmetric** | First post-PM-30 migration with NO new bus.js wiring (page already loaded bus.js) |
-| 1c-12 | workouts-session.js shareWorkout + shareCustomWorkout, workouts-programme.js shareProgramme | PM-41 | ✅ shipped | `workout:shared` kind:`session`/`custom`/`programme` | A: eval; B: ZERO; C: eval | mixed | Three publish surfaces, one event with discriminator. shared-workout.html is read-only viewer (no publish site). Mirror of PM-36 + PM-39 mixed. Confirmer pattern (publish-after-res.ok) — payload carries share_code from EF response. Engagement non-touch (4th). |
-| 1c-13 | workouts-programme.js confirmImportPlan | PM-42 | ✅ shipped | `programme:imported` (NEW) + `workout:logged source:'builder'` (REUSES PM-35) | ZERO both branches | asymmetric both | **Certificate dropped from campaign** (server-side cron-driven write, §23 PM-42 rule). Slot repurposed for confirmImportPlan — single function, two events gated on isProg. Real bug fix: 800ms setTimeout(loadProgramme) workaround replaced with synchronous self-subscriber. Engagement non-touch (5th). |
-| 1c-14 | tracking.js onVisitStart (shared by 14 live + rp pages) | PM-43 | ✅ shipped | `session:viewed` kind:`live`/`replay` (with `table` field carrying `session_views`/`replay_views`) | invalidate + record (no eval — sessions not on any track) | symmetric | **Pre-flight correction**: actual surface was tracking.js (not session-live.js). One publish surface in tracking.js handles both live + replay via the `table` variable. Real engagement scope-fix (8th _markEngagementStale event — pre-PM-43 watching a session never busted engagement cache; first non-defensive eng subscriber since PM-32). 14 new bus.js script tags wired (12 shell + 2 full-content patterns). FIRST new bus.js wiring since PM-39. |
+11 tables in `supabase_realtime` publication (added at PM-45 via migration `pm45_layer2_realtime_publication_enable`). Per-table wiring lands one at a time PM-46+ following `playbooks/realtime-bus-bridge.md`.
 
-**🎉 LAYER 1 CLOSED — PM-44 ship 10 May 2026 00:22 UTC, vyve-site `66b14ee1`.** All 14 surfaces shipped + cleanup. PM-30 §23 rule transitioned from option (a) to option (b). 34 fallback primitive call sites removed; 7 subscriber-internal helpers preserved; PM-42 setTimeout(loadProgramme) non-primitive resilience preserved; all defensive `if (window.VYVEBus)` publish guards preserved. Whole-tree audit-count delta: invalidate 11→1, record 8→1, evaluate 19→12.
+| # | Table | Op | Bus event | Layer 1c lineage | Wired? | Notes |
+|---|---|---|---|---|---|---|
+| 2-1 | `daily_habits` | INSERT | `habit:logged` | PM-30 | ❌ pending PM-46 | Smallest first; validates end-to-end loop |
+| 2-2 | `workouts` | INSERT | `workout:logged` | PM-31 (+ PM-34, PM-35, PM-42 as alt sources via row.source) | ❌ | |
+| 2-3 | `exercise_logs` | INSERT | `set:logged` | PM-32 | ❌ | |
+| 2-4 | `cardio` | INSERT | `cardio:logged` | PM-33 (+ PM-34 movement_walk via row.source) | ❌ | |
+| 2-5 | `nutrition_logs` | INSERT | `food:logged` | PM-36 | ❌ | Dual-op table: also DELETE below |
+| 2-6 | `nutrition_logs` | DELETE | `food:deleted` | PM-36 | ❌ | |
+| 2-7 | `weight_logs` | INSERT | `weight:logged` | PM-37 | ❌ | |
+| 2-8 | `wellbeing_checkins` | INSERT | `wellbeing:logged` | PM-39 (live + flush) | ❌ | |
+| 2-9 | `monthly_checkins` | INSERT | `monthly_checkin:submitted` | PM-40 | ❌ | |
+| 2-10 | `session_views` | INSERT | `session:viewed` (kind:'live') | PM-43 | ❌ | |
+| 2-11 | `replay_views` | INSERT | `session:viewed` (kind:'replay') | PM-43 | ❌ | |
+| 2-12 | `certificates` | INSERT | `certificate:earned` (NEW) | none — first L2 surface with no client publish | ❌ | Cron-driven; no `recordWrite` discipline (no own-write to suppress). Closes the PM-42 P3 cert cross-tab carryover. |
 
-**Next: Layer 2 (Supabase Realtime → bus event bridge).** Cross-tab/cross-device cache coherence. Realtime row events translate to bus events of the same name a local write would publish. The `cache-bus-taxonomy.md` and `1c-migration-template.md` playbooks marked OBSOLETE in the PM-44 brain commit per their stop-date provisions. New playbook to create at PM-45: `playbooks/realtime-bus-bridge.md`.
+**Three tables intentionally deferred at PM-45:**
 
-### 3.2 Audit-count baseline (post-PM-44 cleanup, HEAD `66b14ee1`) — Layer 1 CLOSED
+- `shared_workouts` — no `member_email` column (sharer-scoped via `shared_by`). Bridge uniformity gain > coherence gain on a low-frequency action. Revisit if real gap.
+- `members` UPDATE — high-volume non-coherent UPDATE traffic (login + settings save). Cross-device persona switch is rare-event nice-to-have.
+- `workout_plan_cache` UPDATE — already covered by per-event bridges (`workouts` INSERT for completions, PM-42 `programme:imported` for imports).
 
-> The publishing-surface call-site count for each primitive across the whole vyve-site tree, computed under the PM-37 audit-count classification rule (PM-40 sub-rule: count source-code call sites unconditionally regardless of runtime branch).
+The deferral discipline is the most important quality-of-design call at PM-45. Bridge contract uniformity (every table has `member_email`, filtered server-side) > completeness for the sake of completeness. Same shape as PM-42 (server-cron writes out of scope for Layer 1c) and PM-43 (intentional engagement non-touches).
 
-| Primitive | Pre-PM-30 | Post-PM-43 | Post-PM-44 (final) | Cumulative delta |
-|---|---|---|---|---|
-| `VYVEData.invalidateHomeCache(` | ~13 | 11 | **1** (only index.html `_markHomeStale` subscriber-internal helper) | **-12** |
-| `VYVEData.recordRecentActivity(` | ~10 | 8 | **1** (only habits.html L1135 subscriber helper) | **-9** |
-| `VYVEAchievements.evaluate(` | ~25 | 19 | **12** (subscriber-internal + self-subscriber helpers preserved) | **-13** |
-| `VYVEBus.publish(` | 0 | 23 | 23 | +23 |
-| `VYVEBus.subscribe(` | 0 | 29 | 29 | +29 |
+### 3.2 bus.js v2 API surface (post-PM-45)
 
-**Cumulative bus surface across PM-30..PM-43: 23 publishers, 29 subscribers** (unchanged at PM-44 — the cleanup commit removes legacy direct calls, doesn't change bus topology).
+```js
+// New origin alongside 'local' and 'remote'
+envelope.origin === 'realtime'
 
-**Cleanup exceeded projection.** Active.md projected post-cleanup as invalidate 5-7, record 3-5, evaluate 10-12. Actual cleanup landed invalidate=1, record=1, evaluate=12. The projection was hedged because we hadn't classified all 34 sites at the time. Strict option (b) reading removed all fallback else-branches rather than leaving some for resilience.
+// Wire bridge config — call once at auth.js after Supabase client is ready
+window.VYVEBus.installTableBridges(supabase, [{
+  table:            'daily_habits',
+  event:            'habit:logged',
+  op:               'INSERT',
+  pk_field:         'id',                            // optional, default 'id'
+  payload_from_row: (row) => ({ habit_id: row.habit_id, ... }),
+  filter:           (row, payload) => true           // optional post-filter
+}, /* ... */]);
 
-**This baseline becomes the Layer 2 starting point.** Layer 2 work will not directly modify these primitive call sites further — it adds Realtime row events as a new origin signal flowing through the existing bus. The publish/subscribe counts will grow as Layer 2 surfaces new events; the legacy primitive counts should stay flat (12 evaluate / 1 invalidate / 1 record — all subscriber-internal).
+// At every publish site that ALSO writes to a bridged table — call to
+// suppress the Realtime echo of own writes (~5s TTL device-local map)
+window.VYVEBus.recordWrite('daily_habits', insertedRow.id);
 
-### 3.3 Methodology questions — resolved + open
+// Test-harness only (gated on window.__VYVE_BUS_MOCK_REALTIME)
+window.VYVEBus.__mockRealtimeFire('daily_habits', 'INSERT', row);
+```
 
-**Resolved:**
-- PM-37: audit-count classification — count any non-comment, non-`typeof`-guard, non-function-definition line containing a call to one of the four primitives
-- PM-40: in-fallback-branch counting — calls inside `if (!window.VYVEBus) { ... }` else-branches still count (source-code call sites at static analysis time, not runtime invocation paths)
-- PM-42: campaign scope — server-side cron-driven write surfaces (e.g. certificate-checker EF v9 daily certificate generation) have NO client publish site and are therefore out of scope for Layer 1c. Cross-tab/cross-device staleness for these surfaces is a Layer 2 concern (cache-coherence) or Layer 3 concern (server-push). Discriminator: does the client invoke a write that fires inline cache primitives? If no, not 1c.
-- PM-42: multi-event single-function migrations — when one function has semantically distinct branches (importing-a-programme vs saving-a-session-to-library), emit distinct event names per branch. Use one event with discriminator only when branches differ in *source/origin/variant* of the same semantic action. Per-branch race-fix and fallback discipline apply independently. Reuse existing event schemas when the semantic action matches (PM-42 session-save → PM-35 workout:logged source:'builder' precedent).
-- PM-43: real engagement scope-fix vs intentional non-touch classification — when a new event publishes from a surface whose write affects server-computed engagement scoring (e.g. session_views feeds the Variety component), the engagement._markEngagementStale subscriber MUST be wired (real scope-fix, closes a cache-staleness bug). When the surface has no engagement-scoring impact (e.g. weight, persona, share, programme import), the engagement subscriber is intentionally omitted (non-touch). The classification is determined by reading engagement.html scoring components and verifying whether the new write affects any of them. PM-43 is the first non-defensive engagement subscriber extension since PM-30..32 — a useful tell that the campaign's later-half migrations (PM-37+) targeted user-state surfaces with no scoring impact (weight, persona, sharing, programme import, monthly check-in) while the earlier half targeted activity-logging surfaces (habits, workouts, sets, cardio, food) which all feed engagement.
-- PM-44: cache-version date convention drift resolution — the `vyve-cache-v2026-05-09-pmNN-X-Y` date prefix represents a campaign-scoped namespace, not a wall-clock timestamp. Within a campaign the date is fixed at campaign-start; new campaigns (Layer 2 onwards) get fresh date prefixes. PM-44 shipped 10 May with 09 May prefix because the Layer 1c campaign that started 09 May still owned that namespace.
-- PM-44: option (a) → option (b) cleanup discipline — the strict reading is correct: remove ALL fallback else-branches with primitive calls, preserve only subscriber-internal helpers + non-primitive resilience (e.g. PM-42 setTimeout) + defensive `if (window.VYVEBus)` publish guards. Risk acceptable because bus.js is precached + IIFE-self-contained + PWA-installed + browser-retry; degraded-but-functional state on bus.js-load-failure is the correct classification.
+Auth lifecycle: channels subscribe on `auth:ready`, unsubscribe on `auth:signed-out`, idempotent across re-auth. All channels filter server-side on `member_email=eq.<currentEmail>` with RLS as safety net.
+
+### 3.3 Self-suppression rationale + boundary
+
+A single member write under Layer 2 fires up to three events: `local` (writing device), `remote` (storage event echo to other tabs of same browser), `realtime` (Supabase echo to every signed-in device including writer). Writing device's third leg double-fires subscribers — wasteful, and breaks any subscriber using `origin` to drive UX text.
+
+The fix is `recordWrite(table, pk)` at every publish site that writes to a bridged table. ~5s TTL device-local map keyed by `(table, primary_key)`. When a Realtime row arrives matching a recent-write key, the bridge suppresses before the bus event is built.
+
+**This is not a CRDT.** Two devices writing the same primary key within 5s would mutually suppress, but that requires PK collision (rare with sequence-generated PKs). Reconcile-and-revert on POST failure stays Layer 4. Missed-event catch-up sweeps stay Layer 3. Ordering guarantees across devices are explicitly out of scope.
+
+### 3.4 Layer 1c closing summary (historical reference)
+
+PM-30..PM-44 across three working sessions. 14 surfaces migrated + cleanup commit. 23 publishers, 29 subscribers, 14 distinct event names. 6 real bug fixes shipped en route. 2 real engagement scope-fixes (PM-32, PM-43). 5 intentional engagement non-touches (PM-37 weight, PM-38 persona, PM-40 monthly, PM-41 share, PM-42 import). 6 §23 hard rules codified during the campaign. PM-44 closed Layer 1 with option (a) → option (b) cleanup: 34 fallback primitive call sites removed across 11 publishing files. Post-cleanup audit-count baseline: invalidate=1, record=1, evaluate=12 (subscriber-internal helpers preserved), publish=23, subscribe=29.
+
+The bus is now the production path for all cache invalidation and achievements eval triggered from member-write surfaces. Layer 2 inherits the post-PM-44 invariant: subscribers are origin-agnostic and idempotent; the realtime echo fires the same subscriber chain a local publish would.
+
+### 3.5 Methodology questions — running tally for Layer 2
+
+**Resolved at PM-45:**
+
+- Bridge contract uniformity: every bridged table has `member_email`, filtered server-side via `member_email=eq.<currentEmail>`. Tables without that column (e.g. `shared_workouts` uses `shared_by`) are out of scope for the standard bridge and need per-table custom approach if/when wired.
+- Publication-enable pre-flight is mandatory before any subscriber wiring. RLS-on does NOT mean Realtime fires. New §23 sub-rule.
+- High-volume non-coherent UPDATE tables (e.g. `members`) are deferred from the bridge unless real coherence gap emerges. Subscribing every device to every UPDATE produces continuous Realtime delivery for marginal benefit.
+- Tables already covered by sibling per-event bridges (e.g. `workout_plan_cache` UPDATE covered by `workouts` INSERT + PM-42 `programme:imported`) are redundant and deferred.
 
 **Open (P3, decide-and-codify when triggered):**
-- Cache-version date convention drift — `vyve-cache-v2026-05-09-pmNN-X-Y` carries date prefix from PM-30 through PM-42. Decide before next deploy that crosses midnight UK time
-- log-food.html cross-tab diary-cache coherence — same shape as PM-33 cross-tab cardio.html. Punt to Layer 3 unless Lewis flags real cross-tab diary editing patterns
-- Certificate cross-tab/cross-device cache coherence — Layer 2 follow-up from PM-42 certificate drop. When certificate-checker cron inserts a new row, certificates.html shows stale "0 certificates" until manual refresh. Punt to Layer 2 unless members complain
 
----
+- `recordWrite` fallback when the writing device's `recordWrite` call fails or is missed. Subscribers see double-fire of cache-stale + achievement debounce eats triple-fires; acceptable degraded-but-functional. Promote to a real concern only if a measurable subscriber breakage emerges.
+- Catch-up sweep on Realtime reconnect — when a device's connection drops and reconnects, missed events are not replayed. Subscribers tolerate (most just bust caches; fetch-on-render closes the gap on next read). Layer 3 territory.
+- Two devices writing the same primary key within 5s mutually suppressing each other's echoes. Edge case dependent on PK collision; not a Layer 2 concern.
+
 
 ## 4. §23 hard rules — concise quick-reference
 
@@ -228,6 +258,9 @@ The 1c-* campaign migrated every direct-call cache primitive (`invalidateHomeCac
 - **Session loading discipline.** "Load VYVE brain" routine reads `brain/active.md` + relevant playbooks (matched to the session goal) + recent changelog tail via grep on `## 2026-` headers, NOT full master.md or full changelog.md. Full files remain canonical for deep-history questions; the active file is the working set. If a question requires depth not in active.md, fetch the canonical file on demand using §7 as the lookup table.
 - **Deferred whole-tree audit.** Whole-tree primitive audits run AFTER the patch ships, in parallel with the brain commit, NOT as a pre-flight requirement. Pre-flight fetches only the files the migration touches (with a separate sub-audit if the migration's own pre-flight needs broader signal). The audit-count discipline (PM-37/PM-40) applies to the post-ship audit, not the pre-ship state.
 - **Migration template stability (post-PM-36).** Layer 1c migrations after PM-30..PM-36 follow a stable shape captured in `playbooks/1c-migration-template.md`. Pre-flight references the template rather than re-deriving the migration mechanics every session. Asymmetric / symmetric / mixed fallback decisions still require per-surface classification at pre-flight time, but the rationale is referenced via §4.1 sub-rules rather than re-narrated.
+- **Layer 2 publication-enable pre-flight (PM-45, 10 May 2026).** Before wiring any subscriber to a Realtime row event, verify the table is in the `supabase_realtime` publication via `pg_publication_tables`. RLS being enabled on the table does NOT mean Realtime events fire — publication membership is independent of RLS. PM-45 added 11 tables; `shared_workouts`, `members`, `workout_plan_cache` are intentionally NOT in the publication for documented reasons. Pre-flight check is mandatory before any PM-46+ subscriber wiring assumes a table is bridged.
+- **Layer 2 self-suppression discipline (PM-45).** Every publish site that writes to a bridged table MUST call `VYVEBus.recordWrite(table, pk)` immediately after the row insert resolves. Failure causes the writing device to double-fire subscribers (`local` then `realtime` ~2s later under different origins). Mitigation: subscribers are idempotent for cache-stale and achievement debounce 1.5s eats triple-fires — degraded-but-functional, but the explicit `recordWrite` is the discipline. `recordWrite` is added to the audit-count primitives at Layer 2: each PM-46+ commit should expect `+N` `VYVEBus.recordWrite(` call sites where N matches the publish site count for the bridged table.
+- **Bridge contract uniformity (PM-45).** Every bridged table has a `member_email` column, filtered server-side via `member_email=eq.<currentEmail>`. Tables breaking this contract (e.g. `shared_workouts` uses `shared_by` for sharer scope) are deferred from the standard bridge or need a per-table custom filter approach if/when wired. Bridge uniformity > completeness for the sake of completeness — same shape as PM-42 (server-cron writes out of scope for Layer 1c) and PM-43 (intentional engagement non-touches).
 
 ---
 
@@ -237,40 +270,33 @@ The 1c-* campaign migrated every direct-call cache primitive (`invalidateHomeCac
 
 ### P0 (next session)
 
-- **PM-45 / Layer 2 prep — Supabase Realtime → bus event bridge (infrastructure commit).** Layer 2 opens. Cross-tab/cross-device cache coherence: Realtime row events on Supabase tables translate into bus events of the same name a local write would publish. The existing storage-event cross-tab transport in bus.js handles within-browser-instance fanout; Realtime adds cross-device fanout (member logs habit on phone → desktop tab sees it within seconds without polling).
+- **PM-46 / First Layer 2 table-bridge wiring (`daily_habits`).** PM-45 shipped Layer 2 infrastructure (bus.js v2 + 11-table publication). PM-46 wires the simplest table first to validate the end-to-end loop on a real surface.
 
-  **PM-45 scope (single commit, infrastructure only — no member-facing wiring yet):**
+  **Scope:**
 
-  1. **bus.js patch** — add a third origin value `'realtime'` alongside existing `'local'` and `'remote'`. Add a `subscribeToTable(tableName, eventTypeMap)` helper that wires a Supabase Realtime channel and routes INSERT/UPDATE/DELETE events to bus.publish with the right event name. The mapping is per-table-per-event-type — codify in the new playbook.
+  1. **Bridge config entry** — add to wherever `installTableBridges` is invoked (likely `auth.js` after Supabase client is ready):
+     ```js
+     {
+       table: 'daily_habits',
+       event: 'habit:logged',
+       op:    'INSERT',
+       payload_from_row: row => ({
+         habit_id:   row.habit_id,
+         logged_at:  row.completed_at,
+         source:     'realtime'
+       })
+     }
+     ```
 
-  2. **`playbooks/realtime-bus-bridge.md`** — new playbook documenting the Realtime → bus mapping for each active Layer 1 table:
-     - `daily_habits` INSERT → `habit:logged`
-     - `workouts` INSERT → `workout:logged`
-     - `exercise_logs` INSERT → `set:logged`
-     - `cardio` INSERT → `cardio:logged`
-     - `nutrition_logs` INSERT → `food:logged` (with kind discriminator)
-     - `nutrition_logs` DELETE → `food:deleted`
-     - `weight_logs` INSERT → `weight:logged`
-     - `members` UPDATE → `persona:switched` (filtered on persona column change)
-     - `wellbeing_checkins` INSERT → `wellbeing:logged`
-     - `monthly_checkins` INSERT → `monthly_checkin:submitted`
-     - `shared_workouts` INSERT → `workout:shared`
-     - `session_views` INSERT → `session:viewed`
-     - `replay_views` INSERT → `session:viewed` (with kind:'replay' discriminator)
-     - `workout_plan_cache` UPDATE → `programme:imported` (filtered on cross-tab origin)
-     - `certificates` INSERT → `certificate:earned` (NEW event — first Layer 2 surface that didn't have a Layer 1 publish path; closes the certificate cross-tab gap from PM-42)
+  2. **`recordWrite` at publish site** — `habits.html` PM-30 publish surface adds `VYVEBus.recordWrite('daily_habits', insertedRow.id)` immediately after the row insert resolves. Suppresses the Realtime echo of own writes.
 
-  3. **Auth lifecycle hooks** — Realtime channels subscribe on the existing `auth:ready` bus event, unsubscribe on `auth:signed-out`. bus.js header comment already documents these as the right hook points.
+  3. **Two-device manual verify** — phone PWA + desktop tab signed in as same member. Log a habit on phone, watch the desktop tab's habit strip + streak update within ~2s without manual refresh. Acceptance criterion: cross-device coherence visible within 3s wall-clock.
 
-  4. **RLS verification** — Supabase Realtime respects RLS by default, but verify each table's RLS policy allows `member_email = auth.email()` row visibility (already true for all 14 tables in the campaign — the policies were written that way for the Layer 1c work).
+  4. **Self-test against `__mockRealtimeFire` harness** — extend the PM-45 self-test pattern to cover the realtime → habit:logged → home-stale fan-out chain. ~5-7 new tests in a "PM-46 wiring" group.
 
-  5. **Idempotency check** — same write fires `local` (own publish) → potentially `remote` (storage event from another tab of same browser) → potentially `realtime` (cross-device echo). Subscribers must be idempotent. Verify the achievements.js 1.5s debounce handles 3-fold fan-in correctly.
+  5. **sw.js cache bump** — same atomic commit. Pattern: `vyve-cache-v2026-05-NN-pm46-bridge-daily_habits-a`.
 
-  6. **Self-test harness against mock Realtime channel** — no member-facing wiring yet, but the bus.js patch should be testable against a mocked channel that simulates Supabase Realtime callbacks. ~30-40 tests across 8-10 groups.
-
-  **Estimate:** PM-45 is one focused session, ~3-4 hours of work. After PM-45 lands, individual table Realtime channels can be wired one at a time in subsequent commits (PM-46+) — same per-surface discipline as Layer 1c, but each commit is much smaller because the mechanic is just "add this table to the bridge config."
-
-  **The certificate cross-tab gap from PM-42 (P3 carried) becomes Layer 2's first real bug fix on the way through.** Members will see new certificates appear on whichever tab is active without manual refresh.
+  **Estimate:** ~1 hour of work. Much smaller than Layer 1c migrations because the mechanic is just "add a row to the bridge config + recordWrite at the publish site." After PM-46 verifies, PM-47..PM-56 wire the remaining 10 tables one at a time on the same template (one per session). Cert cron-INSERT subscriber considered for PM-46 or PM-47 alongside the first table-bridge wirings (no `recordWrite` discipline needed — server-cron writes have no own-write to suppress).
 
 ### P1 (working set)
 
@@ -291,8 +317,9 @@ The 1c-* campaign migrated every direct-call cache primitive (`invalidateHomeCac
 
 ### P3 carried (decide-and-codify when triggered)
 
-- Cache-version date convention drift (decide on calendar advance).
 - log-food.html cross-tab diary-cache coherence (defer to Layer 3).
+- `recordWrite` fallback when missed at a publish site (acceptable degraded-but-functional under self-suppression idempotency; promote only if real subscriber breakage emerges).
+- Catch-up sweep on Realtime reconnect (Layer 3 territory).
 
 ---
 
@@ -371,7 +398,7 @@ The 1c-* campaign migrated every direct-call cache primitive (`invalidateHomeCac
 ## 8. Editorial notes
 
 - **Last full rebuild:** 09 May 2026 PM-37-Setup (this commit)
-- **Next rebuild trigger:** post-1c-14 + cleanup commit (likely PM-46ish), OR after 3+ sessions of incremental patching
+- **Next rebuild trigger:** post-Layer 2 first wiring (~PM-46) or 3+ patches accumulated.
 - **Commit discipline for active.md edits:**
   - Patches: §2 SHA bumps, §3.1 status flips, §4 new sub-rules earning working-set residency, §5 backlog reordering — all atomic with the session's main brain commit
   - Rebuilds: campaign milestones, ≥3 patches accumulated, drift detected — full rewrite against current master.md
