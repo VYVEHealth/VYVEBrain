@@ -1,5 +1,5 @@
 {
-  "snapshot_at": "2026-05-07T13:48:28Z",
+  "snapshot_at": "2026-05-10T05:41:50Z",
   "supabase_project": "ixjfklpckgxrwjlfsaaz",
   "brain_repo": "VYVEHealth/VYVEBrain",
   "brain_branch": "main",
@@ -570,32 +570,32 @@
     {
       "slug": "leaderboard",
       "ok": true,
-      "platform_version": 16,
+      "platform_version": 17,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "803f3f5127c602db5e4bcdd80d7437fc5baecf6c482098386374334c398e2675",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_e7d71167-aa90-42fd-8659-c06721f2617a_11/source/index.ts",
+      "ezbr_sha256": "ee55c3fe3a1e060f0eabb20e895ddab619229a769306287a4d0234a6d0d181c2",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_e7d71167-aa90-42fd-8659-c06721f2617a_17/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "b23057e70d1731d82df5926874508fa5a6e53d162bd1dbd3f41cc0b654e61eb0",
-          "bytes": 13043
+          "sha256": "0000a5837cecea12801aa7b2e15926e402f5db187b504771dbde5214390844bf",
+          "bytes": 4408
         }
       ]
     },
     {
       "slug": "log-activity",
       "ok": true,
-      "platform_version": 33,
+      "platform_version": 34,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "f88f98f6a0eec72f325679f2c5e68c61598fb56d49b16eee8acc1d7661cfbaa8",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_bd663a89-08f6-465b-9144-d8af2b3f8364_31/source/index.ts",
+      "ezbr_sha256": "68d62d9c0c94dd75b2221f1cd91cc739083faf50cf224f31907a9e937cbf6762",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_bd663a89-08f6-465b-9144-d8af2b3f8364_34/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "d221a279ef08a3b463c07eae9592be7332a79d0abdf74c8aeebc7d4b8e5cbd4a",
-          "bytes": 13057
+          "sha256": "4a5f9c55bd11da9e91c228e6163d26843f3104a300f8f22ca634359135e0aece",
+          "bytes": 17094
         },
         {
           "name": "_shared/achievements.ts",
@@ -628,21 +628,21 @@
     {
       "slug": "member-dashboard",
       "ok": true,
-      "platform_version": 65,
+      "platform_version": 67,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "57f1ceaad2cf76bc5de282719a9c4262c5abe985188e4b94bab7a92e23a697bb",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c950ab00-49f3-4c07-bd77-83b57c644069_63/source/index.ts",
+      "ezbr_sha256": "72ce2bbea98b1a477b9e6883b95ed8776c69f486d19f335ec321e1b78da2964d",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c950ab00-49f3-4c07-bd77-83b57c644069_67/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "a471993290f501de669e078280fc1379d66efcd618b0812e35e6c8ec83341913",
-          "bytes": 18823
+          "sha256": "0e42fcb22ea91e93283c2dca9c88d80c5ff97aa0fe910afa2864d80fa380c2ec",
+          "bytes": 18652
         },
         {
           "name": "_shared/achievements.ts",
-          "sha256": "13355bc5d4f60a4794d2689c888ee7f0e60c2e5e7e794117d9da743d8d270ad3",
-          "bytes": 8301
+          "sha256": "047b7d8b2a9c73066d1792a37e349b437e5dd2e74547125970a7073a142a7029",
+          "bytes": 11496
         },
         {
           "name": "_shared/taxonomy.ts",
@@ -798,16 +798,16 @@
     {
       "slug": "re-engagement-scheduler",
       "ok": true,
-      "platform_version": 30,
+      "platform_version": 31,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "05e1c3055663f798ec83948fb3132d438df9ec6f4c93c3fcc8d0b6396a008bdd",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_129e7765-302d-439b-bb74-a5f7ac5b2c20_28/source/index.ts",
+      "ezbr_sha256": "0b58be0df98781fff4448ea4e7a71bdabdaca4e3a4092c9f81ad99c9722ca81c",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_129e7765-302d-439b-bb74-a5f7ac5b2c20_31/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "55eea420bd2c5ee0126aab5beec5037db86a4fd96b1733a0e8d66fe0b61e800a",
-          "bytes": 23607
+          "sha256": "f77b14016402b339d7f0094d07c0a432c247e8b71dd310957cac6dd58af423d4",
+          "bytes": 23487
         }
       ]
     },

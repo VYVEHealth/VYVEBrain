@@ -1,20 +1,19 @@
-// VYVE Health — Re-engagement Email Scheduler v10 — Security commit 1B fix-up (07 May 2026).
+// VYVE Health — Re-engagement Email Scheduler v11 — PM-16 perf (08 May 2026 PM-16).
 //
-// CHANGES vs v9:
-//   - triggered_by value corrected to 're_engagement' to satisfy the
-//     ai_interactions_triggered_by_check CHECK constraint (which was expanded in
-//     this same commit to include 're_engagement'). v9's 're-engagement:<key>'
-//     would silently 23514 every insert.
-//   - The per-step streamKey (e.g. 'A_48h', 'B_3d') moved into decision_log.stream_key
-//     so we don't lose audit granularity. prompt_summary still references it for
-//     human-readability.
-//   - All other behaviour byte-identical to v9.
+// CHANGES vs v10:
+//   - Replace 4 .in() queries against daily_habits/workouts/session_views/wellbeing_checkins
+//     with a single .in() query against member_home_state for the new last_*_at columns
+//     (added in migration pm16_add_last_at_columns_to_member_home_state).
+//   - At current scale (~30 active members), the old shape pulled hundreds of rows from
+//     each activity table. At 100K members it would pull millions. New shape pulls one
+//     row per active member, regardless of activity count.
+//   - All other behaviour byte-identical to v10.
 //
-// CHANGES from v9 (still applies):
-//   - ai_interactions audit row written for every successful aiLine() call.
-//   - aiLine() signature: email/persona/streamKey/systemPrompt/userPrompt/maxTokens.
+// CHANGES vs v9 (still applies):
+//   - triggered_by value 're_engagement' satisfies the ai_interactions check constraint.
+//   - Per-step streamKey moved into decision_log.stream_key.
 //
-// CHANGES from v8 (still applies):
+// CHANGES vs v8 (still applies):
 //   - Single-app world: streams A + B only.
 //   - Stream A gate: privacy_accepted_at IS NULL AND no app activity.
 //   - Stream B: opened the app, currently dormant (no activity in last 7d).
@@ -197,7 +196,7 @@ async function writeAiInteraction(email, persona, prompt_summary, recommendation
       })
     });
   } catch (e) {
-    console.warn('[scheduler v10] ai_interactions write failed:', e.message);
+    console.warn('[scheduler v11] ai_interactions write failed:', e.message);
   }
 }
 const wrap = (body)=>`<!DOCTYPE html><html><body style="margin:0;padding:0;background:#F4FAFA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#F4FAFA;padding:32px 16px;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#FFFFFF;border-radius:12px;overflow:hidden;box-shadow:0 2px 16px rgba(13,43,43,0.08);"><tr><td style="background:#0D2B2B;padding:24px 32px;"><img src="https://online.vyvehealth.co.uk/logo.png" alt="VYVE Health" style="height:36px;display:block;" /></td></tr><tr><td style="padding:32px;">${body}</td></tr><tr><td style="background:#F4FAFA;padding:20px 32px;border-top:1px solid #C8E4E4;"><p style="margin:0;font-size:12px;color:#7A9A9A;">VYVE Health CIC &nbsp;&middot;&nbsp; team@vyvehealth.co.uk<br>ICO Registration No. 00013608608</p></td></tr></table></td></tr></table></body></html>`;
@@ -438,29 +437,30 @@ serve(async (req)=>{
     const personaMap = {};
     for (const p of personaRows || [])personaMap[p.name] = p.system_prompt;
     const emails = (membersRaw || []).map((m)=>m.email);
-    const [habits, workouts, sessions, checkins] = await Promise.all([
-      supabase.from("daily_habits").select("member_email,logged_at").in("member_email", emails),
-      supabase.from("workouts").select("member_email,logged_at").in("member_email", emails),
-      supabase.from("session_views").select("member_email,logged_at").in("member_email", emails),
-      supabase.from("wellbeing_checkins").select("member_email,logged_at").in("member_email", emails)
-    ]);
-    const latestMap = (rows)=>{
-      const m = {};
-      for (const r of rows.data || []){
-        const d = new Date(r.logged_at);
-        if (!m[r.member_email] || d > m[r.member_email]) m[r.member_email] = d;
-      }
-      return m;
+    // PM-16: pull last_*_at columns from member_home_state in ONE query instead of
+    // four .in() queries against daily_habits/workouts/session_views/wellbeing_checkins.
+    // O(member_count) rows total, regardless of activity volume.
+    const { data: homeStateRows } = emails.length ? await supabase.from("member_home_state").select("member_email,last_habit_at,last_workout_at,last_session_at,last_checkin_at").in("member_email", emails) : {
+      data: []
     };
-    const HM = latestMap(habits), WM = latestMap(workouts), SM = latestMap(sessions), CM = latestMap(checkins);
-    const members = (membersRaw || []).map((m)=>({
+    const homeStateMap = {};
+    for (const r of homeStateRows || [])homeStateMap[r.member_email] = r;
+    const members = (membersRaw || []).map((m)=>{
+      const hs = homeStateMap[m.email] || {
+        last_habit_at: null,
+        last_workout_at: null,
+        last_session_at: null,
+        last_checkin_at: null
+      };
+      return {
         ...m,
         persona_system_prompt: m.persona ? personaMap[m.persona] || null : null,
-        last_habit: HM[m.email]?.toISOString() || null,
-        last_workout: WM[m.email]?.toISOString() || null,
-        last_session: SM[m.email]?.toISOString() || null,
-        last_checkin: CM[m.email]?.toISOString() || null
-      }));
+        last_habit: hs.last_habit_at,
+        last_workout: hs.last_workout_at,
+        last_session: hs.last_session_at,
+        last_checkin: hs.last_checkin_at
+      };
+    });
     const { data: sent } = await supabase.from("engagement_emails").select("member_email,stream,email_key,suppressed").in("member_email", emails);
     const sentMap = {};
     const suppMap = {};
@@ -494,7 +494,7 @@ serve(async (req)=>{
     return new Response(JSON.stringify({
       success: true,
       dry_run: DRY_RUN,
-      version: 10,
+      version: 11,
       processed: results.length,
       sent: sc,
       skipped: sk,
@@ -510,7 +510,7 @@ serve(async (req)=>{
       }
     });
   } catch (err) {
-    console.error("[scheduler v10] fatal:", err.message);
+    console.error("[scheduler v11] fatal:", err.message);
     return new Response(JSON.stringify({
       success: false,
       error: err.message
@@ -627,7 +627,7 @@ async function processMember(m, supabase, now, sentMap, suppMap, dryRun) {
     }, {
       onConflict: "member_email,stream,email_key"
     });
-    console.log(`[scheduler v10] SENT ${m.email} | ${stream} | ${nextStep.key} | ai=${result.ai_used}`);
+    console.log(`[scheduler v11] SENT ${m.email} | ${stream} | ${nextStep.key} | ai=${result.ai_used}`);
     return {
       email: m.email,
       stream,
@@ -637,7 +637,7 @@ async function processMember(m, supabase, now, sentMap, suppMap, dryRun) {
       ai_used: result.ai_used
     };
   } catch (err) {
-    console.error(`[scheduler v10] ERROR ${m.email} | ${err.message}`);
+    console.error(`[scheduler v11] ERROR ${m.email} | ${err.message}`);
     return {
       email: m.email,
       stream,

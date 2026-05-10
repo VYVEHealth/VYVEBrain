@@ -2,27 +2,22 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyOp, ukLocalDateISO, lastNightWindow, dailyMetricColumn, dailyUnitFor } from './_shared/taxonomy.ts';
 import { getMemberAchievementsPayload } from './_shared/achievements.ts';
-// member-dashboard v59 — CORS hardening (07 May 2026, security commit 1).
+// member-dashboard v61 — PM-17 perf: drop 4 of 5 this-week PostgREST queries.
 //
-// CHANGES vs v58:
-//   - getCORSHeaders no longer returns '*' when Origin is empty/null. Falls through
-//     to https://online.vyvehealth.co.uk for any unrecognised case. Closes the
-//     06 May 2026 audit finding on anon-readable wildcard exposure.
-//   - Access-Control-Allow-Credentials always 'true' as a result.
-//   - Member-facing flow byte-identical: legitimate browsers always send Origin.
-//
-// CHANGES vs v57 (still applies):
-//   - goals.progress.habits = DISTINCT activity_dates this ISO week, not row count.
-//   - habitsThisWeek query selects activity_date for client-side dedupe.
-//
-// CHANGES vs v55 (still applies):
-//   - weekly_goals returned as {targets, progress}; exercise = workouts+cardio combined.
-//
-// UNCHANGED from v55:
-//   - join_date sourced from members.created_at
-//   - autotick habits + evaluator (byte-identical)
-//   - all activity / engagement / certificate / charity payloads
-//   - achievements payload
+// CHANGES vs v60:
+//   - Promise.all gateway no longer issues workoutsThisWeek / cardioThisWeek /
+//     sessionsThisWeek / checkinsThisWeek queries. The four counts are now read
+//     directly from the cached member_home_state row (state.workouts_this_week,
+//     state.cardio_this_week, state.sessions_this_week, state.checkins_this_week)
+//     populated by refresh_member_home_state(). Saves 4 round trips per dashboard load.
+//   - habitsThisWeek query stays — the goal-progress meter needs COUNT(DISTINCT
+//     activity_date) and member_home_state.habits_this_week is COUNT(*).
+//   - 3 INLINE achievement evaluators (workouts_logged / cardio_logged /
+//     checkins_completed) routed through the cached homeStateRow via PM-17 changes
+//     in _shared/achievements.ts — saves 3 more round trips per achievements pass.
+//   - Inherits the same staleness contract as the totals already served from
+//     member_home_state. recompute_all_member_stats refreshes every 30 min and
+//     the EF refreshes on-demand when the row is absent.
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const SUPABASE_ANON = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
@@ -246,7 +241,7 @@ serve(async (req)=>{
     const sleepStartIso = sleepStart.toISOString();
     const sleepEndIso = sleepEnd.toISOString();
     const currentWeekStart = isoMondayUtcStr();
-    const [member, homeState, weeklyGoalsRow, habitsRecent, workoutsRecent, cardioRecent, sessionsRecent, replaysRecent, charityTotal, certificates, healthConnections, memberHabits, dailyToday, sleepLastNight, workoutsToday, cardioToday, habitsThisWeek, workoutsThisWeek, cardioThisWeek, sessionsThisWeek, checkinsThisWeek, achievementsPayload] = await Promise.all([
+    const [member, homeState, weeklyGoalsRow, habitsRecent, workoutsRecent, cardioRecent, sessionsRecent, replaysRecent, charityTotal, certificates, healthConnections, memberHabits, dailyToday, sleepLastNight, workoutsToday, cardioToday, habitsThisWeek, achievementsPayload] = await Promise.all([
       q('members', `email=eq.${enc}&select=*`).then((r)=>r[0]),
       q('member_home_state', `member_email=eq.${enc}&select=*`).then((r)=>r[0]),
       q('weekly_goals', `member_email=eq.${enc}&week_start=eq.${currentWeekStart}&select=*&limit=1`).then((r)=>r[0]),
@@ -264,10 +259,6 @@ serve(async (req)=>{
       q('workouts', `member_email=eq.${enc}&activity_date=eq.${todayLocal}&select=id`),
       q('cardio', `member_email=eq.${enc}&activity_date=eq.${todayLocal}&select=id,duration_minutes`),
       q('daily_habits', `member_email=eq.${enc}&activity_date=gte.${currentWeekStart}&select=activity_date`),
-      q('workouts', `member_email=eq.${enc}&activity_date=gte.${currentWeekStart}&select=id`),
-      q('cardio', `member_email=eq.${enc}&activity_date=gte.${currentWeekStart}&select=id`),
-      q('session_views', `member_email=eq.${enc}&activity_date=gte.${currentWeekStart}&select=id`),
-      q('wellbeing_checkins', `member_email=eq.${enc}&activity_date=gte.${currentWeekStart}&select=id`),
       getMemberAchievementsPayload(supabaseSr, user.email.toLowerCase(), {
         inflightLimit: 3,
         recentLimit: 8
@@ -392,8 +383,10 @@ serve(async (req)=>{
     };
     const joinDate = member.created_at ? String(member.created_at).slice(0, 10) : null;
     const tgt = weeklyGoalsRow || {};
-    // habits goal = DISTINCT activity_dates this week (a member ticking 3 cards on Monday = 1 day, not 3).
     const habitDaysThisWeek = new Set((habitsThisWeek || []).map((r)=>r.activity_date).filter(Boolean)).size;
+    // PM-17: workouts/cardio/sessions/checkins this-week counts now read from member_home_state
+    // instead of issuing 4 PostgREST queries. See refresh_member_home_state() — populates these
+    // columns from the same source tables with the same week boundaries.
     const goalsPayload = {
       week_start: currentWeekStart,
       targets: {
@@ -404,9 +397,9 @@ serve(async (req)=>{
       },
       progress: {
         habits: habitDaysThisWeek,
-        exercise: (workoutsThisWeek || []).length + (cardioThisWeek || []).length,
-        sessions: (sessionsThisWeek || []).length,
-        checkin: (checkinsThisWeek || []).length
+        exercise: Number(state.workouts_this_week ?? 0) + Number(state.cardio_this_week ?? 0),
+        sessions: Number(state.sessions_this_week ?? 0),
+        checkin: Number(state.checkins_this_week ?? 0)
       }
     };
     return new Response(JSON.stringify({

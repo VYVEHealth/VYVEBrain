@@ -1,17 +1,26 @@
-// VYVE Health — log-activity v28 — Security commit 1B (07 May 2026).
+// VYVE Health — log-activity v29 — PM-19 (08 May 2026).
 //
-// CHANGES vs v27:
+// CHANGES vs v28:
+//   - Successful inserts now return the post-write member_home_state row
+//     under `home_state` so the portal can write straight into vyve_home_v3_<email>
+//     without a follow-up member-dashboard fetch. The row is computed
+//     optimistically: read current member_home_state, increment the type's
+//     `*_total` and `*_this_week` columns by 1, ALSO refresh `last_activity_at`
+//     and the per-type `last_*_at`. Engagement_score and streaks are NOT
+//     recomputed inline — those wait for the next refresh_member_home_state()
+//     cycle, same staleness contract as the existing dashboard load (PM-17).
+//   - evaluate_only path also returns the fresh home_state when present (no
+//     mutation, just reads + returns).
+//   - Cap-skip path returns the unchanged home_state too — same shape across
+//     all success branches.
+//   - All other behaviour byte-identical to v28.
+//
+// CHANGES from v28 (still applies):
 //   - getCORSHeaders no longer returns '*' when Origin is empty/null. Falls through
 //     to https://online.vyvehealth.co.uk for any unrecognised case. Closes the
-//     06 May audit finding on anon-readable wildcard exposure (same fix as
-//     member-dashboard v59).
+//     06 May audit finding on anon-readable wildcard exposure.
 //   - Access-Control-Allow-Credentials always 'true'.
 //   - 100KB payload cap on req.json() — returns 413 if Content-Length > 102400.
-//   - All other behaviour byte-identical to v27.
-//
-// CHANGES from v27 (still applies):
-//   - Notification routes: writeAchievementNotifications + checkAndWriteStreakNotification
-//     write `route` to member_notifications rows.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { evaluateInline } from "./_shared/achievements.ts";
@@ -59,6 +68,72 @@ const STREAK_MILESTONES = [
   60,
   100
 ];
+// ── PM-19: Post-write home_state shape ──────────────────────────────────────
+// Returned from every successful log-activity invocation. Lets the portal
+// patch vyve_home_v3_<email> directly so the next dashboard paint reflects
+// the just-logged activity without a round-trip.
+//
+// Optimistic delta: read current member_home_state, increment the *_total +
+// *_this_week + last_*_at columns, return the patched row. Engagement_score
+// and streaks are NOT recomputed inline — same 30-min staleness contract
+// as PM-17. Portal callers should treat home_state as authoritative for
+// totals/counts and last-known for derived metrics.
+const TYPE_TO_HS_COLS = {
+  daily_habits: {
+    total: 'habits_total',
+    weekly: 'habits_this_week',
+    lastAt: 'last_habit_at'
+  },
+  workouts: {
+    total: 'workouts_total',
+    weekly: 'workouts_this_week',
+    lastAt: 'last_workout_at'
+  },
+  cardio: {
+    total: 'cardio_total',
+    weekly: 'cardio_this_week',
+    lastAt: 'last_cardio_at'
+  },
+  session_views: {
+    total: 'sessions_total',
+    weekly: 'sessions_this_week',
+    lastAt: 'last_session_at'
+  }
+};
+async function getHomeStatePatched(supabase, email, type, loggedAt) {
+  // Read the live home state row (may be missing for brand-new members).
+  // Fields cover everything the home cache renders: scores, streaks, totals,
+  // this-week counts, last_*_at. Anything else the EF response carries
+  // (member, workout summaries, habit details) is NOT in member_home_state
+  // and stays whatever the portal had cached.
+  try {
+    const { data, error } = await supabase.from('member_home_state').select('*').eq('member_email', email).maybeSingle();
+    if (error) {
+      console.warn('[log-activity v29] home_state read err:', error.message);
+      return null;
+    }
+    if (!data) return null;
+    // Apply the optimistic delta only when type has a column mapping
+    // (evaluate_only and cap-skip paths pass type='' or null — those just
+    // return the row as-is).
+    if (type && TYPE_TO_HS_COLS[type]) {
+      const cols = TYPE_TO_HS_COLS[type];
+      data[cols.total] = Number(data[cols.total] ?? 0) + 1;
+      data[cols.weekly] = Number(data[cols.weekly] ?? 0) + 1;
+      data[cols.lastAt] = loggedAt;
+      // last_activity_at is the GREATEST of the five — bump it too if newer
+      const cur = data['last_activity_at'];
+      if (!cur || new Date(loggedAt) > new Date(cur)) {
+        data['last_activity_at'] = loggedAt;
+      }
+    }
+    return data;
+  } catch (e) {
+    console.warn('[log-activity v29] home_state read exception:', e.message);
+    return null;
+  }
+}
+// ────────────────────────────────────────────────────────────────────────────
 async function getAuthUser(req) {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) return null;
@@ -260,10 +335,12 @@ serve(async (req)=>{
         EdgeRuntime.waitUntil(writeAchievementNotifications(supabase, member_email, earned_achievements));
         EdgeRuntime.waitUntil(pushAchievementEarned(member_email, earned_achievements));
       }
+      const home_state = await getHomeStatePatched(supabase, member_email, '', '');
       return new Response(JSON.stringify({
         success: true,
         evaluate_only: true,
-        earned_achievements
+        earned_achievements,
+        home_state
       }), {
         status: 200,
         headers: {
@@ -315,11 +392,14 @@ serve(async (req)=>{
         EdgeRuntime.waitUntil(writeAchievementNotifications(supabase, member_email, earned_skip));
         EdgeRuntime.waitUntil(pushAchievementEarned(member_email, earned_skip));
       }
+      // Cap-skip: no insert happened, return the unchanged home_state
+      const home_state_skip = await getHomeStatePatched(supabase, member_email, '', '');
       return new Response(JSON.stringify({
         success: true,
         skipped: true,
         reason: `cap reached (${cap}/${cap})`,
-        earned_achievements: earned_skip
+        earned_achievements: earned_skip,
+        home_state: home_state_skip
       }), {
         status: 200,
         headers: {
@@ -354,6 +434,8 @@ serve(async (req)=>{
       EdgeRuntime.waitUntil(writeAchievementNotifications(supabase, member_email, earned_achievements));
       EdgeRuntime.waitUntil(pushAchievementEarned(member_email, earned_achievements));
     }
+    // Successful insert — return optimistically-patched home_state
+    const home_state = await getHomeStatePatched(supabase, member_email, type, logged_at);
     return new Response(JSON.stringify({
       success: true,
       skipped: false,
@@ -361,7 +443,8 @@ serve(async (req)=>{
       type,
       member_email,
       activity_date,
-      earned_achievements
+      earned_achievements,
+      home_state
     }), {
       status: 200,
       headers: {
