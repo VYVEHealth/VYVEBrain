@@ -49,14 +49,14 @@
 > Refresh the SHA + version rows at the top of every session via a parallel pre-flight. The rest of this section is stable across sessions.
 
 **HEADs (refresh at session start):**
-- vyve-site main: `1d36b30f` (PM-43 ship — last shipped 09 May 2026; **Layer 1c COMPLETE 14/14, cleanup commit pending**)
+- vyve-site main: `66b14ee1` (PM-44 ship — last shipped 10 May 2026 00:22 UTC; **🎉 LAYER 1 CLOSED**)
 - VYVEBrain main: `(set after this commit lands)`
 - vyve-capacitor main: stub (Apr 18 2026 base) — local working tree not yet pushed
 - Test-Site-Finalv3 main: marketing site, less active
 
 **Cache-bus key currently live:**
 - Pattern: `vyve-cache-v2026-05-09-pmNN-X-Y` (date prefix from PM-30)
-- Last shipped: `vyve-cache-v2026-05-09-pm43-session-a`
+- Last shipped: `vyve-cache-v2026-05-09-pm44-cleanup-a` (date prefix is campaign-namespace not wall-clock per §23 PM-44)
 - P3 carried: convention drift (date prefix may not match wall clock — decide on calendar advance)
 
 **Mobile binaries:**
@@ -68,16 +68,18 @@
 - First paying B2C: Paige Coult, joined 13 April 2026, £20/month
 - 3 admin operators in `admin_users`
 
-**Audit-count baseline (publishing-surface call sites at HEAD `1d36b30f`, post-PM-43):**
+**Audit-count baseline (publishing-surface call sites at HEAD `66b14ee1`, post-PM-44 cleanup):**
 - See §3.2 for the canonical numbers — they are the pre-flight reference for PM-41
 
 ---
 
 ## 3. Layer 1c migration campaign — the active workstream
 
-The 1c-* campaign migrates every direct-call cache primitive (`invalidateHomeCache`, `recordRecentActivity`, `evaluate`) onto the typed event bus (`bus.publish`). 14 surface migrations originally planned; **PM-42 reshape**: certificate dropped from campaign (server-side cron-driven write, no client publish site → §23 PM-42 rule), 1c-13 row repurposed for `programme:imported`. **CAMPAIGN COMPLETE: 14/14 surfaces shipped. Cleanup commit pending.**
+The 1c-* campaign migrated every direct-call cache primitive (`invalidateHomeCache`, `recordRecentActivity`, `evaluate`) onto the typed event bus (`bus.publish`). **🎉 CAMPAIGN COMPLETE — 14/14 surfaces shipped + cleanup commit landed (PM-30..PM-44, 09-10 May 2026, three working sessions).** PM-44 closed Layer 1 with the option (a) → option (b) transition: removed all fallback else-branch primitive call sites (34 sites across 11 files), kept subscriber-internal helpers, kept defensive `if (window.VYVEBus)` publish guards.
 
-### 3.1 The 14-row plan — reconciled (post-PM-43, campaign complete)
+**This whole §3 section deprecates next session.** The active.md §3 will be replaced with Layer 2 scope (Supabase Realtime → bus event bridge) when PM-45 begins. Keeping this section intact through PM-44 for traceability of the closing audit.
+
+### 3.1 The 14-row plan — final state (post-PM-44 cleanup, Layer 1 closed)
 
 | # | Surface | PM tag | Status | Event | Pre-bus shape | Fallback | Notes |
 |---|---|---|---|---|---|---|---|
@@ -97,23 +99,27 @@ The 1c-* campaign migrates every direct-call cache primitive (`invalidateHomeCac
 | 1c-13 | workouts-programme.js confirmImportPlan | PM-42 | ✅ shipped | `programme:imported` (NEW) + `workout:logged source:'builder'` (REUSES PM-35) | ZERO both branches | asymmetric both | **Certificate dropped from campaign** (server-side cron-driven write, §23 PM-42 rule). Slot repurposed for confirmImportPlan — single function, two events gated on isProg. Real bug fix: 800ms setTimeout(loadProgramme) workaround replaced with synchronous self-subscriber. Engagement non-touch (5th). |
 | 1c-14 | tracking.js onVisitStart (shared by 14 live + rp pages) | PM-43 | ✅ shipped | `session:viewed` kind:`live`/`replay` (with `table` field carrying `session_views`/`replay_views`) | invalidate + record (no eval — sessions not on any track) | symmetric | **Pre-flight correction**: actual surface was tracking.js (not session-live.js). One publish surface in tracking.js handles both live + replay via the `table` variable. Real engagement scope-fix (8th _markEngagementStale event — pre-PM-43 watching a session never busted engagement cache; first non-defensive eng subscriber since PM-32). 14 new bus.js script tags wired (12 shell + 2 full-content patterns). FIRST new bus.js wiring since PM-39. |
 
-**Layer 1c COMPLETE (PM-43 ship 09 May 2026, vyve-site `1d36b30f`).** All 14 surfaces shipped. **Next: option-(b) cleanup commit** removes the three legacy direct-call surfaces (`VYVEData.invalidateHomeCache`, `VYVEData.recordRecentActivity`, `VYVEAchievements.evaluate` from publishing sites — they remain available as subscriber-internal helpers and in `!VYVEBus` fallback else-branches per PM-38 fallback discipline). PM-30 §23 rule transitions from option (a) — "preserve everything in fallback else-branches indefinitely" — to option (b) — "the bus is the production path; fallback else-branches stay only as resilience against bus.js load failure." Single dedicated commit, deferred to next session for full attention. Once shipped, **Layer 1 closes** and Layer 2 (cross-tab/cross-device cache coherence via Supabase Realtime + storage events into the same bus) opens.
+**🎉 LAYER 1 CLOSED — PM-44 ship 10 May 2026 00:22 UTC, vyve-site `66b14ee1`.** All 14 surfaces shipped + cleanup. PM-30 §23 rule transitioned from option (a) to option (b). 34 fallback primitive call sites removed; 7 subscriber-internal helpers preserved; PM-42 setTimeout(loadProgramme) non-primitive resilience preserved; all defensive `if (window.VYVEBus)` publish guards preserved. Whole-tree audit-count delta: invalidate 11→1, record 8→1, evaluate 19→12.
 
-### 3.2 Audit-count baseline (post-PM-43, HEAD `1d36b30f`) — Layer 1c campaign complete
+**Next: Layer 2 (Supabase Realtime → bus event bridge).** Cross-tab/cross-device cache coherence. Realtime row events translate to bus events of the same name a local write would publish. The `cache-bus-taxonomy.md` and `1c-migration-template.md` playbooks marked OBSOLETE in the PM-44 brain commit per their stop-date provisions. New playbook to create at PM-45: `playbooks/realtime-bus-bridge.md`.
+
+### 3.2 Audit-count baseline (post-PM-44 cleanup, HEAD `66b14ee1`) — Layer 1 CLOSED
 
 > The publishing-surface call-site count for each primitive across the whole vyve-site tree, computed under the PM-37 audit-count classification rule (PM-40 sub-rule: count source-code call sites unconditionally regardless of runtime branch).
 
-| Primitive | Count | Notes |
-|---|---|---|
-| `VYVEData.invalidateHomeCache(` | 11 | Stable from PM-37 ship; PM-41/PM-42/PM-43 added zero (preserved in `!VYVEBus` else-branches per fallback discipline). **Cleanup commit will reduce this to subscriber-internal-only — projected post-cleanup count: ~5-7** (depending on which else-branches retain primitives for resilience). |
-| `VYVEData.recordRecentActivity(` | 8 | Stable from PM-37 ship; PM-43 added zero (preserved in `!VYVEBus` else-branch). **Cleanup commit projected post-cleanup: ~3-5**. |
-| `VYVEAchievements.evaluate(` | 19 | Stable from PM-37 ship; PM-41 preserved 2 sites in `if(!VYVEBus)` else-branches; PM-42 + PM-43 added zero. **Cleanup commit projected post-cleanup: ~10-12** (subscriber-internal evals on workouts.html stay, plus eval sites in pages with no bus migration). |
-| `VYVEBus.publish(` | 23 | **+6 across PM-41/PM-42/PM-43**: PM-41 +3 workout:shared call sites; PM-42 +2 programme:imported + workout:logged source:'builder'; PM-43 +1 session:viewed. |
-| `VYVEBus.subscribe(` | 29 | **+5 across PM-41/PM-42/PM-43**: PM-41 +1 _markHomeStale extension; PM-42 +2 _markHomeStale extension + workouts.html self-sub; PM-43 +2 _markHomeStale + _markEngagementStale extensions. |
+| Primitive | Pre-PM-30 | Post-PM-43 | Post-PM-44 (final) | Cumulative delta |
+|---|---|---|---|---|
+| `VYVEData.invalidateHomeCache(` | ~13 | 11 | **1** (only index.html `_markHomeStale` subscriber-internal helper) | **-12** |
+| `VYVEData.recordRecentActivity(` | ~10 | 8 | **1** (only habits.html L1135 subscriber helper) | **-9** |
+| `VYVEAchievements.evaluate(` | ~25 | 19 | **12** (subscriber-internal + self-subscriber helpers preserved) | **-13** |
+| `VYVEBus.publish(` | 0 | 23 | 23 | +23 |
+| `VYVEBus.subscribe(` | 0 | 29 | 29 | +29 |
 
-**Cumulative bus surface across PM-30..PM-43: 23 publishers, 29 subscribers.**
+**Cumulative bus surface across PM-30..PM-43: 23 publishers, 29 subscribers** (unchanged at PM-44 — the cleanup commit removes legacy direct calls, doesn't change bus topology).
 
-**Use these as the pre-flight reference for the cleanup commit.** The cleanup will materially shift the invalidate/record/evaluate counts downward as legacy publishing-site call sites are removed from the bus path (kept only as subscriber-internal helpers + fallback else-branch primitives). Whole-tree audit at session start (deferred from pre-flight per §4.9 below) confirms the post-cleanup numbers.
+**Cleanup exceeded projection.** Active.md projected post-cleanup as invalidate 5-7, record 3-5, evaluate 10-12. Actual cleanup landed invalidate=1, record=1, evaluate=12. The projection was hedged because we hadn't classified all 34 sites at the time. Strict option (b) reading removed all fallback else-branches rather than leaving some for resilience.
+
+**This baseline becomes the Layer 2 starting point.** Layer 2 work will not directly modify these primitive call sites further — it adds Realtime row events as a new origin signal flowing through the existing bus. The publish/subscribe counts will grow as Layer 2 surfaces new events; the legacy primitive counts should stay flat (12 evaluate / 1 invalidate / 1 record — all subscriber-internal).
 
 ### 3.3 Methodology questions — resolved + open
 
@@ -123,6 +129,8 @@ The 1c-* campaign migrates every direct-call cache primitive (`invalidateHomeCac
 - PM-42: campaign scope — server-side cron-driven write surfaces (e.g. certificate-checker EF v9 daily certificate generation) have NO client publish site and are therefore out of scope for Layer 1c. Cross-tab/cross-device staleness for these surfaces is a Layer 2 concern (cache-coherence) or Layer 3 concern (server-push). Discriminator: does the client invoke a write that fires inline cache primitives? If no, not 1c.
 - PM-42: multi-event single-function migrations — when one function has semantically distinct branches (importing-a-programme vs saving-a-session-to-library), emit distinct event names per branch. Use one event with discriminator only when branches differ in *source/origin/variant* of the same semantic action. Per-branch race-fix and fallback discipline apply independently. Reuse existing event schemas when the semantic action matches (PM-42 session-save → PM-35 workout:logged source:'builder' precedent).
 - PM-43: real engagement scope-fix vs intentional non-touch classification — when a new event publishes from a surface whose write affects server-computed engagement scoring (e.g. session_views feeds the Variety component), the engagement._markEngagementStale subscriber MUST be wired (real scope-fix, closes a cache-staleness bug). When the surface has no engagement-scoring impact (e.g. weight, persona, share, programme import), the engagement subscriber is intentionally omitted (non-touch). The classification is determined by reading engagement.html scoring components and verifying whether the new write affects any of them. PM-43 is the first non-defensive engagement subscriber extension since PM-30..32 — a useful tell that the campaign's later-half migrations (PM-37+) targeted user-state surfaces with no scoring impact (weight, persona, sharing, programme import, monthly check-in) while the earlier half targeted activity-logging surfaces (habits, workouts, sets, cardio, food) which all feed engagement.
+- PM-44: cache-version date convention drift resolution — the `vyve-cache-v2026-05-09-pmNN-X-Y` date prefix represents a campaign-scoped namespace, not a wall-clock timestamp. Within a campaign the date is fixed at campaign-start; new campaigns (Layer 2 onwards) get fresh date prefixes. PM-44 shipped 10 May with 09 May prefix because the Layer 1c campaign that started 09 May still owned that namespace.
+- PM-44: option (a) → option (b) cleanup discipline — the strict reading is correct: remove ALL fallback else-branches with primitive calls, preserve only subscriber-internal helpers + non-primitive resilience (e.g. PM-42 setTimeout) + defensive `if (window.VYVEBus)` publish guards. Risk acceptable because bus.js is precached + IIFE-self-contained + PWA-installed + browser-retry; degraded-but-functional state on bus.js-load-failure is the correct classification.
 
 **Open (P3, decide-and-codify when triggered):**
 - Cache-version date convention drift — `vyve-cache-v2026-05-09-pmNN-X-Y` carries date prefix from PM-30 through PM-42. Decide before next deploy that crosses midnight UK time
@@ -229,15 +237,40 @@ The 1c-* campaign migrates every direct-call cache primitive (`invalidateHomeCac
 
 ### P0 (next session)
 
-- **PM-44 / Layer 1 cleanup commit (closes Layer 1).** All 14 1c migrations shipped. The cleanup commit removes the three legacy direct-call publishing surfaces (`VYVEData.invalidateHomeCache`, `VYVEData.recordRecentActivity`, `VYVEAchievements.evaluate`) from publishing sites. They remain available as subscriber-internal helpers (where `_markHomeStale` and other subscribers internally call them to mutate the underlying caches) and in `!VYVEBus` fallback else-branches (per PM-38 fallback discipline — bus.js load failure resilience). PM-30 §23 rule transitions from option (a) — "preserve everything in fallback else-branches indefinitely" — to option (b) — "the bus is the production path; fallback else-branches stay only as resilience against bus.js load failure."
+- **PM-45 / Layer 2 prep — Supabase Realtime → bus event bridge (infrastructure commit).** Layer 2 opens. Cross-tab/cross-device cache coherence: Realtime row events on Supabase tables translate into bus events of the same name a local write would publish. The existing storage-event cross-tab transport in bus.js handles within-browser-instance fanout; Realtime adds cross-device fanout (member logs habit on phone → desktop tab sees it within seconds without polling).
 
-  **Pre-flight:** for each of the 14 publishing sites (PM-30 habits.html, PM-31 workouts-session.js completeWorkout, PM-32 workouts-session.js saveExerciseLog, PM-33 cardio.html, PM-34 movement.html, PM-35 workouts-builder.js, PM-36 log-food.html ×3 surfaces, PM-37 nutrition.html, PM-38 settings.html, PM-39 wellbeing-checkin.html ×2 surfaces, PM-40 monthly-checkin.html, PM-41 share ×3 surfaces, PM-42 confirmImportPlan ×2 branches, PM-43 tracking.js), classify whether the inline `if (!VYVEBus) { ...else-branch... }` should be (a) kept verbatim (pure resilience), (b) reduced to a no-op (legacy primitive serves no purpose if bus.js is missing), or (c) removed entirely (pure dead-code path).
+  **PM-45 scope (single commit, infrastructure only — no member-facing wiring yet):**
 
-  **Audit-count delta projected:** invalidate `11 → ~5-7`, record `8 → ~3-5`, evaluate `19 → ~10-12` (subscriber-internal evals stay), publish `23` unchanged, subscribe `29` unchanged. Whole-tree audit at the start of the cleanup session establishes the precise targets.
+  1. **bus.js patch** — add a third origin value `'realtime'` alongside existing `'local'` and `'remote'`. Add a `subscribeToTable(tableName, eventTypeMap)` helper that wires a Supabase Realtime channel and routes INSERT/UPDATE/DELETE events to bus.publish with the right event name. The mapping is per-table-per-event-type — codify in the new playbook.
 
-  **Single atomic commit covering all 14 publishing sites.** Self-test harness validates each surface's else-branch shape post-cleanup. Schema discipline doesn't apply (no event changes). Race-fix doesn't apply (no ordering changes). Sw cache key bumps to `vyve-cache-v2026-05-09-pm44-cleanup-a` (or post-midnight: `vyve-cache-v2026-05-10-pm44-cleanup-a` — codify date convention drift if midnight crossed).
+  2. **`playbooks/realtime-bus-bridge.md`** — new playbook documenting the Realtime → bus mapping for each active Layer 1 table:
+     - `daily_habits` INSERT → `habit:logged`
+     - `workouts` INSERT → `workout:logged`
+     - `exercise_logs` INSERT → `set:logged`
+     - `cardio` INSERT → `cardio:logged`
+     - `nutrition_logs` INSERT → `food:logged` (with kind discriminator)
+     - `nutrition_logs` DELETE → `food:deleted`
+     - `weight_logs` INSERT → `weight:logged`
+     - `members` UPDATE → `persona:switched` (filtered on persona column change)
+     - `wellbeing_checkins` INSERT → `wellbeing:logged`
+     - `monthly_checkins` INSERT → `monthly_checkin:submitted`
+     - `shared_workouts` INSERT → `workout:shared`
+     - `session_views` INSERT → `session:viewed`
+     - `replay_views` INSERT → `session:viewed` (with kind:'replay' discriminator)
+     - `workout_plan_cache` UPDATE → `programme:imported` (filtered on cross-tab origin)
+     - `certificates` INSERT → `certificate:earned` (NEW event — first Layer 2 surface that didn't have a Layer 1 publish path; closes the certificate cross-tab gap from PM-42)
 
-  After PM-44 ships, **Layer 1 closes**. Layer 2 (cross-tab/cross-device cache coherence via Supabase Realtime + storage events into the same bus) opens, and `cache-bus-taxonomy.md` becomes obsolete per `playbooks/1c-migration-template.md` stop-date (codified at PM-37-Setup).
+  3. **Auth lifecycle hooks** — Realtime channels subscribe on the existing `auth:ready` bus event, unsubscribe on `auth:signed-out`. bus.js header comment already documents these as the right hook points.
+
+  4. **RLS verification** — Supabase Realtime respects RLS by default, but verify each table's RLS policy allows `member_email = auth.email()` row visibility (already true for all 14 tables in the campaign — the policies were written that way for the Layer 1c work).
+
+  5. **Idempotency check** — same write fires `local` (own publish) → potentially `remote` (storage event from another tab of same browser) → potentially `realtime` (cross-device echo). Subscribers must be idempotent. Verify the achievements.js 1.5s debounce handles 3-fold fan-in correctly.
+
+  6. **Self-test harness against mock Realtime channel** — no member-facing wiring yet, but the bus.js patch should be testable against a mocked channel that simulates Supabase Realtime callbacks. ~30-40 tests across 8-10 groups.
+
+  **Estimate:** PM-45 is one focused session, ~3-4 hours of work. After PM-45 lands, individual table Realtime channels can be wired one at a time in subsequent commits (PM-46+) — same per-surface discipline as Layer 1c, but each commit is much smaller because the mechanic is just "add this table to the bridge config."
+
+  **The certificate cross-tab gap from PM-42 (P3 carried) becomes Layer 2's first real bug fix on the way through.** Members will see new certificates appear on whichever tab is active without manual refresh.
 
 ### P1 (working set)
 

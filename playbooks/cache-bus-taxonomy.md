@@ -1,3 +1,7 @@
+> **🛑 OBSOLETE — 10 May 2026 (PM-44).** This playbook documented the Layer 1c migration plan and the canonical event taxonomy for the cache-bus campaign. **Layer 1 closed at PM-44** (vyve-site `66b14ee1`). All 14 surfaces shipped + cleanup commit landed. The taxonomy below is the **historical record** of the campaign — kept for traceability of which event names map to which write surfaces. **Do not extend this playbook for new work.** Layer 2 (Supabase Realtime → bus event bridge) gets a fresh playbook at `playbooks/realtime-bus-bridge.md` (created at PM-45). The event names below remain canonical — Layer 2 will publish events with the same names a local write would publish, just with `origin: 'realtime'` instead of `'local'`. **Audit-count baseline at HEAD `66b14ee1`** (post-PM-44 cleanup): invalidate=1, record=1, evaluate=12, publish=23, subscribe=29 — see `brain/active.md §3.2` for the cumulative delta table.
+
+---
+
 # Cache-Bus Taxonomy
 
 > Layer 1a of the premium-feel architecture campaign. **Brain-only draft.** No code shipped against this until Dean confirms the taxonomy.

@@ -1,3 +1,7 @@
+> **🛑 OBSOLETE — 10 May 2026 (PM-44).** This template documented the per-surface migration discipline for Layer 1c (PM-30..PM-43) and the cleanup commit shape (PM-44 transition from option (a) to option (b)). **Layer 1 closed at PM-44.** All 14 surfaces migrated + cleanup landed. **Do not use this template for new work.** Layer 2 has a different shape — it adds Realtime row events as a new origin signal flowing through the existing bus, not new publish surfaces in member-write code paths. The Layer 2 playbook will document its own discipline. The methodology below remains useful as **historical reference** for how the campaign evolved (race-fix patterns, fallback discipline, schema discipline, audit-count counting), but the per-surface migration shape it describes no longer applies — the publish surfaces are all wired and cleaned up.
+
+---
+
 # Layer 1c Migration Template
 
 > Codified after PM-30..PM-40 stabilised the migration shape. Reference this template at pre-flight; do NOT re-derive the mechanics every session.

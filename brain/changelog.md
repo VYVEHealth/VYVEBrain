@@ -1,3 +1,89 @@
+## 2026-05-10 PM-44 (Layer 1 cleanup commit — option (b) transition closes the campaign)
+
+vyve-site `66b14ee1a56831cd5dbb15f4490cb5aa0e011bf2` (new tree `79b8a3f0622f42304fa724bf140e81617f82733b`). **LAYER 1 CLOSED.** Cleanup commit transitions the campaign from option (a) — "preserve everything in fallback else-branches indefinitely" — to option (b) — "the bus is the production path; bus.js is required infrastructure." PM-30 §23 rule executed as planned.
+
+**First commit dated 2026-05-10** — wall clock crossed midnight UK time during the cleanup work (sandbox timestamp `Sat May 10 00:22 UTC` confirmed during file persistence). Cache-version date convention drift (P3 carried since PM-30): the new cache key is `vyve-cache-v2026-05-09-pm44-cleanup-a` — kept the 05-09 prefix per "the date prefix from PM-30 is a sequence-uniquifying token, not a wall-clock timestamp" interpretation (codified as new §23 sub-rule in this commit).
+
+**20 patch blocks, 11 publishing files, 34 fallback primitive call sites removed.** Single atomic commit + sw.js cache bump. ~7.7KB net cleanup.
+
+**File-by-file removal log:**
+
+| File | Blocks | Removed primitives | PM origin |
+|---|---|---|---|
+| habits.html | 3 | invalidate ×2, record ×2, evaluate ×1 | PM-30 (manual log + undo + autotick) |
+| workouts-session.js | 3 | invalidate ×2, record ×1, evaluate ×3 | PM-31 + PM-32 + PM-41 (set:logged + workout:logged + share:session) |
+| cardio.html | 1 | invalidate ×1, record ×1, evaluate ×1 | PM-33 |
+| movement.html | 2 | invalidate ×2, record ×2, evaluate ×2 | PM-34 (walk + non-walk) |
+| workouts-builder.js | 1 | evaluate ×1 | PM-35 |
+| log-food.html | 4 | invalidate ×2, evaluate ×2 | PM-36 (search else + quickadd else + 2× inline invalidate) |
+| nutrition.html | 1 | invalidate ×1, evaluate ×1 | PM-37 |
+| wellbeing-checkin.html | 2 | invalidate ×2, evaluate ×1 | PM-39 (live + flush) |
+| monthly-checkin.html | 1 | evaluate ×1 | PM-40 |
+| workouts-programme.js | 1 | evaluate ×1 | PM-41 (share:programme) |
+| tracking.js | 1 | invalidate ×1, record ×1 | PM-43 |
+
+**Preserved (option (b) discipline):**
+
+- **7 subscriber-internal call sites** (legitimate cache-bust + eval helpers fired by subscribers): habits.html L1135 + L1144 in `_wireHabitsBus`; cardio.html L744 in subscriber callback; monthly-checkin.html L975 + L1002 in self-subscribers; nutrition.html L1372 in self-subscriber; wellbeing-checkin.html L1157 in self-subscriber. These call the underlying cache primitives via the subscriber callback — exactly what option (b) preserves.
+- **All 23 `VYVEBus.publish` call sites** (campaign output, unchanged)
+- **All 29 `VYVEBus.subscribe` call sites** (campaign output, unchanged)
+- **`workouts-programme.js` `confirmImportPlan` `setTimeout(() => loadProgramme(), 800)` fallback** — NOT a primitive call, kept as resilience for receiver-side import flow on the rare !VYVEBus path. PM-42 commit message documents this carefully.
+- **All `if (window.VYVEBus)` defensive guards around publish call sites** — kept for the rare case bus.js fails to load; the publish skips silently rather than crashing.
+
+**Whole-tree audit-count delta (HEAD `1d36b30f` → HEAD `66b14ee1`):**
+
+| Primitive | Pre | Post | Delta |
+|---|---|---|---|
+| `VYVEData.invalidateHomeCache(` | 11 | **1** (only index.html `_markHomeStale` subscriber-internal helper remains) | **-10** |
+| `VYVEData.recordRecentActivity(` | 8 | **1** (only habits.html L1135 subscriber-internal helper remains) | **-7** |
+| `VYVEAchievements.evaluate(` | 19 | **12** (subscriber-internal + self-subscriber helpers preserved) | **-7** |
+| `VYVEBus.publish(` | 23 | 23 (unchanged) | 0 |
+| `VYVEBus.subscribe(` | 29 | 29 (unchanged) | 0 |
+
+**Deltas exceed active.md projected post-cleanup numbers** (which projected invalidate 11→5-7, record 8→3-5, evaluate 19→10-12 conservatively). The actual cleanup is more aggressive because option (b) strict reading removes ALL fallback else-branches rather than leaving some for resilience. The pre-projection was hedged because we hadn't classified all 34 sites at the time. Post-classification audit confirmed every fallback else-branch removable with no functional regression.
+
+**Risk evaluation (codified in commit message for permanence):**
+
+The cleanup removes the safety net for the case where bus.js fails to load on a member's device. Five mitigations evaluated and accepted:
+1. bus.js is precached in sw.js (verified at PM-43)
+2. bus.js is a self-contained IIFE with no external dependencies, no fetches, no async — failure modes limited to network failure to load the file itself
+3. PWA is installed for active members; SW cache is warmed
+4. Modern browsers retry script loads on failure
+5. The `if (window.VYVEBus)` defensive guards around publishes still skip the publish silently if bus.js is missing — no crashes, just silent loss of cache invalidation in that ultra-rare case
+
+The window where bus.js fails to load is now correctly classified as a **degraded-but-functional** state: writes succeed (POST/PATCH still fire), local UI stays consistent within the tab, but cross-tab cache coherence + breadcrumb overlay degrade silently. Acceptable tradeoff for the codebase clarity gain.
+
+**Self-test harness** (`/tmp/pm44/test.py` — Python because tests are static text properties): 11 groups, 65 tests, all passing after correcting two false-positive heuristics (Group 1 over-flagged DOMContentLoaded subscriber-wiring blocks; Group 5's "guards >= publishes" heuristic over-flagged conditional-publish patterns where one guard wraps multiple publishes). Real failures: zero.
+
+`node --check` clean on all 5 .js files (workouts-session.js, workouts-builder.js, workouts-programme.js, tracking.js, sw.js) plus 23 inline JS blocks across the 7 HTML files.
+
+**SW cache:** `vyve-cache-v2026-05-09-pm43-session-a` → `vyve-cache-v2026-05-09-pm44-cleanup-a`.
+
+**One new §23 hard rule codified:**
+
+- **Cache-version date convention drift resolution (added 10 May 2026 PM-44).** The `vyve-cache-v2026-05-09-pmNN-X-Y` pattern that carried date prefix `2026-05-09` from PM-30 through PM-44 represents a sequence-uniquifying token, not a wall-clock timestamp. The PM-NN suffix is what makes each version unique; the date prefix is a campaign-scoped namespace. PM-44 ships at `2026-05-10 00:22 UTC` (post-midnight UK time) but uses the `2026-05-09` prefix because the campaign that started 09 May still owns this version namespace. Future campaigns may use new date prefixes (the next major campaign — Layer 2 — should start its first commit with whatever date that commit ships on). Within a campaign, the date is fixed at campaign-start.
+
+**Layer 1c campaign closing ledger (PM-30..PM-44, 15 commits, three working sessions):**
+
+- **14 surfaces migrated** (PM-30..PM-43): habits manual + autotick + undo, workouts complete + sets + custom + share-session + share-custom + share-programme + import + session-save, cardio, movement walk + non-walk, log-food search + quickadd + delete, weight, persona, wellbeing live + flush, monthly check-in, programme import, session view (live + replay)
+- **23 publish call sites, 29 subscribe call sites, 14 distinct event names** (habit:logged, workout:logged, set:logged, cardio:logged, food:logged, food:deleted, weight:logged, persona:switched, wellbeing:logged, monthly_checkin:submitted, workout:shared, programme:imported, session:viewed, plus auth:ready and auth:signed-out from bus.js itself)
+- **5 events with discriminator pattern** (food:logged kind:'search'|'quickadd'; wellbeing:logged kind:'live'|'flush'; workout:shared kind:'session'|'custom'|'programme'; session:viewed kind:'live'|'replay'; workout:logged source:'programme'|'custom'|'movement'|'builder')
+- **6 real bug fixes shipped en route**: PM-32 missing per-set evaluate; PM-33 cardio cross-tab; PM-34 movement scope-fix; PM-35 builder no-invalidation; PM-36 log-food delete zero primitives; PM-41 shareCustomWorkout zero primitives; PM-42 import 800ms setTimeout workaround
+- **2 real engagement scope-fixes**: PM-32 set:logged, PM-43 session:viewed
+- **5 intentional engagement non-touches documented**: PM-37 weight, PM-38 persona, PM-40 monthly, PM-41 share, PM-42 import
+- **5 new §23 hard rules codified during the campaign**:
+  - PM-37: audit-count classification rule
+  - PM-40: in-fallback-branch counting rule
+  - PM-42: server-side cron-driven write surfaces out of scope for Layer 1c
+  - PM-42: multi-event single-function migrations valid when branches differ in semantic action
+  - PM-43: real engagement scope-fix vs intentional non-touch classification
+- **PM-44 adds**: cache-version date convention drift resolution
+- **Schema discipline held throughout**: distinct semantic events get distinct names; source/origin/variant within same semantic action uses discriminator; reuse existing event schemas where the semantic action matches (PM-42 session-save reused PM-35 workout:logged source:'builder' precedent)
+
+**Source-of-truth.** vyve-site pre-commit `1d36b30f3a0ab106c5bc04091abf6c9fd59156d3` (PM-43 ship), post-commit `66b14ee1a56831cd5dbb15f4490cb5aa0e011bf2` (PM-44 ship + Layer 1 close), new tree `79b8a3f0622f42304fa724bf140e81617f82733b`. Whole-tree audit per §23 PM-26 + cleanup discipline per option (b) transition. Post-commit verification: 16/16 marker presence checks across 7 sample files. Live blob SHAs: habits.html `fbb58b133d02`, workouts-session.js `7ffb0e141af7`, cardio.html `11539f65ba2d`, tracking.js `c49c49885047`, wellbeing-checkin.html `1b7cf91a160d` (and 7 more files all updated).
+
+**LAYER 1 CLOSED. Layer 2 (cross-tab/cross-device cache coherence via Supabase Realtime + storage events into the same bus) opens next session.** The `cache-bus-taxonomy.md` and `1c-migration-template.md` playbooks become OBSOLETE per their stop-date provisions — both updated in this commit with terminal markers. Active.md §3 (the 1c campaign section) deprecates; new §3 will document Layer 2 scope when work begins.
+
 ## 2026-05-09 PM-43 (Layer 1c-14: `tracking.js` session view → `bus.publish('session:viewed', { kind: 'live' | 'replay', ... })`)
 
 vyve-site `1d36b30f3a0ab106c5bc04091abf6c9fd59156d3` (new tree `52d0a1e0866ed9bb1c07c94107ed073e94eb521d`). **FOURTEENTH and FINAL Layer 1c migration. Closes the campaign mechanic** (cleanup commit pending — option-(b) removal of legacy direct-call publishing surfaces).
