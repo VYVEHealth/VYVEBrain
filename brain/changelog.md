@@ -1,3 +1,52 @@
+## 2026-05-11 PM-64 (Layer 4 movement.html — seventh per-surface wiring, CLOSES workouts family; bug fix on the way through)
+
+**Files shipped (2, atomic vyve-site commit `1b0858005b2d3200a9e732b42846fc10808c9375`):**
+- `movement.html` (+6,087 chars; 38,804 → 44,891) — full PM-58 cardio.html shape applied to all three publish sites
+- `sw.js` cache key pm63-workouts-session-canonical-a → pm64-movement-canonical-a
+
+**The migration shape.** movement.html is the seventh Layer 4 surface and the FIFTH direct-fetch surface in the campaign (after cardio.html PM-58, tracking.js PM-61's session_views/replay_views, and the two writeQueued surfaces habits.html PM-59 + log-food.html PM-62 + workouts-session.js PM-63 which are hybrid not direct). Pure direct-fetch shape — no `await VYVEData.writeQueued`, no `vyve-outbox-dead` listener, no inflight tracker needed. All three publish sites get the same treatment: `optimisticPatch + recordCanonical + canonical:true publish + res.ok check + <event>:failed publish before existing throw`. Page-owned DOMContentLoaded IIFE wires `workout:failed` and `cardio:failed` subscribers that call `VYVEHomeState.revertPatch`. Closes the workouts family — workouts-session.js (PM-63) + movement.html (PM-64) cover the only two surfaces where the publish event actually corresponds to a `workouts` or `cardio` table row insertion.
+
+**Pre-flight reconciliation — TWO surfaces stay Layer 1c (workouts-programme.js + workouts-builder.js).** PM-63 brain backlog had estimated PM-64 as covering 5 canonical-ifiable sites (3 movement.html + 2 workouts-programme.js EF-writer pair). PM-64 pre-flight read the share-workout EF v15 from Supabase directly to confirm conflict resolution: **`save_session` action inserts into `custom_workouts`** (not workouts); **`add_programme` action UPSERTs `workout_plan_cache`** with `member_email` conflict-resolution (not workouts). Both workouts-programme.js publish sites at L576 (programme:imported) and L581 (workout:logged source:'builder') emit envelopes for actions that produce NO `workouts` row insertion. Canonical-ifying either would patch `workouts_total +1` for a server no-op. Same reasoning applies to workouts-builder.js L118 `workout:logged source:'builder'` — direct fetch to `custom_workouts`, no workouts row. **Three publish sites that emit `workout:logged` for non-workouts actions are by definition Layer-1c-stays-Layer-1c per PM-63 §4.9 sub-rule.** PM-64 narrowed to single-file (movement.html) plus sw.js. workouts-programme.js + workouts-builder.js stay unchanged.
+
+**The publish-event-name vs actual-table mismatch pattern.** Three publish sites emit `workout:logged` for actions that don't write to `workouts`: workouts-builder.js L118 (custom template create — writes custom_workouts), workouts-programme.js L581 (receiving a shared session — writes custom_workouts via EF), and workouts-programme.js L394 emits `workout:shared` for a shared write that goes to `shared_workouts` (intentionally not bridged per PM-45 §3.1). At Layer 1c these are harmless because `_markHomeStale` wipes and the next member-dashboard fetch carries server truth (and server doesn't increment workouts_total for template creates either, so the count stays consistent on round-trip). At Layer 4 they'd silently break the optimistic-patch contract. Codified as a forward §4.9 sub-rule: when classifying a publish site for Layer 4 promotion, the question "what TABLE does this event write?" is the gating check, not "what is the event NAME?" — event names can drift from semantic targets and need renaming (e.g. workouts-builder.js's `workout:logged source:'builder'` should arguably be `custom_workout:created`), but renaming requires unsubscribing the existing `_markHomeStale` / `workouts.html` consumers and is out of scope here. **Backlog item: rename in future cleanup pass; Layer 4 leaves them as Layer 1c with this risk flagged.**
+
+**Bug fix on the way through.** movement.html L504 (main workout completion fetch) was fire-and-forget pre-PM-64 — no `res.ok` check, no throw on non-ok. 4xx responses silently failed: users saw the "Session Complete" button state, no row was written, charts didn't update on next member-dashboard fetch. PM-64 adds `const _mvRes = await fetch(...)` capture, `!_mvRes.ok` branch fires `workout:failed` + throws to the existing outer catch which shows the "Could not save your session. Please try again." alert. Same "real bug fix on the way through" convention as PM-35 (collapse-invalidate-record-evaluate gap fix) and PM-45 (Layer 2 publication-enable). The quick-add paths at L731 and L750 already had `res.ok` checks via outer throws; PM-64 adds the `<event>:failed` publish before each throw so the bus fires the event (not just the thrown error, which doesn't translate to a bus event).
+
+**The five design calls.**
+
+1. **All three sites are direct-fetch, so PM-58 cardio.html shape applies verbatim.** No `await writeQueued`, no return-shape branching on `dead:true`/`queued:true`, no inflight tracker, no `vyve-outbox-dead` listener. Any non-ok response from a direct fetch is terminal from the page's perspective — fire `<event>:failed` regardless of 4xx vs 5xx. Reduces movement.html's wiring complexity vs the writeQueued hybrid shape on PM-59/PM-62/PM-63.
+
+2. **Single `_mvQuickLoggedAt` captured before the if/else split.** The quick-add branch has both cardio and workouts paths, but only one executes per click. One loggedAt covers both — the optimisticPatch uses `isWalk ? 'cardio' : 'workouts'` as the type argument, both publish envelopes carry the same loggedAt, the failure envelope correlates via loggedAt regardless of which path threw. Cleaner than capturing two separate timestamps.
+
+3. **Page-owned subscribers live on movement.html, not cardio.html.** cardio.html PM-58 has its own `cardio:failed` subscriber that calls `revertPatch('cardio', ...)` — but that subscriber lives on cardio.html and only fires when the user is on cardio.html. movement.html publishes both `workout:failed` and `cardio:failed`, so it needs its own page-owned subscribers (subscribed via DOMContentLoaded IIFE at the end of the inline script block). `revertPatch` is idempotent (floors at zero per `applyDelta` contract in vyve-home-state.js), so any cross-tab fan-out where cardio.html's subscriber ALSO fires for the same envelope is harmless.
+
+4. **Publish-BEFORE-fetch ordering preserved.** Movement.html's existing PM-47/PM-48 wiring published before the fetch (race-fix: subscribers fan out optimistically; the fetch resolution decides whether to fire `<event>:failed`). PM-64 keeps this ordering — `optimisticPatch + recordWrite + recordCanonical + publish` all happen BEFORE the fetch, then the fetch is captured into `res` and `!res.ok` branches into the failure path. Symmetric across all 3 sites.
+
+5. **`<script src="/vyve-home-state.js" defer></script>` inserted alongside bus.js at L116.** Movement.html had `bus.js` + `theme.js` + `auth.js` + `perf.js` + `achievements.js` defer-loaded already — vyve-home-state.js slots in between bus.js and perf.js. The script-tag count goes from 16 to 17 to 18 pages across PM-63/PM-64 — per PM-58/59/62 forward discipline, tag only when the surface calls `VYVEHomeState.optimisticPatch/revertPatch` directly.
+
+**Audit counts post-PM-64** (full-tree grep, runtime only, excludes bus.js):
+- `VYVEBus.publish(`: 40 → 43 (+3: movement.html main `workout:failed`, quick-add walk `cardio:failed`, quick-add non-walk `workout:failed`)
+- `VYVEBus.subscribe(`: 44 → 46 (+2: movement.html page-owned `workout:failed` + `cardio:failed`)
+- `VYVEBus.recordWrite(`: 16 (UNCHANGED — movement.html's 3 recordWrite calls were already wired at PM-47/PM-48)
+- `VYVEBus.recordCanonical(`: 10 → 13 (+3: one per movement.html publish site)
+- `VYVEBus.installTableBridges(`: 1 (unchanged)
+- `VYVEHomeState.optimisticPatch(`: 8 → 10 (+2: main path + quick-add ternary)
+- `VYVEHomeState.revertPatch(`: 7 → 9 (+2: workout:failed + cardio:failed subscribers)
+- `<script src="/vyve-home-state.js"` HTMLs: 17 → 18 (+movement.html)
+
+One new §4.9 sub-rule codified (see active.md):
+1. **Publish-event-name vs actual-table mismatch is the gating check for Layer 4 promotion** — when classifying a publish site, the question is "what table does this event actually write?" not "what is the event name?" Event names that drift from semantic targets (e.g. `workout:logged source:'builder'` firing for a `custom_workouts` insert) stay Layer 1c with the mismatch flagged for future rename. Three current examples: workouts-builder.js L118 + workouts-programme.js L581 (both `workout:logged` writing custom_workouts) + workouts-programme.js L394 (`workout:shared` writing shared_workouts which is intentionally not bridged). The Layer 1c wipe-and-refetch path keeps server-truth-converging behaviour correct; Layer 4 promotion would silently break the optimistic-patch contract.
+
+**Two-device manual verify still pending Dean across PM-58/59/60/61/62/63/64.** Carried forward — no Android device available. Movement.html's eager-fire failure path testable via simulated 4xx on the writing device (browser dev tools network tab → block POST workouts/cardio → confirm `workout:failed` / `cardio:failed` revert subscriber undoes the optimistic patch).
+
+**Layer 4 status: 7/8 surfaces shipped.** Workouts family fully closed. Remaining 2 surfaces:
+- **PM-65** — wellbeing-checkin.html (2 sites: live submit + flushCheckinOutbox; server-side EF writer with PM-39 initiator+confirmer pattern + PM-52 bridge override; `canonical: true` boolean required because `kind:'live'|'flush'` already in use; PM-52 shape — server-side EF UPSERT against natural key `(member_email, iso_week, iso_year)`).
+- **PM-66** — monthly-checkin.html capstone (1 site, server-side EF writer with PM-40 pre-gate 409 "already_done"; closes the 8-surface campaign).
+
+**Carried non-Layer-4 work** unchanged from PM-63: iOS 1.1(3) "Ready for Review" since 27 April; Android 1.0.2 awaiting Google Play; HAVEN clinical sign-off (Phil); weekly check-in nudge copy split (Phil + Lewis); Brevo logo removal (Lewis); Facebook Make connection expires 22 May 2026 (Lewis); B2B volume tier definition; public-launch comms draft.
+
+---
+
 ## 2026-05-11 PM-63 (Layer 4 workouts-session.js — sixth per-surface wiring, SECOND writeQueued+home_state hybrid surface)
 
 **Files shipped (4, atomic vyve-site commit `7bd55500e83bb7e04263934fa10a49dca6444f09`):**
