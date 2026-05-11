@@ -1,3 +1,116 @@
+## 2026-05-11 PM-53 (Layer 2 eighth table-bridge wiring: monthly_checkins INSERT + UPDATE — server-side EF + 409 pre-gate, 2-col synthetic key)
+
+vyve-site `ef50bc0bebd588bbde5ce83a65d733d785f825d5` (new tree `44a23aac80f3f9644daf3b5af874be9ae24127f1`). VYVEBrain main `(set after this commit lands)`. Mirrors PM-52 wellbeing_checkins shape (server-side EF writer + dual-op INSERT+UPDATE + function-form natural-key pk_field) with two distinctions worth recording.
+
+**Atomic commits (2):**
+
+1. **vyve-site** `ef50bc0b` — 3-file atomic: auth.js (+2149 chars, two array entries — INSERT + UPDATE both function-form pk_field on 2-col natural key), monthly-checkin.html (+559 chars, recordWrite at single publish site), sw.js (cache bump `pm52-bridge-wellbeing-checkins-a` → `pm53-bridge-monthly-checkins-a`).
+2. **VYVEBrain** `(this commit)` — active.md §2 SHA bump + §3.1 row 2-9 ✓ PM-53 + audit baseline + §5 backlog mirror; backlog PM-53 ✅ CLOSED + PM-54 P0 + section header; changelog this entry.
+
+**Two distinctions from PM-52:**
+
+1. **2-col natural key**, not 3-col. `(member_email, iso_month)` where `iso_month` is text `'YYYY-MM'`. PM-52 wellbeing_checkins used `(member_email, iso_week, iso_year)` 3-col. No functional difference for the bridge — just a shorter pk_field function.
+
+2. **EF 409 pre-gate before UPSERT write.** The monthly-checkin EF v18 pre-checks `alreadyDone` and returns 409 BEFORE attempting the `Prefer:resolution=merge-duplicates` write:
+
+   ```ts
+   const alreadyDone = await q('monthly_checkins',
+     `member_email=eq.${enc}&iso_month=eq.${win.isoMonth}&select=id&limit=1`);
+   if (alreadyDone.length > 0) {
+     return new Response(JSON.stringify({ error: 'already_done' }), {
+       status: 409, ...
+     });
+   }
+   // ... AI report generation ...
+   await fetch(`.../rest/v1/monthly_checkins`, {
+     method: 'POST',
+     headers: { ..., 'Prefer': 'resolution=merge-duplicates' },
+     body: JSON.stringify({ ... }),
+   });
+   ```
+
+   So same-month re-submissions trigger the 409 path, never the write. UPDATE Realtime events from this writer are vanishingly rare in practice. We still wired the UPDATE bridge defensively because:
+
+   - **Race-condition path:** Two devices submit concurrently. Both pass the `alreadyDone` check (false at the time each device queries) before either writes. The merge-duplicates resolution then turns one of them into an UPDATE.
+   - **Out-of-band writes:** Admin tooling, data fixes, or future EF versions might write directly without the 409 gate.
+
+   The defensive wiring costs nothing (just one extra array entry; channel auto-grouping shares the channel).
+
+**Bridge config:**
+
+```js
+{
+  table: 'monthly_checkins',
+  event: 'monthly_checkin:submitted',
+  op:    'INSERT',
+  pk_field: function (row) {
+    return (row.member_email || '') + '|' + (row.iso_month || '');
+  },
+  payload_from_row: function (row) {
+    return {
+      iso_month: row.iso_month || null,
+      avg_score: row.avg_score != null ? row.avg_score : null,
+      kind:      'realtime'
+    };
+  }
+},
+{ table: 'monthly_checkins', event: 'monthly_checkin:submitted', op: 'UPDATE',
+  pk_field: /* same */, payload_from_row: /* same */ }
+```
+
+**monthly-checkin.html patch (single publish site, PM-40 submitCheckin):**
+
+```js
+const _now = new Date();
+const _isoMonth = _now.getFullYear() + '-' + String(_now.getMonth() + 1).padStart(2, '0');
+if (window.VYVEBus) {
+  // PM-53: suppress own-echo. Bridge uses synthetic key (member_email|iso_month).
+  // The EF's 409 "already_done" gate makes UPDATE events rare in practice but
+  // the dual-op bridge handles them defensively if they occur.
+  const _mcEmail = (window.vyveCurrentUser && window.vyveCurrentUser.email) || '';
+  if (typeof VYVEBus.recordWrite === 'function' && _mcEmail && _isoMonth) {
+    try { VYVEBus.recordWrite('monthly_checkins', _mcEmail + '|' + _isoMonth); } catch (_) {}
+  }
+  try {
+    window.VYVEBus.publish('monthly_checkin:submitted', { iso_month: _isoMonth });
+  } catch (_) {}
+}
+```
+
+**Self-test (15/15 across one group):**
+
+`/tmp/bus_v28_test.js` covers:
+
+- One channel grouped by table; INSERT + UPDATE listeners
+- Local publish + recordWrite suppresses Realtime INSERT echo
+- Cross-device INSERT (different month) fires with full payload mapping
+- Cross-device UPDATE (defensive race-condition path) fires
+- kind override (local publish carries no kind; realtime echoes carry 'realtime')
+- null avg_score edge case
+
+All 140+ previous tests still passing.
+
+**Audit-count delta (whole-tree, post-PM-53):**
+
+- `VYVEBus.recordWrite(` count: 13 → 14 (PM-53 monthly-checkin.html × 1)
+- `VYVEBus.installTableBridges(` count: 1 (11 entries now in same array — 8 tables wired across 7 channels)
+- `VYVEData.newClientId(` direct call sites: 4 (unchanged)
+- Postgres `REPLICA IDENTITY FULL` tables: 1 (nutrition_logs only)
+
+**No new §4.9 rules.** PM-52's server-side EF writer rule already covers monthly_checkins; the 409 pre-gate doesn't change the bridge wiring approach — it just makes UPDATE events rarer in practice without changing the requirement to handle them.
+
+**Source-of-truth.** vyve-site pre-PM-53 `daec658844de58af2b8e7ace65a97282399a10d7` (PM-52 ship), post-PM-53 `ef50bc0bebd588bbde5ce83a65d733d785f825d5`, new tree `44a23aac80f3f9644daf3b5af874be9ae24127f1`. Live blob SHAs: auth.js `484136532411`, monthly-checkin.html `ef1871da323a`, sw.js `076c1e2a7251`. All 3 byte-identical; 5/5 marker checks pass.
+
+**Layer 2 ledger after PM-53:**
+
+- 8/11 tables wired (daily_habits, workouts, cardio, exercise_logs, nutrition_logs, weight_logs, wellbeing_checkins, monthly_checkins)
+- 11/11 in `supabase_realtime` publication
+- 9/9 commits shipped (PM-45 infrastructure + PM-46/47/48/49/50/51/52/53 wirings)
+- 5 §4.9 working-set rules codified (unchanged)
+- 3/11 tables remaining: session_views, replay_views, certificates (latter two cron-driven, unlikely to need recordWrite)
+
+**Next: PM-54 — session_views.** Row 2-10 in §3.1, PM-43 event `session:viewed` (kind:'live'). Likely PM-49 territory — per-event INSERT not UPSERT. ~30 min.
+
 ## 2026-05-11 PM-52 (Layer 2 seventh table-bridge wiring: wellbeing_checkins INSERT + UPDATE — server-side EF writer, 3-col synthetic key)
 
 vyve-site `daec658844de58af2b8e7ace65a97282399a10d7` (new tree `0343d647f290d6daea53d0780b441fb9eec247c2`). VYVEBrain main `(set after this commit lands)`. **Third dual-op INSERT+UPDATE wiring** (after PM-51 weight_logs), but **first server-side-writer wiring of the campaign** — the page POSTs to the `wellbeing-checkin` EF, the EF writes the table via `Prefer:resolution=merge-duplicates`. Same suppression mechanic as PM-51, just with a 3-column natural key instead of 2 and the writer running server-side.

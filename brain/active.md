@@ -49,14 +49,14 @@
 > Refresh the SHA + version rows at the top of every session via a parallel pre-flight. The rest of this section is stable across sessions.
 
 **HEADs (refresh at session start):**
-- vyve-site main: `daec6588` (PM-52 ship — last shipped 11 May 2026; **Layer 2 active**)
+- vyve-site main: `ef50bc0b` (PM-53 ship — last shipped 11 May 2026; **Layer 2 active**)
 - VYVEBrain main: `(set after this commit lands)`
 - vyve-capacitor main: stub (Apr 18 2026 base) — local working tree not yet pushed
 - Test-Site-Finalv3 main: marketing site, less active
 
 **Cache-bus key currently live:**
 - Pattern: `vyve-cache-v2026-05-09-pmNN-X-Y` (date prefix from PM-30)
-- Last shipped: `vyve-cache-v2026-05-11-pm52-bridge-wellbeing-checkins-a` (one-table-per-commit Layer 2 cadence; wall-clock date prefix)
+- Last shipped: `vyve-cache-v2026-05-11-pm53-bridge-monthly-checkins-a` (one-table-per-commit Layer 2 cadence; wall-clock date prefix)
 - P3 carried RESOLVED: PM-45 used wall-clock date for new campaign per PM-44 §23 sub-rule
 
 **Mobile binaries:**
@@ -68,18 +68,18 @@
 - First paying B2C: Paige Coult, joined 13 April 2026, £20/month
 - 3 admin operators in `admin_users`
 
-**Audit-count baseline (publishing-surface call sites at HEAD `daec6588`, PM-52 wired wellbeing_checkins INSERT + UPDATE — same primitive counts as post-PM-44 cleanup since PM-45 is infrastructure-only with no new publish/subscribe sites):**
+**Audit-count baseline (publishing-surface call sites at HEAD `ef50bc0b`, PM-53 wired monthly_checkins INSERT + UPDATE — same primitive counts as post-PM-44 cleanup since PM-45 is infrastructure-only with no new publish/subscribe sites):**
 - `VYVEData.invalidateHomeCache(`: 1 (subscriber-internal helper, in vyve-data.js)
 - `VYVEData.recordRecentActivity(`: 1 (subscriber-internal helper, in vyve-data.js)
 - `VYVEAchievements.evaluate(`: 12 (subscriber-internal helpers across achievement-handling subscribers)
 - `VYVEBus.publish(`: 23 (across 14 publishing surfaces, post-PM-30..PM-44)
 - `VYVEBus.subscribe(`: 29 (across the subscriber files)
-- `VYVEBus.recordWrite(`: 13 (PM-46 habits × 1; PM-47 workouts-session × 1, movement × 2; PM-48 cardio × 1, movement walk × 1; PM-49 workouts-session × 1 for set:logged; PM-50 log-food × 3; PM-51 nutrition.html saveWtLog × 1; PM-52 wellbeing-checkin.html × 2 — flush + live)
-- `VYVEBus.installTableBridges(`: 1 (one call site; nine entries now in array — daily_habits, workouts, cardio, exercise_logs, nutrition_logs×2, weight_logs×2, wellbeing_checkins×2)
-- `VYVEData.newClientId(` direct call sites: 4 (unchanged — weight_logs + wellbeing_checkins both use synthetic natural-key discipline, no client_id)
-- Postgres `REPLICA IDENTITY FULL` tables: 1 (nutrition_logs only; weight_logs + wellbeing_checkins left at default — UPDATE NEW payload carries all columns)
+- `VYVEBus.recordWrite(`: 14 (PM-46 habits × 1; PM-47 workouts-session × 1, movement × 2; PM-48 cardio × 1, movement walk × 1; PM-49 workouts-session × 1; PM-50 log-food × 3; PM-51 nutrition.html × 1; PM-52 wellbeing-checkin.html × 2; PM-53 monthly-checkin.html × 1)
+- `VYVEBus.installTableBridges(`: 1 (one call site; eleven entries now in array — daily_habits, workouts, cardio, exercise_logs, nutrition_logs×2, weight_logs×2, wellbeing_checkins×2, monthly_checkins×2)
+- `VYVEData.newClientId(` direct call sites: 4 (unchanged — weight_logs + wellbeing_checkins + monthly_checkins all use synthetic natural-key discipline)
+- Postgres `REPLICA IDENTITY FULL` tables: 1 (nutrition_logs only)
 
-PM-52 wired the seventh Layer 2 bridge (wellbeing_checkins — third dual-op INSERT+UPDATE, first server-side-writer wiring). Seven coexisting bridges across 6 channels. 21/21 self-tests including INSERT+UPDATE channel grouping with 3-column synthetic key, same-week UPSERT→UPDATE suppression, server-side-writer publish patterns. Use these as the pre-flight reference for PM-53+ Layer 2 wirings
+PM-53 wired the eighth Layer 2 bridge (monthly_checkins — fourth dual-op INSERT+UPDATE, second server-side-writer wiring). Eight coexisting bridges across 7 channels. 15/15 self-tests including 2-col synthetic key channel grouping, defensive UPDATE handling for race-condition cases, kind override pattern. Use these as the pre-flight reference for PM-54+ Layer 2 wirings
 
 ---
 
@@ -103,7 +103,7 @@ Layer 2 extends the lag-free contract to cross-device coherence. Phone logs habi
 | 2-6 | `nutrition_logs` | DELETE | `food:deleted` | PM-36 | ✓ PM-50 | `pk_field:'client_id'`. Requires `REPLICA IDENTITY FULL` (migration pm50_nutrition_logs_replica_identity_full) so DELETE event carries client_id. a8339d9c. |
 | 2-7 | `weight_logs` | INSERT + UPDATE | `weight:logged` | PM-37 | ✓ PM-51 | Dual-op (UPSERT via merge-duplicates fires INSERT first time, UPDATE on same-day re-log). Function-form `pk_field` on natural key (`member_email`\|`logged_date`) — client_id non-deterministic under merge-duplicates. Both ops same channel `vyve_bridge_weight_logs`. 8c25a6b0. |
 | 2-8 | `wellbeing_checkins` | INSERT + UPDATE | `wellbeing:logged` | PM-39 (live + flush) | ✓ PM-52 | Dual-op (server-side EF UPSERT via merge-duplicates fires INSERT first time, UPDATE on same-week re-submit). Function-form `pk_field` on 3-column natural key (`member_email`\|`iso_week`\|`iso_year`). First server-side-writer wiring — page POSTs to wellbeing-checkin EF v28, EF writes the row. daec6588. |
-| 2-9 | `monthly_checkins` | INSERT | `monthly_checkin:submitted` | PM-40 | ❌ | |
+| 2-9 | `monthly_checkins` | INSERT + UPDATE | `monthly_checkin:submitted` | PM-40 | ✓ PM-53 | Dual-op defensive (server-side EF monthly-checkin v18 pre-gates with 409 "already_done" so UPDATE rare in practice; bridge wires both for race-condition cases). 2-col synthetic key (`member_email`\|`iso_month`). No client_id column. ef50bc0b. |
 | 2-10 | `session_views` | INSERT | `session:viewed` (kind:'live') | PM-43 | ❌ | |
 | 2-11 | `replay_views` | INSERT | `session:viewed` (kind:'replay') | PM-43 | ❌ | |
 | 2-12 | `certificates` | INSERT | `certificate:earned` (NEW) | none — first L2 surface with no client publish | ❌ | Cron-driven; no `recordWrite` discipline (no own-write to suppress). Closes the PM-42 P3 cert cross-tab carryover. |
@@ -300,17 +300,19 @@ The bus is now the production path for all cache invalidation and achievements e
 
 - **✅ CLOSED — PM-52:** vyve-site `daec6588`. Seventh Layer 2 table-bridge wiring shipped. **Third dual-op INSERT+UPDATE bridge** (after PM-51), **first server-side-writer wiring** of the campaign — page POSTs to `wellbeing-checkin` EF v28, EF writes `wellbeing_checkins` via `Prefer:resolution=merge-duplicates` against 3-column natural key `(member_email, iso_week, iso_year)`. Suppression discipline same as PM-51 with extended natural key. client_id intentionally not used: EF doesn't populate it on INSERT, and merge-duplicates would make it non-deterministic anyway. 3-file atomic vyve-site commit: auth.js (+2385 chars, two array entries — INSERT + UPDATE both function-form pk_field on 3-col natural key, payload mapping for score from score_wellbeing + flow from flow_type + kind:'realtime' override), wellbeing-checkin.html (+941 chars, recordWrite at both publish sites — flushCheckinOutbox kind:'flush' and submit handler kind:'live'), sw.js cache bump pm51-bridge-weight-logs-a → pm52-bridge-wellbeing-checkins-a. 21/21 PM-52 self-tests covering dual-op 3-col synthetic key, INSERT/UPDATE channel grouping, same-week UPSERT→UPDATE suppression, cross-device new-week INSERT, cross-device UPDATE, kind override (local 'live'/'flush' vs realtime 'realtime'), null score edge case. All 120+ previous tests still passing. New §4.9 sub-rule codified (server-side EF writer pattern still needs page-side recordWrite with conflict-resolution natural key).
 
-- **PM-53 / Eighth Layer 2 table-bridge wiring (`monthly_checkins`).** Next in §3.1 (row 2-9). Pre-flight per established pattern:
+- **✅ CLOSED — PM-53:** vyve-site `ef50bc0b`. Eighth Layer 2 table-bridge wiring. `monthly_checkins` dual-op INSERT+UPDATE via 2-col synthetic key `(member_email|iso_month)`. Server-side EF writer (monthly-checkin v18) with 409 "already_done" pre-gate before merge-duplicates write — UPDATE events from this writer are rare in practice but bridge wired defensively for race-condition cases. No client_id column on the table so synthetic key is the only option. 3-file atomic commit: auth.js (+2149 chars, two array entries — INSERT + UPDATE both function-form pk_field on 2-col natural key, payload maps iso_month + avg_score + kind:'realtime' override), monthly-checkin.html (+559 chars, recordWrite at single publish site in submitCheckin — _isoMonth already in scope), sw.js cache bump pm52-bridge-wellbeing-checkins-a → pm53-bridge-monthly-checkins-a. 15/15 PM-53 self-tests covering 2-col synthetic key channel grouping, INSERT echo suppression, cross-device new-month INSERT, defensive UPDATE, kind override, null avg_score edge case. All 140+ previous tests still passing.
 
-  1. Inspect `monthly_checkins.client_id` column presence + replica identity.
-  2. Find publish site(s) for `monthly_checkin:submitted` event in monthly-checkin.html. PM-40 era.
-  3. Inspect writing path — likely server-side EF (mirrors wellbeing-checkin pattern) or direct REST POST with merge-duplicates against natural key. Determines PM-49/PM-51/PM-52 vs PM-47 territory.
-  4. Bridge entry/entries to auth.js.
+- **PM-54 / Ninth Layer 2 table-bridge wiring (`session_views`).** Next in §3.1 (row 2-10). PM-43 publishes `session:viewed` (kind:'live'). Pre-flight per established pattern:
+
+  1. Inspect `session_views.client_id` column + replica identity.
+  2. Find publish site(s) for `session:viewed` event.
+  3. Determine writing path: direct REST POST with client_id (PM-49 territory) or natural-key UPSERT (PM-51/PM-52 territory).
+  4. Bridge entry/entries to auth.js (12th or 12th+13th in array).
   5. recordWrite at publish site(s).
   6. sw.js cache bump.
   7. Two-device verify.
 
-  Estimate: ~30 min — pattern well-established, especially if mirrors wellbeing-checkin shape.
+  Estimate: ~30 min based on PM-49-territory single-publish-site shape.
 
 ### P1 (working set)
 

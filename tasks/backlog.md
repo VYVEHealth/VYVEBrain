@@ -1,3 +1,5 @@
+## Added 11 May 2026 PM-53 (Layer 2 eighth table-bridge wiring shipped — monthly_checkins dual-op INSERT + UPDATE via 2-col synthetic key, EF 409 pre-gate)
+
 ## Added 11 May 2026 PM-52 (Layer 2 seventh table-bridge wiring shipped — wellbeing_checkins dual-op INSERT + UPDATE via server-side EF writer, 3-col synthetic key)
 
 ## Added 11 May 2026 PM-51 (Layer 2 sixth table-bridge wiring shipped — weight_logs dual-op INSERT + UPDATE via natural-key synthetic pk_field)
@@ -36,17 +38,19 @@
 
 - ✅ **CLOSED — PM-52 above.** vyve-site `daec6588` (tree `0343d647`). Seventh Layer 2 table-bridge wiring shipped. **Third dual-op INSERT+UPDATE bridge** (PM-50 INSERT+DELETE; PM-51 INSERT+UPDATE same-event; PM-52 INSERT+UPDATE same-event server-side-writer). **First server-side-writer wiring of the campaign** — page POSTs to wellbeing-checkin EF v28, EF writes wellbeing_checkins server-side via `Prefer:resolution=merge-duplicates` against 3-column natural key `(member_email, iso_week, iso_year)`. Function-form `pk_field` on the 3-col natural key. client_id intentionally not used (EF doesn't populate it on INSERT; merge-duplicates would make it non-deterministic anyway). No REPLICA IDENTITY FULL needed — UPDATE NEW carries all columns under default identity. 3-file atomic commit: auth.js (+2385 chars, two array entries — INSERT + UPDATE both function-form pk_field on 3-col natural key, payload maps score from score_wellbeing + flow from flow_type + kind:'realtime' override), wellbeing-checkin.html (+941 chars, recordWrite at both publish sites — flushCheckinOutbox kind:'flush' post-success + submit handler kind:'live' pre-fetch), sw.js cache bump pm51-bridge-weight-logs-a → pm52-bridge-wellbeing-checkins-a. 21/21 PM-52 self-tests covering 3-col synthetic key channel grouping, INSERT/UPDATE behaviour, same-week UPSERT→UPDATE suppression, cross-device new-week INSERT, cross-device UPDATE, kind override, null score edge case. All 120+ previous tests still passing. Whole-tree audit-count delta: `VYVEBus.recordWrite(` 11→13. New §4.9 working-set rule codified (server-side EF writer pattern still needs page-side recordWrite with conflict-resolution natural key).
 
-- 📋 **OPEN (P0) — PM-53: Eighth Layer 2 table-bridge wiring (`monthly_checkins`).** Next in §3.1 (row 2-9). PM-40 era publishes `monthly_checkin:submitted` from monthly-checkin.html. Pre-flight per established pattern:
+- ✅ **CLOSED — PM-53 above.** vyve-site `ef50bc0b` (tree `44a23aac`). Eighth Layer 2 table-bridge wiring. `monthly_checkins` dual-op INSERT+UPDATE via 2-col synthetic key `(member_email|iso_month)`. Mirrors PM-52 wellbeing_checkins pattern (server-side EF writer + UPSERT) with two distinctions: (a) 2-col natural key vs 3-col, (b) EF (monthly-checkin v18) pre-gates with 409 "already_done" check BEFORE merge-duplicates write so UPDATE events are rare in practice — bridge wires both defensively for race-condition cases (concurrent submits from two devices both passing the 409 check before either writes). Table has no client_id column — synthetic natural-key is the only option. 3-file atomic commit: auth.js (+2149 chars, INSERT + UPDATE both function-form pk_field on 2-col natural key, payload mapping iso_month + avg_score + kind:'realtime'), monthly-checkin.html (+559 chars, recordWrite at single publish site in submitCheckin — _isoMonth and email already in scope), sw.js cache bump pm52-bridge-wellbeing-checkins-a → pm53-bridge-monthly-checkins-a. 15/15 PM-53 self-tests covering channel grouping, INSERT echo suppression, cross-device INSERT, defensive UPDATE, kind override, null avg_score edge case. All 140+ previous tests still passing. Whole-tree audit-count delta: `VYVEBus.recordWrite(` 13→14. No new §4.9 rules — PM-52 server-side EF writer rule covers this case.
 
-  1. Inspect `monthly_checkins.client_id` column + replica identity.
-  2. Find publish site(s) in monthly-checkin.html.
-  3. Determine writing path: server-side EF (PM-52 territory — natural-key dual-op INSERT+UPDATE) or direct REST POST with client_id (PM-49 territory — single INSERT bridge).
-  4. Bridge entry/entries to auth.js (10th + 11th in array if dual-op).
+- 📋 **OPEN (P0) — PM-54: Ninth Layer 2 table-bridge wiring (`session_views`).** Next in §3.1 (row 2-10). PM-43 publishes `session:viewed` (kind:'live') from session viewer pages. Pre-flight per established pattern:
+
+  1. Inspect `session_views.client_id` column + replica identity. Likely present (same era as other client_id columns).
+  2. Find publish site(s) for `session:viewed` event. Probably single site in a session-viewer page (sessions.html?).
+  3. Inspect writing path — direct REST POST with client_id (PM-49 territory, simplest) or merge-duplicates against natural key (PM-51 territory).
+  4. Bridge entry to auth.js (12th in array if single-op; 12th+13th if dual-op).
   5. recordWrite at publish site(s).
   6. sw.js cache bump.
   7. Two-device verify.
 
-  Estimate: ~30 min. If pattern mirrors wellbeing-checkin (likely — monthly check-in shares the same surface family), this is a quick wire-up using PM-52's exact recipe with monthly-specific natural-key columns.
+  Estimate: ~30 min. PM-49 shape likely (session view is per-event, not UPSERT).
 
 - 📋 **CARRIED FORWARD (P1) — programme:imported & workout:shared subscriber consumers.** PM-42 + PM-41 each wired _markHomeStale defensively (no current home surface renders share count or import banner). Future P1 work: home dashboard "your latest activity" or "social feed" surface that consumes these events properly.
 
