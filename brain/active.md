@@ -49,14 +49,14 @@
 > Refresh the SHA + version rows at the top of every session via a parallel pre-flight. The rest of this section is stable across sessions.
 
 **HEADs (refresh at session start):**
-- vyve-site main: `a8339d9c` (PM-50 ship — last shipped 11 May 2026; **Layer 2 active**)
+- vyve-site main: `8c25a6b0` (PM-51 ship — last shipped 11 May 2026; **Layer 2 active**)
 - VYVEBrain main: `(set after this commit lands)`
 - vyve-capacitor main: stub (Apr 18 2026 base) — local working tree not yet pushed
 - Test-Site-Finalv3 main: marketing site, less active
 
 **Cache-bus key currently live:**
 - Pattern: `vyve-cache-v2026-05-09-pmNN-X-Y` (date prefix from PM-30)
-- Last shipped: `vyve-cache-v2026-05-11-pm50-bridge-nutrition-logs-a` (one-table-per-commit Layer 2 cadence; wall-clock date prefix)
+- Last shipped: `vyve-cache-v2026-05-11-pm51-bridge-weight-logs-a` (one-table-per-commit Layer 2 cadence; wall-clock date prefix)
 - P3 carried RESOLVED: PM-45 used wall-clock date for new campaign per PM-44 §23 sub-rule
 
 **Mobile binaries:**
@@ -68,18 +68,18 @@
 - First paying B2C: Paige Coult, joined 13 April 2026, £20/month
 - 3 admin operators in `admin_users`
 
-**Audit-count baseline (publishing-surface call sites at HEAD `a8339d9c`, PM-50 wired nutrition_logs INSERT + DELETE — same primitive counts as post-PM-44 cleanup since PM-45 is infrastructure-only with no new publish/subscribe sites):**
+**Audit-count baseline (publishing-surface call sites at HEAD `8c25a6b0`, PM-51 wired weight_logs INSERT + UPDATE — same primitive counts as post-PM-44 cleanup since PM-45 is infrastructure-only with no new publish/subscribe sites):**
 - `VYVEData.invalidateHomeCache(`: 1 (subscriber-internal helper, in vyve-data.js)
 - `VYVEData.recordRecentActivity(`: 1 (subscriber-internal helper, in vyve-data.js)
 - `VYVEAchievements.evaluate(`: 12 (subscriber-internal helpers across achievement-handling subscribers)
 - `VYVEBus.publish(`: 23 (across 14 publishing surfaces, post-PM-30..PM-44)
 - `VYVEBus.subscribe(`: 29 (across the subscriber files)
-- `VYVEBus.recordWrite(`: 10 (PM-46 habits × 1; PM-47 workouts-session × 1, movement × 2; PM-48 cardio × 1, movement walk × 1; PM-49 workouts-session × 1 for set:logged; PM-50 log-food × 3 across 2 INSERT sites + 1 DELETE site)
-- `VYVEBus.installTableBridges(`: 1 (one call site; fifth entry added at PM-50 — now 5 entries in array, two for nutrition_logs grouped on same channel)
-- `VYVEData.newClientId(` direct call sites: 4 (unchanged — log-food.html sites already had the call pre-PM-50)
-- Postgres `REPLICA IDENTITY FULL` tables: 1 (nutrition_logs, migration pm50_nutrition_logs_replica_identity_full)
+- `VYVEBus.recordWrite(`: 11 (PM-46 habits × 1; PM-47 workouts-session × 1, movement × 2; PM-48 cardio × 1, movement walk × 1; PM-49 workouts-session × 1 for set:logged; PM-50 log-food × 3; PM-51 nutrition.html saveWtLog × 1)
+- `VYVEBus.installTableBridges(`: 1 (one call site; seventh entry added at PM-51 — now 7 entries in array, weight_logs INSERT+UPDATE grouped on same channel, nutrition_logs INSERT+DELETE grouped on same channel)
+- `VYVEData.newClientId(` direct call sites: 4 (unchanged — weight_logs intentionally doesn't use client_id discipline)
+- Postgres `REPLICA IDENTITY FULL` tables: 1 (nutrition_logs; weight_logs left at default — UPDATE NEW payload carries all columns under default identity)
 
-PM-50 wired the fifth Layer 2 bridge (nutrition_logs — first dual-op). Five coexisting bridges across 4 channels (nutrition_logs INSERT+DELETE share one channel). 21/21 self-tests including dual-op channel-grouping, INSERT/DELETE independence, kind override pattern. Use these as the pre-flight reference for PM-51+ Layer 2 wirings
+PM-51 wired the sixth Layer 2 bridge (weight_logs — second dual-op, INSERT+UPDATE this time). Six coexisting bridges across 5 channels. 18/18 self-tests including INSERT+UPDATE channel grouping, same-day re-log UPSERT→UPDATE suppression via synthetic key, cross-device UPDATE handling. Use these as the pre-flight reference for PM-52+ Layer 2 wirings
 
 ---
 
@@ -101,7 +101,7 @@ Layer 2 extends the lag-free contract to cross-device coherence. Phone logs habi
 | 2-4 | `cardio` | INSERT | `cardio:logged` | PM-33 (+ PM-34 movement_walk via row.source) | ✓ PM-48 | `pk_field:'client_id'` (matches PM-47 workouts pattern). 9e21fe04. |
 | 2-5 | `nutrition_logs` | INSERT | `food:logged` | PM-36 | ✓ PM-50 | `pk_field:'client_id'`. Dual-op with row 2-6 — same channel `vyve_bridge_nutrition_logs`. a8339d9c. |
 | 2-6 | `nutrition_logs` | DELETE | `food:deleted` | PM-36 | ✓ PM-50 | `pk_field:'client_id'`. Requires `REPLICA IDENTITY FULL` (migration pm50_nutrition_logs_replica_identity_full) so DELETE event carries client_id. a8339d9c. |
-| 2-7 | `weight_logs` | INSERT | `weight:logged` | PM-37 | ❌ | |
+| 2-7 | `weight_logs` | INSERT + UPDATE | `weight:logged` | PM-37 | ✓ PM-51 | Dual-op (UPSERT via merge-duplicates fires INSERT first time, UPDATE on same-day re-log). Function-form `pk_field` on natural key (`member_email`\|`logged_date`) — client_id non-deterministic under merge-duplicates. Both ops same channel `vyve_bridge_weight_logs`. 8c25a6b0. |
 | 2-8 | `wellbeing_checkins` | INSERT | `wellbeing:logged` | PM-39 (live + flush) | ❌ | |
 | 2-9 | `monthly_checkins` | INSERT | `monthly_checkin:submitted` | PM-40 | ❌ | |
 | 2-10 | `session_views` | INSERT | `session:viewed` (kind:'live') | PM-43 | ❌ | |
@@ -275,6 +275,7 @@ The bus is now the production path for all cache invalidation and achievements e
 - **Function-form `pk_field` for `Prefer:return=minimal` writing surfaces (PM-46, 11 May 2026).** Tables whose writing surface uses `Prefer: return=minimal` (the existing PM-30..PM-44 outbox pattern via `VYVEData.writeQueued`) never see the server-generated PK on the writing device. The synthetic-key approach: bridge config declares `pk_field` as a function `(row) => synthetic_key`; bridge derives the same synthetic key from the Realtime row payload; suppression matches. The synthetic key MUST be the unique constraint tuple for the table (e.g. `daily_habits` is unique on `(member_email, activity_date, habit_id)`) so the bridge can reliably derive it from the row. Surfaces that already use `return=representation` (or could be changed to) keep using string-form `pk_field: 'id'`. Both forms coexist; the bus.js dispatch handles `typeof entry.pk_field === 'function'` branch first, falls through to string-or-default 'id' otherwise.
 - **String-form `pk_field:'client_id'` for tables with client-generated UUID columns (PM-47, 11 May 2026).** Tables that have a dedicated `client_id` UUID column populated by the writing surface (via `VYVEData.newClientId()`) use string-form `pk_field:'client_id'`. Cleaner than the synthetic-tuple function form: matches the default `'id'` shape, no per-table synthetic-key gymnastics. `vyve-offline.js writeQueued` auto-injects `client_id` into JSON body if not present — so any outbox-routed write to a table with the column gets it for free. Raw-fetch writes (e.g. `movement.html`) need an explicit `VYVEData.newClientId()` + addition to the INSERT body. The bridge `payload_from_row` typically maps `row.client_id → workout_id` (or equivalent) so subscribers see the same UUID local publishes carry. Legacy rows with NULL `client_id` → bridge sees `pk=undefined` → no recordWrite match → echoes through with `workout_id: null` (acceptable; no live writer to suppress).
 - **`REPLICA IDENTITY FULL` for DELETE bridges that need non-PK row fields (PM-50, 11 May 2026).** Supabase Realtime DELETE events carry only the primary key column when the table uses default replica identity (`relreplident = 'd'`). Bridges with `pk_field` other than the table PK (e.g. `pk_field:'client_id'` on `nutrition_logs.id` UUID PK) need the old row's full column set to match recordWrite suppression keys. Set `REPLICA IDENTITY FULL` on the table via migration before wiring the DELETE bridge. WAL cost is per-row (entire old tuple persisted) — negligible on low-volume tables, non-trivial on high-volume tables (consider INDEX form with a covering index instead in that case). Document the requirement in the bridge config comment. Verify via `SELECT relreplident FROM pg_class WHERE relname = 'X'` → expect `'f'`.
+- **Function-form `pk_field` for UPSERT writing surfaces (PM-51, 11 May 2026).** Writing surfaces using `Prefer:resolution=merge-duplicates` against a natural unique constraint (e.g. `weight_logs` UPSERTs on `(member_email, logged_date)`) cannot use `client_id` as the suppression key — under UPSERT semantics the row's final client_id is non-deterministic from the writing surface perspective (whichever write won the merge). Use function-form `pk_field` derived from the natural unique constraint columns: `pk_field: (row) => (row.member_email || '') + '|' + (row.logged_date || '')`. Both INSERT (first write of the natural key) AND UPDATE (subsequent UPSERTs against same natural key) ops need bridge entries grouped on the same channel — the writing surface only emits one `weight:logged` event per UPSERT but the server fires INSERT-first-time-then-UPDATE Realtime events. UPDATE under default `REPLICA IDENTITY` carries the full NEW row so REPLICA IDENTITY FULL is NOT required (only OLD row is PK-only).
 
 ---
 
@@ -294,16 +295,19 @@ The bus is now the production path for all cache invalidation and achievements e
 
 - **✅ CLOSED — PM-50:** vyve-site `a8339d9c`. Fifth Layer 2 table-bridge wiring shipped. **First dual-op bridge in the campaign** — `nutrition_logs` INSERT (`food:logged`) + DELETE (`food:deleted`), grouped on shared channel `vyve_bridge_nutrition_logs`. 3 publish sites in log-food.html (logSelectedFood, logQuickAdd, deleteLog) — all already had `client_id` in scope from PM-12/PM-36 era, just needed recordWrite. 3-file atomic vyve-site commit (auth.js +1627 chars for two array entries, log-food.html +859 chars for three recordWrite sites, sw.js cache bump) plus one Supabase migration (pm50_nutrition_logs_replica_identity_full) — required because default replica identity only carries PK in DELETE events. 21/21 PM-50 self-tests covering channel auto-grouping, INSERT/DELETE independence, kind override, REPLICA IDENTITY FULL semantics. All 80+ previous tests still passing. New §4.9 sub-rule codified (REPLICA IDENTITY FULL discipline for non-PK-bearing DELETE bridges).
 
-- **PM-51 / Sixth Layer 2 table-bridge wiring (`weight_logs`).** Next in §3.1 (row 2-7). Pre-flight:
+- **✅ CLOSED — PM-51:** vyve-site `8c25a6b0`. Sixth Layer 2 table-bridge wiring shipped. **Second dual-op bridge — INSERT + UPDATE** (the first was PM-50 INSERT + DELETE). `weight_logs` echoes cross-device via function-form `pk_field` on natural key `(member_email|logged_date)` because `Prefer:resolution=merge-duplicates` makes client_id non-deterministic. 3-file atomic vyve-site commit (auth.js +2523 chars for two array entries — INSERT + UPDATE; nutrition.html +467 chars for one recordWrite with synthetic key; sw.js cache bump). 18/18 PM-51 self-tests covering INSERT+UPDATE channel grouping, same-day re-log UPSERT→UPDATE suppression via synthetic key, cross-device first-write INSERT, cross-device UPDATE on existing row, NULL weight_kg edge case. All 100+ previous tests still passing. New §4.9 sub-rule codified (function-form pk_field for UPSERT writing surfaces; INSERT+UPDATE dual-op channel grouping).
 
-  1. Inspect `weight_logs.client_id` column presence (likely present if added in same wave as other client_id columns).
-  2. Find publish site for `weight:logged` event (or whatever the existing event name is — confirm via search).
-  3. Add bridge entry (sixth in array).
-  4. recordWrite at publish site.
-  5. sw.js cache bump.
-  6. Two-device verify.
+- **PM-52 / Seventh Layer 2 table-bridge wiring (`wellbeing_checkins`).** Next in §3.1 (row 2-8). Pre-flight per established pattern:
 
-  Estimate: ~20-30 min. If single publish site and client_id pre-existing, this is PM-49 territory.
+  1. Inspect `wellbeing_checkins.client_id` column presence + replica identity.
+  2. Find publish site(s) for `wellbeing:logged` event (or similar — confirm via search). wellbeing-checkin EF v19 is the server-side path; the page likely publishes after a successful submission.
+  3. Check writing surface `Prefer` header — if it's `return=minimal` with client_id, PM-49 territory; if merge-duplicates or UPSERT, PM-51 territory (synthetic-key dual-op).
+  4. Bridge entry to auth.js (eighth in array, or eighth+ninth if dual-op).
+  5. recordWrite at publish site(s).
+  6. sw.js cache bump.
+  7. Two-device verify.
+
+  Estimate: ~30-45 min.
 
 ### P1 (working set)
 

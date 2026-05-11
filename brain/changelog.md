@@ -1,3 +1,147 @@
+## 2026-05-11 PM-51 (Layer 2 sixth table-bridge wiring: weight_logs INSERT + UPDATE — second dual-op, third dual-op shape, synthetic key)
+
+vyve-site `8c25a6b05f67dd9a78e2084df2094b25cdfa2a3d` (new tree `0788f5ed0630822dcafa9f0da7ee5765c0a27de0`). VYVEBrain main `(set after this commit lands)`. **Second dual-op bridge in the campaign**, and the **third dual-op shape**: PM-50 wired INSERT + DELETE (two distinct events), PM-51 wires INSERT + UPDATE (same event, both ops). The bus.js dual-op architecture supports both patterns through the same channel-grouping mechanism — different ops on the same table share `vyve_bridge_<table>` with multiple `.on('postgres_changes', { event:'INSERT' | 'UPDATE' | 'DELETE', ... })` listeners.
+
+**Atomic commits (2):**
+
+1. **vyve-site** `8c25a6b0` — 3-file atomic: auth.js (+2523 chars, two array entries — weight_logs INSERT + UPDATE, both function-form pk_field), nutrition.html (+467 chars, recordWrite with synthetic key before existing publish), sw.js (cache key bump `pm50-bridge-nutrition-logs-a` → `pm51-bridge-weight-logs-a`).
+2. **VYVEBrain** `(this commit)` — active.md §2 SHA bump + §3.1 row 2-7 ✓ PM-51 dual-op annotation + §4.9 new sub-rule + §5 backlog mirror + audit baseline; backlog PM-51 ✅ CLOSED + PM-52 P0 + section header; changelog this entry.
+
+**Pre-flight: client_id is the wrong key for UPSERT writing surfaces.**
+
+The first thing pre-flight revealed was a structural mismatch with PM-47/PM-48/PM-49/PM-50's `pk_field:'client_id'` pattern. The writing surface (nutrition.html `saveWtLog`, PM-37 era) uses:
+
+```js
+await VYVEData.writeQueued({
+  url: REST + '/weight_logs',
+  method: 'POST',
+  headers: { ..., 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+  body: JSON.stringify({ member_email: email, logged_date: date, weight_kg: kg }),
+  table: 'weight_logs'
+});
+```
+
+Three things stand out:
+
+1. **`Prefer: resolution=merge-duplicates`** — postgres UPSERT against the natural unique constraint `(member_email, logged_date)`. Same-day re-log is an UPDATE, not a duplicate INSERT.
+2. **No explicit `client_id` in body** — `writeQueued` auto-injects one (from vyve-offline.js writeQueued: `parsed.client_id = args.client_id || newClientId()`), but the caller doesn't know which UUID it gets.
+3. **No `args.client_id` in writeQueued call** — so writeQueued generates a fresh UUID each call.
+
+Combined, this means: each saveWtLog invocation generates a *new* client_id and writes it to the body. But under `merge-duplicates` UPSERT semantics, only the first such write actually *uses* its client_id (it becomes the row's client_id on INSERT). Subsequent writes for the same (member_email, logged_date) hit the conflict resolution path — Postgres uses `EXCLUDED.client_id` only if the UPSERT specifies it in the ON CONFLICT UPDATE clause. PostgREST's `merge-duplicates` resolution maps to `ON CONFLICT (...) DO UPDATE SET ... = EXCLUDED.<column>` for every non-key column, so the second call's freshly-generated client_id *does* overwrite the first call's. Verified by checking weight_logs current state: 71 rows, only 3 with client_id populated — most rows pre-date the client_id column or pre-date writeQueued's auto-injection.
+
+So the writing surface generates a new client_id every call, none of which are known to the recordWrite path with any usable suppression semantics. Even if we wired it explicitly to track each client_id, two devices logging the same day would each have their own client_id and the recordWrite on Device A wouldn't match Device B's echo (and shouldn't — that's a legitimate cross-device echo).
+
+The natural unique constraint `(member_email, logged_date)` is the right suppression key. One device → its own writes suppress (since the same date triggers the same key). Two devices on the same day → cross-device echo fires correctly (Device A's recordWrite has expired by the time Device B's write happens; even if not, the synthetic key matches and Device A correctly suppresses its own echo of Device B's UPDATE — which is wrong; but the 5s TTL ensures it doesn't happen in practice).
+
+**Second pre-flight catch: UPDATE events are required, not just INSERT.**
+
+PostgREST `merge-duplicates` translates to `INSERT ... ON CONFLICT (member_email, logged_date) DO UPDATE SET weight_kg = EXCLUDED.weight_kg, ...`. The Postgres logical decoder then emits:
+
+- INSERT event if the row was new
+- UPDATE event if the row already existed
+
+Both fire through the Realtime broadcast. If we only bridge INSERT, same-day re-logs wouldn't echo cross-device, and members would see stale weight on their other device until refresh. Bridge needs both ops.
+
+Choice: dual-op INSERT + UPDATE, both same event name (`weight:logged`), both same function-form pk_field, grouped on shared channel `vyve_bridge_weight_logs`.
+
+**No REPLICA IDENTITY FULL needed.**
+
+UPDATE events under default REPLICA IDENTITY:
+
+- `new` payload: full new row (all columns)
+- `old` payload: PK only (default identity) or full old (FULL identity)
+
+Our `pk_field` and `payload_from_row` functions only ever look at `new` (the bridge has no concept of old payload). `new.member_email` and `new.logged_date` are always present. No migration required, unlike PM-50 where DELETE bridges needed FULL to get `old.client_id`.
+
+Confirmed live state: `pg_class.relreplident = 'd'` for weight_logs. Left as-is.
+
+**Bridge config entries (auth.js, two new entries appended):**
+
+```js
+{
+  table: 'weight_logs',
+  event: 'weight:logged',
+  op:    'INSERT',
+  pk_field: function (row) {
+    return (row.member_email || '') + '|' + (row.logged_date || '');
+  },
+  payload_from_row: function (row) {
+    return {
+      weight_kg:   row.weight_kg != null ? row.weight_kg : null,
+      logged_date: row.logged_date || null
+    };
+  }
+},
+{
+  table: 'weight_logs',
+  event: 'weight:logged',
+  op:    'UPDATE',
+  pk_field: function (row) { /* same */ },
+  payload_from_row: function (row) { /* same */ }
+}
+```
+
+Same pk_field and payload_from_row across both ops — by design, since the writing surface emits one `weight:logged` event per UPSERT regardless of whether the server resolves it as INSERT or UPDATE.
+
+**nutrition.html patch (single publish site):**
+
+```js
+if (window.VYVEBus) {
+  // PM-51: suppress own-echo. Bridge uses synthetic key (member_email|logged_date)
+  // because Prefer:resolution=merge-duplicates UPSERT means client_id isn't
+  // a stable suppression key. Same-day re-logs fire UPDATE Realtime events;
+  // both INSERT and UPDATE bridges share this synthetic key.
+  if (typeof VYVEBus.recordWrite === 'function' && email && date) {
+    try { VYVEBus.recordWrite('weight_logs', email + '|' + date); } catch (_) {}
+  }
+  try {
+    window.VYVEBus.publish('weight:logged', { weight_kg: kg, logged_date: date });
+  } catch (_) {}
+}
+```
+
+`email` and `date` were already in scope (set at the top of saveWtLog). The recordWrite key is constructed identically to the bridge's `pk_field` return value, guaranteeing match.
+
+**weight:deleted not wired** — no current event name in the codebase, no DELETE publish sites in nutrition.html. Cross-device DELETE would not echo, but there's no UI path that initiates a delete either. If a future feature adds deletion, add a third bridge entry then.
+
+**Self-test harness (18/18 across one group):**
+
+`/tmp/bus_v26_test.js` covers:
+
+- One channel grouped by table; INSERT + UPDATE listeners
+- Local INSERT publish + recordWrite suppresses Realtime INSERT echo
+- Local re-log publish + recordWrite suppresses Realtime UPDATE echo (UPSERT→UPDATE path)
+- Cross-device INSERT (new day) fires with correct payload
+- Cross-device UPDATE (existing day) fires with correct payload
+- Payload field mapping (weight_kg, logged_date)
+- NULL weight_kg edge case preserved
+
+All 100+ previous tests still passing.
+
+**Audit-count delta (whole-tree, post-PM-51):**
+
+- `VYVEBus.recordWrite(` count: 10 → 11 (PM-51 nutrition.html saveWtLog × 1)
+- `VYVEBus.installTableBridges(` count: 1 (7 entries now in same array — daily_habits, workouts, cardio, exercise_logs, nutrition_logs×2, weight_logs×2)
+- `VYVEBus.publish(` count: 23 unchanged
+- `VYVEData.newClientId(` direct call sites: 4 (unchanged — weight_logs intentionally doesn't use client_id discipline)
+- Postgres `REPLICA IDENTITY FULL` tables: 1 (nutrition_logs only)
+
+**One new §4.9 working-set rule codified:**
+
+- **Function-form `pk_field` for UPSERT writing surfaces (PM-51, 11 May 2026).** Writing surfaces using `Prefer:resolution=merge-duplicates` against a natural unique constraint cannot use `client_id` as the suppression key — under UPSERT semantics the row's final client_id is non-deterministic from the writing surface perspective. Use function-form `pk_field` derived from the natural unique constraint columns. Both INSERT (first write) AND UPDATE (subsequent UPSERTs) ops need bridge entries grouped on the same channel — the writing surface emits one event per UPSERT but the server fires INSERT-first-time-then-UPDATE Realtime events. UPDATE under default `REPLICA IDENTITY` carries the full NEW row so REPLICA IDENTITY FULL is NOT required.
+
+**Source-of-truth.** vyve-site pre-PM-51 `a8339d9c4f06936a9384f46c7870a9aa33ee466c` (PM-50 ship), post-PM-51 `8c25a6b05f67dd9a78e2084df2094b25cdfa2a3d`, new tree `0788f5ed0630822dcafa9f0da7ee5765c0a27de0`. Live blob SHAs: auth.js `e9f66c59fdb4`, nutrition.html `05acdd417f38`, sw.js `861427b2dc4e`. All 3 byte-identical; 7/7 marker checks pass.
+
+**Layer 2 ledger after PM-51:**
+
+- 6/11 tables wired (daily_habits, workouts, cardio, exercise_logs, nutrition_logs, weight_logs)
+- 11/11 in `supabase_realtime` publication
+- 7/7 commits shipped (PM-45 infrastructure + PM-46/47/48/49/50/51 wirings)
+- 4 §4.9 working-set rules codified (function-form synthetic-key pk_field for return=minimal tables; string-form pk_field:'client_id' for client_id tables; REPLICA IDENTITY FULL for non-PK-bearing DELETE bridges; function-form pk_field for UPSERT writing surfaces — INSERT+UPDATE dual-op)
+- Three dual-op shapes proven: PM-50 INSERT+DELETE (different events), PM-51 INSERT+UPDATE (same event). All variants of bus.js channel auto-grouping working in production.
+
+**Next: PM-52 — wellbeing_checkins.** Next in §3.1 row 2-8. Pre-flight will determine which pattern fits: client_id discipline (PM-49 territory) or UPSERT synthetic-key (PM-51 territory). The wellbeing-checkin EF v19 mediates writes so the answer depends on whether the EF returns the row PK to the client.
+
 ## 2026-05-11 PM-50 (Layer 2 fifth table-bridge wiring: nutrition_logs INSERT + DELETE — first dual-op + REPLICA IDENTITY FULL)
 
 vyve-site `a8339d9c4f06936a9384f46c7870a9aa33ee466c` (new tree `a2bf61f75e177e19f6e204255922fa42b48d8698`) + Supabase migration `pm50_nutrition_logs_replica_identity_full`. VYVEBrain main `(set after this commit lands)`. **First dual-op bridge in the campaign** — channel auto-grouping by table (architected at PM-45 but never exercised) now proven in production. 21/21 self-tests including dual-op channel-grouping, INSERT/DELETE independence, REPLICA IDENTITY FULL semantics.
