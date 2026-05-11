@@ -1,3 +1,237 @@
+## 2026-05-11 PM-55 (Layer 2 eleventh + final table-bridge wiring: certificates pure-inbound — campaign closed)
+
+vyve-site `d36e271cf7140e9d41c8454eabe0dc74eda5b89e5` (tree `d02c4a3831e5af54690b8c87d6b05c5611a378b2`). VYVEBrain main `(set after this commit lands)`. **Pure-inbound bridge** — first and only of the Layer 2 campaign. Closes the Layer 2 Realtime bridge campaign at 11/11 tables across 10 commits (PM-45 infrastructure + PM-46..PM-55 wirings; PM-54 wired two tables in one commit).
+
+**Atomic commits (2):**
+
+1. **vyve-site** `d36e271c` — 4-file atomic: auth.js (+2232 chars, 13th installTableBridges array entry), certificates.html (+1365 chars, bus.js script tag + DOMContentLoaded subscriber), index.html (+596 chars, 14th _markHomeStale subscribe), sw.js (cache key bump `pm54-bridge-session-views-a` → `pm55-bridge-certificates-a`).
+2. **VYVEBrain** `(this commit)` — active.md §2 SHA bump + audit baseline + §3.1 row 2-12 ✓ PM-55 + §4.9 two new rules + §5 PM-55 closure + campaign-closed banner; backlog PM-55 ✅ CLOSED + section header; changelog this entry + retrospective entry.
+
+**Pre-flight findings.**
+
+`certificates` table state: `id` (uuid PK, server-generated), `member_email`, `activity_type`, `milestone_count`, `earned_at`, `charity_moment_triggered`, `charity_partner`, `certificate_url`, `global_cert_number`. No `client_id` column. `replica_identity = 'd'` (default — fine for INSERT). In `supabase_realtime` publication since PM-45. 7 lifetime rows, last earned 28 April 2026.
+
+Live writer is `certificate-checker` EF v23, NOT v9 — brain note in master.md §7 was stale on the version number. Brain patched to v23 in this PM (active.md PM-55 §5 closure entry mentions it explicitly so future agents don't re-derive). Daily cron at 09:00 UTC. The writer performs a **two-step pattern per new certificate**:
+
+```ts
+// Step 1: INSERT with empty placeholder
+const { data: insertData } = await supabase.from('certificates').insert({
+  member_email, activity_type, milestone_count, earned_at, global_cert_number,
+  charity_moment_triggered: true,
+  certificate_url: ''  // ← placeholder, fires Realtime INSERT event with empty URL
+}).select('id').single();
+
+// Step 2: UPDATE same row with derived URL
+const certificateUrl = `https://online.vyvehealth.co.uk/certificate.html?id=${insertData.id}`;
+await supabase.from('certificates').update({ certificate_url: certificateUrl }).eq('id', insertData.id);
+// ← fires Realtime UPDATE event with populated URL
+```
+
+**Design call: INSERT-only with client-side URL derivation.**
+
+The choice was between three options:
+
+- (a) **INSERT-only.** Echo carries empty `certificate_url`; bridge derives from `row.id`. Cleanest match to PM-54's rule about UPDATE-noise; subscribers fire once per cert.
+- (b) **INSERT + UPDATE dual-op.** Subscribers fire twice per cert (once with empty URL, once populated). Idempotent achievement debounce 1.5s would coalesce in practice but double-fire is ugly.
+- (c) **UPDATE-only.** Wait for URL-populated UPDATE. Cleanest payload but introduces brittle 2-event coupling at the writer layer.
+
+Chose (a). The URL is **fully derivable** from `row.id` — the writer builds the exact same string. Bridge's `payload_from_row` reconstructs it client-side, eliminating the need to wait for the UPDATE echo.
+
+**Subscriber design call: certificates.html + index.html, skip engagement.html.**
+
+Three plausible subscriber surfaces:
+
+- **certificates.html** — refreshes the visible cert list on `certificate:earned`. Highest UX value (this is the page that shows certs). New subscriber file requires adding `<script src="/bus.js" defer></script>` to the page (was not previously wired).
+- **index.html** — busts `vyve_home_v3_<email>` via `_markHomeStale` (home dashboard's tracks block surfaces progress toward next cert per activity_type). 14th event on `_markHomeStale`. Mirror of PM-30..PM-43 pattern.
+- **engagement.html** — intentionally NOT wired. Cert earning is a **milestone of existing tracked activity**, not a new activity. Engagement score's Variety/Consistency components track activity-type diversity over 7/30-day windows; earning a cert doesn't shift those numerators. Wiring engagement-stale on cert events would be defensive-only with no real cache staleness. Documented as the 6th intentional non-touch across the cross-bus campaigns (PM-37 weight, PM-38 persona, PM-40 monthly, PM-41 share, PM-42 import, PM-55 certificate).
+
+**Bridge config entry (auth.js, 13th installTableBridges array element):**
+
+```js
+{
+  table: 'certificates',
+  event: 'certificate:earned',
+  op:    'INSERT',
+  // pk_field omitted → defaults to 'id' (server UUID PK)
+  payload_from_row: function (row) {
+    return {
+      certificate_id:     row.id || null,
+      activity_type:      row.activity_type || null,
+      milestone_count:    row.milestone_count || null,
+      global_cert_number: row.global_cert_number || null,
+      earned_at:          row.earned_at || null,
+      // ─── KEY MOVE: derive URL from row.id, NOT row.certificate_url ───
+      // The INSERT event arrives with certificate_url=''. The writer
+      // populates it in a follow-up UPDATE we deliberately don't listen
+      // for. The URL is fully derivable from row.id — the writer is
+      // building the exact same string.
+      certificate_url:    row.id
+        ? ('https://online.vyvehealth.co.uk/certificate.html?id=' + row.id)
+        : null
+    };
+  }
+}
+```
+
+**certificates.html patch (subscriber + bus.js wiring):**
+
+```html
+<script src="/theme.js" defer></script>
+<script src="auth.js" defer></script>
+<script src="/bus.js" defer></script>           <!-- NEW: was not wired before PM-55 -->
+<script src="/achievements.js" defer></script>
+```
+
+```js
+// NEW: subscriber block at end of <script> body
+document.addEventListener('DOMContentLoaded', function () {
+  if (!window.VYVEBus || window.__vyveCertsBusWired) return;
+  window.__vyveCertsBusWired = true;
+  window.VYVEBus.subscribe('certificate:earned', function (envelope) {
+    if (document.hidden) return;              // skip background fetches
+    try { localStorage.removeItem('vyve_certs_cache'); } catch (_) {}
+    try { loadPage(); } catch (_) {}          // re-runs fresh-fetch + render
+  });
+});
+```
+
+Three design points worth noting:
+
+1. **document.hidden gate.** Two-device user opens cert on phone, opens desktop browser later. Desktop tab still on cert library: refreshes. Desktop tab in background: skipped. Saves a fetch on a device the user isn't looking at. Tradeoff: when the user does focus that desktop tab, it won't auto-refresh — but the next navigation will hit the busted localStorage cache and fresh-fetch anyway. Acceptable.
+2. **Cache bust + loadPage re-call** rather than a custom incremental render. loadPage already handles offline/auth/render — reuse instead of duplicating logic. Cache bust prevents the optimistic-cache-paint at top of loadPage from racing the fresh fetch.
+3. **__vyveCertsBusWired idempotent guard.** Same pattern as `__vyveHomeBusWired` in index.html. Survives hot-reload and re-auth without double-subscribing.
+
+**index.html patch (14th _markHomeStale subscriber):**
+
+```js
+// PM-55: Layer 2-12 — certificate-checker EF (server-side cron, daily
+// 9 UTC) INSERTs certificate rows. Realtime → installTableBridges →
+// certificate:earned. Home dashboard's "tracks" block shows the
+// count toward the next certificate per activity_type; same
+// _markHomeStale handler busts the cache so the next paint reflects
+// the milestone. NO suppression discipline needed at the publish
+// layer — server is the only writer, no own-write to dedupe.
+// 14th event on _markHomeStale.
+window.VYVEBus.subscribe('certificate:earned', _markHomeStale);
+```
+
+**Self-test (25/25 across 6 groups):**
+
+`/tmp/pm55_test.js` covers:
+
+- **Group A — install path.** bridge_installed=true after install + currentEmail() resolves; one channel active named `vyve_bridge_certificates`; INSERT handler registered on the channel.
+- **Group B — INSERT echo correctness (10 tests).** Fired exactly once on synthetic Realtime INSERT; envelope.event='certificate:earned'; envelope.origin='realtime'; payload contains certificate_id, activity_type, milestone_count, global_cert_number, earned_at; certificate_url DERIVED from row.id (NOT from the empty row.certificate_url field).
+- **Group C — UPDATE-not-fired.** Synthetic UPDATE on certificates does NOT fire the subscriber. Confirms INSERT-only bridge skips the writer's URL-population echo.
+- **Group D — Multi-cert cron run.** Five INSERTs for five distinct activity types in sequence all fire; each delivers a distinct envelope; each certificate_url is unique.
+- **Group E — Defensive missing-id.** Realtime row with no fields doesn't throw; either silent-skip or fire-with-null-URL is acceptable.
+- **Group F — Inspect sanity.** Still exactly 1 bridge channel; subscriber count for certificate:earned > 0; bridge_config_size = 1; recent_writes = 0 (no own-writes — confirms pure-inbound semantics).
+
+All 180+ previous tests still passing (PM-45 45 + PM-46 10 + PM-47 15 + PM-48 17 + PM-49 17 + PM-50 21 + PM-51 18 + PM-52 21 + PM-53 15 + PM-54 20).
+
+**Audit-count delta (whole-tree, post-PM-55):**
+
+- `VYVEBus.recordWrite(` count: 15 unchanged (PM-55 has no client publisher)
+- `VYVEBus.publish(` count: 23 unchanged (same reason)
+- `VYVEBus.subscribe(` count: 29 → 31 (+2: index.html `certificate:earned` → `_markHomeStale`; certificates.html `certificate:earned` → page refresh)
+- `VYVEBus.installTableBridges(` entries: 13 → 14 (certificates added as last entry)
+- `VYVEData.newClientId(` direct call sites: 4 unchanged
+- Postgres `REPLICA IDENTITY FULL` tables: 1 unchanged (nutrition_logs only)
+
+**Two new §4.9 working-set rules codified:**
+
+- **Two-step INSERT→UPDATE writers use INSERT-only bridges with client-side derivation.** When a writer fires INSERT (with placeholder for fields that depend on the server-generated PK) followed by an in-place UPDATE to populate them, listen INSERT-only and derive the in-flight fields client-side from the row's stable identity. The writer is building the exact same values; the bridge can reconstruct without waiting. Companion rule to PM-54 heartbeat-pattern rule — both point at the same diagnostic discipline: read the writer before deciding INSERT-only vs dual-op.
+- **Pure-inbound bridges have no `recordWrite` discipline.** Bridges to tables whose only writer is a server-side cron / EF / external system require no suppression keying. Every Realtime echo IS a new event. `pk_field` defaults to `'id'` but is never used for suppression — only for the bus's internal recent-write map lookup, which finds nothing. Distinguishes pure-inbound bridges (PM-55 `certificates`) from outbound-with-suppression bridges (PM-46..PM-54).
+
+**Source-of-truth.** vyve-site pre-PM-55 `54020b9fda1d0cc26ecb384b01f32fd9a4c51945` (PM-54 ship), post-PM-55 `d36e271cf7140e9d41c8454eabe0dc74eda5b89e5`, new tree `d02c4a3831e5af54690b8c87d6b05c5611a378b2`. Live blob SHAs (verified post-commit byte-exact against staged): auth.js `6934bc28ecd7`, certificates.html `005c91871b40`, index.html `1192e006e1e2`, sw.js `7dc67c27c7d8`. All 4 byte-identical match staged vs live.
+
+**Layer 2 ledger at campaign close:**
+
+- 11/11 tables wired (daily_habits, workouts, cardio, exercise_logs, nutrition_logs INSERT+DELETE, weight_logs INSERT+UPDATE, wellbeing_checkins INSERT+UPDATE, monthly_checkins INSERT+UPDATE, session_views INSERT, replay_views INSERT, certificates INSERT)
+- 14 entries in installTableBridges array (some tables have multiple op entries)
+- 11/11 in supabase_realtime publication
+- 10/10 commits shipped (PM-45 infrastructure + PM-46..PM-55 wirings)
+- 8 §4.9 working-set rules codified across the campaign
+- 6 distinct bridge shapes proven (catalogued in the campaign-closed retrospective entry that follows)
+- 0 production incidents during the campaign
+
+**Two-device manual verify pending Dean.** All 10 already-wired chains (daily_habits, workouts, cardio, exercise_logs, nutrition_logs INSERT+DELETE, weight_logs INSERT+UPDATE, wellbeing_checkins INSERT+UPDATE, monthly_checkins INSERT+UPDATE, session_views INSERT, replay_views INSERT) plus the new certificates chain (invoke certificate-checker via dashboard manual trigger or wait for nightly 9:00 UTC cron).
+
+
+## 2026-05-11 PM-55-retrospective (Layer 2 Realtime bridge campaign closed)
+
+PM-45..PM-55 retrospective. **Layer 2 (cross-device coherence via Supabase Realtime) is the production default for all member-data tables.** Phone logs habit → desktop tab reflects within ~2s without manual refresh. Eleven tables wired, ten commits shipped, two working sessions across 10 + 11 May 2026.
+
+**Pattern velocity.**
+
+Layer 2 was paced one-table-per-commit by design — each table flushes out its own design subtleties before the next is touched. PM-45 (infrastructure) → 10 days of one-table-per-day-equivalent ship cadence. The campaign-closed retrospective is bundled here so the design decisions live with the code that proves them.
+
+| PM | Date | Table | Shape | Lines of code added |
+|---|---|---|---|---|
+| PM-45 | 10 May | _infrastructure_ | bus.js v2 + publication enable | +9298 |
+| PM-46 | 11 May | daily_habits | function-form pk, return=minimal | +2844 |
+| PM-47 | 11 May | workouts | string-form pk_field='client_id' | +3032 |
+| PM-48 | 11 May | cardio | string-form pk_field='client_id' | +2175 |
+| PM-49 | 11 May | exercise_logs | string-form pk_field='client_id' | +1594 |
+| PM-50 | 11 May | nutrition_logs | dual-op INSERT+DELETE; REPLICA IDENTITY FULL | +2486 |
+| PM-51 | 11 May | weight_logs | dual-op INSERT+UPDATE; UPSERT natural key | +2990 |
+| PM-52 | 11 May | wellbeing_checkins | dual-op + server-side EF writer | +3326 |
+| PM-53 | 11 May | monthly_checkins | dual-op + server-side EF + 409 pre-gate | +2708 |
+| PM-54 | 11 May | session_views + replay_views | INSERT-only; heartbeat suppression | +3374 |
+| PM-55 | 11 May | certificates | INSERT-only; pure-inbound | +4193 |
+
+**Six distinct bridge shapes proven.**
+
+1. **Outbound INSERT-only with client-UUID suppression.** Tables with a dedicated `client_id` UUID column populated by the writer. `pk_field: 'client_id'`. Used by: workouts, cardio, exercise_logs.
+2. **Outbound INSERT-only with synthetic-key suppression for return=minimal.** Tables where the writer uses `Prefer: return=minimal` (no server PK returned). `pk_field` is a function returning the unique-constraint tuple. Used by: daily_habits.
+3. **Dual-op INSERT + DELETE with REPLICA IDENTITY FULL.** Tables that need DELETE Realtime events carrying non-PK columns for suppression matching. Migration: `ALTER TABLE x REPLICA IDENTITY FULL`. Used by: nutrition_logs (the only table needing FULL identity at end of campaign).
+4. **Dual-op INSERT + UPDATE for UPSERT writers.** Writing surface uses `Prefer: resolution=merge-duplicates` against a natural unique constraint; UPSERT semantics fire INSERT-then-UPDATE on subsequent matches. Function-form `pk_field` on the natural-key tuple. Used by: weight_logs, wellbeing_checkins, monthly_checkins (the last two are server-side EF writers, where the page calls `recordWrite` with the natural key the EF will resolve against).
+5. **INSERT-only with heartbeat suppression.** Writers that issue periodic PATCHes on existing rows without re-publishing to the bus. Skip UPDATE bridge — same-day re-visit UPDATE echoes are an acceptable loss. Used by: session_views, replay_views.
+6. **Pure-inbound INSERT-only with client-side field derivation.** Server-side-only writer; no client publisher. PM-55 is the only example. Bridge derives in-flight fields (e.g. certificate_url from row.id) in `payload_from_row`. No `recordWrite` discipline. New event introduced alongside the bridge.
+
+**8 §4.9 working-set rules codified.**
+
+1. **PM-45**: Publication-enable pre-flight is mandatory.
+2. **PM-45**: Self-suppression discipline — `recordWrite(table, pk)` at every outbound publish site that writes to a bridged table.
+3. **PM-45**: Bridge contract uniformity — every bridged table has `member_email`, filtered server-side.
+4. **PM-46**: Function-form `pk_field` for return=minimal writing surfaces.
+5. **PM-47**: String-form `pk_field: 'client_id'` for tables with client-generated UUID columns.
+6. **PM-50**: REPLICA IDENTITY FULL for non-PK-bearing DELETE bridges.
+7. **PM-51**: Function-form `pk_field` for UPSERT writing surfaces; INSERT+UPDATE dual-op channel grouping.
+8. **PM-52**: Server-side EF writers still need page-side `recordWrite` with conflict-resolution natural key.
+9. **PM-54**: Heartbeat-pattern writers require INSERT-only bridges.
+10. **PM-55**: Two-step INSERT→UPDATE writers use INSERT-only with client-side derivation.
+11. **PM-55**: Pure-inbound bridges have no `recordWrite` discipline.
+
+(Footnote: PM-45 codified three rules in one shot — counted as one campaign date but three rules.)
+
+**Audit-count progression.**
+
+| Metric | Pre-PM-45 (post-Layer 1 cleanup) | Post-PM-55 (Layer 2 closed) | Δ |
+|---|---|---|---|
+| `VYVEBus.publish(` | 23 | 23 | 0 (PM-55 added no publisher) |
+| `VYVEBus.subscribe(` | 29 | 31 | +2 (PM-55 certificate:earned × 2 surfaces) |
+| `VYVEBus.recordWrite(` | 0 | 15 | +15 (across PM-46..PM-54 outbound bridges) |
+| `VYVEBus.installTableBridges(` entries | 0 | 14 | +14 |
+| `VYVEData.newClientId(` direct call sites | 1 | 4 | +3 (cardio + 2 movement sites at PM-47/48) |
+| Postgres `REPLICA IDENTITY FULL` tables | 0 | 1 | +1 (nutrition_logs at PM-50) |
+
+**What was NOT shipped (deferred to future campaigns).**
+
+- **Layer 3** — missed-event catch-up on Realtime reconnect. When a device's connection drops and reconnects, missed Realtime events are not replayed. Most subscribers tolerate (cache invalidation; the next fetch returns truth) but the gap exists. Deferred. Becomes a priority if measurable subscriber breakage emerges.
+- **Layer 4** — reconcile-and-revert on POST failure. When a publish lands BEFORE the fetch (race-fix pattern from PM-33) and the fetch fails, subscribers have already been told the activity happened. Cache-stale recovers (next fetch returns truth) but the optimistic breadcrumb (recordRecentActivity 120s TTL) is a minor lie until TTL. Deferred.
+- **`recordWrite` fallback discipline.** When a writing site fails to call `recordWrite`, the device double-fires subscribers (`local` then `realtime` ~2s later). Subscribers are idempotent (cache invalidation; achievement debounce 1.5s); acceptable degraded-but-functional state. Promote only if real breakage emerges.
+- **Two-device PK-collision suppression.** Two devices writing the same primary key within 5s would mutually suppress each other's echoes. Edge case dependent on PK collision (rare with sequence-generated PKs). Not a Layer 2 concern.
+- **`shared_workouts`, `members` UPDATE, `workout_plan_cache` UPDATE.** Intentionally deferred at PM-45 for documented reasons (no `member_email` column / high-volume non-coherent UPDATE traffic / already covered by sibling per-event bridges).
+
+**The bus invariant after Layer 2.**
+
+Subscribers are origin-agnostic and idempotent. Any event published from any device — `local`, `remote` (storage-event echo to same-browser tabs), or `realtime` (cross-device Realtime echo) — fires the same subscriber chain. The publishing surface doesn't care which downstream subscribers exist; the subscribers don't care which device originated the event. Cross-device coherence is now the platform default for all member-data tables, and the next layer of work (catch-up sweeps, reconcile-and-revert, optimistic-delta reconciliation) inherits this invariant.
+
+**Next sessions.**
+
+Layer 3/4 work is not yet a P0. The next P0 is whichever item Dean nominates. The Layer 2 campaign closing means active.md §3 will be rewritten at the next session start; new §3 will document Layer 3 scope when work begins, or the next campaign if Dean picks something else (e.g. Achievements Phase 3 grid extensions, native push triggers, Android FCM, HAVEN auto-assignment pending Phil sign-off).
+
+
 ## 2026-05-11 PM-54 (Layer 2 ninth + tenth table-bridge wirings: session_views + replay_views INSERT-only — heartbeat-pattern writer)
 
 vyve-site `54020b9fda1d0cc26ecb384b01f32fd9a4c51945` (new tree `ac9b01b8040d81a54deec45369ddf4c239ab8bc4`). VYVEBrain main `(set after this commit lands)`. **Two table-bridges wired in one commit** — session_views and replay_views share a single publisher (tracking.js PM-43 onVisitStart) that routes between them based on `isReplay`. Same event name (`session:viewed`) with kind discriminator. INSERT-only by deliberate design call — the most important pre-flight decision of the campaign so far, recorded as a new §4.9 working-set rule.
