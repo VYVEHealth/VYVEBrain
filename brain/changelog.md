@@ -1,3 +1,58 @@
+## 2026-05-11 PM-61 (Layer 4 tracking.js — fourth per-surface wiring, multi-table direct-fetch + 16-page lib rollout)
+
+**Files shipped (19, atomic vyve-site commit `88a562ba`):**
+- `tracking.js` v7 → v8 (+6,156 chars)
+- `index.html` (+1,376 chars)
+- `sw.js` cache key pm60-layer4-nutrition-a → pm61-layer4-tracking-a
+- 16 session pages (`checkin-live/rp`, `education-live/rp`, `events-live/rp`, `mindfulness-live/rp`, `podcast-live/rp`, `therapy-live/rp`, `workouts-live/rp`, `yoga-live/rp`) — vyve-home-state.js script tag inserted between bus.js and tracking.js
+
+**The migration shape.** tracking.js is the fourth Layer 4 surface and the FIRST multi-table publisher in the Layer 4 campaign — one publishing site (`onVisitStart` in tracking.js) routes between `session_views` and `replay_views` via the `table` variable. Only `session_views` has a column in `member_home_state` (`sessions_total`, `sessions_this_week`, `last_session_at`); `replay_views` is not in `TYPE_TO_HS_COLS` because engagement_score has no replay component. PM-61 establishes the **asymmetric Layer 4 patch** shape: patch one of N bridged tables, suppress canonical on all N, single revert subscriber gates on `envelope.table` before calling `revertPatch`.
+
+**The kind-collision design call.** PM-54 set `kind:'live'|'replay'` on the `session:viewed` envelope as the cross-device discriminator used by engagement.html + index.html subscribers. PM-58/59/60 used `kind:'canonical'` as the fast-path discriminator on index.html's `_markHomeStale`. These two uses of `kind` collide on tracking.js. Three options considered: (a) rename PM-54's `kind` to `view_kind` and switch everyone — touches too many subscribers, risky; (b) carry both — add a separate `canonical: true` boolean alongside the existing `kind`; (c) skip the canonical fast-path on session:viewed and pay the round-trip cost — defeats Layer 4. **Chose (b).** PM-58/59/60 surfaces (cardio, habits, nutrition) keep emitting `kind:'canonical'`; PM-61+ surfaces that already use `kind` as a payload discriminator emit `canonical: true` alongside. The index.html `_markHomeStale` gate OR-checks both. Both flags valid forever; subscribers OR-gate.
+
+**tracking.js v8 — what changed.**
+1. `insertSession` rewritten from try/catch fire-and-forget (returning undefined) to return `{ok, status}` with explicit `threw:true` on network errors. Direct-fetch surface — non-ok is terminal, no outbox retry. Required so `onVisitStart` can dispatch `session:viewed:failed` on POST failure with `http_status` and `reason` populated.
+2. `onVisitStart` rewired: `VYVEHomeState.optimisticPatch('session_views', {loggedAt})` BEFORE the `insertSession` await (gated on `table === 'session_views'`); `recordCanonical(table, syntheticKey)` AND `recordWrite(table, syntheticKey)` — both keyed on `member_email|category|activity_date` matching the PM-54 bridge `pk_field`; publish with `kind:isReplay ? 'replay' : 'live'` AND `canonical: true`. On `!ok`: publish `session:viewed:failed` with `table, logged_at, http_status, reason`, skip heartbeat scheduling (no row server-side to PATCH).
+3. Module-level revert subscriber (page-owned) — branches on `envelope.table === 'session_views'` before calling `VYVEHomeState.revertPatch('session_views', {loggedAt: envelope.logged_at})`. Replay failures are no-ops on home_state; index belt-and-braces wipes the cache regardless.
+
+**index.html — two surgical edits.**
+1. `_markHomeStale` gate at L1280 extended: `envelope.kind === 'canonical' || envelope.canonical === true`. Doc comment in code calls out the PM-61 rationale.
+2. `session:viewed:failed` belt-and-braces subscriber added immediately after the existing `session:viewed → _markHomeStale` subscribe — mirrors PM-58 `cardio:failed` + PM-59 `habit:failed` exactly. Subscribe count 17 → 18.
+
+**The 16-page rollout + the two-page Layer 2 gap fix.** tracking.js v8 calls `VYVEHomeState.optimisticPatch` / `revertPatch` — the library MUST be loaded on every page that publishes a canonical envelope or the writing device's optimistic paint silently no-ops. 14 pages already had `auth.js defer → bus.js defer → tracking.js` (no defer on tracking.js — needs to run before the Capgo plugin claims focus on native). PM-61 inserts `vyve-home-state.js defer` between bus.js and tracking.js on those 14 pages.
+
+**Two pages had a pre-existing PM-43/PM-54 GAP**: `checkin-rp.html` and `workouts-rp.html` were missing `<script src="/bus.js">` entirely — they went straight from auth.js → tracking.js. That meant tracking.js's `if (window.VYVEBus)` has been silently no-op-ing on these pages since PM-43, AND the PM-54 session:viewed bridge was never installed on these pages because installTableBridges runs inside auth.js's `<script src="/bus.js">` dependency chain. Cross-device echoes on these two surfaces have never fired since PM-43. PM-61 fixes both — adds bus.js AND vyve-home-state.js. Codified as new §4.9 sub-rule on script-tag completeness audit.
+
+`events-live.html` and `events-rp.html` use relative-path + defer style for auth.js and tracking.js (versus the leading-slash + parse-blocking style of the other pages — these two are 17-24K HTML files with full inline UI, not the 2K session-shell pattern). PM-61 inserted the vyve-home-state.js tag with leading-slash defer to match their existing bus.js style.
+
+**sw.js precache list already had `/vyve-home-state.js` from PM-58.** No urlsToCache edit needed. Cache key bump only.
+
+**Audit baseline drift correction at HEAD `1e7962d5` (PM-60 ship).** Live full-tree grep before PM-61 work began found `publish=33` (active.md §2 said 29 — off by 4), `subscribe=38` (matched), `recordWrite=16 runtime + 1 docstring = 17 raw grep hits` (active.md §2 said 15 — off by 1 runtime), `recordCanonical=5` (matched), `installTableBridges=1` (matched). Per-file: habits.html actual 8 publish sites (3 main logHabit/undoHabit/autotick + 5 habit:failed across the same three publish surfaces and the outbox-dead window listener — the active.md narrative implied 6), nutrition.html actual 4 publish sites (1 weight:logged + 3 weight:failed). Brain narrative corrected in this commit per §4.9 PM-58 live-state-grep rule. The pre-PM-61 publish baseline was therefore 33 in reality, not 29.
+
+**Projected audit counts post-PM-61** (full-tree grep, runtime only):
+- `VYVEBus.publish(`: 33 → 34 (+1 session:viewed:failed in tracking.js)
+- `VYVEBus.subscribe(`: 38 → 40 (+1 tracking.js page-owned revert; +1 index.html belt-and-braces)
+- `VYVEBus.recordWrite(`: 16 → 16 (unchanged — session_views recordWrite was already at PM-54)
+- `VYVEBus.recordCanonical(`: 5 → 6 (+1 tracking.js)
+- `VYVEBus.installTableBridges(`: 1 → 1 (unchanged)
+
+Seven new §4.9 sub-rules codified (see active.md):
+1. Asymmetric Layer 4 patch on multi-table publishers
+2. `canonical: true` boolean payload discriminator for surfaces that already use `kind`
+3. `vyve-home-state.js` script-tag prerequisite
+4. Script-tag completeness audit on -live.html/-rp.html pages (codified after the checkin-rp/workouts-rp gap surfaced)
+5. `insertSession` return-shape extension for direct-fetch IIFE failure dispatch
+6. Failure dispatch on multi-table surfaces — single subscriber branches on envelope.table
+7. recordCanonical discipline applies regardless of patch (suppression is per (table, pk) not per patched/unpatched)
+
+**Two-device manual verify pending Dean.** Open same `-live.html` on two devices, confirm `session:viewed` cross-device echo lands, confirm suppression at the writing device (no double subscriber fire — `_markHomeStale` should fast-path out), confirm optimistic paint on home dashboard before `insertSession` completes. Carried PM-58/59/60 two-device verifies still pending.
+
+**Layer 4 status: 4/8 surfaces shipped.** Remaining: log-food.html (PM-62 likely target — first non-habits signed-patch, sign:+1 insert / sign:-1 delete; DELETE-404 carries from PM-59 for free), workouts family (~11 sites across 4 files — likely 2 sessions), wellbeing-checkin.html (server-side EF, PM-39 initiator+confirmer; needs `canonical: true` boolean because `kind:'live'/'flush'` already in use), monthly-checkin.html (server-side EF, capstone).
+
+**Carried non-Layer-4 work** unchanged from PM-60: iOS 1.1(3) at "Ready for Review" since 27 April; Android 1.0.2 awaiting Google Play; HAVEN clinical sign-off (Phil); weekly check-in nudge copy split (Phil + Lewis); Brevo logo removal (Lewis); Facebook Make connection expires 22 May 2026 (Lewis); B2B volume tier definition; public-launch comms draft. 11 May 2026 public announce was comms, not technical go-live.
+
+---
+
 ## 2026-05-11 PM-60 (Layer 4 nutrition — third per-surface wiring + first page-local cache patch surface)
 
 **Files shipped (2, atomic vyve-site commit `1e7962d5`, retry_count 0, both files byte-equal post-commit verified):**
