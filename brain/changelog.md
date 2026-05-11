@@ -1,3 +1,46 @@
+## 2026-05-11 PM-60 (Layer 4 nutrition — third per-surface wiring + first page-local cache patch surface)
+
+**Files shipped (2, atomic vyve-site commit `1e7962d5`, retry_count 0, both files byte-equal post-commit verified):**
+
+- **nutrition.html** (+10491 chars). Two new module-level helpers introduced for page-scoped optimistic cache management:
+  - `_patchWtCacheOptimistic(email, date, kg)` reads `vyve_wt_cache_<email>`, captures a snapshot `{priorKg, priorExisted}`, applies the patch (UPDATE if row exists, INSERT otherwise), re-sorts by date, persists, returns the snapshot. Snapshot capture matters: for UPDATE the patch overwrites `priorKg` and revert must restore the prior value (not just remove the entry); for INSERT the entry didn't exist and revert removes it. Without the snapshot, the revert can't distinguish the two cases.
+  - `_revertWtCachePatch(email, date, snapshot)` branches on `snapshot.priorExisted` — restores prior kg or removes the entry — and re-sorts/persists.
+
+  Module-level `_weightInflight = {}` map keyed by synthetic_key (member_email|logged_date) for vyve-outbox-dead correlation; entry holds `{weight_kg, logged_date, snapshot, enqueued_at}`. Mirrors PM-59 habits.html's `_habitInflight` pattern but with snapshot included so the dead-letter path's weight:failed publish has the data needed to revert.
+
+  `saveWtLog` rewritten:
+  1. Build `_wtSyntheticKey = email + '|' + date` and capture `_wtSnapshot = _patchWtCacheOptimistic(...)` BEFORE the publish — the optimistic patch is applied to the cache first so any paint immediately reads post-write state.
+  2. recordWrite (PM-51 Layer 2 echo suppression) + recordCanonical (PM-58 Layer 4 echo suppression, 10s TTL distinct map).
+  3. `VYVEBus.publish('weight:logged', {kind:'canonical', weight_kg, logged_date, synthetic_key})` — the canonical envelope tells index.html `_markHomeStale` to fast-path (it actually no-ops for weight since there's no home_state column, but the shape is consistent with cardio/habits).
+  4. `_wtWriteResult = await VYVEData.writeQueued({...})` — capture the return for failure dispatch. Direct-fetch fallback (no writeQueued available) normalised to the same return shape `{ok, queued, dead, status}`.
+  5. Failure dichotomy: `_wtWriteResult.dead === true` (4xx) → eager `VYVEBus.publish('weight:failed', {snapshot, ...})`; `_wtWriteResult.queued === true` (5xx/network) → register `_weightInflight[syntheticKey]` for vyve-outbox-dead correlation.
+
+  New `weight:failed` subscriber (added to the existing DOMContentLoaded bus-wireup block): reads email from `window.vyveCurrentUser`, calls `_revertWtCachePatch(email, envelope.logged_date, envelope.snapshot)`, prunes `_weightInflight[envelope.synthetic_key]` if present, refreshes the in-memory `_cachedWtLogs` from the just-reverted local cache (`loadWtCache()`), calls `renderSheet()` and `renderMiniChart(_cachedWtLogs, miniRange)` to repaint the chart + history list, shows toast on the manual failure reasons (`'post_failed_4xx'` and `'outbox_dead_4xx'`).
+
+  Existing `_markWeightAchStale` subscriber extended to prune `_weightInflight[envelope.synthetic_key]` on successful publishes (origin-agnostic — local, cross-tab storage, and realtime echo all carry the synthetic_key so any of them drains the tracker).
+
+  New `vyve-outbox-dead` window listener: detail-payload path extracts `member_email` + `logged_date` from `JSON.parse(item.body)` for `item.table === 'weight_logs'`, reconstructs synthetic_key, matches against `_weightInflight`, publishes `weight:failed` with the captured snapshot. Legacy-fallback path ages out entries past 5min when `detail` is absent.
+
+  Critical caller-side change: the user-initiated save flow at `logWeight` L1337 (the "Save" button handler in the weight sheet) no longer awaits `loadWtLogs()` post-save. Pre-PM-60 it re-fetched server state via `_cachedWtLogs = await loadWtLogs()` to refresh the in-memory cache. In the writeQueued queued path (5xx/network), that re-fetch wipes the optimistic patch — the row is in the outbox, not yet in the DB, so the server response doesn't include it. The user would briefly see the new weight, then it disappears, then comes back when the outbox flushes — worse than no Layer 4 wiring. PM-60 replaces the re-fetch with `_cachedWtLogs = loadWtCache()` (read from the just-patched local cache). The cache IS canonical for the row just written; rows from other sources arrive via Layer 2 realtime echo through the weight_logs bridge. Revert path restores via the snapshot in weight:failed. Net: zero extra network round-trip per save, premium-feel tap-to-painted-chart contract honoured.
+
+- **sw.js**. Cache key bumped `pm59-layer4-habits-a` → `pm60-layer4-nutrition-a`.
+
+**Why page-scoped helpers, not in vyve-home-state.js.** Weight isn't in `member_home_state` — engagement scoring has no weight component (PM-37 codified this with the "engagement-stale intentionally NOT wired" comment in saveWtLog). The member-dashboard EF doesn't read weight fields. The shared `vyve-home-state.js` library's scope is the home cache (`vyve_home_v3_<email>`); weight cache is page-local. Putting `patchWeightCache` in the shared library would be scope creep AND would dilute the library's clear purpose. The first surface where Layer 4 patching applies to a page-local cache rather than the shared home_state.
+
+**Why no index.html change.** No home_state column to invalidate on weight:failed; engagement_cache has no weight component either; achievements eval happens on the nutrition page itself (the "this page owns the weight-log journey" comment from PM-37). The PM-58 cardio:failed and PM-59 habit:failed belt-and-braces subscribers exist because cardio and habits DO update home_state and engagement_cache; weight doesn't.
+
+**Why this matters for the campaign plan.** Two new audit-count baseline classes:
+- `_patch<Surface>CacheOptimistic / _revert<Surface>CachePatch` per surface-with-page-local-cache. log-food.html will be next: `_patchFoodLogCacheOptimistic / _revertFoodLogCachePatch`, etc.
+- The "skip post-save server re-fetch" discipline applies to every Layer 4 surface migration that has an existing `await loadXLogs()` pattern in the user-initiated caller. log-food.html and the workouts family both have this pattern (verify on read).
+
+**Failure-shape dispatch on direct-fetch fallback.** The `!VYVEData.writeQueued` path (which only runs when vyve-offline.js hasn't loaded — rare) is normalised to the same `{ok, queued, dead, status}` return shape so the failure dispatch below it works identically. Backward-compat: pre-Layer-4 saveWtLog ordering is preserved — publish still happens BEFORE the writeQueued await (PM-37 invariant). The !VYVEBus path skips all the Layer 4 plumbing entirely (the `if (window.VYVEBus)` guards wrap the entire block).
+
+**Audit-count drift.** Whole-tree grep at PM-59 HEAD `482065d2` baseline: publish=28, subscribe=37, recordCanonical=4. Post-PM-60 at HEAD `1e7962d5`: publish=29 (+1 weight:failed publisher in saveWtLog), subscribe=38 (+1 weight:failed subscriber in nutrition.html — NO index.html subscriber added per the above rationale), recordCanonical=5 (+1 in saveWtLog). Brain narrative corrected in active.md §2 audit-count baseline rewrite.
+
+**Self-tests still deferred.** Triple-defer now (PM-58, PM-59, PM-60). The Layer 4 self-test harness P1 stays in backlog; new candidate for landing is PM-62 (log-food.html — third writeQueued surface, would benefit from a real test scaffold).
+
+**Layer 4 remaining: 5 surfaces.** tracking.js (1 site, direct-fetch, two tables — likely smallest) → log-food.html (3 sites, dual-op, FIRST non-habits signed-patch surface) → workouts family (~8 sites across 4 files + movement.html direct-fetch) → wellbeing-checkin.html (2 sites, server-side EF writer with PM-39 initiator+confirmer pattern) → monthly-checkin.html (1 site, server-side EF writer, capstone). PM-61 likely tracking.js.
+
 ## 2026-05-11 PM-59 (Layer 4 habits — second per-surface wiring + writeQueued failure-class discriminator)
 
 **Files shipped (5, atomic vyve-site commit `482065d2`, retry_count 0, all 5 files byte-equal post-commit verified):**
