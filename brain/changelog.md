@@ -1,3 +1,52 @@
+## 2026-05-11 PM-62 (Layer 4 log-food.html — fifth per-surface wiring, FIRST non-habits signed-patch, FIRST page-in-memory-state-IS-cache surface)
+
+**Files shipped (3, atomic vyve-site commit `677f301f`):**
+- `log-food.html` (+12,410 chars)
+- `index.html` (+938 chars)
+- `sw.js` cache key pm61-layer4-tracking-a → pm62-layer4-logfood-a
+
+**The migration shape.** log-food.html is the fifth Layer 4 surface and the FIRST non-habits signed-patch surface. Three publishers: `food:deleted` (sign:-1) in deleteLog at L834, `food:logged` (sign:+1) in logSelectedFood at L1123, `food:logged` (sign:+1) in logQuickAdd at L1195. All three route through `VYVEData.writeQueued` (PM-59 writeQueued failure-class discriminator applies). It's also the FIRST Layer 4 surface where the page's in-memory state IS the cache contents — `diaryLogs` is the page-local state, and `saveDiaryCache()` serializes the diaryLogs object verbatim to `vyve_food_diary:<email>:<currentDate>` in localStorage. No separate cache helper layer like nutrition PM-60's `vyve_wt_cache` is needed; the "patch" is the page's existing `diaryLogs[meal].push/filter` + `renderDiary()` + `saveDiaryCache()` flow that has existed since PM-12. PM-62 adds snapshot capture + failure-class capture + revert subscriber on top.
+
+**The five design calls.**
+
+1. **`canonical: true` boolean (not `kind:'canonical'`) across all three publish sites.** `food:logged` already carries `kind:'search'|'quickadd'` to distinguish the two insert flows. `food:deleted` has no existing `kind`. For consistency PM-62 uses `canonical: true` boolean on BOTH events — even though food:deleted could have used `kind:'canonical'` cleanly. Codified as a forward §4.9 sub-rule: prefer `canonical: true` for ALL new Layer 4 wiring; `kind:'canonical'` is the legacy form retained only for PM-58/59/60 surfaces. The string form requires the surface to have NO existing `kind` AND introduces a fragile contract where future evolution adding a `kind` field would silently break the canonical fast-path. The boolean form is robust forever.
+
+2. **Awaiting a previously fire-and-forget writeQueued.** The PM-12 comment on logSelectedFood explicitly said "We don't await ... local UI is already correct" — fire-and-forget by design. But Layer 4 failure dispatch REQUIRES the writeQueued return shape to discriminate 4xx-dead from 5xx-queued. PM-62 adds `await` on both `logSelectedFood` and `logQuickAdd` writeQueued calls. deleteLog already awaits — no change there. Net effect: success path now adds 50-200ms latency before "Log Food" button re-enables; failure path now correctly fires food:failed. Acceptable per the premium-feel campaign — consistent with cardio/habits/nutrition. New §4.9 sub-rule codified: when migrating a Layer 1c writeQueued surface to Layer 4, add the await unconditionally; the PM-12 comment is a relic.
+
+3. **Snapshot capture BEFORE the optimistic mutation.** deleteLog's existing pattern was `diaryLogs[meal] = diaryLogs[meal].filter(r => r.client_id !== clientId)` → row gone. After PM-62 the snapshot has to capture the row contents BEFORE that filter so the revert path can push the full row back into diaryLogs. New shape: `const _deletedRow = (diaryLogs[meal] || []).find(r => r.client_id === clientId) || null;` then the existing filter unchanged. For inserts the snapshot only needs `{clientId, meal}` because the revert is a filter-by-clientId (the row contents aren't needed — we just need to identify which row to remove). New §4.9 sub-rule: snapshot envelopes for non-home-state surfaces carry the FULL restoration payload — for inserts {clientId, meal}, for deletes the entire removedRow.
+
+4. **original_sign on both publish AND failed envelopes.** Both food:logged publishes carry `original_sign: +1`; food:deleted carries `original_sign: -1`; all three corresponding food:failed envelopes carry the same sign. The page-owned revert subscriber doesn't actually use sign (it uses `snapshot.kind`), but cross-device subscribers (engagement.html variety component, future achievement evaluators) can compute net effect by sign alone. Symmetry with PM-59 habits.html which used sign-aware `VYVEHomeState.revertPatch` on the shared cache. New §4.9 sub-rule codified.
+
+5. **Failure dispatch in two paths converging on one subscriber.** Path A: writeQueued returns `{dead: true, status}` → eager food:failed publish from the call site with `{client_id, meal, original_sign, snapshot, http_status, reason}`. Path B: writeQueued returns `{queued: true}` → register `_logFoodInflight.set(clientId, {client_id, meal, original_sign, snapshot, enqueued_at})` → on later vyve-outbox-dead event, the page-level listener walks `detail.items[]`, filters by `table === 'nutrition_logs'`, correlates by POST body.client_id OR DELETE url client_id=eq.<x>, and synthesises food:failed from the matching inflight tracker. The page-owned food:failed subscriber doesn't care which path triggered it — same envelope shape both ways. Idempotent revert via `__vyveLogFoodBusWired` flag + array filter-by-clientId on push (won't double-push the same removed row).
+
+**The DELETE-404 carry from PM-59.** Cross-device delete-races (Device A deletes row X, then Device B's pending DELETE for row X eventually flushes against an already-deleted row → server returns 404) NEVER fire food:failed because PM-59 vyve-offline.js extension treats DELETE-404 as idempotent success at both the writeQueued direct path AND the outboxFlush retry path. Inherited for free; no PM-62 code needed.
+
+**index.html — one surgical edit.** food:failed belt-and-braces subscriber added right after the existing PM-36 food:logged/food:deleted _markHomeStale subscribes. nutrition_logs is NOT in TYPE_TO_HS_COLS (no home_state column for food), so this subscriber is mostly defensive — wipes the home cache so next paint guarantees fresh member-dashboard data in case any derived column (engagement variety, calorie joins) was indirectly affected. Subscribe count 18 → 19.
+
+**sw.js cache key bump only.** No precache list edits needed — log-food.html and other affected files were already in urlsToCache.
+
+**Projected audit counts post-PM-62** (full-tree grep, runtime only):
+- `VYVEBus.publish(`: 34 → 38 (+4: log-food.html adds food:failed in deleteLog dead branch + logSelectedFood dead branch + logQuickAdd dead branch + vyve-outbox-dead listener)
+- `VYVEBus.subscribe(`: 40 → 42 (+1 log-food.html page-owned revert; +1 index.html belt-and-braces)
+- `VYVEBus.recordWrite(`: 16 → 16 (UNCHANGED — nutrition_logs recordWrite was already at PM-50 across all three publish sites)
+- `VYVEBus.recordCanonical(`: 6 → 9 (+3 across the three log-food publish sites)
+- `VYVEBus.installTableBridges(`: 1 → 1 (unchanged)
+
+Five new §4.9 sub-rules codified (see active.md):
+1. Signed dual-op surfaces carry `original_sign` on publish AND failed envelopes
+2. Snapshot envelopes carry the full restoration payload for non-home-state surfaces
+3. Prefer `canonical: true` boolean for ALL new Layer 4 wiring going forward
+4. Awaiting a previously fire-and-forget writeQueued is a behavioural change — add the await
+5. Page-in-memory-state IS the cache contents (shape recognition for future surface migrations)
+
+**Two-device manual verify still pending Dean across PM-58/59/60/61/62.** Carried forward this session — no Android device available. Can resume verify once second device is on hand. Layer 4 implementation does not depend on the verify; the verify is for cross-device echo + suppression confirmation only, and PM-58/59/60/61/62 are all atomic on the writer device with revert paths exercisable via simulated 4xx in dev tools.
+
+**Layer 4 status: 5/8 surfaces shipped.** Remaining 3: workouts family (workouts-session.js 4 sites + workouts-programme.js 3 sites + workouts-builder.js 1 site + movement.html 3 sites — ~11 publishers across 4 files; highest member-daily-flow frequency so highest premium-feel ROI of the remaining; likely 2 sessions), wellbeing-checkin.html (2 sites, server-side EF writer with PM-39 initiator+confirmer; needs canonical:true boolean because kind:'live'/'flush' already in use), monthly-checkin.html (1 site, server-side EF writer, capstone). PM-63 likely workouts-session.js or movement.html start.
+
+**Carried non-Layer-4 work** unchanged from PM-61: iOS 1.1(3) at "Ready for Review" since 27 April; Android 1.0.2 awaiting Google Play; HAVEN clinical sign-off (Phil); weekly check-in nudge copy split (Phil + Lewis); Brevo logo removal (Lewis); Facebook Make connection expires 22 May 2026 (Lewis); B2B volume tier definition; public-launch comms draft.
+
+---
+
 ## 2026-05-11 PM-61 (Layer 4 tracking.js — fourth per-surface wiring, multi-table direct-fetch + 16-page lib rollout)
 
 **Files shipped (19, atomic vyve-site commit `88a562ba`):**
