@@ -1,3 +1,62 @@
+## 2026-05-11 PM-56 (Layer 5 perf telemetry rollout: perf.js wired across 20 gated pages — campaign clock starts)
+
+vyve-site `56717a6acf20cbbe49bdb5e3f77147874710ac33` (new tree `2a17dd336220e8a6b5a8d11af8c96f79f4bbb213`). VYVEBrain main `(set after this commit lands)`. **Opens Layer 5** of the premium-feel architecture campaign. Layer 2 closed at PM-55; Layer 3 + Layer 4 reframed (see §"Layer 3/4 reframe" below) and queued behind Layer 5's week-of-data clock.
+
+**Atomic commit (1):**
+
+1. **vyve-site** `56717a6a` — 21-file atomic: 20 gated portal HTMLs (+39-41 chars each, single `<script src="/perf.js" defer></script>` inserted after the `/bus.js` anchor where present, else after `auth.js`) + sw.js (cache key bump `pm55-bridge-certificates-a` → `pm56-perf-rollout-a`). retry_count 0, no SHA drift detected at refresh-before-commit.
+
+**Pre-flight findings.**
+
+perf.js shipped at PM-21 (08 May 2026, 8591 chars) but only wired to `index.html`. Gap: 20 auth-gated portal pages collecting zero telemetry. perf.js itself is production-safe to ship broadly: runtime-gated (`?perf=1` once persists `localStorage.vyve_perf_enabled='1'`), default-off in production, every block wrapped in try/catch (never throws to host), deferred loading (never blocks render), JWT pulled lazily at flush time so unauthenticated loads drop silently, one POST per page lifetime via `pagehide` + 12s fallback. There was no reason to keep it gated to a single page — only inertia.
+
+**Pages wired (20):** activity, apple-health, cardio, certificates, engagement, events-live, events-rp, exercise, habits, leaderboard, log-food, monthly-checkin, movement, nutrition-setup, nutrition, running-plan, sessions, settings, wellbeing-checkin, workouts.
+
+**Pages intentionally NOT wired:**
+
+- `index.html` — already had perf.js (PM-21).
+- `login.html`, `set-password.html`, `consent-gate.html`, `offline.html`, `reset-cache.html`, `gdpr-erasure-cancel.html`, `shared-workout.html`, `hk-diagnostic.html`, `certificate.html` — public / non-auth-gated / diagnostic / one-shot pages. Telemetry would either drop silently (no JWT) or carry no useful signal.
+- `internal-dashboard/index.html` — internal ops surface, not member-facing.
+- `VYVE_Health_Hub.html` — clinical assessment staging, awaiting Phil's sign-off. Don't touch.
+- All `*-live.html` / `*-rp.html` redirect stubs under 3KB (yoga-live, mindfulness-live, etc.) — pure redirect pages, no meaningful telemetry. The two non-stub live pages (events-live ~24KB, events-rp ~18KB) ARE wired.
+
+**Insertion pattern.** Two anchor styles in the audit:
+
+- 13 pages have `<script src="/bus.js" defer></script>` (Layer 1c-era + Layer 2 subscribers) — perf.js inserted immediately after.
+- 7 pages have only `<script src="auth.js" defer></script>` (no bus subscriber) — perf.js inserted immediately after.
+
+Either ordering works because perf.js reads JWT lazily at flush time, not at load. The `bus.js` anchor was preferred for visual consistency with index.html.
+
+**Verification.** Post-commit re-fetched all 21 files via `GITHUB_GET_REPOSITORY_CONTENT` (live API, not raw — CDN-cached). All 21 files byte-equal to staged content. All 20 HTMLs contain exactly one `/perf.js` occurrence. sw.js contains the new `pm56-perf-rollout-a` cache key.
+
+**Telemetry collection starts now.** To opt-in personally for testing: visit any portal page with `?perf=1` once — the flag persists in localStorage and every subsequent page load contributes to `perf_telemetry`. Without the flag, perf.js short-circuits at line 1 of its IIFE and contributes nothing. **One week of data** (target: 18 May 2026) gates the Layer 6 SPA-shell decision — by then there should be enough warm-cache TTFP / FCP / LCP samples across the page set to know whether a SPA shell would meaningfully improve the metric.
+
+**Audit-count delta (whole-tree, post-PM-56):**
+
+- `VYVEBus.publish(` count: 23 unchanged
+- `VYVEBus.subscribe(` count: 31 unchanged
+- `VYVEBus.recordWrite(` count: 15 unchanged
+- `VYVEBus.installTableBridges(` entries: 15 unchanged
+- `<script src="/perf.js"` count: 1 → 21 (+20)
+- Cache key version: `pm55-bridge-certificates-a` → `pm56-perf-rollout-a`
+
+**Layer 3/4 reframe (decided this session, codified in active.md §3).**
+
+The PM-55 retrospective framed Layer 3 (missed-event catch-up on Realtime reconnect) and Layer 4 (reconcile-and-revert on POST failure + optimistic UI binding) as "deferred — promote only if measurable subscriber breakage emerges." Dean reframed in PM-56: the premium-feel campaign is architectural, not reactive. The brain's "deferred" label was too cautious for the campaign's stated goal. Layer 3 and Layer 4 are now in-scope, sequenced AFTER Layer 5's week-of-data window because Layer 5 is the only time-sensitive item (data clock starts from first telemetry sample, gates Layer 6).
+
+**Revised sequence.**
+
+1. **NOW → +1 week:** Layer 5 telemetry collection ongoing. PM-56 shipped.
+2. **Within the data window:** Layer 3 — Realtime channel reconnect → synthetic resync sweep per bridged table. Hooks into bus.js (the pipes are already there). Probably one infrastructure commit + per-table subscriber discipline.
+3. **After Layer 3:** Layer 4 — optimistic UI bound to bus + `<event>:failed` revert path. Start with `log-activity` v29 home_state binding (plumbing most ready), then expand per surface.
+4. **+1 week from PM-56:** Layer 6 SPA-shell decision gated on Layer 5 data. Go → playbook + page-by-page migration. No-go → drop.
+
+**Source-of-truth.** vyve-site pre-PM-56 `d36e271cf7140e9d41c8454eabe0dc74eda5b89e5` (PM-55 ship), post-PM-56 `56717a6acf20cbbe49bdb5e3f77147874710ac33`, new tree `2a17dd336220e8a6b5a8d11af8c96f79f4bbb213`. 21 files committed, all byte-equal verified live post-commit. Refresh-before-commit confirmed zero SHA drift across baseline.
+
+**Two-device manual verify is still pending Dean across all 11 Layer 2 bridges** (carried from PM-55). Not blocking PM-57.
+
+---
+
 ## 2026-05-11 PM-55 (Layer 2 eleventh + final table-bridge wiring: certificates pure-inbound — campaign closed)
 
 vyve-site `d36e271cf7140e9d41c8454eabe0dc74eda5b89e5` (tree `d02c4a3831e5af54690b8c87d6b05c5611a378b2`). VYVEBrain main `(set after this commit lands)`. **Pure-inbound bridge** — first and only of the Layer 2 campaign. Closes the Layer 2 Realtime bridge campaign at 11/11 tables across 10 commits (PM-45 infrastructure + PM-46..PM-55 wirings; PM-54 wired two tables in one commit).

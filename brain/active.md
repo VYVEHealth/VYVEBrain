@@ -49,14 +49,14 @@
 > Refresh the SHA + version rows at the top of every session via a parallel pre-flight. The rest of this section is stable across sessions.
 
 **HEADs (refresh at session start):**
-- vyve-site main: `d36e271c` (PM-55 ship — last shipped 11 May 2026; **Layer 2 campaign complete**)
+- vyve-site main: `56717a6a` (PM-56 ship — Layer 5 perf telemetry rollout, 11 May 2026; **Layer 2 campaign complete, Layer 5 clock started**)
 - VYVEBrain main: `(set after this commit lands)`
 - vyve-capacitor main: stub (Apr 18 2026 base) — local working tree not yet pushed
 - Test-Site-Finalv3 main: marketing site, less active
 
 **Cache-bus key currently live:**
 - Pattern: `vyve-cache-v2026-05-09-pmNN-X-Y` (date prefix from PM-30)
-- Last shipped: `vyve-cache-v2026-05-11-pm55-bridge-certificates-a` (final Layer 2 wiring — campaign complete)
+- Last shipped: `vyve-cache-v2026-05-11-pm56-perf-rollout-a` (Layer 5 perf.js rollout across 20 gated pages)
 - P3 carried RESOLVED: PM-45 used wall-clock date for new campaign per PM-44 §23 sub-rule
 
 **Mobile binaries:**
@@ -68,7 +68,7 @@
 - First paying B2C: Paige Coult, joined 13 April 2026, £20/month
 - 3 admin operators in `admin_users`
 
-**Audit-count baseline (publishing-surface call sites at HEAD `d36e271c`, PM-55 wired certificates — Layer 2 campaign complete; one new subscribe call site in index.html + one new event subscription wiring in certificates.html; no new publish or recordWrite call sites since PM-55 has no client publisher):**
+**Audit-count baseline (publishing-surface call sites at HEAD `56717a6a`, PM-56 Layer 5 perf.js rollout — Layer 2 campaign complete + Layer 5 perf telemetry now active across 20 gated pages; no bus primitive call site changes since PM-56 is HTML-only):**
 
 - `VYVEData.invalidateHomeCache(`: 1 (subscriber-internal helper, in vyve-data.js)
 - `VYVEData.recordRecentActivity(`: 1 (subscriber-internal helper, in vyve-data.js)
@@ -76,11 +76,13 @@
 - `VYVEBus.publish(`: 23 (UNCHANGED — PM-55 introduces NO client publisher; the writer is server-side cron only)
 - `VYVEBus.subscribe(`: 31 (was 29; +1 in index.html for certificate:earned → _markHomeStale; +1 in certificates.html for certificate:earned → refresh)
 - `VYVEBus.recordWrite(`: 15 (UNCHANGED — server-side cron writer has no own-write discipline to enforce)
-- `VYVEBus.installTableBridges(`: 1 (one call site; fourteen entries now in array — daily_habits, workouts, cardio, exercise_logs, nutrition_logs×2, weight_logs×2, wellbeing_checkins×2, monthly_checkins×2, session_views, replay_views, certificates)
+- `VYVEBus.installTableBridges(`: 1 (one call site; fifteen entries now in array — daily_habits, workouts, cardio, exercise_logs, nutrition_logs×2, weight_logs×2, wellbeing_checkins×2, monthly_checkins×2, session_views, replay_views, certificates) — note: PM-55 brain entry said "14 entries" but live count is 15; cosmetic off-by-one in the PM-55 narrative, corrected here
+- `<script src="/perf.js"` count across portal HTMLs: **21** (was 1 — PM-56 wired 20 additional gated pages; perf.js runtime-gated on `?perf=1` or `localStorage.vyve_perf_enabled='1'`, default-off in production)
 - `VYVEData.newClientId(` direct call sites: 4 (unchanged)
 - Postgres `REPLICA IDENTITY FULL` tables: 1 (nutrition_logs only)
 
-PM-55 wired the eleventh and final Layer 2 bridge — `certificates` INSERT-only. **Qualitatively different** from PM-46..PM-54: server-side cron writer (certificate-checker EF v23, daily 9 UTC), no client publisher, introduces both the `certificate:earned` event and its bridge in one commit. INSERT-only by design — the writer's two-step pattern (INSERT with empty `certificate_url` placeholder, then in-place UPDATE that populates the URL) is the inverse of PM-54's heartbeat case: there the UPDATE was internal noise from the writer's heartbeats; here the UPDATE is internal noise from the writer's URL-population step. URL is derived client-side from `row.id` in the bridge's `payload_from_row`. 25/25 self-tests passing across 6 groups including INSERT-fires-correctly, UPDATE-not-fired, multi-cert run, defensive missing-id, URL-derivation. **Layer 2 campaign closed at 11/11 tables, 10 commits PM-46..PM-55** (PM-54 wired two tables in one commit).
+PM-56 opened **Layer 5** (perf telemetry rollout) of the premium-feel architecture campaign — perf.js (shipped at PM-21) was only wired to `index.html` until this commit. The 20-gated-page rollout completes the perf surface coverage so warm-cache TTFP / FCP / LCP / INP / auth_rdy samples come from every page a member can reach post-login. Telemetry is runtime-gated (default-off in production), so the broad ship is risk-free. **One-week data window starts now**, gates the Layer 6 SPA-shell decision. **Layer 3 and Layer 4 are reframed as in-scope** (see §3.6) — the PM-55 retrospective's "deferred" label was too cautious for the campaign's stated goal. They sequence after Layer 5's week-of-data window because Layer 5 is the only time-sensitive item.
+
 
 
 ## 3. Layer 2 Realtime bridge campaign — the active workstream
@@ -179,6 +181,18 @@ The bus is now the production path for all cache invalidation and achievements e
 - Catch-up sweep on Realtime reconnect — when a device's connection drops and reconnects, missed events are not replayed. Subscribers tolerate (most just bust caches; fetch-on-render closes the gap on next read). Layer 3 territory.
 - Two devices writing the same primary key within 5s mutually suppressing each other's echoes. Edge case dependent on PK collision; not a Layer 2 concern.
 
+
+### 3.6 Layer 3 / Layer 4 reframe + Layer 5 active workstream (PM-56)
+
+The PM-55 retrospective framed Layer 3 (missed-event catch-up on Realtime reconnect) and Layer 4 (reconcile-and-revert on POST failure + optimistic UI binding to bus) as **deferred — promote only if measurable subscriber breakage emerges.** PM-56 reframed: the premium-feel architecture campaign is architectural, not reactive. The brain's "deferred" label was too cautious for the campaign's stated goal of every-tap-instant / every-action-immediate / every-change-reflected-everywhere. Layer 3 and Layer 4 are now **in-scope**, sequenced AFTER Layer 5's week-of-data window.
+
+**Layer 5 — Perf telemetry rollout** (ACTIVE, opened PM-56). perf.js is now wired across all 21 gated portal pages (was 1 — index.html only). Runtime-gated (`?perf=1` once persists `localStorage.vyve_perf_enabled='1'`), default-off in production. Telemetry samples flow to the `perf_telemetry` Supabase table via `log-perf` EF v1 (shipped PM-21). **One-week data window starts PM-56** (target: 18 May 2026). Gates the Layer 6 SPA-shell decision.
+
+**Layer 3 — Missed-event catch-up on Realtime reconnect** (QUEUED, opens after Layer 5 data window). When a device's Realtime connection drops and reconnects, missed INSERT/UPDATE/DELETE events between disconnect and reconnect are not replayed. Subscribers tolerate (cache invalidation; the next fetch returns truth), but the gap exists in real time — most visible when the member already has a page open showing stale data. Design surface: bus.js channel reconnect callback fires a synthetic "resync" sweep per bridged table (touch the table's home cache invalidation + achievement re-evaluate), bounded by RLS to the current member. Probably one infrastructure commit + per-surface review.
+
+**Layer 4 — Optimistic UI bound to bus + reconcile-and-revert** (QUEUED, opens after Layer 3). Two related pieces: (a) bind `log-activity` v29's response `home_state` payload through as canonical post-write state replacing the optimistic local-publish prediction (plumbing most ready — v29 already returns home_state); (b) `<event>:failed` revert path so a publish-then-failed-POST quietly undoes the optimistic breadcrumb instead of waiting 120s for `recordRecentActivity` TTL. Per-surface migration; bigger than Layer 3 but mechanical given Layer 2's origin-agnostic subscriber invariant.
+
+**Layer 6 — SPA shell** (CONDITIONAL on Layer 5 data). Decision gate at PM-56 + 1 week. Data shows shell would move warm-cache TTFP / first-paint metric → playbook then page-by-page migration. Data shows shell would not move the metric → drop. Don't pre-commit.
 
 ## 4. §23 hard rules — concise quick-reference
 
@@ -288,6 +302,16 @@ The bus is now the production path for all cache invalidation and achievements e
 **Source: `tasks/backlog.md` (canonical). This section is a curated mirror — fetch the full file for P2/P3 tail.**
 
 ### P0 (next session)
+
+- **✅ CLOSED — PM-56:** vyve-site `56717a6a`. **Layer 5 perf telemetry rollout** — perf.js wired across 20 additional gated portal pages (was index.html only). 21-file atomic commit, retry_count 0, all files byte-equal verified post-commit. perf.js itself is production-safe (runtime-gated default-off, never throws, defer-loaded, JWT-lazy at flush, one POST per page lifetime). One-week data window starts now (target 18 May 2026) — gates Layer 6 SPA-shell decision. **PM-55 retrospective's "Layer 3 + Layer 4 deferred" label reframed as in-scope** by Dean this session; the premium-feel campaign is architectural, not reactive, and the brain was too cautious. Revised sequence: Layer 5 (active, data clock running) → Layer 3 (Realtime reconnect resync sweep) → Layer 4 (optimistic UI binding + reconcile-and-revert) → Layer 6 (SPA shell, conditional on Layer 5 data). See active.md §3.6 for full rationale. Two-device manual verify still pending Dean across all 11 Layer 2 bridges (carried from PM-55).
+
+- 📡 **ACTIVE — Layer 5 perf telemetry collection.** Started PM-56 (11 May 2026). Target window close: 18 May 2026 (1 week of warm-cache TTFP / FCP / LCP / INP samples across all 21 gated pages). To opt-in personally: visit any portal page with `?perf=1` once. To inspect data: `SELECT page, metrics FROM perf_telemetry WHERE created_at > now() - interval '7 days' ORDER BY created_at DESC` from Supabase. At window close, review LCP distribution per page → gates Layer 6 SPA-shell go/no-go.
+
+- 🛠 **QUEUED — Layer 3 (Realtime reconnect resync sweep).** Opens after Layer 5 data window closes. Hook bus.js channel reconnect callback → fire synthetic "resync" sweep per bridged table (touch home cache invalidation + achievement re-evaluate, RLS-scoped to current member). One infrastructure commit + per-surface review.
+
+- 🛠 **QUEUED — Layer 4 (optimistic UI bound to bus + reconcile-and-revert).** Opens after Layer 3. (a) bind log-activity v29 home_state response as canonical post-write state. (b) `<event>:failed` revert path so failed POSTs quietly undo optimistic breadcrumb. Per-surface migration.
+
+- 🛠 **CONDITIONAL — Layer 6 (SPA shell).** Decision gate PM-56 + 1 week. Go → playbook + page-by-page migration. No-go → drop.
 
 - **✅ CLOSED — PM-46:** vyve-site `9565ed93`. First Layer 2 table-bridge wiring shipped. `daily_habits` INSERT → `habit:logged` echoes cross-device. Function-form `pk_field` introduced for `Prefer:return=minimal` writing surfaces (synthetic key: `member_email|activity_date|habit_id`). 4-file atomic commit (bus.js +467, auth.js +1799, habits.html +578, sw.js cache bump). 10/10 PM-46 self-tests + 45/45 PM-45 regression all passing. Two-device manual verify pending Dean. New §4.9 working-set rule codified (function-form pk_field discipline).
 
