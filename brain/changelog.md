@@ -1,3 +1,73 @@
+## 2026-05-11 PM-65 (Layer 4 wellbeing-checkin.html — eighth surface, first EF-writer + canonical-publish-only shape; audit-baseline drift correction)
+
+**Files shipped (3, atomic vyve-site commit `ccf9c9baba7267b51baf01653ac66df9e95ccb0d`):**
+- `wellbeing-checkin.html` (+3,857 chars; 62,411 → 66,268) — recordCanonical + canonical:true on both publish sites (live optimistic-pre-fetch + flush post-confirmed); wellbeing:failed dispatch on three failure classes (!res.ok / EF failure envelope / network throw)
+- `index.html` (+382 chars; 110,860 → 111,242) — wellbeing:failed belt-and-braces subscriber, wipes home cache via invalidateHomeCache
+- `sw.js` cache key pm64-movement-canonical-a → pm65-wellbeing-canonical-a
+
+**The migration shape — first canonical-publish-only.** wellbeing-checkin.html is the eighth Layer 4 surface and the **FIRST Layer 4 EF-writer surface** in the campaign. The wellbeing-checkin EF v28 writes the `wellbeing_checkins` row server-side via `Prefer: resolution=merge-duplicates` against the natural key `(member_email, iso_week, iso_year)` — PM-52 server-side-EF-writer shape with PM-39 initiator+confirmer publishing. Pre-flight confirmed `wellbeing_checkins` is **NOT in TYPE_TO_HS_COLS** (only daily_habits, workouts, cardio, session_views are). The home dashboard's check-in widget reads from the member-dashboard EF response, not from `vyve_home_v3_<email>`. **Implication: this is the FIRST Layer 4 surface to intentionally skip `vyve-home-state.js` script tag, `optimisticPatch`, and `revertPatch` entirely.** New shape codified: **canonical-publish-only** — recordCanonical + canonical:true publish + failure dispatch, but NO patch (nothing to patch) and NO page-side revert subscriber (nothing to revert). Failure path is pure belt-and-braces wipe via index.html — `invalidateHomeCache(email)` so the next dashboard paint re-fetches member-dashboard truth.
+
+**Asymmetric publish timing within one surface family preserved.** The two publish sites have intentionally different timing relative to the EF round-trip — and PM-65 leaves both as-is per PM-39:
+1. **Live submit (L638):** publishes BEFORE the EF fetch. PM-33..PM-38 race-fix optimistic-publish pattern. The comment at L605 documents it: *"Publish BEFORE the EF fetch so subscribers optimistically stale caches and trigger eval; resolution of the EF round-trip is decoupled from local UI propagation."* PM-65 adds recordCanonical + canonical:true alongside the existing recordWrite — no timing change.
+2. **Flush (L523):** publishes AFTER `res.ok` confirms the queued check-in landed server-side. PM-39 initiator+confirmer pattern — the deferred-flush surface only fires when a previously-queued check-in successfully drains, so publish-after-server-confirmation is correct. PM-65 adds recordCanonical + canonical:true here too — no timing change.
+
+This is the first time the same logical event (`wellbeing:logged`) is published with two different timings within one publishing surface family. Codified as a forward §4.9 sub-rule.
+
+**Failure dispatch — three converging classes on direct-fetch EF surface.** The live path is direct-fetch (no writeQueued behind it), so PM-58 cardio.html eager-fire-on-direct-fetch shape applies — BUT EF-writer surfaces have a richer failure surface than a direct-DB-write surface. Three failure classes converge on one `wellbeing:failed` envelope:
+- `!res.ok` — HTTP non-2xx (4xx/5xx with `{error:...}` body; includes the 100KB cap 413 from EF v28; reason:`'http_error'`)
+- `res.ok && data.success !== true` — HTTP 200 but EF returned a failure envelope (defensive; the EF currently always returns `{success:true}` on 200, but the bus contract is: writers MUST set `success:true` explicitly; reason:`'ef_failure'`)
+- `catch (err)` — fetch threw before resolving (network blip, DNS, TLS); res is undefined, reason:`'network'`
+
+All three publish `wellbeing:failed` with `{email, iso_week, iso_year, flow, http_status, reason, logged_at}`. Codified as a forward §4.9 sub-rule: **EF-writer surfaces need `!res.ok || data.success !== true` as the failure-class discriminator, not just `!res.ok`** — covers servers that 200-with-error-body silently.
+
+**Synthetic key shape.** EF v28 source confirms `getISOWeek(today)` server-side returns `{iso_week, iso_year}` for the UPSERT natural-key columns. The page pre-computes `isoWeek = getISOWeekLocal(new Date())` and `isoYear = new Date().getFullYear()` BEFORE the publish at both surfaces. The synthetic key for `recordWrite`/`recordCanonical` is `member_email + '|' + iso_week + '|' + iso_year` — 3-column natural-key shape matching PM-52 spec exactly. Minor watch: page uses local-time `getFullYear()` while EF uses UTC after ISO-week shift; around week 52/53 vs week 1 boundary these can disagree by 1, but merge-duplicates upsert handles the rare collision. Out of PM-65 scope.
+
+**Two pre-existing bugs found in pre-flight, both backlog not PM-65 scope.**
+1. Live-path post-fetch unconditionally calls `renderResponse(data, score)` if `res.status !== 401` — a 500 with `{error:...}` body would have rendered `undefined` ack/recs. **PM-65 incidentally fixes this** by inserting the `!res.ok || data.success !== true` branch that returns before renderResponse. Documented as a side-fix, not a separate commit.
+2. EF v28 returns `{success:true}` on 200 even if the Supabase `weekly_scores` or `wellbeing_checkins` write throws — both inserts are inside try/catch with `console.warn` only. A page-side success render could happen on a partial server-side failure. Backlog as P2 EF hardening — out of Layer 4 scope.
+
+**The five design calls.**
+
+1. **No vyve-home-state.js script tag on wellbeing-checkin.html.** First Layer 4 surface to intentionally not load the module. wellbeing_checkins isn't in TYPE_TO_HS_COLS; there's no home_state column to patch. Forward discipline per PM-58/59/61/62/64 — tag only when the surface directly calls VYVEHomeState.optimisticPatch/revertPatch. Codified as a §4.9 sub-rule.
+
+2. **No page-side wellbeing:failed self-subscriber.** Page has no optimisticPatch to revert — nothing to undo locally. Index.html belt-and-braces is the only subscriber. Different from PM-58/59/60/61/62/63/64 where the publishing page also owned a revert subscriber. New shape: **canonical-publish-only Layer 4 surface = publish + record + failure-dispatch, NO patch, NO page-side revert subscriber, index.html belt-and-braces is the only safety net.**
+
+3. **`canonical: true` boolean coexists with `kind: 'live'|'flush'`.** Per PM-61 tracking.js precedent and PM-62 forward rule. The bus.js v4 `_markHomeStale` gate already checks `envelope.canonical === true` OR `envelope.kind === 'canonical'` — adding the boolean to existing kind-discriminated envelopes is the right precedent (vs renaming kind which would break PM-39 initiator/confirmer dispatch).
+
+4. **Three failure-class branches, one converging publish.** Single `wellbeing:failed` envelope shape across all three classes — `reason` field discriminates. Subscriber doesn't branch on reason (just wipes the cache); reason is for observability. Same shape as PM-61 session:viewed:failed which carries `http_status` + `reason` for the same observability purpose.
+
+5. **No EF change in this commit.** wellbeing-checkin v28 was already correct for the work — does the UPSERT against natural key, returns `{success:true, ack, recs, persona, full, deferred}` on 200, returns `{error:...}` with 4xx/5xx on failure. The two pre-existing EF bugs (Anthropic-success-but-Supabase-write-fail returns success:true) are documented as P2 backlog hardening, not Layer 4 scope.
+
+**Audit-baseline drift correction — PM-58 §4.9 live-state-grep rule applied AGAIN.** Pre-flight strict-grep at HEAD `1b0858005b2d3200a9e732b42846fc10808c9375` (patterns `VYVEBus.X(` and `VYVEHomeState.X(` only, helper definitions and inline comments excluded) revealed several narrative-vs-live divergences in active.md §1's PM-62-anchored baseline:
+- `VYVEBus.subscribe(`: §1 narrative said 42 → live grep at HEAD shows **46** (PM-63 changelog correctly said 44; PM-64 changelog correctly said 46; only §1 lagged — never ticked forward through PM-63/PM-64)
+- `VYVEHomeState.optimisticPatch(`: PM-64 changelog said 10 → live strict-grep shows **9** (PM-64 changelog probably counted a comment line; runtime call-sites across cardio + habits + movement + tracking.js + workouts-session.js + workouts.html = 9, verified file-by-file)
+- `VYVEHomeState.revertPatch(`: PM-64 changelog said 9 → live strict-grep shows **7** (cardio + habits + index + movement + tracking.js + workouts-session.js — same overcount class as optimisticPatch)
+- `<script src="/vyve-home-state.js"` portal HTMLs: §1 narrative said 18 → live grep shows **22** (16 session pages from PM-61 + 6 non-session pages: cardio + habits + index + movement + nutrition + workouts; brain narrative undercounted by 4 since PM-61)
+PM-65 corrects all four in the same atomic brain commit per the PM-58 / PM-61 precedent.
+
+**Audit counts post-PM-65** (strict-grep at `ccf9c9ba`, call-sites only, helper definitions excluded):
+- `VYVEBus.publish(`: 43 → **45** (+2: wellbeing:failed on !res.ok-or-data.success branch + catch-block network-throw branch)
+- `VYVEBus.subscribe(`: 46 → **47** (+1: index.html wellbeing:failed belt-and-braces)
+- `VYVEBus.recordWrite(`: **17** (UNCHANGED — wellbeing-checkin.html's 2 recordWrite calls were already wired at PM-52)
+- `VYVEBus.recordCanonical(`: 13 → **15** (+2: one per publish site — flush + live)
+- `VYVEBus.installTableBridges(`: **1** (unchanged)
+- `VYVEHomeState.optimisticPatch(`: **9** (UNCHANGED — first Layer 4 surface to NOT add an optimisticPatch call; PM-64 changelog overcounted to 10, corrected here)
+- `VYVEHomeState.revertPatch(`: **7** (UNCHANGED — PM-64 changelog overcounted to 9, corrected here)
+- `<script src="/vyve-home-state.js"` HTMLs: **22** (UNCHANGED — wellbeing-checkin.html intentionally does NOT add the tag; §1 narrative previously said 18, corrected here)
+
+Three new §4.9 sub-rules codified (see active.md):
+1. **Canonical-publish-only Layer 4 shape for EF-writer + non-home_state surfaces** — when the writing path is a server-side EF that writes a table NOT in TYPE_TO_HS_COLS and the page has no page-local cache to patch, the Layer 4 wiring is: recordCanonical + canonical:true on publish envelope + <event>:failed dispatch on all failure classes + index.html belt-and-braces subscriber as the ONLY safety net. NO vyve-home-state.js script tag. NO optimisticPatch. NO revertPatch. NO page-side revert subscriber.
+2. **Asymmetric publish timing within one surface family is preserved at Layer 4 promotion** — when a surface has multiple publish sites for the same logical event with intentionally different timing relative to the write (e.g. PM-39 initiator+confirmer pattern: live publishes BEFORE EF fetch as race-fix optimistic; flush publishes AFTER res.ok as post-server-confirmation), Layer 4 wiring preserves both timings as-is. Both surfaces still get recordCanonical + canonical:true; the suppression mechanic works regardless of timing because recordCanonical sets a 10s TTL window that covers the writing device's own realtime echo whenever it arrives.
+3. **EF-writer failure-class discriminator is `!res.ok || data.success !== true`, not just `!res.ok`** — direct-fetch EF surfaces have a richer failure surface than direct-DB surfaces. An EF can return HTTP 200 with a structured failure envelope (intentionally for partial-success reporting, or unintentionally for caught-and-logged write errors). Layer 4 EF-writer surfaces MUST capture both classes; both fire the same `<event>:failed` event with `reason` field for observability. Third class — fetch network throw — converges on the same envelope from the catch block.
+
+**Two-device manual verify still pending Dean across PM-58/59/60/61/62/63/64/65.** Carried forward — no Android device available. PM-65 testable via simulated EF failure (browser dev tools → block POST wellbeing-checkin → confirm wellbeing:failed publishes with reason:'http_error' or 'network'; confirm index.html belt-and-braces wipes vyve_home_v3 on receipt).
+
+**Layer 4 status: 8/8 per-surface migrations shipped + 1 capstone remaining.** Per the original PM-57 plan (cardio, habits, nutrition, tracking, log-food, workouts-family, wellbeing-checkin, monthly-checkin = 8 surfaces). Workouts family expanded across PM-63 (workouts-session.js) and PM-64 (movement.html) in ship but is still 1 surface in the plan. **PM-66 (monthly-checkin.html) is the last surface — capstone closes the campaign.**
+
+**Carried non-Layer-4 work** unchanged from PM-64: iOS 1.1(3) "Ready for Review" since 27 April; Android 1.0.2 awaiting Google Play; HAVEN clinical sign-off (Phil); weekly check-in nudge copy split (Phil + Lewis); Brevo logo removal (Lewis); Facebook Make connection expires 22 May 2026 (Lewis); B2B volume tier definition; public-launch comms draft.
+
+---
+
 ## 2026-05-11 PM-64 (Layer 4 movement.html — seventh per-surface wiring, CLOSES workouts family; bug fix on the way through)
 
 **Files shipped (2, atomic vyve-site commit `1b0858005b2d3200a9e732b42846fc10808c9375`):**
