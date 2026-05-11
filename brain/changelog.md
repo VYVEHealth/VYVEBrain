@@ -1,3 +1,122 @@
+## 2026-05-11 PM-46 (Layer 2 first table-bridge wiring: daily_habits INSERT → habit:logged echoes cross-device)
+
+vyve-site `9565ed9322502663b39148ed59e8d11b8ea8edc1` (new tree `c9f1a9a5a75ebfac91ff8323b4679821129ec4c7`). VYVEBrain main `(set after this commit lands)`. **First member-facing Layer 2 wiring.** Validates the end-to-end loop on a real surface; PM-47..PM-56 follow on the same per-session template.
+
+**Atomic commits (2):**
+
+1. **vyve-site** `9565ed93` — 4-file atomic: bus.js (+467 chars, function-form `pk_field` support), auth.js (+1799 chars, `installTableBridges` call with `daily_habits` entry), habits.html (+578 chars, `VYVEBus.recordWrite` at PM-30 publish site), sw.js (cache key bump `vyve-cache-v2026-05-10-pm45-realtime-bridge-a` → `vyve-cache-v2026-05-11-pm46-bridge-daily-habits-a`).
+2. **VYVEBrain** `(this commit)` — active.md §2 SHA bump + §3.1 daily_habits row ✓ + §3.2 API doc updated + §4.9 new sub-rule + §5 backlog mirror + audit baseline; backlog patched with PM-46 ✅ CLOSED + PM-47 P0 + section header; changelog this entry.
+
+**Design call made during the session: function-form `pk_field`.**
+
+The PM-30 habits.html publish site uses `VYVEData.writeQueued` with `Prefer: resolution=merge-duplicates,return=minimal`. The writing device never sees the server-generated UUID. Two options surfaced for `recordWrite`:
+
+- (a) Change `Prefer` to `return=representation` so the response includes the inserted row → PK-based suppression keeps bridge contract uniformity. Costs: response payload increase (negligible), but `writeQueued` needs surgery to surface the response row to callers — that's a shared primitive touch.
+- (b) Use the unique constraint tuple `(member_email, activity_date, habit_id)` as a synthetic key on both sides. Bridge config `pk_field` accepts a function; writing site calls `recordWrite` with the same synthetic key derived locally.
+
+Chose (b). Reasons:
+
+- Doesn't touch `VYVEData.writeQueued` (avoids a shared-primitive change that would ripple across all PM-30..PM-44 writing surfaces).
+- Bridge contract uniformity preserved: every entry declares its PK approach explicitly. String-form 'id' default unchanged. Function-form is opt-in.
+- Future PM-47+ wirings inspect their writing surface's `Prefer` header at pre-flight — `return=minimal` surfaces use function-form, `return=representation` surfaces use string-form. Per-table decision documented in the playbook.
+- Same shape as PM-42 (use the existing pattern rather than rewriting the world) and PM-43 (per-surface classification with playbook reference).
+
+The bus.js patch is two-line surgery in `handleRealtimeRow`:
+
+```js
+// Before
+var pkField = entry.pk_field || 'id';
+var pk = row[pkField];
+
+// After
+var pk;
+if (typeof entry.pk_field === 'function') {
+  try { pk = entry.pk_field(row); } catch (_) { return; }
+} else {
+  pk = row[entry.pk_field || 'id'];
+}
+```
+
+Plus the API docstring updated to mention the function form. Backward compatible — every string-form callsite continues to work unchanged.
+
+**daily_habits bridge entry (auth.js, after `vyvePrefetchAfterAuth` call):**
+
+```js
+VYVEBus.installTableBridges(vyveSupabase, [
+  {
+    table: 'daily_habits',
+    event: 'habit:logged',
+    op:    'INSERT',
+    pk_field: function (row) {
+      return (row.member_email || '') + '|' +
+             (row.activity_date || '') + '|' +
+             (row.habit_id || '');
+    },
+    payload_from_row: function (row) {
+      return {
+        habit_id: row.habit_id,
+        is_yes:   row.habit_completed === true
+      };
+    }
+  }
+]);
+```
+
+Try/catch wraps the call so a missing bus.js or missing `installTableBridges` fn degrades silently to no-bridge (the same defensive pattern PM-30 used for the bus.publish call itself).
+
+**habits.html publish site (one-line surgery before the existing publish):**
+
+```js
+if (window.VYVEBus) {
+  if (typeof VYVEBus.recordWrite === 'function') {
+    try {
+      VYVEBus.recordWrite('daily_habits',
+        memberEmail + '|' + todayStr + '|' + habit.habit_id);
+    } catch (_) {}
+  }
+  VYVEBus.publish('habit:logged', { habit_id: habit.habit_id, is_yes: isYes ? true : false });
+}
+```
+
+`typeof recordWrite === 'function'` guard provides legacy bus.js resilience — if a pre-PM-45 cached bus.js loads, the publish still works, suppression silently degrades to no-op. Acceptable degraded-but-functional state (achievement debounce 1.5s eats double-fires).
+
+**Self-test harness (10/10 passing across 3 groups):**
+
+`/tmp/bus_v21_test.js` extends the PM-45 harness with three groups:
+
+1. **Function-form pk_field** (7 tests) — local publish delivered; local origin; Realtime echo with same synthetic key SUPPRESSED; different habit_id NOT suppressed; ...with origin realtime; payload has habit_id; edge case (no recordWrite for this key → fires realtime as expected).
+2. **String-form pk_field regression** (2 tests) — `pk_field: 'id'` still suppresses; different id fires.
+3. **Default pk_field regression** (1 test) — no `pk_field` declared, default 'id' still suppresses.
+
+`node --check` clean on bus.js v2.1 + auth.js v2 + sw.js v3. 45/45 PM-45 regression tests unchanged (function-form is a new path, doesn't touch existing logic).
+
+**Audit-count delta (whole-tree, post-PM-46):**
+
+- `VYVEBus.recordWrite(` count: 0 → 1 (one call site in habits.html)
+- `VYVEBus.installTableBridges(` count: 0 → 1 (one call site in auth.js)
+- `VYVEBus.publish(` count: unchanged at 23
+- `VYVEBus.subscribe(` count: unchanged at 29
+- `VYVEData.invalidateHomeCache(` count: unchanged at 1 (subscriber-internal helper)
+- `VYVEData.recordRecentActivity(` count: unchanged at 1 (subscriber-internal helper)
+- `VYVEAchievements.evaluate(` count: unchanged at 12 (subscriber-internal helpers)
+
+PM-46 adds one publish-site write-suppression call and one bridge installation. No existing publish or subscribe call site touched. Use these as the pre-flight reference for PM-47+ Layer 2 wirings.
+
+**One new §4.9 working-set rule codified:**
+
+- **Function-form `pk_field` for `Prefer:return=minimal` writing surfaces (PM-46).** Tables whose writing surface uses `Prefer: return=minimal` never see the server-generated PK. Bridge config declares `pk_field` as a function `(row) => synthetic_key`; bridge derives the same synthetic key from the Realtime row payload; suppression matches. Synthetic key MUST be the unique constraint tuple for the table. Per-table decision: inspect each publishing site's `Prefer` header at pre-flight before deciding pk_field form.
+
+**Source-of-truth.** vyve-site pre-PM-46 `073b1a80631f399c4d694a9b6d3c69cabca6fc7c` (PM-45 ship), post-PM-46 `9565ed9322502663b39148ed59e8d11b8ea8edc1`, new tree `c9f1a9a5a75ebfac91ff8323b4679821129ec4c7`. Live blob SHAs (post-PM-46): bus.js `dd3bf0badde8`, auth.js `88d3f2f38e44`, habits.html `ab7c6fd3110b`, sw.js `ba6aa536a26a`. All 4 byte-identical to local sandbox post-commit verify; all 9 marker checks pass.
+
+**Layer 2 ledger after PM-46:**
+
+- 1/11 tables wired to subscribers (daily_habits)
+- 11/11 tables in `supabase_realtime` publication
+- 2/2 commits shipped (PM-45 infrastructure + PM-46 daily_habits)
+- 1 new §4.9 working-set rule codified (function-form pk_field discipline)
+
+**Next: PM-47 — workouts table-bridge wiring.** More publish sites than habits (PM-31 logger + PM-34 walk + PM-35 builder + PM-42 import all converge on `workouts` INSERT) — expect ~4 `recordWrite` call sites and slightly longer session (~1-1.5 hours).
+
 ## 2026-05-10 PM-45 (Layer 2 infrastructure: bus.js Realtime bridge + 11-table publication migration)
 
 vyve-site `073b1a80631f399c4d694a9b6d3c69cabca6fc7c` (new tree `f71003b0c372d485a6729be9e4edbb7980dc6bbf`). VYVEBrain main `(set after this commit lands)`. **LAYER 2 OPENS.** First commit in the cross-tab/cross-device cache coherence campaign that follows the closed Layer 1c. Pure infrastructure: bus.js gains the Realtime bridge API + auth lifecycle hooks + self-suppression dedupe + mock test-harness; Supabase publication enables Realtime for 11 active tables; no member-facing wiring yet — that's PM-46+ one-table-at-a-time using `playbooks/realtime-bus-bridge.md`.
