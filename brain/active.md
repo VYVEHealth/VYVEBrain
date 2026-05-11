@@ -49,14 +49,14 @@
 > Refresh the SHA + version rows at the top of every session via a parallel pre-flight. The rest of this section is stable across sessions.
 
 **HEADs (refresh at session start):**
-- vyve-site main: `ef50bc0b` (PM-53 ship — last shipped 11 May 2026; **Layer 2 active**)
+- vyve-site main: `54020b9f` (PM-54 ship — last shipped 11 May 2026; **Layer 2 active**)
 - VYVEBrain main: `(set after this commit lands)`
 - vyve-capacitor main: stub (Apr 18 2026 base) — local working tree not yet pushed
 - Test-Site-Finalv3 main: marketing site, less active
 
 **Cache-bus key currently live:**
 - Pattern: `vyve-cache-v2026-05-09-pmNN-X-Y` (date prefix from PM-30)
-- Last shipped: `vyve-cache-v2026-05-11-pm53-bridge-monthly-checkins-a` (one-table-per-commit Layer 2 cadence; wall-clock date prefix)
+- Last shipped: `vyve-cache-v2026-05-11-pm54-bridge-session-views-a` (one-table-per-commit Layer 2 cadence; wall-clock date prefix)
 - P3 carried RESOLVED: PM-45 used wall-clock date for new campaign per PM-44 §23 sub-rule
 
 **Mobile binaries:**
@@ -68,18 +68,18 @@
 - First paying B2C: Paige Coult, joined 13 April 2026, £20/month
 - 3 admin operators in `admin_users`
 
-**Audit-count baseline (publishing-surface call sites at HEAD `ef50bc0b`, PM-53 wired monthly_checkins INSERT + UPDATE — same primitive counts as post-PM-44 cleanup since PM-45 is infrastructure-only with no new publish/subscribe sites):**
+**Audit-count baseline (publishing-surface call sites at HEAD `54020b9f`, PM-54 wired session_views + replay_views — same primitive counts as post-PM-44 cleanup since PM-45 is infrastructure-only with no new publish/subscribe sites):**
 - `VYVEData.invalidateHomeCache(`: 1 (subscriber-internal helper, in vyve-data.js)
 - `VYVEData.recordRecentActivity(`: 1 (subscriber-internal helper, in vyve-data.js)
 - `VYVEAchievements.evaluate(`: 12 (subscriber-internal helpers across achievement-handling subscribers)
 - `VYVEBus.publish(`: 23 (across 14 publishing surfaces, post-PM-30..PM-44)
 - `VYVEBus.subscribe(`: 29 (across the subscriber files)
-- `VYVEBus.recordWrite(`: 14 (PM-46 habits × 1; PM-47 workouts-session × 1, movement × 2; PM-48 cardio × 1, movement walk × 1; PM-49 workouts-session × 1; PM-50 log-food × 3; PM-51 nutrition.html × 1; PM-52 wellbeing-checkin.html × 2; PM-53 monthly-checkin.html × 1)
-- `VYVEBus.installTableBridges(`: 1 (one call site; eleven entries now in array — daily_habits, workouts, cardio, exercise_logs, nutrition_logs×2, weight_logs×2, wellbeing_checkins×2, monthly_checkins×2)
-- `VYVEData.newClientId(` direct call sites: 4 (unchanged — weight_logs + wellbeing_checkins + monthly_checkins all use synthetic natural-key discipline)
+- `VYVEBus.recordWrite(`: 15 (PM-46 habits × 1; PM-47 workouts-session × 1, movement × 2; PM-48 cardio × 1, movement walk × 1; PM-49 workouts-session × 1; PM-50 log-food × 3; PM-51 nutrition.html × 1; PM-52 wellbeing-checkin.html × 2; PM-53 monthly-checkin.html × 1; PM-54 tracking.js × 1 — routes to session_views OR replay_views via the `table` variable)
+- `VYVEBus.installTableBridges(`: 1 (one call site; thirteen entries now in array — daily_habits, workouts, cardio, exercise_logs, nutrition_logs×2, weight_logs×2, wellbeing_checkins×2, monthly_checkins×2, session_views, replay_views)
+- `VYVEData.newClientId(` direct call sites: 4 (unchanged — session_views + replay_views use synthetic key like weight_logs/wellbeing_checkins/monthly_checkins)
 - Postgres `REPLICA IDENTITY FULL` tables: 1 (nutrition_logs only)
 
-PM-53 wired the eighth Layer 2 bridge (monthly_checkins — fourth dual-op INSERT+UPDATE, second server-side-writer wiring). Eight coexisting bridges across 7 channels. 15/15 self-tests including 2-col synthetic key channel grouping, defensive UPDATE handling for race-condition cases, kind override pattern. Use these as the pre-flight reference for PM-54+ Layer 2 wirings
+PM-54 wired the ninth + tenth Layer 2 bridges (session_views, replay_views — both INSERT-only because heartbeat PATCHes would noise the UPDATE bridge). Ten coexisting bridges across 9 channels. 20/20 self-tests including separate channels per table, INSERT echo suppression, kind:'live' vs kind:'replay' disambiguation, UPDATE-not-fired (heartbeat silence preserved). Use these as the pre-flight reference for PM-55+ Layer 2 wirings
 
 ---
 
@@ -104,8 +104,8 @@ Layer 2 extends the lag-free contract to cross-device coherence. Phone logs habi
 | 2-7 | `weight_logs` | INSERT + UPDATE | `weight:logged` | PM-37 | ✓ PM-51 | Dual-op (UPSERT via merge-duplicates fires INSERT first time, UPDATE on same-day re-log). Function-form `pk_field` on natural key (`member_email`\|`logged_date`) — client_id non-deterministic under merge-duplicates. Both ops same channel `vyve_bridge_weight_logs`. 8c25a6b0. |
 | 2-8 | `wellbeing_checkins` | INSERT + UPDATE | `wellbeing:logged` | PM-39 (live + flush) | ✓ PM-52 | Dual-op (server-side EF UPSERT via merge-duplicates fires INSERT first time, UPDATE on same-week re-submit). Function-form `pk_field` on 3-column natural key (`member_email`\|`iso_week`\|`iso_year`). First server-side-writer wiring — page POSTs to wellbeing-checkin EF v28, EF writes the row. daec6588. |
 | 2-9 | `monthly_checkins` | INSERT + UPDATE | `monthly_checkin:submitted` | PM-40 | ✓ PM-53 | Dual-op defensive (server-side EF monthly-checkin v18 pre-gates with 409 "already_done" so UPDATE rare in practice; bridge wires both for race-condition cases). 2-col synthetic key (`member_email`\|`iso_month`). No client_id column. ef50bc0b. |
-| 2-10 | `session_views` | INSERT | `session:viewed` (kind:'live') | PM-43 | ❌ | |
-| 2-11 | `replay_views` | INSERT | `session:viewed` (kind:'replay') | PM-43 | ❌ | |
+| 2-10 | `session_views` | INSERT | `session:viewed` (kind:'live') | PM-43 | ✓ PM-54 | INSERT-only (heartbeat PATCH UPDATEs suppressed by skipping UPDATE bridge — design call). 3-col synthetic key (`member_email`\|`category`\|`activity_date`). Single publisher in tracking.js shared with replay_views. 54020b9f. |
+| 2-11 | `replay_views` | INSERT | `session:viewed` (kind:'replay') | PM-43 | ✓ PM-54 | INSERT-only. Same writer as row 2-10 (tracking.js isReplay branch), same 3-col synthetic key. 54020b9f. |
 | 2-12 | `certificates` | INSERT | `certificate:earned` (NEW) | none — first L2 surface with no client publish | ❌ | Cron-driven; no `recordWrite` discipline (no own-write to suppress). Closes the PM-42 P3 cert cross-tab carryover. |
 
 **Three tables intentionally deferred at PM-45:**
@@ -277,6 +277,7 @@ The bus is now the production path for all cache invalidation and achievements e
 - **`REPLICA IDENTITY FULL` for DELETE bridges that need non-PK row fields (PM-50, 11 May 2026).** Supabase Realtime DELETE events carry only the primary key column when the table uses default replica identity (`relreplident = 'd'`). Bridges with `pk_field` other than the table PK (e.g. `pk_field:'client_id'` on `nutrition_logs.id` UUID PK) need the old row's full column set to match recordWrite suppression keys. Set `REPLICA IDENTITY FULL` on the table via migration before wiring the DELETE bridge. WAL cost is per-row (entire old tuple persisted) — negligible on low-volume tables, non-trivial on high-volume tables (consider INDEX form with a covering index instead in that case). Document the requirement in the bridge config comment. Verify via `SELECT relreplident FROM pg_class WHERE relname = 'X'` → expect `'f'`.
 - **Function-form `pk_field` for UPSERT writing surfaces (PM-51, 11 May 2026).** Writing surfaces using `Prefer:resolution=merge-duplicates` against a natural unique constraint (e.g. `weight_logs` UPSERTs on `(member_email, logged_date)`) cannot use `client_id` as the suppression key — under UPSERT semantics the row's final client_id is non-deterministic from the writing surface perspective (whichever write won the merge). Use function-form `pk_field` derived from the natural unique constraint columns: `pk_field: (row) => (row.member_email || '') + '|' + (row.logged_date || '')`. Both INSERT (first write of the natural key) AND UPDATE (subsequent UPSERTs against same natural key) ops need bridge entries grouped on the same channel — the writing surface only emits one `weight:logged` event per UPSERT but the server fires INSERT-first-time-then-UPDATE Realtime events. UPDATE under default `REPLICA IDENTITY` carries the full NEW row so REPLICA IDENTITY FULL is NOT required (only OLD row is PK-only).
 - **Server-side writers (Edge Functions) still need page-side recordWrite (PM-52, 11 May 2026).** When the writing path is a server-side Edge Function (e.g. `wellbeing-checkin` EF for `wellbeing_checkins`), the page POSTs to the EF and the EF writes the table server-side via `Prefer:resolution=merge-duplicates`. The Realtime echo still arrives at the originating device through its own subscription — and would fire the bridge's local subscribers a second time after the local publish. Suppression discipline is unchanged: the page calls `VYVEBus.recordWrite(table, syntheticKey)` immediately before `VYVEBus.publish(event, payload)`, using whatever natural-key columns the EF's UPSERT resolution uses. The page knows the conflict-resolution columns even if it doesn't know the resulting server PK or client_id. Dual-op INSERT+UPDATE bridges are still required for the same reason as direct-write UPSERT surfaces (PM-51) — UPSERT resolves to INSERT first time, UPDATE on subsequent matches against the natural key.
+- **Heartbeat-pattern writers require INSERT-only bridges (PM-54, 11 May 2026).** Writers that periodically PATCH an existing row (heartbeats, progress trackers — e.g. tracking.js v7 fires a 15s PATCH to update `minutes_watched`) without re-publishing to the bus cause UPDATE Realtime events at heartbeat frequency. Wiring an UPDATE bridge on such tables would fan out cross-device subscribers at that frequency — unwanted noise. Skip UPDATE; cross-device echo fires once on the initial INSERT, which is sufficient for "event occurred" semantics. Same-day re-visit UPDATE echoes (UPSERT against natural key) are an acceptable loss — subscribers already counted the event on the initial INSERT echo. Verify by reading the writing surface for any `setInterval(...PATCH...)` or `setTimeout(...PATCH...)` pattern before deciding INSERT-only vs dual-op.
 
 ---
 
@@ -302,17 +303,21 @@ The bus is now the production path for all cache invalidation and achievements e
 
 - **✅ CLOSED — PM-53:** vyve-site `ef50bc0b`. Eighth Layer 2 table-bridge wiring. `monthly_checkins` dual-op INSERT+UPDATE via 2-col synthetic key `(member_email|iso_month)`. Server-side EF writer (monthly-checkin v18) with 409 "already_done" pre-gate before merge-duplicates write — UPDATE events from this writer are rare in practice but bridge wired defensively for race-condition cases. No client_id column on the table so synthetic key is the only option. 3-file atomic commit: auth.js (+2149 chars, two array entries — INSERT + UPDATE both function-form pk_field on 2-col natural key, payload maps iso_month + avg_score + kind:'realtime' override), monthly-checkin.html (+559 chars, recordWrite at single publish site in submitCheckin — _isoMonth already in scope), sw.js cache bump pm52-bridge-wellbeing-checkins-a → pm53-bridge-monthly-checkins-a. 15/15 PM-53 self-tests covering 2-col synthetic key channel grouping, INSERT echo suppression, cross-device new-month INSERT, defensive UPDATE, kind override, null avg_score edge case. All 140+ previous tests still passing.
 
-- **PM-54 / Ninth Layer 2 table-bridge wiring (`session_views`).** Next in §3.1 (row 2-10). PM-43 publishes `session:viewed` (kind:'live'). Pre-flight per established pattern:
+- **✅ CLOSED — PM-54:** vyve-site `54020b9f`. Ninth + tenth Layer 2 table-bridges (session_views + replay_views) wired together as a single commit — same publisher in tracking.js (PM-43 onVisitStart) routes between the two tables via `isReplay`. Both **INSERT-only** by deliberate design call: heartbeat PATCHes every 15s would noise an UPDATE bridge. Cross-device echo on initial INSERT is sufficient; same-day re-visit UPDATEs intentionally not echoed. 3-col synthetic key `(member_email|category|activity_date)` per the on_conflict clause in insertSession. 3-file atomic commit: auth.js (+2725 chars, two array entries — session_views INSERT + replay_views INSERT, both function-form pk_field, kind discriminator assigned by bridge from the table itself), tracking.js (+649 chars, recordWrite(table, syntheticKey) at single publish site — `table` variable routes to either bridge), sw.js cache bump pm53-bridge-monthly-checkins-a → pm54-bridge-session-views-a. 20/20 PM-54 self-tests covering separate channels, INSERT echo suppression on both tables, kind:'live' vs kind:'replay' disambiguation, UPDATE-not-fired (heartbeat silence preserved by absence of UPDATE bridge). All 160+ previous tests still passing. New §4.9 working-set rule codified (heartbeat-pattern writers require INSERT-only bridges).
 
-  1. Inspect `session_views.client_id` column + replica identity.
-  2. Find publish site(s) for `session:viewed` event.
-  3. Determine writing path: direct REST POST with client_id (PM-49 territory) or natural-key UPSERT (PM-51/PM-52 territory).
-  4. Bridge entry/entries to auth.js (12th or 12th+13th in array).
-  5. recordWrite at publish site(s).
+- **PM-55 / Eleventh Layer 2 table-bridge wiring (`certificates` — cron-driven inbound).** Last table in §3.1 (row 2-12). **Qualitatively different from PM-46–PM-54** — there is no client publisher of `certificate:earned`. The certificate-checker EF v9 runs as a daily cron (9:00 UTC) and INSERTs certificate rows server-side. Cross-device fanout is the entire point of the bridge here, since the writer is the server, not any device.
+
+  Pre-flight:
+
+  1. Inspect `certificates.client_id` column + replica identity. Likely no client_id since the writer is server-side cron.
+  2. **No publisher exists for `certificate:earned`** — this PM introduces the event AND its bridge in one commit. No recordWrite suppression discipline needed (no own-writes to suppress; every Realtime echo is by definition a new event).
+  3. Pre-flight publication-enable check: confirm `certificates` is in `supabase_realtime` publication (it was added at PM-45). Should be set.
+  4. Bridge entry to auth.js: `pk_field:'id'` (default — Realtime echo carries the server-generated UUID; no suppression keying), `payload_from_row` mapping certificate columns to the new event payload (cert_number, member_email, certificate_type, tier, etc).
+  5. Subscribers: design call — who should react to `certificate:earned`? Probably index.html (home-stale, show "new cert" pip on cert tab), engagement.html (engagement cache stale — Variety/Consistency component may shift), certificates.html (refresh cert list if open).
   6. sw.js cache bump.
-  7. Two-device verify.
+  7. Two-device verify: trigger certificate-checker via direct invocation, watch echo arrive on a second tab.
 
-  Estimate: ~30 min based on PM-49-territory single-publish-site shape.
+  Closes the PM-42 P3 cert cross-tab carryover. Estimate: ~30-45 min. Designing the subscriber list (which pages react and how) takes more thought than the bridge wiring itself.
 
 ### P1 (working set)
 

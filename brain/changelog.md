@@ -1,3 +1,129 @@
+## 2026-05-11 PM-54 (Layer 2 ninth + tenth table-bridge wirings: session_views + replay_views INSERT-only — heartbeat-pattern writer)
+
+vyve-site `54020b9fda1d0cc26ecb384b01f32fd9a4c51945` (new tree `ac9b01b8040d81a54deec45369ddf4c239ab8bc4`). VYVEBrain main `(set after this commit lands)`. **Two table-bridges wired in one commit** — session_views and replay_views share a single publisher (tracking.js PM-43 onVisitStart) that routes between them based on `isReplay`. Same event name (`session:viewed`) with kind discriminator. INSERT-only by deliberate design call — the most important pre-flight decision of the campaign so far, recorded as a new §4.9 working-set rule.
+
+**Atomic commits (2):**
+
+1. **vyve-site** `54020b9f` — 3-file atomic: auth.js (+2725 chars, two array entries — session_views INSERT + replay_views INSERT), tracking.js (+649 chars, recordWrite at single publish site routes to the matching bridge via the `table` variable), sw.js (cache key bump `pm53-bridge-monthly-checkins-a` → `pm54-bridge-session-views-a`).
+2. **VYVEBrain** `(this commit)` — active.md §2 SHA bump + §3.1 rows 2-10 + 2-11 ✓ PM-54 + §4.9 new heartbeat-pattern rule + audit baseline + §5 backlog mirror; backlog PM-54 ✅ CLOSED + PM-55 P0 + section header; changelog this entry.
+
+**Pre-flight discovery: heartbeat PATCHes would noise an UPDATE bridge.**
+
+tracking.js v7 implements a two-phase write pattern for session viewing:
+
+1. **Initial confirmed insert** via `insertSession(totalMins)`. Fires `VYVEBus.publish('session:viewed', { kind, category, session_name, table })` after the POST resolves. This is the only publish site.
+2. **Heartbeat PATCHes** every `HEARTBEAT_MS = 15000ms` (15 seconds) while the page is open. Each PATCH updates `minutes_watched` and `logged_at` on the existing row via `member_email + category + activity_date` filter. Heartbeats do NOT publish to the bus — intentional pre-PM-43 invariant. Only the initial insert fans out to subscribers.
+
+The implication for Layer 2: every heartbeat PATCH fires an UPDATE Realtime event. If I wired an UPDATE bridge on session_views/replay_views, every device in the cohort with that user's session would receive cross-device UPDATE echoes at heartbeat frequency:
+
+- A user with 1 open session page on phone + 1 on desktop simultaneously: each device receives 4 UPDATE echoes per minute from the other (and from itself, since the writer doesn't publish to the bus → no recordWrite to suppress).
+- Subscribers (home-stale, engagement-stale, achievements eval) would fire at heartbeat cadence → wasted cache invalidations and re-evaluations.
+
+This is exactly the noise PM-43's "heartbeats are PATCHes — no insert trigger, no cap issue" comment was designed to avoid in the local-publish dimension. PM-54 extends the same invariant to the Layer 2 dimension.
+
+**Design decision: INSERT-only bridges. Skip UPDATE.**
+
+What we lose:
+
+- **Same-day re-visit cross-device echo.** If user opens yoga on phone at 7am and again on desktop at 6pm same day, the desktop UPSERT triggers UPDATE (not INSERT). The phone doesn't get a cross-device `session:viewed` fire from the 6pm visit. **Acceptable**: subscribers already counted "yoga viewed today" after the 7am initial insert. The 6pm re-visit doesn't add new cross-device information.
+- **Heartbeat minutes_watched cross-device sync.** Phone's home dashboard wouldn't see desktop's incrementing minutes during a live watch. **Acceptable**: minutes_watched isn't displayed cross-device anywhere; the home dashboard counts session views, not minute totals.
+
+What we gain:
+
+- Heartbeat silence preserved cross-device, matching the pre-PM-43 local invariant exactly.
+- Zero added load on subscribers (engagement cache, home cache, achievements eval) from cross-device heartbeats.
+
+Alternative considered: `ALTER PUBLICATION supabase_realtime DROP TABLE public.session_views; ADD TABLE public.session_views (insert)` to remove UPDATE from the publication entirely. Cleaner at the publication layer but more infrastructure change for the same outcome. Skipping the UPDATE bridge achieves the same net behaviour with one less migration. If a future use case needs UPDATE Realtime events on these tables, the publication layer is already configured to deliver them — just no bridge listens.
+
+**Bridge config entries (auth.js, two new entries appended):**
+
+```js
+{
+  table: 'session_views',
+  event: 'session:viewed',
+  op:    'INSERT',
+  pk_field: function (row) {
+    return (row.member_email || '') + '|' + (row.category || '') + '|' + (row.activity_date || '');
+  },
+  payload_from_row: function (row) {
+    return {
+      kind:         'live',          // ← assigned by bridge from the table
+      category:     row.category || null,
+      session_name: row.session_name || null,
+      table:        'session_views'
+    };
+  }
+},
+{
+  table: 'replay_views',
+  event: 'session:viewed',  // ← same event name
+  op:    'INSERT',
+  pk_field: /* same shape */,
+  payload_from_row: function (row) {
+    return { kind: 'replay', /* ... */, table: 'replay_views' };
+  }
+}
+```
+
+The bridge assigns `kind` from the table itself — by the time the Realtime echo arrives, the table determines the kind. The writing surface used `isReplay` to route the write to the right table; the bridge inverts that mapping to recover the kind on the receiving end. Two separate channels (`vyve_bridge_session_views`, `vyve_bridge_replay_views`) under bus.js's per-table grouping. Subscribers see identical envelopes regardless of origin (`kind: 'live' | 'replay'` either way).
+
+**tracking.js patch (single publish site, PM-43 onVisitStart):**
+
+```js
+if (window.VYVEBus) {
+  // PM-54: suppress own-echo on initial INSERT. Bridge uses synthetic
+  // natural-key (member_email|category|activity_date) matching the
+  // ON CONFLICT clause in insertSession above. `table` routes to the
+  // correct bridge (session_views or replay_views). Heartbeat PATCHes
+  // do NOT fire here — only the initial confirmed insert publishes,
+  // so this recordWrite covers exactly the INSERT echo path.
+  if (typeof VYVEBus.recordWrite === 'function' && memberEmail && category) {
+    try { VYVEBus.recordWrite(table, memberEmail + '|' + category + '|' + getToday()); } catch (_) {}
+  }
+  try {
+    window.VYVEBus.publish('session:viewed', { kind: isReplay ? 'replay' : 'live', category, session_name: sessionName, table });
+  } catch (_) {}
+}
+```
+
+Single recordWrite call, dynamic table routing via the `table` variable. memberEmail, category, getToday all in scope from the surrounding closure.
+
+**Self-test (20/20 across one group):**
+
+`/tmp/bus_v29_test.js` covers:
+
+- Two separate channels (`vyve_bridge_session_views`, `vyve_bridge_replay_views`), each with one INSERT listener
+- Local live publish + recordWrite suppresses Realtime INSERT echo on session_views
+- Cross-device live INSERT (different category) fires with `kind:'live'` + `table:'session_views'` from bridge
+- Same pattern for replay path on replay_views with `kind:'replay'` + `table:'replay_views'`
+- **UPDATE events on either table NOT fired** — confirming heartbeat silence preserved by absence of UPDATE bridge wiring
+
+All 160+ previous tests still passing.
+
+**Audit-count delta (whole-tree, post-PM-54):**
+
+- `VYVEBus.recordWrite(` count: 14 → 15 (PM-54 tracking.js × 1 — single publish site, but routes to either bridge via `table` variable)
+- `VYVEBus.installTableBridges(` count: 1 (13 entries now in same array — daily_habits, workouts, cardio, exercise_logs, nutrition_logs×2, weight_logs×2, wellbeing_checkins×2, monthly_checkins×2, session_views, replay_views)
+- `VYVEBus.publish(` count: 23 unchanged
+- `VYVEData.newClientId(` direct call sites: 4 (unchanged — session_views + replay_views use synthetic key like all other UPSERT tables)
+- Postgres `REPLICA IDENTITY FULL` tables: 1 (nutrition_logs only)
+
+**One new §4.9 working-set rule codified:**
+
+- **Heartbeat-pattern writers require INSERT-only bridges (PM-54, 11 May 2026).** Writers that periodically PATCH an existing row (heartbeats, progress trackers) without re-publishing to the bus cause UPDATE Realtime events at heartbeat frequency. Wiring an UPDATE bridge on such tables would fan out cross-device subscribers at that frequency — unwanted noise. Skip UPDATE; cross-device echo fires once on the initial INSERT, sufficient for "event occurred" semantics. Verify by reading the writing surface for any `setInterval(...PATCH...)` or `setTimeout(...PATCH...)` pattern before deciding INSERT-only vs dual-op.
+
+**Source-of-truth.** vyve-site pre-PM-54 `ef50bc0bebd588bbde5ce83a65d733d785f825d5` (PM-53 ship), post-PM-54 `54020b9fda1d0cc26ecb384b01f32fd9a4c51945`, new tree `ac9b01b8040d81a54deec45369ddf4c239ab8bc4`. Live blob SHAs: auth.js `80d0f501c95d`, tracking.js `d8148c1e127c`, sw.js `b60bf8dfdc7a`. All 3 byte-identical; 5/5 marker checks pass.
+
+**Layer 2 ledger after PM-54:**
+
+- 10/11 tables wired (daily_habits, workouts, cardio, exercise_logs, nutrition_logs, weight_logs, wellbeing_checkins, monthly_checkins, session_views, replay_views)
+- 11/11 in `supabase_realtime` publication
+- 10/10 commits shipped (PM-45 infrastructure + PM-46/47/48/49/50/51/52/53/54 wirings)
+- 6 §4.9 working-set rules codified (function-form synthetic-key for return=minimal; string-form pk_field:'client_id' for client_id tables; REPLICA IDENTITY FULL for non-PK-bearing DELETE bridges; function-form pk_field for UPSERT writing surfaces — INSERT+UPDATE dual-op; server-side EF writers still need page-side recordWrite; heartbeat-pattern writers require INSERT-only bridges)
+- 1 table remaining: `certificates` — qualitatively different (cron-driven inbound, no client publisher), introduces a new `certificate:earned` event
+
+**Next: PM-55 — certificates inbound bridge.** The campaign's first "pure inbound" wiring. No client publisher of `certificate:earned` exists — PM-55 introduces the event AND its bridge in one commit. No suppression discipline needed (no own-writes to suppress; every Realtime echo is by definition a new event). Subscriber design call is the main work: index.html (home-stale + cert-tab pip), engagement.html (cache stale on cert milestones), certificates.html (refresh list if open). Closes the PM-42 P3 cert cross-tab carryover.
+
 ## 2026-05-11 PM-53 (Layer 2 eighth table-bridge wiring: monthly_checkins INSERT + UPDATE — server-side EF + 409 pre-gate, 2-col synthetic key)
 
 vyve-site `ef50bc0bebd588bbde5ce83a65d733d785f825d5` (new tree `44a23aac80f3f9644daf3b5af874be9ae24127f1`). VYVEBrain main `(set after this commit lands)`. Mirrors PM-52 wellbeing_checkins shape (server-side EF writer + dual-op INSERT+UPDATE + function-form natural-key pk_field) with two distinctions worth recording.

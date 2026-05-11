@@ -1,3 +1,5 @@
+## Added 11 May 2026 PM-54 (Layer 2 ninth + tenth table-bridge wirings shipped — session_views + replay_views INSERT-only, heartbeat-pattern writer codified)
+
 ## Added 11 May 2026 PM-53 (Layer 2 eighth table-bridge wiring shipped — monthly_checkins dual-op INSERT + UPDATE via 2-col synthetic key, EF 409 pre-gate)
 
 ## Added 11 May 2026 PM-52 (Layer 2 seventh table-bridge wiring shipped — wellbeing_checkins dual-op INSERT + UPDATE via server-side EF writer, 3-col synthetic key)
@@ -40,17 +42,21 @@
 
 - ✅ **CLOSED — PM-53 above.** vyve-site `ef50bc0b` (tree `44a23aac`). Eighth Layer 2 table-bridge wiring. `monthly_checkins` dual-op INSERT+UPDATE via 2-col synthetic key `(member_email|iso_month)`. Mirrors PM-52 wellbeing_checkins pattern (server-side EF writer + UPSERT) with two distinctions: (a) 2-col natural key vs 3-col, (b) EF (monthly-checkin v18) pre-gates with 409 "already_done" check BEFORE merge-duplicates write so UPDATE events are rare in practice — bridge wires both defensively for race-condition cases (concurrent submits from two devices both passing the 409 check before either writes). Table has no client_id column — synthetic natural-key is the only option. 3-file atomic commit: auth.js (+2149 chars, INSERT + UPDATE both function-form pk_field on 2-col natural key, payload mapping iso_month + avg_score + kind:'realtime'), monthly-checkin.html (+559 chars, recordWrite at single publish site in submitCheckin — _isoMonth and email already in scope), sw.js cache bump pm52-bridge-wellbeing-checkins-a → pm53-bridge-monthly-checkins-a. 15/15 PM-53 self-tests covering channel grouping, INSERT echo suppression, cross-device INSERT, defensive UPDATE, kind override, null avg_score edge case. All 140+ previous tests still passing. Whole-tree audit-count delta: `VYVEBus.recordWrite(` 13→14. No new §4.9 rules — PM-52 server-side EF writer rule covers this case.
 
-- 📋 **OPEN (P0) — PM-54: Ninth Layer 2 table-bridge wiring (`session_views`).** Next in §3.1 (row 2-10). PM-43 publishes `session:viewed` (kind:'live') from session viewer pages. Pre-flight per established pattern:
+- ✅ **CLOSED — PM-54 above.** vyve-site `54020b9f` (tree `ac9b01b8`). Ninth + tenth Layer 2 table-bridges wired together as a single atomic commit — session_views and replay_views share one publisher (tracking.js PM-43 onVisitStart) that routes between them via `isReplay`. Both **INSERT-only** by deliberate design: heartbeat PATCHes every 15s (HEARTBEAT_MS = 15000ms) update minutes_watched on the existing row, firing UPDATE Realtime events that an UPDATE bridge would fan out to subscribers 4× per minute per open session page per device. Skip UPDATE. Cross-device echo fires once on the confirmed initial INSERT — sufficient for "session was watched" semantics. Same-day re-visit UPSERT→UPDATE not echoed (subscribers already counted the category for the day after initial INSERT echo). 3-col synthetic key `(member_email|category|activity_date)` per the on_conflict clause in tracking.js insertSession. No client_id column on either table — synthetic natural-key is the only option. 3-file atomic commit: auth.js (+2725 chars, two array entries — session_views INSERT + replay_views INSERT, both function-form pk_field, kind:'live' / kind:'replay' assigned by bridge from the table itself), tracking.js (+649 chars, recordWrite(table, memberEmail+'|'+category+'|'+getToday()) at single publish site — `table` variable routes recordWrite to the matching bridge), sw.js cache bump pm53-bridge-monthly-checkins-a → pm54-bridge-session-views-a. 20/20 PM-54 self-tests covering: two separate channels per table, local publish + recordWrite suppresses INSERT echo on each, cross-device INSERT fires with correct kind from bridge, live/replay disambiguation, UPDATE-NOT-fired (heartbeat silence preserved by absence of UPDATE bridge). All 160+ previous tests still passing. Whole-tree audit-count delta: `VYVEBus.recordWrite(` 14→15; `VYVEBus.installTableBridges(` entries 11→13. New §4.9 working-set rule codified (heartbeat-pattern writers require INSERT-only bridges).
 
-  1. Inspect `session_views.client_id` column + replica identity. Likely present (same era as other client_id columns).
-  2. Find publish site(s) for `session:viewed` event. Probably single site in a session-viewer page (sessions.html?).
-  3. Inspect writing path — direct REST POST with client_id (PM-49 territory, simplest) or merge-duplicates against natural key (PM-51 territory).
-  4. Bridge entry to auth.js (12th in array if single-op; 12th+13th if dual-op).
-  5. recordWrite at publish site(s).
+- 📋 **OPEN (P0) — PM-55: Eleventh Layer 2 table-bridge wiring (`certificates` — cron-driven inbound).** Last table in §3.1 (row 2-12). **Qualitatively different** from PM-46–PM-54 — no client publisher of `certificate:earned` exists. certificate-checker EF v9 runs as a daily cron (9:00 UTC) and INSERTs certificate rows server-side. Cross-device fanout is the entire point of the bridge — the writer is the server, not any device. PM-55 introduces the event AND its bridge in one commit.
+
+  Pre-flight:
+
+  1. Inspect `certificates.client_id` column + replica identity. Likely no client_id (server-side cron writer).
+  2. Confirm `certificates` is in `supabase_realtime` publication (added at PM-45).
+  3. Bridge entry: `pk_field:'id'` (default — every Realtime echo is by definition a new event; no own-writes to suppress, so no synthetic suppression key needed).
+  4. `payload_from_row` mapping for the new `certificate:earned` event — cert_number, certificate_type, tier, member_email, etc.
+  5. Subscribers: design call — index.html (home-stale + cert-tab pip), engagement.html (engagement cache stale on cert milestones), certificates.html (refresh list if open). PM-55 may include subscriber wiring in the same commit or defer to a follow-up.
   6. sw.js cache bump.
-  7. Two-device verify.
+  7. Two-device verify: invoke certificate-checker directly (or wait for nightly cron), watch echo arrive on a second tab.
 
-  Estimate: ~30 min. PM-49 shape likely (session view is per-event, not UPSERT).
+  Closes the PM-42 P3 cert cross-tab carryover. Estimate: ~30-45 min — design call on subscriber list takes more thought than the bridge wiring itself.
 
 - 📋 **CARRIED FORWARD (P1) — programme:imported & workout:shared subscriber consumers.** PM-42 + PM-41 each wired _markHomeStale defensively (no current home surface renders share count or import banner). Future P1 work: home dashboard "your latest activity" or "social feed" surface that consumes these events properly.
 
