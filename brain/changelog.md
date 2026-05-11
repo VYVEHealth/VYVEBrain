@@ -1,3 +1,120 @@
+## 2026-05-11 PM-47 (Layer 2 second table-bridge wiring: workouts INSERT → workout:logged via client_id pk)
+
+vyve-site `8d3d66124c4f1fbaf32eaeb529ee7d988cccd924` (new tree `cee6fc148d51658533ea0d2fdf6e4ecc1347e415`). VYVEBrain main `(set after this commit lands)`. **Second member-facing Layer 2 wiring.** Workouts is more complex than habits (5 publishers, 2 don't actually write to the `workouts` table) but the suppression mechanism is cleaner than PM-46 thanks to a pre-existing `client_id` UUID column.
+
+**Atomic commits (2):**
+
+1. **vyve-site** `8d3d6612` — 4-file atomic: auth.js (+1678 chars, workouts entry added to installTableBridges array), workouts-session.js (+458 chars, recordWrite at existing publish site), movement.html (+1354 chars, client_id generation + INSERT body + recordWrite × 2 publish sites), sw.js (cache key bump `pm46-bridge-daily-habits-a` → `pm47-bridge-workouts-a`).
+2. **VYVEBrain** `(this commit)` — active.md §2 SHA bump + §3.1 workouts row ✓ + §3.2 API doc + §4.9 new sub-rule + §5 backlog mirror; backlog PM-47 ✅ CLOSED + PM-48 P0 + section header; changelog this entry.
+
+**Pre-flight discovery: 5 publishers, 3 destinations.**
+
+`VYVEBus.publish('workout:logged'` appears in 5 publishing surfaces across 4 files:
+
+| File | Line ~ | Destination table | Bridge concern |
+|---|---|---|---|
+| workouts-session.js | 600 | `workouts` | ✓ needs recordWrite |
+| movement.html | 483 (markDone) | `workouts` | ✓ needs recordWrite |
+| movement.html | 682 (non-walk quick log) | `workouts` | ✓ needs recordWrite |
+| workouts-builder.js | 118 | `custom_workouts` | bridge doesn't echo — no recordWrite |
+| workouts-programme.js | 581 | `custom_workouts` via share-workout EF | bridge doesn't echo — no recordWrite |
+
+The 2 `custom_workouts` writers publish `workout:logged` because PM-35 / PM-42 use `workout:logged` as the semantic event name for "a workout-like thing happened" — subscribers (cache invalidation + achievements eval) don't care about the destination table. Only the workouts-INSERT publishers need recordWrite, because only their writes echo back through the Realtime bridge. The auth.js bridge config carries inline comments enumerating this classification so future readers don't re-derive it.
+
+**Key design call: `pk_field:'client_id'` over PM-46's synthetic-tuple approach.**
+
+`workouts.client_id` is a UUID column already present in the schema. The writing surface populates it via `VYVEData.newClientId()`. Critically, `vyve-offline.js writeQueued` auto-injects `client_id` into JSON bodies that don't have it (line ~11738 of vyve-offline.js):
+
+```js
+if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.client_id == null) {
+  parsed.client_id = item.client_id;  // = args.client_id || newClientId()
+  item.body = JSON.stringify(parsed);
+}
+```
+
+This means **every outbox-routed write to any table with a `client_id` column gets a UUID populated for free.** workouts-session.js was already generating `_workoutClientId` explicitly. PM-47 verified its presence and used it for recordWrite.
+
+The two movement.html publish sites were not using writeQueued (they use raw `fetch`), so they needed explicit `_mvClientId = VYVEData.newClientId()` + addition to INSERT body + addition to publish payload + recordWrite. All 3 publishers now have a real UUID that ends up in the row, and the bridge config uses string-form `pk_field:'client_id'` — much cleaner than PM-46's synthetic constraint-tuple key.
+
+**This raises a PM-46 retrospective consideration:** `daily_habits` also has a `client_id` column, and writeQueued auto-injects it. PM-46 could have used `pk_field:'client_id'` instead of the synthetic tuple. But the synthetic tuple still works (legacy rows without client_id suppress against undefined, which doesn't match), and changing PM-46's bridge config retroactively brings no functional improvement. The PM-45 §23 sub-rule on function-form pk_field stays valid for tables genuinely without a useful PK column. The PM-47 §4.9 sub-rule documents the cleaner string-form alternative when client_id is wired.
+
+**Bridge config entry (auth.js, appended to existing daily_habits array):**
+
+```js
+{
+  table: 'workouts',
+  event: 'workout:logged',
+  op:    'INSERT',
+  pk_field: 'client_id',
+  payload_from_row: function (row) {
+    return {
+      workout_id:   row.client_id || null,
+      completed:    true,
+      duration_min: row.duration_minutes || null,
+      source:       row.source || 'manual'
+    };
+  }
+}
+```
+
+The `payload_from_row` shape mirrors what the 3 local-publish sites emit (workout_id from client_id, completed:true, duration_min, source) so subscribers can't tell local from realtime origin. Legacy rows with NULL `client_id` deliver as realtime echoes with `workout_id:null` — acceptable, no live writer to suppress.
+
+**workouts-session.js patch (one-line surgery before existing publish):**
+
+```js
+if (typeof VYVEBus.recordWrite === 'function' && _workoutClientId) {
+  try { VYVEBus.recordWrite('workouts', _workoutClientId); } catch (_) {}
+}
+```
+
+`_workoutClientId` was already generated above for writeQueued. PM-47 just records the same UUID for own-echo suppression. Zero impact on the existing PM-31 logic.
+
+**movement.html patches (× 2 publish sites):**
+
+Site 1 (markDone, programme path): generate `_mvClientId` before publish, include `workout_id: _mvClientId` in publish payload, add `client_id: _mvClientId` to INSERT body, recordWrite.
+
+Site 2 (custom quick-log non-walk branch): scoped `_mvQuickClientId` to non-walk only (walk goes to cardio, PM-48 territory). Same pattern as site 1.
+
+Both sites: client_id generation is via `VYVEData.newClientId()` with a defensive guard for absence of the helper (`window.VYVEData && typeof VYVEData.newClientId === 'function'`) — falls back to null which prevents recordWrite and lets the realtime echo fan out (acceptable degraded state).
+
+**Self-test harness (15/15 passing across one group):**
+
+`/tmp/bus_v22_test.js` covers two-bridge coexistence:
+
+- 2 channels subscribed (daily_habits + workouts)
+- Channel names correct (`vyve_bridge_daily_habits`, `vyve_bridge_workouts`)
+- Local publish delivered; local origin
+- Realtime echo with same `client_id` SUPPRESSED
+- Different `client_id` fires as realtime with all payload fields mapped
+- Legacy row (`client_id: null`) fires as realtime with `workout_id: null`
+- daily_habits PM-46 bridge unaffected by PM-47 addition
+
+10/10 PM-46 tests unchanged. 45/45 PM-45 regression unchanged.
+
+**Audit-count delta (whole-tree, post-PM-47):**
+
+- `VYVEBus.recordWrite(` count: 1 → 4 (PM-46 habits.html × 1; PM-47 workouts-session.js × 1, movement.html × 2)
+- `VYVEBus.installTableBridges(` count: 1 → 1 (unchanged — same array; added second entry)
+- `VYVEBus.publish(` count: 23 → 23 (existing publishes; payload mutations only — added `workout_id` to 2 publish sites)
+- `VYVEBus.subscribe(` count: 29 → 29
+- `VYVEData.invalidateHomeCache(`, `recordRecentActivity(`, `evaluate(` unchanged
+- `VYVEData.newClientId(` direct call sites: 1 → 3 (PM-47 movement.html × 2 + pre-existing workouts-session.js × 1; writeQueued's internal calls not counted)
+
+**One new §4.9 working-set rule codified:**
+
+- **String-form `pk_field:'client_id'` for tables with client-generated UUID columns (PM-47, 11 May 2026).** Tables with a `client_id` UUID column populated by the writing surface (via `VYVEData.newClientId()`) use string-form `pk_field:'client_id'`. Cleaner than synthetic-tuple function form: matches default `'id'` shape, no per-table gymnastics. `writeQueued` auto-injects `client_id` for outbox-routed writes; raw-fetch writes need explicit generation + INSERT body addition. The bridge `payload_from_row` typically maps `row.client_id → workout_id` (or equivalent semantic key) so subscribers see the same UUID local publishes carry.
+
+**Source-of-truth.** vyve-site pre-PM-47 `9565ed9322502663b39148ed59e8d11b8ea8edc1` (PM-46 ship), post-PM-47 `8d3d66124c4f1fbaf32eaeb529ee7d988cccd924`, new tree `cee6fc148d51658533ea0d2fdf6e4ecc1347e415`. Live blob SHAs (post-PM-47): auth.js `ca61aa38cb34`, workouts-session.js `bcb43b905728`, movement.html `ba9e196371db`, sw.js `5c0175eef518`. All 4 byte-identical to local sandbox; all 8 marker checks pass.
+
+**Layer 2 ledger after PM-47:**
+
+- 2/11 tables wired to subscribers (daily_habits, workouts)
+- 11/11 tables in `supabase_realtime` publication
+- 3/3 commits shipped (PM-45 infrastructure + PM-46 daily_habits + PM-47 workouts)
+- 2 §4.9 working-set rules codified (function-form pk_field, string-form pk_field:'client_id')
+
+**Next: PM-48 — cardio table-bridge wiring.** Pre-flight: confirm `cardio.client_id` column presence. If present, string-form pk_field. If absent, decide synthetic-tuple or schema migration. 2 publish sites (cardio.html PM-33, movement.html walk-branch PM-34) — smaller than PM-47.
+
 ## 2026-05-11 PM-46 (Layer 2 first table-bridge wiring: daily_habits INSERT → habit:logged echoes cross-device)
 
 vyve-site `9565ed9322502663b39148ed59e8d11b8ea8edc1` (new tree `c9f1a9a5a75ebfac91ff8323b4679821129ec4c7`). VYVEBrain main `(set after this commit lands)`. **First member-facing Layer 2 wiring.** Validates the end-to-end loop on a real surface; PM-47..PM-56 follow on the same per-session template.

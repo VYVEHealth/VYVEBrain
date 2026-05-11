@@ -49,14 +49,14 @@
 > Refresh the SHA + version rows at the top of every session via a parallel pre-flight. The rest of this section is stable across sessions.
 
 **HEADs (refresh at session start):**
-- vyve-site main: `9565ed93` (PM-46 ship — last shipped 11 May 2026; **Layer 2 active**)
+- vyve-site main: `8d3d6612` (PM-47 ship — last shipped 11 May 2026; **Layer 2 active**)
 - VYVEBrain main: `(set after this commit lands)`
 - vyve-capacitor main: stub (Apr 18 2026 base) — local working tree not yet pushed
 - Test-Site-Finalv3 main: marketing site, less active
 
 **Cache-bus key currently live:**
 - Pattern: `vyve-cache-v2026-05-09-pmNN-X-Y` (date prefix from PM-30)
-- Last shipped: `vyve-cache-v2026-05-11-pm46-bridge-daily-habits-a` (one-table-per-commit Layer 2 cadence; wall-clock date prefix)
+- Last shipped: `vyve-cache-v2026-05-11-pm47-bridge-workouts-a` (one-table-per-commit Layer 2 cadence; wall-clock date prefix)
 - P3 carried RESOLVED: PM-45 used wall-clock date for new campaign per PM-44 §23 sub-rule
 
 **Mobile binaries:**
@@ -68,16 +68,17 @@
 - First paying B2C: Paige Coult, joined 13 April 2026, £20/month
 - 3 admin operators in `admin_users`
 
-**Audit-count baseline (publishing-surface call sites at HEAD `9565ed93`, PM-46 wired daily_habits — same primitive counts as post-PM-44 cleanup since PM-45 is infrastructure-only with no new publish/subscribe sites):**
+**Audit-count baseline (publishing-surface call sites at HEAD `8d3d6612`, PM-47 wired workouts — same primitive counts as post-PM-44 cleanup since PM-45 is infrastructure-only with no new publish/subscribe sites):**
 - `VYVEData.invalidateHomeCache(`: 1 (subscriber-internal helper, in vyve-data.js)
 - `VYVEData.recordRecentActivity(`: 1 (subscriber-internal helper, in vyve-data.js)
 - `VYVEAchievements.evaluate(`: 12 (subscriber-internal helpers across achievement-handling subscribers)
 - `VYVEBus.publish(`: 23 (across 14 publishing surfaces, post-PM-30..PM-44)
 - `VYVEBus.subscribe(`: 29 (across the subscriber files)
-- `VYVEBus.recordWrite(`: 1 (one call site in habits.html, PM-46)
-- `VYVEBus.installTableBridges(`: 1 (one call site in auth.js, PM-46)
+- `VYVEBus.recordWrite(`: 4 (PM-46 habits.html × 1; PM-47 workouts-session.js × 1, movement.html × 2)
+- `VYVEBus.installTableBridges(`: 1 (one call site in auth.js, PM-46; PM-47 added a second entry to the same array)
+- `VYVEData.newClientId(` direct call sites: 3 (PM-47 movement.html × 2 + pre-existing workouts-session.js × 1; writeQueued's internal call sites not counted)
 
-PM-45 shipped infrastructure only; PM-46 added the first publish-site write-suppression discipline + one bridge installation. Use these as the pre-flight reference for PM-47+ Layer 2 wirings
+PM-47 wired the second Layer 2 bridge (workouts). Two coexisting bridges proven via 15/15 self-tests. Use these as the pre-flight reference for PM-48+ Layer 2 wirings
 
 ---
 
@@ -94,7 +95,7 @@ Layer 2 extends the lag-free contract to cross-device coherence. Phone logs habi
 | # | Table | Op | Bus event | Layer 1c lineage | Wired? | Notes |
 |---|---|---|---|---|---|---|
 | 2-1 | `daily_habits` | INSERT | `habit:logged` | PM-30 | ✓ PM-46 | Function-form `pk_field` for synthetic key (member_email\|activity_date\|habit_id). 9565ed93. |
-| 2-2 | `workouts` | INSERT | `workout:logged` | PM-31 (+ PM-34, PM-35, PM-42 as alt sources via row.source) | ❌ | |
+| 2-2 | `workouts` | INSERT | `workout:logged` | PM-31 (+ PM-34, PM-35, PM-42 as alt sources via row.source) | ✓ PM-47 | `pk_field:'client_id'` (UUID col already wired in writeQueued + 2 new sites in movement.html). 8d3d6612. |
 | 2-3 | `exercise_logs` | INSERT | `set:logged` | PM-32 | ❌ | |
 | 2-4 | `cardio` | INSERT | `cardio:logged` | PM-33 (+ PM-34 movement_walk via row.source) | ❌ | |
 | 2-5 | `nutrition_logs` | INSERT | `food:logged` | PM-36 | ❌ | Dual-op table: also DELETE below |
@@ -122,7 +123,10 @@ envelope.origin === 'realtime'
 
 // Wire bridge config — call once at auth.js after Supabase client is ready.
 // PM-46 introduced function-form pk_field for tables whose writing surface
-// uses Prefer:return=minimal and never sees the server-generated PK.
+// uses Prefer:return=minimal AND has no client-generated UUID column.
+// PM-47 uses string-form pk_field:'client_id' for tables where the writing
+// surface generates and writes a UUID column (cleaner — same string form
+// as default 'id', no synthetic-tuple gymnastics).
 window.VYVEBus.installTableBridges(supabase, [{
   table:            'daily_habits',
   event:            'habit:logged',
@@ -268,6 +272,7 @@ The bus is now the production path for all cache invalidation and achievements e
 - **Layer 2 self-suppression discipline (PM-45).** Every publish site that writes to a bridged table MUST call `VYVEBus.recordWrite(table, pk)` immediately after the row insert resolves. Failure causes the writing device to double-fire subscribers (`local` then `realtime` ~2s later under different origins). Mitigation: subscribers are idempotent for cache-stale and achievement debounce 1.5s eats triple-fires — degraded-but-functional, but the explicit `recordWrite` is the discipline. `recordWrite` is added to the audit-count primitives at Layer 2: each PM-46+ commit should expect `+N` `VYVEBus.recordWrite(` call sites where N matches the publish site count for the bridged table.
 - **Bridge contract uniformity (PM-45).** Every bridged table has a `member_email` column, filtered server-side via `member_email=eq.<currentEmail>`. Tables breaking this contract (e.g. `shared_workouts` uses `shared_by` for sharer scope) are deferred from the standard bridge or need a per-table custom filter approach if/when wired. Bridge uniformity > completeness for the sake of completeness — same shape as PM-42 (server-cron writes out of scope for Layer 1c) and PM-43 (intentional engagement non-touches).
 - **Function-form `pk_field` for `Prefer:return=minimal` writing surfaces (PM-46, 11 May 2026).** Tables whose writing surface uses `Prefer: return=minimal` (the existing PM-30..PM-44 outbox pattern via `VYVEData.writeQueued`) never see the server-generated PK on the writing device. The synthetic-key approach: bridge config declares `pk_field` as a function `(row) => synthetic_key`; bridge derives the same synthetic key from the Realtime row payload; suppression matches. The synthetic key MUST be the unique constraint tuple for the table (e.g. `daily_habits` is unique on `(member_email, activity_date, habit_id)`) so the bridge can reliably derive it from the row. Surfaces that already use `return=representation` (or could be changed to) keep using string-form `pk_field: 'id'`. Both forms coexist; the bus.js dispatch handles `typeof entry.pk_field === 'function'` branch first, falls through to string-or-default 'id' otherwise.
+- **String-form `pk_field:'client_id'` for tables with client-generated UUID columns (PM-47, 11 May 2026).** Tables that have a dedicated `client_id` UUID column populated by the writing surface (via `VYVEData.newClientId()`) use string-form `pk_field:'client_id'`. Cleaner than the synthetic-tuple function form: matches the default `'id'` shape, no per-table synthetic-key gymnastics. `vyve-offline.js writeQueued` auto-injects `client_id` into JSON body if not present — so any outbox-routed write to a table with the column gets it for free. Raw-fetch writes (e.g. `movement.html`) need an explicit `VYVEData.newClientId()` + addition to the INSERT body. The bridge `payload_from_row` typically maps `row.client_id → workout_id` (or equivalent) so subscribers see the same UUID local publishes carry. Legacy rows with NULL `client_id` → bridge sees `pk=undefined` → no recordWrite match → echoes through with `workout_id: null` (acceptable; no live writer to suppress).
 
 ---
 
@@ -279,21 +284,16 @@ The bus is now the production path for all cache invalidation and achievements e
 
 - **✅ CLOSED — PM-46:** vyve-site `9565ed93`. First Layer 2 table-bridge wiring shipped. `daily_habits` INSERT → `habit:logged` echoes cross-device. Function-form `pk_field` introduced for `Prefer:return=minimal` writing surfaces (synthetic key: `member_email|activity_date|habit_id`). 4-file atomic commit (bus.js +467, auth.js +1799, habits.html +578, sw.js cache bump). 10/10 PM-46 self-tests + 45/45 PM-45 regression all passing. Two-device manual verify pending Dean. New §4.9 working-set rule codified (function-form pk_field discipline).
 
-- **PM-47 / Second Layer 2 table-bridge wiring (`workouts`).** Workouts is the next-simplest after habits, BUT has more publish sites than habits — PM-31 direct logger + PM-34 movement_walk + PM-35 builder + PM-42 import all converge on the same `workouts` INSERT. Each surface needs its own `VYVEBus.recordWrite` call.
+- **✅ CLOSED — PM-47:** vyve-site `8d3d6612`. Second Layer 2 table-bridge wiring shipped. `workouts` INSERT → `workout:logged` echoes cross-device via `pk_field:'client_id'`. 5 publisher classification: 3 INSERT into `workouts` (recordWrite added), 2 INSERT into `custom_workouts` (no bridge echo, no recordWrite). 4-file atomic commit (auth.js +1678, workouts-session.js +458, movement.html +1354, sw.js cache bump). 15/15 PM-47 self-tests across one group (two-bridge coexistence proven); 10/10 PM-46 + 45/45 PM-45 regression unchanged. New §4.9 working-set rule codified (string-form pk_field:'client_id' discipline). Two-device manual verify pending Dean.
 
-  **Pre-flight per PM-46 lesson:** inspect each publishing site's `Prefer` header. If `return=minimal` (likely), use function-form pk_field with unique-constraint tuple. If `return=representation`, use string-form `pk_field: 'id'` and the response row. Decide synthetic-vs-PK approach BEFORE writing the bridge config entry.
+- **PM-48 / Third Layer 2 table-bridge wiring (`cardio`).** Cardio has 2 known publish sites — PM-33 direct (`cardio.html`) and PM-34 walk-branch (`movement.html` non-walk branch — wait, the walk branch in movement.html is the one that writes to cardio). Pre-flight checklist:
 
-  **Scope:**
-
-  1. Bridge config entry in auth.js — `{ table: 'workouts', event: 'workout:logged', op: 'INSERT', pk_field: tbd-from-preflight, payload_from_row: (row) => ({ workout_id, source: row.source || 'logger', ... }) }`. Source discriminator carries through PM-34/PM-35/PM-42 nuance.
-  2. `VYVEBus.recordWrite('workouts', key)` at every workouts-INSERT publish site: PM-31 logger, PM-34 walk, PM-35 builder, PM-42 import — expect ~4 call sites.
-  3. sw.js cache bump: `vyve-cache-v2026-05-NN-pm47-bridge-workouts-a`.
-  4. Self-tests: extend bus_v21_test.js with workouts group.
-  5. Two-device manual verify.
-
-  Estimate: ~1-1.5 hours.
-
-
+  1. Inspect cardio table for `client_id` column. If present → string-form pk_field:'client_id'. If absent → check for unique constraints to derive function-form synthetic key, OR add `client_id` column via migration.
+  2. Check writing surface `Prefer` headers (cardio.html and movement.html walk branch).
+  3. Add bridge entry to auth.js. Pattern matches PM-47 if client_id route taken.
+  4. Add `recordWrite('cardio', key)` at each publish site (2-3 sites). The movement.html walk branch was deliberately deferred from PM-47 — it gets a `_mvWalkClientId` generation if client_id route taken.
+  5. sw.js cache bump.
+  6. Two-device verify.
 
 ### P1 (working set)
 

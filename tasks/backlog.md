@@ -1,3 +1,5 @@
+## Added 11 May 2026 PM-47 (Layer 2 second table-bridge wiring shipped — workouts INSERT echoes cross-device via client_id)
+
 ## Added 11 May 2026 PM-46 (Layer 2 first table-bridge wiring shipped — daily_habits INSERT echoes cross-device)
 
 ## Added 10 May 2026 PM-45 (Layer 2 infrastructure shipped — bus.js Realtime bridge + 11 tables in publication)
@@ -12,15 +14,18 @@
 
 - ✅ **CLOSED — PM-46 above.** vyve-site `9565ed93` (tree `c9f1a9a5`). First Layer 2 table-bridge wiring. `daily_habits` INSERT → `habit:logged` echoes cross-device. Atomic 4-file commit: bus.js (function-form `pk_field` support, +467 chars), auth.js (`installTableBridges` call with `daily_habits` entry, +1799), habits.html (`recordWrite` at PM-30 publish site, +578), sw.js cache key bump `vyve-cache-v2026-05-10-pm45-realtime-bridge-a` → `vyve-cache-v2026-05-11-pm46-bridge-daily-habits-a`. Function-form `pk_field` is a clean compromise for tables whose writing surface uses `Prefer:return=minimal` (the existing PM-30..PM-44 outbox `VYVEData.writeQueued` pattern) — synthetic key from the unique-constraint tuple `(member_email, activity_date, habit_id)` matched on both sides. Bridge contract uniformity preserved: every entry declares its PK approach explicitly, string-form 'id' default unchanged. 10/10 PM-46 self-tests passing (3 groups: function-form pk_field × 7 tests, string-form regression × 2, default 'id' regression × 1); 45/45 PM-45 regression unchanged. Two-device manual verify pending Dean. Whole-tree audit-count delta: `VYVEBus.recordWrite(` 0→1, `VYVEBus.installTableBridges(` 0→1; publish=23, subscribe=29, invalidate=1, record=1, evaluate=12 all unchanged. One new §4.9 working-set rule codified (function-form pk_field discipline). The cert P2 cross-tab/cross-device coherence (PM-45 promotion) is now unblocked technically — wire it next as PM-47/PM-48 alongside or just after workouts wiring; cron-driven INSERT means no `recordWrite` discipline needed.
 
-- 📋 **OPEN (P0) — PM-47: Second Layer 2 table-bridge wiring (`workouts`).** Multiple Layer 1c lineage sources (PM-31 logger, PM-34 movement_walk, PM-35 builder, PM-42 import) all converge on `workouts` INSERT. Bridge entry handles all four with `source` discriminator pulled from row column. Pre-flight checklist per PM-46 lesson:
+- ✅ **CLOSED — PM-47 above.** vyve-site `8d3d6612` (tree `cee6fc14`). Second Layer 2 table-bridge wiring. `workouts` INSERT → `workout:logged` echoes cross-device via `pk_field:'client_id'`. 5 publisher classification: 3 INSERT into `workouts` (workouts-session.js, movement.html × 2) all got `recordWrite('workouts', client_id)`; 2 INSERT into `custom_workouts` via share-workout EF (workouts-builder.js, workouts-programme.js) so the bridge never echoes their writes — no recordWrite for those surfaces (documented in auth.js bridge config comments). 4-file atomic commit: auth.js (+1678, workouts entry added to installTableBridges array), workouts-session.js (+458, recordWrite at existing publish site — _workoutClientId already wired pre-PM-47), movement.html (+1354, generated _mvClientId and _mvQuickClientId for the 2 workouts-INSERT publish sites + added to INSERT body + recordWrite), sw.js (cache key bump pm46-bridge-daily-habits-a → pm47-bridge-workouts-a). 15/15 PM-47 self-tests across one group covering two-bridge coexistence + client_id pk suppression + legacy NULL client_id handling; 10/10 PM-46 + 45/45 PM-45 regression unchanged. Whole-tree audit-count delta: `VYVEBus.recordWrite(` 1→4; `VYVEData.newClientId(` direct call sites 1→3 (excluding writeQueued's internal calls). One new §4.9 working-set rule codified (string-form pk_field:'client_id' discipline for tables with dedicated client UUID columns). Movement.html walk branch (cardio path) intentionally not touched at PM-47 — that's PM-48.
 
-  1. Inspect each of the 4 publishing sites' `Prefer` header. If `return=minimal` everywhere (likely), function-form `pk_field` derives synthetic key from the unique-constraint tuple. Check `workouts` table unique constraints in pg_constraint first to confirm the tuple shape.
-  2. Add bridge entry to auth.js — `{ table: 'workouts', event: 'workout:logged', op: 'INSERT', pk_field: ..., payload_from_row: (row) => ({ workout_id, source: row.source || 'logger', ... }) }`.
-  3. Add `VYVEBus.recordWrite('workouts', key)` at all 4 publish sites: PM-31 logger, PM-34 walk, PM-35 builder, PM-42 import.
-  4. sw.js cache bump.
-  5. Self-tests + two-device manual verify.
+- 📋 **OPEN (P0) — PM-48: Third Layer 2 table-bridge wiring (`cardio`).** Cardio has 2 publish sites: PM-33 direct (cardio.html) + PM-34 walk-branch (movement.html walk path → POSTs to /rest/v1/cardio). Pre-flight per PM-46/PM-47 lessons:
 
-  Estimate: ~1-1.5 hours. Slightly more than PM-46 due to 4 publish sites vs 1.
+  1. Inspect cardio table for `client_id` column. If present → string-form pk_field:'client_id' (cleanest, matches PM-47 workouts pattern). If absent → either function-form synthetic key OR add `client_id` column via migration first.
+  2. Check writing surface `Prefer` headers for both publish sites.
+  3. Add bridge entry to auth.js.
+  4. Add `recordWrite('cardio', key)` at both publish sites. Movement.html walk branch gets a `_mvWalkClientId` generation matching PM-47 movement.html workouts pattern.
+  5. sw.js cache bump.
+  6. Two-device verify.
+
+  Estimate: ~45min to 1 hour. Smaller than PM-47 because only 2 publish sites and the pattern is now well-established.
 
 - 📋 **CARRIED FORWARD (P1) — programme:imported & workout:shared subscriber consumers.** PM-42 + PM-41 each wired _markHomeStale defensively (no current home surface renders share count or import banner). Future P1 work: home dashboard "your latest activity" or "social feed" surface that consumes these events properly.
 
