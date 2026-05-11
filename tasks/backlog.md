@@ -1,3 +1,5 @@
+## Added 11 May 2026 PM-50 (Layer 2 fifth table-bridge wiring shipped — nutrition_logs dual-op INSERT + DELETE, REPLICA IDENTITY FULL applied)
+
 ## Added 11 May 2026 PM-49 (Layer 2 fourth table-bridge wiring shipped — exercise_logs INSERT echoes cross-device, smallest wiring so far)
 
 ## Added 11 May 2026 PM-48 (Layer 2 third table-bridge wiring shipped — cardio INSERT echoes cross-device via client_id)
@@ -24,18 +26,18 @@
 
 - ✅ **CLOSED — PM-49 above.** vyve-site `15b9765a` (tree `ba92b35b`). Fourth Layer 2 table-bridge wiring. `exercise_logs` INSERT → `set:logged` echoes cross-device via `pk_field:'client_id'`. **Smallest Layer 2 wiring so far** — workouts-session.js saveExerciseLog already generated client_id via VYVEData.newClientId() and routed through writeQueued; the PM-32 publish envelope already mapped `exercise_log_id` from `payload.client_id`. PM-49 added just 3 lines: typeof-guarded recordWrite inside _publishSetLogged. 3-file atomic commit: auth.js (+1214 chars, fourth entry in installTableBridges array), workouts-session.js (+380 chars, recordWrite added to _publishSetLogged), sw.js cache bump pm48-bridge-cardio-a → pm49-bridge-exercise-logs-a. 17/17 PM-49 self-tests (four-bridge coexistence). All previous 60+ tests still passing. Whole-tree audit-count delta: `VYVEBus.recordWrite(` 6→7; `VYVEData.newClientId(` unchanged.
 
-- 📋 **OPEN (P0) — PM-50: Fifth Layer 2 table-bridge wiring (`nutrition_logs` INSERT + DELETE — dual-op).** First dual-op table in the campaign. nutrition_logs has both `food:logged` (INSERT) and `food:deleted` (DELETE) publish sites from PM-36, likely in log-food.html and/or nutrition.html. Pre-flight:
+- ✅ **CLOSED — PM-50 above.** vyve-site `a8339d9c` (tree `a2bf61f7`) + Supabase migration `pm50_nutrition_logs_replica_identity_full`. **First dual-op bridge in the Layer 2 campaign** — `nutrition_logs` INSERT (`food:logged`) + DELETE (`food:deleted`), grouped on shared channel `vyve_bridge_nutrition_logs`. 3 publish sites in log-food.html (logSelectedFood `kind:'search'`, logQuickAdd `kind:'quickadd'`, deleteLog) — all already had `client_id` in scope from PM-12/PM-36 era; just needed recordWrite calls. 3-file atomic vyve-site commit: auth.js (+1627 chars, two array entries — INSERT bridge with kind:'realtime' payload override + DELETE bridge), log-food.html (+859 chars, recordWrite('nutrition_logs', cid) at all 3 publish sites with typeof guards), sw.js cache key bump pm49-bridge-exercise-logs-a → pm50-bridge-nutrition-logs-a. Pre-flight migration applied separately (atomic by design with the vyve-site commit): `ALTER TABLE public.nutrition_logs REPLICA IDENTITY FULL` — required because default replica identity only sends the PK column in DELETE Realtime events; the DELETE bridge with `pk_field:'client_id'` needs the old row's client_id to match recordWrite keys. Verified via `pg_class.relreplident = 'f'`. 21/21 PM-50 self-tests across one group covering dual-op channel grouping (one channel grouped by table; two listeners INSERT + DELETE), INSERT bridge with kind override, DELETE bridge with REPLICA IDENTITY FULL semantics, INSERT/DELETE bridges independent. All 80+ previous tests still passing. Whole-tree audit-count delta: `VYVEBus.recordWrite(` 7→10; `VYVEData.newClientId(` unchanged. New §4.9 working-set rule codified (REPLICA IDENTITY FULL discipline for non-PK-bearing DELETE bridges).
 
-  1. Inspect `nutrition_logs.client_id` column presence.
-  2. Find INSERT publish site(s) → `food:logged` event publishers.
-  3. Find DELETE publish site(s) → `food:deleted` event publishers.
-  4. Add TWO bridge entries to auth.js (one per op) — same table, different event names, channel auto-groups by table name in bus.js (vyve_bridge_nutrition_logs serves both ops).
-  5. INSERT: `recordWrite('nutrition_logs', client_id)` at publish site before publish.
-  6. DELETE: recordWrite is more nuanced — the DELETE row carries the original PK; if the writing surface knows the PK at delete time (looking up by id), it can recordWrite before publishing food:deleted. If the writing surface deletes by some other key (e.g. activity_date+food_name) and doesn't know the PK, function-form pk_field on the bridge can derive a synthetic key.
-  7. sw.js cache bump.
-  8. Two-device verify INSERT chain AND DELETE chain independently.
+- 📋 **OPEN (P0) — PM-51: Sixth Layer 2 table-bridge wiring (`weight_logs`).** Next in §3.1 (row 2-7). Pre-flight per established pattern:
 
-  Estimate: 45-60 min. First dual-op pattern; channel auto-grouping already proven by bus.js architecture but never exercised in production until now.
+  1. Inspect `weight_logs.client_id` column presence (likely present if added in same wave as workouts/cardio/exercise_logs/nutrition_logs).
+  2. Find publish site for `weight:logged` event (or whatever the existing event name is — confirm via search).
+  3. Add bridge entry (sixth in installTableBridges array).
+  4. recordWrite at publish site.
+  5. sw.js cache bump.
+  6. Two-device verify.
+
+  Estimate: ~20-30 min if single publish site and client_id pre-existing (likely PM-49 territory).
 
 - 📋 **CARRIED FORWARD (P1) — programme:imported & workout:shared subscriber consumers.** PM-42 + PM-41 each wired _markHomeStale defensively (no current home surface renders share count or import banner). Future P1 work: home dashboard "your latest activity" or "social feed" surface that consumes these events properly.
 

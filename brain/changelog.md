@@ -1,3 +1,152 @@
+## 2026-05-11 PM-50 (Layer 2 fifth table-bridge wiring: nutrition_logs INSERT + DELETE — first dual-op + REPLICA IDENTITY FULL)
+
+vyve-site `a8339d9c4f06936a9384f46c7870a9aa33ee466c` (new tree `a2bf61f75e177e19f6e204255922fa42b48d8698`) + Supabase migration `pm50_nutrition_logs_replica_identity_full`. VYVEBrain main `(set after this commit lands)`. **First dual-op bridge in the campaign** — channel auto-grouping by table (architected at PM-45 but never exercised) now proven in production. 21/21 self-tests including dual-op channel-grouping, INSERT/DELETE independence, REPLICA IDENTITY FULL semantics.
+
+**Atomic commits (2 + 1 migration):**
+
+1. **Supabase migration** `pm50_nutrition_logs_replica_identity_full` — `ALTER TABLE public.nutrition_logs REPLICA IDENTITY FULL`. Pre-applied before the vyve-site commit (atomic-by-design — the new DELETE bridge would fail to match recordWrite keys without it).
+2. **vyve-site** `a8339d9c` — 3-file atomic: auth.js (+1627 chars, two array entries — INSERT bridge with kind:'realtime' payload override + DELETE bridge), log-food.html (+859 chars, recordWrite at all 3 publish sites), sw.js (cache key bump `pm49-bridge-exercise-logs-a` → `pm50-bridge-nutrition-logs-a`).
+3. **VYVEBrain** `(this commit)` — active.md §2 SHA bump + §3.1 row 2-5 + row 2-6 ✓ PM-50 + §4.9 new sub-rule + §5 backlog mirror + audit baseline; backlog PM-50 ✅ CLOSED + PM-51 P0 + section header; changelog this entry.
+
+**Pre-flight: REPLICA IDENTITY FULL design call.**
+
+Supabase Realtime DELETE events behave very differently depending on the table's replica identity:
+
+| `pg_class.relreplident` | DELETE event `old` row payload |
+|---|---|
+| `'d'` (default — REPLICA IDENTITY DEFAULT) | PK column only |
+| `'i'` (REPLICA IDENTITY USING INDEX) | Columns covered by the index |
+| `'f'` (REPLICA IDENTITY FULL) | Entire old row |
+| `'n'` (REPLICA IDENTITY NOTHING) | No old row |
+
+`nutrition_logs` had `'d'` (verified pre-migration). The DELETE bridge needs `client_id` from the deleted row to match the recordWrite suppression key (the writing surface knows client_id, not the server-generated `id` PK). Two options:
+
+1. Set `REPLICA IDENTITY FULL` on the table.
+2. Switch the bridge to `pk_field:'id'` — but then the writer would need to know the server PK at delete time, which it doesn't (deleteLog filters by `client_id=eq.<cid>`, never sees the server `id`).
+
+Option 1 selected. WAL cost: every UPDATE/DELETE writes the full old tuple to WAL instead of just PK + changed columns. `nutrition_logs` is low-volume (single-digit DELETEs per member per day, very few UPDATEs, small row size ~200 bytes) so the cost is negligible. For higher-volume tables we'd revisit and consider `REPLICA IDENTITY USING INDEX` with a covering index on `(id, client_id)`.
+
+Migration applied + verified:
+
+```sql
+ALTER TABLE public.nutrition_logs REPLICA IDENTITY FULL;
+SELECT relreplident FROM pg_class WHERE relname = 'nutrition_logs';
+-- → 'f'
+```
+
+**Bridge config entries (auth.js, two new entries appended to existing array):**
+
+```js
+// INSERT
+{
+  table: 'nutrition_logs',
+  event: 'food:logged',
+  op:    'INSERT',
+  pk_field: 'client_id',
+  payload_from_row: function (row) {
+    return {
+      client_id:     row.client_id || null,
+      meal_type:     row.meal_type || null,
+      calories_kcal: row.calories_kcal != null ? row.calories_kcal : null,
+      kind:          'realtime'   // ← cross-device echoes carry kind:'realtime' so
+                                  //   subscribers can tell them apart from local
+                                  //   kind:'search' (logSelectedFood) or
+                                  //   kind:'quickadd' (logQuickAdd) publishes
+    };
+  }
+},
+// DELETE
+{
+  table: 'nutrition_logs',
+  event: 'food:deleted',
+  op:    'DELETE',
+  pk_field: 'client_id',  // works because REPLICA IDENTITY FULL on this table
+  payload_from_row: function (row) {
+    return {
+      client_id: row.client_id || null,
+      meal_type: row.meal_type || null
+    };
+  }
+}
+```
+
+bus.js's `installTableBridges` channel auto-grouping (architected at PM-45) means both entries register on the same channel `vyve_bridge_nutrition_logs` with two `.on('postgres_changes', { event: 'INSERT', ... })` / `.on('postgres_changes', { event: 'DELETE', ... })` listeners — verified via self-test (one channel, two listeners, correct event types).
+
+**log-food.html patches (3 publish sites):**
+
+logSelectedFood (PM-12 era):
+
+```js
+if (window.VYVEBus) {
+  // PM-50: suppress own-echo for nutrition_logs INSERT bridge.
+  if (typeof VYVEBus.recordWrite === 'function' && cid) {
+    try { VYVEBus.recordWrite('nutrition_logs', cid); } catch (_) {}
+  }
+  try {
+    window.VYVEBus.publish('food:logged', {
+      client_id: cid,
+      meal_type: meal,
+      calories_kcal: row.calories_kcal,
+      kind: 'search'   // ← preserved; bridge realtime echoes use 'realtime' instead
+    });
+  } catch (_) {}
+}
+```
+
+logQuickAdd uses the same pattern with `kind: 'quickadd'`.
+
+deleteLog (PM-36 era):
+
+```js
+if (window.VYVEBus) {
+  // PM-50: suppress own-echo for nutrition_logs DELETE bridge. Bridge
+  // requires REPLICA IDENTITY FULL on nutrition_logs (applied via
+  // migration pm50_nutrition_logs_replica_identity_full) so the DELETE
+  // event carries the deleted row's client_id, not just the server PK.
+  if (typeof VYVEBus.recordWrite === 'function' && clientId) {
+    try { VYVEBus.recordWrite('nutrition_logs', clientId); } catch (_) {}
+  }
+  try {
+    window.VYVEBus.publish('food:deleted', { client_id: clientId, meal_type: meal });
+  } catch (_) {}
+}
+```
+
+**Self-test harness (21/21 across one group):**
+
+`/tmp/bus_v25_test.js` covers:
+
+- **Channel auto-grouping** — one channel `vyve_bridge_nutrition_logs`, two `.on()` listeners (INSERT first, DELETE second)
+- **INSERT bridge** — local publish delivered with `kind:'search'` preserved; Realtime echo with same `client_id` SUPPRESSED; different `client_id` fires with `kind:'realtime'`; client_id and meal_type forwarded; origin tagged correctly
+- **DELETE bridge** — local DELETE publish delivered; Realtime DELETE echo with same `client_id` SUPPRESSED (REPLICA IDENTITY FULL simulated by passing client_id in mock old row); cross-device DELETE with different `client_id` fires
+- **Independence** — INSERT bridge unaffected by DELETE events; DELETE bridge unaffected by INSERT events
+
+All 80+ previous tests (PM-45 + PM-46 + PM-47 + PM-48 + PM-49) still passing.
+
+**Audit-count delta (whole-tree, post-PM-50):**
+
+- `VYVEBus.recordWrite(` count: 7 → 10 (PM-50 log-food.html × 3 — two INSERT sites + one DELETE site)
+- `VYVEBus.installTableBridges(` count: 1 (5 entries now in same array; nutrition_logs INSERT + DELETE grouped on shared channel)
+- `VYVEBus.publish(` count: 23 unchanged (existing publishes; PM-50 didn't add new publish sites)
+- `VYVEData.newClientId(` direct call sites: 4 (unchanged — log-food.html sites already had the calls pre-PM-50)
+- Postgres `REPLICA IDENTITY FULL` tables: 0 → 1 (nutrition_logs)
+
+**One new §4.9 working-set rule codified:**
+
+- **`REPLICA IDENTITY FULL` for DELETE bridges that need non-PK row fields (PM-50, 11 May 2026).** Supabase Realtime DELETE events carry only the primary key column when the table uses default replica identity. Bridges with `pk_field` other than the table PK (e.g. `pk_field:'client_id'` on a UUID-PK table) need the old row's full column set. Apply `REPLICA IDENTITY FULL` via migration before wiring the DELETE bridge. Document in bridge config comment. Verify via `pg_class.relreplident = 'f'`.
+
+**Source-of-truth.** vyve-site pre-PM-50 `15b9765afae19ed09106e52cab7eec5ffa5c4840` (PM-49 ship), post-PM-50 `a8339d9c4f06936a9384f46c7870a9aa33ee466c`, new tree `a2bf61f75e177e19f6e204255922fa42b48d8698`. Live blob SHAs: auth.js `baa9c25d201e`, log-food.html `ef086d575975`, sw.js `054112ed8929`. All 3 byte-identical; 5/5 marker checks pass. Migration applied + verified pre-commit.
+
+**Layer 2 ledger after PM-50:**
+
+- 5/11 tables wired (daily_habits, workouts, cardio, exercise_logs, nutrition_logs)
+- 11/11 in `supabase_realtime` publication
+- 6/6 commits shipped (PM-45 infrastructure + PM-46/47/48/49/50 wirings)
+- 3 §4.9 working-set rules codified (function-form pk_field, string-form pk_field:'client_id', REPLICA IDENTITY FULL for non-PK-bearing DELETE bridges)
+- Pattern velocity continues: PM-46 ~1.5h → PM-47 ~1h → PM-48 ~45min → PM-49 ~20min → PM-50 ~45min (the migration + DELETE design call added ~15min over PM-49 baseline)
+
+**Next: PM-51 — weight_logs INSERT → weight:logged.** Next table in §3.1 row 2-7. Single publish site expected. If client_id present and pre-wired, this is PM-49 territory (~20-30 min).
+
 ## 2026-05-11 PM-49 (Layer 2 fourth table-bridge wiring: exercise_logs INSERT → set:logged — smallest wiring so far)
 
 vyve-site `15b9765afae19ed09106e52cab7eec5ffa5c4840` (new tree `ba92b35bdffb8c717368158ca670288e55431729`). VYVEBrain main `(set after this commit lands)`. Smallest Layer 2 wiring in the campaign so far — most of the plumbing was already in place from PM-32, just needed the `recordWrite` call and the bridge config entry.
