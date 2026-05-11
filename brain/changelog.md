@@ -1,3 +1,129 @@
+## 2026-05-11 PM-48 (Layer 2 third table-bridge wiring: cardio INSERT → cardio:logged via client_id)
+
+vyve-site `9e21fe04a8fe5ce78c212603982c0c1eca870ae0` (new tree `8ad34c200450ca9f8437443edcb990b38a902601`). VYVEBrain main `(set after this commit lands)`. Third member-facing Layer 2 wiring. Three coexisting bridges proven via 17/17 self-tests. Pattern is now well-established — string-form `pk_field:'client_id'` + explicit `VYVEData.newClientId()` at publish site + add to INSERT body + recordWrite before publish.
+
+**Atomic commits (2):**
+
+1. **vyve-site** `9e21fe04` — 4-file atomic: auth.js (+1254, cardio entry added as third bridge), cardio.html (+500, generate _cardioClientId + recordWrite + cardio_id in publish envelope + client_id in INSERT body), movement.html (+421, expand _mvQuickClientId scope to both branches + walk-branch recordWrite + cardio_id in publish + client_id in walk INSERT body), sw.js (cache key bump `pm47-bridge-workouts-a` → `pm48-bridge-cardio-a`).
+2. **VYVEBrain** `(this commit)` — active.md §2 SHA bump + §3.1 cardio ✓ + §5 backlog mirror + audit baseline; backlog PM-48 ✅ CLOSED + PM-49 P0 + section header; changelog this entry.
+
+**Pre-flight: cardio.client_id present.**
+
+```sql
+SELECT column_name FROM information_schema.columns
+WHERE table_schema='public' AND table_name='cardio' AND column_name='client_id';
+-- → client_id uuid (column_default null)
+```
+
+Same era as workouts.client_id (likely added in the same outbox idempotency migration). Both publish sites use raw `fetch` not `VYVEData.writeQueued` — so neither benefits from automatic client_id injection. Both needed explicit `VYVEData.newClientId()` generation before publish.
+
+**Bridge config entry (auth.js, appended to existing daily_habits + workouts array):**
+
+```js
+{
+  table: 'cardio',
+  event: 'cardio:logged',
+  op:    'INSERT',
+  pk_field: 'client_id',
+  payload_from_row: function (row) {
+    return {
+      cardio_id:    row.client_id || null,
+      cardio_type:  row.cardio_type || null,
+      duration_min: row.duration_minutes || null,
+      distance_km:  row.distance_km != null ? row.distance_km : null,
+      source:       row.source || 'manual'
+    };
+  }
+}
+```
+
+Payload includes `distance_km` because cardio has it (workouts doesn't); preserves null-vs-zero distinction via explicit `!= null` check.
+
+**cardio.html patch (raw fetch path, no writeQueued auto-injection):**
+
+```js
+const _cardioClientId = (window.VYVEData && typeof VYVEData.newClientId === 'function')
+  ? VYVEData.newClientId() : null;
+if (window.VYVEBus) {
+  if (typeof VYVEBus.recordWrite === 'function' && _cardioClientId) {
+    try { VYVEBus.recordWrite('cardio', _cardioClientId); } catch (_) {}
+  }
+  try {
+    VYVEBus.publish('cardio:logged', {
+      cardio_id:    _cardioClientId,  // PM-48 — was omitted at PM-33 per return=minimal pragma
+      cardio_type:  selectedType,
+      duration_min: duration,
+      distance_km:  distance,
+      source:       'cardio_page'
+    });
+  } catch (_) {}
+}
+payload.client_id = _cardioClientId;  // add to INSERT body for the Realtime echo to carry
+```
+
+The `cardio_id` field was deliberately omitted at PM-33 ("No current consumer needs it. Optimistic breadcrumb staleness on POST failure is accepted") — PM-48 adds it for self-suppression. Backward compat preserved — subscribers that ignore `cardio_id` continue working.
+
+**movement.html walk-branch patch:**
+
+PM-47 left a deliberate marker:
+
+```js
+// PM-47: generate client_id for the non-walk (workouts) path before publish.
+// Walk path keeps unchanged here — cardio.client_id wiring is PM-48's job
+// when the cardio bridge is wired.
+const _mvQuickClientId = (!isWalk && window.VYVEData && typeof VYVEData.newClientId === 'function')
+  ? VYVEData.newClientId() : null;
+```
+
+PM-48 removes the `!isWalk` guard so the variable populates for both branches:
+
+```js
+// PM-47/PM-48: generate client_id for both branches before publish.
+// PM-47 wired the workouts (non-walk) branch; PM-48 extends to the walk
+// branch which writes to cardio. Same _mvQuickClientId variable serves
+// both — only one branch executes per call so there's no key collision.
+const _mvQuickClientId = (window.VYVEData && typeof VYVEData.newClientId === 'function')
+  ? VYVEData.newClientId() : null;
+```
+
+Then the walk-branch publish + INSERT mirror the workouts-branch pattern (recordWrite before publish, cardio_id in envelope, client_id in INSERT body).
+
+**Self-test harness (17/17 across one group):**
+
+`/tmp/bus_v23_test.js` extends to three-bridge coexistence:
+
+- 3 channels subscribed (daily_habits + workouts + cardio)
+- `vyve_bridge_cardio` channel exists
+- Local publish delivered with local origin
+- Realtime echo with same `client_id` SUPPRESSED
+- Different client_id fires as realtime with full payload mapping (cardio_id, cardio_type, distance_km, duration_min, source)
+- Legacy NULL `client_id` echoes through with `cardio_id: null`
+- daily_habits PM-46 suppression still works
+- workouts PM-47 suppression still works
+
+All previous 60+ tests passing (45 PM-45 + 10 PM-46 + 15 PM-47).
+
+**Audit-count delta (whole-tree, post-PM-48):**
+
+- `VYVEBus.recordWrite(` count: 4 → 6 (PM-48 cardio.html × 1 + movement.html walk × 1)
+- `VYVEBus.installTableBridges(` count: 1 (third entry added to existing array)
+- `VYVEBus.publish(` count: 23 (existing publish call sites; payload mutations only)
+- `VYVEBus.subscribe(` count: 29
+- `VYVEData.newClientId(` direct call sites: 3 → 4 (cardio.html added; movement.html walk uses expanded variable scope of existing call)
+- `VYVEData.invalidateHomeCache(`, `recordRecentActivity(`, `evaluate(` unchanged
+
+**Source-of-truth.** vyve-site pre-PM-48 `8d3d66124c4f1fbaf32eaeb529ee7d988cccd924` (PM-47 ship), post-PM-48 `9e21fe04a8fe5ce78c212603982c0c1eca870ae0`, new tree `8ad34c200450ca9f8437443edcb990b38a902601`. Live blob SHAs (post-PM-48): auth.js `04b71a54769a`, cardio.html `800c3713bef4`, movement.html `21d1f47a9626`, sw.js `0d950bfdbe95`. All 4 byte-identical; 9/9 marker checks pass.
+
+**Layer 2 ledger after PM-48:**
+
+- 3/11 tables wired to subscribers (daily_habits, workouts, cardio)
+- 11/11 tables in `supabase_realtime` publication
+- 4/4 commits shipped (PM-45 infrastructure + PM-46/47/48 wirings)
+- 2 §4.9 working-set rules codified (function-form pk_field, string-form pk_field:'client_id')
+- PM-46→PM-47→PM-48 cadence confirms ~30-60min wirings post-infrastructure
+
+**Next: PM-49 — exercise_logs.** Per-set workout logging publisher (PM-32). Single publish site in workouts-session.js. Pre-flight: confirm `exercise_logs.client_id` column. If present (likely), this is the smallest PM-46+ wiring so far.
+
 ## 2026-05-11 PM-47 (Layer 2 second table-bridge wiring: workouts INSERT → workout:logged via client_id pk)
 
 vyve-site `8d3d66124c4f1fbaf32eaeb529ee7d988cccd924` (new tree `cee6fc148d51658533ea0d2fdf6e4ecc1347e415`). VYVEBrain main `(set after this commit lands)`. **Second member-facing Layer 2 wiring.** Workouts is more complex than habits (5 publishers, 2 don't actually write to the `workouts` table) but the suppression mechanism is cleaner than PM-46 thanks to a pre-existing `client_id` UUID column.
