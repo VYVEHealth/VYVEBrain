@@ -1,3 +1,84 @@
+## 2026-05-11 PM-49 (Layer 2 fourth table-bridge wiring: exercise_logs INSERT → set:logged — smallest wiring so far)
+
+vyve-site `15b9765afae19ed09106e52cab7eec5ffa5c4840` (new tree `ba92b35bdffb8c717368158ca670288e55431729`). VYVEBrain main `(set after this commit lands)`. Smallest Layer 2 wiring in the campaign so far — most of the plumbing was already in place from PM-32, just needed the `recordWrite` call and the bridge config entry.
+
+**Atomic commits (2):**
+
+1. **vyve-site** `15b9765a` — 3-file atomic: auth.js (+1214, exercise_logs entry as fourth in installTableBridges array), workouts-session.js (+380, recordWrite inside _publishSetLogged), sw.js (cache key bump `pm48-bridge-cardio-a` → `pm49-bridge-exercise-logs-a`).
+2. **VYVEBrain** `(this commit)` — active.md §2 SHA bump + §3.1 exercise_logs ✓ + §5 backlog mirror + audit baseline; backlog PM-49 ✅ CLOSED + PM-50 P0 + section header; changelog this entry.
+
+**Why this one was small.**
+
+PM-32 wired the bus publish for set:logged with payload-shape forethought:
+
+```js
+function _publishSetLogged() {
+  if (window.VYVEBus) {
+    VYVEBus.publish('set:logged', {
+      exercise_log_id: payload.client_id,  // ← already mapped from client_id
+      exercise_name: exerciseName,
+      set_number: setsCompleted,
+      reps: repsCompleted,
+      weight_kg: weightKg || null
+    });
+  }
+}
+```
+
+`payload.client_id` was already in scope (saveExerciseLog generates it). The PM-32 envelope shape `exercise_log_id ← client_id` was schema-designed to survive a future Realtime echo translation. PM-49 added just 4 lines of new code inside `_publishSetLogged`:
+
+```js
+if (typeof VYVEBus.recordWrite === 'function' && payload.client_id) {
+  try { VYVEBus.recordWrite('exercise_logs', payload.client_id); } catch (_) {}
+}
+```
+
+Plus the auth.js bridge entry. That's the whole wiring.
+
+**Bridge config (auth.js, appended to existing array):**
+
+```js
+{
+  table: 'exercise_logs',
+  event: 'set:logged',
+  op:    'INSERT',
+  pk_field: 'client_id',
+  payload_from_row: function (row) {
+    return {
+      exercise_log_id: row.client_id || null,
+      exercise_name:   row.exercise_name || null,
+      set_number:      row.sets_completed || null,
+      reps:            row.reps_completed || null,
+      weight_kg:       row.weight_kg != null ? row.weight_kg : null
+    };
+  }
+}
+```
+
+The realtime translation mirrors the PM-32 local-publish shape exactly. Subscribers see identical envelopes across local/realtime origins.
+
+**Self-test (17/17 across one group):**
+
+`/tmp/bus_v24_test.js` covers four-bridge coexistence + exercise_logs suppression + payload mapping (exercise_name/set_number/reps/weight_kg from sets_completed/reps_completed columns) + bodyweight null weight_kg edge case + legacy NULL client_id handling + PM-48 cardio bridge unaffected.
+
+**Audit-count delta (whole-tree, post-PM-49):**
+
+- `VYVEBus.recordWrite(` count: 6 → 7 (PM-49 workouts-session.js _publishSetLogged)
+- `VYVEBus.installTableBridges(` count: 1 (fourth entry added)
+- `VYVEData.newClientId(` direct call sites: 4 (unchanged — workouts-session.js saveExerciseLog already had the call)
+- All other counts unchanged
+
+**Source-of-truth.** vyve-site pre-PM-49 `9e21fe04a8fe5ce78c212603982c0c1eca870ae0` (PM-48 ship), post-PM-49 `15b9765afae19ed09106e52cab7eec5ffa5c4840`, new tree `ba92b35bdffb8c717368158ca670288e55431729`. Live blob SHAs: auth.js `c8a5e1cc40b6`, workouts-session.js `605da72e6d26`, sw.js `0350f572c49e`. All 3 byte-identical; 4/4 marker checks pass.
+
+**Layer 2 ledger after PM-49:**
+
+- 4/11 tables wired (daily_habits, workouts, cardio, exercise_logs)
+- 11/11 in publication
+- 5/5 commits shipped (PM-45 infrastructure + PM-46/47/48/49 wirings)
+- Pattern velocity: PM-46 ~1.5h (first), PM-47 ~1h (4 sites), PM-48 ~45min (2 sites), PM-49 ~20min (1 site, pre-wired). String-form `pk_field:'client_id'` proven across 3 tables.
+
+**Next: PM-50 — nutrition_logs INSERT + DELETE (dual-op).** First dual-op table. bus.js architecture supports it (channel auto-grouping by table for multiple ops) but never exercised in production. ~45-60 min.
+
 ## 2026-05-11 PM-48 (Layer 2 third table-bridge wiring: cardio INSERT → cardio:logged via client_id)
 
 vyve-site `9e21fe04a8fe5ce78c212603982c0c1eca870ae0` (new tree `8ad34c200450ca9f8437443edcb990b38a902601`). VYVEBrain main `(set after this commit lands)`. Third member-facing Layer 2 wiring. Three coexisting bridges proven via 17/17 self-tests. Pattern is now well-established — string-form `pk_field:'client_id'` + explicit `VYVEData.newClientId()` at publish site + add to INSERT body + recordWrite before publish.
