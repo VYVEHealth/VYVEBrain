@@ -1,3 +1,156 @@
+## 2026-05-11 PM-52 (Layer 2 seventh table-bridge wiring: wellbeing_checkins INSERT + UPDATE — server-side EF writer, 3-col synthetic key)
+
+vyve-site `daec658844de58af2b8e7ace65a97282399a10d7` (new tree `0343d647f290d6daea53d0780b441fb9eec247c2`). VYVEBrain main `(set after this commit lands)`. **Third dual-op INSERT+UPDATE wiring** (after PM-51 weight_logs), but **first server-side-writer wiring of the campaign** — the page POSTs to the `wellbeing-checkin` EF, the EF writes the table via `Prefer:resolution=merge-duplicates`. Same suppression mechanic as PM-51, just with a 3-column natural key instead of 2 and the writer running server-side.
+
+**Atomic commits (2):**
+
+1. **vyve-site** `daec6588` — 3-file atomic: auth.js (+2385 chars, two array entries — INSERT + UPDATE both function-form pk_field on 3-col natural key), wellbeing-checkin.html (+941 chars, recordWrite at both publish sites), sw.js (cache key bump `pm51-bridge-weight-logs-a` → `pm52-bridge-wellbeing-checkins-a`).
+2. **VYVEBrain** `(this commit)` — active.md §2 SHA bump + §3.1 row 2-8 ✓ PM-52 dual-op annotation + §4.9 new sub-rule (server-side EF writer pattern) + §5 backlog mirror + audit baseline; backlog PM-52 ✅ CLOSED + PM-53 P0 + section header; changelog this entry.
+
+**Pre-flight: server-side writer changes nothing structurally.**
+
+The page (`wellbeing-checkin.html`) does NOT POST to `/rest/v1/wellbeing_checkins`. It POSTs to `EDGE_FN_URL` (the `wellbeing-checkin` EF v28). The EF runs server-side under service-role credentials and writes the row:
+
+```ts
+// wellbeing-checkin EF v28 — index.ts (relevant excerpt)
+await fetch(`${SUPABASE_URL}/rest/v1/wellbeing_checkins`, {
+  method: 'POST',
+  headers: { ...,
+    'Prefer': 'resolution=merge-duplicates,return=minimal'
+  },
+  body: JSON.stringify({
+    member_email: email,
+    activity_date, day_of_week, time_of_day,
+    iso_week, iso_year,
+    score_wellbeing: score,
+    flow_type: flow === 'quiet' ? 'quiet' : 'active',
+    ai_recommendation: text,
+    ai_persona: persona,
+    logged_at: nowISO
+  }),
+});
+```
+
+The natural unique constraint is `(member_email, iso_week, iso_year)`. UPSERT collapses same-week re-submissions into a single row.
+
+Does this server-side writer change the bridge wiring approach? Not really. The Realtime echo still arrives at the originating device through its own table subscription. The page-side `recordWrite` is still required because the suppression target is the local subscriber list — which doesn't care whether the row was written by a client `fetch` or a server-side EF `fetch`. The page knows the natural-key columns (it sent them in the EF body) so it can construct the suppression key.
+
+This was the critical pre-flight insight worth codifying. New §4.9 working-set rule below.
+
+**Two pre-flight checks:**
+
+1. **`client_id` is NULL on inserts.** The EF body doesn't include `client_id`. The column stays NULL on rows the EF writes (verified via `SELECT count(*) FROM wellbeing_checkins WHERE client_id IS NULL` — unsurprisingly the answer is approximately all of them). Even if we added it to the EF, the merge-duplicates UPSERT would make the row's final client_id non-deterministic on conflict. Same reason as PM-51 weight_logs: use natural-key synthetic suppression.
+2. **UPDATE events required.** Same UPSERT semantics as PM-51 — second check-in for the same `(member_email, iso_week, iso_year)` fires UPDATE Realtime event, not INSERT. Dual-op bridge needed.
+
+**Bridge config entries (auth.js, two new entries appended):**
+
+```js
+{
+  table: 'wellbeing_checkins',
+  event: 'wellbeing:logged',
+  op:    'INSERT',
+  pk_field: function (row) {
+    return (row.member_email || '') + '|' + (row.iso_week || '') + '|' + (row.iso_year || '');
+  },
+  payload_from_row: function (row) {
+    return {
+      score:    row.score_wellbeing != null ? row.score_wellbeing : null,
+      iso_week: row.iso_week || null,
+      iso_year: row.iso_year || null,
+      flow:     row.flow_type || null,
+      kind:     'realtime'
+    };
+  }
+},
+{
+  table: 'wellbeing_checkins',
+  event: 'wellbeing:logged',
+  op:    'UPDATE',
+  pk_field: function (row) { /* same */ },
+  payload_from_row: function (row) { /* same */ }
+}
+```
+
+Both ops share the same pk_field shape and payload_from_row mapping. Channel auto-grouping on `vyve_bridge_wellbeing_checkins` proven by self-test (one channel, two listeners, correct event types).
+
+The payload mapping translates column names: `row.score_wellbeing → score`, `row.flow_type → flow`. Matches the local publish envelope exactly (kind:'live' from submit, kind:'flush' from flushCheckinOutbox; cross-device echoes use kind:'realtime').
+
+**wellbeing-checkin.html patches (2 publish sites, PM-39 era):**
+
+Site 1 — `flushCheckinOutbox` (deferred-submit-after-network-recovery surface):
+
+```js
+if (window.VYVEBus) {
+  // PM-52: suppress own-echo. Bridge uses synthetic key
+  // (member_email|iso_week|iso_year)
+  const _wcEmail = (currentUser && currentUser.email) || '';
+  if (typeof VYVEBus.recordWrite === 'function' && _wcEmail && isoWeek && isoYear) {
+    try { VYVEBus.recordWrite('wellbeing_checkins', _wcEmail + '|' + isoWeek + '|' + isoYear); } catch (_) {}
+  }
+  try {
+    window.VYVEBus.publish('wellbeing:logged', {
+      score: queued.score, iso_week: isoWeek, iso_year: isoYear, flow: queued.flow, kind: 'flush'
+    });
+  } catch (_) {}
+}
+```
+
+Site 2 — submit handler (live submit, pre-fetch):
+
+```js
+if (window.VYVEBus) {
+  // PM-52: suppress own-echo. email is in scope (set ~30 lines above).
+  if (typeof VYVEBus.recordWrite === 'function' && email && isoWeek && isoYear) {
+    try { VYVEBus.recordWrite('wellbeing_checkins', email + '|' + isoWeek + '|' + isoYear); } catch (_) {}
+  }
+  try {
+    window.VYVEBus.publish('wellbeing:logged', {
+      score: selectedScore, iso_week: isoWeek, iso_year: isoYear, flow, kind: 'live'
+    });
+  } catch (_) {}
+}
+```
+
+Both sites had `email`/`currentUser.email`, `isoWeek`, `isoYear` already in scope. The 5s TTL of the suppression map handles the long-running EF call cleanly — by the time the Realtime echo arrives (typically ~1-3s after the EF write), the recordWrite is still active.
+
+**Self-test (21/21 across one group):**
+
+`/tmp/bus_v27_test.js` covers:
+
+- Channel auto-grouping by table; INSERT + UPDATE listeners
+- Local live publish suppresses Realtime INSERT echo
+- Local flush publish suppresses Realtime UPDATE echo (same-week UPSERT path)
+- Cross-device INSERT (new week) fires with full payload mapping
+- Cross-device UPDATE (existing week) fires
+- kind override (local 'live'/'flush' preserved; realtime echoes carry 'realtime')
+- score/score_wellbeing rename + flow/flow_type rename in payload_from_row
+- null score edge case
+
+All 120+ previous tests still passing (PM-45 + PM-46 + PM-47 + PM-48 + PM-49 + PM-50 + PM-51).
+
+**Audit-count delta (whole-tree, post-PM-52):**
+
+- `VYVEBus.recordWrite(` count: 11 → 13 (PM-52 wellbeing-checkin.html × 2 — flush + live)
+- `VYVEBus.installTableBridges(` count: 1 (9 entries now in same array — daily_habits, workouts, cardio, exercise_logs, nutrition_logs×2, weight_logs×2, wellbeing_checkins×2)
+- `VYVEBus.publish(` count: 23 unchanged
+- `VYVEData.newClientId(` direct call sites: 4 (unchanged)
+- Postgres `REPLICA IDENTITY FULL` tables: 1 (nutrition_logs only)
+
+**One new §4.9 working-set rule codified:**
+
+- **Server-side writers (Edge Functions) still need page-side recordWrite (PM-52, 11 May 2026).** When the writing path is a server-side Edge Function, the page POSTs to the EF and the EF writes the table server-side. The Realtime echo still arrives at the originating device through its own subscription. Page-side `VYVEBus.recordWrite(table, syntheticKey)` immediately before `VYVEBus.publish(event, payload)` is still required — using whatever natural-key columns the EF's UPSERT resolution uses. The page knows the conflict-resolution columns even if it doesn't know the server PK. Dual-op INSERT+UPDATE bridges required for UPSERT semantics, same as direct-write UPSERT surfaces (PM-51).
+
+**Source-of-truth.** vyve-site pre-PM-52 `8c25a6b05f67dd9a78e2084df2094b25cdfa2a3d` (PM-51 ship), post-PM-52 `daec658844de58af2b8e7ace65a97282399a10d7`, new tree `0343d647f290d6daea53d0780b441fb9eec247c2`. Live blob SHAs: auth.js `a42a5caef5bf`, wellbeing-checkin.html `f9730f9d273f`, sw.js `ce21f50df4bd`. All 3 byte-identical; 6/6 marker checks pass.
+
+**Layer 2 ledger after PM-52:**
+
+- 7/11 tables wired (daily_habits, workouts, cardio, exercise_logs, nutrition_logs, weight_logs, wellbeing_checkins)
+- 11/11 in `supabase_realtime` publication
+- 8/8 commits shipped (PM-45 infrastructure + PM-46/47/48/49/50/51/52 wirings)
+- 5 §4.9 working-set rules codified (function-form synthetic-key for return=minimal tables; string-form pk_field:'client_id' for client_id tables; REPLICA IDENTITY FULL for non-PK-bearing DELETE bridges; function-form pk_field for UPSERT writing surfaces with INSERT+UPDATE dual-op; server-side EF writer pattern still needs page-side recordWrite)
+
+**Next: PM-53 — monthly_checkins.** Row 2-9 in §3.1. Likely mirrors wellbeing_checkins shape (server-side EF writer with merge-duplicates natural-key UPSERT). If so, PM-52's recipe applies directly with monthly-specific natural-key columns. Quick wire-up.
+
 ## 2026-05-11 PM-51 (Layer 2 sixth table-bridge wiring: weight_logs INSERT + UPDATE — second dual-op, third dual-op shape, synthetic key)
 
 vyve-site `8c25a6b05f67dd9a78e2084df2094b25cdfa2a3d` (new tree `0788f5ed0630822dcafa9f0da7ee5765c0a27de0`). VYVEBrain main `(set after this commit lands)`. **Second dual-op bridge in the campaign**, and the **third dual-op shape**: PM-50 wired INSERT + DELETE (two distinct events), PM-51 wires INSERT + UPDATE (same event, both ops). The bus.js dual-op architecture supports both patterns through the same channel-grouping mechanism — different ops on the same table share `vyve_bridge_<table>` with multiple `.on('postgres_changes', { event:'INSERT' | 'UPDATE' | 'DELETE', ... })` listeners.

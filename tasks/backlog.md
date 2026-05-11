@@ -1,3 +1,5 @@
+## Added 11 May 2026 PM-52 (Layer 2 seventh table-bridge wiring shipped — wellbeing_checkins dual-op INSERT + UPDATE via server-side EF writer, 3-col synthetic key)
+
 ## Added 11 May 2026 PM-51 (Layer 2 sixth table-bridge wiring shipped — weight_logs dual-op INSERT + UPDATE via natural-key synthetic pk_field)
 
 ## Added 11 May 2026 PM-50 (Layer 2 fifth table-bridge wiring shipped — nutrition_logs dual-op INSERT + DELETE, REPLICA IDENTITY FULL applied)
@@ -32,17 +34,19 @@
 
 - ✅ **CLOSED — PM-51 above.** vyve-site `8c25a6b0` (tree `0788f5ed`). Sixth Layer 2 table-bridge wiring shipped. **Second dual-op bridge — INSERT + UPDATE** (PM-50 was INSERT + DELETE; PM-51 demonstrates the third dual-op shape). `weight_logs` echoes cross-device. Key design call: function-form `pk_field` on natural unique key `(member_email|logged_date)` because the writing surface (nutrition.html saveWtLog PM-37 era) uses `Prefer:resolution=merge-duplicates` against that natural constraint — same-day re-logs UPSERT (first write fires INSERT Realtime event, subsequent writes on the same natural key fire UPDATE Realtime events). client_id is non-deterministic under merge-duplicates (writeQueued generates one if not provided; whichever write wins the merge becomes the row's client_id) so synthetic natural key is the reliable choice. No REPLICA IDENTITY FULL needed — UPDATE NEW payload carries the full new row under default REPLICA IDENTITY. 3-file atomic commit: auth.js (+2523 chars, two array entries — INSERT + UPDATE both function-form pk_field both emit weight:logged), nutrition.html (+467 chars, one recordWrite with synthetic key before existing publish), sw.js cache bump pm50-bridge-nutrition-logs-a → pm51-bridge-weight-logs-a. 18/18 PM-51 self-tests covering INSERT+UPDATE channel grouping, same-day re-log UPSERT→UPDATE suppression, cross-device first-write INSERT, cross-device UPDATE on existing row, NULL weight_kg. All 100+ previous tests still passing. Whole-tree audit-count delta: `VYVEBus.recordWrite(` 10→11; entries in installTableBridges array 5→7. New §4.9 working-set rule codified (function-form pk_field for UPSERT writing surfaces; INSERT+UPDATE dual-op channel grouping).
 
-- 📋 **OPEN (P0) — PM-52: Seventh Layer 2 table-bridge wiring (`wellbeing_checkins`).** Next in §3.1 (row 2-8). Pre-flight per established pattern:
+- ✅ **CLOSED — PM-52 above.** vyve-site `daec6588` (tree `0343d647`). Seventh Layer 2 table-bridge wiring shipped. **Third dual-op INSERT+UPDATE bridge** (PM-50 INSERT+DELETE; PM-51 INSERT+UPDATE same-event; PM-52 INSERT+UPDATE same-event server-side-writer). **First server-side-writer wiring of the campaign** — page POSTs to wellbeing-checkin EF v28, EF writes wellbeing_checkins server-side via `Prefer:resolution=merge-duplicates` against 3-column natural key `(member_email, iso_week, iso_year)`. Function-form `pk_field` on the 3-col natural key. client_id intentionally not used (EF doesn't populate it on INSERT; merge-duplicates would make it non-deterministic anyway). No REPLICA IDENTITY FULL needed — UPDATE NEW carries all columns under default identity. 3-file atomic commit: auth.js (+2385 chars, two array entries — INSERT + UPDATE both function-form pk_field on 3-col natural key, payload maps score from score_wellbeing + flow from flow_type + kind:'realtime' override), wellbeing-checkin.html (+941 chars, recordWrite at both publish sites — flushCheckinOutbox kind:'flush' post-success + submit handler kind:'live' pre-fetch), sw.js cache bump pm51-bridge-weight-logs-a → pm52-bridge-wellbeing-checkins-a. 21/21 PM-52 self-tests covering 3-col synthetic key channel grouping, INSERT/UPDATE behaviour, same-week UPSERT→UPDATE suppression, cross-device new-week INSERT, cross-device UPDATE, kind override, null score edge case. All 120+ previous tests still passing. Whole-tree audit-count delta: `VYVEBus.recordWrite(` 11→13. New §4.9 working-set rule codified (server-side EF writer pattern still needs page-side recordWrite with conflict-resolution natural key).
 
-  1. Inspect `wellbeing_checkins.client_id` column presence + replica identity (`relreplident`).
-  2. Find publish site(s) for `wellbeing:logged` event (or similar — confirm via search). wellbeing-checkin EF v19 is the server-side path; the page likely publishes after successful submission.
-  3. Check writing surface `Prefer` header — `return=minimal` with explicit client_id = PM-49 territory; `merge-duplicates` / UPSERT = PM-51 territory (synthetic-key dual-op).
-  4. Bridge entry to auth.js (eighth in array, or eighth+ninth if dual-op).
+- 📋 **OPEN (P0) — PM-53: Eighth Layer 2 table-bridge wiring (`monthly_checkins`).** Next in §3.1 (row 2-9). PM-40 era publishes `monthly_checkin:submitted` from monthly-checkin.html. Pre-flight per established pattern:
+
+  1. Inspect `monthly_checkins.client_id` column + replica identity.
+  2. Find publish site(s) in monthly-checkin.html.
+  3. Determine writing path: server-side EF (PM-52 territory — natural-key dual-op INSERT+UPDATE) or direct REST POST with client_id (PM-49 territory — single INSERT bridge).
+  4. Bridge entry/entries to auth.js (10th + 11th in array if dual-op).
   5. recordWrite at publish site(s).
   6. sw.js cache bump.
   7. Two-device verify.
 
-  Estimate: ~30-45 min.
+  Estimate: ~30 min. If pattern mirrors wellbeing-checkin (likely — monthly check-in shares the same surface family), this is a quick wire-up using PM-52's exact recipe with monthly-specific natural-key columns.
 
 - 📋 **CARRIED FORWARD (P1) — programme:imported & workout:shared subscriber consumers.** PM-42 + PM-41 each wired _markHomeStale defensively (no current home surface renders share count or import banner). Future P1 work: home dashboard "your latest activity" or "social feed" surface that consumes these events properly.
 
