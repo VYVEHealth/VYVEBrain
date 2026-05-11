@@ -1,3 +1,57 @@
+## 2026-05-11 PM-63 (Layer 4 workouts-session.js — sixth per-surface wiring, SECOND writeQueued+home_state hybrid surface)
+
+**Files shipped (4, atomic vyve-site commit `7bd55500e83bb7e04263934fa10a49dca6444f09`):**
+- `workouts-session.js` (+7,447 chars; 41,387 → 48,834)
+- `workouts.html` (+462 chars; adds `<script src="/vyve-home-state.js" defer></script>` before the workouts-session.js / workouts-programme.js / workouts-builder.js bundle)
+- `index.html` (+810 chars; belt-and-braces `workout:failed` subscriber wiping home cache, mirrors `cardio:failed` and `habit:failed`)
+- `sw.js` cache key pm62-layer4-logfood-a → pm63-workouts-session-canonical-a
+
+**The migration shape.** workouts-session.js is the sixth Layer 4 surface and the SECOND writeQueued+home_state hybrid (habits.html PM-59 was the first). The single canonical-ified publish site is `saveWorkout` at the workout-completion path (was L613 pre-PM-63; now part of the rewritten block from L584 onward). `set:logged` at L412 stays Layer 1c — the engagement variety/score component on the home dashboard score ring is server-derived from set-level diversity, not stored as a home_state column, so there's no local math to patch; the existing `_markHomeStale` wipe + member-dashboard refetch path stays correct semantics. `workout:shared` at L772/L822 also stays Layer 1c — sharing emits no bridged-table write, the share row goes to `shared_workouts` which is intentionally NOT in the Layer 2 publication per PM-45 deferral discipline, and the envelope is a passthrough for engagement/achievements fan-out only. workouts-programme.js, workouts-builder.js, and movement.html are deferred to PM-64 — keeps the per-session scope tight and lets PM-63 prove the writeQueued+home_state hybrid shape on a single surface before fanning to direct-fetch sites and the EF-writer pair.
+
+**Pre-flight reconciliation.** Audit baseline at HEAD `677f301f` recomputed live before any edits — publish=38 / subscribe=42 / recordWrite=16 / recordCanonical=9 / installTableBridges=1 confirmed (raw grep returns 39/45/17/9/1; the deltas all resolve cleanly — one `publish(` mention inside a comment on workouts-session.js L392, two `.subscribe(` in supabase.min.js realtime internals, one in vapid.js noise, one `recordWrite` in a comment block). Aligned with PM-62 brain narrative; no drift correction needed this commit. Per PM-58 §4.9 live-state-grep-beats-brain rule applied at pre-flight, found the workouts-family `~11 publish sites` claim resolves to 12 raw call sites (4 in workouts-session.js, 3 in workouts-programme.js, 1 in workouts-builder.js, 3 in movement.html plus an L412/L613 distinct pair that the brain narrative was treating as ~11).
+
+**The five design calls.**
+
+1. **`canonical: true` boolean (PM-62 forward rule), not `kind: 'canonical'`.** workout:logged doesn't currently carry a `kind` field, so the legacy PM-58 string form would work cleanly here. But PM-62 §4.9 forward rule is unambiguous: prefer `canonical: true` boolean for ALL new Layer 4 wiring. The kind-string form is retained only for PM-58/59/60 surfaces (cardio, habits, nutrition) where it was already shipping; the boolean is robust forever and easier to reason about. `_markHomeStale` OR-checks both forms (index.html L1280 gate from PM-61).
+
+2. **Single canonical-ified publish site, not four.** workouts-session.js has 5 publish call sites total (one is in a comment). Only `workout:logged` at the completion path patches a `member_home_state` column (`workouts_total` / `workouts_this_week` / `last_workout_at`). `set:logged` is intentionally Layer-1c — engagement variety/score is a server-side derived column, not a patchable counter. `workout:shared` is passthrough — no bridged write, no home_state effect. Discipline: don't canonical-ify what you can't locally patch consistently; let the round-trip wipe-and-refetch path stay correct for derived-only signals.
+
+3. **Hybrid surface — writeQueued + home_state.** Second instance of this shape after habits.html PM-59. The combination: `await VYVEData.writeQueued(...)` returns the PM-59 discriminated `{ok, queued, status, dead?}` shape; the publish carries `canonical: true` + `logged_at`; `VYVEHomeState.optimisticPatch('workouts', {loggedAt})` runs immediately before publish; `VYVEBus.recordCanonical('workouts', client_id)` suppresses own Realtime echo for 10s. The dead/queued branch fires `workout:failed` eagerly (4xx) or registers an inflight tracker (5xx) keyed by client_id. The DOMContentLoaded IIFE wires the page-owned `workout:failed` subscriber (calls `VYVEHomeState.revertPatch`) and the `vyve-outbox-dead` window listener (synthesises `workout:failed` from inflight tracker matched by POST body.client_id). Same structural shape as PM-59 habits.html and PM-62 log-food.html, with workout: prefix substituted and the inflight tracker stored as `window._workoutSessionInflight = {}`.
+
+4. **No `original_sign` — single-direction op.** workout:logged is forward-only; there is no `workout:un-logged` paired event. Per PM-62 forward discipline (signed dual-op surfaces carry `original_sign` on publish AND failed envelopes; single-direction surfaces omit it), the workouts envelope shape stays clean. If PM-64 introduces a `workout:deleted` we'd retrofit `original_sign` at that point.
+
+5. **workouts.html script-tag add — first time the page hosts a VYVEHomeState caller.** PM-58/59/62 forward discipline: tag `<script src="/vyve-home-state.js">` only on pages whose hosted surfaces call `VYVEHomeState.optimisticPatch/revertPatch` directly. Pre-PM-63 workouts.html didn't need the tag because no workouts JS used VYVEHomeState. PM-63 adds the call at workouts-session.js, so workouts.html now needs the tag. The tag is inserted BEFORE workouts-config.js / workouts-programme.js / workouts-session.js in the script bundle — `defer` preserves document order, so VYVEHomeState is defined when workouts-session.js's DOMContentLoaded handler runs. sw.js precache already includes `/vyve-home-state.js` (from PM-58 era) so no precache list change needed.
+
+**Failure dispatch — two paths, one subscriber.** Same convergence as PM-62: Path A (writeQueued returns `{dead: true}` → eager publish from saveWorkout) and Path B (writeQueued returns `{queued: true}` → register `_workoutSessionInflight[clientId]` → on later `vyve-outbox-dead`, listener walks `detail.items[]` filtering by `table === 'workouts'`, correlates by POST `body.client_id`, synthesises `workout:failed` from the matching inflight tracker). Page-owned `workout:failed` subscriber doesn't care which path fired — both envelope shapes identical. The subscriber calls `VYVEHomeState.revertPatch('workouts', {loggedAt: envelope.logged_at})` and prunes the inflight entry by `envelope.workout_id`.
+
+**index.html — one surgical edit.** `workout:failed` belt-and-braces subscriber added immediately after the existing `habit:failed` subscriber. Same shape — wipes home cache via `invalidateHomeCache(email)` for next-paint truth. Defensive against the page-owned `revertPatch` and server-side state diverging.
+
+**Audit counts post-PM-63** (full-tree grep, runtime only, excludes bus.js):
+- `VYVEBus.publish(`: 38 → 40 (+2: workouts-session.js adds `workout:failed` eager-fire branch + `workout:failed` synthesised from `vyve-outbox-dead` listener)
+- `VYVEBus.subscribe(`: 42 → 44 (+1 workouts-session.js page-owned revert; +1 index.html belt-and-braces)
+- `VYVEBus.recordWrite(`: 16 (UNCHANGED — workouts.client_id recordWrite was already at PM-47)
+- `VYVEBus.recordCanonical(`: 9 → 10 (+1 at workouts-session.js workout:logged path)
+- `VYVEBus.installTableBridges(`: 1 (unchanged)
+- `VYVEHomeState.optimisticPatch(`: 7 → 8 (+1 at workouts-session.js)
+- `VYVEHomeState.revertPatch(`: 6 → 7 (+1 at workouts-session.js workout:failed subscriber)
+- `vyve-outbox-dead` listeners: 3 → 4 (+1 at workouts-session.js; existing on habits.html, log-food.html, nutrition.html)
+- `<script src="/vyve-home-state.js"` HTMLs: 16 → 17 (+1 workouts.html)
+
+Two new §4.9 sub-rules codified (see active.md):
+1. **Single-direction Layer-4 surfaces omit `original_sign`** (PM-63 codification of PM-62 implicit rule).
+2. **Layer-1c-stays-Layer-1c discipline for derived-only signals** — events whose home-effect is server-derived from raw activity (not stored as a patchable counter column) keep the wipe-and-refetch path; don't canonical-ify what you can't locally patch consistently. workouts-session.js's `set:logged` is the canonical example: engagement variety/score is computed server-side from set diversity, no row in TYPE_TO_HS_COLS, so the right call is to leave the existing `_markHomeStale` cache-wipe behaviour and let the next member-dashboard fetch carry truth.
+
+**Two-device manual verify still pending Dean across PM-58/59/60/61/62/63.** Carried forward — no Android device available. Layer 4 implementation doesn't depend on the verify; cross-device echo + suppression confirmation only.
+
+**Layer 4 status: 6/8 surfaces shipped.** Remaining 2 surface families:
+- **PM-64** — rest of workouts family: workouts-programme.js (3 publish sites, one is `workout:shared` passthrough; two via the import-EF — PM-52 server-side-EF-writer shape; needs reading the share-import EF for conflict resolution), workouts-builder.js (1 publish, `workout:logged` source:'builder' — semantically a template-create not a workout completion; stays Layer 1c per the same derived-only discipline applied to set:logged at PM-63), movement.html (3 publish sites — direct-fetch, PM-58 cardio shape — workout:logged + cardio:logged + workout:logged quick-add). movement.html also needs `<script src="/vyve-home-state.js">` tag added. The actual canonical-ifiable surfaces in PM-64 are 2 (workouts-programme.js EF-writer pair where it does increment `workouts` server-side via the import, and movement.html's 3 direct-fetch sites).
+- **PM-65** — wellbeing-checkin.html (2 sites, server-side EF writer; needs `canonical: true` boolean because `kind:'live'|'flush'` from PM-39).
+- **PM-66** — monthly-checkin.html (capstone, 1 site, server-side EF writer).
+
+**Carried non-Layer-4 work** unchanged from PM-62: iOS 1.1(3) "Ready for Review" since 27 April; Android 1.0.2 awaiting Google Play; HAVEN clinical sign-off (Phil); weekly check-in nudge copy split (Phil + Lewis); Brevo logo removal (Lewis); Facebook Make connection expires 22 May 2026 (Lewis); B2B volume tier definition; public-launch comms draft.
+
+---
+
 ## 2026-05-11 PM-62 (Layer 4 log-food.html — fifth per-surface wiring, FIRST non-habits signed-patch, FIRST page-in-memory-state-IS-cache surface)
 
 **Files shipped (3, atomic vyve-site commit `677f301f`):**
