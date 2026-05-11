@@ -1,3 +1,119 @@
+## 2026-05-11 PM-57 (Layer 3 reconnect resync shipped — bus.js v2 → v3; synthetic resync on channel reconnect)
+
+vyve-site `5de6b6f530b31d39297276f46ac22dea4abe626d` (new tree `9d626fee3d04bec68304f95b3b221cc569f2ec5d`). VYVEBrain main `(set after this commit lands)`. **Opens Layer 3** of the premium-feel architecture campaign. Same-day ship as PM-56 — Dean's call: don't wait for the week-of-data window, ship Layer 3 immediately so it's already live when Layer 5 data lands and the Layer 6 decision gets made.
+
+**Atomic commit (1):**
+
+1. **vyve-site** `5de6b6f5` — 2-file atomic: bus.js (+7073 chars, v2 → v3) + sw.js (cache key bump `pm56-perf-rollout-a` → `pm57-bus-reconnect-resync-a`). retry_count 0. Both files byte-equal verified post-commit.
+
+**The problem Layer 3 solves.**
+
+When a device's Realtime connection drops (WiFi switch, sleep, brief network hiccup) and reconnects, Supabase Realtime does NOT replay events missed during the disconnect window. Subscribers on that device stop receiving INSERT/UPDATE/DELETE events; cached state goes stale; the gap closes only on the next interaction-driven fetch. For users with a page already open showing stale data, that gap is visible.
+
+**The fix.**
+
+bus.js now registers a status callback on every `channel.subscribe(...)` call. The callback observes Supabase's status transitions: `'SUBSCRIBED'` → `'CHANNEL_ERROR'`/`'TIMED_OUT'`/`'CLOSED'` → `'SUBSCRIBED'` again on reconnect. A per-channel SUBSCRIBED counter tracks first-vs-reconnect. On the **second-or-later** `'SUBSCRIBED'` for the same channel, the bridge fires one synthetic envelope per distinct event-name configured on that channel's bridge entries, with `origin: 'realtime-resync'` and an empty (or canonical) payload. Existing subscribers fan out as for any other origin — busting caches so the next fetch returns truth.
+
+**Design decisions.**
+
+1. **Origin name: `'realtime-resync'`** (not `'resync'` or `'realtime'` with kind discriminator). Self-documenting at the subscriber gate-site; future code reviewers immediately see what's happening. Fourth origin value alongside `'local'`, `'remote'`, `'realtime'`.
+
+2. **Skip-first-SUBSCRIBED.** First `'SUBSCRIBED'` callback on a channel is the initial subscribe — caches are still being populated by normal page-load fetches; an extra resync would just double-fetch. Second-or-later is a genuine reconnect. The counter resets on unsubscribe (so re-auth in the same page lifetime starts cold).
+
+3. **Dedup by event-name within a channel.** Multi-op channels (e.g. `vyve_bridge_weight_logs` has INSERT and UPDATE entries both mapped to `weight:logged`) fire ONE synthetic envelope per event-name on reconnect, not one per op. Avoids double-busting the same cache.
+
+4. **Empty payload, not best-effort reconstruction.** Bridge does not know which specific rows were missed during the disconnect window; pretending to reconstruct row data would lie. Empty payload signals "something missed, refetch from server." Subscribers driving visual feedback off payload fields MUST gate on `origin !== 'realtime-resync'`.
+
+5. **Verbose logging gated on `vyve_perf_enabled`.** Reuses the Layer 5 opt-in mechanism (`?perf=1` once persists `localStorage.vyve_perf_enabled='1'`). No third opt-in surface added. Logs channel status transitions + resync emit counts to console when enabled — useful during the manual two-device verify sweep.
+
+6. **No subscriber-page changes needed.** Layer 2's origin-agnostic subscriber invariant covers the bulk of resync delivery automatically. Confirmed via subscriber audit across 33 call sites (see "Subscriber audit" below).
+
+**Implementation details.**
+
+```js
+// Per-channel SUBSCRIBED counter, reset on unsubscribe
+var bridgeChannelSubscribed = Object.create(null);
+var resyncFiresTotal = 0;
+
+// Per-channel status callback
+channel.subscribe(function (status, err) {
+  if (status === 'SUBSCRIBED') {
+    var prev = bridgeChannelSubscribed[chName] || 0;
+    bridgeChannelSubscribed[chName] = prev + 1;
+    if (prev >= 1) fireResyncForChannel(chName, chEntries);
+  }
+  // optional verbose logging gated on vyve_perf_enabled
+});
+
+// Synthetic envelope emission, deduplicated by event-name
+function fireResyncForChannel(channelName, entries) {
+  var seenEvents = Object.create(null);
+  for (var entry of entries) {
+    if (seenEvents[entry.event]) continue;
+    seenEvents[entry.event] = true;
+    deliverLocal({
+      event: entry.event,
+      ts: Date.now(),
+      email: currentEmail(),
+      origin: 'realtime-resync',
+      txn_id: uuid(),
+      __resync_channel: channelName   // diagnostic only
+    });
+    resyncFiresTotal++;
+  }
+}
+```
+
+**Self-test (11/11 passing).**
+
+Test harness in `/tmp/pm57_test.js` runs the patched bus.js under Node with browser shims + `__VYVE_BUS_MOCK_REALTIME` flag set. Coverage:
+
+1. API surface: all 8 methods exposed (incl. new `__mockChannelReconnect`).
+2. Install with mock supabase client: 2 channels created, `bridge_installed=true`.
+3. Subscribe local counter functions.
+4. First `__mockChannelReconnect('vyve_bridge_daily_habits')` → 0 resync events (skip-first works).
+5. Second call → 1 event with `origin='realtime-resync'`, `event='habit:logged'`, `__resync_channel='vyve_bridge_daily_habits'`.
+6. Third call → 1 more event (fires every reconnect, not just second).
+7. Dedup: first call on `vyve_bridge_weight_logs` → 0 events (skip-first). Second call → 1 event (INSERT+UPDATE both map to `weight:logged`, dedup correctly).
+8. `resync_fires_total` counter reads 3 after the sequence (2 habits + 1 weight).
+9. Regression: local `VYVEBus.publish('test:local')` still works.
+10. Regression: `VYVEBus.recordWrite('daily_habits', 'abc-123')` still suppresses matching realtime delivery within 5s TTL.
+11. Regression: non-suppressed Realtime delivery (different PK) still fires `origin='realtime'` with `payload_from_row` mapping applied.
+
+`node --check bus.js` syntax pass.
+
+**Subscriber audit (33 sites across 9 pages).**
+
+7 sites flagged by automated regex as "payload-driven" (referenced envelope fields). Manual review found:
+
+- 5/7 false positives — `function (envelope) { ... }` argument shadowed but unused in handler body. Pure cache-stale / achievement-eval pattern. Safe under resync.
+- 1/7 `habits.html L1043 'habit:logged'` — explicit `if (!habit_id) return;` early-return. **No breakage**, but also no cache-bust effect from resync on this page. Marginal gap. Habits page's own GET on visibility-change closes it on next interaction. Acceptable.
+- 1/7 `workouts.html L575 'workout:logged'` — `envelope.source === 'programme'` branch skipped on resync (source undefined). PM-42 scope-fix branch doesn't trigger; achievements eval (the other code path) still does. Acceptable — the PM-42 scope-fix targets a specific bug scenario (nav-back without dismissing completion screen), unrelated to reconnect.
+- The 7th flagged was `workouts.html L628 'programme:imported'` — NOT a Layer 2 bridged event; never receives `realtime-resync`. N/A.
+
+**Verdict: no breakage anywhere. The "subscribers must be origin-agnostic for cache-stale" principle holds across the actual subscriber population.**
+
+**Audit-count delta (whole-tree, post-PM-57):**
+
+- `VYVEBus.publish(` count: 23 unchanged
+- `VYVEBus.subscribe(` count: 33 (was 31 in PM-55/56 — the brain's "+2 in PM-55" narrative undercounted by 2; live count is 33 across the gated pages with bus.js subscribers. Cosmetic drift — corrected here.)
+- `VYVEBus.recordWrite(` count: 15 unchanged
+- `VYVEBus.installTableBridges(` entries: 15 unchanged
+- bus.js: 19751 → 26824 chars (+7073, +35.8%)
+- New bus.js exports: `__mockChannelReconnect` (test harness, gated on `__VYVE_BUS_MOCK_REALTIME`)
+- New `__inspect()` fields: `bridge_channel_subscribed`, `resync_fires_total`
+- Cache key: `pm56-perf-rollout-a` → `pm57-bus-reconnect-resync-a`
+
+**One new §4.9 working-set rule codified:**
+
+- **'realtime-resync' origin requires gate on payload-driven subscribers.** Subscribers that use payload fields to drive visual feedback (e.g. "flash the row that was just logged") MUST gate on `envelope.origin !== 'realtime-resync'` — resync payloads are empty by design (the bridge can't reconstruct missed-row data and won't pretend to). Cache-stale and achievement-eval subscribers remain fully origin-agnostic and need no changes.
+
+**Source-of-truth.** vyve-site pre-PM-57 `56717a6acf20cbbe49bdb5e3f77147874710ac33` (PM-56 ship), post-PM-57 `5de6b6f530b31d39297276f46ac22dea4abe626d`, new tree `9d626fee3d04bec68304f95b3b221cc569f2ec5d`. 2 files committed (bus.js, sw.js), both byte-equal verified live post-commit. Refresh-before-commit confirmed zero SHA drift across baseline.
+
+**Two-device manual verify** for PM-57 is bounded: simulate disconnect (airplane mode + sit ~10s + back on) on one device while the other writes; on reconnect, watch console with `?perf=1` enabled for `[VYVEBus] channel ... status: SUBSCRIBED` then `[VYVEBus] resync fired N events on reconnect of vyve_bridge_<table>`. Net effect on the UI: caches bust, next paint reads fresh from server. Optional sanity, not blocking.
+
+---
+
 ## 2026-05-11 PM-56 (Layer 5 perf telemetry rollout: perf.js wired across 20 gated pages — campaign clock starts)
 
 vyve-site `56717a6acf20cbbe49bdb5e3f77147874710ac33` (new tree `2a17dd336220e8a6b5a8d11af8c96f79f4bbb213`). VYVEBrain main `(set after this commit lands)`. **Opens Layer 5** of the premium-feel architecture campaign. Layer 2 closed at PM-55; Layer 3 + Layer 4 reframed (see §"Layer 3/4 reframe" below) and queued behind Layer 5's week-of-data clock.

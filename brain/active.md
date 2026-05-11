@@ -49,14 +49,14 @@
 > Refresh the SHA + version rows at the top of every session via a parallel pre-flight. The rest of this section is stable across sessions.
 
 **HEADs (refresh at session start):**
-- vyve-site main: `56717a6a` (PM-56 ship — Layer 5 perf telemetry rollout, 11 May 2026; **Layer 2 campaign complete, Layer 5 clock started**)
+- vyve-site main: `5de6b6f5` (PM-57 ship — Layer 3 reconnect resync, 11 May 2026; **Layer 2 complete, Layer 3 complete, Layer 5 clock running**)
 - VYVEBrain main: `(set after this commit lands)`
 - vyve-capacitor main: stub (Apr 18 2026 base) — local working tree not yet pushed
 - Test-Site-Finalv3 main: marketing site, less active
 
 **Cache-bus key currently live:**
 - Pattern: `vyve-cache-v2026-05-09-pmNN-X-Y` (date prefix from PM-30)
-- Last shipped: `vyve-cache-v2026-05-11-pm56-perf-rollout-a` (Layer 5 perf.js rollout across 20 gated pages)
+- Last shipped: `vyve-cache-v2026-05-11-pm57-bus-reconnect-resync-a` (Layer 3 reconnect resync; bus.js v2 → v3)
 - P3 carried RESOLVED: PM-45 used wall-clock date for new campaign per PM-44 §23 sub-rule
 
 **Mobile binaries:**
@@ -68,20 +68,23 @@
 - First paying B2C: Paige Coult, joined 13 April 2026, £20/month
 - 3 admin operators in `admin_users`
 
-**Audit-count baseline (publishing-surface call sites at HEAD `56717a6a`, PM-56 Layer 5 perf.js rollout — Layer 2 campaign complete + Layer 5 perf telemetry now active across 20 gated pages; no bus primitive call site changes since PM-56 is HTML-only):**
+**Audit-count baseline (publishing-surface call sites at HEAD `5de6b6f5`, PM-57 Layer 3 reconnect resync — bus.js v2 → v3, +7073 chars; new `realtime-resync` envelope origin emitted on 2nd-or-later channel SUBSCRIBED; no subscriber-page changes needed):**
 
 - `VYVEData.invalidateHomeCache(`: 1 (subscriber-internal helper, in vyve-data.js)
 - `VYVEData.recordRecentActivity(`: 1 (subscriber-internal helper, in vyve-data.js)
 - `VYVEAchievements.evaluate(`: 12 (subscriber-internal helpers across achievement-handling subscribers)
 - `VYVEBus.publish(`: 23 (UNCHANGED — PM-55 introduces NO client publisher; the writer is server-side cron only)
-- `VYVEBus.subscribe(`: 31 (was 29; +1 in index.html for certificate:earned → _markHomeStale; +1 in certificates.html for certificate:earned → refresh)
+- `VYVEBus.subscribe(`: 33 (PM-55 narrative said 31 but a live whole-portal audit at PM-57 found 33 across 9 pages — index.html ×15, engagement.html ×8, workouts.html ×3, monthly-checkin.html ×2, plus one each in cardio, certificates, habits, nutrition, wellbeing-checkin. Brain narrative undercounted by 2; corrected here. No new subscribers added at PM-57.)
 - `VYVEBus.recordWrite(`: 15 (UNCHANGED — server-side cron writer has no own-write discipline to enforce)
 - `VYVEBus.installTableBridges(`: 1 (one call site; fifteen entries now in array — daily_habits, workouts, cardio, exercise_logs, nutrition_logs×2, weight_logs×2, wellbeing_checkins×2, monthly_checkins×2, session_views, replay_views, certificates) — note: PM-55 brain entry said "14 entries" but live count is 15; cosmetic off-by-one in the PM-55 narrative, corrected here
 - `<script src="/perf.js"` count across portal HTMLs: **21** (was 1 — PM-56 wired 20 additional gated pages; perf.js runtime-gated on `?perf=1` or `localStorage.vyve_perf_enabled='1'`, default-off in production)
+- bus.js version: **v3 (PM-57)** — `'realtime-resync'` is now the fourth envelope origin alongside `'local'`, `'remote'`, `'realtime'`. New `__inspect()` fields: `bridge_channel_subscribed` (per-channel SUBSCRIBED counter), `resync_fires_total` (monotonic). New test harness `__mockChannelReconnect(channelName)` gated on `__VYVE_BUS_MOCK_REALTIME` (same gate as `__mockRealtimeFire`).
 - `VYVEData.newClientId(` direct call sites: 4 (unchanged)
 - Postgres `REPLICA IDENTITY FULL` tables: 1 (nutrition_logs only)
 
-PM-56 opened **Layer 5** (perf telemetry rollout) of the premium-feel architecture campaign — perf.js (shipped at PM-21) was only wired to `index.html` until this commit. The 20-gated-page rollout completes the perf surface coverage so warm-cache TTFP / FCP / LCP / INP / auth_rdy samples come from every page a member can reach post-login. Telemetry is runtime-gated (default-off in production), so the broad ship is risk-free. **One-week data window starts now**, gates the Layer 6 SPA-shell decision. **Layer 3 and Layer 4 are reframed as in-scope** (see §3.6) — the PM-55 retrospective's "deferred" label was too cautious for the campaign's stated goal. They sequence after Layer 5's week-of-data window because Layer 5 is the only time-sensitive item.
+PM-57 closed **Layer 3** (reconnect resync) the same day Layer 5 opened — Dean's call: don't wait for the week-of-data window before opening Layer 3, ship it immediately so it's already live when the Layer 6 decision is made. bus.js v2 → v3 adds a status callback on every Realtime channel subscribe; when a channel reconnects after a disconnect (status transitions back to `'SUBSCRIBED'` for the 2nd-or-later time), the bridge fires one synthetic envelope per distinct event-name with `origin: 'realtime-resync'`, empty payload. Subscribers fan out as for any other origin — busting caches so the next fetch returns truth for any events missed during the disconnect window. **11/11 self-tests passing** including 3 Layer 2 regressions (local publish, recordWrite suppression, realtime delivery). Subscriber audit across 33 call sites: no breakage; one marginal gap on `habits.html` where the early-return on missing `habit_id` means resync fires but no cache-bust effect — acceptable, page's own GET on visibility-change closes the gap.
+
+**Layer 4 is next** (optimistic UI bound to bus + reconcile-and-revert). Layer 5 telemetry clock is still running in the background (target 18 May 2026); Layer 6 SPA-shell decision still gated on that data. PM-56 reframed Layer 3 and Layer 4 as in-scope; PM-57 closed Layer 3 in one session. Layer 4 likely 1-2 sessions (per-surface optimistic UI binding + `<event>:failed` revert path).
 
 
 
@@ -188,9 +191,9 @@ The PM-55 retrospective framed Layer 3 (missed-event catch-up on Realtime reconn
 
 **Layer 5 — Perf telemetry rollout** (ACTIVE, opened PM-56). perf.js is now wired across all 21 gated portal pages (was 1 — index.html only). Runtime-gated (`?perf=1` once persists `localStorage.vyve_perf_enabled='1'`), default-off in production. Telemetry samples flow to the `perf_telemetry` Supabase table via `log-perf` EF v1 (shipped PM-21). **One-week data window starts PM-56** (target: 18 May 2026). Gates the Layer 6 SPA-shell decision.
 
-**Layer 3 — Missed-event catch-up on Realtime reconnect** (QUEUED, opens after Layer 5 data window). When a device's Realtime connection drops and reconnects, missed INSERT/UPDATE/DELETE events between disconnect and reconnect are not replayed. Subscribers tolerate (cache invalidation; the next fetch returns truth), but the gap exists in real time — most visible when the member already has a page open showing stale data. Design surface: bus.js channel reconnect callback fires a synthetic "resync" sweep per bridged table (touch the table's home cache invalidation + achievement re-evaluate), bounded by RLS to the current member. Probably one infrastructure commit + per-surface review.
+**Layer 3 — Missed-event catch-up on Realtime reconnect** (✅ COMPLETE PM-57). Shipped same day as PM-56. bus.js v2 → v3 adds a status callback on every Realtime channel; on the 2nd-or-later `'SUBSCRIBED'` transition (= reconnect after CHANNEL_ERROR/TIMED_OUT/CLOSED), the bridge fires one synthetic envelope per distinct event-name on that channel, with `origin: 'realtime-resync'` and empty payload. Existing subscribers fan out as for any other origin. Dedup by event-name within a channel (multi-op channels like `weight_logs` INSERT+UPDATE → `weight:logged` fire once, not twice). 11/11 self-tests passing including 3 Layer 2 regressions. Subscriber audit across 33 sites found zero breakage. One new §4.9 rule: `'realtime-resync'` envelope origin requires gate on payload-driven subscribers (they MUST check `envelope.origin !== 'realtime-resync'` if they use payload fields for visual feedback — cache-stale subscribers remain origin-agnostic).
 
-**Layer 4 — Optimistic UI bound to bus + reconcile-and-revert** (QUEUED, opens after Layer 3). Two related pieces: (a) bind `log-activity` v29's response `home_state` payload through as canonical post-write state replacing the optimistic local-publish prediction (plumbing most ready — v29 already returns home_state); (b) `<event>:failed` revert path so a publish-then-failed-POST quietly undoes the optimistic breadcrumb instead of waiting 120s for `recordRecentActivity` TTL. Per-surface migration; bigger than Layer 3 but mechanical given Layer 2's origin-agnostic subscriber invariant.
+**Layer 4 — Optimistic UI bound to bus + reconcile-and-revert** (NEXT, opens immediately after PM-57). Two related pieces: (a) bind `log-activity` v29's response `home_state` payload through as canonical post-write state replacing the optimistic local-publish prediction (plumbing most ready — v29 already returns home_state); (b) `<event>:failed` revert path so a publish-then-failed-POST quietly undoes the optimistic breadcrumb instead of waiting 120s for `recordRecentActivity` TTL. Per-surface migration; bigger than Layer 3 but mechanical given Layer 2's origin-agnostic subscriber invariant + PM-57's `'realtime-resync'` origin precedent (subscribers learning to gate on origin).
 
 **Layer 6 — SPA shell** (CONDITIONAL on Layer 5 data). Decision gate at PM-56 + 1 week. Data shows shell would move warm-cache TTFP / first-paint metric → playbook then page-by-page migration. Data shows shell would not move the metric → drop. Don't pre-commit.
 
@@ -303,13 +306,15 @@ The PM-55 retrospective framed Layer 3 (missed-event catch-up on Realtime reconn
 
 ### P0 (next session)
 
+- **✅ CLOSED — PM-57:** vyve-site `5de6b6f5`. **Layer 3 reconnect resync** — bus.js v2 → v3 (+7073 chars). Synthetic `realtime-resync` envelope fires per bridged event-name on 2nd-or-later channel `'SUBSCRIBED'` transition (= reconnect). Skip-first-SUBSCRIBED (initial subscribe doesn't resync — caches still populating from page-load fetches). Dedup by event-name within a channel. 11/11 self-tests passing including 3 Layer 2 regressions. Subscriber audit across 33 sites: zero breakage. New §4.9 rule on payload-driven-subscriber origin gating. Subscribers across the portal need no changes — Layer 2's origin-agnostic invariant covers them. 2-file atomic commit (bus.js + sw.js cache key pm56-perf-rollout-a → pm57-bus-reconnect-resync-a). Both files byte-equal verified post-commit. Dean shipped same-day as PM-56 to avoid waiting for the Layer 5 data window before opening Layer 3.
+
 - **✅ CLOSED — PM-56:** vyve-site `56717a6a`. **Layer 5 perf telemetry rollout** — perf.js wired across 20 additional gated portal pages (was index.html only). 21-file atomic commit, retry_count 0, all files byte-equal verified post-commit. perf.js itself is production-safe (runtime-gated default-off, never throws, defer-loaded, JWT-lazy at flush, one POST per page lifetime). One-week data window starts now (target 18 May 2026) — gates Layer 6 SPA-shell decision. **PM-55 retrospective's "Layer 3 + Layer 4 deferred" label reframed as in-scope** by Dean this session; the premium-feel campaign is architectural, not reactive, and the brain was too cautious. Revised sequence: Layer 5 (active, data clock running) → Layer 3 (Realtime reconnect resync sweep) → Layer 4 (optimistic UI binding + reconcile-and-revert) → Layer 6 (SPA shell, conditional on Layer 5 data). See active.md §3.6 for full rationale. Two-device manual verify still pending Dean across all 11 Layer 2 bridges (carried from PM-55).
 
 - 📡 **ACTIVE — Layer 5 perf telemetry collection.** Started PM-56 (11 May 2026). Target window close: 18 May 2026 (1 week of warm-cache TTFP / FCP / LCP / INP samples across all 21 gated pages). To opt-in personally: visit any portal page with `?perf=1` once. To inspect data: `SELECT page, metrics FROM perf_telemetry WHERE created_at > now() - interval '7 days' ORDER BY created_at DESC` from Supabase. At window close, review LCP distribution per page → gates Layer 6 SPA-shell go/no-go.
 
-- 🛠 **QUEUED — Layer 3 (Realtime reconnect resync sweep).** Opens after Layer 5 data window closes. Hook bus.js channel reconnect callback → fire synthetic "resync" sweep per bridged table (touch home cache invalidation + achievement re-evaluate, RLS-scoped to current member). One infrastructure commit + per-surface review.
+- ✅ **DONE (Layer 3) — Realtime reconnect resync sweep.** Shipped PM-57 same day as PM-56.
 
-- 🛠 **QUEUED — Layer 4 (optimistic UI bound to bus + reconcile-and-revert).** Opens after Layer 3. (a) bind log-activity v29 home_state response as canonical post-write state. (b) `<event>:failed` revert path so failed POSTs quietly undo optimistic breadcrumb. Per-surface migration.
+- 🛠 **NEXT P0 — Layer 4 (optimistic UI bound to bus + reconcile-and-revert).** PM-57 closed Layer 3; Layer 4 opens next. (a) bind log-activity v29 home_state response as canonical post-write state replacing the optimistic local-publish prediction. (b) `<event>:failed` revert path so failed POSTs quietly undo optimistic breadcrumb (don't wait 120s for recordRecentActivity TTL). Per-surface migration — bigger than Layer 3 but mechanical given Layer 2's origin-agnostic invariant + PM-57's `'realtime-resync'` origin gating precedent.
 
 - 🛠 **CONDITIONAL — Layer 6 (SPA shell).** Decision gate PM-56 + 1 week. Go → playbook + page-by-page migration. No-go → drop.
 
