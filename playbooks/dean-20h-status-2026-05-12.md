@@ -635,3 +635,62 @@ Four remaining:
 Of these, the Capacitor cold-launch is probably the biggest unknown — enterprise demos run through the wrap, not Safari. If you want one more deep audit before 20:00, that's the one I'd pick. Native bridge handshake timing, WKWebView storage rehydrate, capacitor.config.json server.url behaviour, native push integration cost — all unaudited.
 
 — Claude, ~12:00 UTC
+
+
+---
+
+# Appendix H — Capacitor cold-launch audit (the enterprise demo path)
+
+Continued audit ~12:30 UTC. The 8 May full-platform audit was Safari-only; the wrap path that App Store and Play Store users (and your Sage enterprise demo) actually use has never been deeply audited until now.
+
+Full playbook committed at `/playbooks/capacitor-cold-launch-audit-2026-05-12.md`. Nine findings (C1-C9). Headlines:
+
+**C4 (HIGH — possibly launch-affecting): AndroidManifest.xml has only `INTERNET` permission.** No `POST_NOTIFICATIONS` declared. Android 13+ (API 33+) requires this for push notifications to display at all. Memory says Android 1.0.2 is "awaiting Google Play review" — if push notifications don't work, that's a launch-affecting bug, not just a perf issue. **Action: verify on Mac whether `POST_NOTIFICATIONS` is being injected at build time by the @capacitor/push-notifications plugin gradle (it often is) or whether it needs to be added manually.** Also verify google-services.json exists in `android/app/`.
+
+**C2 (MEDIUM — easy win on next iOS build): AppDelegate is the Capacitor boilerplate.** No DNS pre-warm, no native init parallelism. A single line in `didFinishLaunchingWithOptions`:
+```swift
+URLSession.shared.dataTask(with: URL(string: "https://online.vyvehealth.co.uk")!).resume()
+```
+fires a DNS lookup + TCP handshake while WKWebView is booting. Estimated 30-100ms win on every cold launch. Ship next iOS rebuild.
+
+**C1 (HIGH but architectural — no fix in Capacitor): `server.url` model means the wrap pays full-cold-load cost on a separate localStorage container from Safari.** Every fresh install pays DNS + TLS + GitHub Pages CDN fetch + full hot-path JS parse. The Safari-path PWA service-worker precache **does NOT carry over** to the wrap. Mitigations all live in the web layer — Layer 4 + PM-67a + PM-67c + S1 SW precache (all in flight). This is the perf ceiling for the wrap path; everything we do in the web layer applies to the wrap, but the wrap has no way to do better than that.
+
+**C3 (LOW): `UIRequiredDeviceCapabilities = armv7` is anachronistic.** Should be `arm64`. One-line Info.plist fix. Cosmetic. Ship with C2.
+
+**C5 (UNVERIFIED, important to verify): Does sw.js actually register inside WKWebView?** Safari supports SW; WKWebView does too but with quirks. If it does, the offline cache strategy applies to the wrap. If it doesn't, the wrap path is purely network-bound and the SW precache list (S1) does nothing for it. **Quick verification check for Mac tonight.**
+
+**C6-C9: minor or informational.**
+
+## Four verification checks for tonight's Mac session
+
+These are quick non-blocking checks to add to the queue. Each takes <1 minute:
+
+1. **Open Safari Web Inspector → iPhone → vyve-capacitor WebView → console.** Run `navigator.serviceWorker.controller` — is it null (SW not registered in wrap) or an object (SW running)?
+2. **`ls android/app/google-services.json`** — does the FCM config exist locally?
+3. **`grep -r POST_NOTIFICATIONS android/`** — is the permission injected anywhere by plugin gradles?
+4. **Cold-launch iOS wrap, then in WebView console: `localStorage.length`** — does localStorage persist across launches (positive number) or wipe (0)?
+
+Answers to these four definitively characterise the wrap's cold-launch behaviour. They take 5 minutes total and tell us whether C4 needs urgent action and whether C5 is "no concern" or "the wrap is uncached on every launch."
+
+## Decision queued for 20:00
+
+**Is the Capacitor work in scope before public launch (11 May 2026)?**
+
+If yes:
+- **C4 verification** is non-negotiable (Android launch could be affected).
+- **C2 + C3** ship together as the next iOS rebuild (low effort, low risk, real wins).
+- **C5 verification** informs whether wrap-specific web-layer mitigations are needed.
+
+If no:
+- Park C2, C3, C5 until post-launch.
+- Still run the C4 verification — push notifications matter for enterprise demos.
+
+## Updated programme completion picture
+
+Premium-feel programme has TWO parallel paths now:
+- **Web layer (PM-67a/c/d + Layer 5 + inline extraction):** ~70% done after tonight's PM-67a ship, ~85% after PM-67c+PM-67d ship next session.
+- **Native wrap (C1-C9):** ~30% done — C1 architectural cost accepted, C7-C8 clean, but C2, C3, C4, C5 all unaddressed. C4 might be a launch blocker.
+
+Combined: roughly **65% across both paths** today. After tonight's PM-67a + C4 verification + Layer 5 baseline: **75%**. After PM-67c + PM-67d + C2/C3 ship: **88%**. The remaining 12% is Layer 5-driven inline extraction priorities + any wrap-specific Layer 5 findings we can't predict.
+
+— Claude, ~12:45 UTC
