@@ -1,3 +1,43 @@
+## 2026-05-12 PM-73 (home redesign exploration parked; Dean "kind of likes" v2 mockup; daily goals canonical shape captured)
+
+Continuation of the PM-68/68b/69/70 ship night. After the backend perf overhaul landed, Dean pivoted out of code-mode and into product-shape mode for the home page. PM-71 (pre-fetch dashboard-only fields into `member_home_state`) was queued earlier in this same session as part of the perf campaign; PM-73 questions whether PM-71 should be re-scoped from "denormalise more fields" to "delete fields from the home payload entirely" once the home redesign is committed.
+
+**Trigger:** member feedback that the home dashboard is overbuilt for the average user. Brief reframed to: "what does the everyman home page actually look like? One screen that answers 'what should I do right now, and am I on track' without scroll, squint, or interpret."
+
+**v1 mockup (too sparse — rejected by Dean):**
+- Primary card (4 states: live / up next / habits to do / all done), one-line streak nudge, charity strip, stats link. Cut: engagement ring + components, 5 progress tracks (counts + streaks + bests + milestones + badges), weekly goals strip, 7-day pill strip, desktop duplicates. Move-to-`/stats`: everything cut except weekly goals (folded into primary card logic).
+- Dean's reaction: "doesn't even have the daily habit pill" — overcorrected.
+
+**v2 mockup (Dean "kind of likes this" — PARKED, not committed to code):**
+Top-to-bottom:
+1. Greeting + bell (with badge dot).
+2. **Primary card** — 4 states: live now / up next today (with live countdown) / habits to do / all done (with tomorrow preview). One call to action per state.
+3. **Today's goals card** — 3 ticked rows + weekly footer. Tappable ticks, strikethrough on done. Weekly footer one-line "This week · 5 of 9 goals · View week →".
+4. **Streak row** — three pieces in one row: streak pill (flame + count), 7-day habit dot strip (Mon→Sun with done/today/empty states), engagement score pill (number + band, no ring, no components).
+5. **Charity strip** — Collective impact label, "X activities — Y to go" headline, months-given big gold number, gradient bar, explainer line.
+6. **"View your stats"** link — dashed border, deliberately quiet, single door to all detail.
+
+Bottom nav left as current 4-tab (Home / Sessions / Exercise / Me) — placeholder for the end-of-month Mind / Body / Connect re-architecture. Mockup deep-link-light to survive that re-architecture without rework. Calendar will live inside the eventual Sessions tab (likely under Connect).
+
+**Daily goals canonical shape (Dean directive, captured for the eventual build):**
+- "Watch 1 session"
+- "Log daily habits"
+- "Log one form of exercise"
+
+That's the three. Generator must produce these (or variants of them) — not generic AI-derived goals. Weekly goals stay as they are today (existing `weekly_goals` table + `seed-weekly-goals` cron) and surface only as the one-line footer summary on the home page. Tap-through is a future `/goals` weekly view (not in scope).
+
+**Why parked, not built:**
+- Bottom nav re-architecture (Mind / Body / Connect) lands end of month per Dean. Home redesign hooks into navigation; doing both in sequence avoids double work.
+- Premium-feel pass (less inter-page lag, render polish) is the more urgent UX win and is independent of the home shape.
+- Daily goals is a genuinely new feature (table + generator + tick endpoint + EF payload addition) — not in scope until after the perf + premium-feel pass.
+
+**Mockup archived at** `playbooks/home-redesign-v2-mockup.html` for replay when this comes back.
+
+**PM-71/72 re-scope flag (not actioned this session):**
+Once the home redesign is committed, PM-71 likely inverts from "pre-fetch more fields into `member_home_state`" → "delete fields from the home payload". The home payload, under the v2 mockup, reduces to roughly: primary-card decision (next session + habits-done-today + workout-due-today), today's goals (new — 3 rows), week_goals_done/total (existing weekly_goals aggregate), streak count + 7-day habit dots, engagement score + band, charity total. The full engagement components, 5 progress tracks, recent-30d counts, 30-day activity log, certificates array, achievements payload (unseen/inflight/recent/earned_count), habits with health rules, health_connections array — all move to a separate `/stats` route fetching `member-stats` (new EF, on-demand). This is a second-order win on top of PM-68 and worth scoping as PM-71b before PM-71 ships as-currently-defined.
+
+---
+
 ## 2026-05-12 PM-68 + PM-68b + PM-69 + PM-70 (member-dashboard perf overhaul: kill trigger fan-out, unify dashboard RPC, cron drain, fold charity total)
 
 **Four database migrations + two member-dashboard EF deploys (v68 → v69) shipped this session, in response to the PM-66/67a/67d perf-night discovery that the bottleneck was server-side: 17-38s wallclock on the member-dashboard EF with logs showing 38585 / 37640 / 36147 / 22708 ms responses. Root cause: 9 `AFTER ROW EXECUTE FUNCTION zzz_refresh_home_state` triggers fired the ~20 KB plpgsql function `refresh_member_home_state(p_email)` synchronously inline in every writer's transaction, doing ~40 aggregations against tables every concurrent reader was also trying to lock. Writers held row locks on member_home_state; readers queued behind them; the cascade compounded across log-activity, wellbeing-checkin, monthly-checkin AND member-dashboard.**

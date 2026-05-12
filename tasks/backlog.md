@@ -1,3 +1,18 @@
+## Added 12 May 2026 PM-73 (home redesign mockup parked; PM-71 re-scope flagged; daily goals canonical shape captured)
+
+- 🅿️ **PARKED — PM-73.** Home page redesign mockup v2 complete; Dean "kind of likes this" but not committing to build now. Reasons: (a) Mind/Body/Connect bottom-nav re-architecture lands end of month per Dean; home redesign hooks into nav; sequence both to avoid double work; (b) premium-feel polish (page-transition latency, render lag) is the more urgent UX win and is independent of home shape. Mockup archived at `playbooks/home-redesign-v2-mockup.html`. Captures: 4-state primary card (live/up next/habits to do/all done) + today's goals card with weekly footer + streak row (streak pill + 7-day habit dots + engagement score pill) + charity strip + stats link. Bottom nav left at current 4-tab as placeholder for Mind/Body/Connect cutover.
+
+- 📌 **DAILY GOALS — canonical shape captured (Dean directive).** When daily goals build comes back: the three goals are "Watch 1 session", "Log daily habits", "Log one form of exercise". Generator must produce these (or close variants), not generic AI-derived goals. Backend lift not in scope yet but spec sketch lives in PM-73 changelog: new table `member_daily_goals(id, member_email, goal_date, slug, text, source_type, source_id, done_at, sort_order)` + `seed-daily-goals` EF cron 00:05 UK time + tick endpoint + home payload additions (`today_goals[]`, `week_goals_done`, `week_goals_total`). Weekly goals continue as today (`weekly_goals` table + `seed-weekly-goals` cron) — surfaces only as one-line footer summary, not as a list.
+
+- 🔄 **PM-71 RE-SCOPE FLAG.** PM-71 currently queued as "pre-fetch dashboard-only fields (workoutsToday, cardioToday, dailyToday, sleepLastNight, healthConnections) into `member_home_state` during refresh; drop 5 PostgREST queries from the dashboard EF (would ship as v70)." Under the PM-73 home redesign, PM-71 likely **inverts** from "denormalise more fields" → "delete fields from the home payload entirely". Engagement components, 5 progress tracks, recent-30d counts, 30-day activity log, certificates array, achievements payload, habits-with-health-rules, health_connections — all move to a new `member-stats` EF for an on-demand `/stats` route. Sub-second wallclock target trivially achievable on a payload of ~6 fields. **Action when this comes back:** scope PM-71b (the home redesign EF trim) as a unit alongside PM-73's UI build, decide whether to ship PM-71 as-currently-defined first (still a win for `member_home_state` density even without the trim) or skip straight to PM-71b. No work this session.
+
+### Carry-forward from this session
+
+- PM-71 (pre-fetch dashboard-only fields) — still queued, but see re-scope flag above.
+- PM-72 (materialise `member_achievement_progress`) — still queued; ownership shifts to `/stats` page if PM-71b ships, since achievements payload leaves the home EF.
+
+---
+
 ## Added 12 May 2026 PM-68 + PM-68b + PM-69 + PM-70 ship; PM-71/PM-72 queued (member-dashboard perf overhaul)
 
 - ✅ **CLOSED — PM-68.** Supabase migration `pm68_kill_sync_trigger_fanout`. Replaced 9 heavy AFTER ROW `zzz_refresh_home_state` triggers (which fired ~20 KB plpgsql `refresh_member_home_state` inline in every writer's transaction) with 27 lightweight AFTER STATEMENT dirty-flag triggers on a new `public.member_home_state_dirty(member_email PK, marked_at, reason)` queue table. Plus `refresh_member_home_state_if_dirty(p_email)` (2.4 ms clean / 32 ms dirty per EXPLAIN ANALYZE) and `drain_member_home_state_dirty(p_max_age_seconds)` helpers. Backfilled all 15 members; drained in 426 ms.
