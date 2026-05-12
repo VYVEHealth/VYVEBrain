@@ -30,7 +30,7 @@ This playbook adds nothing architectural. It's the **operator capture sheet** th
 
 1. On the iPhone, navigate to `online.vyvehealth.co.uk` and log in.
 2. Visit `online.vyvehealth.co.uk?perf=1` once. This sets `vyve_perf_enabled='1'` in localStorage; the flag persists across navigations.
-3. *(Open question)* Confirm Capacitor iOS wrap (build 3) shares the same localStorage as the web shell. If not, the flag must be flipped inside the wrap separately. Recommendation: capture web-shell-only for v1 since most of the test cohort uses the web shell; address wrap parity as a follow-up.
+3. The Capacitor iOS wrap and Safari **do not share localStorage** — they're separate WKWebView data stores even though both point at the same `online.vyvehealth.co.uk` origin (verified 12 May 2026 against `capacitor.config.json` at `VYVEHealth/vyve-capacitor@main`: `server.url` is set to the live HTTPS site, so the wrap loads the production URL in WKWebView but with its own storage container, not Safari's). For Layer 5 v1 capture, **flip the flag in Safari only** — that's representative of the architecture under test. Wrap-side parity is a follow-up: same `?perf=1` URL works inside the wrap when you eventually want wrap-cohort numbers.
 
 **Cold capture — 5 minutes, the 9 high-value surfaces.**
 
@@ -184,8 +184,7 @@ Worth a 4-page atomic commit before the capture window closes ~18 May, so the La
 
 | Step | What | Who | When | Output |
 |---|---|---|---|---|
-| 0a | Confirm Capacitor wrap localStorage parity with web shell | Dean | Before capture | Open question resolved |
-| 0b | (Optional) Add `vyvePaintDone` to certificates/engagement/leaderboard/habits | Claude | Pre-capture if time, else post-capture | 4-file atomic commit |
+| 0a | (Optional) Add `vyvePaintDone` to certificates/engagement/leaderboard/habits | Claude | Pre-capture if time, else post-capture | 4-file atomic commit |
 | 1 | Flip `vyve_perf_enabled='1'` on iPhone, use app normally for 25 min | Dean | Any session before 18 May | ~50–100 rows in `perf_telemetry` |
 | 2 | Run Q1, Q2, Q3, paste results into `/playbooks/layer5-perf-results.md` | Claude (with Dean's data) | Same session as Step 1 | Baseline numbers committed to brain |
 | 3 | Layer 6 SPA-shell decision — go / no-go | Dean + Claude | ~18 May per PM-56 deadline | Either Layer 6 playbook drafted or Layer 6 dropped |
@@ -194,9 +193,10 @@ Worth a 4-page atomic commit before the capture window closes ~18 May, so the La
 
 ## Open questions for Dean
 
-1. **Capacitor wrap localStorage shared with Safari?** Determines whether Layer 5 baseline includes wrap users in v1 or only web shell.
-2. **Leave `vyve_perf_enabled='1'` on permanently for the test cohort post-baseline?** Recommendation: selftest + Dean only until sampling logic ships. Cohort-wide later if useful.
-3. **Wire `vyvePaintDone` before or after capture?** Recommendation: after — capture FCP baseline first, then `vyvePaintDone` becomes the delta-improvement check.
+1. **Leave `vyve_perf_enabled='1'` on permanently for the test cohort post-baseline?** Recommendation: selftest + Dean only until sampling logic ships. Cohort-wide later if useful.
+2. **Wire `vyvePaintDone` before or after capture?** Recommendation: after — capture FCP baseline first, then `vyvePaintDone` becomes the delta-improvement check.
+
+(Open question 0a resolved 12 May 2026: Capacitor wrap and Safari do not share localStorage; flip the flag in Safari only for v1 capture. See One-time setup step 3 above.)
 
 ---
 
