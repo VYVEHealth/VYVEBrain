@@ -219,3 +219,51 @@ Placeholders for substitution at ship time: `{{PM66_SHA}}`, `{{PM67A_SHA}}`, `{{
 6. **Atomic brain commit** — changelog + backlog + master patches per shape above.
 
 — Claude (20-hour gap session, 09:50 UTC, sandbox `took`)
+
+
+---
+
+# Appendix B — Brain drift catches from cross-repo grep (12 May 2026 ~10:00 UTC)
+
+After committing Appendix A, extended the EF-retirement audit to two more repos that the morning session missed: VYVEBrain itself (.md grep) and vyve-capacitor source files. Result:
+
+## vyve-capacitor: clean
+
+Zero references to any of the 39 retire-safe EF candidates. Capacitor wrap calls the live site URL, not specific EF endpoints. Expected, but worth confirming.
+
+## VYVEBrain: 250 hits across 12 .md files
+
+Most hits are expected noise — the dead-EF inventory itself lists them by name (79 hits), the 20:00 status doc references them (39 hits), the backlog references them (38 hits), and historical changelog/master mentions. None of those are drift.
+
+**Real drift caught: `brain/master.md` asserts five retire-safe EFs are LIVE.**
+
+| master.md L# | EF | Master says | Verified via EF body |
+|---|---|---|---|
+| 297 / 539 | `generate-workout-plan` | "LIVE — AI workout plan generation (invoked from onboarding's waitUntil path)" | **WRONG.** EF v16 has full working code (200+ lines), but onboarding v82 has its own internal `generateWorkoutPlan()` function and does NOT call this EF. Two parallel implementations sharing a name. The EF is genuinely orphaned. Retire-safe stands. |
+| 307 | `edit-habit` | "LIVE — Habit definition edit helper" | **PARTIALLY WRONG.** EF v6 has full working code (130 lines) for member-facing habit editing (POST/DELETE on daily_habits). But zero references in vyve-site or vyve-capacitor — nothing calls it. Member-facing label is also wrong (master implied admin-facing). Retire-safe stands but for "no callers" reason, not "absorbed." |
+| 325 | `check-cron` | "LIVE — Cron job audit/verification" | **UNVERIFIED** in this session. master is likely echoing the historic 9 April security audit's `SEC-011 HIGH: check-cron (v18) OVERWRITTEN - does NOT check crons`. So this EF was already known to be broken/non-functional. Retire-safe. |
+| 329 | `send-password-reset` | "LIVE — Password reset flow" | **UNVERIFIED** in this session. Supabase Auth handles password reset natively now (see login.html behaviour); this EF predates Auth migration. Retire-safe per inventory rationale. |
+| 346 | `debug-exercise-search` | "LIVE — Exercise-library search debug tool" | **UNVERIFIED** in this session. Name + "debug" suggests one-shot tool; zero references in source grep. Retire-safe. |
+
+**The signal: `LIVE` in master.md means "the EF exists in the deployment list," not "the EF is invoked by anything." Master.md §7 ("Edge Functions") is treating EF existence as semantically equivalent to EF activity, which is a category error.**
+
+This pattern has already been noted in master.md memory: *"Tonight's `smoketest-ach-push` v2 (inert 410 stub) added to the list. Composio doesn't expose a delete-EF tool — needs Supabase Dashboard."* The pattern is: EF goes obsolete → converted to inert stub → marked retire candidate → still appears in EF list as "ACTIVE" because Supabase status flag doesn't change → master.md inherits that status. The fix is for EF status documentation to reflect *invocation*, not deployment.
+
+**Action item for tonight's atomic brain commit:** update master.md §7 to remove all 5 LIVE entries that are actually retire-safe. Or, more cleanly, replace §7's per-EF table with a "Core EFs (24)" list and a pointer to the live deployment list for everything else. The §7 inventory has been a drift hotspot for months — the dead-EF inventory itself flagged this on 12 May: *"Brain §7 'Edge Functions — 15 Core Operational' — out of date (now ~24+ core)."*
+
+## §23 rule update from this catch
+
+The four-way EF-retirement rule (pg_cron + vyve-site + vyve-command-centre + future admin) was already proposed. This catch adds a fifth check: **VYVEBrain `.md` grep**. Not because the brain calls EFs (it doesn't), but because the brain has been a *false-positive source*: master.md's LIVE assertions led the morning audit to inflate the keep-list rationale. The fifth check is: **before retiring, also grep VYVEBrain master.md for the EF name and reconcile any "LIVE" claims against actual invocation evidence.**
+
+Proposed §23 text (revised):
+
+> **Hard rule (PM-67-prep): EF retirement is gated on five-way evidence.** Before any EF is retired, the following five checks must each be completed and recorded:
+> 1. `pg_cron.job.command` grep for the EF slug.
+> 2. vyve-site main full-tree recursive grep (.html/.js/.css/.ts/.mjs).
+> 3. vyve-command-centre main full-tree recursive grep.
+> 4. vyve-capacitor main full-tree recursive grep (or any future native wrap repo).
+> 5. VYVEBrain `brain/master.md` grep + reconcile any "LIVE" claims against checks 1–4. If master.md says LIVE but checks 1–4 are clean, the master.md claim is drift — patch master.md in the same atomic commit as retirement.
+
+Checks 1–4 establish "nothing invokes this." Check 5 establishes "the brain knows nothing invokes this." Both are required for clean retirement.
+
+— Claude, 10:00 UTC follow-up
