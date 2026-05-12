@@ -517,3 +517,121 @@ Three of four are concrete and ship-ready (PM-67a, PM-67c, PM-67d). The fourth (
 **Total surface area if PM-67a + PM-67c + PM-67d all ship over the next week:** ~30 files, ~200 lines diff, plausible aggregate **150-400ms cold paint improvement + 100-250ms warm time-to-data on check-in surfaces + accurate paint telemetry**. That's the premium-feel programme's remaining unshipped scope before inline extraction.
 
 — Claude, ~11:50 UTC
+
+
+---
+
+# Appendix G — Image, font, service worker audits (cleared with one minor finding)
+
+Continued audit ~12:00 UTC. Three more dimensions:
+
+## Image weight (CLEARED)
+
+The thumb-*.jpg files in vyve-site root (~1MB total: thumb-GT 202K, thumb-events 281K, thumb-yoga 147K, thumb-workouts 142K, thumb-checkin 140K, thumb-mindfulness 74K) had me worried earlier — that's a lot of bytes if they're on the critical path.
+
+**They're not.** Grepping all 31 inner+session pages for `thumb-*.jpg` references:
+- Only `sessions.html` references them, all 8 thumbs.
+- The single `<img>` tag in sessions.html uses `loading="lazy"`.
+- Both `<img>` tags found across all 31 pages use `loading="lazy"` correctly.
+
+Image weight is not a critical-path issue. The 8 May audit's "near-zero `<img>` tags" was right; I was wrong to second-guess it.
+
+## Font loading (CLEARED)
+
+Inner pages all use the same Google Fonts pattern (verified via index.html head):
+
+```html
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:...&family=DM+Sans:...&display=swap" rel="stylesheet">
+```
+
+This is the recommended pattern: two preconnect hints (saves TCP+TLS round-trip), single combined CSS request for both font families, `display=swap` prevents FOIT.
+
+**Optional micro-optimization (worth flagging but not bundling):** the Google Fonts CSS itself is render-blocking. Promoting it via `<link rel="preload" as="style" onload="this.rel='stylesheet'">` would save 50-150ms on cold load. Not bundling because:
+1. The `onload` trick has cross-browser quirks (needs noscript fallback).
+2. `display=swap` already means text renders immediately with fallback font.
+3. The 50-150ms is a "Lighthouse number," not a "perceived feel" number.
+
+Note in the brain in case Lewis ever asks about Lighthouse scores.
+
+## Service worker strategy (NEARLY CLEAN — one minor finding)
+
+sw.js (6.4KB, 174 lines) is well-architected:
+- HTML: stale-while-revalidate (cached paint instant, background refresh — perfect for premium feel).
+- Assets: cache-first, versioned via cache-key bump.
+- skipWaiting + clients.claim — new SWs take over on first reload, not "wait for all tabs to close."
+- Cross-origin and `/functions/` bypass SW (Supabase EF calls don't get cached accidentally).
+- Push handler with multi-tab focus matching.
+
+**Finding S1 (LOW): precache list missing 7+ pages.**
+
+The `urlsToCache` array (L13-37) precaches 24 URLs. Missing inner pages:
+- `wellbeing-checkin.html`
+- `monthly-checkin.html`
+- `leaderboard.html`
+- `log-food.html`
+- `running-plan.html`
+- `settings.html`
+- Plus JS: `perf.js`, `tracking.js`, `push-native.js`, `healthbridge.js` (for HealthKit pages)
+
+**Impact:** ~150-300ms one-time cost on first visit to each missing page. After first visit they're fine. Cumulative impact across a new-member session is real — they'll visit half of these on day one — but per-page after that, zero.
+
+**Fix:** add the missing pages to `urlsToCache`. ~10 lines.
+
+```javascript
+const urlsToCache = [
+  '/', '/index.html',
+  '/exercise.html', '/nutrition.html', '/sessions.html',
+  '/habits.html', '/engagement.html', '/workouts.html',
+  '/movement.html', '/cardio.html', '/certificates.html',
+  '/certificate.html',
+  // ── ADDED ──
+  '/wellbeing-checkin.html', '/monthly-checkin.html', '/leaderboard.html',
+  '/log-food.html', '/running-plan.html', '/settings.html',
+  // ── /ADDED ──
+  '/theme.css', '/theme.js', '/auth.js', '/bus.js',
+  '/vyve-home-state.js', '/nav.js', '/offline-manager.js', '/vyve-offline.js',
+  '/perf.js', '/tracking.js', '/push-native.js', '/healthbridge.js',  // ← JS additions
+  '/manifest.json', '/icon-192.png', '/icon-512.png', '/gdpr-erasure-cancel.html'
+];
+```
+
+## Combined into PM-67a (free addition for tonight)
+
+S1 is a 10-line change to sw.js — same file PM-67a already touches for the cache-key bump. **Bundling S1 into PM-67a tonight is free** — it's literally just adding strings to an array in the same file PM-67a edits anyway. Zero additional risk; the SW takes the new precache list on next activation, same as the cache-key bump.
+
+**Updated PM-67a recommendation:** ship as **9 files** (8 originals + S1 sw.js precache additions). Or **10 files** if also adding Appendix D's engagement.html path-2 patch.
+
+## Final audit ranking with all 4 bundles
+
+| Bundle | Files | Effort | Likely cold paint win | Likely warm TTI win | Ship recommendation |
+|---|---|---|---|---|---|
+| **PM-67a** (defer + paint + sw precache, +Appendix D opt) | 8-10 | Low | 5-15ms | accurate paint_done telemetry | **Tonight** |
+| **PM-67c** (PostHog defer + lazy bridges + theme listener + preconnect ×15) | 4 + 15 HTML | Medium | 5-15ms | 50-200ms (the bridge fix is the headline) | Next session |
+| **PM-67d** (W1+W2 Promise.all rewrites) | 3 | Low | — | 100-250ms on 2 check-in surfaces | Next session (with PM-67c) |
+| **Inline body JS extraction** | 8 pages major refactor | High | Unknown | Unknown | Wait for Layer 5 data |
+
+## Hot-path file size to flag (not actionable yet)
+
+Pure observation, not a finding: the six hot-path files total 137KB raw, ~40KB gzipped over the wire. That's not huge in absolute terms (the page HTML files are bigger), but compounded across page navigations where these don't re-parse but ALL have IIFEs that execute, the cumulative cost adds up. Layer 5 numbers will tell us if this matters; until then, no action.
+
+## Audit dimensions remaining if Dean wants to push further
+
+From the original 10-item list at session start, six are now audited:
+- ✅ Auth.js + bus.js + state + offline (Appendix E, hot-path playbook).
+- ✅ Network waterfall mapping (Appendix F).
+- ✅ Image weight (this appendix).
+- ✅ Font loading (this appendix).
+- ✅ Service worker (this appendix).
+- ✅ Inline body/head extraction priorities (already in 8 May audit; deferred pending Layer 5).
+
+Four remaining:
+- ⏸ Capacitor cold-launch (would need vyve-capacitor repo deep-dive; native + WKWebView paths).
+- ⏸ Server-side EF latency (would need pg_stat_statements query + EF cold-start measurement).
+- ⏸ CSS unused-rules audit (per-page, 17-32KB inline CSS).
+- ⏸ `_vyveWaitAuth()` timing (sub-finding of hot-path; minor).
+
+Of these, the Capacitor cold-launch is probably the biggest unknown — enterprise demos run through the wrap, not Safari. If you want one more deep audit before 20:00, that's the one I'd pick. Native bridge handshake timing, WKWebView storage rehydrate, capacitor.config.json server.url behaviour, native push integration cost — all unaudited.
+
+— Claude, ~12:00 UTC
