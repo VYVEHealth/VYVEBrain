@@ -267,3 +267,82 @@ Proposed §23 text (revised):
 Checks 1–4 establish "nothing invokes this." Check 5 establishes "the brain knows nothing invokes this." Both are required for clean retirement.
 
 — Claude, 10:00 UTC follow-up
+
+
+---
+
+# Appendix C — Four §23 hard-rule drafts, ready for 20:00 sign-off
+
+Each block below is the exact prose that would land in `brain/master.md` §23 if signed off. Tonight's decision per rule: **approve / edit / reject**. Approval makes it a hard rule; editing means propose changes; rejection means the candidate is dropped.
+
+---
+
+## Rule 1 — PM-67 Layer 4 harness atomicity
+
+**Proposed text for master.md §23:**
+
+> **Hard rule (PM-67): Layer 4 surface promotions ship harness updates in the same atomic commit.** When a vyve-site inner page is promoted from skeleton-paint Layer 3 to canonical-publish-only Layer 4 (current series: PM-58 through PM-66 — 8 surfaces shipped, 6 to go), the corresponding entry in the Layer 4 self-test harness MUST land in the same `GITHUB_COMMIT_MULTIPLE_FILES` operation, not a follow-up. The harness defines the surface's contract (canonical publish, bus subscriber, cache shape); promoting the surface without updating the harness leaves the contract undefined and the test suite drifts. This rule replaces the eight-time "I'll add the harness next session" deferral pattern with a mechanical "no harness, no promotion" gate.
+>
+> **Enforcement:** any Layer 4 promotion commit whose changed_paths does not include the harness file fails the §23 self-check at brain-commit time and rolls back.
+
+**Why this works:** the eight deferrals weren't laziness — they came from "the surface is shippable, the harness is polishing." This rule treats the harness as part of the surface's first ship, not its cleanup.
+
+---
+
+## Rule 2 — PM-67a head-script defer default
+
+**Proposed text for master.md §23:**
+
+> **Hard rule (PM-67a): Head scripts in vyve-site default to `defer`. Render-blocking head scripts require an inline-comment justification.** Any `<script>` tag inside `<head>` on any vyve-site .html file must include `defer` UNLESS the very next code line is an HTML comment explaining why synchronous load is necessary. `theme.js` is the prototype of a justified exception:
+>
+> ```html
+> <!-- theme.js MUST run before paint: applyTheme() at L39 sets <html data-theme> pre-body.
+>      Deferring causes a flash of wrong theme on every page load. -->
+> <script src="/theme.js"></script>
+> ```
+>
+> Any future head script added without `defer` AND without an immediately-preceding justification comment is a premium-feel regression — the commit gets reverted. This rule pairs with the existing §23 PM-20 hard rule (defer audits must check inline consumers); together they make every head-script addition cost the contributor a clear answer to "why synchronous?" before merge.
+
+**Why this works:** the audit already established the universe of "safe to defer" vs "must stay synchronous" is small and known. Defer is the right default. The justification comment turns the rule from "remember to defer" into "explain yourself if you don't."
+
+---
+
+## Rule 3 — EF retirement five-way evidence gate
+
+**Proposed text for master.md §23:**
+
+> **Hard rule (PM-67-prep): Edge Function retirement is gated on five-way evidence.** Before any EF is retired (whether by deletion or by stub-replacement), the following five checks must each be completed and recorded in the retirement commit message or playbook:
+> 1. `SELECT command FROM cron.job WHERE command LIKE '%<ef-slug>%';` — must return zero rows.
+> 2. vyve-site main full-tree recursive grep across `.html`, `.js`, `.css`, `.ts`, `.mjs` — zero references.
+> 3. vyve-command-centre main full-tree recursive grep across the same extensions — zero references.
+> 4. Any future admin/wrap repos (currently vyve-capacitor) full-tree recursive grep — zero references.
+> 5. VYVEBrain `brain/master.md` grep + reconcile any "LIVE" or "ACTIVE" claims against checks 1–4. If master.md says LIVE but checks 1–4 are clean, master.md is drift — patch master.md in the same atomic commit as the retirement.
+>
+> Name-pattern retirement (e.g. "all `seed-*` are one-shots") is unsafe and explicitly prohibited. Four false positives caught in the 12 May 2026 audit pass justified this rule: `schema-snapshot-refresh` (cron jobid 14, missed by name-pattern), `seed-weekly-goals` (cron jobid 20, same), `get-activity-feed` (live in vyve-site/activity.html L173, missed by single-repo audit), `cc-data` (live in vyve-command-centre/index.html L251-253, missed by single-repo audit). Five checks together catch all four; any subset misses at least one.
+
+**Why this works:** the 12 May session caught these four because the methodology was *applied* fully. Codifying the methodology as a rule means future retirement passes can't shortcut it.
+
+---
+
+## Rule 4 — master.md §7 status reflects invocation, not deployment (NEW from Appendix B)
+
+**Proposed text for master.md §23:**
+
+> **Hard rule (PM-67-prep, addendum): EF status entries in brain/master.md §7 reflect invocation, not deployment.** An EF marked `LIVE` in §7 must have at least one verified caller (vyve-site, vyve-command-centre, pg_cron, or another active EF). An EF deployed to Supabase but invoked by nothing is marked `ORPHAN` or removed from §7 entirely. The Supabase deployment status (`ACTIVE`/`PAUSED`) is irrelevant — an `ACTIVE` EF that nothing calls is `ORPHAN`. This rule is the §7-side enforcement of Rule 3's evidence gate: Rule 3 prevents incorrect retirement; Rule 4 prevents the brain from misrepresenting deployment as activity.
+>
+> **Enforcement:** any commit that adds or modifies a §7 entry must cite the caller(s) inline. e.g. `\| \`generate-workout-plan\` \| LIVE \| Called by: <none — orphan>` is REQUIRED format if no caller exists. The `LIVE` label without a citation is now a §23 violation.
+
+**Why this works:** the Appendix B catches happened because §7's `LIVE` label has been treated as load-bearing in audits while meaning nothing in practice. This rule makes the label load-bearing in the only direction that matters: callers.
+
+---
+
+## How to use these at 20:00
+
+For each rule:
+- **Approve as-written:** copy the proposed text into master.md §23 in tonight's atomic brain commit.
+- **Edit:** tell me the change. I edit, re-stage, you approve the edit.
+- **Reject:** drop from the commit.
+
+All four are designed to be independent — approving one doesn't require approving any other. Rule 4 builds on Rule 3 (it's an addendum) but Rule 3 stands alone.
+
+— Claude, ~10:30 UTC
