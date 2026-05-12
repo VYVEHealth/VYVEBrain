@@ -6,11 +6,11 @@
 
 ## TL;DR
 
-Six brain commits today. One 8-file vyve-site patch bundle staged. Nothing shipped to production. PM-66 still needs your local Mac git push to unblock the dependent brain commit.
+Eight brain commits today. One 8-file vyve-site patch bundle staged. Nothing shipped to production. PM-66 still needs your local Mac git push to unblock the dependent brain commit.
 
 ---
 
-## Brain commits today (six)
+## Brain commits today (eight)
 
 | Time (UTC) | SHA | What |
 |---|---|---|
@@ -20,6 +20,8 @@ Six brain commits today. One 8-file vyve-site patch bundle staged. Nothing shipp
 | ~09:00 | `1f8da37a` | PM-67a 20:00 ship runbook: mechanical step-by-step for the 8-file atomic vyve-site commit |
 | ~09:30 | `6e0e1a2a` | GDPR FK + RPC verification: 5 NO-ACTION FKs all handled by gdpr_erasure_purge → downtier the backlog item P1 → P3 |
 | ~10:00 | `fc13b27a` | Dead EF inventory: 41 retire-safe candidates classified, two near-miss corrections caught |
+| ~10:30 | `9a435601` | This 20:00 status doc (first version) |
+| ~11:00 | `b3f086bf` | Layer 5 Q3 patch: pages with zero warm visits now return `verdict='insufficient_data'` instead of misleading `'slow'` (caught via dry-run with seeded perf_telemetry test rows; rows cleaned up) |
 
 All six landed via Composio workbench, all byte-equal verified post-commit.
 
@@ -90,6 +92,7 @@ These are real perf wins but I didn't push them through. Documented in the audit
 - **running-plan.html L385/L392 serial fetch**: looked like a Promise.all opportunity. Verified — they're sequential dependency (deactivate then insert). Not parallelizable.
 - **theme.js defer on monthly-checkin.html**: looked like a free perf win. Verified — would cause a flash of wrong theme because applyTheme() runs at module-load top level. REJECTED, kept render-blocking.
 - **5 NO-ACTION FKs on members.email**: looked like a GDPR-erasure risk. Verified — gdpr_erasure_purge RPC explicitly handles all 5 before deleting members. Erasure is provably safe today. Downtiered P1 → P3.
+- **PM-18 prefetch fan-out**: looked like it might be a warm-load waterfall. Verified — `vyvePrefetchAfterAuth` fans out 4 helpers as microtasks (hot tabs: exercise, habits) + requestIdleCallback (cool tabs: home, members). Single JWT fetch shared across all 4. `_vyvePfHabits` correctly uses Promise.all internally. Architecture is already optimal. No new perf win available.
 
 ---
 
