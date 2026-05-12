@@ -144,6 +144,7 @@ SELECT
   round(percentile_cont(0.5)  WITHIN GROUP (ORDER BY metric_value) FILTER (WHERE visit_n > 1)::numeric, 1) AS warm_fcp_p50,
   round(percentile_cont(0.95) WITHIN GROUP (ORDER BY metric_value) FILTER (WHERE visit_n > 1)::numeric, 1) AS warm_fcp_p95,
   CASE
+    WHEN count(*) FILTER (WHERE visit_n > 1) = 0 THEN 'insufficient_data'
     WHEN percentile_cont(0.5) WITHIN GROUP (ORDER BY metric_value) FILTER (WHERE visit_n > 1) < 200 THEN 'premium'
     WHEN percentile_cont(0.5) WITHIN GROUP (ORDER BY metric_value) FILTER (WHERE visit_n > 1) < 500 THEN 'good'
     ELSE 'slow'
@@ -152,6 +153,8 @@ FROM session_rows
 GROUP BY page
 ORDER BY warm_fcp_p50 NULLS LAST;
 ```
+
+> **Pre-flight note (PM-67a dry run, 12 May 2026):** The original Q3 returned `verdict='slow'` for pages with zero warm visits (NULL percentile + ELSE branch). Added the `insufficient_data` branch so pages without enough samples are flagged distinctly instead of mis-classified as slow.
 
 This is the board the Layer 6 SPA-shell go/no-go decision will be judged against, and the same board any future surface-level perf work (cache migrations, prefetch fan-out tweaks, EF compression) needs to clear before claiming a win.
 
