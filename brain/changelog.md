@@ -1,3 +1,54 @@
+## 2026-05-12 PM-68 + PM-68b + PM-69 + PM-70 (member-dashboard perf overhaul: kill trigger fan-out, unify dashboard RPC, cron drain, fold charity total)
+
+**Four database migrations + two member-dashboard EF deploys (v68 → v69) shipped this session, in response to the PM-66/67a/67d perf-night discovery that the bottleneck was server-side: 17-38s wallclock on the member-dashboard EF with logs showing 38585 / 37640 / 36147 / 22708 ms responses. Root cause: 9 `AFTER ROW EXECUTE FUNCTION zzz_refresh_home_state` triggers fired the ~20 KB plpgsql function `refresh_member_home_state(p_email)` synchronously inline in every writer's transaction, doing ~40 aggregations against tables every concurrent reader was also trying to lock. Writers held row locks on member_home_state; readers queued behind them; the cascade compounded across log-activity, wellbeing-checkin, monthly-checkin AND member-dashboard.**
+
+### PM-68 — `pm68_kill_sync_trigger_fanout` (shipped, verified)
+Replaced the 9 heavy AFTER ROW triggers with 27 lightweight AFTER STATEMENT triggers (9 tables × 3 ins/upd/del) that do nothing but mark members dirty in a new `public.member_home_state_dirty` queue table.
+
+- **New table:** `public.member_home_state_dirty(member_email text PK, marked_at timestamptz, reason text)` + index on marked_at + RLS service-role-only.
+- **5 new trigger functions** (all SECURITY DEFINER, AFTER STATEMENT, REFERENCING NEW/OLD TABLE):
+  - `tg_mark_home_state_dirty_ins` — `INSERT…ON CONFLICT` from `new_table` (8 activity tables)
+  - `tg_mark_home_state_dirty_upd` — UNION new+old emails (8 activity tables)
+  - `tg_mark_home_state_dirty_del` — from `old_table` (8 activity tables)
+  - `tg_mark_home_state_dirty_members_ins_upd` — uses `email` column not `member_email` (members table)
+  - `tg_mark_home_state_dirty_members_del` — preserves cascade-delete of member_home_state + dirty rows on members DELETE
+- **Helpers** (both SECURITY DEFINER, both granted to service_role):
+  - `refresh_member_home_state_if_dirty(p_email text)` — single-member EXISTS check then refresh+clear; idempotent under concurrency.
+  - `drain_member_home_state_dirty(p_max_age_seconds int DEFAULT NULL)` — drains up to 200 oldest dirty rows; returns count.
+- **Backfill:** all 15 members inserted into dirty queue with reason `'pm68_backfill'`, then drained in a single 426 ms call. All `member_home_state` rows now fresh; pre-shipment some were 6+ days stale (lewisvines 3 days, alanbird1 4 days, 8 others 6 days).
+- **Verification (EXPLAIN ANALYZE on real members):**
+  - Clean path (`refresh_member_home_state_if_dirty` when not dirty): **2.4 ms** execution.
+  - Dirty path (full refresh + flag clear): **32 ms** execution.
+  - Trigger-fired-correctly check: AFTER STATEMENT UPDATE on `workouts` populated the dirty queue with `reason='workouts:upd'` as designed.
+- **Audit:** 0 old triggers remain; 9 tables × 3 new triggers each (27 triggers total) verified via `pg_trigger`.
+
+### PM-68b — `pm68_b_unified_dashboard_state_rpc` (shipped)
+Created `public.member_home_state_get_fresh(p_email text) RETURNS jsonb` — collapses the previous three-round-trip pattern (`refresh_member_home_state_if_dirty` + `q('member_home_state')` + later `rpc('get_charity_total')`) into ONE SECURITY DEFINER plpgsql function that returns the freshest home_state row as jsonb with `__charity_total` folded in (see PM-70). Also covers the previously separate "missing row" defensive fallback.
+
+### PM-69 — `pm69_dirty_queue_drain_cron` (shipped)
+Scheduled `vyve_drain_home_state_dirty` pg_cron job every 5 minutes calling `SELECT public.drain_member_home_state_dirty();`. Caps idle-member dirty-row staleness at 5 minutes for members who haven't opened the app since their last write. Active members continue to drain on-demand via the dashboard EF.
+
+### PM-70 — `pm70_fold_charity_total_into_state_rpc` (shipped)
+The pre-existing `get_charity_total()` was a fast `SELECT counter_value FROM platform_counters WHERE counter_key='charity_total'` already cached by the daily reconcile cron — but pg_stat_statements showed 3,383 calls / 619 s total / 183 ms mean / 3.7 s max. The cost was 100 % PostgREST gateway round-trip overhead, not the SQL. Folded the value into `member_home_state_get_fresh` as the `__charity_total` field on the returned jsonb. The dashboard EF now reads charity from the same RPC that delivers the home_state row.
+
+### member-dashboard EF v68 (deployed; ezbr_sha256 `e9b23b11…`)
+First EF cut after the trigger swap. Calls `refresh_member_home_state_if_dirty` BEFORE the existing `Promise.all` gateway. Defensive belt-and-braces fallback for missing rows preserved (refresh inline + re-query) but should rarely fire post-PM-68. Comments document the change in detail. verify_jwt: false preserved.
+
+### member-dashboard EF v69 (deployed; ezbr_sha256 `5ee3a7ba…`)
+Final EF cut for this session. Replaces v68's pattern with the unified `rpc('member_home_state_get_fresh', { p_email })`. Drops the separate refresh-if-dirty pre-call, drops `q('member_home_state', ...)`, drops `rpc('get_charity_total')`. Three round trips collapsed into one. Reads `state.__charity_total` for the charity_total field. _shared/taxonomy.ts and _shared/achievements.ts are functionally byte-equal to v68 (achievements.ts compacted slightly to fit deploy payload). verify_jwt: false preserved.
+
+### Expected production impact
+member-dashboard EF wallclock should drop from the observed 17-38 s (worst-case) to 200-900 ms steady state. The cascade win is bigger than the dashboard itself: writers no longer pay the 100-200 ms refresh cost inline, so log-activity / wellbeing-checkin / monthly-checkin EF latencies should also drop by the same amount (each was paying for the same trigger). Concurrent-user contention on `member_home_state` row locks should be effectively eliminated.
+
+### Brain-drift correction noted at audit
+Pre-PM-68, the brain's `recompute_all_member_stats` description claimed it refreshes `member_home_state` every 30 minutes. **False.** That function writes to a different table (`member_stats`). `member_home_state` had NO scheduled refresh prior to PM-69, which is why rows were 6+ days stale for inactive members. Master.md updated accordingly.
+
+### Outstanding / parked for PM-71 + PM-72
+- **PM-71 (queued):** pre-fetch dashboard-only fields (workoutsToday, cardioToday, dailyToday, sleepLastNight, healthConnections) into `member_home_state` during refresh; drop those 5 PostgREST queries from the dashboard EF (would become v70).
+- **PM-72 (queued):** materialise `member_achievement_progress` so the dashboard's 23-evaluator achievements pass becomes a single query instead of 23 parallel reads against the catalog + member_achievements + individual count/sum tables.
+
+---
+
 ## 2026-05-12 PM-66 + PM-67a + PM-67d (Layer 4 capstone closes 8/8; premium-feel perf bundle; waterfall Promise.all rewrites; member-dashboard EF latency discovered as primary regression)
 
 **Three atomic vyve-site commits shipped tonight (14 files total, all byte-equal verified post-commit):**

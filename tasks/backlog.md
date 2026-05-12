@@ -1,3 +1,32 @@
+## Added 12 May 2026 PM-68 + PM-68b + PM-69 + PM-70 ship; PM-71/PM-72 queued (member-dashboard perf overhaul)
+
+- ✅ **CLOSED — PM-68.** Supabase migration `pm68_kill_sync_trigger_fanout`. Replaced 9 heavy AFTER ROW `zzz_refresh_home_state` triggers (which fired ~20 KB plpgsql `refresh_member_home_state` inline in every writer's transaction) with 27 lightweight AFTER STATEMENT dirty-flag triggers on a new `public.member_home_state_dirty(member_email PK, marked_at, reason)` queue table. Plus `refresh_member_home_state_if_dirty(p_email)` (2.4 ms clean / 32 ms dirty per EXPLAIN ANALYZE) and `drain_member_home_state_dirty(p_max_age_seconds)` helpers. Backfilled all 15 members; drained in 426 ms.
+- ✅ **CLOSED — PM-68b.** Supabase migration `pm68_b_unified_dashboard_state_rpc`. Added `member_home_state_get_fresh(p_email)` collapsing dirty-check + refresh + state read into one SQL function.
+- ✅ **CLOSED — PM-69.** Supabase migration `pm69_dirty_queue_drain_cron`. pg_cron `vyve_drain_home_state_dirty` `*/5 * * * *` calling `drain_member_home_state_dirty()`. Caps idle-member staleness at 5 min.
+- ✅ **CLOSED — PM-70.** Supabase migration `pm70_fold_charity_total_into_state_rpc`. Extended unified RPC to return `__charity_total` field, eliminating per-request `get_charity_total()` round trip (was 3,383 calls / 619 s total / 183 ms mean / 3.7 s max in pg_stat_statements — all gateway overhead, not SQL).
+- ✅ **CLOSED — member-dashboard EF v68** (ezbr `e9b23b11…`). First EF deploy of the dirty-flag refresh path. `refresh_member_home_state_if_dirty` called before Promise.all; old missing-row fallback retained as belt-and-braces.
+- ✅ **CLOSED — member-dashboard EF v69** (ezbr `5ee3a7ba…`). Replaces v68's pattern with the unified `member_home_state_get_fresh` RPC. Drops 2 PostgREST round trips per request (separate state query + charity_total RPC) on top of the v68 refresh win. Three round trips collapsed into one. verify_jwt: false preserved.
+
+### Queued from this session
+
+- 🔜 **PM-71.** Pre-fetch dashboard-only fields (workoutsToday, cardioToday, dailyToday, sleepLastNight, healthConnections) into `member_home_state` during refresh. Drops 5 PostgREST queries from the dashboard EF (would ship as v70). Risk: minor — these fields are already computed inside `refresh_member_home_state` for streaks; just need to be persisted as denormalised columns or a jsonb blob on the row.
+- 🔜 **PM-72.** Materialise `member_achievement_progress` so the dashboard's 23-evaluator achievements pass becomes 1 query. Current shape (PM-13/PM-17) is Promise.all over 23 metric evaluators against the catalog + member_achievements + per-metric count/sum tables. Lewis copy gate not required unless tier titles change (they won't).
+
+### Pre-launch hard blockers — unchanged this session (Lewis-blocked)
+
+- HAVEN clinical sign-off (Phil)
+- Weekly check-in nudge copy split (Phil + Lewis)
+- Brevo logo removal
+- Facebook Make connection expires 22 May 2026
+- Public-launch comms draft
+- B2B volume tier definition
+
+### Brain-drift correction recorded this session
+
+- **`recompute_all_member_stats` does NOT refresh `member_home_state`.** Brain previously claimed it ran a 30-min refresh of home_state via this function. False — that function writes to a separate `member_stats` table. This is why `member_home_state` was 6+ days stale for inactive members before PM-69's cron. Master.md updated.
+
+---
+
 ## Added 12 May 2026 PM-66 + PM-67a + PM-67d ships; PM-67c/e/f queued; PERF OVERHAUL becomes the campaign
 
 - ✅ **CLOSED — PM-66.** vyve-site `d81e14297ce8d6193511231f96e11b0bc3eabf7a` (tree `ec4a23a7`). Layer 4 capstone monthly-checkin.html canonical-publish-only wiring (3 files atomic). Closes 8/8 Layer 4 surface campaign. EF v23 failure-discriminator rule codified at §4.9.

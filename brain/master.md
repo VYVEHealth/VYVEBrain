@@ -847,6 +847,38 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 12 May 2026 PM (PM-68 + PM-68b + PM-69 + PM-70 ships — member-dashboard EF backend perf overhaul)
+
+**🚢 BACKEND PERF OVERHAUL SHIPPED.** Four Supabase migrations + two member-dashboard EF deploys (v68 → v69) tonight, in response to the PM-67-night discovery that the bottleneck was server-side (17-38 s wallclock). Root cause identified, fixed at the source. See changelog 2026-05-12 PM-68+ block for full detail.
+
+**What shipped:**
+- `pm68_kill_sync_trigger_fanout` — removed 9 heavy AFTER ROW `zzz_refresh_home_state` triggers; replaced with 27 light AFTER STATEMENT dirty-flag triggers on a new `member_home_state_dirty` queue table. Writers now do nothing but mark the row dirty; readers refresh on demand.
+- `pm68_b_unified_dashboard_state_rpc` — `member_home_state_get_fresh(p_email)` collapses dirty-check + refresh + state read + charity_total into one round trip.
+- `pm69_dirty_queue_drain_cron` — `vyve_drain_home_state_dirty` pg_cron every 5 min covers idle-member rows. Caps idle staleness at 5 min.
+- `pm70_fold_charity_total_into_state_rpc` — folded charity_total into the unified RPC. Eliminated per-request `get_charity_total()` round trip.
+- member-dashboard EF v68 — first cut, separate refresh-if-dirty RPC.
+- member-dashboard EF v69 — final cut, unified RPC; collapses three round trips into one. `verify_jwt: false` preserved.
+
+**EXPLAIN ANALYZE on real members:**
+- `refresh_member_home_state_if_dirty` CLEAN path: **2.4 ms**.
+- DIRTY path (full refresh + flag clear): **32 ms**.
+- Full drain of all 15 backfilled members: 426 ms.
+
+**Expected production impact:** member-dashboard EF wallclock should drop from 17-38 s to 200-900 ms steady state. log-activity / wellbeing-checkin / monthly-checkin should also drop materially because writers no longer pay the trigger cost inline. Concurrent-user contention on member_home_state row locks effectively eliminated.
+
+**Stale-row backfill done:** every `member_home_state` row was refreshed during the PM-68 backfill. Pre-shipment, the oldest were 6+ days stale (lewisvines 3 days, alanbird1 4 days, 8 others 6 days). All now fresh as of 2026-05-12 ~21:00 UTC.
+
+**Outstanding (queued for next session):**
+- PM-71 — pre-fetch dashboard-only fields (workoutsToday, cardioToday, dailyToday, sleepLastNight, healthConnections) into `member_home_state` during refresh; drop 5 PostgREST queries from the dashboard EF.
+- PM-72 — materialise `member_achievement_progress` so the 23-evaluator achievements pass becomes 1 query.
+- Verify in production that real member traffic produces sub-second EF wallclock.
+
+**Brain integrity check:** the brain at §pg_cron and §06 May PM-2 already correctly states `recompute_all_member_stats` writes to `member_stats` (NOT `member_home_state`). Pre-PM-69 there was NO scheduled refresh of `member_home_state` — only on-write trigger refreshes — which is why inactive members had 6+ day stale rows.
+
+**Pre-launch hard blockers (unchanged this session, all Lewis-blocked):** HAVEN clinical sign-off (Phil), weekly check-in nudge copy split, Brevo logo removal, Facebook Make connection expires 22 May, public-launch comms draft, B2B volume tier.
+
+---
+
 ## 19. Current status — 12 May 2026 (PM-66 + PM-67a + PM-67d ships; member-dashboard EF latency discovered as PRIMARY perf regression)
 
 **🚢 LAYER 4 EIGHT-COMMIT MILESTONE — 8/8 SURFACES SHIPPED. CAMPAIGN CLOSED.** vyve-site main HEAD `5947927b8e806d07dde802123a66a678848865bd`. PM-66 (`d81e1429`) shipped Layer 4 capstone monthly-checkin.html canonical-publish-only wiring + index.html belt-and-braces subscriber + sw.js cache key bump. PM-67a (`e274b734`) shipped premium-feel perf bundle — `defer` on vyve-offline.js across 3 HTML pages, `vyvePaintDone` dispatches on 4 pages (certificates, leaderboard, engagement path-1, engagement path-2 cache, habits end-of-renderHabits), and sw.js precache list expansion (wellbeing-checkin, monthly-checkin, leaderboard, log-food, running-plan, settings + perf.js + tracking.js + push-native.js + healthbridge.js). PM-67d (`5947927b`) shipped waterfall bundle — monthly-checkin.html init() first_name + status fetches parallelised, wellbeing-checkin.html fetchMemberData() allSeenRes promoted to 6th member of existing 5-fetch Promise.all. 14 files atomic across 3 commits. All byte-equal verified at commit time. Tree `db7873b1` is the production HEAD.
@@ -1400,6 +1432,27 @@ Investigative facts that ANY future perf work must respect:
 5. Full member-dashboard EF v67 source + _shared/achievements.ts + _shared/taxonomy.ts + full EF log dump loaded in transcript `/mnt/transcripts/2026-05-12-20-45-33-vyve-pm66-pm67a-pm67d-ship-night.txt`. Use it before re-fetching.
 6. Layer 5 baseline capture impossible until perf.js gets the `record('perf_active', 1)` sentinel + navigation-timing fallback fix (PM-67e queued). Without baseline numbers, any perf claim before/after a fix is qualitative.
 
+
+
+### §23.5.2 — Resolution of §23.5.1: member_home_state refresh is now dirty-flag, not inline-on-write (PM-68 + PM-69, 12 May 2026 PM)
+
+The §23.5.1 bottleneck was diagnosed and shipped this session. Root cause was NOT EF cold-start, NOT PostgREST pool exhaustion, NOT missing indexes — it was 9 `AFTER ROW EXECUTE FUNCTION zzz_refresh_home_state` triggers calling the ~20 KB plpgsql `refresh_member_home_state(p_email)` synchronously inline in every writer's transaction, doing ~40 aggregations against the same hot tables every concurrent reader was trying to read. Writers held row locks on `member_home_state`; readers queued behind them.
+
+**The new shape, codified as a hard rule for all future server-side perf work:**
+
+1. **Aggregation refresh must NEVER be inline in a writer's transaction if the aggregation touches tables other writers also lock.** The default pattern is dirty-flag + on-demand read-side refresh + cron drain for idle rows.
+2. **AFTER STATEMENT + transition tables (REFERENCING NEW TABLE / OLD TABLE) for dirty-flag triggers.** Lets `INSERT…ON CONFLICT` collapse bulk writes into one upsert per affected member. AFTER ROW triggers with `FOR EACH ROW` are forbidden for any trigger that does more than a few microseconds of work.
+3. **Read-side refresh pattern:** EF calls a SECURITY DEFINER plpgsql function that does `EXISTS(dirty queue)` → refresh-if-dirty → clear-dirty → read state in one SQL round trip. Idempotent under concurrency (last-write-wins via UPSERT in refresh fn).
+4. **Cron safety net for idle members:** every dirty-flag pattern must ALSO have a cron that drains the queue (`*/5 * * * *` is the default cadence). Otherwise rows for idle members never refresh.
+5. **Whole-aggregate caches (the kind that are the same value for every member) belong in `platform_counters` and get folded into per-request RPCs as synthetic fields (e.g. `__charity_total`)** — NOT called separately from the EF.
+
+**Verified numbers from this session (real members, warm cache, EXPLAIN ANALYZE):**
+- `refresh_member_home_state_if_dirty` clean path: 2.4 ms.
+- `refresh_member_home_state_if_dirty` dirty path (full refresh + flag clear): 32 ms.
+- `member_home_state_get_fresh` (unified RPC): same cost class — one PostgREST round trip total.
+- Full drain of 15 members: 426 ms.
+
+Audit method for any whole-tree trigger or aggregation work going forward MUST follow §23's recursive-tree audit rule (no pre-selected subsets) and verify against `pg_trigger` directly, not `information_schema.triggers`.
 
 - **Page-local optimistic cache patch for non-home-state Layer 4 surfaces (added 11 May 2026 PM-60).** Not every Layer 4 surface has a column in `member_home_state`. Weight logs (`weight_logs` table) aren't tracked there — engagement scoring has no weight component per PM-37; the member-dashboard EF doesn't read weight fields. For these surfaces, the Layer 4 contract still applies but the patch target is the page-local cache (`vyve_wt_cache_<email>` for nutrition; future `vyve_food_log_cache_<email>` and similar for log-food.html). Helpers live in the page itself, NOT in `vyve-home-state.js` — that library's scope is the shared home cache (`vyve_home_v3_<email>`). Page-local helpers MUST implement the same shape: `_patch<Surface>CacheOptimistic(opts) → snapshot` BEFORE publish; `_revert<Surface>CachePatch(opts, snapshot)` on `<event>:failed`. For UPSERT-natural-key surfaces (weight_logs, food_logs, daily_habits via upsert paths), the snapshot MUST capture the prior row state — UPDATE case has a `priorKg`/`priorValue` to restore, INSERT case removes the entry. Without snapshot capture, the revert can't distinguish "this row was new" from "this row overwrote a prior value", and the revert math is wrong. First cleanly-worked example is PM-60 nutrition.html's `_patchWtCacheOptimistic` returning `{priorKg, priorExisted}` and `_revertWtCachePatch` branching on `snapshot.priorExisted`. The vyve-outbox-dead window listener pattern from PM-59 habits.html carries over for these surfaces too — inflight tracker entries store the snapshot so the dead-letter path's `<event>:failed` publish has the data needed to revert.
 
