@@ -1644,6 +1644,33 @@ Audit method for any whole-tree trigger or aggregation work going forward MUST f
 | **WASM-importing libraries cannot run inside Supabase Edge Functions (added 07 May PM-5)** | Tried `import { Parser } from "https://deno.land/x/eszip@v0.109.0/mod.ts"` inside an EF; deploy succeeded but invocation returned 503 with `x-served-by: base/server` (gateway-level BOOT_ERROR, empty response body). Same import works locally and in GitHub Actions Deno runners. Supabase's EF runtime sandboxes WASM init at module-import time. If you need WASM, the work belongs on a runner outside Supabase: GitHub Actions (preferred — same repo, same access, native cron, free for private repos), Cloudflare Workers, Fly.io, or local. The `vyve-ef-source-backup` GitHub Actions workflow is the canonical pattern. |
 | **`git diff --quiet -- path/` ignores untracked files (added 07 May PM-5)** | When using `git diff --quiet -- path/` in CI to gate a commit, untracked new files/directories don't trigger the diff and the gate fires "no changes" even when the path is full of brand-new content. Caught when the EF backup workflow successfully wrote 62 new directories to `staging/edge-functions/` but skipped the commit because the gate was on the wrong side of the staging-area boundary. Correct pattern: `git add path/` THEN `git diff --cached --quiet -- path/` THEN commit/push. Applies to any future automation that detects "did this generated content change". |
 
+
+### §23.5.3 — Auth state-change handler: TOKEN_REFRESHED with null session is NOT a sign-out (PM-74, 12 May 2026)
+
+Resolution of the auth-loop incident from PM-67e ship night. `vyveSupabase.auth.onAuthStateChange((ev, session) => { ... })` in auth.js must guard on the **event type**, not on the session being null. Specifically the L803 predicate **must be `if (ev === 'SIGNED_OUT')`**, NOT `if (ev === 'SIGNED_OUT' || !session)`. Supabase auth-js v2 fires the callback with a null session in at least three benign scenarios that should NOT redirect:
+
+1. `INITIAL_SESSION` with no cached session — handled by the fast-path read at L818-825 and the authoritative-check at L852. The state listener has nothing useful to add.
+2. `TOKEN_REFRESHED` with null session — fires when the refresh-token request to gotrue **fails** (expired refresh_token, network blip mid-refresh, gotrue 400 on the refresh endpoint). On a failed refresh, the next authenticated fetch will 401, and the 401 handler is now responsible for signing out properly (see the second discipline below). Redirecting at the auth state-change layer creates a redirect loop: failed-refresh → redirect → /login.html → portal page reload → auth.js authoritative-check re-attempts refresh → fails again → repeat.
+3. `USER_UPDATED` mid-flow during certain Supabase-internal state transitions.
+
+**Companion discipline for the 401 redirect path.** Every server-side 401 handler that redirects to /login.html MUST sign out first to clear localStorage, otherwise the next paint can loop on stale session fragments. The canonical shape (applied at 9 sites in PM-74):
+
+```js
+if(res.status === 401){
+  try { if (window.vyveSupabase) await window.vyveSupabase.auth.signOut(); } catch(_) {}
+  try { localStorage.setItem('vyve_return_to', window.location.href); } catch(_) {}
+  window.location.replace('/login.html');
+  return;
+}
+```
+
+Three load-bearing pieces: (a) `signOut()` first clears the dead session from localStorage (`vyve_auth` storageKey) so subsequent auth.js loads don't re-attempt to validate a corpse; (b) `vyve_return_to` capture mirrors auth.js's own pattern at L844 and L856 so the member lands back where they were after re-login; (c) `location.replace` not `location.href` removes the back-button trap into the dead-session page. The handler must be inside an `async` function for the `await signOut()` — checked at audit time via a strict brace-depth enclosing-fn walker, NOT the naive "nearest function-decl above" walker (the latter false-flagged 3 of 9 PM-74 sites because they sat inside `if (...)` and `await new Promise(resolve => {})` blocks).
+
+**The deeper rule, generalised.** When wiring listeners on third-party SDK state machines, guard on the **event the SDK actually says fired**, not on derived properties of the state object. Supabase's contract is "fire `SIGNED_OUT` when the session is genuinely terminated". A null session passed alongside `TOKEN_REFRESHED` is a different signal — "refresh failed, you'll get a 401 on your next call" — and conflating the two is a class of bug that surfaces only under specific timing (the JWT crept past expiry, a refresh attempt was triggered, the refresh token was also bad). The PM-67e perf.js ship surfaced this latent bug by adding an eager `getSession()` call that increased the rate of refresh attempts; the bug itself predates the perf work and would have surfaced eventually from any other refresh trigger (auth-js's own background refresh timer, an EF that returns 401 mid-session, etc.).
+
+**Audit method when adding any new state-change listener or modifying auth.js's onAuthStateChange.** Read the listener **first**, write the trigger **second**. PM-67e shipped perf instrumentation that called getSession without auditing what would react to the resulting state change — the brain commit at the end of last session captured this discipline but the rule wasn't codified at §23. Codifying here so future Claudes treat it as enforced.
+
+
 ### Hard Rule (notification routing) — 29 April 2026 PM
 
 **Every notification — in-app, web push, native push — carries a route to its destination. Tapping any notification on any surface lands the member precisely where the notification refers to.**

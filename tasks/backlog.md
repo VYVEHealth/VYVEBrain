@@ -1,3 +1,21 @@
+## Added 12 May 2026 PM-74 (auth-loop closure shipped; perf.js rebuild now unblocked)
+
+- ✅ **CLOSED — PM-74.** auth.js L803 predicate tightened (`SIGNED_OUT || !session` → `SIGNED_OUT` only). 9 portal 401-redirect sites patched to signOut-before-redirect. sw.js cache key `pm74-auth-loop-fix-a`. vyve-site commit `fc8232bb`. All files md5_match=True post-commit. New §23.5.3 hard rule codified.
+
+- 🔓 **UNBLOCKED — PM-67e (perf.js rebuild).** Layer 5 baseline capture still needs the `record('perf_active', 1)` sentinel + `performance.now()` fallback for SW cache-first navs. Last night's three approaches failed for separate reasons: the legacy `sb-<ref>-auth-token` regex never matches (auth.js uses `storageKey:'vyve_auth'`, per §23 PM-3); the eager `getSession()` triggered Supabase's silent token refresh which fired `TOKEN_REFRESHED` with null session which (pre-PM-74) tripped the auth-loop redirect; the hardcoded email allowlist worked for opt-in but didn't avoid the getSession trap. **Next-session shape:** read JWT directly from `localStorage.vyve_auth`, parse, pull `access_token`, check `expires_at * 1000 < Date.now()` and drop if expired. Never call `getSession()` at all. A 401 from log-perf is benign — script just drops, no retry, no surface. Ship to a new `perf-test.html` route first (loads supabase.min.js + auth.js + perf.js + member-dashboard fetch; nothing else), soak 10+ minutes across hard reload + SW cache nav + foreground/background + near-expiry JWT, then promote to the 20 PM-56-wired pages with a second SW bump (`pm75-perf-stable-a` or similar). With PM-74 landed, the redirect-loop trap is gone even if a future code path does trigger a refresh — perf.js rebuild lands on a safe foundation.
+
+- 🔄 **PM-67e-fix-1 + fix-2 LEARNINGS captured** (do not reattempt): the eager getSession was the trigger but not the root cause; the root cause was the auth.js predicate (now fixed in PM-74). The `vyve_auth` localStorage parse from fix-1 is still the correct JWT read path — the brain already documented this at §23 PM-3 line 1734, and PM-74's signOut-before-redirect uses the same source of truth. The Capacitor WKWebView email allowlist from fix-2 is still the correct workaround for the storage-isolated `?perf=1` opt-in problem — keep this pattern in mind for the rebuild but only if needed (if Dean keeps `localStorage.vyve_perf_enabled='1'` set across rebuilds, no allowlist is needed for him personally).
+
+### Carry-forward from this session
+
+- PM-67e perf.js rebuild — unblocked, next session.
+- PM-71 (dashboard-only field pre-fetch) — still queued, see PM-73 re-scope flag.
+- PM-72 (materialise member_achievement_progress) — still queued, ownership shifts to /stats if PM-71b ships.
+- Layer 5 baseline capture — gated on PM-67e ship.
+- Two-device manual verify across PM-58 → PM-66 — carried forward (no Android device available).
+
+---
+
 ## Added 12 May 2026 PM-73 (home redesign mockup parked; PM-71 re-scope flagged; daily goals canonical shape captured)
 
 - 🅿️ **PARKED — PM-73.** Home page redesign mockup v2 complete; Dean "kind of likes this" but not committing to build now. Reasons: (a) Mind/Body/Connect bottom-nav re-architecture lands end of month per Dean; home redesign hooks into nav; sequence both to avoid double work; (b) premium-feel polish (page-transition latency, render lag) is the more urgent UX win and is independent of home shape. Mockup archived at `playbooks/home-redesign-v2-mockup.html`. Captures: 4-state primary card (live/up next/habits to do/all done) + today's goals card with weekly footer + streak row (streak pill + 7-day habit dots + engagement score pill) + charity strip + stats link. Bottom nav left at current 4-tab as placeholder for Mind/Body/Connect cutover.

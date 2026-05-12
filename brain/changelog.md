@@ -1,3 +1,80 @@
+## 2026-05-12 PM-74 (auth-loop closure — drop !session redirect, signOut-before-redirect on 9 sites)
+
+**Root cause from last night's PM-67e perf.js ship.** PM-67e shipped clean (perf.js sentinel + ttfb fallback for SW cache-first navs). The follow-on fix-1 (`8da9eb93`) added the `vyve_auth` localStorage fallback for the JWT — necessary because perf.js was looking for the legacy `sb-<ref>-auth-token` regex but auth.js's Supabase client is configured with `storageKey: 'vyve_auth'` (already documented in §23 PM-3 and the auth.js fast-path at L818-825). fix-1 also added an eager `vyveSupabase.auth.getSession()` call cached into closure scope. fix-2 (`4c4b1e69`) added a hardcoded `deanonbrown@hotmail.com` email allowlist so the Capacitor WKWebView (where `?perf=1` is unreachable) could opt in. Loop manifested on Mac browser + Capacitor app; phone Safari was clean (had no cached buggy state). Reverted to PM-67d byte-identical via `54b09b96` then `c47a1fc4`.
+
+**Diagnosis this session.** The trigger was the eager getSession, but the bug was elsewhere. auth.js L802-806 had **one** `onAuthStateChange` subscriber:
+
+```
+vyveSupabase.auth.onAuthStateChange(function(ev, session) {
+  if (ev === 'SIGNED_OUT' || !session) {
+    var _o = window.location.origin;
+    window.location.replace(... + VYVE_LOGIN_PAGE);
+  }
+});
+```
+
+Supabase auth-js fires `TOKEN_REFRESHED` with a **null session** when the refresh-token request fails (expired refresh_token, network blip mid-refresh, gotrue 400). The `|| !session` clause then redirected on a failed refresh. Fix-2 specifically tripped it because the JWT had crept past expiry by the time Dean was testing — eager getSession → refresh attempt → stale refresh_token → null session → redirect.
+
+The loop compounds because:
+1. /login.html itself doesn't load perf.js (it's not in the PM-56 20-page rollout list).
+2. BUT after the redirect, localStorage still holds the dead session fragments.
+3. ANY portal page that runs auth.js (the JWT-expired authoritative-check path at L854-859) re-attempts refresh, re-fails, re-fires `TOKEN_REFRESHED` with null, re-fires the subscriber, re-redirects.
+4. Sibling failure path: index.html L885 (and 8 other sites) had `if(res.status===401){window.location.href='/login.html';return;}` — same trap. Server-side JWT expiry triggers the same loop class as client-side, just from the other end.
+
+**Whole-tree audit via §23 method** (GITHUB_GET_A_TREE recursive + parallel-fetch all .html/.js + grep). Nine 401-redirect-without-signOut sites identified:
+
+| File | Line | Enclosing async fn |
+|---|---|---|
+| certificate.html | 471 | `async function loadCert()` |
+| certificates.html | 428 | `async function loadPage()` |
+| engagement.html | 847 | `async function loadPage()` |
+| index.html | 885 | `async function loadDashboard()` |
+| leaderboard.html | 690 | `async function loadLeaderboard()` |
+| monthly-checkin.html | 778 | `async function submitCheckin()` |
+| monthly-checkin.html | 908 | `async function init()` |
+| running-plan.html | 759 | `async function generatePlan()` |
+| wellbeing-checkin.html | 676 | `async function submitCheckin(flow)` |
+
+All 9 confirmed inside async functions before commit — strict enclosing-fn walker, not the naive "nearest function-decl" walker which got confused by intermediate `if (...)` and `await new Promise(resolve => {` lines.
+
+**Patch shape, uniform across all 9 sites:**
+
+```
+if(res.status===401){
+  try{if(window.vyveSupabase)await window.vyveSupabase.auth.signOut();}catch(_){}
+  try{localStorage.setItem('vyve_return_to',window.location.href);}catch(_){}
+  window.location.replace('/login.html');
+  return;
+}
+```
+
+Three changes from the broken original: (1) `signOut()` first clears localStorage so the next paint can't loop on stale session fragments; (2) `vyve_return_to` capture matches auth.js's own pattern at L844 and L856 so the member lands back where they were after re-login; (3) `location.replace` not `location.href` removes the back-button trap into the dead-session page.
+
+**auth.js L803** tightened from `if (ev === 'SIGNED_OUT' || !session)` to `if (ev === 'SIGNED_OUT')` alone. INITIAL_SESSION with null session is benign (the fast-path at L818-825 and the authoritative-check at L852 already handle "no cached session"). Failed-refresh `TOKEN_REFRESHED` with null no longer redirects — the next member-dashboard fetch returns 401, which now signs out properly (point 3 of the cascade above is now broken).
+
+**Files (1 atomic vyve-site commit, `fc8232bbef13e4b822e79758e919d9fabb3fed28`, tree `77bf11f5`, retry_count=0):**
+
+- `auth.js` (47553 → 47541 chars; -12) — predicate tightened
+- `certificate.html` (21094 → 21243; +149) — trap fixed
+- `certificates.html` (19855 → 20006; +151) — trap fixed
+- `engagement.html` (90029 → 90187; +158) — trap fixed
+- `index.html` (111699 → 111857; +158) — trap fixed
+- `leaderboard.html` (32539 → 32697; +158) — trap fixed
+- `monthly-checkin.html` (58857 → 59173; +316) — two traps fixed
+- `running-plan.html` (71607 → 71765; +158) — trap fixed
+- `wellbeing-checkin.html` (64585 → 64743; +158) — trap fixed
+- `sw.js` — cache key `pm67d-waterfall-a` → `pm74-auth-loop-fix-a`
+
+**Verification.** node --check on auth.js + sw.js clean. Inline-JS-block extraction from all 8 patched HTML files, wrapped in async IIFE, node --check on each: 8/8 clean. All 10 SHAs re-fetched immediately pre-commit, no drift. Post-commit Contents API re-fetch: md5_match=True on all 10 files. Live cache key confirmed `pm74-auth-loop-fix-a`. auth.js confirmed new predicate present, old predicate gone.
+
+**Layer 5 perf.js rebuild (PM-67e proper) now unblocked.** Next session: rewrite perf.js to read JWT directly from `localStorage.vyve_auth` (mirroring auth.js's L818-825 fast-path), check `expires_at`, drop silently if expired or missing — never call `getSession()` at all. Ship to a new `perf-test.html` route first; soak for 10 minutes; then promote to the 20 PM-56-wired pages with a second SW bump. With PM-74 in place, even if perf.js did somehow trigger a refresh later, the redirect-loop trap is gone — so the safer architecture lands on top of a safe foundation.
+
+**Audit-count delta (post-PM-74):** no Layer 1c/4 surface counts changed (this commit doesn't touch publishers/subscribers). 9 portal pages and auth.js modified; sw.js cache key bumped.
+
+**New §23.5.3 hard rule codified** below: auth state-change handler discipline (TOKEN_REFRESHED null-session ≠ SIGNED_OUT).
+
+---
+
 ## 2026-05-12 PM-73 (home redesign exploration parked; Dean "kind of likes" v2 mockup; daily goals canonical shape captured)
 
 Continuation of the PM-68/68b/69/70 ship night. After the backend perf overhaul landed, Dean pivoted out of code-mode and into product-shape mode for the home page. PM-71 (pre-fetch dashboard-only fields into `member_home_state`) was queued earlier in this same session as part of the perf campaign; PM-73 questions whether PM-71 should be re-scoped from "denormalise more fields" to "delete fields from the home payload entirely" once the home redesign is committed.
