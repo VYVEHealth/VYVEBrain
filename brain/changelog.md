@@ -1,3 +1,48 @@
+## 2026-05-12 PM-66 + PM-67a + PM-67d (Layer 4 capstone closes 8/8; premium-feel perf bundle; waterfall Promise.all rewrites; member-dashboard EF latency discovered as primary regression)
+
+**Three atomic vyve-site commits shipped tonight (14 files total, all byte-equal verified post-commit):**
+
+### Commit 1 — PM-66 `d81e14297ce8d6193511231f96e11b0bc3eabf7a` (tree `ec4a23a7`), 3 files
+**Layer 4 capstone — monthly-checkin.html canonical-publish-only wiring closes 8/8-surface campaign.**
+- `monthly-checkin.html` — added `canonical: true` to monthly_checkin:submitted envelope; added `monthly_checkin:failed` dispatch on `!res.ok` (excluding 409/401) + catch-block network throw. Shape = canonical-publish-only (PM-65 wellbeing-checkin precedent — monthly_checkins NOT in TYPE_TO_HS_COLS, no page-local cache). EF v23 returns aiReport object on 200 (no success field) — failure discriminator is `!res.ok` only.
+- `index.html` — belt-and-braces `monthly_checkin:failed` subscriber after wellbeing:failed (PM-65 shape).
+- `sw.js` — cache key bump `pm65-wellbeing-canonical-a` → `pm66-monthly-checkin-canonical-a`.
+
+### Commit 2 — PM-67a `e274b73453528abe0cc1b7404ef801f4262e8c79` (tree `dc5924b1`), 8 files
+**Premium-feel perf bundle — defer + paint dispatch + sw.js precache gap-fill.**
+- `defer` attribute added to `/vyve-offline.js` script tag on `index.html`, `log-food.html`, `running-plan.html` (+6 chars each).
+- `vyvePaintDone` CustomEvent dispatches added: `certificates.html` at `_certsEarlyPainted`, `leaderboard.html` at `_lbEarlyPainted`, `engagement.html` path-1 at `_engEarlyPainted`, `engagement.html` path-2 at `_renderedFromCache` (Appendix D), `habits.html` end-of-renderHabits after `updateBottomBar()` (Appendix A correction: anchor was column-0 indent not 2-space; first updateBottomBar() at offset 21967 has `return;` next; end-of-renderHabits at offset 23096 has `\n}\n\nfunction`).
+- `sw.js` — cache key `pm65-wellbeing-canonical-a` → `pm67a-perf-defer-paint-a`; Appendix G S1 precache list expanded with wellbeing-checkin, monthly-checkin, leaderboard, log-food, running-plan, settings + perf.js + tracking.js + push-native.js + healthbridge.js.
+
+### Commit 3 — PM-67d `5947927b8e806d07dde802123a66a678848865bd` (tree `db7873b1`), 3 files
+**Waterfall bundle — two surgical sequential→parallel rewrites on check-in surfaces.**
+- W1 `monthly-checkin.html` `init()`: first_name fetch + CHECKIN_EF status fetch parallelised. Pre-built `getAuthHeaders` + `getJWT` outside parallel block to prevent race. Each result awaits in its own try/catch so first-name failure doesn't take down status check. Saving: 50-100ms cold load.
+- W2 `wellbeing-checkin.html` `fetchMemberData()`: `allSeenRes` (session_views all-time category select) was firing sequentially AFTER the existing 5-fetch Promise.all. Promoted to 6th member of both Promise.all blocks (fetch + .json()). Saving: 50-150ms (one round-trip eliminated).
+- `sw.js` — cache key `pm67a-perf-defer-paint-a` → `pm67d-waterfall-a`.
+
+**Verifications post-commit:** PM-66 md5_match=True all 3 files (live ref). PM-67a md5_match=True all 8 files (live ref). PM-67d md5_match=True all 3 files (live ref). retry_count=0 across all three commits.
+
+**C4 Android push permission — VERIFIED CLEAN.** Dean ran in `~/Projects/vyve-capacitor`: `google-services.json` exists (672 bytes, FCM config in place); `POST_NOTIFICATIONS` permission injected into merged Android manifest at build time. Android 13+ push will work. Not a launch blocker.
+
+**C5 Capacitor WebView SW check — DEFERRED.** iPhone Web Inspector enabled but Safari Develop → iPhone → "No Inspectable Applications" for VYVE app despite Safari browser tabs being inspectable. Root cause: WKWebView `isInspectable = false` (iOS 16.4+ default for production builds, correct security posture, not broken). Cannot directly verify `navigator.serviceWorker.controller` inside wrap tonight. **PENDING**: ship debug-wrap variant with `isInspectable = true` for future C5 verification (logged as PM-67-prep follow-up).
+
+**Layer 5 baseline capture — FAILED.** Attempted post-ship using perf.js + `?perf=1` flag. `perf_telemetry` table empty across last 90 min and lifetime (zero rows total). perf.js gated correctly (Dean confirmed first 30 chars of live `/perf.js` match shipped version) and `log-perf` EF v1 ACTIVE/working/JWT-validated. Diagnosis: perf.js flush logic has a real bug — on SW cache-first navigations (iOS Safari), navigation timing values come back as 0 or negative, failing the `value < 0` guard in `record()`. Metrics array stays empty → `if (metrics.length === 0) return;` fires → no POST. **Fix queued as PM-67e**: add `record('perf_active', 1)` sentinel at script-active time as proof-of-life metric, and add `performance.now()` fallback when timing entries are missing.
+
+**🚨 MEMBER-DASHBOARD EF LATENCY DISCOVERED AS PRIMARY PERF REGRESSION.** During Layer 5 investigation, Dean reported: "every page taking longer to load and every page way less responsive than before. I hope this isn't the end state." Edge function logs (last 30 min at session end) reveal real cause:
+- `member-dashboard` EF v67: 38585, 37640, 36147, 22708, 22642, 22546, 17984, 17966, 17211, 12946, 10934, 8808, 8015, 7659, 4976, 4160, 4083, 3119, 2649 ms
+- `notifications` EF: 24504, 12037, 5601 ms
+- `monthly-checkin` POST: 18565 ms
+- `wellbeing-checkin` POST: 12939 ms
+- `log-activity` POSTs: 8961, 10973, 7886 ms
+
+This is NOT caused by tonight's shipped client-side wins (50-250ms total). Backend member-dashboard EF wasting 30-40 seconds per call. Almost certainly Supabase EF cold-start interacting with the 18-wide Promise.all of REST queries + 23-wide inner achievements evaluator parallel. Member-dashboard EF v67 source + _shared/achievements.ts + _shared/taxonomy.ts loaded in `/mnt/transcripts/2026-05-12-20-45-33-vyve-pm66-pm67a-pm67d-ship-night.txt`.
+
+**Dean's directive on session-end**: full premium-feel performance overhaul becomes THE single highest priority for the week. 20+ hours committed. Backend work fully in scope — EFs, tables, indexes, RPCs, materialised views, denormalised state expansion. New handoff prompt drafted for fresh chat. NEW §23.5.1 hard rule codifies the member-dashboard latency discovery and lists likely root causes to investigate.
+
+**Layer 4 8-commit milestone — CAMPAIGN CLOSED.** All 8 Layer 4 surfaces shipped across PM-58 through PM-66. Two canonical-publish-only shapes proven (PM-65 wellbeing-checkin, PM-66 monthly-checkin). No further surface migrations queued.
+
+---
+
 ## 2026-05-11 PM-65 (Layer 4 wellbeing-checkin.html — eighth surface, first EF-writer + canonical-publish-only shape; audit-baseline drift correction)
 
 **Files shipped (3, atomic vyve-site commit `ccf9c9baba7267b51baf01653ac66df9e95ccb0d`):**
