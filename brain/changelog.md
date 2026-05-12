@@ -1,3 +1,64 @@
+## 2026-05-12 PM-75 + PM-76 (perf.js v2 rebuild ships, soak passes, promotion to 20 PM-56 pages — Layer 5 unblocked)
+
+Closes the Layer 5 baseline-capture work that failed at PM-67d ship night and triggered the PM-67e auth-loop incident. Two atomic vyve-site commits this session, separated by a 10-minute soak window verified against the live `perf_telemetry` table.
+
+### PM-75 (`5cef00a2`) — soak harness ship
+Three files, new+new+update. NEW `/perf-v2.js` (12451 chars), NEW `/perf-test.html` (~9700 chars), UPDATE `/sw.js` cache key `pm74-auth-loop-fix-a` → `pm75-perf-rebuild-a`. v1 `/perf.js` and all 20 PM-56-wired portal pages untouched.
+
+`perf-v2.js` differences from v1 (PM-21):
+1. **JWT read from `localStorage.vyve_auth`** synchronously with `expires_at` check (30s buffer). Never calls `vyveSupabase.auth.getSession()` — the eager SDK call in v1's reverted fix-1 was the PM-67e trigger even though PM-74 closed the auth-loop root cause. Cleaner architecture: telemetry shim doesn't touch the auth SDK at all.
+2. **`perf_active` sentinel** recorded as first metric, before any timing reads. Guarantees non-empty payload even when nav timings come back 0 (SW cache-first nav on iOS Safari — the Layer 5 baseline-capture failure mode).
+3. **`cache_first` axis** recorded when `responseStart - fetchStart <= 0 && nav.type === 'navigate'`. Separates warm cache-first navs from cold loads in percentile rollups.
+4. **`performance.now()` fallback for ttfb** when nav timings return 0/neg — substitutes a "best effort" proxy so we always have a comparable ttfb across navs.
+5. **Hardcoded email allowlist** (`deanonbrown@hotmail.com`) for Capacitor WKWebView where `?perf=1` is unreachable due to isolated storage.
+6. **Drop-reason diagnostics** to `localStorage.vyve_perf_lastdrop` and last-send outcome to `vyve_perf_lastsend` — sparse telemetry can be audited per-device.
+
+`perf-test.html` is a standalone soak harness. Loads `theme.js` (sync) + `auth.js` + `perf-v2.js` in real portal-page script-order. Four on-screen cards: Gate (URL flag + LS flag + effective state), JWT (email + token length + expires_at + expires_in countdown), Member-dashboard fetch (status + wallclock + body bytes + **"Loop check: still on this page ✓"**), Diagnostics (vyve_perf_lastsend + vyve_perf_lastdrop, auto-refresh every 2s). Four buttons: re-fetch member-dashboard, clear diag, force perf flush (synthetic pagehide), hard reload.
+
+### Soak verification (Chrome on Mac, 10+ min, Dean's live test)
+Client side (visible in screenshot timestamped 00:00:46 UTC 13 May):
+- URL stayed at `/perf-test.html?perf=1` — no redirect to /login.html
+- Loop check stayed green throughout
+- `vyve_perf_lastsend`: `{status: 204, metrics_count: 8, page: "/perf-test.html", ts: 1778626682587}` — 163s prior
+- `vyve_perf_lastdrop`: none
+
+Database side (last 30min, perf_telemetry):
+| metric | n | range |
+|---|---|---|
+| perf_active | 2 | 1.0 |
+| ttfb | 2 | 179-325 ms |
+| fp / fcp | 2 each | 332-376 ms |
+| lcp | 2 | 332-376 ms |
+| inp | 1 | 40 ms |
+| auth_rdy | 2 | 433-785 ms |
+| paint_done | 1 | 2720 ms |
+
+`cache_first` did NOT appear from the Chrome-on-Mac soak — expected, since Chrome doesn't reproduce the iOS Safari cache-first nav-timing signature. Will appear when iPhone Safari / Capacitor loads land. Not a defect.
+
+Side-observation during soak: member-dashboard EF wallclock was 17087ms on the first fetch (cold start) then 7620ms on the second fetch. Both fall inside the PM-68 post-shipping range — cold start is normal for an EF container waking up. Not a regression. PM-71/72/73 cover further EF optimisation work.
+
+### PM-76 (`ff3e0e0f`) — promotion ship
+Two files, both UPDATE. `/perf.js` OVERWRITTEN with v2 source (the file the 20 PM-56-wired portal pages load). `/sw.js` cache key `pm75-perf-rebuild-a` → `pm76-perf-promote-a`. `/perf-v2.js` and `/perf-test.html` KEPT IN PLACE as versioned soak references for future cycles (zero cost to leave them, useful for any future iteration).
+
+Post-promotion verification: `/perf.js` byte-equal to v2 source (md5 match, blob sha `fd3bed52` — same as `/perf-v2.js`). All three v2 fingerprints present: `perf_active` sentinel, `cache_first` axis, `vyve_perf_lastdrop` diagnostics. Cache key live as `pm76-perf-promote-a`.
+
+### Production effect
+All 20 PM-56-wired pages (index, habits, workouts, nutrition, cardio, sessions, certificates, leaderboard, engagement, log-food, monthly-checkin, wellbeing-checkin, running-plan, settings, movement, exercise, activity, apple-health, events-live, events-rp, nutrition-setup) start loading v2 on next nav per member. Pages previously contributing nothing on SW cache-first navs will now contribute the `perf_active=1` sentinel at minimum, plus `cache_first=1` and a proxy ttfb on iOS Safari cache hits.
+
+### Rollback path
+Single commit reverting `/perf.js` to v1 source (preserved in git history pre-PM-76) + sw.js cache bump. No portal page changes needed because v2 is a drop-in replacement at the same file path. `/perf-v2.js` remains as the known-good soak reference.
+
+### What Layer 5 enables next
+24-48 hours of v2-fleet telemetry should give enough sample volume to:
+- Confirm cache_first reproduces on iOS Safari + Capacitor as expected
+- Establish p50/p95 baselines for ttfb / fcp / lcp / paint_done across all 20 pages, segmented by warm/cold via cache_first axis
+- Decide PM-71b (home-payload trim per PM-73 re-scope flag) by data, not narrative
+- Decide the SPA-shell question the brain has been gating on data since PM-56
+
+No new §23 hard rule this session — the auth/perf class of bug is fully covered by §23.5.3 from PM-74 yesterday. PM-75/76 are the consequence of getting §23.5.3 right.
+
+---
+
 ## 2026-05-12 PM-74 (auth-loop closure — drop !session redirect, signOut-before-redirect on 9 sites)
 
 **Root cause from last night's PM-67e perf.js ship.** PM-67e shipped clean (perf.js sentinel + ttfb fallback for SW cache-first navs). The follow-on fix-1 (`8da9eb93`) added the `vyve_auth` localStorage fallback for the JWT — necessary because perf.js was looking for the legacy `sb-<ref>-auth-token` regex but auth.js's Supabase client is configured with `storageKey: 'vyve_auth'` (already documented in §23 PM-3 and the auth.js fast-path at L818-825). fix-1 also added an eager `vyveSupabase.auth.getSession()` call cached into closure scope. fix-2 (`4c4b1e69`) added a hardcoded `deanonbrown@hotmail.com` email allowlist so the Capacitor WKWebView (where `?perf=1` is unreachable) could opt in. Loop manifested on Mac browser + Capacitor app; phone Safari was clean (had no cached buggy state). Reverted to PM-67d byte-identical via `54b09b96` then `c47a1fc4`.

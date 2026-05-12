@@ -1,3 +1,33 @@
+## Added 12 May 2026 PM-75 + PM-76 (Layer 5 baseline-capture unblocked and live)
+
+- ✅ **CLOSED — PM-67e (perf.js rebuild).** Carried forward from yesterday's brain commit as UNBLOCKED, now fully shipped via PM-75 + PM-76.
+
+- ✅ **CLOSED — PM-75.** perf-v2.js + perf-test.html soak harness + sw.js cache bump (`pm75-perf-rebuild-a`). Soaked 10+ min in Chrome on Mac. Two flushes posted 204; perf_active sentinel + ttfb/fcp/lcp/fp/inp/auth_rdy/paint_done all captured. vyve-site commit `5cef00a2`.
+
+- ✅ **CLOSED — PM-76.** Promotion ship — `/perf.js` overwritten with v2 source, sw.js bumped `pm76-perf-promote-a`. `/perf-v2.js` and `/perf-test.html` kept in place as soak references. vyve-site commit `ff3e0e0f`. All 20 PM-56-wired portal pages now load v2 on next nav.
+
+- 📊 **DATA WATCH (next 24-48 hours):** monitor `perf_telemetry` for v2-fleet rows. Expected per page: `perf_active=1` on every flush; `cache_first=1` on iOS Safari/Capacitor cache-first navs; non-empty `ttfb` on every flush via either nav-timing or performance.now() fallback. If `vyve_perf_lastdrop` reasons cluster anywhere unexpected, audit and fix. Query template:
+```sql
+SELECT page, metric_name, COUNT(*), 
+       percentile_cont(0.5) WITHIN GROUP (ORDER BY metric_value) p50,
+       percentile_cont(0.95) WITHIN GROUP (ORDER BY metric_value) p95
+FROM perf_telemetry WHERE ts > now() - interval '24 hours'
+GROUP BY page, metric_name ORDER BY page, metric_name;
+```
+
+- 🔓 **UNBLOCKED — Layer 5 baseline + SPA-shell decision.** With v2 in production, the data gap that's been blocking the SPA-shell question since PM-56 closes after ~1 week of v2-fleet samples. Decision criteria (per active.md): if p50 TTFP / FCP / LCP across the 20 pages comes in under 200ms warm-cache and under 600ms cold-cache, SPA shell is not worth the rewrite cost. Otherwise revisit.
+
+- 🔓 **UNBLOCKED — PM-71b decision.** PM-73 re-scope flag of PM-71 ("delete fields from home payload" vs "denormalise more fields into member_home_state") becomes a data-driven call once we see v2 ttfb / dom_done numbers from index.html across a real member spread.
+
+### Carry-forward from this session
+
+- Member-dashboard EF cold-start latency observed at 17s on Dean's first soak fetch. Steady-state ~7.6s on second fetch. PM-68 working as expected; cold-start is the container warm-up. Tracked under PM-71/72/73 — no new ticket.
+- iPhone Safari + Capacitor verification of perf-v2 on cache-first navs — Dean to verify when convenient. Not a blocker; if cache_first rows fail to appear from those devices after 24h of production rollout, investigate.
+- Brain note: PM-67e learnings from yesterday's brain commit (don't reattempt the eager getSession path) remain valid as a "things tried, things that don't work" history record. v2 reads from `localStorage.vyve_auth` exclusively per §23 PM-3 and stays clean.
+- Two-device manual verify across PM-58 → PM-66 — still carried forward, still no Android device.
+
+---
+
 ## Added 12 May 2026 PM-74 (auth-loop closure shipped; perf.js rebuild now unblocked)
 
 - ✅ **CLOSED — PM-74.** auth.js L803 predicate tightened (`SIGNED_OUT || !session` → `SIGNED_OUT` only). 9 portal 401-redirect sites patched to signOut-before-redirect. sw.js cache key `pm74-auth-loop-fix-a`. vyve-site commit `fc8232bb`. All files md5_match=True post-commit. New §23.5.3 hard rule codified.
