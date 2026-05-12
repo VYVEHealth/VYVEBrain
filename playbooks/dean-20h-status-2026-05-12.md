@@ -431,3 +431,89 @@ Full playbook committed at `/playbooks/hotpath-audit-2026-05-12.md`. Headlines:
 My recommendation: option 2. PM-67a is staged and verified. PM-67c is freshly identified — anchor verification, drift-check, and per-page preconnect additions add up to a meaningful ship cost. Better to ship PM-67a tonight, capture Layer 5, then ship PM-67c next session with measurement data backing each change.
 
 — Claude, ~11:30 UTC
+
+
+---
+
+# Appendix F — Network waterfall scan on top 7 surfaces
+
+Continued audit ~11:45 UTC. Scanned every `await fetch(...)` cluster on the 7 highest-traffic surfaces: index, engagement, habits, certificates, leaderboard, monthly-checkin, wellbeing-checkin, plus workouts and sessions for completeness.
+
+The 8 May audit dismissed serial-fetch waterfalls as "mostly in event handlers, not initial page-load critical path." That generalisation was correct in aggregate but missed two surfaces.
+
+## Findings
+
+**W1 — monthly-checkin.html L856 + L868 (REAL win).**
+
+Two independent fetches fire sequentially on page load:
+- L856: `members?email=X&select=first_name&limit=1` — small REST query for the first-name header.
+- L868: `${CHECKIN_EF}?email=X` — Edge Function call for check-in status (~100-300ms typical).
+
+The second doesn't use the first's result. Currently sequential — total time = sum of both. `Promise.all([...])` would cut to slower-of-two. Estimated savings: 50-100ms on cold load.
+
+**Proposed fix:**
+
+```javascript
+const [firstNameRes, statusRes] = await Promise.all([
+  fetch(`${SUPABASE_URL}/rest/v1/members?email=eq.${enc}&select=first_name&limit=1`, { headers }),
+  fetch(`${CHECKIN_EF}?email=${enc}`, { method: 'GET', headers: { ...headers, 'Authorization': `Bearer ${jwt}` } })
+]);
+// ... then parse both
+```
+
+Subtle catch: L868 uses a different `headers` object (Authorization Bearer JWT) than L856 (Supabase REST `apikey` headers). The Promise.all needs to build both header sets up front, then fire in parallel. ~15 lines diff.
+
+**W2 — wellbeing-checkin.html L956-963 (REAL win, smaller).**
+
+L956-963 already uses `Promise.all` correctly for 5 fetches (habits, workouts, cardio, sessions, members). Good pattern. BUT immediately after the Promise.all resolves at L961-963, **L969 fires an additional sequential fetch** (`session_views?...&select=category` — all-time view) that doesn't depend on any of the 5 above. It could have been the 6th member of the Promise.all.
+
+**Proposed fix:** Move L969 into the L956-963 Promise.all. ~3-line diff.
+
+```javascript
+const [habitsRes, workoutsRes, cardioRes, sessionsRes, memberRes, allSeenRes] = await Promise.all([
+  fetch(...habits...),
+  fetch(...workouts...),
+  fetch(...cardio...),
+  fetch(...sessions...),
+  fetch(...members...),
+  fetch(`${SUPABASE_URL}/rest/v1/session_views?member_email=eq.${enc}&select=category`, { headers: await getAuthHeaders() }),  // ← moved from L969
+]);
+```
+
+Estimated savings: 50-150ms (one round-trip eliminated).
+
+**W3 — index.html L1178 + L1198 (FALSE POSITIVE).**
+
+L1178 is in `fetchNotifCount()` (page-load) and L1198 is in `openNotifSheet()` (click-handler). Never sequential in one user session. No action.
+
+## Clean surfaces (no waterfall fixes needed)
+
+- workouts.html: 0 await-fetches, lives on bus subscriptions.
+- sessions.html: 0 fetches, static service_catalogue + bus events.
+- habits.html: 5 await-fetches across 2 Promise.all blocks — already parallelised correctly.
+- certificates.html: single fetch, no parallel opportunity.
+- leaderboard.html: single fetch, no parallel opportunity.
+- engagement.html: 2 await-fetches but they're in different execution paths (initial load + refresh). Not parallelisable as written.
+
+## Proposed PM-67d — waterfall bundle (2 files)
+
+Two-file ship: monthly-checkin.html (W1) + wellbeing-checkin.html (W2) + sw.js cache-key bump = 3 files atomic. ~18 lines diff total. Estimated win: 100-250ms on the two slowest check-in surfaces.
+
+**Risk:** very low — pure rewrites of independent sequential fetches into Promise.all. The only subtlety is W1's two different auth headers, which I've already documented in the fix snippet.
+
+**Verification:** Layer 5 captures pre-fix paint_done for both surfaces; PM-67d ships; Layer 5 confirms shorter time-to-data on both.
+
+## Ranking the four proposed PM-67 bundles
+
+| Bundle | Files | Est. Win (cold) | Ship complexity | Recommendation |
+|---|---|---|---|---|
+| **PM-67a** (premium-feel perf bundle: defer + paint dispatches) | 8-9 | 5-15ms FCP + accurate telemetry | Low — anchors verified, dry-staged | **Ship tonight** |
+| **PM-67c** (hot-path defer bundle: PostHog + bridges + theme) | 4-7 + 15 HTML | 50-200ms TTI | Medium — bigger surface, 15 page edits | **Ship next session** with Layer 5 baseline |
+| **PM-67d** (waterfall bundle: 2 Promise.all rewrites) | 3 | 100-250ms on 2 surfaces | Low — surgical | **Ship with PM-67c** as one bundle next session |
+| **Inline body JS extraction** (Layer 7?) | 8 pages, major refactor | Unknown — needs Layer 5 data | High — needs per-page consideration | **Defer until Layer 5 confirms which pages hurt** |
+
+Three of four are concrete and ship-ready (PM-67a, PM-67c, PM-67d). The fourth (inline extraction) is the only one genuinely waiting on data.
+
+**Total surface area if PM-67a + PM-67c + PM-67d all ship over the next week:** ~30 files, ~200 lines diff, plausible aggregate **150-400ms cold paint improvement + 100-250ms warm time-to-data on check-in surfaces + accurate paint telemetry**. That's the premium-feel programme's remaining unshipped scope before inline extraction.
+
+— Claude, ~11:50 UTC
