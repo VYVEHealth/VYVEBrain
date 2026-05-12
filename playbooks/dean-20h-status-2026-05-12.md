@@ -399,3 +399,35 @@ Adding the 9th patch makes the PM-67a bundle 9 files (still atomic), +592 bytes 
 If you'd rather keep PM-67a's scope as-stated in the original runbook, the 9th patch ships as its own follow-up (PM-67b) — but bundling is cleaner.
 
 — Claude, ~10:45 UTC
+
+
+---
+
+# Appendix E — Hot-path audit (six files that run on every page)
+
+Standing instruction from Dean ~11:00 UTC: "as close to perfect as possible." Pre-Mac audit of the six scripts that run on every inner-page load.
+
+Full playbook committed at `/playbooks/hotpath-audit-2026-05-12.md`. Headlines:
+
+**F1 (HIGH): PostHog snippet is render-blocking on every page.** auth.js L7-11 runs the standard PostHog snippet (which injects an async `array.js` from `eu-assets.i.posthog.com`) followed by `posthog.init(...)` synchronously. No preconnect on the PostHog hosts. Memory says identity wiring is pending → we're paying PostHog cost for partial PostHog value. Fix: defer `posthog.init()` into `requestIdleCallback` after `vyveAuthReady`; add preconnect + dns-prefetch on all 15 inner pages. Estimated win: 5-15ms cold paint.
+
+**F2 (HIGH): `vyveSignalAuthReady()` registers 17 Realtime bridges → 11 WebSocket channels on every page.** Even on certificates.html where only the `certificates` channel is relevant, 11 channels open (daily_habits, workouts, cardio, exercise_logs, nutrition_logs, weight_logs, wellbeing_checkins, monthly_checkins, session_views, replay_views, certificates). 9-10 are pure overhead per page. Fix: gate `installTableBridges()` call behind `requestIdleCallback` after first paint. Estimated win: 50-200ms time-to-interactive.
+
+**F3 (LOW): theme.js polls every 200ms for auth.** Cosmetic — should be a `vyveAuthReady` event listener. ~7 lines.
+
+**F4-F7 (NO ACTION):** vyve-offline.js 30s interval is genuinely cheap. auth.js DOMContentLoaded → SDK injection is already optimal. perf.js gate is correct. PortraitLock/Monitor IIFEs are negligible.
+
+**Proposed PM-67c bundle:** 4 files in vyve-site (auth.js × 2 patches, theme.js × 1 patch) + 15 HTML files (preconnect lines) + sw.js cache-key bump. ~50 lines total change. Pairs with PM-67a — PM-67a improves what Layer 5 *measures*; PM-67c improves what it *records*.
+
+**Proposed §23 hard rule (fifth, building on Appendix C's four):** hot-path files (auth.js, bus.js, theme.js, vyve-offline.js, vyve-home-state.js) defer all network-touching and third-party-loading work until `vyveAuthReady` or `requestIdleCallback`. Discipline rule, not a one-time fix.
+
+## Decision queued for 20:00
+
+**Add PM-67c to tonight's ship queue?** Three options:
+1. **Ship PM-67a + PM-67c as one bundle tonight.** ~15-18 file atomic commit. Bigger payoff, more surface area to verify.
+2. **Ship PM-67a tonight, PM-67c in a follow-up session.** Cleaner — let PM-67a settle, capture Layer 5 baseline, then ship PM-67c with measurement evidence of where to direct effort.
+3. **Defer both, ship just PM-66 from Mac.** Most conservative.
+
+My recommendation: option 2. PM-67a is staged and verified. PM-67c is freshly identified — anchor verification, drift-check, and per-page preconnect additions add up to a meaningful ship cost. Better to ship PM-67a tonight, capture Layer 5, then ship PM-67c next session with measurement data backing each change.
+
+— Claude, ~11:30 UTC
