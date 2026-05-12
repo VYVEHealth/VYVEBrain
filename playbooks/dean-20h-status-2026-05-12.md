@@ -346,3 +346,56 @@ For each rule:
 All four are designed to be independent — approving one doesn't require approving any other. Rule 4 builds on Rule 3 (it's an addendum) but Rule 3 stands alone.
 
 — Claude, ~10:30 UTC
+
+
+---
+
+# Appendix D — engagement.html has TWO cache-paint paths; PM-67a only covers one
+
+After Appendix C, did a final pass on engagement.html to confirm the L818-830 "Optimistic online cache" block was dead/duplicate code (I initially suspected refactor leftover). **It's not — it's the load-bearing online cache-paint path.**
+
+## What's actually in engagement.html
+
+There are **two** cache-paint code paths:
+
+1. **Pre-loadPage IIFE at L948-965** (`paintEngagementCacheEarly`).
+   - Fires synchronously at script load — *before* `loadPage()` is called.
+   - Sets `_engEarlyPainted = true;` on success.
+   - This is what PM-67a patches with `vyvePaintDone` dispatch.
+
+2. **In-loadPage online cache block at L818-833** (inside `async function loadPage()`).
+   - Fires when `loadPage()` runs, after auth setup and only if `navigator.onLine`.
+   - Sets `_renderedFromCache = true;` on success.
+   - **PM-67a does NOT patch this site.**
+
+## Why this is a real gap (not a blocker)
+
+For the common warm-cache case: path 1 fires first (it's earlier in execution), wins via perf.js's first-fire-wins, dispatches `vyvePaintDone`. Path 2 runs after but its paint is redundant with path 1's. **PM-67a captures this case correctly.**
+
+For the cold-cache case: both paths skip (no cache match), FCP falls back. Same as without PM-67a.
+
+For the edge case where **path 1 misses but path 2 hits** — e.g. localStorage was just populated by a fresh network fetch between path 1 firing and path 2 firing — path 2 paints but no `vyvePaintDone` event fires. perf.js records FCP-of-skeleton instead. **This is the gap.**
+
+How common is the gap? Probably rare — both paths read the same `localStorage.vyve_engagement_cache` key, so a hit in path 2 with a miss in path 1 requires either (a) `_engEarlyPainted` failed to register due to a JS error, or (b) cache was populated between the IIFE and `loadPage()` running (~1-50ms window depending on auth speed). Both are uncommon but non-zero.
+
+## Proposed 9th patch (optional add to PM-67a bundle)
+
+Add after L831 `_renderedFromCache = true;`:
+
+```javascript
+try { window.dispatchEvent(new CustomEvent('vyvePaintDone', { detail: { source: 'cache' } })); } catch (_) {}
+```
+
+Same one-liner, +116 chars. perf.js first-fire-wins means the dispatch is harmless when path 1 already fired. When path 1 missed, this closes the gap.
+
+**Anchor verification:** `_renderedFromCache = true;` occurs **once** in engagement.html (L831). Safe single-occurrence str_replace.
+
+## Decision queued for 20:00
+
+Adding the 9th patch makes the PM-67a bundle 9 files (still atomic), +592 bytes total (was +476). Captures both cache-paint paths instead of just one.
+
+**Recommendation:** add it. The cost is one extra str_replace and a slightly longer commit message; the win is making engagement.html's `vyvePaintDone` coverage as complete as certificates.html and leaderboard.html (which each have only one cache-paint path).
+
+If you'd rather keep PM-67a's scope as-stated in the original runbook, the 9th patch ships as its own follow-up (PM-67b) — but bundling is cleaner.
+
+— Claude, ~10:45 UTC
