@@ -141,3 +141,81 @@ Workbench session ID: `only`. Patches stay staged until you act on them.
 Standing by for "ship PM-67a" or anything else at 20:00.
 
 — Claude
+
+
+---
+
+# Appendix — 12 May 2026 ~09:50 UTC pre-Mac verification pass
+
+**Author:** Claude. Solo session (sandbox `took`), Dean away until 20:00.
+**Standing instruction interpreted:** "do whatever you can now." No production code or DB writes performed. Brain-only commit (this appendix).
+
+## What was done
+
+### 1. PM-67a bundle regenerated against current vyve-site HEAD `6225d504`
+
+Morning session's staged bundle lived in workbench session `only`. Different sandbox, different filesystem — bundle is gone. Re-derived from `pm67a-ship-runbook.md` against live HEAD.
+
+**All 8 patches verified ship-safe** — each anchor occurs exactly once. Δ bytes match runbook: +6 × 3 (defer), +116 × 3 (certs/lb/eng), +112 (habits), -2 (sw.js). Total +476.
+
+**Two runbook anchor corrections caught and folded into the regenerated bundle:**
+
+| File | Runbook said | Reality | Fix |
+|---|---|---|---|
+| `engagement.html` | "after offline cache-paint block at L807" | L807 is the offline-banner path. Actual cache-paint flag flips at L962 inside `paintEngagementCacheEarly()` IIFE. | Patched correct site (`_engEarlyPainted = true;`), same shape as certs/lb. |
+| `habits.html` | "after `updateBottomBar();` in `renderHabits()`" | `updateBottomBar();` occurs twice — L403 (no-habits early-return) and L427 (renderHabits end). Plain str_replace would fail. | 3-line context anchor for uniqueness. |
+
+The audit had the *intent* right both times; the *line numbers* were wrong. Catching at dry-stage instead of ship time was the point of doing the pre-Mac pass.
+
+**Sandbox rotation note:** workbench sandboxes are ephemeral; staged files do not persist across rotations. Tonight, re-stage from runbook in ~5 min using the two corrections above. Faster than chasing the lost bundle.
+
+### 2. Layer 5 capture protocol dry-run
+
+Q1/Q2/Q3 all executed cleanly against the empty live `perf_telemetry` table (`total_rows=0`, `rows_for_dean=0`). No syntax errors, no permission issues, Q3's `insufficient_data` branch correct shape — empty input → empty output, no false `slow` verdicts. Flag-flip is unblocked.
+
+### 3. Dead-EF list cross-referenced against live state
+
+§23 GITHUB_GET_A_TREE recursive on both repos: 77 vyve-site text files + 3 vyve-command-centre text files, plus pg_cron grep (19 active jobs). **Two false positives caught that the morning audit missed:**
+
+- **`get-activity-feed`** — actively called in `vyve-site/activity.html` L173 as a working fetch:  
+  `const res = await fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/get-activity-feed', {`  
+  Defensive comment in `exercise.html` L197: "activity.html + get-activity-feed EF left in place for future reuse." Brain inventory's "social activity feed is backlogged" was confused with "EF is unused." **Removed from retire list.**
+- **`cc-data`** — core admin dashboard data layer in `vyve-command-centre/index.html` L251-253:  
+  `const CC_API='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/cc-data';`  
+  `async function ccFetch(table,opts){opts=opts||{};var jwt=await ccGetJWT();var url=CC_API+'/'+table;...}`  
+  Retiring would brick admin.vyvehealth.co.uk. Brain inventory's "one-shot Lewis ops" was wrong. **Removed from retire list.**
+
+**Revised retire-safe list: 41 → 39.** Net reduction if all retire: 101 → 62 EFs.
+
+Combined with morning catches (`schema-snapshot-refresh` jobid 14, `seed-weekly-goals` jobid 20, both saved via pg_cron lookup), this 20-hour pass caught **four** false positives total. Each one would have shipped silently and broken something. Strengthens the EF-retirement §23 candidate from a guideline to an explicit four-way check.
+
+Revised bash one-liner needs regenerating tonight from the 39-name list (sandbox rotation lost the staged copy). 39 names:
+
+`ban-user-anthony generate-stuart-plan resend-welcome send-stuart-reset trigger-callum-workout trigger-owen-workout create-ai-decisions-table run-migration-monthly-checkins run-monthly-checkins-migration check-cron debug-cert-content debug-exercise-search debug-show-file fire-test-push force-cache-refresh inspect-members-schema monthly-checkin-test re-engagement-test-sender send-test-push send-test-welcome smoketest-ach-push test-html-render add-exercise-stream delete-housekeeping edit-habit generate-workout-plan send-password-reset update-brain-changelog seed-b1 seed-library-1 seed-library-2 setup-ai-decisions setup-member-units thumbnail-audit thumbnail-batch-upload thumbnail-upload vicki-doc-sender vicki-preview-sender create-test-member`
+
+### 4. Post-PM-66 brain commit shape pre-thought
+
+Drafts staged in this session were lost to sandbox rotation, but the structure is clear and reproducible:
+
+- `brain/changelog.md`: prepend PM-66 entry, PM-67-prep summary block, PM-67a entry (shipped or deferred).
+- `tasks/backlog.md`: prepend Layer 5 capture window, dead-EF batch, PM-67a status, three §23 sign-off candidates. Downtier GDPR FK item and close PM-18 audit.
+- `brain/master.md`: §19 Shipped block (PM-66 + maybe PM-67a). §23 add EF-retirement four-way rule + maybe PM-67a defer-default rule.
+
+Placeholders for substitution at ship time: `{{PM66_SHA}}`, `{{PM67A_SHA}}`, `{{PM67A_VERDICT}}`, `{{VYVE_SITE_HEAD}}`, `{{LAYER5_STATUS}}`, `{{DEAD_EF_STATUS}}`.
+
+## Decisions queued for 20:00 (in addition to original three)
+
+**4. PM-67a sequencing vs Layer 5 capture.** Layer 5 protocol's Open Q2 recommended capturing FCP baseline *before* wiring `vyvePaintDone` so the delta is measurable. PM-67a wires it immediately. Both reasonable. My recommendation: **ship PM-67a as-staged** because (a) 25-min capture by one operator can't produce a statistically meaningful "before" baseline anyway, (b) perf.js records FCP and paint_done independently — no information loss, (c) 4-file split = separate atomic ship later with its own runbook drift risk. But deliberate call worth making, not a default.
+
+**5. Elevate EF-retirement §23 candidate from "rule" to "rule with execution checklist".** Four false positives in 12 May audit indicates the methodology *is* the rule. Four-way check: pg_cron grep + vyve-site full-tree grep + vyve-command-centre full-tree grep + any future admin repos full-tree grep.
+
+## What remains for Dean tonight
+
+1. **PM-66 ship from Mac** — push, give Claude the new sha for placeholder substitution.
+2. **PM-67a ship/defer** — re-stage from runbook (~5 min), then commit if shipping. Two anchor corrections already captured here.
+3. **Layer 5 flag-flip** — Safari `?perf=1`, ~25min normal use, then I run Q1/Q2/Q3.
+4. **Bulk-delete 39 dead EFs** — name list above. Regenerate bash one-liner from it. CLI-only action.
+5. **§23 hard rules sign-off** — three original + the EF-retirement elevation = four.
+6. **Atomic brain commit** — changelog + backlog + master patches per shape above.
+
+— Claude (20-hour gap session, 09:50 UTC, sandbox `took`)
