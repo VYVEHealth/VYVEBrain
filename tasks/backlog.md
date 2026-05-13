@@ -1,3 +1,33 @@
+## Added 14 May 2026 PM-102 (§23.7.8 hard rule: in-app cache reset must trigger full Dexie rehydrate; §23.8 field-test confirmation)
+
+### PM-97 in-app cache reset fix [P0 HOT, surfaced 14 May 2026 in PM-102]
+
+**Status:** OPEN P0. Currently broken on production iPhone — confirmed by Dean's session-end test 14 May 2026 ~00:35 BST. The PM-97 settings.html long-press footer recovery gesture clears Dexie tables + `vyve_home_v3_*` + sync_meta then `location.reload()`. The reload is not gated on `VYVESync.hydrate(email)` completion, so the post-reload page paint happens while Dexie is still mid-persist for member_habits and other member-scoped tables. Result: home renders "HABITS 1" instead of the real distinct-day count; habits.html renders every card as "undefined" because the denormalised join columns haven't arrived yet on the Dexie member_habits rows being read.
+
+**Fix shape (per §23.7.8):**
+1. Reset gesture must await `VYVESync.hydrate(email)` for at least `members`, `member_habits`, `workout_plan_cache` before reloading. 2-3s loading toast is acceptable; rendering empty/undefined state is not.
+2. `location.reload()` must move INSIDE the `.then()` of the rehydrate, never alongside.
+3. If hydrate fails (offline, RLS, 5xx) surface a user-facing error and BLOCK the reload — do not navigate into a known-empty Dexie state.
+4. Audit any other caller of `VYVELocalDB.<table>.clear()`, `localStorage.removeItem('vyve_home_v3_*')`, or `_sync_meta.set(table, 0)` while we're in settings.html. Likely includes dev tools and possibly some old patcher paths.
+
+**Workaround for users hitting it before fix ships:** full sign-out + sign-in. The reset alone leaves account in broken state until the next full hydrate fires, which doesn't happen automatically.
+
+**Estimated effort:** half a Claude session if scoped tightly to settings.html reset gesture only. Full audit of all cache-clear callers is a separate scoped chunk if §23.7.8 audit signal turns up more.
+
+### §23.7.8 audit sweep — find all callers of cache-clear primitives [P1, sequenced after PM-97 fix]
+
+**Status:** OPEN P1. New section §23.7.8 codifies the rule that any cache reset must force a full Dexie rehydrate before next paint. Audit signal: any call to `VYVELocalDB.<table>.clear()`, `localStorage.removeItem('vyve_home_v3_*')`, `_sync_meta.set(table, 0)`, or equivalent. Most likely live in settings.html (PM-97 recovery), possibly admin command centre dev tools, possibly old onboarding/persona-switch paths. Each caller must either route through a single guarded "reset-and-rehydrate" helper, or implement the §23.7.8 contract inline. Sweep when next on the affected files.
+
+### §23.8 field-test confirmation logged [audit pending, no new work]
+
+PM-100's `vyveHabitsMidnightWatch()` confirmed fired correctly on Dean's iPhone at 00:01 BST 14 May 2026. Bug §23.7.7 documented manifested exactly as described — app backgrounded across midnight rollover, habits.html still painted Wednesday's logsToday as Thursday's "11 of 11 done today" until visibilitychange/focus triggered re-evaluation. Home page correctly empty pill (different `todayStr` capture point). Rule §23.8 (timezone-correctness audit) stays P1 sequenced before international launch — no change to priority, just confirmed non-theoretical.
+
+### Test account provisioning (handed off to parallel chat)
+
+test@test.com password 1234 and test1@test.com password 1234. Provisioning shape: members row cloned from Dean's account profile (SPARK persona, baseline scores, 35 male, dark theme, kg/cm, individual company), 11 active member_habits matching Dean's habit set, 1 workout_plan_cache row with cloned 8-week PPL programme_json. test@test.com may have some pre-existing state (5 habits, no plan, no daily_habits — needs topping up). test1@test.com needs full creation from auth.users up. Both accounts will replace Dean's account as the primary test surfaces from next session forward.
+
+---
+
 ## Added 14 May 2026 PM-100 (§23.8 timezone audit pending — codebase is BST-locked)
 
 ### §23.8 timezone-correctness audit sweep [P1, sequenced before international launch]

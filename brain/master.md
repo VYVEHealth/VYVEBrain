@@ -1562,6 +1562,28 @@ When a page implements cache-first first paint (paint from localStorage cache sy
 
 **PM-101 addendum (14 May 2026):** prefer an async Dexie read over caching a computed value when Dexie can satisfy a first-paint counter. PM-100 stamped `activeDates` into the cache write so the cache-first paint could call `updateStats(_hc.activeDates)` synchronously, but that depended on the cache containing the field — caches written by pre-PM-100 sessions didn't have it, so on first reopen after upgrade the header sat on dashes until the slow path completed. Dexie already had every row needed to derive the counter (`VYVELocalDB.daily_habits.allDatesFor(email)` returns a sorted array of distinct dates) — the cache wasn't the source of truth, Dexie was. The cleaner pattern: kick off `VYVELocalDB.<table>.<derive>(email)` as a fire-and-forget Promise in parallel with the cache-first paint, and let the `.then` populate the header when it resolves (typically ms). Cache is then a paint accelerator for shape data (list, current state) but no longer authoritative for derived counters. PM-101 ships this for habits.html header. Same pattern applies anywhere Dexie can produce a first-paint counter — workouts.html "Week 1 of 8 — 0%", nutrition.html water progress, cardio.html week count, etc. Audit signal: every `updateStats(...)`/`render<Counter>(...)` call after an `await` is a candidate for the parallel-Dexie-read treatment.
 
+### §23.7.8 — In-app cache reset must force a full Dexie rehydrate before next paint (logged 14 May 2026, PM-102)
+
+**Status:** HARD RULE. Surfaced live on production iPhone 14 May 2026 ~00:30 BST. Dean's account: tapped the in-app cache reset gesture (settings.html long-press footer recovery); index.html and habits.html then rendered broken state — "HABITS 1" instead of 44 distinct-days, "0 of 11 done today" with all habit cards showing "undefined" titles and descriptions. Server data was fully intact (verified: 44 distinct habit days, 9 daily_habits rows today, 11 active member_habits with proper habit_library join columns populated). The breakage was purely client-side: reset cleared `vyve_home_v3_<email>` AND wiped Dexie tables, but the page paint that fired immediately after had nothing to render from and no completed re-hydrate sitting behind it.
+
+**Root cause:** The reset path is fire-and-forget against Dexie clear + localStorage wipe. It does not await `VYVESync.hydrate()` (or equivalent full re-pull from Supabase) before unblocking navigation. Next page load hits:
+- Empty `vyve_home_v3` → `buildHomeFromDexie()` fallback path → Dexie tables empty → returns stub state with `habits_total=1` (count of zero rows + base, or stale, depending on path) and empty habits assigned → home renders the stub as if it were truth.
+- Empty Dexie `member_habits` on habits.html → cache-first paint fails (no row matches member_email) → renders the synthesised "undefined" placeholders that the partial-upsert override (§23.7.5) was written to defend against, only here the rows aren't *partially* wrong, they're absent entirely so even the merge defence has nothing to merge with.
+
+The dexie-source-indicator overlay confirmed it in the field: badge read "Paint: dexie / Last: supabase / member_habits / Method: fetch / Age: 2.6s" while the cards rendered "undefined." Dexie had been *asked* for the data 2.6s ago, the fetch had landed, but the denormalised join columns hadn't propagated yet because the timing window was wrong — the page rendered before the post-fetch persist completed, and there was no re-render trigger fired after the persist landed.
+
+**Hard rule:** Any code path that clears local cache (Dexie tables, `vyve_home_v3_*`, `vyve_engagement_cache`, outbox, sync_meta, or any other client-side store) MUST:
+
+1. Block UI until `VYVESync.hydrate(email)` has completed for at least the member-scoped tables the user is about to navigate into (`members`, `member_habits`, `workout_plan_cache` minimum). A 2-3 second loading toast is acceptable; rendering empty/undefined state is not.
+2. Force a hard reload AFTER hydrate resolves, not before. The reset gesture's existing `location.reload()` must come from inside the `.then()` of the rehydrate, never alongside it.
+3. If hydrate fails (offline, RLS, network 5xx), surface a user-facing error and BLOCK the reload. Do not allow navigation into a known-empty Dexie state.
+
+This rule extends §23.7.5 (partial-upsert landmine) and §23.7.7 (cache-first first paint completeness) — together they cover the three failure modes for client-side state: partial writes, empty cache, and stale-cache-during-rehydrate-race.
+
+**Audit signal:** any caller of `VYVELocalDB.<table>.clear()`, `localStorage.removeItem('vyve_home_v3_*')`, or `_sync_meta.set(table, 0)` is suspect. Especially the PM-97 recovery gesture in settings.html and any dev tools that clear state. Sweep when next on settings.html or any debug surface.
+
+**Field-test:** the in-app reset gesture itself is currently broken on production — Dean tonight is the proof. Fix is a P0 once we're back on settings.html. Until fixed, users who hit the reset gesture (very few in trial) will see broken UI and need to fully sign out + sign back in to recover.
+
 ### §23.8 — Timezone correctness audit pending: codebase is BST-locked, needs to be device-local (logged 14 May 2026, PM-100 follow-up)
 
 **Status:** AUDIT PENDING. Documented as known-gotcha to prevent further BST-locked code being shipped. Fix carried as backlog item.
@@ -1599,6 +1621,8 @@ Date FORMATTING is separately wrong: 20+ files use `toLocaleDateString('en-GB', 
 **Audit signal for future work:** `ripgrep "bstToday|isDST|toLocaleDateString\('en-GB'"` across vyve-site shows the full current footprint. Run this at the start of the audit session to get a fresh count.
 
 **Estimated audit scope:** Half-day Claude minimum. 8 files for `bstToday` replacement (the correctness fix) and the locale formatting clean-up sweeps another 20+ files but is mechanical find-and-replace once the helper is in place. SW cache key bump on every touched HTML.
+
+**Field-test confirmation (14 May 2026 ~00:01 BST):** Dean's iPhone screenshot captured the exact bug §23.7.7 documented and PM-100 fixed. App had been backgrounded across midnight (13→14 May). On resume, habits.html still rendered "11 of 11 done today" for Thursday using Wednesday's logsToday because `todayStr = bstToday()` was captured once at `loadHabitsPage()` and never re-evaluated. Home page correctly showed empty pill (different `todayStr` capture point — surfaces disagreed on what "today" means). PM-100's `vyveHabitsMidnightWatch()` IIFE on visibilitychange/focus is the right fix for habits.html; same pattern must extend to cardio, wellbeing-checkin, monthly-checkin, nutrition, log-food when §23.7.7 audit sweep runs. Confirms the rule is non-theoretical.
 
 ### §23.5.1 — Member-dashboard EF latency is the dominant client-perceived perf bottleneck (PM-67 ship night, 12 May 2026)
 
