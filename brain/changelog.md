@@ -1,3 +1,93 @@
+## 2026-05-13 PM-90 (PF-30 SHIPPED — local-first telemetry redirect on local-first-spike; perf.js v3 + PostHog session replay + dexie/perf events; Sentry deferred to PF-30b pending DSN)
+
+PF-30 lands on vyve-site `local-first-spike` at commit `707aa3af`. The architectural pivot from server-first to local-first means the metrics that defined perf.js v2 — server round-trip timings, cache-first axis as a workaround for SW cache-first nav on iOS — are largely dead. v3 is a redirect, not a rebuild: same gate semantics (PM-67e patterns preserved: sync JWT read, no `getSession()`, defer script, try/catch every block, sentinel proof-of-life, 12s fallback flush), same allowlist (deanonbrown@hotmail.com Capacitor escape hatch), new delivery target (PostHog `capture()` instead of `/functions/v1/log-perf`), new event names matched at the failure modes that actually matter post-migration.
+
+### Five files committed
+
+- `perf.js` v2 → v3 (13.1KB → 15.3KB, +17%): strip the dead metrics, redirect to PostHog, add the new events.
+- `auth.js` (+574 bytes): `posthog.init` config gains `session_recording` block.
+- `db.js` (+915 bytes): wraps the `getDB()` open-failed catch with PostHog capture for crash recovery telemetry.
+- `index.html` (+2593 bytes net): telemetry hooks on the PF-11a/PF-11b paint paths + `loadDashboard()` engagement drift emit.
+- `sw.js`: cache key bumped `pm78-pf11b-home-b` → `pm90-pf30-telem-a`.
+
+### perf.js v3 new event surface
+
+Eight events emitted, all to `window.posthog.capture()` (PostHog already identify-wired in auth.js — see below):
+
+- `perf_first_paint {page, ms, cross_nav_ms, cross_nav_from, nav_type}` — fires the first time first-paint is observed (synchronous via `getEntriesByType('paint')` if available, else via PerformanceObserver, whichever fires first; emitted-once guard via `fpEmitted` flag).
+- `perf_cross_nav {page, from, dt_ms, fp_ms}` — emitted alongside first-paint when there's a sessionStorage `vyve_perf_lastnav` from the prior page's pagehide. Captures the tap → next-screen-paint timing that PF-24 page transitions will eventually hide. Sanity-gated to <30s to avoid attributing returns-from-background as same-tab nav.
+- `perf_auth_ready {page, ms}` — listens for `vyveAuthReady`, emits ms-since-fetchStart.
+- `perf_paint_done {page, ms}` — listens for the existing `vyvePaintDone` event (used by page-author-fired explicit paint-complete signals).
+- `perf_navigation_timings {page, perf_active, ttfb, dom_done, load, fp, fcp, lcp, inp, auth_rdy, paint_done, nav_type, ua_brief}` — pagehide rollup of all classical metrics in one event. Replaces the v2 `metrics` array POSTed to log-perf.
+- `perf_sync_queue_high {page, depth}` — pagehide hook that calls `VYVELocalDB._sync_queue.peek(1000)`, fires only when depth > 5. Proxy for "the drainer can't keep up." Should be near zero in healthy sessions.
+- `dexie_hydrate_completed {page, ms, ok_count, failed_count, failed_tables}` — listens for `vyve-localdb-hydrated` (one-shot, dispatched by sync.js after first successful hydrate). Drives the PF-13 minimum-display-duration tuning.
+- (No `dexie_spike_fallthrough` counter in this commit — PF-30 scope didn't include touching the 11 individual page `else { Supabase fallthrough }` branches. Will land in PF-30c if the engagement-drift events suggest fallthroughs are happening more than expected.)
+
+### index.html paint + drift telemetry
+
+The cold-start path now wraps the existing `buildHomeFromDexie(email).then(...)` block with telemetry emission. Three events:
+
+- `dexie_cold_paint` — fires on PF-11a path (paint with placeholder engagement.score=50).
+- `dexie_full_paint` — fires on PF-11b path (paint with real engagement.score from `home-state-local.js`). Path is distinguished by reading `dexieData.__pf11b_dexie_source` (PF-11b sets this; PF-11a sets `__pf11a_dexie_source`).
+- `dexie_engagement_drift {dexie_source, dexie_score, ef_score, drift, abs_drift, known_divergence_sources, ef_arrived_after_ms}` — fires inside `loadDashboard()` post-render. Compares the EF's `engagement.score` against the Dexie value stashed in `window._vyveDexiePaint` at paint time. `known_divergence_sources: ['weekly_scores_v_wellbeing_checkins']` is hardcoded into every event so we don't chase the schema gap (the SQL `refresh_member_home_state` reads latest wellbeing from `weekly_scores`; the JS port reads from `wellbeing_checkins` because `weekly_scores` isn't in the Dexie schema — same data, different table). When PF-30 companion candidate to extend the schema lands, drop the tag.
+
+The `window._vyveDexiePaint` stash is small: `{source, engagement_score, computed_at, page_ts}`. Survives only the page lifetime — the drift event fires once on EF return and the global is discarded on nav.
+
+### db.js crash recovery
+
+The existing `dbPromise = loadDexie().then(...).catch(function (err) { ... })` block in `getDB()` now emits PostHog capture before falling through to the no-op shim. Event name is `dexie_idb_lost` when the error message contains "Connection to Indexed Database" (the iOS WKWebView shape — §3.1 mitigation A telemetry), else `dexie_open_failed` (everything else: quota errors, schema migration failures, version-mismatch). Detail fields: `page, message (truncated 200 chars), name, ua_brief`.
+
+This is the first PF-30 hook that's load-bearing for the §3.1 commitment: WKWebView's crash-wipe pattern is rare-but-known; we hadn't been measuring how often it fires. Now we will.
+
+### auth.js PostHog session replay
+
+`posthog.init` config gains a `session_recording` block plus `disable_session_recording: false`. Sampling defaults to 100% (PostHog's default once enabled is 100% — explicit sampleRate not set, so the dashboard default rules). For the soft-launch week this is intentional: ~15 members × ~3 sessions/week × ~5min/session = ~225 recordings/month, against the free tier's 5,000 cap. Watching real sessions during the launch window is the fastest way to catch "subtle bug no member would describe to support" issues.
+
+`maskAllInputs: true` is the conservative default; password masked, email explicitly unmasked because `posthog.identify(email)` already attaches the email at the member level — masking it in replays would split attribution surfaces during incident review (you'd see a session for "*****@*****.com" and have to cross-reference the user ID).
+
+`recordCrossOriginIframes: false` — we don't embed any third-party iframes that should be in replays. Stripe is in a separate flow on the marketing site.
+
+Plan: drop to 10% sampling +1 week after hard launch via the PostHog dashboard or by adding `sampleRate: 0.1` to the config.
+
+### PostHog identity discovery (memory drift correction)
+
+When scoping PF-30 from the playbook + active.md, the note "PostHog identity wiring pending" appeared in multiple places (memory entry, active.md §6, playbook PF-30 description). Grepping auth.js found this is stale: `vyveCapturePageView` at L25431 calls `posthog.identify(user.email, { email, name })` after every `vyveSignalAuthReady`. Events have been firing identified for some time — `portal_page_viewed`, `live_session_accessed`, `replay_page_accessed` all attached to the right member. The "pending" note dates back to before this was wired (probably PM-21 era when PostHog was first added as a stub).
+
+PF-30 therefore leaves identity untouched — it's already correct. The memory entry / master.md §5 line on this should be marked complete next time master.md gets touched.
+
+### Sentry deferred to PF-30b
+
+Sentry wiring is genuinely new — the JS SDK loader, init with DSN, `Sentry.setUser({ email })` in the `vyveCapturePageView` hook (after `posthog.identify`). Total work: ~30 minutes once a DSN exists. Blocker: Dean needs to create a Sentry project (free tier, ~3 minutes at sentry.io). Once DSN provided, PF-30b lands as a follow-up commit.
+
+Rationale for splitting: launch-day cold-start telemetry is one-shot. Every cold-start without PostHog markers is data we don't recover. PF-30a (this commit) covers all the PF-30 events that depend on the launch window. PF-30b (Sentry) is purely additive — adds a crash channel — and is recoverable post-launch in the sense that crashes that fire post-DSN-install are still useful.
+
+### What PF-30 does NOT include
+
+- **`dexie_spike_fallthrough` per-page counter.** PF-30 scope didn't touch the 11 individual page three-way-branch `else { Supabase }` paths. Adding this means a single-line `posthog.capture('dexie_spike_fallthrough', { page, table })` in each of habits.html / workouts-programme.js / workouts-session.js / nutrition.html / log-food.html / cardio.html / wellbeing-checkin.html / monthly-checkin.html. ~20 minutes of work, deferred to PF-30c if engagement-drift events flag suspicious patterns.
+- **`weekly_scores` Dexie schema extension.** Already noted in PF-10 / PM-87 changelog as a PF-30 companion candidate; still deferred. The `dexie_engagement_drift` event includes `known_divergence_sources` tagging so the drift it causes is observably-known. Schema extension is a 30-45 min PF-30d if telemetry shows the gap is hot.
+- **Sentry.** Deferred to PF-30b pending DSN.
+- **PostHog identity.** Already wired (see above) — not part of this commit's diff.
+
+### Pre-commit + post-commit verification
+
+Pre-commit SHA refresh on all 5 vyve-site files immediately before the upserts call — no drift since the file pulls earlier in the session. Branch state stable.
+
+Post-commit byte-equal verify pinned to commit SHA `707aa3af...` (not `ref=local-first-spike` raw, which is CDN-cached per PM-86.1 lesson). md5 of staged content matches md5 of remote on all 5 files. Plus an 8-marker grep: `dexie_cold_paint`, `dexie_full_paint`, `dexie_engagement_drift`, `dexie_idb_lost`, `session_recording`, `pm90-pf30-telem-a`, `perf_first_paint`, `dexie_hydrate_completed` — all present in their target files.
+
+### node --check verification
+
+All 4 JS files pass node --check. All 8 inline scripts in patched index.html pass node --check (extracted via the `<script(?![^>]*\bsrc\b)[^>]*>(.*?)</script>` DOTALL regex from the §23.5 working-set rule).
+
+### Brain commit performs same drift check
+
+active.md fresh md5 == active.md md5 at session start (b04088b2…) before patching. Playbook fresh md5 identical. backlog.md unchanged (PF-30 was never in backlog — it lives in active.md §5 and the campaign playbook only).
+
+### Pre-launch sequencing
+
+PF-1 through PF-11 + PF-30 SHIPPED. PF-12 (settings + remaining surfaces, ~2 hours) next on the page-refactor track. PF-30b (Sentry) waits on Dean's DSN. After PF-12: PF-13 (welcome polish, blocked on Dean's persona welcome copy), PF-21 (bottom nav), PF-23 (interactive tutorial, blocked on Lewis copy for all 5 personas), PF-24/25/26/27/28 (polish), PF-29 (Android Health Connect). Capacitor origin verification (PM-77.1 §3.1 mitigation B) still outstanding — blocked on Dean reading `~/Projects/vyve-capacitor/capacitor.config.ts` since the Capacitor repo isn't in git.
+
+---
+
 ## 2026-05-13 PM-89 (PF-11b SHIPPED — index.html client-side member_home_state computation via new home-state-local.js module; PF-11 complete)
 
 PF-11b lands on vyve-site `local-first-spike` at commit `a248bfef`. The architectural completion of PF-11. Where PF-11a (PM-88) painted with real progress counts + activity_log + placeholder zeros for engagement/streaks, PF-11b replaces those placeholders with REAL computed values via a JS port of the server-side `refresh_member_home_state` PL/pgSQL function. Cold-start paint now produces a dashboard with real engagement score, real streaks (current + best per type + overall + weekly check-in streak), real progress counts, real recent-30d counts, real weekly-goal progress — all from Dexie, no server round-trip.
