@@ -160,7 +160,13 @@ Format: `PF-N — Title`
 - **Verification:** habits.html opens with zero network activity. Tap habits, see instant ticks. Reload page, see persisted state. Compare against Supabase to confirm writes synced.
 - **Needs Dean:** verification at end of task.
 - **Estimated length:** 2 hours.
-- **Status:** QUEUED
+- **Status:** SHIPPED 13 May 2026 PM-79.3 to `local-first-spike` (commit `48c4d17e`). Build chat shipped during a parallel session.
+- **Ship notes:**
+  - Three Supabase read sites replaced with Dexie (`member_habits` join, `daily_habits` today, `daily_habits` 365-day dates) → Dexie `allFor` / `todayFor` / `allDatesFor`.
+  - Three-way branch pattern: Dexie path taken only when `isEnabled()` AND non-empty rows. Empty (shim / failed-hydrate / genuinely-empty member) falls through to Supabase. Spike-off path unchanged. Same pattern used for PF-7.
+  - Autotick HealthKit metadata (`fetchDashboardHabits`) stays on the wire on both paths — live evaluator output, not persistable, non-blocking.
+  - Downstream render code untouched: Dexie rows are reshaped back into the existing `supa()` join projection that `map()` expects. No cascading refactor.
+  - Cache key bumped `pm78-pf5-delta-a` → `pm78-pf6-habits-a`. Files changed: `habits.html`, `sw.js` (2 files).
 
 ### PF-7 — Page refactor: workouts.html + workouts-session.js + workouts-programme.js
 
@@ -170,7 +176,14 @@ Format: `PF-N — Title`
 - **Verification:** Open workouts tab cold. Should paint instantly with programme + past sessions. Log a few sets in a session — instant. Reload, confirm persisted.
 - **Needs Dean:** verification at end.
 - **Estimated length:** 3 hours.
-- **Status:** QUEUED
+- **Status:** SHIPPED 13 May 2026 PM-79.3 to `local-first-spike` (commit `97863198`). Build chat shipped immediately after PF-6.
+- **Ship notes:**
+  - Four reads flipped in `workouts-programme.js` (`workout_plan_cache`, `workout_plans` catalogue, `exercise_logs`, `custom_workouts`) + one in `workouts-session.js` (`getTotalWorkoutCount`). Same non-empty-gate three-way branch as PF-6: Dexie-when-enabled-and-non-empty / Supabase fallthrough.
+  - **PM-77.3 thumbnail prefetch IN SCOPE.** On the spike-on path after programme load, parallel-fire `{mode:'no-cors'}` fetch() for every distinct thumbnail URL in the active programme. Service worker caches them; first paint on workout cards is instant on subsequent visits. Fire-and-forget, swallows errors, never blocks render.
+  - **Writes already covered by PF-4 shadow drainer** — no write-path changes in PF-7. The shadow Dexie outbound queue from PF-4 already mirrors `programme.js` `PATCH workout_plan_cache`, `session.js` `POST workouts` + `POST exercise_logs`, and `builder.js` `custom_workouts` CRUD via the `VYVEData.writeQueued` monkey-patch. Clean separation: PF-4 owns writes, PF-7 owns reads.
+  - **Server-compute carve-out (PM-80 principle):** `share-workout` EF stays on the wire on both paths. Generates server-side codes, not persistable. Documented in the commit message as a principle worth promoting — server-compute that produces non-persistable artefacts (codes, AI generations, signed URLs) must stay on the wire even on the local-first path. Will be codified into a §23 hard rule in active.md when the next page refactor confirms the pattern holds (likely PF-10 wellbeing-checkin AI moment).
+  - `workouts.html` adds `/db.js` + `/sync.js` to the deferred script chain right after `vyve-home-state.js`. Matches PF-1 ordering on habits.html.
+  - Cache key bumped `pm78-pf6-habits-a` → `pm78-pf7-workouts-a`. Files changed: `sw.js`, `workouts-programme.js`, `workouts-session.js`, `workouts.html` (4 files).
 
 ### PF-8 — Page refactor: nutrition.html + log-food.html
 

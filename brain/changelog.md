@@ -1,3 +1,77 @@
+## 2026-05-13 PM-79.3 (PF-6 + PF-7 SHIPPED to local-first-spike — habits + workouts Dexie-first reads, including PM-77.3 thumbnail prefetch)
+
+Brain-only commit. Two vyve-site commits shipped in the parallel build chat between PM-79.2 and now: PF-6 (`48c4d17e`, +28 minutes after PF-5) and PF-7 (`97863198`, +9 minutes after PF-6). Spike branch now 7 commits ahead of `main` (PF-1 → PF-7).
+
+### Dean's directive
+
+"PF-7 is finished." Brain didn't know PF-6/7 had shipped — they landed in the build chat while this conversation was running on architecture + scope. Standard pattern: build chat ships code, conversation chat learns about it via Dean and updates the brain. Verified by walking the spike branch's commit history before committing.
+
+### PF-6 ship — vyve-site `48c4d17e`
+
+`habits.html` switched to local-first reads when spike on. Three Supabase reads replaced with Dexie:
+- `member_habits` join → `VYVELocalDB.member_habits.allFor`
+- `daily_habits` today → `VYVELocalDB.daily_habits.todayFor`
+- `daily_habits` 365-day dates → `VYVELocalDB.daily_habits.allDatesFor`
+
+**Architecture decision: non-empty-gate three-way branch.** Dexie path takes the read only when `isEnabled()` AND rows are non-empty. Empty result (shim active, failed hydrate, or genuinely-empty member with no assigned habits) falls through to the existing Supabase path so no member is ever stranded staring at "no habits" because Dexie hasn't hydrated yet. Spike-off path is unchanged. This pattern carries through every page refactor that follows.
+
+**Autotick carve-out.** HealthKit autotick metadata (`fetchDashboardHabits`) stays on the wire on both paths. It's live evaluator output (which habits qualify for autotick *right now* based on current HealthKit reads), not persistable, non-blocking. Documented as a precedent for server-compute carve-outs.
+
+**Downstream render code untouched** because Dexie rows are reshaped back into the existing `supa()` join projection that `map()` expects. The cascading refactor risk that conversation chats had worried about doesn't apply — the read shim is shaped to fit the existing render contract.
+
+Files changed: `habits.html`, `sw.js` (2 files). Cache key `pm78-pf5-delta-a` → `pm78-pf6-habits-a`.
+
+### PF-7 ship — vyve-site `97863198`
+
+Workouts surfaces switched to local-first reads. Four reads flipped in `workouts-programme.js` (`workout_plan_cache`, `workout_plans` catalogue, `exercise_logs`, `custom_workouts`) + one in `workouts-session.js` (`getTotalWorkoutCount`). Same three-way branch pattern as PF-6.
+
+**PM-77.3 thumbnail prefetch landed in scope.** The playbook's PF-7 task included the thumbnail prefetch as a sub-bullet from the original PM-77.3 design note; build chat implemented it directly rather than splitting it out. On the spike-on path after programme load, parallel-fire `{mode:'no-cors'}` fetch() calls for every distinct thumbnail URL in the active programme. Service worker caches them. First paint on workout cards is instant on subsequent visits. Fire-and-forget, swallows errors, never blocks render. Big perceived-speed win on the list view that members open most.
+
+**Writes untouched.** PF-4's shadow Dexie outbound queue (monkey-patched on `VYVEData.writeQueued`) already mirrors every write on the workouts surfaces: `programme.js` `PATCH workout_plan_cache`, `session.js` `POST workouts` + `POST exercise_logs`, `builder.js` `custom_workouts` CRUD. Clean separation: PF-4 owns writes, PF-7 owns reads. No write-path regression risk in this commit.
+
+### New principle worth codifying: server-compute carve-out (PM-80 principle)
+
+PF-7's commit message references "PM-80 principle" for `share-workout` EF staying on the wire on both paths. The principle:
+
+> **Server-compute that produces non-persistable artefacts (codes, AI generations, signed URLs, evaluator output against current external state) must stay on the wire even on the local-first path. Only data the member already owns gets read from Dexie.**
+
+This applies cleanly to:
+- `share-workout` EF (PF-7) — generates a server-side share code, can't be local.
+- `fetchDashboardHabits` HealthKit autotick (PF-6) — live evaluator, current HealthKit reads.
+- `wellbeing-checkin` EF AI generation (PF-10 when it lands) — AI inference can't be local.
+- `monthly-checkin` EF AI generation (PF-10).
+- Running plan generator via `anthropic-proxy` — AI inference.
+- Off-proxy food search — external Open Food Facts API.
+- Leaderboard reads — cross-member data, not the member's own.
+- Charity total — cross-member aggregate.
+
+Pattern not yet codified into a §23 hard rule. Will be codified after PF-10 (wellbeing-checkin) ships and confirms the pattern is stable across AI moments too. Likely lands as PM-80 (the build chat is already operating from this principle implicitly).
+
+### Status
+
+- Spike branch: 7 commits ahead of `main` (`8d07d26b` PF-1 → `97863198` PF-7).
+- `main` HEAD unchanged at `ff3e0e0f` (PM-76 perf.js v2 promote).
+- Awaiting Dean merge to `main` + production verification (still gated by spike flag for any member who flips `localStorage.vyve_lf_spike='1'`).
+- **Capacitor origin verification (PM-77.1 §3.1 mitigation B) still outstanding.** Dean still hasn't read `~/Projects/vyve-capacitor/capacitor.config.ts`. Carrying forward — needs to happen before merge of the local-first work to main to lock the scheme in `capacitor.config.ts`.
+
+### Next on the build side
+
+PF-8 — `nutrition.html` + `log-food.html` refactor. Read TDEE / weight log / water log / today's macros from Dexie; writes through sync layer. Off-proxy stays on the wire (external API). Estimated 2-3 hours. Build chat can pick this up next session.
+
+After that: PF-9 (cardio), PF-10 (wellbeing/monthly checkin — first AI-moment refactor + likely PM-80 codification), PF-11 (index.html home dashboard — the most visible win), PF-12 (settings + remaining surfaces). Then PF-13 (hydration screen baseline), PF-14 (device verification), PF-15 (hardening), PF-16-18 (polish), PF-19 (cleanup), PF-21 (Mind/Body/Connect nav), PF-20 (merge to main).
+
+### MVP/Premium tiering reminder (from earlier this session)
+
+MVP: PF-1..PF-15, PF-16, PF-18, PF-19, PF-21, PF-20, PF-28. ~55-60h remaining.
+Premium pre-launch: PF-17 (haptics), PF-24 (transitions), PF-25 (typography), PF-26 (pull-to-refresh). ~10h.
+V2: PF-22 hub pages, PF-23 interactive tutorial, PF-27 AI animation. Defer to mid-June.
+
+### Brain commit shape
+
+3 files: `brain/active.md` (§2 SHAs + Last verified + status + last-shipped row; §3 status line; §5 backlog 2.8 + 2.9 flipped to SHIPPED with commit SHAs, 2.10 PF-8 promoted to next, 2.11 generic PF-9..PF-20 line; §8 editorial bumped to PM-79.3), `playbooks/premium-feel-campaign.md` (PF-6 + PF-7 status flipped from QUEUED to SHIPPED with full ship notes covering three-way branch pattern, autotick carve-out, thumbnail prefetch implementation, PM-80 principle reference), `brain/changelog.md` (this entry prepended).
+
+---
+
 ## 2026-05-13 PM-79.2 (PF-28 added — in-progress session + form draft persistence; covers mid-workout app-close + partial form recovery)
 
 Brain-only commit. No vyve-site change.
