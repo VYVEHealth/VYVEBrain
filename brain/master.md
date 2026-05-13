@@ -847,6 +847,43 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 13 May 2026 PM-96 (PF-14 verification COMPLETE + PF-15 part 2 exercise.html Dexie wiring shipped)
+
+Tonight's session was the diagnostic-led completion of PF-14 device verification and the first PF-15 page-wiring fix. PF-14 part 6 (commit `67711c4e`, late PM-95) added `await VYVESync.hydrate()` to four pages on a guess about why those pages were amber. Dean's walk after that ship showed the patch helped some pages but left Exercise hub still amber and (apparently) regressed Habits + Nutrition. The session was running on speculation.
+
+PM-96 reset to diagnostic-first.
+
+**Shipped tonight (2 vyve-site commits on main):**
+- `4ffe3d72` — PM-96 diagnostic. 70-line IIFE appended to `dexie-source-indicator.js` listening to sync.js's per-table events + snapshotting `_sync_meta` + Dexie row counts on hydrate completion. Fires single `pf14_hydrate_diagnostic` PostHog event per page load with the full per-table picture. Stashes snapshot on `window.__pf14_lastDiag` and logs `[PF-15 diag]` summary to console. 8s fallback timer if hydrate event never fires. Spike-gated. sw.js cache key bump.
+- `433d0650` — PM-96 PF-15 part 2. `exercise.html` `fetchPlan()` rewritten as hydrate-await → Dexie-first read from `workout_plan_cache.allFor(email)` → REST fallback. Spike-off path identical to pre-patch. localStorage cache layer (`vyve_exercise_cache_v2`) untouched. sw.js cache key bump.
+
+**Diagnosis from Dean's iPhone walk (post-diagnostic ship):** Six of seven surfaces went GREEN — PF-14 part 6's hydrate-await pattern DID work. Settings, which was amber earlier tonight, was green after the part 6 ship. Habits + Nutrition were green, not regressed — the earlier "regression" was a transient SW activation-window artifact. Only Exercise hub stayed amber. Code audit of `exercise.html` confirmed zero `VYVELocalDB` references — never wired to Dexie. Finding #2 hypothesis (c) from PM-95 (partial page-side migration) was correct, just on a different page than guessed. Fixed in `433d0650`.
+
+**Surfaces audited tonight (root-level .html + page-shipped .js modules):**
+
+| Page | VYVELocalDB refs | await hydrate | Status |
+|---|---:|---:|---|
+| index.html | 12 | 0 (delegates to home-state-local.js + hydration.js) | GREEN |
+| habits.html | 15 | 1 | GREEN |
+| workouts.html | 0 | 0 | GREEN via workouts-programme.js (12 refs, 4 awaits) |
+| cardio.html | 11 | 2 | green (PF-14 part 6 patch, not walked tonight) |
+| nutrition.html | 3 | 1 | GREEN |
+| log-food.html | 9 | 3 | GREEN |
+| wellbeing-checkin.html | 12 | 2 | green (PF-14 part 6, not walked) |
+| monthly-checkin.html | 8 | 1 | green (PF-14 part 6, not walked) |
+| settings.html | 25 | 1 | GREEN |
+| exercise.html | 0 → 3 | 0 → 1 | AMBER → GREEN after `433d0650` |
+| movement.html | 0 | 0 | amber, low-stakes, PF-15.x backlog |
+| sessions.html | 0 | 0 | unknown, PF-15.x audit |
+| leaderboard.html | 0 | 0 | probably legit REST-pass-through, PF-15.x audit |
+| running-plan.html | 0 | 0 | needs Dexie wiring, PF-15.x |
+| certificates.html | 0 | 0 | needs Dexie wiring, PF-15.x |
+| engagement.html | 0 | 0 | likely needs Dexie wiring, PF-15.x audit |
+
+**State at end of PM-96:** `vyve-site` main HEAD `433d0650`. SW cache key `vyve-cache-v2026-05-13-pm96-pf15-exercise-dexie-a`. PF-14 device verification COMPLETE. PF-15 part 1+2 SHIPPED. Six remaining unwired pages logged as PF-15.x sweep (Sunday session). PF-14b bundled-mode migration remains the launch blocker.
+
+Four new §23 hard rules codified tonight: §23.7.1 page-side Dexie wiring requirement; §23.7.2 hydrate resolves true on partial failure; §23.7.3 SW activation amber flicker; §23.7.4 diagnostic-before-fix protocol.
+
 ## 19. Current status — 12 May 2026 PM (PM-68 + PM-68b + PM-69 + PM-70 ships — member-dashboard EF backend perf overhaul)
 
 **🚢 BACKEND PERF OVERHAUL SHIPPED.** Four Supabase migrations + two member-dashboard EF deploys (v68 → v69) tonight, in response to the PM-67-night discovery that the bottleneck was server-side (17-38 s wallclock). Root cause identified, fixed at the source. See changelog 2026-05-12 PM-68+ block for full detail.
@@ -1420,6 +1457,22 @@ Commit 4 (gdpr-erase) shipped same evening (07 May PM-3 cont.) — 4 EFs (`gdpr-
 ---
 
 ## 23. Known gotchas & architecture rules
+
+### §23.7.1 — Page-side Dexie wiring is a requirement, not an optimisation (PM-96 ship night, 13 May 2026)
+
+Every page that paints member data MUST either (a) read `VYVELocalDB.<table>.allFor(memberEmail)` inside an `await VYVESync.hydrate()` block with REST fallback below, OR (b) deliberately pass through to REST/EF for legit reasons (aggregate reports, server-computed leaderboards). PF-14 part 6 added `await VYVESync.hydrate()` to four pages on the assumption the issue was hydrate timing; that fix DID work for the four wired pages but couldn't help `exercise.html` because the page had ZERO `VYVELocalDB` references — never migrated. PM-96 part 2 (`433d0650`) added the Dexie read path. Audit signal: ripgrep for `VYVELocalDB` in every member-data page; 0 hits on a member-data page = amber by construction (the indicator will paint amber regardless of what hydrate does). The PF-15 sweep walks every remaining unwired page (movement, sessions, leaderboard, running-plan, certificates, engagement) and applies the same template OR documents a deliberate REST carve-out in the commit.
+
+### §23.7.2 — `await VYVESync.hydrate()` returns true even when individual tables fail (PM-96, 13 May 2026)
+
+`sync.js` `hydrate()` collects per-table pass/fail in module-private `failedTables{}` (no public getter) but resolves `true` regardless of partial failure. Callers cannot rely on the resolved promise meaning "the table I'm about to read is populated". Two design implications: (a) every Dexie read must defensively check for empty/missing result and fall through to REST (this is the PM-96 part 2 pattern); (b) when investigating a coverage gap, the diagnostic must inspect `_sync_meta.get(table)` and Dexie row counts directly, NOT the hydrate return value. PM-96 diagnostic (`4ffe3d72`) codifies pattern (b) — appended an IIFE to `dexie-source-indicator.js` that listens to sync.js's `vyve-localdb-table-pulled` / `-failed` / `-hydrated` events and snapshots full state to PostHog. PF-15.y backlog item proposes changing `hydrate()` return type to `{ok, failed, ms, failedTables}` summary object during the PF-15 sweep when we're touching every page anyway.
+
+### §23.7.3 — First paint after sw.js cache key bump may flicker amber (PM-96, 13 May 2026)
+
+Not a real regression. The new service worker has to install + activate + claim clients; during that window the first network request may slip past the local-first rail before the new code is serving. Subsequent paints settle correctly. Don't read amber on the first reload after a cache key bump as evidence the underlying code is broken — reload once more before drawing conclusions. PM-96 mistakenly diagnosed habits + nutrition as "regressed" based on a single first-reload observation; the post-diagnostic walk showed both green. PF-15.z backlog has a deferred mitigation (suppress amber state changes for ~1500ms after `controllerchange`); documenting the rule is the cheaper near-term fix.
+
+### §23.7.4 — Diagnostic-before-fix when a speculative patch fails (PM-96, 13 May 2026)
+
+If a fix doesn't work on the first device walk, stop. Don't ship a second speculative patch. Ship a diagnostic that captures the actual state, walk the device once, read the data, then write one real fix. The PM-95 → PM-96 session boundary demonstrated the cost of the alternative — PF-14 part 6 was a guess-built patch that fixed the right problem on the wrong pages and missed the actual unwired page. The PM-96 protocol shape is: speculative-patch-failed → diagnostic commit → walk → fix commit. No third speculative patch in between. The diagnostic infrastructure is reusable — `dexie-source-indicator.js` now has the event-listener + `_sync_meta`-inspection + PostHog wire baked in, so future hydrate-coverage questions answer themselves with a walk.
 
 ### §23.5.1 — Member-dashboard EF latency is the dominant client-perceived perf bottleneck (PM-67 ship night, 12 May 2026)
 

@@ -1,3 +1,45 @@
+## Added 13 May 2026 PM-96 (PF-15 part 1+2 — diagnostic-led Exercise hub fix; remaining unwired pages logged)
+
+### PF-15.x remaining unwired pages [P1] (per-page audit needed first)
+
+Audit run in PM-96 across every root-level .html and the page-shipped .js modules. Pages with 0 `VYVELocalDB` references that paint member data and therefore can't paint Dexie:
+
+| Page | Member data painted | Current data path | Notes |
+|---|---|---|---|
+| `movement.html` | Recent movement sessions, walks | 5 direct REST calls | Empty-state page tonight (no movement activity logged), low-stakes for trial. Wire alongside cardio pattern. ~30 min. |
+| `sessions.html` | Live session catalogue + member's recent watches | None visible in source (1 EF call: none); pulls from service_catalogue | Audit needed: does the page paint from `replay_views` / `session_views` (member-scoped) or just from `service_catalogue` (catalogue)? If member-scoped, wire to Dexie. ~30 min. |
+| `leaderboard.html` | Member's rank position | 1 EF call | Probably legitimately REST-pass-through (aggregate compute is server-side). Confirm + document carve-out, don't force-wire. ~15 min audit. |
+| `running-plan.html` | Member's active running plan | 2 EF calls | Probably needs Dexie wiring to `running_plan_cache`. ~30 min. |
+| `certificates.html` | Member's earned certs | 2 EF calls | Needs Dexie wiring to `certificates`. ~30 min. |
+| `engagement.html` | Member's engagement metrics | 3 EF calls | Audit: is this an aggregate compute (legit REST) or member-row read (needs Dexie)? ~15 min audit. |
+
+**Sequencing.** Bundle into a single PF-15 sweep session (~3-4 hours). Per-page commit pattern matches PM-96 part 2 (`433d0650`) — hydrate-await + Dexie-first + REST fallback, plus sw.js cache key bump. The §23 hard rule codified in PM-96 makes the pattern repeatable: any future page that paints member data must follow this template or document a deliberate REST carve-out in the commit.
+
+### PF-15.y — hydrate() should surface per-table failure publicly [P1]
+
+`sync.js` `hydrate()` collects per-table pass/fail in module-private `failedTables{}` but resolves `true` regardless of partial failure. Callers can't tell from the resolved promise whether their target table actually populated. Two options:
+
+1. **Public getter** — expose `VYVESync.getHydrateStatus()` returning `{hydratedTables, failedTables, lastHydrateMs}`. Cheap. Lets pages defensively check before reading and trigger a per-table `hydrateTable()` retry on failure.
+2. **Resolve to summary object** — change return type from `Promise<boolean>` to `Promise<{ok, failed, ms, failedTables}>`. Breaking change but cleaner. Defer until PF-15 sweep when we're touching every page anyway.
+
+Option 2 preferred when we're touching every Dexie page during the sweep. Combine into single commit.
+
+### PF-15.z — first-paint-after-SW-bump amber flicker mitigation [P2]
+
+PM-96 confirmed that the first paint after a sw.js cache key bump can flicker amber while the new worker is installing + activating + claiming clients. Not a real regression. Two possible mitigations:
+
+1. **Indicator gating** — suppress amber state changes for the first 1500ms after a `controllerchange` event on `navigator.serviceWorker`. Catches the activation window.
+2. **Just document it** — add a §23 hard rule that "first reload after SW bump may flicker amber; reload twice before concluding the underlying code is broken". Lower-effort, no code change.
+
+Recommend option 2 for now. Revisit if amber flicker proves to be a recurring distraction during PF-15 sweep.
+
+### PM-96 commits shipped
+
+- `4ffe3d72` — PM-96 PF-15 P0-1 diagnostic (dexie-source-indicator.js + sw.js cache key bump)
+- `433d0650` — PM-96 PF-15 part 2 (exercise.html Dexie wiring + sw.js cache key bump)
+
+Brain commit: this commit you're reading.
+
 ## Added 13 May 2026 PM-95 (PF-14 device verification findings)
 
 ### PF-14b — Bundled-mode migration + live-updates service [P0 LAUNCH BLOCKER]
@@ -22,11 +64,7 @@
 
 In addition to original PF-15 hardening (PM-77.1 mitigations A/B/C codification, force-resync escape hatch, queue drain batching, storage quota handling), tonight added:
 
-**[P0-1] Dexie hydration coverage gap.** Five page surfaces showed `Paint: supabase` on Dean's iPhone despite spike flag on: Cardio, Workouts session (exercise_logs), Wellbeing Check-in, Monthly Check-in, Settings (probably members table). Diagnosis: tables not arriving on hydrate. Investigation plan:
-- Spot-check Dexie state via temporary diagnostic harness OR live-load `VYVELocalDB.cardio.allFor('deanonbrown@hotmail.com')` from console
-- Audit `sync.js` HYDRATE_TABLES list — confirm cardio/exercise_logs/wellbeing_checkins/monthly_checkins/member_achievements are present and using correct PostgREST select
-- Check whether `since_cursor`-style tables have last_pulled_at preventing first-hydrate when no rows existed initially
-- Fix: extend HYDRATE_TABLES + ensure first-hydrate always runs regardless of cursor state
+**[P0-1] Dexie hydration coverage gap.** ~~Five page surfaces showed `Paint: supabase` on Dean's iPhone despite spike flag on: Cardio, Workouts session (exercise_logs), Wellbeing Check-in, Monthly Check-in, Settings (probably members table).~~ **RESOLVED — PM-96, 13 May 2026.** Root cause was NOT hydrate coverage. Diagnosis was performed via the PM-96 diagnostic ship (`4ffe3d72` — appended event-listener + `_sync_meta`/Dexie-row-count snapshot to `dexie-source-indicator.js`, fires PostHog `pf14_hydrate_diagnostic` event per page). Dean's post-diagnostic walk showed six of seven surfaces GREEN — PF-14 part 6 hydrate-await patch (`67711c4e`) DID work for cardio/wellbeing-checkin/monthly-checkin/settings. The remaining amber surface was Exercise hub (`exercise.html`), which had ZERO `VYVELocalDB` references — never wired to Dexie. Fixed in `433d0650` (`fetchPlan()` rewritten as hydrate-await → Dexie-first → REST fallback). The original five-surface assumption from PM-95 was wrong; the gap was on a different page. Habits + Nutrition "regression" was a transient SW cache-bump activation artifact, not a real regression. **NEW PF-15 sweep items spawned** — see "PF-15.x remaining unwired pages" entry below.
 
 **[P0-2] PF-12 partial-upsert merge.** Three call sites in settings.html write `VYVELocalDB.member_habits.upsert({member_email, habit_id, active})` without denormalised cols. Will paint 'undefined' on habits.html for any member who deactivates/adds habits in settings (Dean didn't trigger tonight). Fix: change `member_habits.upsert` override in db.js to merge with existing row rather than overwrite — `db.member_habits.get(key).then(row => db.member_habits.put({...row, ...partial}))`. Same audit needed across other tables with denormalised cols.
 

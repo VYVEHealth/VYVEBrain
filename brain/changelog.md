@@ -1,3 +1,65 @@
+## 2026-05-13 PM-96 (PF-15 part 1 — diagnostic-led fix of Exercise hub; root cause was page-side wiring gap not hydrate failure)
+
+Continuation of tonight's PF-14/PF-15 work. PF-14 part 6 (commit 67711c4e) added `await VYVESync.hydrate()` to 4 pages on the unverified assumption that the hydration coverage gap was timing-related. Dean's walk after that ship showed cardio/wellbeing-checkin/monthly-checkin/settings still amber AND habits + nutrition appeared to regress. Session was running on guesses.
+
+This session reset to diagnostic-first.
+
+**Code commits (2 this session, both on main):**
+
+- `4ffe3d72` — PM-96 PF-15 P0-1 diagnostic. Appended a 70-line IIFE to `dexie-source-indicator.js` that listens to sync.js's existing `vyve-localdb-table-pulled` / `-failed` / `vyve-localdb-hydrated` events, then snapshots `_sync_meta.get(table)` + Dexie row counts for every table in the hydrate plan. Fires ONE `pf14_hydrate_diagnostic` PostHog event per page load with per-table {pulled, failed, sync_meta_ts, sync_meta_age_ms, row_count, error}. Also stashes the snapshot on `window.__pf14_lastDiag` and logs `[PF-15 diag]` to console. 8s timeout fallback if the hydrate event never fires (which would itself be a finding). Spike-gated, no production paths touched. sw.js cache key bumped pm95-pf14-hydrate-await-a -> pm96-pf15-diag-a.
+
+- `433d0650` — PM-96 PF-15 part 2 — exercise.html Dexie wiring. Real fix informed by Dean's walk after the diagnostic shipped.
+
+**Diagnosis from Dean's iPhone walk (post-diagnostic-ship):**
+
+Six of seven walked surfaces went GREEN: Home, Habits, Workouts (My Programme), Workout session, Nutrition, Settings. The hydrate-await patch from PF-14 part 6 WAS working — settings.html specifically had been amber earlier tonight and is now green. Habits + Nutrition didn't actually regress; the earlier "regression" was almost certainly a transient SW cache-bump activation artifact (first paint hits the network before the new worker settles).
+
+ONE surface stayed amber: Exercise hub (`exercise.html`). Tooltip: `Paint: supabase · Last: supabase / members`.
+
+Code audit of exercise.html revealed:
+- 0 `_pfNLocal` blocks (no Dexie integration pattern at all)
+- 0 `VYVELocalDB` references
+- 0 `VYVESync.hydrate` calls
+- 1 direct REST call to `/rest/v1/workout_plan_cache`
+
+**Root cause: exercise.html was never wired to Dexie.** PF-14 part 6 added `await VYVESync.hydrate()` to pages that already had Dexie integration. Pages without Dexie integration couldn't be helped by that patch because there was no local read for hydrate to feed. This is finding #2 hypothesis (c) from PM-95 — partial page-side migration — not a hydrate coverage gap.
+
+**Audit across all root-level surfaces** (full table in §23 below) showed three pages with zero `VYVELocalDB` references that paint member data:
+- `exercise.html` — FIXED tonight
+- `movement.html` — 5 REST calls, no Dexie. Tooltip showed `Paint: supabase`. Dean's note: "might be expected — empty state". Low-stakes for trial. Logged as PF-15.x.
+- `workouts.html` — 0 direct refs but delegates to `workouts-programme.js` which IS Dexie-wired (12 `VYVELocalDB` refs, 4 `await VYVESync.hydrate`). Dean's walk confirmed green via the JS module. No fix needed.
+
+Other unwired pages that paint REST data (no Dexie integration): `sessions.html`, `leaderboard.html`, `running-plan.html`, `certificates.html`, `engagement.html`. None walked tonight. Logged as PF-15 backlog — each is a separate small commit when reached.
+
+**Fix shape (433d0650):**
+
+`exercise.html` `fetchPlan()` rewrites:
+1. `try { await window.VYVESync.hydrate(); } catch (_) {}` — idempotent, returns in-flight promise, no-op when spike off
+2. `if (VYVELocalDB && VYVELocalDB.isEnabled())` → read `workout_plan_cache.allFor(memberEmail)`, pick `is_active` row, return if `programme_json` present
+3. Existing REST call unchanged as fallback for spike-off OR Dexie miss
+
+Spike-off path identical to pre-patch. localStorage cache layer (`vyve_exercise_cache_v2`) untouched. Header comment updated to reflect dual data path. sw.js bumped pm96-pf15-diag-a -> pm96-pf15-exercise-dexie-a.
+
+**§23 hard rule candidates from tonight (codified in master.md update):**
+
+1. **Page-side Dexie wiring is a requirement, not an optimisation.** Every page that paints member data MUST either read `VYVELocalDB.<table>.allFor(email)` inside an `await VYVESync.hydrate()` block (REST fallback below) OR deliberately pass through to REST/EF for legit reasons (report pages, aggregates). Audit signal: ripgrep for `VYVELocalDB` in every member-data page; 0 hits on a member-data page = amber by construction. PF-14 part 6 demonstrated that adding `await VYVESync.hydrate()` is necessary but not sufficient — the page also needs the Dexie read.
+
+2. **`await VYVESync.hydrate()` returns true even when individual tables fail.** sync.js `hydrate()` collects per-table pass/fail counts internally but always resolves true at the end. Module-private `failedTables{}` has no public getter. Callers cannot rely on the resolved promise meaning "the table I'm about to read is populated". Two design implications: (a) every Dexie read must defensively check for empty result and fall through to REST; (b) when a coverage gap appears, the diagnostic must inspect `_sync_meta` and Dexie row counts directly, not the hydrate return value. PM-96 diagnostic codifies pattern (b).
+
+3. **First paint after sw.js cache key bump may flicker amber while the new worker activates.** Not a real regression. The new worker has to install + activate + claim clients; during that window the first network request may slip past the local-first rail. Subsequent paints settle. Don't read amber on the first reload after a cache bump as evidence the underlying code is broken — reload once more.
+
+4. **Diagnostic-before-fix when a speculative patch fails.** Tonight's session-handoff demonstrated the cost of "speculate, patch, hope, walk, repeat". If a fix doesn't work on the first walk, stop. Ship a diagnostic that captures the actual state. Read the data. Then write one real fix. PM-96 protocol: diagnostic commit, walk, fix commit. No third speculative patch.
+
+**Files touched in this brain commit:**
+- `brain/master.md` — §3 narrative on hydration coverage gap updated; new §23 entries (page-side Dexie wiring rule, hydrate resolves true on partial failure, SW activation flicker, diagnostic-before-fix). §19 gains exercise.html Dexie wiring.
+- `brain/active.md` — §2 current HEAD updated to 433d0650; §3 PF-15 narrative replaces speculation with diagnosis.
+- `tasks/backlog.md` — PM-96 entry prepended; PF-15.x sub-tasks logged for movement/sessions/leaderboard/running-plan/certificates/engagement Dexie wiring.
+
+**State at end of session:**
+HEAD: 433d0650 on main. SW cache key: vyve-cache-v2026-05-13-pm96-pf15-exercise-dexie-a. Spike merged to main, all PF code dormant behind localStorage.vyve_lf_spike. iPhone walk verification: Exercise hub now expected green. ITP 7-day purge locked in as PF-14b launch blocker — bundled-mode Capacitor migration this weekend.
+
+Brain integrity: clean. Cached chat-state numbers (member count, EF inventory) untouched — VYVEBrain source of truth holds.
+
 ## 2026-05-13 PM-95 (PF-14 device verification — local-first architecture validated on iOS Capacitor WKWebView; eight findings logged; ITP risk locked in as launch blocker)
 
 Tonight's session shipped four code commits + the brain commit. Spike merged to main. Dean's first PF-14 device walk on iPhone delivered the architectural validation we needed and surfaced eight separable findings for PF-15.
