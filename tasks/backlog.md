@@ -1,3 +1,23 @@
+## Added 13 May 2026 PM-94 (Trial-phase placeholders consciously deferred — hydration copy + Achievements overhaul)
+
+Dean's decision 13 May 2026 evening session: both items below are knowingly-placeholder for the 15-20 person soft-launch trial. Goal is not to block the rest of the pre-launch work polishing them. Real overhaul happens after trial data lands. Memory entry #17 captures the operating mode.
+
+- 📌 **TRIAL PLACEHOLDER — PF-13 hydration.js COPY_TABLE finalisation.** 11 distinct persona welcome lines + 2 fallbacks tagged `// COPY: DEAN TO FINALISE` in `/hydration.js` (commit `11abad83`). Current drafts are member-displayable real sentences (no `TODO:` strings) so trial-safe. Dean owns finalisation. Lewis spot-check on tone (light, not gating). ~30-45 min writing time when bandwidth allows. Search tag: `COPY_DEAN_FINAL`. Post-trial overhaul: rewrite with confidence informed by trial-member persona feedback.
+
+- 📌 **TRIAL PLACEHOLDER — Achievements system overhaul (post-trial).** Current state: 32 metrics, 327 approved tiers, inline evaluator wired across all trigger pages, evaluator firing correctly for real member actions. Dean's framing: "the achievements at the moment is in, but it's just a placeholder. It needs a massive overhaul, and it needs a huge improvement." Trial-safe to ship as-is. Post-trial overhaul scope TBD pending what 15-20 trial members actually engage with — tier thresholds, metric mix, copy on tier titles, visual presentation, celebration moments on unlock, surfacing in nav. Coordinate with Lewis on member-facing copy approval gate (`copy_status='approved'` pattern). Likely a 2-3 session post-trial campaign in its own right.
+
+### Carry-forward from prior sessions (still load-bearing)
+
+- HAVEN clinical sign-off — Phil. Pre-launch blocker.
+- Weekly check-in nudge copy — Phil + Lewis. Pre-launch blocker.
+- Brevo logo removal — Lewis, ~$12/month. Pre-launch blocker.
+- Facebook Make connection refresh — Lewis, expires 22 May 2026.
+- Public launch comms draft — Lewis.
+- B2B volume tier definition — Lewis + Dean.
+- vyve-capacitor git repo setup — backlog risk.
+
+---
+
 ## Added 13 May 2026 PM-77 (Premium Feel Campaign launched; Layer 5/6 work closed/superseded; PM-67/71/72/73 deferred during campaign)
 
 - ✅ **CLOSED — PM-67e** (perf.js rebuild). Shipped via PM-75 + PM-76 yesterday. Layer 5 telemetry capture is live across 20 portal pages.

@@ -1,3 +1,24 @@
+## 2026-05-13 PM-94 (Trial-phase placeholders consciously deferred — hydration COPY_TABLE finalisation + Achievements system overhaul both logged as P1 post-launch)
+
+Dean's decision in this evening session: don't block the rest of pre-launch work polishing two items that are functionally correct and trial-safe but acknowledged as needing rework.
+
+**Item 1 — hydration.js COPY_TABLE finalisation.** PM-93 audit reported "23 entries to finalise" — that count was inflated by counting every `// COPY: DEAN TO FINALISE` comment marker (one per persona-goal cell). The actual line count is 13 distinct member-facing welcome lines: 3 NOVA, 3 RIVER, 3 SAGE (one of which currently duplicates SAGE.generic), 2 SPARK (one duplicates SPARK.generic), 1 HAVEN (hard-rule generic only), 1 generic-fallback. The current drafts are all real sentences (no `TODO:` strings, no Lorem text) so the system ships safely to trial members as-is. Three of the goal-echo variants currently duplicate their persona's generic line — the goal-echo path only earns its keep when the echo line differs from the generic; that's a polish concern, not a functional one.
+
+**Item 2 — Achievements system overhaul.** Current state per active.md §5 (unchanged): 32 metrics, 327 approved tiers, inline evaluator wired across all trigger pages, evaluator confirmed firing correctly for real member actions in recent sessions. Dean's verbatim framing: *"the achievements at the moment is in, but it's just a placeholder. It needs a massive overhaul, and it needs a huge improvement. Um, and it will get that, but it's just something that, at the minute, it's just there. We're gonna have fifteen, twenty, um, people trialing the service. And then after that, we'll make sure that everything is actually correct."*
+
+**Operating mode for the trial:** treat both as Dean-aware placeholders. Don't flag them as issues unless they'd materially hurt the trial. Don't proactively suggest polishing either before trial data lands. After the 15-20 member trial completes, the achievements overhaul likely becomes a 2-3 session campaign in its own right — tier thresholds, metric mix, tier-title copy (Lewis approval gate via `copy_status='approved'`), unlock celebration moments, nav surfacing — scope informed by what trial members actually engaged with.
+
+**Files touched in this PM-94 commit:**
+- `brain/active.md` — §5 P1 post-launch list gains two new items (#13 Achievements overhaul, #14 PF-13 hydration copy finalisation), original items 13-16 renumber to 15-18; §8 trail logs PM-94 + corrects "23 entries" to "13 distinct entries".
+- `tasks/backlog.md` — new PM-94 section prepended with both items tagged 📌 TRIAL PLACEHOLDER.
+- `brain/changelog.md` — this entry prepended.
+
+**Memory entry #17 added** to capture the trial-safe operating mode for both items so it survives chat rotation.
+
+**Verification:** Pre-commit SHA refresh confirmed backlog.md sha=`7ff835fe`, active.md sha=`9ed019b8` (post-PM-93), changelog.md sha=`f43f68bf` (post-PM-93). Post-commit byte-equal verification via blob API SHA-pinned read (Contents API empty-content path on changelog.md >1MB, per the §4 hard rule codified in PM-93).
+
+---
+
 ## 2026-05-13 PM-93 (Verification-mode audit repair — brain drift caught, PM-91 + PM-92 narratives spliced into main, §4 hard rule on plain-UTF-8 commits codified)
 
 Dean kicked off this session in verification mode after an earlier chat hallucinated, asking for a fresh audit of the brain against live vyve-site state. Audit method: load brain/active.md + playbooks/premium-feel-campaign.md + full brain/changelog.md (via blob API SHA-pinned read because the file is 1.17MB and Contents API returns `encoding=none` empty content for files >1MB); fetch all 14 prompt-listed commit SHAs in parallel via `GITHUB_GET_A_COMMIT`; fetch the three high-risk spike-HEAD files (`home-state-local.js`, `hydration.js`, `perf.js`) + `sw.js` + `auth.js` for spot-check; walk engagement-score math by hand against active.md §5 2.11c spec; sweep `hydration.js` for member-displayable placeholder strings (`TODO/FIXME/XXX/Lorem/<<...>>`); verify PostHog telemetry target and identity-wiring ordering.
