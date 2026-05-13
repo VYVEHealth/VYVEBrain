@@ -50,20 +50,20 @@ When the three disagree:
 
 ## 2. Live state snapshot (refreshed every session-end)
 
-**Last verified:** 13 May 2026 PM-80 (this commit). PM-78 shipped PF-1/2/3; PM-79 shipped PF-4/5; PM-80 shipped PF-6.
+**Last verified:** 13 May 2026 PM-79 (this commit). PM-78 shipped PF-1/2/3; PM-79 shipped PF-4/5.
 
 | What | Value |
 |---|---|
 | vyve-site main HEAD | `ff3e0e0f` (PM-76 perf.js v2 promotion — unchanged; PF-1/2/3 on feature branch only) |
-| vyve-site `local-first-spike` HEAD | `48c4d17e` (PF-1 through PF-6 — Dexie schema + hydrate + shadow outbound queue + delta-pull + habits.html Dexie-first reads, spike gated by `localStorage.vyve_lf_spike`) |
-| VYVEBrain main HEAD | this commit (PM-80 — PF-6 ship: habits.html Dexie-first reads) |
+| vyve-site `local-first-spike` HEAD | `fa116ef2` (PF-1 through PF-5 — Dexie schema + hydrate + shadow outbound queue + since-cursor delta-pull, spike gated by `localStorage.vyve_lf_spike`) |
+| VYVEBrain main HEAD | this commit (PM-79 — PF-4/5 ship: shadow outbound queue + delta-pull) |
 | SW cache key (production) | `vyve-cache-v2026-05-12-pm76-perf-promote-a` |
 | iOS app store | 1.1 (Build 3) submitted 27 April 2026 — "Ready for Review", auto-release on approval |
 | Android Play store | 1.0.2 awaiting Google Play review |
 | Member count | ~15 cohort (B2C + enterprise trial + internal). Live via Supabase, not cached. |
 | Active campaign | **Premium Feel Migration (local-first via Dexie)** — see `playbooks/premium-feel-campaign.md` |
 | Launch target | 31 May 2026 |
-| Last shipped vyve-site commits | main unchanged: `fc8232bb` (PM-74), `5cef00a2` (PM-75), `ff3e0e0f` (PM-76). Spike branch: `8d07d26b` (PF-1), `e8f02742` (PF-2/3), `903127d6` (PF-4), `fa116ef2` (PF-5), `48c4d17e` (PF-6). |
+| Last shipped vyve-site commits | main unchanged: `fc8232bb` (PM-74), `5cef00a2` (PM-75), `ff3e0e0f` (PM-76). Spike branch: `8d07d26b` (PF-1), `e8f02742` (PF-2/3), `903127d6` (PF-4), `fa116ef2` (PF-5). |
 | Closed campaigns | Layer 1 (PM-29), Layer 1c (PM-30..PM-44), Layer 2 (PM-45..PM-55), Layer 3 (PM-57), Layer 4 (PM-58..PM-66), Layer 5 (PM-21+PM-56+PM-75+PM-76) |
 | Deferred campaigns | Layer 6 (SPA shell) — dropped in favour of local-first migration which delivers the same perceived speed |
 
@@ -92,7 +92,7 @@ VYVE is a Capacitor-wrapped native iOS+Android app with web fallback at online.v
 
 **Campaign tasks:** see `playbooks/premium-feel-campaign.md` for the full PF-1 through PF-N backlog.
 
-**Status at PM-80 commit:** PF-1 through PF-6 SHIPPED to `local-first-spike` branch (`48c4d17e`), 6 commits ahead of main, awaiting Dean's verification + merge. Spike covers Dexie schema (~27 tables), hydrate-on-login, shadow outbound queue, since-cursor delta-pull, and the first Dexie-first read-path page (habits.html). Realtime cross-device merge (PF-5b) deferred until post-launch — single-device-per-user assumption (§0) makes this acceptable. Next: PF-7 (workouts.html + workouts-session.js + workouts-programme.js + thumbnail prefetch) — same Dexie-first-read template as PF-6, ~3 hours.
+**Status at PM-79 commit:** PF-1 through PF-5 SHIPPED to `local-first-spike` branch (`fa116ef2`), 5 commits ahead of main, awaiting Dean's verification + merge. Spike covers Dexie schema (~27 tables), hydrate-on-login, shadow outbound queue (mirrors `writeQueued` into Dexie `_sync_queue` and runs parallel drainer), and proper since-cursor delta-pull on visibilitychange. Realtime cross-device merge (PF-5b) deferred until post-launch — single-device-per-user assumption (§0) makes this acceptable. Next: PF-6 (habits.html refactor to read from Dexie instead of EF) — self-contained, no Dean needed for build.
 
 ---
 
@@ -164,11 +164,15 @@ Full §23 lives in `master.md` (50+ rules). These are the ones that fire on most
 2.5. **PF-3 — Sync engine pull-on-login** SHIPPED to `local-first-spike` (PM-78, commit `e8f02742`).
 2.6. **PF-4 — Shadow outbound queue** SHIPPED to `local-first-spike` (PM-79, commit `903127d6`). Mirror + parallel drainer behind spike-gate; legacy localStorage outbox still canonical.
 2.7. **PF-5 — Delta-pull cursor + foreground belt-and-braces** SHIPPED to `local-first-spike` (PM-79, commit `fa116ef2`). Realtime cross-device merge deferred to PF-5b / post-launch.
-2.8. **PF-6 — habits.html refactor (Dexie-first reads)** SHIPPED to `local-first-spike` (PM-80, commit `48c4d17e`). Three Supabase reads replaced with Dexie `member_habits.allFor` / `daily_habits.todayFor` / `daily_habits.allDatesFor`; autotick HealthKit metadata (`fetchDashboardHabits`) preserved on the wire as live evaluator output. Spike-gated with fall-through to Supabase on shim/no-hydrate. Awaiting Dean offline-mode verification.
-2.85. **PF-7 — workouts.html + workouts-session.js + workouts-programme.js Dexie-first reads** next task. Same template as PF-6 plus thumbnail prefetch (PM-77.3 note). ~3 hours, self-contained build.
-2.9. **PF-8 through PF-20** — remaining page refactors + iOS hardening + nav restructure. Sequenced in playbook.
+2.8. **PF-6 — habits.html refactor (Dexie-first reads)** next task. Reads habits + completions from Dexie instead of EF; the page already writes additively to Dexie via PF-1, so this is the read-path switch.
+2.9. **PF-7 through PF-20** — remaining page refactors + iOS hardening + nav restructure. Sequenced in playbook.
 2a. **PF-21 — bottom nav restructure** to Mind / Body / Connect. Pencilled in post-PF-19. ~2-4 hours.
 2b. **PF-22 — hub landing pages** for each tab. Scope-flexible: build pre-launch if bandwidth allows, defer to V2 otherwise. ~4-8 hours per hub.
+2c. **PF-23 — Interactive guided tutorial** (5 micro-actions × achievement-per-step, persona-voiced). V2 target. Hard sequencing: post-PF-21. Hard blocker: Lewis copy for 5 personas. ~20-25 hours. Stands on its own as a feature — NOT a hydration time-killer (PF-13 handles that).
+2d. **PF-24 — Page transitions.** Slide for sub-pages, crossfade for tab switches. Reduced-motion variant. Pre-launch if bandwidth. ~3-4 hours.
+2e. **PF-25 — Typography pass.** Tabular numerals on counters, line-height audit, FOUT check, letter-spacing on caps, overflow handling. Pre-launch. ~2-3 hours.
+2f. **PF-26 — Pull-to-refresh wiring.** Triggers `runDeltaPull()` per page. Pre-launch. Cheap + high-leverage. ~1-2 hours.
+2g. **PF-27 — Loading-to-success animation on AI moments.** Persona-matched animation + staged messaging on weekly/monthly check-in submit. Lewis copy gate. Pre-launch if bandwidth. ~3-4 hours.
 3. **HAVEN clinical sign-off** (Phil). Currently auto-assignment is gated. Phil must review before HAVEN persona ships in production.
 4. **Weekly check-in nudge copy** (Phil + Lewis). Currently uses placeholder.
 5. **Brevo logo removal** ($12/month addon). Lewis to action before any enterprise demo.
@@ -232,7 +236,7 @@ For full credentials, EF inventory, table inventory: fetch `master.md` §24 (ren
 
 ## 8. Editorial notes
 
-- **Last full rebuild:** 13 May 2026 PM-77. Latest patches: PM-78 (PF-1/2/3 + spike-gate rule), PM-79 (PF-4/5 + delta-pull cursor semantics), PM-80 (PF-6 + habits Dexie-first read pattern).
+- **Last full rebuild:** 13 May 2026 PM-77. Latest patches: PM-78 (PF-1/2/3 + spike-gate rule), PM-79 (PF-4/5 + delta-pull cursor semantics), PM-79.1 (PF-23..PF-27 added — interactive tutorial + 4 polish tasks).
 - **Next rebuild trigger:** campaign close (Premium Feel migration ship), OR 3+ patches accumulated to this file, OR drift detected (live state disagrees with §2).
 - **Commit discipline for active.md edits:** §2 SHA bumps are atomic with the session's main brain commit. §3 status flips when a campaign task ships. §4 only gains new rules when a rule earns working-set residency. §5 reorders on backlog grooming.
 - **What does NOT belong here:** anything from §7's fetch-on-demand list. If a question keeps surfacing that requires fetching the same canonical section session after session, that's the rebuild signal — promote it into active.md on the next rebuild.

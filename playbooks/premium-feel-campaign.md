@@ -160,24 +160,7 @@ Format: `PF-N — Title`
 - **Verification:** habits.html opens with zero network activity. Tap habits, see instant ticks. Reload page, see persisted state. Compare against Supabase to confirm writes synced.
 - **Needs Dean:** verification at end of task.
 - **Estimated length:** 2 hours.
-- **Status:** SHIPPED to `local-first-spike` (PM-80, commit `48c4d17e`).
-
-**Ship notes (PM-80):**
-
-Three Supabase reads replaced with Dexie reads: `member_habits` join → `VYVELocalDB.member_habits.allFor` (rows are denormalised at PF-3 hydrate time, then re-wrapped client-side into `r.habit_library` projection so the existing `.map()` downstream is untouched); today's `daily_habits` select → `VYVELocalDB.daily_habits.todayFor`; 365-day date history → `VYVELocalDB.daily_habits.allDatesFor`. Writes were already additive to Dexie via PF-1, so PF-6 is purely a read-path switch.
-
-`fetchDashboardHabits()` deliberately preserved on the wire on both paths — autotick metadata (`has_rule`, `health_auto_satisfied`, `health_progress`) is live HealthKit evaluator output computed per-request by member-dashboard EF, not persistable server state. Non-blocking — if the call fails, the page still renders, just without autotick badges (same fallback as today). This is the §3 carve-out: server-side compute for things that genuinely need it.
-
-Spike-gate posture (three-way branch inside the `try`):
-1. **Spike on AND Dexie has rows for this member** → all reads from Dexie.
-2. **Spike on AND Dexie returned empty** (no-op shim active, or pre-hydrate, or member genuinely has no habits) → fall through to legacy Supabase parallel fetches. If the member genuinely has no habits, Supabase returns `[]` too and we get the existing empty-state for free. No false-empty risk.
-3. **Spike off** → legacy Supabase parallel fetches, identical to pre-PF-6.
-
-Awaited `VYVESync.hydrate()` before reading — `hydrate()` is idempotent and returns the in-flight promise if one's running, so we never race PF-3's initial pull.
-
-Downstream parity verified during build: `calcStreak` re-sorts internally (`unique.sort((a,b)=>b-a)`), so the Dexie ASC vs Supabase DESC date-order difference is irrelevant. `renderWeekStrip` and `updateStats` work on string dates regardless of order. Three downstream consumers, all parity-clean.
-
-Cache key `vyve-cache-v2026-05-13-pm78-pf5-delta-a` → `pm78-pf6-habits-a`. sw.js + habits.html committed atomically.
+- **Status:** QUEUED
 
 ### PF-7 — Page refactor: workouts.html + workouts-session.js + workouts-programme.js
 
@@ -384,6 +367,73 @@ These are explicitly post-launch work, not blockers. The Mind tab in particular 
 1. Pause the current task cleanly (commit progress to feature branch).
 2. Address the question.
 3. Resume the task or pick up next session.
+
+---
+
+### PF-23 — Interactive guided tutorial (post-PF-21, target V2)
+
+- **What:** Replace the "land on home, figure it out" first-app-open with a guided tutorial that routes the member through 5 micro-actions, each unlocking an achievement and each landing them on a real product surface. By the end (~2 minutes elapsed), home is visually populated, the member has done the smallest version of every primary surface, and the achievement system has had its proof-of-concept moment.
+- **Sequence (each step persona-voiced in the member's chosen persona — NOVA/RIVER/SPARK/SAGE/HAVEN):**
+  1. Welcome + persona introduction. "Hi {first_name}. I'm {persona}, your {persona_role}." This is the moment the persona becomes a character, not a label.
+  2. Three-tab nav tour (Mind/Body/Connect — gated on PF-21 having shipped). One line per tab. Tab highlight ping/glow as each is named. Sets the navigation mental model from day one.
+  3. **Log your first habit.** Route to habits.html, highlight first habit card, tap to complete. Achievement unlocks: **First Steps**. Persona-voiced "well done, that's day one." Return to home — habits pill now filled.
+  4. **Log your first workout (or movement).** Route to Body tab → workouts, either tap "start first session" + complete one exercise, OR quick-pick a movement entry. Achievement: **First Move**.
+  5. **Log a cardio session.** Route to cardio, quick-pick activity + duration. Achievement: **Heart Started**.
+  6. **Hydration micro-action.** Tap to log a glass of water. Achievement: **Hydrated**.
+  7. **Set your first weekly goal.** 3-option pick. Achievement: **Direction Set**. Persona-voiced "you're ready" handoff, lands on home with all 5 achievements visible and the dashboard populated as designed.
+- **Why this is post-PF-21:** the tutorial teaches the Mind/Body/Connect nav. Shipping it before PF-21 means every screenshot and every persona line references the old nav and needs rewriting. Hard sequencing dependency.
+- **Why this is NOT a hydration time-killer:** PF-13 handles the hydration second-or-two. PF-23 is its own feature — day-one engagement + achievement onramp + nav teaching + persona reveal. Stands on its own.
+- **Why achievements work here:** the lowest-tier achievement on each track is often hard to design ("what's enough to deserve celebrating?"). The tutorial gives a purpose-built reason for each track's tutorial-tier achievement: tap once. Calum's workout/cardio tier inputs do not gate this. The tutorial-tier achievements are pre-defined and Lewis-approved before build.
+- **Files touched:** new `/tutorial.js` (state machine + screen orchestration), new `/tutorial.html` or modal-system on index.html, overlay system that lets habits/workouts/cardio/nutrition pages tolerate tutorial-mode highlighting without code-littering (clean overlay, NOT `if(tutorialActive)` everywhere), 5 new achievement rows in `achievement_metrics` + `achievement_tiers` (tutorial tier per track), tutorial-completion flag on `members` table (tutorial gates fire once per member, never again), SW cache bump.
+- **Verification:** Fresh test member completes onboarding. Lands in tutorial. Walks through 5 steps. Each step routes to a real surface, accepts a real interaction, fires a real achievement unlock. Final state: home shows 5 achievements, populated streaks, populated pills. Skip path at any step lands cleanly on home without orphaned state. Re-login: tutorial does NOT re-fire (flag honoured).
+- **Needs Dean:** verification on real device. Lewis owns persona-voiced copy for every step in 5 voices (5 personas × ~7 screens = 35 copy blocks). Lewis owns the 5 tutorial achievement names + unlock copy. Lewis copy is the gating item — build can ship without copy but cannot reach production without it.
+- **Estimated length:** 20-25 hours of build. Three to four full evening sessions. Breakdown: tutorial state machine + screen orchestration ~4h, 5 interactive segments with clean overlay system ~6-8h, achievement integration + 5 new rows + unlock animations ~3-4h, skip-path-at-any-point state handling ~2h, testing across 5 personas × 5 steps × skip-path = 25 scenarios ~3h, polish (transitions, timing, persona-matched colours) ~2h.
+- **Status:** QUEUED — V2 target (mid-June). May move forward into pre-launch window if bandwidth allows. Hard sequencing: must land after PF-21. Hard blocker: Lewis copy for all 5 personas. Hard blocker: 5 tutorial achievement rows defined and `copy_status='approved'`.
+
+### PF-24 — Page transitions
+
+- **What:** Replace hard cuts between pages with consistent transitions. Capacitor wrap on iOS doesn't give you native slide-in for free in a web app, but a CSS view-transition or 150ms fade is convincing and standard. Apply consistently across every nav move — bottom tab switches, sub-page navigation, modal open/close. The Mind/Body/Connect tab switch (PF-21) is the most visible moment to get this right.
+- **Pattern decision:** horizontal slide for sub-page navigation (Notes/Things style), 120-150ms crossfade for tab switches (Linear/Notion style). Single consistent timing function across all transitions. No bespoke per-page transitions.
+- **Files touched:** new `/transitions.js` (handles route-change animation), `nav.js` (calls transitions on tab/page navigation), CSS additions in shared stylesheet (transition keyframes + timing tokens). Likely a small touch to every gated page to mark the transition root, OR a single body-level wrapper does it without per-page changes — prefer the latter.
+- **Verification:** Navigate between every tab combination + sub-page combination on iPhone real device. Should feel coherent, never janky, never longer than the page actually takes to paint (the transition should hide paint latency, not extend it). Reduced-motion users get a softer/faster variant via `prefers-reduced-motion`.
+- **Needs Dean:** real-device verification on iPhone. Reduced-motion behaviour confirmed.
+- **Estimated length:** 3-4 hours.
+- **Status:** QUEUED — pre-launch if bandwidth.
+
+### PF-25 — Typography pass
+
+- **What:** Premium apps are obsessive about type. This task does a single pass across the app to fix the things that separate "professionally designed" from "designed by an engineer".
+  - **Tabular numerals on every counter.** Streak counters, macro totals, charity month counter, weight values, time displays — anything where the digit-width changes between values looks cheap. Add `font-variant-numeric: tabular-nums` to all numeric displays.
+  - **Line-height audit.** Body copy line-height should be 1.5-1.6. Heading line-height should be 1.1-1.25. Most CSS defaults are too tight. Audit every text surface and fix.
+  - **Font loading audit.** Confirm there's no FOUT (Flash of Unstyled Text). If using a webfont, ensure `font-display: swap` is set correctly, or preload critical weights. If using system fonts (San Francisco on iOS, Roboto on Android), confirm the fallback stack is correct.
+  - **Letter-spacing on ALL-CAPS labels.** Anywhere we use uppercase (tab labels, button text in caps, etc.), add `letter-spacing: 0.05em` minimum. Without it, all-caps reads as cramped and amateur.
+  - **Truncation and overflow.** Long member names, long workout names — confirm they truncate gracefully with ellipsis, never overflow or wrap awkwardly.
+- **Files touched:** shared stylesheet (typography tokens), audit pass across every member-facing page. Likely a single CSS additions block + a handful of targeted patches.
+- **Verification:** Visual review across the app — habits, workouts, cardio, nutrition, home, settings, leaderboard, certificates, engagement, check-ins. Numeric displays don't jiggle as they update. No FOUT on first load. No awkward overflow on long names.
+- **Needs Dean:** visual review.
+- **Estimated length:** 2-3 hours.
+- **Status:** QUEUED — pre-launch.
+
+### PF-26 — Pull-to-refresh wiring
+
+- **What:** Members will instinctively pull-to-refresh on mobile. Right now it does nothing or jankily reloads the page. Wire pull-to-refresh on every member-data page to trigger `runDeltaPull()` (from PF-5) for that page's relevant tables. Visible spinner during the pull, success haptic on completion. With local-first, the "refresh" is genuinely instant — the spinner is just confirmation that we asked Supabase for anything new, not the actual refresh.
+- **Implementation:** native pull-to-refresh via Capacitor Pull-to-Refresh plugin, OR a CSS-based pattern that listens on touchstart/touchmove at the page top. Capacitor plugin gives proper iOS native feel; CSS fallback for web.
+- **Files touched:** new `/pull-refresh.js` helper, additions to habits.html / workouts.html / cardio.html / nutrition.html / index.html / leaderboard.html / sessions.html. Each page calls the helper with its relevant `runDeltaPull` table list.
+- **Verification:** On iPhone real device, pull down on each page, see native pull-to-refresh animation, feel haptic on release, see delta-pull fire in console, see any new data appear. Web fallback works on Chrome desktop.
+- **Needs Dean:** real-device verification.
+- **Estimated length:** 1-2 hours. Half-hour for the core wiring per the playbook estimate, plus per-page additions.
+- **Status:** QUEUED — pre-launch. Cheap and high-leverage given PF-5 delta-pull is already shipped.
+
+### PF-27 — Loading-to-success animation on AI moments
+
+- **What:** When the member submits the weekly check-in (or monthly check-in), the wellbeing-checkin EF takes 3-8 seconds to generate AI recommendations. Currently this is a deliberate wait with minimal framing. Top apps (Calm, Headspace) turn this into a moment — the wait is staged as "your coach is thinking" with a thoughtful animation (pulsing dot, breath visualization, persona-matched motion). The wait stops feeling like loading and starts feeling like a moment.
+- **Why this is high-leverage:** the AI moment is the ONE place we explicitly want members to slow down. Members who wait through it with positive feeling are converted on the persona; members who feel "stuck waiting" churn. Same wait, different perception.
+- **Pattern:** persona-matched animation (NOVA = sharp pulsing dot, RIVER = soft breathing circle, SPARK = energetic ripple, SAGE = thoughtful slow rotation, HAVEN = warm gentle wave). Text underneath: "{Persona} is reviewing your week..." → "{Persona} is preparing your recommendations..." → reveals recommendations on completion. Two messages so the wait doesn't feel single-step. Sub-1s completion gets a soft-fade reveal; longer waits get a satisfying transition into the recommendation reveal.
+- **Files touched:** new `/ai-moment.js` (animation system), additions to `wellbeing-checkin.html` and `monthly-checkin.html`. Shared CSS for the persona-matched animation styles.
+- **Verification:** Submit a real check-in, watch the animation, confirm it matches the member's persona, confirm the message progression feels intentional, confirm the reveal lands smoothly into the recommendations.
+- **Needs Dean:** real-device verification. Lewis copy approval for the two message strings (per persona — 5 personas × 2 messages = 10 copy blocks).
+- **Estimated length:** 3-4 hours. Animation system ~1h, persona variants ~1h, integration on both check-in pages ~1h, copy/polish ~1h.
+- **Status:** QUEUED — pre-launch if bandwidth. Lewis copy gates production.
 
 ---
 

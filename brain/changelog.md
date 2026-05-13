@@ -1,64 +1,58 @@
-## 2026-05-13 PM-80 (PF-6 shipped — habits.html first Dexie-first read page on local-first-spike)
+## 2026-05-13 PM-79.1 (PF-23..PF-27 added — interactive tutorial + 4 polish tasks scoped into campaign playbook)
 
-First page on the local-first architecture to make the full read-path switch. vyve-site `local-first-spike` now 6 commits ahead of `main` at `48c4d17e`, awaiting Dean's merge + verification.
+Brain-only commit. No vyve-site change this session. Conversational scoping with Dean produced five new tasks for the Premium Feel Campaign, all appended to the playbook task backlog.
+
+### What was added
+
+**PF-23 — Interactive guided tutorial.** 5 persona-voiced micro-action steps each unlocking a tutorial-tier achievement: log first habit (First Steps), log first workout/movement (First Move), log first cardio (Heart Started), log water (Hydrated), set first weekly goal (Direction Set). Plus a welcome + persona introduction screen and a three-tab nav tour screen at the start. Routes the member through real product surfaces — not a screen-reader walkthrough.
+
+**Sequencing:** Hard dependency that PF-23 must land after PF-21 (Mind/Body/Connect nav restructure). Reason: the tutorial teaches the new nav. Shipping pre-PF-21 means every screenshot + every persona copy block references the old nav and needs rewriting later.
+
+**Framing decision:** PF-23 is NOT scoped as a hydration time-killer. PF-13 (the static "preparing your VYVE" screen, Lewis copy) handles the second-or-two hydration window at launch. PF-23 stands on its own as a feature — day-one engagement + achievement onramp + nav teaching + persona reveal. This was Dean's call after exploring the "walkthrough during hydration" framing and settling on cleaner separation: PF-13 = hydration UX baseline, PF-23 = full interactive tutorial as a standalone product moment.
+
+**Status:** V2 target (mid-June). May move into pre-launch window if bandwidth allows. Lewis copy for 5 personas × ~7 screens = 35 copy blocks is the gating item. 5 tutorial-tier achievement rows (one per track) need defining + `copy_status='approved'` before the build can reach production.
+
+**Why the achievement integration matters strategically:** The lowest-tier achievement on each track is hard to design well — "what counts as enough to celebrate?" The tutorial gives a purpose-built reason for each tutorial-tier: tap once. This means Calum's workout/cardio tier inputs don't gate PF-23 — the tutorial tier is pre-defined separately. Plus the tutorial is the first time members see the achievement unlock animation, which means the achievement system gets its proof-of-concept moment under controlled conditions (generous timing, persona-voiced unlock copy, properly designed badge) rather than randomly 3 days in.
+
+**Estimated:** 20-25 hours. Tutorial state machine + screen orchestration ~4h, 5 interactive segments with clean overlay system ~6-8h, achievement integration + 5 rows + unlock animations ~3-4h, skip-path state handling ~2h, testing 25 scenarios (5 personas × 5 steps × skip-path) ~3h, polish ~2h. Three to four evening sessions.
+
+### Four polish tasks added alongside
+
+**PF-24 — Page transitions.** Slide for sub-page nav (Notes/Things pattern), crossfade for tab switches (Linear/Notion pattern). Single consistent timing function across the app. `prefers-reduced-motion` variant. Pre-launch if bandwidth. ~3-4 hours.
+
+**PF-25 — Typography pass.** Tabular numerals on every counter (streaks, macros, charity months, weight — anything where digit-width-change would jiggle), line-height audit (1.5-1.6 body, 1.1-1.25 headings), FOUT/font-display check, letter-spacing on ALL-CAPS labels, overflow/truncation discipline. Pre-launch. ~2-3 hours. High polish-per-hour ratio.
+
+**PF-26 — Pull-to-refresh wiring.** Pull on any member-data page triggers `runDeltaPull()` (already shipped at PF-5) for that page's relevant tables. Native iOS feel via Capacitor Pull-to-Refresh plugin, CSS fallback for web. With local-first the "refresh" is genuinely instant — the spinner is confirmation that we asked Supabase for any new rows since last sync, not the actual refresh. Pre-launch. ~1-2 hours. Cheap and high-leverage given PF-5 is already shipped.
+
+**PF-27 — Loading-to-success animation on AI moments.** Persona-matched animation + staged two-message progression during the 3-8 second wellbeing-checkin / monthly-checkin AI generation wait. NOVA = sharp pulsing dot, RIVER = soft breathing circle, SPARK = energetic ripple, SAGE = thoughtful slow rotation, HAVEN = warm gentle wave. The AI moment is the ONE place we explicitly want members to slow down — same wait, different perception. Pre-launch if bandwidth. ~3-4 hours. Lewis copy for 5 personas × 2 messages = 10 copy blocks gates production.
+
+### Why these five and not other "premium feel" ideas
+
+The full pre-commit conversation surfaced a longer list of premium-feel ideas: sound design, numeric counter digit-roll animations, iOS Live Activities, lock-screen widgets, app-icon picker, custom font loading. All deferred to V2 or beyond. Reasoning:
+
+- **Sound design / digit-roll animations:** marginal returns on top of haptics (PF-17) which is already in the playbook.
+- **Live Activities / Lock-screen widgets:** require Swift-side build in the Capacitor native project, not the web wrap. Native code surface area + App Store re-review cycle. Post-launch only.
+- **App icon picker / power-user features:** signal of polish but zero retention impact. V2+.
+
+The five tasks added (PF-23 through PF-27) all sit on the local-first architecture without disturbing it, all return measurable premium-feel impact, and all fit either pre-launch (PF-24/25/26/27) or post-PF-21 V2 (PF-23) windows.
 
 ### Operating mode in effect
 
-Dean off-keyboard after a one-paragraph "go" confirmation. Claude proceeded with PF-6 per active.md §3 + the playbook. One architectural concern voiced once during pre-flight (autotick metadata vs Dexie source-of-truth — see decision below) and folded into the implementation rather than blocked on confirmation. No menus presented.
-
-### PF-6 ship — vyve-site `48c4d17e`
-
-Two files, one atomic commit on top of PF-5 (`fa116ef2`).
-
-**Read path replacements (habits.html).** Three Supabase reads replaced with Dexie reads:
-- `/member_habits?...select=habit_id,assigned_by,habit_library(...)` → `VYVELocalDB.member_habits.allFor(memberEmail)`. PF-3 hydrate denormalises the `habit_library` join into flat cols on the Dexie row (`habit_pot`, `habit_title`, `habit_description`, `habit_prompt`, `difficulty`); PF-6 re-wraps them client-side into `r.habit_library` so the existing `.map(r => ({...r.habit_library}))` downstream is byte-identical between paths.
-- `/daily_habits?...activity_date=eq.${todayStr}` → `VYVELocalDB.daily_habits.todayFor(memberEmail, todayStr)`. Returns the same `{habit_id, habit_completed, notes}` projection.
-- `fetchHabitDates()` (365-day distinct date list) → `VYVELocalDB.daily_habits.allDatesFor(memberEmail)`.
-
-**Carve-out preserved: autotick HealthKit metadata stays on the wire.** `fetchDashboardHabits()` continues to hit member-dashboard EF on both spike-on and spike-off paths. `has_rule` / `health_auto_satisfied` / `health_progress` are live HealthKit evaluator output computed per-request by the EF — not persisted server state and therefore not Dexie-able under §3's source-of-truth definition. Call is non-blocking: failure means no autotick badges this render, exactly as the pre-PF-6 fallback. This is the §3 explicit carve-out ("server-side compute for things that genuinely need it") applied to a real case for the first time.
-
-**Spike-gate posture (three-way branch inside the existing `try`).**
-1. Spike on + Dexie has rows for this member → all reads from Dexie. Awaits `VYVESync.hydrate()` first (idempotent — joins in-flight promise or returns immediately). After hydrate, `member_habits.allFor()` is the gate: non-empty → Dexie path.
-2. Spike on + Dexie returned empty → falls through to legacy Supabase parallel fetches. Covers (a) no-op shim still active for any reason, (b) hydrate failed for this table specifically, (c) member genuinely has no habits assigned. Case (c) is harmless: Supabase returns `[]` too and we hit the existing empty-state.
-3. Spike off → legacy Supabase parallel fetches, byte-identical to pre-PF-6.
-
-**Downstream parity verified.** Three consumers of `allDates`: `renderWeekStrip` (filters by current week into a `Set`), `updateStats` → `calcStreak` (resorts internally with `.sort((a,b)=>b-a)`), and `localStorage` cache write (passes through). Dexie's ASC vs Supabase's DESC order is irrelevant to all three. No behavioural drift between paths.
-
-**sw.js cache key.** `pm78-pf5-delta-a` → `pm78-pf6-habits-a`.
-
-### Architectural decision recorded (autotick carve-out)
-
-The first time a PF-N task surfaced data that legitimately doesn't belong in Dexie. Recording the principle for future page refactors: **live evaluator output** (HealthKit rules evaluated per-request, AI recommendations generated per-submit, employer aggregate computations) is the §3 server-compute carve-out. It stays on the wire; it doesn't get persisted to Dexie just to satisfy "local-first for everything". The rule of thumb is: if the value would be stale the moment the device's underlying state changes (e.g., the member walked another 100 steps since the last EF call), it's evaluator output, not persisted state. Dexie holds the persisted writes; the EF computes the evaluator output. Both render together in the same UI.
-
-This will recur in PF-7 (workouts library catalogue items have a server-side "is_recommended_for_member" flag that's evaluator output), PF-8 (TDEE recalc currently runs server-side — could move client-side but doesn't have to), PF-10 (the weekly check-in submit response IS the AI moment — that's a deliberate evaluator wait, not a thing to remove).
-
-### What's queued next
-
-**PF-7 — workouts.html + workouts-session.js + workouts-programme.js Dexie-first reads.** Same template as PF-6 plus thumbnail prefetch per PM-77.3 note. ~3 hours. Self-contained build, no Dean needed for build (verification only).
-
-**Capacitor origin verification still outstanding.** PM-77.1 §3.1 mitigation B still blocked on Dean reading `~/Projects/vyve-capacitor/capacitor.config.ts`. Carried forward.
-
-### Verification path for Dean (when he's back)
-
-1. (If not yet done) Merge `local-first-spike` → `main`. Compare: https://github.com/VYVEHealth/vyve-site/compare/main...local-first-spike
-2. Open `online.vyvehealth.co.uk` in Chrome, login.
-3. DevTools console: `localStorage.setItem('vyve_lf_spike','1'); location.reload()`.
-4. Wait for `VYVESync.status()` to show `member_habits` and `daily_habits` in `hydrated_tables`.
-5. DevTools → Network tab, throttle to **Offline**.
-6. Navigate to `/habits.html`. Page should fully render — habits list populated, today's tick state correct, week strip correct, streak number correct — with **zero** non-cached network calls. (One `member-dashboard` call may still fire for autotick metadata; it'll fail silently and the page renders without autotick badges. That's the deliberate carve-out behaviour.)
-7. Tap a habit → instant tick, no spinner.
-8. Reload page (still offline) → state persists.
-9. Network back on. `localStorage.removeItem('vyve_lf_spike'); location.reload()`.
-10. Page should behave **identically to today** — full Supabase parallel-fetch path, autotick working, no Dexie involvement.
-11. (Brain housekeeping) Read out `~/Projects/vyve-capacitor/capacitor.config.ts` so PF-15 can lock the scheme.
+Dean's directive on this conversation: "Yes. This all needs done." Single atomic commit covering all 5 task additions, no further confirmation rounds. Per active.md §0 (Claude leads, Dean drives).
 
 ### Brain commit shape
 
-3 files: `brain/active.md` (§2 SHA bumps + last-verified + brain-HEAD line, §3 status flipped to PF-1..6 shipped, §5 PF-6 marked SHIPPED + PF-7 promoted to next, §8 last-patch note), `playbooks/premium-feel-campaign.md` (PF-6 Status → SHIPPED with full ship notes), `brain/changelog.md` (this entry prepended).
+3 files atomic: `playbooks/premium-feel-campaign.md` (PF-23..PF-27 task definitions inserted before the "Out of scope" section), `brain/active.md` (§5 backlog rows 2c-2g added, §8 editorial note bumped to reference PM-79.1), `brain/changelog.md` (this entry prepended).
+
+### What's still queued next on the build side
+
+PF-6 (habits.html refactor to Dexie-first reads) remains the next vyve-site task. PF-23..PF-27 do not change the build sequence — they slot in alongside or after the existing roadmap depending on bandwidth and the PF-21 sequencing gate.
+
+### Outstanding from prior sessions
+
+Capacitor origin verification (PM-77.1 §3.1 mitigation B) still blocked on Dean reading `~/Projects/vyve-capacitor/capacitor.config.ts`. Carried forward.
 
 ---
-
-
 
 ## 2026-05-13 PM-79 (PF-4 shadow outbound queue + PF-5 delta-pull cursor shipped to local-first-spike; Realtime merge deferred to post-launch)
 
