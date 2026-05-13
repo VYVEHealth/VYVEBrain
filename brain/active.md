@@ -2,7 +2,7 @@
 
 > Session-scoped current state. Read this at session start. Do NOT read master.md / changelog.md / backlog.md unless this file points you to a specific section that's not in here.
 >
-> **Last full rebuild:** 13 May 2026 PM-77 (Premium Feel Campaign launch).
+> **Last full rebuild:** 13 May 2026 PM-77 (Premium Feel Campaign launch), PM-84 (PF-24/25 scope expanded — bottom-nav-as-persistent-floor + chrome dimension audit — and PF-30 added — local-first telemetry redirect).
 > **Target ceiling:** 35KB.
 >
 > If this file disagrees with master.md or changelog.md, this file is wrong and needs a rebuild. Tell Dean.
@@ -186,6 +186,7 @@ Full §23 lives in `master.md` (50+ rules). These are the ones that fire on most
 6. **Facebook Make connection refresh** — expires 22 May 2026. Lewis to action.
 7. **Public launch comms draft** (Lewis).
 8. **B2B volume tier definition** (Lewis + Dean) — define formally before first enterprise contract.
+2.13. **PF-30 — Local-first telemetry redirect.** Strip dead perf-v2 metrics; add first-paint, cross-nav, spike-fallthrough rate, sync queue depth, hydration timing, crash recovery; wire PostHog identity. Pre-launch recommended (launch-day cold-start data is the most valuable telemetry window). ~2-3 hours.
 
 **P1 — desired before launch, acceptable to slip:**
 

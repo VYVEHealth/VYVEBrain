@@ -442,28 +442,40 @@ These are explicitly post-launch work, not blockers. The Mind tab in particular 
 - **Estimated length:** 20-25 hours of build. Three to four full evening sessions. Breakdown: tutorial state machine + screen orchestration ~4h, 5 interactive segments with clean overlay system ~6-8h, achievement integration + 5 new rows + unlock animations ~3-4h, skip-path-at-any-point state handling ~2h, testing across 5 personas × 5 steps × skip-path = 25 scenarios ~3h, polish (transitions, timing, persona-matched colours) ~2h.
 - **Status:** QUEUED — V2 target (mid-June). May move forward into pre-launch window if bandwidth allows. Hard sequencing: must land after PF-21. Hard blocker: Lewis copy for all 5 personas. Hard blocker: 5 tutorial achievement rows defined and `copy_status='approved'`.
 
-### PF-24 — Page transitions
+### PF-24 — Page transitions + persistent-nav stabilisation
 
-- **What:** Replace hard cuts between pages with consistent transitions. Capacitor wrap on iOS doesn't give you native slide-in for free in a web app, but a CSS view-transition or 150ms fade is convincing and standard. Apply consistently across every nav move — bottom tab switches, sub-page navigation, modal open/close. The Mind/Body/Connect tab switch (PF-21) is the most visible moment to get this right.
-- **Pattern decision:** horizontal slide for sub-page navigation (Notes/Things style), 120-150ms crossfade for tab switches (Linear/Notion style). Single consistent timing function across all transitions. No bespoke per-page transitions.
-- **Files touched:** new `/transitions.js` (handles route-change animation), `nav.js` (calls transitions on tab/page navigation), CSS additions in shared stylesheet (transition keyframes + timing tokens). Likely a small touch to every gated page to mark the transition root, OR a single body-level wrapper does it without per-page changes — prefer the latter.
-- **Verification:** Navigate between every tab combination + sub-page combination on iPhone real device. Should feel coherent, never janky, never longer than the page actually takes to paint (the transition should hide paint latency, not extend it). Reduced-motion users get a softer/faster variant via `prefers-reduced-motion`.
-- **Needs Dean:** real-device verification on iPhone. Reduced-motion behaviour confirmed.
-- **Estimated length:** 3-4 hours.
-- **Status:** QUEUED — pre-launch if bandwidth.
+- **What:** Replace hard cuts between pages with intentional transitions, AND stabilise the bottom nav as the persistent floor across every page where it exists. Two complementary goals delivered in one task because they share the same engineering work (View Transitions API).
+- **Two parts:**
+  1. **Bottom nav as the rock-solid persistent element.** Bottom nav appears on home, habits, workouts, nutrition, cardio, sessions, settings, check-ins, leaderboard, engagement, certificates — basically everywhere except modal flows. Across every navigation between these pages, the bottom nav must NOT flicker, reposition, or rebuild visibly. Member should perceive "the nav stayed, the content above it changed." Tag the bottom nav with a `view-transition-name` so the View Transitions API treats it as a shared element across navigations. CSS `contain: paint` on the nav root. Service worker delivers identical nav markup on every page so the browser doesn't have to reconcile DOM differences.
+  2. **Content area transitions between pages.** For navigations between pages of similar hierarchy (tab to tab — habits ↔ workouts ↔ nutrition), 120-150ms crossfade (Linear/Notion pattern). For deeper-into-hierarchy navigations (home → inner page, inner page → sub-page), horizontal slide (Notes/Things pattern). Single consistent timing function across all transitions.
+- **Top chrome handling (intentional, not flicker):**
+  - **Home (index.html) is logo-only at top by deliberate design** per nav.js. NOT a problem — mirrors native iOS patterns (Apple Notes main list, Apple Music home, Apple Fitness home).
+  - **Inner pages have back-button + page title at top.** When navigating home → inner page, the top chrome slides in from above as part of the page transition. Reverse on the way back. Feels intentional — tells the member they've gone deeper, here's the way back.
+  - **Audit during build:** confirm home's logo-only top is a rendered element (logo image in a container) vs empty space. If rendered element with consistent dimensions to inner-page top chrome, treat as shared element via View Transitions. If empty space, the inner-page top chrome animates in from above. Either pattern is fine; pick one and apply consistently. 5-minute audit at start of PF-24.
+- **Pattern decision:** View Transitions API (Safari 18+, Chrome 111+). Older browsers degrade gracefully to hard cuts. `prefers-reduced-motion` triggers softer/faster variants.
+- **Files touched:** new `/transitions.js` (View Transitions API integration, route-change orchestration), `nav.js` (calls transitions on tab/page navigation, declares bottom-nav as persistent shared element), shared stylesheet (transition keyframes + timing tokens + `view-transition-name` declarations). Single body-level wrapper handles content-area transitions without per-page touches.
+- **Verification:** On iPhone real device, navigate through every tab combination + sub-page combination. Bottom nav appears glued in place across every transition. Content area transitions feel coherent — slide for deeper, crossfade for tab-to-tab. No jank. No tab-switch longer than the page actually takes to paint. Reduced-motion mode tested. Same verification on Android — View Transitions support varies by Android WebView version; document fallback behaviour.
+- **Needs Dean:** real-device verification on iPhone + Android. Reduced-motion behaviour confirmed on both.
+- **Estimated length:** 5-6 hours (was 3-4 in PM-79.1 scope; +2h for the bottom-nav-as-persistent-floor work added in PM-84).
+- **Status:** QUEUED — pre-launch if bandwidth. High-leverage premium signal: makes the entire app feel like one coherent surface instead of a stack of separate pages.
 
-### PF-25 — Typography pass
+### PF-25 — Typography pass + chrome dimension audit
 
-- **What:** Premium apps are obsessive about type. This task does a single pass across the app to fix the things that separate "professionally designed" from "designed by an engineer".
-  - **Tabular numerals on every counter.** Streak counters, macro totals, charity month counter, weight values, time displays — anything where the digit-width changes between values looks cheap. Add `font-variant-numeric: tabular-nums` to all numeric displays.
-  - **Line-height audit.** Body copy line-height should be 1.5-1.6. Heading line-height should be 1.1-1.25. Most CSS defaults are too tight. Audit every text surface and fix.
-  - **Font loading audit.** Confirm there's no FOUT (Flash of Unstyled Text). If using a webfont, ensure `font-display: swap` is set correctly, or preload critical weights. If using system fonts (San Francisco on iOS, Roboto on Android), confirm the fallback stack is correct.
-  - **Letter-spacing on ALL-CAPS labels.** Anywhere we use uppercase (tab labels, button text in caps, etc.), add `letter-spacing: 0.05em` minimum. Without it, all-caps reads as cramped and amateur.
-  - **Truncation and overflow.** Long member names, long workout names — confirm they truncate gracefully with ellipsis, never overflow or wrap awkwardly.
-- **Files touched:** shared stylesheet (typography tokens), audit pass across every member-facing page. Likely a single CSS additions block + a handful of targeted patches.
-- **Verification:** Visual review across the app — habits, workouts, cardio, nutrition, home, settings, leaderboard, certificates, engagement, check-ins. Numeric displays don't jiggle as they update. No FOUT on first load. No awkward overflow on long names.
-- **Needs Dean:** visual review.
-- **Estimated length:** 2-3 hours.
+- **What:** Premium apps are obsessive about type AND about consistent chrome dimensions. This task does a single audit pass across the app to fix the things that separate "professionally designed" from "designed by an engineer", plus locks chrome dimensions so the bottom nav stabilisation in PF-24 has clean inputs.
+- **Typography sub-tasks:**
+  - **Tabular numerals on every counter.** Streak counters, macro totals, charity month counter, weight values, time displays — anything where digit-width-change-between-values would jiggle. Add `font-variant-numeric: tabular-nums` to all numeric displays.
+  - **Line-height audit.** Body copy 1.5-1.6, headings 1.1-1.25. Most CSS defaults are too tight.
+  - **Font loading audit.** No FOUT. `font-display: swap` set correctly OR critical weights preloaded. System-font fallback stack confirmed correct.
+  - **Letter-spacing on ALL-CAPS labels.** Anywhere uppercase is used (tab labels, button text in caps), add `letter-spacing: 0.05em` minimum.
+  - **Truncation and overflow.** Long member names, long workout names — graceful ellipsis truncation, no overflow, no awkward wrapping.
+- **Chrome dimension audit (added in PM-84):**
+  - **Bottom nav identical pixel dimensions on every page where it exists.** Same height, same padding, same horizontal margins, same icon-and-label sizing. The View Transitions API in PF-24 needs the nav to be byte-equivalent dimensionally across pages or the shared-element transition surfaces "the nav moved 2px" jitter.
+  - **Top chrome dimension audit per pattern.** Inner pages with back-button + title: same height, same padding, same alignment across every inner page. Home logo-only top: locked to a consistent dimension (whether it matches inner-page top or is its own thing — pick and apply).
+  - **Safe-area inset handling.** iPhone notch + Dynamic Island + bottom home indicator. Use `env(safe-area-inset-*)` consistently. Verify on actual iPhone, not Chrome devtools (Chrome's emulation is approximate).
+- **Files touched:** shared stylesheet (typography tokens + chrome dimension tokens), audit pass across every member-facing page. Single CSS additions block + handful of targeted patches.
+- **Verification:** Visual review across the app on real iPhone and Android — habits, workouts, cardio, nutrition, home, settings, leaderboard, certificates, engagement, check-ins. Numeric displays don't jiggle. No FOUT. Bottom nav appears pixel-identical on every page (use a screenshot overlay test if in doubt). Top chrome consistent within its pattern. Safe-area handled.
+- **Needs Dean:** visual review on both devices.
+- **Estimated length:** 3-4 hours (was 2-3 in PM-79.1; +1h for chrome dimension audit added in PM-84). Compounds with PF-24 — getting chrome dimensions right is the prerequisite for the bottom-nav persistence to feel clean.
 - **Status:** QUEUED — pre-launch.
 
 ### PF-26 — Pull-to-refresh wiring
@@ -515,6 +527,24 @@ These are explicitly post-launch work, not blockers. The Mind tab in particular 
 - **Needs Dean:** Verification on Android device. Lewis copy for the Android permissions explainer (1-2 short copy blocks).
 - **Estimated length:** 3-4 hours build. Web-side evaluator routing ~2h, Android permissions UX ~1h, verification + polish ~1h.
 - **Status:** QUEUED — pre-launch. Hard blocker: Lewis copy for Android permissions explainer. Memory line in active.md previously read "Android HealthKit (Health Connect) parity — parked pending test device" — that's now superseded by this task since Dean has an Android device.
+
+### PF-30 — Local-first telemetry redirect
+
+- **What:** Strip the now-meaningless perf-v2 metrics (server round-trip timing that's no longer the bottleneck) and add the metrics that actually matter post-migration. Wire PostHog identity (currently pending per active.md / master.md — `phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl`).
+- **Why this exists:** Pre-migration the meaningful metric was "time from tap to data visible" — measuring server round-trip pain. Post-migration that metric is dead: every Dexie read is ~1ms, a histogram of it would be a single leftmost bucket. The work isn't "remove telemetry" but "redirect it at the new failure modes." The existing perf.js v2 infrastructure from PM-76 stays useful — event emission, batching, the sentinel pattern — just pointed at different events.
+- **New metrics to capture:**
+  1. **First-paint timing.** Cold load (member opens the app fresh) → first interactive screen painted. Captures service worker performance, asset load, font load, hydration screen timing. Members feel this on every cold open.
+  2. **Cross-page navigation timing.** Tap-to-paint on the next screen. Tells us whether PF-24 page transitions actually hide paint latency or just push it visibly later.
+  3. **Spike-off-path fallthrough rate.** The PF-6/PF-7/PF-8+ non-empty-gate three-way branch falls through to Supabase when Dexie returns empty rows. Measure per-page how often this fires in production. >5% on any page = a hydration bug. Should hover near zero post-launch.
+  4. **Sync queue depth over time.** How many writes sit unsynced in `_sync_queue`. Should be near zero. Growth during session = network or backend issue. Sustained growth = real problem.
+  5. **Hydration timing.** Time from `vyveAuthReady` → `vyve-localdb-hydrated`. Real-world numbers. Drives the PF-13 minimum-display-duration tuning.
+  6. **Crash recovery events.** How often does "Connection to Indexed Database server lost" fire? `_workout_session_state` recovery? Empty-DB-on-open after previously-populated? PM-77.1 §3.1 mitigation telemetry.
+  7. **PostHog identity wiring.** Currently pending per memory. Wire `vyveSignalAuthReady` to call `posthog.identify(member_email)` so all events are attributed correctly. Without this every member is anonymous and per-member behaviour patterns are invisible.
+- **Files touched:** `/perf.js` v3 (strip dead metrics, add the new ones), `auth.js` (PostHog identify call after `vyveAuthReady`), `/sync.js` (emit hydration timing + spike-fallthrough events), `db.js` (emit crash-recovery events). SW cache bump.
+- **Verification:** Open the app on Dean's iPhone, run through a few flows, check PostHog dashboard — events arriving, member identified, metric values look sensible. Spike-fallthrough should be near zero on a healthy session.
+- **Needs Dean:** verification that events show up in PostHog. No copy needed.
+- **Estimated length:** 2-3 hours. Strip + redirect existing perf-v2 emitter ~1h, PostHog identity wiring ~30min, per-event integration on sync.js + db.js ~1h, verification ~30min.
+- **Status:** QUEUED — strongly recommend pre-launch. Reasoning: launch-day data is the most valuable telemetry you ever capture (it's the cold-start of real usage). Shipping the telemetry redirect post-launch loses that window. Cheap enough at 2-3 hours to fit comfortably pre-launch alongside the polish tasks.
 
 ---
 

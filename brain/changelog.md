@@ -1,3 +1,75 @@
+## 2026-05-13 PM-84 (PF-30 added — local-first telemetry redirect; PF-24 + PF-25 scope expanded with bottom-nav-as-persistent-floor + chrome dimension audit)
+
+Brain-only commit. No vyve-site change. Conversational scoping with Dean produced one new pre-launch task plus a sharpening of two existing polish tasks. PM-84 lands after PM-83 (PF-13 persona-led welcome) and PM-82 (PF-8 ship); Claude was a few minutes behind real-time brain state at the start of this update — caught via `GITHUB_LIST_COMMITS` audit before staging.
+
+### Context
+
+Dean asked three questions in a single message:
+1. Do we still need page-timing analytics post-migration, or is everything instant?
+2. Once local-first is done, what realistically isn't instant? Are members going to feel waits anywhere?
+3. Header/nav flicker — does eliminating it count as a premium signal worth doing?
+
+Then a follow-up clarification: home (`index.html`) doesn't have a top header by design (`nav.js` "logo-only on home" pattern). Does that break the persistent-chrome plan?
+
+### What was added — three brain edits in one commit
+
+**PF-30 — Local-first telemetry redirect.** Strip the perf.js v2 metrics that measured server round-trip pain (which no longer exists post-migration) and add metrics that capture the failure modes that DO exist now: first-paint timing, cross-page navigation timing, spike-off-path fallthrough rate, sync queue depth over time, hydration timing, crash recovery events. Wire PostHog identity (currently pending per active.md / master.md). 2-3 hours. **Strongly recommended pre-launch** because launch-day cold-start data is the single most valuable telemetry window — shipping the redirect post-launch loses that data permanently.
+
+**PF-24 scope expanded.** Was "page transitions" alone. Now also covers stabilising the bottom nav as the persistent floor across every page via View Transitions API `view-transition-name` shared elements. Two complementary goals, one engineering effort because both ride on View Transitions. Bottom nav must never flicker between page navigations — eye sees "nav stayed, content above it changed." Estimate bumped 3-4h → 5-6h.
+
+**PF-25 scope expanded.** Was "typography pass" alone. Now also covers chrome dimension audit: bottom nav pixel-identical dimensions on every page (prerequisite for PF-24's shared-element transition feeling clean), top chrome dimensions consistent within their pattern (inner-page back-button-plus-title vs home's logo-only top), safe-area inset handling for iPhone notch + Dynamic Island + home indicator. Estimate bumped 2-3h → 3-4h.
+
+### The home-has-no-header question
+
+`index.html` is intentionally chromeless at top by `nav.js` design ("logo-only on home"). This mirrors native iOS patterns: Apple Notes main list, Apple Music home, Apple Fitness home all have no top header. Not a problem for the persistent-chrome plan — the bottom nav is the persistent floor; top chrome is intentional-transition-where-it-varies. When navigating home → inner page, top chrome slides in from above as part of the page transition. Reverse going back. The transition itself becomes the premium signal: "you've gone deeper, here's the way back" rather than "the header flickered."
+
+Codified in PF-24's "Top chrome handling (intentional, not flicker)" sub-section. Audit during build: confirm home's logo-only top is a rendered element (logo image in container) vs empty space — if rendered element, treat as shared element via View Transitions; if empty space, inner-page top chrome animates in from above. Either pattern fine; pick one and apply consistently.
+
+### What's instant vs not, post-migration
+
+Documented for future-Claude reference (the answer Dean asked for, lightly formatted):
+
+**Genuinely instant (~1-50ms):** habits, home, workouts list, nutrition reads, weight log, cardio history, leaderboard reads from local cache, certificate display, settings reads, weekly check-in activity summary, progress tracks. Basically every member-data read.
+
+**Not instant by design — these stay slow because they should:**
+- Weekly check-in submit → AI recommendation generation: 3-8 seconds. PF-27 makes this *feel* like a moment instead of a wait.
+- Monthly check-in submit → AI recommendations: same.
+- Running plan generation: 5-15 seconds. AI generating a full plan.
+- Live session join: depends on network and Riverside/Castr stream load.
+- Food search: hits Open Food Facts API. 200-500ms.
+- Initial onboarding submission: writes ~8-week workout plan in background.
+
+**Edge cases:**
+- First-ever login: hydration screen for 1-3 seconds. Once per member, lifetime.
+- Coming back online after long offline: queue drain takes seconds to minutes depending on queue depth. Background, doesn't block UI.
+- Fresh install on new device: hydration screen again (same as first-ever login).
+
+This is genuinely premium territory. Most wellbeing apps don't achieve this. Strava doesn't. Headspace doesn't. Calm doesn't. Worth keeping in mind when MVP/Premium tiering questions come up next session.
+
+### Operating mode
+
+Dean directive: "Yes" — proceed with all three scope changes in one atomic commit. Per active.md §0 (Claude leads, Dean drives). PM-84 added on top of fresh brain state (post-PM-82/82.5/83 — verified via `GITHUB_LIST_COMMITS` before staging).
+
+### Brain commit shape
+
+3 files: `brain/active.md` (§5 backlog row 2.13 PF-30 added; §8 editorial appended with PM-84 patch summary), `playbooks/premium-feel-campaign.md` (PF-24 + PF-25 blocks replaced with expanded versions, PF-30 new task inserted between PF-29 and "Out of scope"), `brain/changelog.md` (this entry prepended).
+
+### What's still queued next on the build side
+
+Unchanged: PF-9 (cardio refactor) is the next vyve-site task. PM-84 doesn't change the page-refactor sequence — PF-24/25/30 slot into the polish + telemetry windows post-page-refactors, and PF-30 is the only one Claude flags as strongly-recommended-pre-launch for the launch-day-data reason.
+
+### MVP/Premium tiering update
+
+PF-30 lands as **MVP**. Pre-launch telemetry is the only way to know whether the architecture is actually working in the field on day one. 2-3 hours is cheap insurance against shipping blind. Total MVP estimate now ~62-67 hours including PF-29 + PF-30.
+
+PF-24 (now 5-6h) stays Premium-pre-launch. PF-25 (now 3-4h) stays Premium-pre-launch.
+
+### Editorial-line damage note (carrying forward, not fixing in this commit)
+
+Spotted while staging: PM-82.5's brain restore reset active.md §8 "Last full rebuild" line back to the PM-77 baseline without the PM-78/79/79.1/79.2/79.3/79.4/83 patch trail that had accumulated. This commit appends "PM-84" cleanly but the intervening patches are no longer named in §8. Not blocking — §8 is editorial reference, not load-bearing — but worth a session-start sweep next time someone touches active.md to rebuild the line properly. Logged for awareness; no action this commit.
+
+---
+
 ## 2026-05-13 PM-83 (PF-13 scope expanded — persona-led welcome + safe goal echo from onboarding questionnaire; Dean owns copy directly, no Lewis blocker)
 
 Brain-only commit. No vyve-site change. Conversational scoping with Dean on the hydration screen — the moment between onboarding completion and first home dashboard.
