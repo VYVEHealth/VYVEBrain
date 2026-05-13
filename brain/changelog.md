@@ -1,3 +1,23 @@
+## 2026-05-14 PM-101 (§23.7.7 addendum: cache is paint accelerator, Dexie is source of truth)
+
+Session opened ~00:25 BST in response to Dean's observation that after the PM-100 ship the habits page header dashes were back on close+reopen, even though the habits list painted instantly. Diagnosis: PM-100 made cache-first paint dependent on `_hc.activeDates`, which is only present in caches written by PM-100+ code. Caches written by pre-PM-100 sessions (PM-98 era) lacked the field — so on first reopen post-upgrade the cache-first path skipped the `updateStats` call and the header sat on em-dashes until the awaited slow path completed.
+
+Dean's framing was the right one: "Dexie has the data, why does it depend on a cached activeDates field?" Answer: it shouldn't.
+
+**Code commit shipped (1 atomic on main):**
+
+- `02bb669ebca6074732845247f90dcfb641b60c8f` — PM-101 ship. Two files.
+  - `habits.html`: both online and offline cache-first paint paths now kick off `VYVELocalDB.daily_habits.allDatesFor(email)` as a fire-and-forget Promise in parallel with the cache-first paint. The `.then` populates `updateStats(dexieDates) + renderWeekStrip(...)` when it resolves — Dexie's indexed read resolves in ms. No dependency on a cached computed value. The previous `_hc.activeDates` path is removed entirely from both cache-first branches (the canonical full-paint write at line 1348 still stamps it, harmless but now redundant — can clean up in a future audit).
+  - `sw.js`: cache key `pm100-ship-a` → `pm101-ship-a`.
+
+**Verification:**
+- All 3 inline scripts in habits.html parse under `node --check`.
+- Byte-equal verify at commit `02bb669e`: habits.html 78,040 chars / 79,416 UTF-8 bytes (matches GitHub size); sw.js 7,226 chars / 7,436 UTF-8 bytes.
+
+**§23.7.7 addendum codified in this brain commit:** prefer an async Dexie read over caching a computed value when Dexie can satisfy a first-paint counter. Cache becomes a paint accelerator for shape data (list, current state) but is no longer authoritative for derived counters. Same pattern applies to workouts.html progress, nutrition.html water, cardio.html week count, etc. — audit signal: every `updateStats(...)`/`render<Counter>(...)` call after an await is a candidate for the parallel-Dexie-read treatment.
+
+**State at end of PM-101:** vyve-site main HEAD `02bb669ebca6074732845247f90dcfb641b60c8f`. SW cache key `vyve-cache-v2026-05-14-pm101-ship-a`. Habits header is now Dexie-driven on cache-first paint paths, independent of cache field shape.
+
 ## 2026-05-14 PM-100 (Habits cache-first first paint covers header; midnight rollover handler; §23.7.7 codified)
 
 Session opened ~00:02 BST post-PM-98 iPhone walk. PM-98's habits.html rewrite worked — tap-to-flip <100ms on iPhone Safari and Capacitor — but Dean immediately surfaced two related issues on the same page that PM-98 hadn't touched:
