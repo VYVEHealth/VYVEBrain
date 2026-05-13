@@ -1,3 +1,57 @@
+## 2026-05-13 PM-97 (PF-15 P0 — partial-upsert landmine fixed; backend EF latency surfaced as the dominant felt-perf bottleneck)
+
+Session ran ~22:00-23:00 BST direct continuation of PM-96. Dean reported "data still pulls slow" — pushed back on PM-96 "session closed" framing. Diagnostic-first approach surfaced the actual issues blocking the Premium Feel campaign, not the assumed ones.
+
+**Three distinct issues surfaced tonight in order of discovery:**
+
+1. **Habits page rendering 'undefined' for every field.** Indicator dot GREEN, paint dexie, last read dexie / nutrition_common_foods — but every habit card showed "undefined" title/description/badge/pot. PM-95 finding #3 partial-upsert landmine, **undercounted by half** — applies to both `member_habits` AND `members` tables in db.js. Settings.html call sites (line 67956 + 80704 for members; 72937 + 78308 for member_habits) write partial payloads (2-3 fields) that Dexie's default `.put()` treats as full replace, dropping every denormalised column. Dean said he hadn't touched settings tonight — corruption could be from previous session OR an auto-fire path we haven't surfaced.
+
+2. **Habits write UI lag — 20+ seconds, button doesn't change at all.** Diagnosis via SQL: 12+ writes landed on server today with 1-7 second gaps, server side is healthy. Bottleneck is on the client between tap and re-render. `habits.html` line 27719 `await VYVEData.writeQueued(...)` awaits the network round-trip BEFORE firing optimisticPatch — the architecture's "optimistic" UI isn't optimistic. Compounded by §23.5.1 backend EF latency (17-38s on member-dashboard, similar on activity POSTs as of 12 May logs).
+
+3. **Habits page header dashes never resolve.** Day Streak and Total Logged show ━ placeholder loaders that never populate. Indicator amber. The page IS Dexie-wired but the dashboard refresh that populates these counters hits the same slow EFs. Confirms §23.5.1's "all non-cron client-facing EFs are slow" reading — three weeks ago, still not fixed, dominant cause of every felt-perf complaint tonight.
+
+**Code commit shipped (1 atomic, on main):**
+
+- `ddc13271` — PM-97 PF-15 P0. Three files touched.
+  - `db.js`: `member_habits.upsert` and `members.upsert` overrides now read-modify-write merge inside a Dexie transaction. Future partial upserts preserve every column not in the payload. Activity tables keep full-replace upsert (always full-row writes). 2-3 line patches, +2210 chars.
+  - `settings.html`: long-press (1.2s) on the bottom version footer ("VYVE Health CIC · ICO Registration: 00013608608" line) triggers `resetLocalCache()`: wipes member_habits + members for current member via `replaceForMember(email, [])`, resets `_sync_meta` timestamps to 0 so hydrate doesn't skip these tables, drops localStorage habits caches, fires fresh hydrate, reloads. Spike-gated. Also exposed as `window.__pf15_resetLocalCache()` for debug builds. Independent of 7-tap spike toggle.
+  - `sw.js`: cache key pm96-pf15-exercise-dexie-a → pm97-pf15-merge-upsert-a.
+
+**Verification on Dean's iPhone (~22:36 BST):** force-quit, reopened, opened Settings, long-pressed footer. "Resetting local cache…" toast fired. Page reloaded. Habits page rendered correctly afterward — real titles, descriptions, difficulty badges. Issue #1 fully resolved.
+
+Issues #2 and #3 NOT fixed in this commit. Diagnosed but deliberately deferred to PM-98 — they share root cause (backend EF latency from §23.5.1, three-week-old finding that no one has touched), and patching the symptom (flipping the await/optimisticPatch order in habits.html) would mask the actual bottleneck while leaving every other page with the same shape of lag.
+
+**§23.7.5 hard-rule candidate (codified in this brain commit):**
+
+`VYVELocalDB.<table>.upsert` MUST merge by default for any member-scoped table that receives partial writes. Default Dexie `.put()` is full-replace; partial payloads silently drop every absent column. The bug class is named: partial-upsert landmine. Audit signal: `ripgrep VYVELocalDB\\.\\w+\\.upsert\\(` and inspect the object literal. If field count is less than the full row schema and the table is member-scoped (not an activity table), the table needs a merge override in db.js. Activity tables (cardio, daily_habits, wellbeing_checkins) are exempt — they're always called with full rows from the activity-log code paths.
+
+**PM-97 audit of all upsert call sites** (root-level html/js, excluding db.js):
+
+| Page | Table | Field count | Risk |
+|---|---|---:|---|
+| cardio.html @ 40678 | cardio | 9 | Safe — full activity row |
+| habits.html @ 32618 | daily_habits | 5 | Safe — full activity row |
+| habits.html @ 50765 | daily_habits | 5 | Safe — autotick full row |
+| settings.html @ 67956 | members | 3 | LANDMINE — fixed via merge override |
+| settings.html @ 72937 | member_habits | 3 | LANDMINE — fixed via merge override |
+| settings.html @ 78308 | member_habits | 3 | LANDMINE — fixed via merge override |
+| settings.html @ 80704 | members | 2 | LANDMINE — fixed via merge override |
+| wellbeing-checkin.html @ 41459 | wellbeing_checkins | 12 | Safe — full activity row |
+
+Four landmine call sites, all on settings.html, all on `member_habits` or `members`. All neutralised by the db.js merge overrides shipped in this commit.
+
+**Three things still true at end of session (not done tonight):**
+
+1. **PF-15.x sweep** — six unwired pages still on REST: movement, sessions, leaderboard, running-plan, certificates, engagement.
+
+2. **PF-14b bundled-mode Capacitor migration** — 7-day ITP Dexie purge still applies. Mac required. Launch blocker.
+
+3. **§23.5.1 backend EF latency** — the dominant felt-perf bottleneck. Member-dashboard 17-38s, similar across all client-facing EFs as of 12 May. Three weeks old. PM-98 P0.
+
+**Brain hygiene:** the framing "data still pulls slow" matches §23.5.1's reading exactly. Tonight's wins are real (partial-upsert landmine sealed, recovery gesture available, exercise hub Dexie-wired earlier) but the campaign isn't finished and shouldn't be framed as such. Three more sessions minimum between here and "every page instant always" as a real experience: PF-15.x sweep (phone), PF-14b (Mac), and backend EF latency (heaviest of the three).
+
+**State at end of PM-97:** vyve-site main HEAD `ddc13271`. SW cache key `vyve-cache-v2026-05-13-pm97-pf15-merge-upsert-a`. Tonight closes with one fewer landmine and one new diagnostic confirmation that the backend is the next campaign, not the client.
+
 ## 2026-05-13 PM-96 (PF-15 part 1 — diagnostic-led fix of Exercise hub; root cause was page-side wiring gap not hydrate failure)
 
 Continuation of tonight's PF-14/PF-15 work. PF-14 part 6 (commit 67711c4e) added `await VYVESync.hydrate()` to 4 pages on the unverified assumption that the hydration coverage gap was timing-related. Dean's walk after that ship showed cardio/wellbeing-checkin/monthly-checkin/settings still amber AND habits + nutrition appeared to regress. Session was running on guesses.

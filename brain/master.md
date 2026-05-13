@@ -847,6 +847,24 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 13 May 2026 PM-97 (PF-15 P0 partial-upsert landmine sealed; backend EF latency confirmed as the actual felt-perf bottleneck)
+
+Continuation of PM-96 the same evening. Dean pushed back on "session closed" framing — "data still pulls slow" was the lived experience and the campaign wasn't finished. Right call. Three distinct issues surfaced this session, two of them root-caused, one of them shipped, one of them captured for the next session.
+
+**Issue 1 — Habits page rendering "undefined".** Indicator dot was GREEN (paint dexie, last read dexie / nutrition_common_foods) but every habit card showed `undefined` for title, description, difficulty badge, prompt. This is PM-95 finding #3 partial-upsert landmine, undercounted — applies to `members` table too, not just `member_habits`. Four partial-upsert call sites on settings.html (lines 67956, 72937, 78308, 80704) silently overwrite rich rows with bare 2-3 field shapes via default Dexie `.put()`. Fixed in `ddc13271` — db.js merge overrides on both stores + long-press-footer recovery gesture in settings.html + sw.js cache bump to `pm97-pf15-merge-upsert-a`. Codified as §23.7.5.
+
+**Issue 2 — Habits write UI lag, 20+ seconds, button doesn't change.** Diagnosed but NOT shipped. SQL query against `daily_habits` showed 12+ writes landing on server today with 1-7s gaps — server side is healthy. Bottleneck is on the client: `habits.html` line 27719 `await VYVEData.writeQueued(...)` awaits the network round-trip BEFORE firing `VYVEHomeState.optimisticPatch(...)`. The "optimistic" UI isn't optimistic. Compounded by §23.5.1 — slow backend EFs mean the await waits for 10-30s in production.
+
+**Issue 3 — Header dashes never resolve.** Day Streak + Total Logged on habits.html show ━ placeholder loaders that never populate. Page IS Dexie-wired but the dashboard refresh that populates these counters hits the same slow EFs as everything else. Confirms §23.5.1's "all client-facing EFs are slow" reading.
+
+**Honest read of where we are:** tonight fixed real bugs (PM-96 exercise.html wiring, PM-97 partial-upsert landmine + recovery gesture). The Premium Feel campaign is NOT done. Three campaigns still ahead:
+
+1. **PF-15.x sweep** — six unwired pages still on REST: movement, sessions, leaderboard, running-plan, certificates, engagement. ~3-4 hours.
+2. **PF-14b bundled-mode Capacitor migration** — 7-day ITP Dexie purge still applies. Mac required. Launch blocker.
+3. **§23.5.1 backend EF latency** — three-week-old finding logged 12 May, never worked on, dominant cause of every "data pulls slow" symptom tonight. The right next session is this one, not PF-15.x or PF-14b, because polishing the client while the backend is this slow is invisible work.
+
+**State at end of PM-97:** vyve-site main HEAD `ddc13271`. SW cache key `vyve-cache-v2026-05-13-pm97-pf15-merge-upsert-a`. Tonight closes with one fewer landmine, one new diagnostic confirmation, and clarity on what the next campaign actually is.
+
 ## 19. Current status — 13 May 2026 PM-96 (PF-14 verification COMPLETE + PF-15 part 2 exercise.html Dexie wiring shipped)
 
 Tonight's session was the diagnostic-led completion of PF-14 device verification and the first PF-15 page-wiring fix. PF-14 part 6 (commit `67711c4e`, late PM-95) added `await VYVESync.hydrate()` to four pages on a guess about why those pages were amber. Dean's walk after that ship showed the patch helped some pages but left Exercise hub still amber and (apparently) regressed Habits + Nutrition. The session was running on speculation.
@@ -1473,6 +1491,20 @@ Not a real regression. The new service worker has to install + activate + claim 
 ### §23.7.4 — Diagnostic-before-fix when a speculative patch fails (PM-96, 13 May 2026)
 
 If a fix doesn't work on the first device walk, stop. Don't ship a second speculative patch. Ship a diagnostic that captures the actual state, walk the device once, read the data, then write one real fix. The PM-95 → PM-96 session boundary demonstrated the cost of the alternative — PF-14 part 6 was a guess-built patch that fixed the right problem on the wrong pages and missed the actual unwired page. The PM-96 protocol shape is: speculative-patch-failed → diagnostic commit → walk → fix commit. No third speculative patch in between. The diagnostic infrastructure is reusable — `dexie-source-indicator.js` now has the event-listener + `_sync_meta`-inspection + PostHog wire baked in, so future hydrate-coverage questions answer themselves with a walk.
+
+### §23.7.5 — VYVELocalDB.<table>.upsert MUST merge by default for member-scoped tables (PM-97 ship night, 13 May 2026)
+
+Default Dexie `.put()` is full-replace, not merge. Partial payloads silently drop every column not in the object literal. PM-95 finding #3 logged this bug class for `member_habits` via two settings.html call sites; tonight's audit revealed the same landmine on `members` via two more settings.html call sites (4 total partial-upsert call sites, all on settings.html, all on these two tables). The user-visible failure: habits.html renders "undefined" for every column when member_habits rows have been corrupted; settings persona/goal changes silently drop name/company/goal_focus from the members row in Dexie.
+
+**The fix shipped tonight:** db.js `member_habits.upsert` and `members.upsert` overrides now do read-modify-write merge inside a Dexie transaction. `Object.assign({}, existing, row)` preserves every column the partial payload didn't supply.
+
+**The audit signal for future pages:** `ripgrep VYVELocalDB\.\w+\.upsert\(` and inspect each object literal. Count the fields. If the count is less than the full row schema and the table is member-scoped (not an activity table), the table needs a merge override in db.js.
+
+**Exempt tables** — these are always called with full rows from the activity-log code paths and full-replace is the correct behaviour: `cardio`, `daily_habits`, `wellbeing_checkins`, `monthly_checkins`, `exercise_logs`, `session_views`, `replay_views`, `nutrition_logs`. The merge override only goes on tables where partial writes are legitimate (settings updates, persona changes, single-field PATCH-like operations).
+
+**Recovery from existing corruption:** if a user's Dexie store already has bare rows from a pre-PM-97 partial upsert, the long-press-version-footer gesture in settings.html clears member_habits + members for that member, resets _sync_meta, and re-hydrates. Exposed as `window.__pf15_resetLocalCache()` for debug. Spike-gated.
+
+**Related but distinct from §23.7.2** — that rule covers hydrate-side failures resolving silently as `true`. §23.7.5 covers write-side failures corrupting silently via default Dexie semantics. Both are "things that look right but aren't" classes of bug, both need diagnostic infra to surface, both deserve §23 codification.
 
 ### §23.5.1 — Member-dashboard EF latency is the dominant client-perceived perf bottleneck (PM-67 ship night, 12 May 2026)
 

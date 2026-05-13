@@ -1,3 +1,60 @@
+## Added 13 May 2026 PM-97 (PF-15 P0 partial-upsert landmine sealed; backend EF latency confirmed as PM-98 P0)
+
+### PM-98 — Backend Edge Function latency campaign [P0 next session]
+
+**§23.5.1 logged 12 May 2026. Three weeks old. Never worked on. Tonight's session confirmed it is the dominant cause of every "data pulls slow" symptom in Dean's live experience. Next session is this campaign, not the PF-15 sweep.**
+
+**Symptoms surfaced in PM-97:**
+- Habits page header "Day Streak" and "Total Logged" show ━ placeholder loaders that never resolve. Page IS Dexie-wired but the dashboard refresh hits slow EFs and never returns.
+- Tapping "Yes" on a habit: button does not change for 20+ seconds. SQL confirms writes ARE landing on server within 1-7s gaps; the bottleneck is the response not making it back to the client in usable time. Compounded by habits.html line 27719 awaiting `VYVEData.writeQueued()` before flipping optimisticPatch.
+- Every Dexie-wired page has fast initial paint from local but slow background refresh — the refresh is invisible work as long as Dexie has good data, but ANY page where the user lingers eventually shows the lag.
+
+**Recap of §23.5.1 findings as of 12 May 2026:**
+- Logs at ~21:30-22:30 UTC 12 May: member-dashboard execution_time_ms 38585/37640/36147/22708/22642/22546/17984/17966/17211 ms. Notifications 24504/12037/5601 ms. monthly-checkin POST 18565 ms. wellbeing-checkin POST 12939 ms. log-activity POSTs 8961/10973/7886 ms.
+- **All non-cron client-facing EFs are slow, not just member-dashboard.**
+- PM-13 parallelised the 23 inline achievement evaluators in `_shared/achievements.ts`. PM-17 cut 4 of 5 this-week queries by reading from `member_home_state`. Both live. Bottleneck is deeper.
+- `warm-ping` EF deployed and running (3 calls 12 May logs: 2949/1993/411 ms). Does NOT prevent observed cold-start latency.
+
+**Likely causes to investigate in order:**
+1. **Supabase Pro EF cold-start behaviour.** Deno isolate spin-up overhead can dominate sub-millisecond inner work. May need warming strategy beyond `warm-ping` (currently every ~5 min via cron? Verify) or migration to Pro+ tier with longer warm pool.
+2. **RLS policy evaluation overhead.** §23 has a rule about `(SELECT auth.email())` wrapping — verify EVERY RLS policy still uses this pattern. A single un-wrapped policy can cause 300-2000ms per-row re-evaluation.
+3. **Trigger cascade.** daily_habits has 8 triggers on INSERT (auto_time_fields, charity_count, counter, enforce_cap, zz_lc_email, zz_sync_activity_log, zzz_mark_home_state_dirty_ins, plus realtime publication). EXPLAIN ANALYZE on a representative INSERT will surface which trigger is the time sink. Same audit on other slow EFs.
+4. **`member_home_state` denormalisation table behaviour.** PM-17 read pattern. Are recomputes O(n²) somewhere? Stale-while-revalidate semantics on the dirty flag?
+5. **PostgREST timeout / connection pool.** Check pgbouncer config + statement_timeout. A connection-exhaustion scenario presents as random slow requests, not consistent slow ones — partially fits the pattern.
+
+**Approach for PM-98:**
+1. Pull last 24h of EF logs via `Supabase:get_logs` or live SQL against analytics table. Confirm current latency distribution.
+2. Pick the slowest EF (probably member-dashboard). EXPLAIN ANALYZE its key queries against representative data.
+3. Audit RLS policies for missed `(SELECT auth.email())` wrapping.
+4. Audit triggers on `daily_habits`, `cardio`, `wellbeing_checkins`, `monthly_checkins`, `members` — measure each via per-trigger benchmarks if possible.
+5. Decide cold-start vs trigger cost vs RLS as primary cause. Fix that one. Re-measure.
+6. Only after backend is fast: consider client-side optimistic-patch refactor (PF-15.write-optimistic) — masking a slow backend with optimistic UI is worse than fixing the backend.
+
+**Estimated length:** Half-day Claude minimum. Real-world calendar: full session, possibly two depending on what cause is.
+
+### PF-15.write-optimistic [P1, sequenced after PM-98]
+
+`habits.html` line 27719 (and presumably same pattern in cardio.html, wellbeing-checkin.html, monthly-checkin.html): `await VYVEData.writeQueued(...)` blocks UI re-render until network round-trip resolves. Architecture intent in the code comments is optimistic UI; implementation isn't.
+
+**Fix shape (deferred until backend is fast — otherwise it just masks the real bottleneck):**
+1. Move `VYVELocalDB.daily_habits.upsert(...)` to BEFORE the writeQueued call. Dexie write is synchronous-feeling and provides the local truth.
+2. Move `VYVEHomeState.optimisticPatch(...)` + `VYVEBus.recordWrite(...)` + `VYVEBus.recordCanonical(...)` + `VYVEBus.publish('habit:logged', ...)` to BEFORE writeQueued.
+3. Remove the `await` from `_habitWriteResult = await VYVEData.writeQueued(...)`. Use `.then(result => { ... 4xx-dead handling ... })` and `.catch(...)` instead.
+4. UI button state flips immediately based on Dexie write success, not server write success.
+5. Existing `habit:failed` revert path handles 4xx eagerly via the bus subscriber. 5xx queues for retry, eventual death flows through `vyve-outbox-dead` event.
+
+Risk: re-tapping the same habit before the network write resolves needs to be handled. Either disable the button until writeQueued resolves (button state separate from "done" rendering), or rely on the existing on_conflict merge-duplicates Prefer header (already in place).
+
+**Audit candidates (same pattern):** cardio.html @ ~40678, wellbeing-checkin.html @ ~41459, monthly-checkin.html (line TBD), any future activity-log page.
+
+**Estimated length:** ~2 hours Claude. Do NOT ship before PM-98 — optimistic UI on a slow backend hides the bug from the user but doesn't fix it.
+
+### PM-97 commits shipped
+
+- `ddc13271` — db.js merge overrides on member_habits + members + settings.html long-press-footer recovery gesture + sw.js cache key bump to pm97-pf15-merge-upsert-a.
+
+Brain commit: this commit you're reading.
+
 ## Added 13 May 2026 PM-96 (PF-15 part 1+2 — diagnostic-led Exercise hub fix; remaining unwired pages logged)
 
 ### PF-15.x remaining unwired pages [P1] (per-page audit needed first)
