@@ -1,103 +1,52 @@
-## 2026-05-13 PM-81 (PF-7 shipped — workouts surfaces Dexie-first reads + thumbnail prefetch on local-first-spike; brain restore after PM-79.1 drift)
+## 2026-05-13 PM-79.2 (PF-28 added — in-progress session + form draft persistence; covers mid-workout app-close + partial form recovery)
 
-Second page-refactor session on the local-first architecture. vyve-site `local-first-spike` now 7 commits ahead of `main` at `97863198`. PM-80 brain content was overwritten earlier this evening by sibling session PM-79.1 — this commit also restores PM-80's changelog entry and the PF-6 SHIPPED state in active.md + playbook, in addition to shipping PF-7.
+Brain-only commit. No vyve-site change.
 
-### Operating mode in effect
+### What was added
 
-Dean off-keyboard for the full session. Single "go" confirmation. Claude proceeded with PF-7 per active.md §3 + the campaign playbook. One architectural concern voiced once during pre-flight (empty-Dexie-rows safety — see below) and folded into the implementation. Mid-session, the brain post-commit fetch surfaced PM-79.1's overwrite of PM-80; reconciliation absorbed without blocking the PF-7 ship.
+**PF-28 — In-progress session + form draft persistence.** Persists transient orchestration state (current exercise pointer, rest timer countdown, sets-completed-in-session, partial form input) to two new LOCAL-ONLY Dexie tables (`_workout_session_state`, `_drafts`). On page load, the surfaces detect any in-progress state and prompt the member to resume rather than starting fresh.
 
-### PF-7 ship — vyve-site `97863198`
+**Why this exists separately from PF-7/PF-9.** Conversational triage with Dean: "Does Dexie mean all workouts work fully offline and nothing's lost if the customer closes the app mid-workout or moves tab?" Walked through what's actually guaranteed vs aspirational. Logged sets/reps/weights are safe — every write hits Dexie at moment of tap, in the sync queue within milliseconds, in Supabase within seconds. PF-1..PF-7 already give that. The genuine gap is *orchestration* state: "I was 3 minutes into a rest timer, on set 2 of 4, on exercise 3 of 5." That state lives in workouts-session.js page memory and is currently not persisted anywhere — closing the app means reopening on the workout's start screen, not where the member left off. Same issue exists for cardio mid-session, and for in-progress forms (weekly check-in free-text, log-food partial entry, custom workout builder).
 
-Four files, one atomic commit on top of PF-6 (`48c4d17e`).
+The benchmark apps members compare against: Strong persists workout session state every few seconds, Strava persists recording state continuously. Without PF-28, VYVE feels a tier below those apps specifically on the "I had to pause mid-workout" case, which is the highest-stakes fitness moment in the app.
 
-**Read path replacements (workouts-programme.js — four sites):**
+### Surfaces covered
 
-1. `loadProgramme()` flipped to read `workout_plan_cache` from Dexie when spike on. One row per member filtered for `is_active`. Column shape identical between Dexie row and REST projection, so all downstream code (`renderProgramme`, `loadLastSessionSummary`, the week/progress calculations) is untouched. Existing localStorage `vyve_programme_cache_${memberEmail}` still front-runs as the synchronous render-from-cache step before either Dexie or Supabase resolves — this is the cross-architecture fast-paint that survives the migration.
-2. `loadAllExercises()` flipped to read `workout_plans` (public catalogue) from Dexie. PF-3 hydrates catalogues with a 24h stale-policy via `_sync_meta.last_pulled_at`, matching the existing localStorage `vyve_exercise_library_v2` 24h TTL — cadence unchanged. localStorage cache still front-runs.
-3. `loadExerciseHistory()` flipped to read `exercise_logs` from Dexie, sorted locally DESC by `logged_at` to match the original `order=logged_at.desc`. The existing `VYVEData.fetchCached` path is preserved as the fall-through, ensuring no regression on the page's cache-first observability.
-4. `loadCustomWorkouts()` flipped to read `custom_workouts` from Dexie, sorted locally DESC by `created_at`. Same `VYVEData.fetchCached` fall-through.
+1. **Active workout session** — `_workout_session_state` table, debounced 5-10s writer during a session, resume prompt on workouts.html load ("Resume your Push A session? Started 8 minutes ago, 3 of 12 sets logged").
+2. **Active cardio session** — same pattern for cardio timer + selection state.
+3. **Form drafts** — `_drafts` table keyed by (member_email, form_id, field), 500ms debounced auto-save from form inputs. Surfaces: weekly-checkin free-text, monthly-checkin free-text, log-food in-progress entries, custom-workout-builder definitions. Stale drafts (>24h) get an explicit restore prompt rather than silent restore to prevent surprise.
 
-**Read replaced in workouts-session.js:** `getTotalWorkoutCount()` switched from a `Prefer: count=exact, Range: 0-0` PostgREST query to `VYVELocalDB.workouts.allFor(memberEmail).length` when spike on. Same non-empty gate.
+### Architecture decisions
 
-**Non-empty gate (architectural pattern).** All five replacements use the same three-way branch:
-1. Spike on AND `VYVELocalDB.isEnabled()` AND `VYVESync.isEnabled()` AND Dexie returned non-empty rows → Dexie path takes the read.
-2. Spike on but Dexie empty (shim, hydrate-failed-for-this-table, or genuinely-empty member) → fall through to the existing Supabase / `VYVEData.fetchCached` path.
-3. Spike off → legacy parallel fetches, byte-identical to pre-PF-7.
+- **Local-only tables, NOT synced to Supabase.** Transient state has no cross-device value, and keeping these tables out of the sync drainer prevents them from clogging the queue. Documented in PF-28's "files touched" section.
+- **Additive `db.version()` migration.** Same pattern as PF-2's schema extension — additive, no risk to existing PF-1/2/3 testers.
+- **New `/drafts.js` helper module** to keep the debounce + restore logic DRY across the 4 form surfaces.
 
-The cost of falling through for a genuinely-empty member is one extra Supabase call. That cost is acceptable for the safety it buys: a brand-new member or a hydrate-failed member never gets stranded with an authoritative-empty render when Supabase has the truth.
+### Sequencing
 
-### Writes already covered by PF-4
+PF-28 slots between PF-9 (cardio refactor) and PF-13 (hydration screen). Reason: the page must already be reading from Dexie before adding transient-state-on-top, so PF-7 (workouts) and PF-9 (cardio) are hard prerequisites. Adding it inside those tasks would muddy their refactor scope; keeping it separate makes both more reviewable.
 
-No write-path changes in PF-7. Every workouts surface that writes — session.js POST `workouts` + POST `exercise_logs`, programme.js PATCH `workout_plan_cache`, builder.js custom_workouts CRUD — goes through `VYVEData.writeQueued`. PF-4's monkey-patched shadow drainer mirrors every queued write into Dexie `_sync_queue` and runs a parallel drainer with 25s interval, exponential backoff, full Layer 4 publish semantics. The write side of workouts is already in the local-first architecture; PF-7 only had to handle the read side.
+### Cost + bucket
 
-### Thumbnail prefetch (PM-77.3 — folded into PF-7 core)
+3-4 hours. Pre-launch. Lewis copy needed for the resume prompts and the stale-draft restore prompt (4 short copy blocks). MVP candidate per the MVP/Premium/V2 framing — the mid-workout-close case is sufficiently visible that shipping without it would be a recurring "is this a real fitness app?" complaint on workouts/cardio surfaces.
 
-After successful programme load on the spike-on path, the new helper `_pf7PrefetchProgrammeThumbnails(programmeData)` walks `programme.weeks[].sessions[].exercises[]`, builds a `Set` of distinct exercise names referenced in the programme, resolves each to a thumbnail URL via the existing `getThumbnailUrl()` lookup against `allExercises`, then fires parallel `fetch(url, {mode:'no-cors', credentials:'omit'})` for each distinct URL. Service worker handles the cache write via standard HTTP caching headers.
+### Operating mode
 
-Fire-and-forget — never blocks render, swallows errors via `.catch(function(){})`. Empty `allExercises` (catalogue not yet in memory on a very cold first visit) no-ops cleanly; the next visit picks up the prefetch once the catalogue load races ahead. `no-cors` mode is deliberate: cross-origin Supabase Storage URLs would fail CORS preflight without it, and we don't need the response body — just the cache write side-effect.
+Dean asked "does Dexie now mean all workouts and stuff fully work offline and no data should be lost if a customer closes an app mid workout or moves tab?" Honest answer required distinguishing data-safety (already true) from orchestration-state-persistence (gap exists, not covered). Dean directive: "Add the task yes." Single atomic commit, no further confirmation.
 
-### Server-compute carve-out preserved (PM-80 principle applied)
+### Brain commit shape
 
-`share-workout` Edge Function stays on the wire on both paths in both programme.js (share/import flow) and session.js (sharing completed session). The EF generates server-side share codes that aren't persistable client data — this is the §3 "server-side compute for things that genuinely need it" carve-out applied for a second time. The principle codified in PM-80 (live evaluator output / server-issued tokens / server-computed aggregates stay on the wire) now has two production cases. Pattern hardening.
+3 files: `playbooks/premium-feel-campaign.md` (PF-28 task definition inserted between PF-27 and "Out of scope"), `brain/active.md` (§5 backlog row 2h added, §8 editorial bumped to PM-79.2), `brain/changelog.md` (this entry prepended).
 
-`platform-alert` telemetry similarly stays on the wire (not member-own data — it's analytics).
+### What's still queued next on the build side
 
-### workouts.html script-chain wiring
-
-Added `<script src="/db.js" defer>` and `<script src="/sync.js" defer>` immediately after `<script src="/vyve-home-state.js" defer>` in workouts.html's body script chain (line 562ish). Matches PF-1's ordering on habits.html and index.html. Without this wiring the workouts page would have `VYVELocalDB` undefined and all the gate checks would fall through to the Supabase path, silently defeating PF-7.
-
-### Sanity checks before commit
-
-Brace/paren balance on all four patched files: zero deltas before vs after, syntax-clean. Fresh SHA refresh immediately before commit: no drift. Post-commit byte-equal verify on live ref: all four md5s match.
-
-Cache key `vyve-cache-v2026-05-13-pm78-pf6-habits-a` → `pm78-pf7-workouts-a`.
-
-### Brain restore — PM-79.1 drift incident
-
-Mid-session, when fetching brain files to prepare the PM-81 commit, the live changelog at HEAD did NOT contain the PM-80 entry. Git history check showed PM-79.1 (commit `9e4cdbf6`) committed at 01:07 UTC against parent `99e066ae` (PM-80 itself at 01:01 UTC) — meaning PM-79.1's author saw the post-PM-80 state and explicitly chose not to preserve the PM-80 changelog entry in their write. The result: PM-80's ~6500-char ship narrative for PF-6 and the autotick carve-out principle were dropped from the live changelog.
-
-PM-79.1 also reverted active.md §2 (live state) back to PM-79 figures and reverted the §5 backlog PF-6 SHIPPED note back to "PF-6 next task", and reverted the playbook PF-6 status from SHIPPED back to QUEUED — while correctly adding the PF-23..PF-27 entries.
-
-This commit reconciles by:
-1. Fetching the PM-80 file states directly via the historical commit blob (`brain/changelog.md`, `brain/active.md`, `playbooks/premium-feel-campaign.md` at ref `99e066ae41`).
-2. Splicing PM-79.1's legitimate additions (the PF-23..PF-27 playbook sections + the corresponding §5 backlog lines in active.md) into the PM-80 base state.
-3. Applying PM-81's PF-7 ship updates on top.
-4. Final changelog order: PM-81 → PM-79.1 → PM-80 → PM-79 → ... (chronological-newest-first preserves both timestamps and the standard descending order).
-
-The drift was harmless to vyve-site (separate repo, separate timeline) but the brain disagreement was significant — PM-80's autotick carve-out principle is the foundation PM-81 builds on for the share-workout / platform-alert carve-out judgements. Without restoration, the principle would have lived only in this changelog entry, with no upstream PM-80 ship narrative to cite.
-
-### Brain hard rule candidate (for the next active.md rebuild)
-
-The PM-80→PM-79.1 incident suggests the brain-commit discipline needs one more guard: **post-commit verification must include a content presence check on at least the previous session's changelog header**. Today's protocol verifies byte-equality of what was just pushed, but not absence-of-regression on prior content. A trivial check — does the live changelog still contain the previous PM-N header that should be there? — would have caught PM-79.1's overwrite within seconds of its push. Recording the candidate here for promotion into active.md §4 on next rebuild or §23 of master.md.
-
-### Verification path for Dean (when he's back)
-
-1. (If not yet done) Merge `local-first-spike` → `main`. Compare: https://github.com/VYVEHealth/vyve-site/compare/main...local-first-spike
-2. Open `online.vyvehealth.co.uk` in Chrome, login.
-3. DevTools console: `localStorage.setItem('vyve_lf_spike','1'); location.reload()`.
-4. Wait for `VYVESync.status()` to show `workout_plan_cache`, `workout_plans`, `exercise_logs`, `custom_workouts`, `workouts` in `hydrated_tables`.
-5. DevTools → Network tab, throttle to **Offline**.
-6. Navigate to `/workouts.html`. The "My Programme" tab should fully render — programme name, week progress, next session card, other sessions — with zero non-cached network calls.
-7. Switch to "My Workouts" — custom workouts list should populate from Dexie. PRs section should populate from Dexie.
-8. Network back on, open an active session, log a few sets, complete the session — instant ack via `writeQueued`. Refresh — state persists via PF-4 drainer eventually catching up on Supabase.
-9. (Optional) DevTools Network with Throttle off → re-open programme → confirm thumbnail prefetch fires (look for parallel image requests after the programme card paints).
-10. `localStorage.removeItem('vyve_lf_spike'); location.reload()`. Workouts page should behave identically to today.
-
-### What's queued next
-
-**PF-8 — nutrition.html + log-food.html Dexie-first reads.** weight_logs (one row per logged_date), nutrition_logs (today's macros), nutrition_my_foods (member-saved foods). TDEE/macros render from local. Open Food Facts via off-proxy stays on the wire (external API, not local-firstable). ~2-3 hours.
+Unchanged: PF-6 (habits.html Dexie-first reads) remains the next vyve-site task. PF-28 doesn't change the build sequence — it slots after PF-9 in the local-first roadmap.
 
 ### Outstanding from prior sessions
 
 Capacitor origin verification (PM-77.1 §3.1 mitigation B) still blocked on Dean reading `~/Projects/vyve-capacitor/capacitor.config.ts`. Carried forward.
 
-### Brain commit shape
-
-3 files: `brain/active.md` (PM-80 base + PF-23..27 §5 entries from PM-79.1 + PM-81 §2/§3/§5/§8 updates), `playbooks/premium-feel-campaign.md` (PM-80 base + PF-23..27 sections from PM-79.1 + PF-7 SHIPPED note), `brain/changelog.md` (PM-81 prepended + PM-79.1 preserved + PM-80 restored above PM-79).
-
 ---
-
-
 
 ## 2026-05-13 PM-79.1 (PF-23..PF-27 added — interactive tutorial + 4 polish tasks scoped into campaign playbook)
 
@@ -154,69 +103,6 @@ PF-6 (habits.html refactor to Dexie-first reads) remains the next vyve-site task
 Capacitor origin verification (PM-77.1 §3.1 mitigation B) still blocked on Dean reading `~/Projects/vyve-capacitor/capacitor.config.ts`. Carried forward.
 
 ---
-
-
-## 2026-05-13 PM-80 (PF-6 shipped — habits.html first Dexie-first read page on local-first-spike)
-
-First page on the local-first architecture to make the full read-path switch. vyve-site `local-first-spike` now 6 commits ahead of `main` at `48c4d17e`, awaiting Dean's merge + verification.
-
-### Operating mode in effect
-
-Dean off-keyboard after a one-paragraph "go" confirmation. Claude proceeded with PF-6 per active.md §3 + the playbook. One architectural concern voiced once during pre-flight (autotick metadata vs Dexie source-of-truth — see decision below) and folded into the implementation rather than blocked on confirmation. No menus presented.
-
-### PF-6 ship — vyve-site `48c4d17e`
-
-Two files, one atomic commit on top of PF-5 (`fa116ef2`).
-
-**Read path replacements (habits.html).** Three Supabase reads replaced with Dexie reads:
-- `/member_habits?...select=habit_id,assigned_by,habit_library(...)` → `VYVELocalDB.member_habits.allFor(memberEmail)`. PF-3 hydrate denormalises the `habit_library` join into flat cols on the Dexie row (`habit_pot`, `habit_title`, `habit_description`, `habit_prompt`, `difficulty`); PF-6 re-wraps them client-side into `r.habit_library` so the existing `.map(r => ({...r.habit_library}))` downstream is byte-identical between paths.
-- `/daily_habits?...activity_date=eq.${todayStr}` → `VYVELocalDB.daily_habits.todayFor(memberEmail, todayStr)`. Returns the same `{habit_id, habit_completed, notes}` projection.
-- `fetchHabitDates()` (365-day distinct date list) → `VYVELocalDB.daily_habits.allDatesFor(memberEmail)`.
-
-**Carve-out preserved: autotick HealthKit metadata stays on the wire.** `fetchDashboardHabits()` continues to hit member-dashboard EF on both spike-on and spike-off paths. `has_rule` / `health_auto_satisfied` / `health_progress` are live HealthKit evaluator output computed per-request by the EF — not persisted server state and therefore not Dexie-able under §3's source-of-truth definition. Call is non-blocking: failure means no autotick badges this render, exactly as the pre-PF-6 fallback. This is the §3 explicit carve-out ("server-side compute for things that genuinely need it") applied to a real case for the first time.
-
-**Spike-gate posture (three-way branch inside the existing `try`).**
-1. Spike on + Dexie has rows for this member → all reads from Dexie. Awaits `VYVESync.hydrate()` first (idempotent — joins in-flight promise or returns immediately). After hydrate, `member_habits.allFor()` is the gate: non-empty → Dexie path.
-2. Spike on + Dexie returned empty → falls through to legacy Supabase parallel fetches. Covers (a) no-op shim still active for any reason, (b) hydrate failed for this table specifically, (c) member genuinely has no habits assigned. Case (c) is harmless: Supabase returns `[]` too and we hit the existing empty-state.
-3. Spike off → legacy Supabase parallel fetches, byte-identical to pre-PF-6.
-
-**Downstream parity verified.** Three consumers of `allDates`: `renderWeekStrip` (filters by current week into a `Set`), `updateStats` → `calcStreak` (resorts internally with `.sort((a,b)=>b-a)`), and `localStorage` cache write (passes through). Dexie's ASC vs Supabase's DESC order is irrelevant to all three. No behavioural drift between paths.
-
-**sw.js cache key.** `pm78-pf5-delta-a` → `pm78-pf6-habits-a`.
-
-### Architectural decision recorded (autotick carve-out)
-
-The first time a PF-N task surfaced data that legitimately doesn't belong in Dexie. Recording the principle for future page refactors: **live evaluator output** (HealthKit rules evaluated per-request, AI recommendations generated per-submit, employer aggregate computations) is the §3 server-compute carve-out. It stays on the wire; it doesn't get persisted to Dexie just to satisfy "local-first for everything". The rule of thumb is: if the value would be stale the moment the device's underlying state changes (e.g., the member walked another 100 steps since the last EF call), it's evaluator output, not persisted state. Dexie holds the persisted writes; the EF computes the evaluator output. Both render together in the same UI.
-
-This will recur in PF-7 (workouts library catalogue items have a server-side "is_recommended_for_member" flag that's evaluator output), PF-8 (TDEE recalc currently runs server-side — could move client-side but doesn't have to), PF-10 (the weekly check-in submit response IS the AI moment — that's a deliberate evaluator wait, not a thing to remove).
-
-### What's queued next
-
-**PF-7 — workouts.html + workouts-session.js + workouts-programme.js Dexie-first reads.** Same template as PF-6 plus thumbnail prefetch per PM-77.3 note. ~3 hours. Self-contained build, no Dean needed for build (verification only).
-
-**Capacitor origin verification still outstanding.** PM-77.1 §3.1 mitigation B still blocked on Dean reading `~/Projects/vyve-capacitor/capacitor.config.ts`. Carried forward.
-
-### Verification path for Dean (when he's back)
-
-1. (If not yet done) Merge `local-first-spike` → `main`. Compare: https://github.com/VYVEHealth/vyve-site/compare/main...local-first-spike
-2. Open `online.vyvehealth.co.uk` in Chrome, login.
-3. DevTools console: `localStorage.setItem('vyve_lf_spike','1'); location.reload()`.
-4. Wait for `VYVESync.status()` to show `member_habits` and `daily_habits` in `hydrated_tables`.
-5. DevTools → Network tab, throttle to **Offline**.
-6. Navigate to `/habits.html`. Page should fully render — habits list populated, today's tick state correct, week strip correct, streak number correct — with **zero** non-cached network calls. (One `member-dashboard` call may still fire for autotick metadata; it'll fail silently and the page renders without autotick badges. That's the deliberate carve-out behaviour.)
-7. Tap a habit → instant tick, no spinner.
-8. Reload page (still offline) → state persists.
-9. Network back on. `localStorage.removeItem('vyve_lf_spike'); location.reload()`.
-10. Page should behave **identically to today** — full Supabase parallel-fetch path, autotick working, no Dexie involvement.
-11. (Brain housekeeping) Read out `~/Projects/vyve-capacitor/capacitor.config.ts` so PF-15 can lock the scheme.
-
-### Brain commit shape
-
-3 files: `brain/active.md` (§2 SHA bumps + last-verified + brain-HEAD line, §3 status flipped to PF-1..6 shipped, §5 PF-6 marked SHIPPED + PF-7 promoted to next, §8 last-patch note), `playbooks/premium-feel-campaign.md` (PF-6 Status → SHIPPED with full ship notes), `brain/changelog.md` (this entry prepended).
-
----
-
-
 
 ## 2026-05-13 PM-79 (PF-4 shadow outbound queue + PF-5 delta-pull cursor shipped to local-first-spike; Realtime merge deferred to post-launch)
 

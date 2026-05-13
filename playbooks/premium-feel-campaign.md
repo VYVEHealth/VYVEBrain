@@ -160,24 +160,7 @@ Format: `PF-N — Title`
 - **Verification:** habits.html opens with zero network activity. Tap habits, see instant ticks. Reload page, see persisted state. Compare against Supabase to confirm writes synced.
 - **Needs Dean:** verification at end of task.
 - **Estimated length:** 2 hours.
-- **Status:** SHIPPED to `local-first-spike` (PM-80, commit `48c4d17e`).
-
-**Ship notes (PM-80):**
-
-Three Supabase reads replaced with Dexie reads: `member_habits` join → `VYVELocalDB.member_habits.allFor` (rows are denormalised at PF-3 hydrate time, then re-wrapped client-side into `r.habit_library` projection so the existing `.map()` downstream is untouched); today's `daily_habits` select → `VYVELocalDB.daily_habits.todayFor`; 365-day date history → `VYVELocalDB.daily_habits.allDatesFor`. Writes were already additive to Dexie via PF-1, so PF-6 is purely a read-path switch.
-
-`fetchDashboardHabits()` deliberately preserved on the wire on both paths — autotick metadata (`has_rule`, `health_auto_satisfied`, `health_progress`) is live HealthKit evaluator output computed per-request by member-dashboard EF, not persistable server state. Non-blocking — if the call fails, the page still renders, just without autotick badges (same fallback as today). This is the §3 carve-out: server-side compute for things that genuinely need it.
-
-Spike-gate posture (three-way branch inside the `try`):
-1. **Spike on AND Dexie has rows for this member** → all reads from Dexie.
-2. **Spike on AND Dexie returned empty** (no-op shim active, or pre-hydrate, or member genuinely has no habits) → fall through to legacy Supabase parallel fetches. If the member genuinely has no habits, Supabase returns `[]` too and we get the existing empty-state for free. No false-empty risk.
-3. **Spike off** → legacy Supabase parallel fetches, identical to pre-PF-6.
-
-Awaited `VYVESync.hydrate()` before reading — `hydrate()` is idempotent and returns the in-flight promise if one's running, so we never race PF-3's initial pull.
-
-Downstream parity verified during build: `calcStreak` re-sorts internally (`unique.sort((a,b)=>b-a)`), so the Dexie ASC vs Supabase DESC date-order difference is irrelevant. `renderWeekStrip` and `updateStats` work on string dates regardless of order. Three downstream consumers, all parity-clean.
-
-Cache key `vyve-cache-v2026-05-13-pm78-pf5-delta-a` → `pm78-pf6-habits-a`. sw.js + habits.html committed atomically.
+- **Status:** QUEUED
 
 ### PF-7 — Page refactor: workouts.html + workouts-session.js + workouts-programme.js
 
@@ -187,31 +170,7 @@ Cache key `vyve-cache-v2026-05-13-pm78-pf5-delta-a` → `pm78-pf6-habits-a`. sw.
 - **Verification:** Open workouts tab cold. Should paint instantly with programme + past sessions. Log a few sets in a session — instant. Reload, confirm persisted.
 - **Needs Dean:** verification at end.
 - **Estimated length:** 3 hours.
-- **Status:** SHIPPED to `local-first-spike` (PM-81, commit `97863198`).
-
-**Ship notes (PM-81):**
-
-Four read sites flipped in workouts-programme.js and one in workouts-session.js:
-
-1. **`loadProgramme()` (workout_plan_cache)** — Dexie's `workout_plan_cache.allFor(memberEmail)` filtered for `is_active`. One active row per member; downstream code unchanged because Dexie row has identical columns to the REST projection. Existing localStorage cross-architecture fast-paint preserved as the synchronous render-from-cache step before either Dexie or Supabase resolves.
-2. **`loadAllExercises()` (workout_plans catalogue)** — Dexie's `workout_plans.allFor()` (catalogue tables are unscoped). PF-3 hydrate runs on the same 24h stale-policy as the existing localStorage TTL, so cadence is unchanged. localStorage cache still front-runs as the synchronous fast-paint.
-3. **`loadExerciseHistory()` (exercise_logs)** — Dexie's `exercise_logs.allFor(memberEmail)`, locally sorted DESC by `logged_at` to match the original REST `order=logged_at.desc`.
-4. **`loadCustomWorkouts()` (custom_workouts)** — Dexie's `custom_workouts.allFor(memberEmail)`, locally sorted DESC by `created_at`.
-5. **`getTotalWorkoutCount()` in workouts-session.js** — Dexie's `workouts.allFor(memberEmail).length` replaces the count-only PostgREST query.
-
-All five use a **non-empty gate** three-way branch: spike-on AND `isEnabled()` AND non-empty rows → Dexie; empty or error → fall through to existing Supabase / VYVEData.fetchCached path; spike-off → legacy. Empty fall-through is the safety: shim case, failed-hydrate-for-this-table case, and genuinely-empty-member case all degrade gracefully (genuinely empty pays one extra Supabase call, acceptable).
-
-**Server-compute carve-out preserved (PM-80 principle):** `share-workout` EF stays on the wire on both paths — generates server-side share codes, not persistable. `platform-alert` telemetry also stays on the wire (not member data).
-
-**Writes:** unchanged. All workouts writes (POST workouts on session complete, POST exercise_logs per set, PATCH workout_plan_cache on programme advance, custom_workouts CRUD in builder) go through `VYVEData.writeQueued`. PF-4's monkey-patched shadow drainer mirrors every queued write into Dexie `_sync_queue` and runs a parallel drainer. PF-7 makes no write-path changes.
-
-**Thumbnail prefetch.** After successful programme load on the spike-on path, collect distinct thumbnail URLs from the programme's exercise references (resolved via `getThumbnailUrl()` against the `allExercises` catalogue) and fire `{mode:'no-cors', credentials:'omit'}` fetch() for each. Service worker handles caching. Fire-and-forget — never blocks render, swallows errors. Empty `allExercises` no-ops cleanly (next visit picks it up once the catalogue is in memory). Cross-origin Supabase Storage URLs go through `no-cors` to avoid CORS preflight overhead.
-
-**workouts.html:** `/db.js` + `/sync.js` added to the deferred script chain immediately after `vyve-home-state.js`, matching the PF-1 ordering on habits.html and index.html.
-
-**Downstream parity verified.** Programme's `exerciseHistory` keyed-map structure derived in `applyRows`; identical regardless of source. `customWorkouts` array consumed by `renderCustomWorkouts` doesn't care about source. `allExercises` filtered post-fetch by the existing `PLAN_HEADER_RE` + `WELLNESS_KW` filter — same input shape either way. Brace/paren balance check on all four patched files post-merge: zero deltas, syntax-clean.
-
-Cache key `vyve-cache-v2026-05-13-pm78-pf6-habits-a` → `pm78-pf7-workouts-a`.
+- **Status:** QUEUED
 
 ### PF-8 — Page refactor: nutrition.html + log-food.html
 
@@ -379,6 +338,38 @@ These are explicitly post-launch work, not blockers. The Mind tab in particular 
 
 ---
 
+## How to operate during this campaign
+
+**Session start (every session):**
+1. Load `brain/active.md` (this is the new "Load VYVE brain" — see active.md §0).
+2. Load this playbook.
+3. Pick up the next QUEUED task (or the IN PROGRESS task if Dean left one running).
+4. Acknowledge: "Picking up PF-N — <title>. Estimated <length>. Needs Dean for <verification>."
+
+**During a task:**
+1. Work the task as defined. If scope drifts, name it and adjust the task in this playbook in the same session.
+2. Commit to feature branch (`local-first-spike` or as-named). Do NOT commit to main during the campaign except for PF-20.
+3. Verify per the task's verification spec.
+
+**Session end (every session):**
+1. Update this playbook with task status (QUEUED → IN PROGRESS → SHIPPED, etc.).
+2. Update active.md §2 (live state snapshot) if anything changed.
+3. Atomic brain commit: active.md + this playbook + (if needed) changelog entry. One commit per session.
+4. If a task shipped: brain commit also includes a changelog entry recording what shipped and the relevant commit SHA on vyve-site.
+
+**If a task fails or surfaces something unexpected:**
+1. Mark task BLOCKED.
+2. Add a note to this playbook explaining what blocked it.
+3. Add a follow-up task (PF-N.1) addressing the blocker.
+4. Continue with the next unblocked task if possible.
+
+**If Dean asks a non-campaign question mid-session:**
+1. Pause the current task cleanly (commit progress to feature branch).
+2. Address the question.
+3. Resume the task or pick up next session.
+
+---
+
 ### PF-23 — Interactive guided tutorial (post-PF-21, target V2)
 
 - **What:** Replace the "land on home, figure it out" first-app-open with a guided tutorial that routes the member through 5 micro-actions, each unlocking an achievement and each landing them on a real product surface. By the end (~2 minutes elapsed), home is visually populated, the member has done the smallest version of every primary surface, and the achievement system has had its proof-of-concept moment.
@@ -444,37 +435,19 @@ These are explicitly post-launch work, not blockers. The Mind tab in particular 
 - **Estimated length:** 3-4 hours. Animation system ~1h, persona variants ~1h, integration on both check-in pages ~1h, copy/polish ~1h.
 - **Status:** QUEUED — pre-launch if bandwidth. Lewis copy gates production.
 
----
+### PF-28 — In-progress session + form draft persistence
 
-## How to operate during this campaign
-
-**Session start (every session):**
-1. Load `brain/active.md` (this is the new "Load VYVE brain" — see active.md §0).
-2. Load this playbook.
-3. Pick up the next QUEUED task (or the IN PROGRESS task if Dean left one running).
-4. Acknowledge: "Picking up PF-N — <title>. Estimated <length>. Needs Dean for <verification>."
-
-**During a task:**
-1. Work the task as defined. If scope drifts, name it and adjust the task in this playbook in the same session.
-2. Commit to feature branch (`local-first-spike` or as-named). Do NOT commit to main during the campaign except for PF-20.
-3. Verify per the task's verification spec.
-
-**Session end (every session):**
-1. Update this playbook with task status (QUEUED → IN PROGRESS → SHIPPED, etc.).
-2. Update active.md §2 (live state snapshot) if anything changed.
-3. Atomic brain commit: active.md + this playbook + (if needed) changelog entry. One commit per session.
-4. If a task shipped: brain commit also includes a changelog entry recording what shipped and the relevant commit SHA on vyve-site.
-
-**If a task fails or surfaces something unexpected:**
-1. Mark task BLOCKED.
-2. Add a note to this playbook explaining what blocked it.
-3. Add a follow-up task (PF-N.1) addressing the blocker.
-4. Continue with the next unblocked task if possible.
-
-**If Dean asks a non-campaign question mid-session:**
-1. Pause the current task cleanly (commit progress to feature branch).
-2. Address the question.
-3. Resume the task or pick up next session.
+- **What:** Persist transient orchestration state to Dexie during active workouts/cardio sessions and in-progress forms, so closing/backgrounding the app mid-action drops the member back exactly where they were. Logged data is already safe via PF-1..PF-7 (every set/rep/weight write hits Dexie at moment of tap). This task closes the gap on UI state: current exercise pointer, rest timer countdown, sets-completed-in-this-session, partial form input. The "Strong" / "Strava" experience: reopen → resume.
+- **Surfaces in scope:**
+  1. **Active workout session.** Persist `{programme_id, session_id, current_exercise_index, current_set_index, timer_remaining_ms, timer_started_at, sets_completed_in_session}` to a new `_workout_session_state` Dexie row every 5-10s during a session via debounced writer. On workouts.html load, query `_workout_session_state` for member's active row — if present, show "Resume your Push A session? (Started 8 minutes ago, 3 of 12 sets logged)" prompt; tap resume restores the orchestration. Tap "start fresh" clears the row.
+  2. **Active cardio session.** Same pattern. Persist `{activity_type, started_at, elapsed_ms, paused}` so a cardio session in progress survives app close. Less critical than workouts (cardio sessions are usually single-action quick-logs) but the pattern is cheap to extend.
+  3. **Form drafts.** Auto-save partial input to a `_drafts` Dexie table keyed by `(member_email, form_id, field)`. Surfaces: weekly-checkin free-text, monthly-checkin free-text, log-food in-progress entry (food searched + macros being adjusted but not yet saved), custom-workout-builder in-progress definition. Debounced 500ms after last keystroke. On form load, populate from `_drafts` if present, offer "you have a draft from earlier — restore?" prompt on long-stale drafts (>24h).
+- **Why this is post-PF-7/9 and not part of them:** PF-7 (workouts refactor) and PF-9 (cardio refactor) make historical reads instant and committed writes safe — that's the foundation. PF-28 sits on top: it's a separate concern (transient state, not historical data) and the pattern is easier to apply once the page is already reading from Dexie. Doing it inside PF-7 muddies the refactor's scope.
+- **Files touched:** `/db.js` (add `_workout_session_state` + `_drafts` tables via `version()` chain — additive, no migration risk), `/sync.js` (these are LOCAL-ONLY tables, not synced to Supabase — transient state has no value cross-device, and avoiding sync keeps them out of the drainer's hot path), `workouts.html` + `workouts-session.js` (debounced state writer + resume prompt on load), `cardio.html` (debounced state writer + resume prompt), `wellbeing-checkin.html` + `monthly-checkin.html` + `log-food.html` + `workouts-builder.js` (draft auto-save + restore prompt). New `/drafts.js` helper module to keep the debounce + restore logic DRY across surfaces. SW cache bump.
+- **Verification:** Workout session — start a session, log 2 sets, force-quit app, reopen, see resume prompt, tap resume, land exactly where you were with timer still in correct state. Cardio session — same flow. Form drafts — start typing in weekly-checkin free-text, switch tabs/close app, reopen, draft restored. Stale draft (>24h) — see restore prompt instead of silent restore (prevents stale state surprise).
+- **Needs Dean:** real-device verification on iPhone (the iOS-suspended-then-killed case is the hard one). Lewis copy for the resume prompts and the stale-draft restore prompt.
+- **Estimated length:** 3-4 hours. `_workout_session_state` + workouts integration ~1.5h, cardio session state ~30min, `_drafts` table + helper module + form integrations ~1.5h, polish + verification ~30min.
+- **Status:** QUEUED — pre-launch. Slots between PF-9 (cardio refactor) and PF-13 (hydration screen). High value-per-hour: the mid-workout-close case is the most "is this a real fitness app?" test surface and gets us level with Strong/Strava on that one moment.
 
 ---
 
