@@ -1,3 +1,128 @@
+## 2026-05-13 PM-93 (Verification-mode audit repair — brain drift caught, PM-91 + PM-92 narratives spliced into main, §4 hard rule on plain-UTF-8 commits codified)
+
+Dean kicked off this session in verification mode after an earlier chat hallucinated, asking for a fresh audit of the brain against live vyve-site state. Audit method: load brain/active.md + playbooks/premium-feel-campaign.md + full brain/changelog.md (via blob API SHA-pinned read because the file is 1.17MB and Contents API returns `encoding=none` empty content for files >1MB); fetch all 14 prompt-listed commit SHAs in parallel via `GITHUB_GET_A_COMMIT`; fetch the three high-risk spike-HEAD files (`home-state-local.js`, `hydration.js`, `perf.js`) + `sw.js` + `auth.js` for spot-check; walk engagement-score math by hand against active.md §5 2.11c spec; sweep `hydration.js` for member-displayable placeholder strings (`TODO/FIXME/XXX/Lorem/<<...>>`); verify PostHog telemetry target and identity-wiring ordering.
+
+### What the audit found
+
+**Code is sound across all three high-risk files.** `home-state-local.js` engagement computation is correct on all 4 components (activity decays linearly to zero at 7 days, consistency at 20+ active days, variety at 5+ types in last 7 days, wellbeing at 10/10) and the base-50 + cap-100 total. Streak code (gaps-and-islands) is a clean direct port of the SQL pattern. `hydration.js` has zero literal placeholder strings — every COPY_TABLE entry is a real member-displayable sentence; HAVEN never-echo hard rule is codified three layers deep (header docstring, COPY_TABLE comment at L88-94, runtime short-circuit at L167-170, plus `goal = null` for HAVEN at L353); `SAFE_ECHO_GOALS` whitelist is hardcoded with explicit `weight` exclusion. `perf.js` v3 has 0 live POSTs to the dead `/functions/v1/log-perf` endpoint (the one occurrence is in the header comment explaining the v2→v3 migration); 8 `posthog.capture` call sites; `session_recording` at 100% with `maskAllInputs:true` + email-unmasked override + post-launch sampling-drop comment in the config.
+
+**Brain drift is real and the prompt anticipated it.** active.md §2 claimed spike HEAD = `707aa3af` (PM-90/PF-30); live API said `11abad83`. Two commits had shipped without brain updates: `302087de` (PM-91/PF-12 — settings.html Dexie-first + 6 optimistic upsert sites) and `11abad83` (PM-92/PF-13 scaffolding — `/hydration.js` 19KB new file). Changelog had zero entries for PM-91 or PM-92. Playbook still listed both PF-12 and PF-13 as `Status: QUEUED`. SW cache key on spike was `pm92-pf13-hydration-a`, not the brain's claimed `pm90-pf30-telem-a`. All five drift symptoms had the same root cause: missing brain commit from the build chat.
+
+**Playbook PF-30 had stale 'PostHog identity pending' language** at lines 542 and 551 that was never edited when PF-30 shipped, even though the L556 Status:SHIPPED line correctly noted identity was already wired. Risk: a future Claude reading top-down would treat identity wiring as open work.
+
+**Hydration.js copy is 'real sentences in draft form' — Dean must finalise 23 entries before launch.** Search tag `COPY_DEAN_FINAL` locates every line. Estimated 30-45 min of Dean writing time. Logged as a new P0 in active.md §5.
+
+**Identity-attribution gap on the fast path (informational, not a launch blocker).** `vyveSignalAuthReady(_fastPathUser)` fires at auth.js L849; `posthog.identify(email)` (inside `vyveCapturePageView`) fires at L904 after the background `getSession` round-trip — typically 200-1000ms later on the fast path. PostHog SDK's $alias handles the late identify cleanly, so events still attribute in the dashboard, but the gap exists. Worth tightening on the next active.md rebuild; not urgent enough for this commit.
+
+### Repair commits in this PM-93 atomic write
+
+1. `brain/active.md` — §2 SHA bumps (5 cells), §3 status block rewrite (PM-90 → PM-92 reality), §4 new hard rule on plain-UTF-8 in `upserts[].content` + post-commit verification fallbacks (codifies PM-86.1 lesson + PM-93 audit lesson about Contents API >1MB returning `encoding=none`), §5 split entry 2.11d into 2.11d (PF-12 SHIPPED) + 2.11e (PF-13 scaffolding SHIPPED) + 2.11f (PF-14-20 remainder), §8 editorial-notes patch trail appended with PM-91/92/93. New active.md size ~38.6KB — exceeds the 35KB ceiling by ~10%. Acceptable for now; trigger a full rebuild at campaign close.
+
+2. `playbooks/premium-feel-campaign.md` — PF-12 Status flipped to SHIPPED with commit SHA + PF-12b carve-out note. PF-13 Status flipped to SCAFFOLDING SHIPPED with full implementation narrative (file location, line counts, three-layer HAVEN guard, SAFE_ECHO_GOALS whitelist contents, COPY_DEAN_FINAL gate, onboarding stash follow-up). PF-30 stale 'currently pending' language struck through at L542 + L551 with replacement noting identity was already wired (discovered during shipping).
+
+3. `brain/changelog.md` — three new headers prepended: PM-91 (PF-12 SHIPPED narrative, reconstructed from live commit `302087de` message), PM-92 (PF-13 scaffolding SHIPPED narrative, reconstructed from live commit `11abad83` message + code-read findings), and this PM-93 audit-repair entry.
+
+### New §23 hard rule (codified PM-93)
+
+**When committing files via `GITHUB_COMMIT_MULTIPLE_FILES`, pass plain UTF-8 text in `upserts[].content`. NEVER pre-encode to base64 — the tool base64-encodes internally and double-encoding is silent (commit succeeds, blob SHAs look normal, content renders as garbage).** The single-file `GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS` does auto-detect base64 input per its schema description; the multi-file tool does NOT. Always plain UTF-8 strings.
+
+**Post-commit byte-equal verification: prefer Contents API base64-decode at commit-SHA ref OR raw at commit-SHA. Two failure modes to avoid:** (a) raw-at-branch is CDN-cached for several minutes — false negatives. (b) Contents API returns `encoding=none` with empty `content` string for files >1MB — false negatives unless you fall through to blob-by-SHA or raw-at-commit-SHA. PM-93 hit case (b) on `changelog.md` reads during this audit (1.17MB file) and worked around it via `GITHUB_GET_A_BLOB` using the SHA from the Contents API response. Codified above in §4.
+
+### What is NOT in this commit
+
+- No code changes — vyve-site untouched. The build chat owns that.
+- No archive/delete of any spike files.
+- No iOS app store / Android Play Store state changes.
+- No member-facing copy changes. Dean still owns the 23 COPY_DEAN_FINAL lines in hydration.js.
+- No PostHog/Sentry DSN ingestion. Sentry still pending DSN from Dean (PF-30b).
+
+### Verification
+
+Pre-commit SHA refresh: confirmed brain/active.md sha=`f3f1b8f0`, brain/changelog.md sha=`74ef2f6b`, playbooks/premium-feel-campaign.md sha=`f84c3640` — no drift while staging this commit. Post-commit verification will use Contents API base64-decode at commit-SHA for the two smaller files, and `GITHUB_GET_A_BLOB` for changelog.md (>1MB, where Contents API returns `encoding=none`). Head-100-chars equality check on each.
+
+---
+
+## 2026-05-13 PM-92 (PF-13 scaffolding SHIPPED — first-login persona-led welcome overlay; copy gate awaits Dean)
+
+This narrative reconstructed PM-93 from live commit `11abad83` (build chat shipped without prepending a changelog entry; PM-93 audit caught the omission). Date/author = build-chat session 13 May 2026 11:38 UTC, team@vyvehealth.co.uk.
+
+PF-13 scaffolding lands on `local-first-spike` at commit `11abad83`. New file `/hydration.js` (19KB, 444 LOC) is the orchestration + lookup-table for the first-login persona-led welcome overlay that displays during the 1-3 second Dexie hydration window on a member's first ever app open.
+
+### Architectural commitments locked in code
+
+**HAVEN gets the generic HAVEN line every time, never a goal echo.** Hard rule codified three layers deep:
+1. Header docstring at L17 explicitly states the rule.
+2. COPY_TABLE comment at L88-94 ("HARD RULE — HAVEN only has a generic line. No goal-echo, ever.") plus a single-line HAVEN entry with no goal variants.
+3. Runtime guard at L167-170: `if (persona === 'HAVEN') return interp(COPY_TABLE.HAVEN.generic, name);` — short-circuits before any goal lookup. Plus L353: `var goal = (persona === 'HAVEN') ? null : resolveGoal();` — even the resolveGoal call is skipped for HAVEN.
+
+**SAFE_ECHO_GOALS whitelist hardcoded** with 7 entries: `build strength`, `improve performance`, `find calm`, `better sleep`, `build a habit`, `understand my body`, `build a routine`. Expandable. Goals not on the list fall through silently to the persona's generic line (no echo). `lose weight` is deliberately absent — weight is never mirrored, even for SPARK who would otherwise have a "Day one starts now" framing.
+
+**Minimum display duration: 1500ms** via `Promise.all([hydrateWait, minWait])`. Hydration completes faster → still waits. Hydration slower → stays visible until done. Prevents the "flash of NOVA-says-hi-then-disappears" jank case.
+
+**Once-only per device** via `localStorage.vyve_hydration_shown` set on dismiss. Subsequent logins skip the overlay entirely (maybeShow returns no-op).
+
+### Persona resolution + animation
+
+Persona lookup precedence: `localStorage.vyve_persona` (canonical, set by onboarding flow — onboarding-side stash patch is a separate follow-up); fall through to Dexie `VYVELocalDB.members.allFor(email)[0].persona` once hydrate fires the event; fall through to generic "Welcome" otherwise.
+
+5 persona-matched animations as inline CSS in this file — NOVA pulsing dot, RIVER breathing circle (4s in / hold / 4s out / hold), SPARK energetic ripple, SAGE slow rotation, HAVEN warm gentle wave. **PF-27 will reuse these for AI-moment loading states** — kept here as the single source of truth.
+
+### Copy table — DRAFT lines tagged for Dean finalisation
+
+23 entries in COPY_TABLE across 5 personas × {generic + goal variants}. Every entry is tagged `// COPY: DEAN TO FINALISE` so a regex sweep on `COPY_DEAN_FINAL` (the search tag in the file header) locates every line. The current draft lines are member-displayable real sentences ("Hi {name}. I'm NOVA. Let's get to work.") — no `TODO:` strings. Scaffolding is safe to merge to main even if launch hits before Dean's editing pass. Estimated 30-45 min of Dean writing time to finalise.
+
+### Telemetry
+
+`posthog.capture('welcome_hydration_shown', { persona, goal_echo_used, ms })` on dismiss. `posthog.capture('welcome_hydration_skipped', { reason })` when `maybeShow` returns early. Falls into the PostHog observability stack from PF-30.
+
+### Files committed
+
+- `/hydration.js` (NEW, 19KB, 444 LOC) — full scaffolding.
+- `index.html` — added `<script src="/hydration.js" defer>` to the script chain after `home-state-local.js`.
+- `sw.js` — cache key bumped `pm90-pf30-telem-a` → `pm92-pf13-hydration-a`.
+
+### Open follow-ups
+
+- **PF-13 copy finalisation** (Dean) — 23 entries in COPY_TABLE tagged COPY_DEAN_FINAL.
+- **Onboarding stash patch** — `onboarding_v8.html` + onboarding EF response handler need to write `localStorage.vyve_persona` + `localStorage.vyve_primary_goal` alongside the auth token on signup-completion. Without it the fresh-device-on-returning-member path uses a 50-100ms Dexie fallback (acceptable, below human perceptual threshold, the swap is imperceptible).
+- **Verification** — Dean to spot-check each persona's tone landing on a real device by signing up 5 fresh test members, completing onboarding for each, logging out and back in, watching the overlay render.
+
+---
+
+## 2026-05-13 PM-91 (PF-12 SHIPPED — settings.html Dexie-first + 6 optimistic upsert sites; certificates/engagement carved out to PF-12b)
+
+This narrative reconstructed PM-93 from live commit `302087de` (build chat shipped without prepending a changelog entry; PM-93 audit caught the omission). Date/author = build-chat session 13 May 2026 11:34 UTC, team@vyvehealth.co.uk.
+
+PF-12 lands on `local-first-spike` at commit `302087de`. Scope adjusted versus the original playbook entry: `settings.html` only in this commit; `certificates.html` + `engagement.html` carved out to PF-12b as a separate follow-up (~1-2 hours). Both are read-mostly EF-backed pages (certificate-serve EF + engagement summary aggregations) where the local-first ROI is lower than the PF-13 scaffolding that needed to land in the same session.
+
+### What flipped
+
+**2 reads flipped to Dexie:**
+- `habit_library` catalogue read — pulled via the public-read cache pattern (Dexie hydrates the catalogue once, every settings page render reads from local).
+- Member habits assignment hydrate (2-up Dexie read of `member_habits` for the active member, used to populate the habit-focus selector).
+
+**6 optimistic upsert sites added at write paths:**
+- Profile name change → `VYVELocalDB.members.upsert` at PATCH-success.
+- Persona switch → `VYVELocalDB.members.upsert` + `VYVELocalDB.persona_switches.upsert` at POST-success.
+- Theme toggle → `VYVELocalDB.members.upsert` at PATCH-success (theme stored on members row).
+- Notification prefs toggle → `VYVELocalDB.members.upsert` at PATCH-success.
+- Goal focus change → `VYVELocalDB.members.upsert` at PATCH-success.
+- Privacy toggle (employer leaderboard visibility) → `VYVELocalDB.members.upsert` at PATCH-success.
+
+Pattern matches PF-9's per-page optimistic upsert (PF-4b Part 2 workaround). The shadow drainer would catch these via the `writeQueued` mirror path, but settings is one of the higher-frequency read-after-write surfaces (especially persona switch, where the next page render is supposed to reflect the new persona's home-state) — per-page upsert closes the visible-state-lag window.
+
+### Files committed
+
+- `settings.html` — script chain + 2 read flips + 6 optimistic upserts.
+- `sw.js` — cache key bumped `pm90-pf30-telem-a` → `pm78-pf12-settings-a`.
+
+### PF-12b follow-up scope
+
+- `certificates.html` Dexie-first reads from `certificates` table (member's earned certificates list). EF-backed pages (certificate-serve EF) — read frequency is low (member visits to view a specific cert). Optimistic upsert needed when a new certificate fires from achievement evaluator.
+- `engagement.html` Dexie-first reads for the activity breakdown table + recent activity log (last 30 days). Engagement score itself already computes locally via `home-state-local.js` from PF-11b — engagement.html mostly needs the historical breakdown.
+
+---
+
 ## 2026-05-13 PM-90 (PF-30 SHIPPED — local-first telemetry redirect on local-first-spike; perf.js v3 + PostHog session replay + dexie/perf events; Sentry deferred to PF-30b pending DSN)
 
 PF-30 lands on vyve-site `local-first-spike` at commit `707aa3af`. The architectural pivot from server-first to local-first means the metrics that defined perf.js v2 — server round-trip timings, cache-first axis as a workaround for SW cache-first nav on iOS — are largely dead. v3 is a redirect, not a rebuild: same gate semantics (PM-67e patterns preserved: sync JWT read, no `getSession()`, defer script, try/catch every block, sentinel proof-of-life, 12s fallback flush), same allowlist (deanonbrown@hotmail.com Capacitor escape hatch), new delivery target (PostHog `capture()` instead of `/functions/v1/log-perf`), new event names matched at the failure modes that actually matter post-migration.
