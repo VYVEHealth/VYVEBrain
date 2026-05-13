@@ -1,0 +1,288 @@
+# Premium Feel Campaign — Local-First Migration
+
+> **Status:** ACTIVE. Launched 13 May 2026 PM-77. Target launch 31 May 2026.
+> **Architectural commitment:** see `brain/active.md` §3 (IMMUTABLE).
+> **Operating mode:** see `brain/active.md` §0.
+
+---
+
+## What we're building
+
+VYVE migrates from a server-first architecture (every page fetches data from Supabase Edge Functions) to a local-first architecture (every page reads from on-device Dexie/IndexedDB; Supabase is the background sync target).
+
+After this campaign:
+- Every tap reads from local DB in ~1ms instead of waiting on a 300-7000ms EF call.
+- Members never see "loading" states for their own data after first login.
+- The app works fully offline; writes queue and sync when the network returns.
+- Cross-device sync still works via Supabase Realtime (single-device-per-user is the working assumption, but multi-device is supported).
+- The feel target: indistinguishable from native apps like Apple Notes, Things 3, or Linear.
+
+---
+
+## The migration shape (high level)
+
+**Local DB:** Dexie wrapping IndexedDB.
+- Tables mirroring relevant Supabase tables: members, member_habits, daily_habits, workouts, exercise_logs, custom_workouts, cardio, nutrition_logs, weight_logs, session_views, replay_views, wellbeing_checkins, monthly_checkins, weekly_goals, achievements, certificates.
+- Plus a `_sync_queue` table for outbound writes that haven't reached Supabase yet.
+- Plus a `_sync_meta` table for tracking last-pulled timestamps per table.
+
+**Sync layer:** custom JavaScript module (`/sync.js` in vyve-site), no third-party service.
+- On login: pull all member-scoped data from Supabase via existing EF or direct PostgREST. Hydrate Dexie. Mark `_sync_meta` timestamps.
+- On every local write: insert row into Dexie + insert entry into `_sync_queue`. The queue drains in the background via the existing `vyve-offline.js` outbox infrastructure, repointed to write directly to Supabase tables (or via existing EFs where they do useful work like generate AI recommendations).
+- On Supabase Realtime events: merge the incoming change into Dexie, publish a bus event so any open pages re-render.
+
+**Page refactor:** every member-data-rendering page swaps `fetch from EF` for `query Dexie`.
+
+**What stays on the server:**
+- AI persona/plan/recommendation generation (Anthropic API calls)
+- Cron-driven achievements + certificates
+- Leaderboards (cross-member data)
+- Employer aggregate reporting
+- Workout/habit/food library catalogues (read-on-demand, cached locally on use)
+
+**What gets removed eventually (post-launch cleanup):**
+- `vyve_home_v3_<email>` localStorage cache (Dexie replaces it)
+- `vyve_habits_cache_v2` (Dexie replaces it)
+- `vyve_programme_cache_<email>` (Dexie replaces it)
+- `vyve_wt_cache_<email>` (Dexie replaces it)
+- `vyve_food_diary_<email>:<date>` (Dexie replaces it)
+- `member_home_state` table dependence (Dexie computes the dashboard fields client-side)
+- The PWA install prompt code in index.html (legacy, not relevant to Capacitor)
+
+---
+
+## Task backlog
+
+Each task is self-contained. A fresh Claude can pick up any task by reading this playbook + active.md, and ship it in one session. Tasks are sequenced: do them in order unless explicitly marked parallel.
+
+Format: `PF-N — Title`
+- **What:** plain-English description
+- **Files touched:** what gets created or modified
+- **Verification:** how to know it worked
+- **Needs Dean:** what (if anything) requires Dean's presence
+- **Estimated length:** rough session-window
+- **Status:** QUEUED / IN PROGRESS / SHIPPED / BLOCKED
+
+### PF-1 — Dexie spike: daily_habits end-to-end
+
+- **What:** Prove the architecture works. Install Dexie on a feature branch, create a minimal schema with one table (daily_habits + member_habits). Wire habits.html to read habits from Dexie and write completions to Dexie. On write, queue to Supabase via existing log-activity EF. On home.html, read the "today's habits" pill count from Dexie. Test the flow end-to-end: tap a habit on habits.html, see the pill update instantly on home.html.
+- **Files touched:** new `/sync.js` (sync layer scaffolding, only daily_habits + member_habits scope), new `/db.js` (Dexie schema declaration), `habits.html` (swap reads/writes to Dexie), `index.html` (pill reads from Dexie), `sw.js` cache bump. Feature branch `local-first-spike` off main, not main.
+- **Verification:** node --check on new JS files. Manual: log in to the deployed feature branch, tap a habit, see instant tick, navigate to home, see pill count incremented without any network round trip. Check Supabase that the row also landed there (background sync).
+- **Needs Dean:** session 1 timing. Dean opens the feature-branch URL and verifies the flow visually. If the flow works, decision is made to continue with Dexie. If it doesn't, decision is made to pivot to localStorage-with-aggressive-caching (Option A from the 13 May design conversation).
+- **Estimated length:** one 3-6 hour evening session.
+- **Status:** QUEUED
+
+### PF-2 — Dexie schema for all member-scoped tables
+
+- **What:** Define the full Dexie schema covering every member-data table we need locally. members, member_habits, daily_habits, workouts, exercise_logs, custom_workouts, cardio, nutrition_logs, weight_logs, session_views, replay_views, wellbeing_checkins, monthly_checkins, weekly_goals, achievements (subset), certificates (metadata only). Plus `_sync_queue` and `_sync_meta` infrastructure tables.
+- **Files touched:** `/db.js` (schema declarations with proper indexes for the queries we'll run). Likely also `/sync.js` (extend to handle the new tables).
+- **Verification:** node --check. Open the deployed feature branch in browser dev tools → Application → IndexedDB → confirm all tables exist with correct indexes.
+- **Needs Dean:** nothing actively. Self-contained build task.
+- **Estimated length:** 1-2 hours, can run in a commute/lunch window.
+- **Status:** QUEUED
+
+### PF-3 — Sync engine: pull-on-login
+
+- **What:** Build the initial hydration logic. On login, after `vyveAuthReady` fires, pull all member-scoped data from Supabase into Dexie. Use the existing member-dashboard EF for the bulk of it (it already returns most of the data the member needs); supplement with PostgREST direct queries for tables not in the dashboard payload. Mark `_sync_meta.last_pulled_at` per table. Idempotent so it can re-run safely.
+- **Files touched:** `/sync.js` (hydration function), `/db.js` (if any schema tweaks emerge), `auth.js` (call sync.hydrate() after `vyveSignalAuthReady`).
+- **Verification:** Fresh login on feature branch, dev tools → IndexedDB → confirm every table populated with member's actual data. Compare row counts to what the EF returned.
+- **Needs Dean:** nothing actively.
+- **Estimated length:** 2-3 hours.
+- **Status:** QUEUED
+
+### PF-4 — Sync engine: push-on-write + queue drain
+
+- **What:** Build the outbound sync. Every local write inserts into `_sync_queue`. A drain loop runs every few seconds (or immediately when online), takes queued items, sends them to Supabase via the existing log-activity / wellbeing-checkin / monthly-checkin EFs (or direct PostgREST for tables without dedicated EFs). On success, deletes the queue entry. On 4xx error, dead-letters. On 5xx/network error, retries with exponential backoff.
+- **Files touched:** `/sync.js` (drain loop + retry logic). Likely repoints or replaces parts of `vyve-offline.js` outbox.
+- **Verification:** Toggle airplane mode mid-write. Confirm write lands in Dexie + `_sync_queue`. Re-enable network. Confirm queue drains within seconds. Confirm row appears in Supabase.
+- **Needs Dean:** nothing actively for build. End-of-task: Dean verifies airplane-mode behaviour on his device.
+- **Estimated length:** 3-4 hours.
+- **Status:** QUEUED
+
+### PF-5 — Sync engine: Realtime merge
+
+- **What:** Wire Supabase Realtime subscriptions to merge incoming events into Dexie. When another device writes a row, Realtime delivers it, we insert/update in Dexie, publish the appropriate bus event so any open page re-renders. Suppress own-echo using the existing `recordWrite` infrastructure from Layer 2.
+- **Files touched:** `/sync.js` (Realtime subscriber setup). Likely repoints or replaces parts of `bus.js`'s `installTableBridges` from Layer 2.
+- **Verification:** Open the app on two browsers (same account). Add a habit on one. Confirm it appears on the other within a few seconds.
+- **Needs Dean:** verification step at end.
+- **Estimated length:** 2-3 hours.
+- **Status:** QUEUED
+
+### PF-6 — Page refactor: habits.html
+
+- **What:** Refactor habits.html to read entirely from Dexie. No more `fetch from EF`. Writes (log/undo habit) go through the sync layer. Streak/today's count/week strip all computed from local data on every render.
+- **Files touched:** `habits.html`. Possibly `/sync.js` tweaks if specific query patterns emerge. SW cache bump.
+- **Verification:** habits.html opens with zero network activity. Tap habits, see instant ticks. Reload page, see persisted state. Compare against Supabase to confirm writes synced.
+- **Needs Dean:** verification at end of task.
+- **Estimated length:** 2 hours.
+- **Status:** QUEUED
+
+### PF-7 — Page refactor: workouts.html + workouts-session.js + workouts-programme.js
+
+- **What:** Same pattern. Read 8-week programme from Dexie. Read past sessions from Dexie. Read PRs from Dexie. Logging sets writes through to Dexie + queue. The workout library (catalogue) stays on Supabase but specific workouts cache to Dexie on first access.
+- **Files touched:** `workouts.html`, `workouts-session.js`, `workouts-programme.js`, `workouts-builder.js`, `workouts-config.js`. SW cache bump.
+- **Verification:** Open workouts tab cold. Should paint instantly with programme + past sessions. Log a few sets in a session — instant. Reload, confirm persisted.
+- **Needs Dean:** verification at end.
+- **Estimated length:** 3 hours.
+- **Status:** QUEUED
+
+### PF-8 — Page refactor: nutrition.html + log-food.html
+
+- **What:** Read TDEE, weight log, water log, today's macros from Dexie. Writes (log food, log weight, log water) go through sync layer. Food search continues to hit Open Food Facts via off-proxy (that's the external API, can't be local). My-foods (member's saved foods) cached locally.
+- **Files touched:** `nutrition.html`, `log-food.html`. SW cache bump.
+- **Verification:** Open nutrition tab cold. Should paint instantly. Log a food item — instant. Reload, persisted.
+- **Needs Dean:** verification.
+- **Estimated length:** 2-3 hours.
+- **Status:** QUEUED
+
+### PF-9 — Page refactor: cardio.html + movement.html
+
+- **What:** Read cardio history from Dexie. Writes through sync. Quick-add path on movement.html same pattern.
+- **Files touched:** `cardio.html`, `movement.html`. SW cache bump.
+- **Verification:** Cardio tab opens instantly. Log a session — instant. Reload, persisted.
+- **Needs Dean:** verification.
+- **Estimated length:** 1-2 hours.
+- **Status:** QUEUED
+
+### PF-10 — Page refactor: weekly-checkin + monthly-checkin
+
+- **What:** The activity summary on these pages (habits/workouts/cardio/sessions counts for the period) now computed from local Dexie data on render. Submit still goes through the wellbeing-checkin EF / monthly-checkin EF because those EFs run AI to generate recommendations — that AI moment is the deliberate "AI is thinking" wait. Submit response gets stored in Dexie. Subsequent views read from Dexie instantly.
+- **Files touched:** `wellbeing-checkin.html`, `monthly-checkin.html`. SW cache bump.
+- **Verification:** Open weekly check-in tab. Activity summary populated instantly (no fetch wait). Submit the check-in — see deliberate "generating recommendations" state with proper framing. Recommendations land. Reload, persisted.
+- **Needs Dean:** verification.
+- **Estimated length:** 2 hours.
+- **Status:** QUEUED
+
+### PF-11 — Page refactor: index.html (home dashboard)
+
+- **What:** The big one. Home reads everything from Dexie. Engagement score computed client-side. Streak from local. Today's habits pill from local. Weekly goals from local. Progress tracks from local. The collective charity total still pulls from Supabase periodically (it's cross-member data) but caches locally and renders from cache.
+- **Files touched:** `index.html`. SW cache bump.
+- **Verification:** Open home tab cold. Should paint within ~100ms with all real numbers. Tap into Habits, complete one, return to home — pill should be incremented without any visible fetch.
+- **Needs Dean:** verification — this is the most visible win, worth demoing properly.
+- **Estimated length:** 3 hours.
+- **Status:** QUEUED
+
+### PF-12 — Page refactor: settings.html + remaining surfaces
+
+- **What:** Settings reads/writes through Dexie (profile, persona, theme, notification prefs). Certificates page reads earned-certificates list from Dexie. Engagement page reads everything from Dexie.
+- **Files touched:** `settings.html`, `certificates.html`, `engagement.html`. SW cache bump.
+- **Verification:** Each page opens instantly. Settings changes persist locally + sync.
+- **Needs Dean:** verification.
+- **Estimated length:** 2 hours.
+- **Status:** QUEUED
+
+### PF-13 — First-login hydration polish
+
+- **What:** Build a proper "preparing your VYVE" screen for the one-time first-login hydration. On-brand, warm, not "loading...". Shows during the few-second window where Dexie hydrates from Supabase. Since all data is wiped at launch (per active.md §0), every member sees this once and never again.
+- **Files touched:** new `/onboarding-hydration.html` or modal injection on index.html. Coordinate with the onboarding EF flow.
+- **Verification:** Sign up as a fresh test member, complete onboarding, land in app, see polished hydration screen for 1-3 seconds, then app is fully populated.
+- **Needs Dean:** Lewis copy approval for the screen text.
+- **Estimated length:** 2 hours.
+- **Status:** QUEUED — BLOCKED on Lewis copy.
+
+### PF-14 — Capacitor device verification
+
+- **What:** Build and install the iOS Capacitor app from the local-first branch to Dean's iPhone. Run through every member-facing flow on the real device. Verify Dexie behaviour inside WKWebView (storage isolated from Safari, persists across app restarts, survives backgrounding). Check airplane-mode behaviour, queue drain on reconnect.
+- **Files touched:** none — this is a verification task, not a code change.
+- **Verification:** Real-device usage of every flow. Look for jank, missing data, anything that doesn't feel native.
+- **Needs Dean:** Dean must physically install on iPhone and use it. Whole task is Dean's hands-on test plus Claude triage of anything that surfaces.
+- **Estimated length:** 2 hours of Dean using the app + however long fixes take.
+- **Status:** QUEUED
+
+### PF-15 — Hardening + edge cases (Sunday session)
+
+- **What:** Address everything that surfaced during PF-14 verification. Plus: storage-quota handling (what happens if Dexie hits a limit, how to recover), corrupt-DB recovery (if IndexedDB gets into a bad state, force-resync from Supabase), schema migration scaffolding (so future schema changes can be applied to existing local DBs without losing data), offline-online edge cases.
+- **Files touched:** TBD based on what PF-14 surfaces. Likely `/sync.js` extensions, `/db.js` migration logic, possibly a hidden /reset endpoint.
+- **Verification:** Stress-test scenarios — fill the local DB, corrupt a row deliberately, schema-change mid-session, etc.
+- **Needs Dean:** verification.
+- **Estimated length:** 4-6 hours.
+- **Status:** QUEUED
+
+### PF-16 — Skeleton screens + empty state polish
+
+- **What:** Replace the "unidentified habits" garbage state on habits.html (and any similar across the app) with proper skeleton screens that match the final layout. Polish the genuinely-empty states (first time member opens a page with no data) to feel intentional.
+- **Files touched:** various HTMLs + CSS.
+- **Verification:** Visual review across the app. No "loading…" garbage anywhere.
+- **Needs Dean:** Lewis copy approval where appropriate.
+- **Estimated length:** 2-3 hours.
+- **Status:** QUEUED
+
+### PF-17 — Haptic feedback
+
+- **What:** Wire Capacitor's Haptics plugin to all member-facing writing surfaces. Light tap on habit complete. Success haptic on workout session complete. Subtle feedback on every meaningful action. iOS only initially (Android haptics via the same plugin but quality varies by device).
+- **Files touched:** various HTMLs that have writing surfaces. New `/haptics.js` helper module.
+- **Verification:** Real iPhone usage. Every action should feel physically responsive.
+- **Needs Dean:** device testing.
+- **Estimated length:** 1-2 hours.
+- **Status:** QUEUED
+
+### PF-18 — Error handling polish
+
+- **What:** Replace red alert boxes with warm, helpful error states. "Hmm, we couldn't reach the server. We've saved your changes and will sync when you're back online." Coordinate with the sync layer's failure paths.
+- **Files touched:** various.
+- **Verification:** Trigger failures (block fetch in dev tools), confirm errors feel handled not broken.
+- **Needs Dean:** copy approval.
+- **Estimated length:** 1-2 hours.
+- **Status:** QUEUED
+
+### PF-19 — Pre-launch cleanup commit
+
+- **What:** Remove legacy code: localStorage caches (vyve_home_v3, vyve_habits_cache_v2, etc.) that Dexie has superseded. Remove the PWA install prompt code in index.html. Remove the legacy event-bus subscribers that Layer 4 added but are no longer needed (the bus stays as a notification system, but several specific subscribers become redundant). Update master.md sections that reference the old architecture.
+- **Files touched:** various. Probably a big-ish commit.
+- **Verification:** Full regression test of every flow.
+- **Needs Dean:** verification, plus go/no-go before merging into main.
+- **Estimated length:** 2-3 hours.
+- **Status:** QUEUED
+
+### PF-20 — Merge local-first branch into main
+
+- **What:** The big switch. Merge `local-first-spike` (or whatever the branch is called by then) into main. Coordinated SW cache bump. Production goes live with local-first.
+- **Files touched:** none in this task — it's the merge itself.
+- **Verification:** Production smoke test on Dean's device, immediate post-merge.
+- **Needs Dean:** present at merge moment, ready to roll back if anything looks wrong.
+- **Estimated length:** 30 minutes.
+- **Status:** QUEUED — blocks on all PF-1 through PF-19.
+
+---
+
+## How to operate during this campaign
+
+**Session start (every session):**
+1. Load `brain/active.md` (this is the new "Load VYVE brain" — see active.md §0).
+2. Load this playbook.
+3. Pick up the next QUEUED task (or the IN PROGRESS task if Dean left one running).
+4. Acknowledge: "Picking up PF-N — <title>. Estimated <length>. Needs Dean for <verification>."
+
+**During a task:**
+1. Work the task as defined. If scope drifts, name it and adjust the task in this playbook in the same session.
+2. Commit to feature branch (`local-first-spike` or as-named). Do NOT commit to main during the campaign except for PF-20.
+3. Verify per the task's verification spec.
+
+**Session end (every session):**
+1. Update this playbook with task status (QUEUED → IN PROGRESS → SHIPPED, etc.).
+2. Update active.md §2 (live state snapshot) if anything changed.
+3. Atomic brain commit: active.md + this playbook + (if needed) changelog entry. One commit per session.
+4. If a task shipped: brain commit also includes a changelog entry recording what shipped and the relevant commit SHA on vyve-site.
+
+**If a task fails or surfaces something unexpected:**
+1. Mark task BLOCKED.
+2. Add a note to this playbook explaining what blocked it.
+3. Add a follow-up task (PF-N.1) addressing the blocker.
+4. Continue with the next unblocked task if possible.
+
+**If Dean asks a non-campaign question mid-session:**
+1. Pause the current task cleanly (commit progress to feature branch).
+2. Address the question.
+3. Resume the task or pick up next session.
+
+---
+
+## Out of scope for this campaign
+
+- Layer 6 SPA shell — dropped (local-first delivers the perceived speed gains; SPA shell is no longer worth the rewrite).
+- PM-71/PM-71b dashboard payload trim — becomes mostly obsolete after the migration (the dashboard EF gets called rarely).
+- PM-72 materialise achievement_progress — same, becomes obsolete.
+- PM-73 home redesign — deferred until after launch + data on what the simplified home payload should look like.
+- Backend EF perf work (warm-keeping cron, denormalisation work) — becomes mostly obsolete after migration.
+
+These are all NOT to be worked on during this campaign. Post-launch we may revisit any of them. During the campaign they are deferred.

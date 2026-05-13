@@ -1,3 +1,65 @@
+## 2026-05-13 PM-77 (Premium Feel Campaign launched — local-first migration via Dexie; active.md rebuilt; Layer 5/6 work closed/superseded)
+
+**The architectural pivot.** After 4 sessions of work on PM-67e/74/75/76 (the perf telemetry + auth-loop fix cycle), Dean named the underlying problem: the app does not feel premium. Every tap waits on a server round trip because the rendering source is the Supabase Edge Function response, not on-device state. Layers 1-4 of the prior premium-feel campaign built optimistic UI + cross-device sync but did not change the fundamental rendering source. The work was correct but not load-bearing for the "feels instant" requirement.
+
+This session's conversation explored the design space honestly:
+
+1. Identified that what Dean wants (Apple-Notes / Things-3 / Linear feel) requires local-first architecture, not server-first with caches.
+2. Walked through the candidate sync engines (RxDB, Dexie, PowerSync, Replicache). Settled on Dexie + custom sync layer for the single-device-per-user assumption, free licensing, and mature tooling.
+3. Walked through every member-facing page to determine what goes local (~14 of 17 surfaces, fully) versus what stays server-bound (leaderboard cross-member data, AI generation moments, live session chat).
+4. Identified that the original 7-layer roadmap had only 6 layers, that Layers 1-5 are closed and Layer 6 (SPA shell) is now superseded by local-first delivering the same perceived speed gains.
+5. Dean named the recurring pattern of being moved through multiple architectural positions across the project's life. Acknowledged honestly: each session including this one gave advice based on the immediate question without enough push to interrogate the strategic position. The pattern of progress-then-pivot has been real, not imagined.
+
+**The locked architectural commitment** (see master.md §24 added in this commit + active.md §3): VYVE is a Capacitor-wrapped native iOS+Android app with web fallback. On-device Dexie is the source of truth for the member's own data. Supabase is the sync target + server-side compute layer for things that genuinely need it (AI, cron jobs, cross-member aggregates). Future Claudes may not propose pivoting away from this without producing a specific measured problem this architecture can't solve. Locked.
+
+**Brain restructure in this commit:**
+
+1. **`brain/active.md` — full rebuild from scratch.** Previous version was 127KB (drifted from 30KB ceiling) and still referenced the closed Layer 2 Realtime bridge campaign as the active workstream. New active.md is 15KB. Contains: operating mode (8 locked decisions), source-of-truth chain, live state snapshot (post-PM-76), Premium Feel Campaign as §3 active workstream, working-set §23 rules (15 most load-bearing), P0/P1 backlog, fetch-on-demand lookup table.
+
+2. **`playbooks/premium-feel-campaign.md` — NEW.** 20 tasks (PF-1 through PF-20) sequenced from Dexie spike through final main-merge. Each task self-contained, declares what files it touches, what Dean needs to verify, estimated length, current status. The working document for this campaign — read on every session start during the campaign.
+
+3. **`brain/master.md` — new §24 "Premium Feel Campaign (active)".** Existing §24 ("Key references, credentials & URLs") renumbered to §25. The new §24 is the canonical statement of the architectural commitment that survives the next master.md rewrite.
+
+4. **`tasks/backlog.md` — prepend entry.** Closes PM-67e/74/75/76 work as superseded. Closes Layer 6 (SPA shell) as dropped. Queues PF-1+ as the active workstream. Marks PM-71/72/73 as deferred-during-campaign.
+
+5. **`playbooks/session-loading-protocol.md` — update.** The protocol already specified loading active.md + relevant playbook + last 3 changelog entries (not full master/changelog/backlog). But active.md hadn't been kept current and the project prompt was still loading the full files. Updated to make the default-playbook reference the new campaign instead of the closed Layer 1c work.
+
+**What's preserved from prior work, what's superseded:**
+
+Preserved (still useful in local-first architecture):
+- The event bus (`bus.js`) — becomes the local DB change notifier instead of the optimistic-UI propagator.
+- Layer 2 Realtime bridges — get repointed to merge into Dexie instead of merging into per-page caches.
+- Layer 4 optimistic patterns — simplify because the local DB write IS the optimistic patch; no separate cache patching needed.
+- The offline outbox infrastructure — gets repointed to drain `_sync_queue` instead of POSTing to log-activity.
+- §23 hard rules around commit discipline, audit method, RLS wrap, auth state-change handler, 401 redirect signOut — all still load-bearing.
+
+Superseded (will be removed or simplified in PF-19 cleanup):
+- `vyve_home_v3_<email>` localStorage cache (Dexie replaces it).
+- `vyve_habits_cache_v2` (Dexie replaces it).
+- `vyve_programme_cache_<email>` (Dexie replaces it).
+- `vyve_wt_cache_<email>` (Dexie replaces it).
+- `vyve_food_diary_<email>:<date>` (Dexie replaces it).
+- `member_home_state` dependence on the client side (Dexie computes the dashboard fields client-side, though `member_home_state` continues to exist server-side for the dashboard EF which gets called rarely post-migration).
+- PWA install prompt code in index.html (legacy, not relevant to Capacitor).
+- Several Layer 1c subscriber wirings that exist only because per-page caches needed coordination — Dexie eliminates the need for several specific cross-page subscribers.
+
+**The 5 sessions of Layers 1-4 work** built the event bus + optimistic UI + Realtime sync. About 60% of that work remains directly load-bearing under the new architecture. The other 40% (per-page cache patching, snapshot capture, revert subscribers, writeQueued inflight tracker pattern) becomes simpler or unnecessary. Cleanup will be a single commit (PF-19) post-migration; not a re-architecture.
+
+**Out of scope for the campaign** (deferred until post-launch):
+- Layer 6 SPA shell — dropped permanently as not worth the rewrite cost once local-first delivers most of the perceived-speed gains.
+- PM-71/PM-71b dashboard payload trim — becomes obsolete after migration.
+- PM-72 materialise achievement_progress — same.
+- PM-73 home redesign — separately revisit after launch.
+- Backend EF perf work (warm-keeping cron, denormalisation) — becomes obsolete after migration.
+
+**No vyve-site commit this session.** This is a brain-only commit. Next session opens with PF-1 (Dexie spike) which produces the first vyve-site commit of the campaign on a feature branch.
+
+**The token-efficiency win.** Old session load: ~1.65MB of brain context (master 360KB + changelog 1MB + backlog 290KB). New session load: ~50-80KB (active.md 15KB + campaign playbook 20KB + last 3 changelog entries via grep ~30KB). Roughly 20× reduction. The session-loading-protocol from PM-37-Setup specified this in May but the discipline hadn't been enforced; this commit enforces it by rebuilding active.md to actually be useful and updating the protocol's references.
+
+**The continuity protection.** Future Claudes that load active.md at session start inherit: the locked architectural commitment, the operating mode (Claude leads, Dean drives), the current campaign status, the next task ID. Drift becomes structurally harder. The pattern of "each Claude session reinvents the strategy" is broken because the brain explicitly carries the strategic position forward as a contract.
+
+---
+
 ## 2026-05-12 PM-75 + PM-76 (perf.js v2 rebuild ships, soak passes, promotion to 20 PM-56 pages — Layer 5 unblocked)
 
 Closes the Layer 5 baseline-capture work that failed at PM-67d ship night and triggered the PM-67e auth-loop incident. Two atomic vyve-site commits this session, separated by a 10-minute soak window verified against the live `perf_telemetry` table.

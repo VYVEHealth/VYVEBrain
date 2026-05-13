@@ -1,3 +1,38 @@
+## Added 13 May 2026 PM-77 (Premium Feel Campaign launched; Layer 5/6 work closed/superseded; PM-67/71/72/73 deferred during campaign)
+
+- ✅ **CLOSED — PM-67e** (perf.js rebuild). Shipped via PM-75 + PM-76 yesterday. Layer 5 telemetry capture is live across 20 portal pages.
+
+- ✅ **CLOSED — PM-75 + PM-76.** Telemetry rebuild + production promotion. Closed yesterday.
+
+- 🛑 **SUPERSEDED — Layer 6 (SPA shell).** Dropped permanently. Local-first migration (this campaign) delivers the same perceived-speed gains without the rewrite cost. The Layer 5 data window that was originally going to gate this decision is no longer load-bearing — we have a better architectural answer.
+
+- ⏸ **DEFERRED DURING CAMPAIGN — PM-71** (dashboard payload pre-fetch). Becomes mostly obsolete after local-first migration because the dashboard EF gets called rarely post-migration. Not deleted from the backlog, just not worked on until campaign closes.
+
+- ⏸ **DEFERRED DURING CAMPAIGN — PM-71b** (dashboard payload trim, gated on PM-73). Same reasoning — obsolete after migration.
+
+- ⏸ **DEFERRED DURING CAMPAIGN — PM-72** (materialise achievement_progress). Same — obsolete after migration.
+
+- ⏸ **DEFERRED DURING CAMPAIGN — PM-73** (home redesign). Decoupled from the campaign — revisit post-launch when we have data on what the simplified home payload should look like. The v2 mockup at `playbooks/home-redesign-v2-mockup.html` stays parked.
+
+- ⏸ **DEFERRED DURING CAMPAIGN — backend EF perf work** (warm-keeping cron, additional denormalisation). All becomes mostly obsolete after migration.
+
+- 🟢 **ACTIVE — Premium Feel Campaign.** See `playbooks/premium-feel-campaign.md` for the full task backlog (PF-1 through PF-20). Sessions during the campaign load active.md + the campaign playbook + last 3 changelog entries. They do NOT load the full master/changelog/backlog.
+
+- 🟢 **ACTIVE — PF-1 is the next task.** Dexie spike on daily_habits end-to-end. Feature branch `local-first-spike` off main. Estimated one 3-6 hour evening session. Dean to verify the flow visually at session end.
+
+### Carry-forward from prior sessions (still load-bearing)
+
+- HAVEN clinical sign-off — Phil. Pre-launch blocker.
+- Weekly check-in nudge copy — Phil + Lewis. Pre-launch blocker.
+- Brevo logo removal — Lewis, ~$12/month. Pre-launch blocker.
+- Facebook Make connection refresh — Lewis, expires 22 May 2026.
+- Public launch comms draft — Lewis.
+- B2B volume tier definition — Lewis + Dean.
+- iPhone Capacitor on-device verification of perf-v2 — Dean to verify when convenient. PF-14 covers this as part of the campaign now.
+- Two-device manual verify across PM-58 → PM-66 — formally closed. Multi-device support is now "supported but not optimised" per campaign operating mode (single-device-per-user is the working assumption).
+
+---
+
 ## Added 12 May 2026 PM-75 + PM-76 (Layer 5 baseline-capture unblocked and live)
 
 - ✅ **CLOSED — PM-67e (perf.js rebuild).** Carried forward from yesterday's brain commit as UNBLOCKED, now fully shipped via PM-75 + PM-76.

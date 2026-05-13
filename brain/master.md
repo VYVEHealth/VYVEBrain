@@ -1829,7 +1829,48 @@ Migrations 1c-2 through 1c-14 follow the same pattern. The cleanup commit (post-
 
 Schema discipline for 1c-* migrations: undo / clear / no-op publishes go through the same event with a discriminator (e.g. `is_yes:null`), not a separate `<noun>:cleared` event. Achievement evaluator eligibility is gated by the subscriber on the discriminator (`if (is_yes === true || autotick === true)`). The achievements.js debouncer (1.5s) makes multi-subscriber double-fires safe; subscribers do NOT need to gate on `origin === 'local'` to avoid double eval — over-inclusivity is the right call because at least one open tab needs to fire eval for the inline path to run.
 
-## 24. Key references, credentials & URLs
+## 24. Premium Feel Campaign — local-first migration (active)
+
+> **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.
+
+VYVE is migrating from a server-first architecture (every page fetches from Supabase EFs on every load) to a local-first architecture (every page reads from on-device Dexie/IndexedDB; Supabase becomes the background sync target).
+
+**The architectural commitment, locked at PM-77, is immutable:**
+
+- VYVE is a **Capacitor-wrapped native iOS+Android app** with web fallback at online.vyvehealth.co.uk. It is NOT a PWA. Future Claudes that reference "PWA" are wrong. The PWA install prompt code in index.html is legacy and slated for removal.
+- **On-device Dexie (IndexedDB) is the source of truth for the member's own data.** Every read goes to Dexie. Every write hits Dexie first, then queues to Supabase in the background.
+- **Supabase is** the sync target, the cross-device propagation layer via Realtime, and the server-side compute layer for AI generation, cron-driven achievements/certificates, leaderboards, and employer aggregate reporting. **It is not the rendering source for the member's own data.**
+- **This commitment may not be revised** without producing a specific measured problem this architecture can't solve. Any future session that proposes "let's try a different pattern" must justify against this paragraph in the changelog and get Dean's explicit approval. The Layers 1-4 era of pivoting between architectures is closed.
+
+**Why this campaign exists:** Layers 1-4 (PM-29 through PM-66) built optimistic UI patterns, cross-device sync via Supabase Realtime, and reconcile-and-revert. They are valuable work that remains useful in the new architecture. But the rendering source remained server-fetched member-dashboard EF data, and that EF runs 17s cold / 7s warm. So the app never feels instant despite the architectural plumbing. Layers 1-4 solved the cross-device coherence problem; they did not solve the "every tap is instant" problem. Local-first solves the latter directly by removing the server-fetch hot path entirely.
+
+**Why Dexie specifically:** Mature (10+ years), free (MIT, no premium tier), works inside Capacitor's WKWebView, no new backend service, full control over the sync layer. RxDB was considered but its Supabase replication plugin is paid (€480/year) and over-engineered for the single-device-per-user working assumption. PowerSync was considered but adds a separate backend service to the stack. Dexie + a custom sync layer using existing Supabase calls is the right shape.
+
+**Operating mode for this campaign:**
+
+- **Claude leads, Dean drives.** Default for technical decisions: Claude decides and moves forward, Dean retains veto. Asking Dean to choose between options wastes his time — he is fully led by Claude.
+- **Single-device-per-user is the working assumption.** Last-write-wins for any conflicts. No per-table conflict policy work. Multi-device cases are supported but not optimised; the 1-2% edge cases get triaged post-launch.
+- **All existing member data is wiped at launch (31 May 2026).** No migration concerns from old to new.
+- **Session granularity matches Dean's reality:** long evening sessions (3-6 hours), all-day Sundays, plus small commute/lunch windows. Tasks in the campaign playbook are sliced so any window can pick up a task and ship it.
+- **Brain is the contract.** Every session-end updates `brain/active.md` (always) + the campaign playbook (if task progressed) + master/changelog/backlog (only on architectural changes or campaign closures).
+
+**What goes out of scope as part of this campaign (DO NOT WORK ON during the campaign):**
+
+- Layer 6 SPA shell — dropped (local-first delivers the perceived speed gains; SPA shell is no longer worth the rewrite).
+- PM-71 / PM-71b dashboard payload trim — becomes mostly obsolete after migration.
+- PM-72 materialise achievement_progress — same, becomes obsolete.
+- PM-73 home redesign — deferred until after launch + data on what the simplified payload contains.
+- Backend EF perf work (warm-keeping cron, denormalisation) — becomes mostly obsolete after migration.
+
+These remain in the historical backlog as superseded. Post-launch they can be revisited; during the campaign they are deferred.
+
+**Task backlog:** see `playbooks/premium-feel-campaign.md`. 20 tasks (PF-1 through PF-20) sequenced from "Dexie spike on daily_habits end-to-end" through "merge local-first branch into main". Each task is self-contained and shippable in a single session window.
+
+**Status:** Campaign just launched at this commit. PF-1 (Dexie spike) is the next task. Ready to pick up.
+
+---
+
+## 25. Key references, credentials & URLs
 
 | Reference | Value |
 |---|---|

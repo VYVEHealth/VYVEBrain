@@ -59,7 +59,7 @@ Match to session goal:
 | Disaster recovery | `playbooks/disaster-recovery.md` |
 | Frontend perf audit | `playbooks/perf-audit-2026-05-08.md` |
 
-For the next ~3 sessions, the default is `1c-migration-template.md` + `cache-bus-taxonomy.md`. After 1c-14 + cleanup commit, the default shifts to whatever campaign is next.
+**DEFAULT DURING THE PREMIUM FEEL CAMPAIGN (PM-77 onwards): `playbooks/premium-feel-campaign.md`.** Always load this playbook + active.md + last 3 changelog entries on every session during the campaign. Old default reference to 1c-migration-template was for the closed Layer 1c work — historical only. After the Premium Feel Campaign closes (PF-20 ships, target 31 May 2026), this default will shifts to whatever campaign is next.
 
 ### 3. Last 3 changelog entries via grep
 
