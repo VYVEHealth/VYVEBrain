@@ -50,19 +50,20 @@ When the three disagree:
 
 ## 2. Live state snapshot (refreshed every session-end)
 
-**Last verified:** 13 May 2026 PM-77 (this commit).
+**Last verified:** 13 May 2026 PM-78 (this commit). PM-77 was the prior rebuild.
 
 | What | Value |
 |---|---|
-| vyve-site main HEAD | `ff3e0e0f` (PM-76 perf.js v2 promotion) |
-| VYVEBrain main HEAD | this commit (PM-77 — Premium Feel Campaign launch) |
+| vyve-site main HEAD | `ff3e0e0f` (PM-76 perf.js v2 promotion — unchanged; PF-1/2/3 on feature branch only) |
+| vyve-site `local-first-spike` HEAD | `e8f02742` (PF-1 + PF-2 + PF-3 — spike gated by `localStorage.vyve_lf_spike`) |
+| VYVEBrain main HEAD | this commit (PM-78 — PF-1/2/3 ship + spike-gate pattern) |
 | SW cache key (production) | `vyve-cache-v2026-05-12-pm76-perf-promote-a` |
 | iOS app store | 1.1 (Build 3) submitted 27 April 2026 — "Ready for Review", auto-release on approval |
 | Android Play store | 1.0.2 awaiting Google Play review |
 | Member count | ~15 cohort (B2C + enterprise trial + internal). Live via Supabase, not cached. |
 | Active campaign | **Premium Feel Migration (local-first via Dexie)** — see `playbooks/premium-feel-campaign.md` |
 | Launch target | 31 May 2026 |
-| Last shipped vyve-site commits | `fc8232bb` (PM-74 auth-loop fix), `5cef00a2` (PM-75 perf-v2 soak), `ff3e0e0f` (PM-76 perf-v2 promotion) |
+| Last shipped vyve-site commits | main unchanged: `fc8232bb` (PM-74), `5cef00a2` (PM-75), `ff3e0e0f` (PM-76). Spike branch: `8d07d26b` (PF-1), `e8f02742` (PF-2/3). |
 | Closed campaigns | Layer 1 (PM-29), Layer 1c (PM-30..PM-44), Layer 2 (PM-45..PM-55), Layer 3 (PM-57), Layer 4 (PM-58..PM-66), Layer 5 (PM-21+PM-56+PM-75+PM-76) |
 | Deferred campaigns | Layer 6 (SPA shell) — dropped in favour of local-first migration which delivers the same perceived speed |
 
@@ -91,7 +92,7 @@ VYVE is a Capacitor-wrapped native iOS+Android app with web fallback at online.v
 
 **Campaign tasks:** see `playbooks/premium-feel-campaign.md` for the full PF-1 through PF-N backlog.
 
-**Status at PM-77 commit:** Campaign just launched. PF-1 (Dexie spike on daily_habits table end-to-end) is the next task. Ready to pick up.
+**Status at PM-78 commit:** PF-1, PF-2, PF-3 SHIPPED to `local-first-spike` branch (`e8f02742`), awaiting Dean's verification + merge to main. Next task: Dean opens spike branch via main-merge, verifies daily_habits pill behaviour + reads out `~/Projects/vyve-capacitor/capacitor.config.ts`. PF-4 (push-on-write through `_sync_queue`) is ready to pick up immediately after — see playbook.
 
 ---
 
@@ -141,6 +142,7 @@ Full §23 lives in `master.md` (50+ rules). These are the ones that fire on most
 ### Read me when about to make architectural changes
 
 - **For Premium Feel Campaign work specifically:** §3 of this file is immutable. Dexie is the local source. Don't propose alternatives.
+- **Spike-gate pattern (codified PF-1, May 2026):** When shipping new architecture onto main before all members are ready to use it, gate via `localStorage.vyve_lf_spike === '1'`. Inert otherwise — the new code is dead weight for everyone except spike testers, and the work can ship to main without a parallel deploy pipeline. Pattern used because `vyve-site` GitHub Pages only deploys from `main` (single-branch publish, no preview ref). Generalises to any future architectural slice that wants live-on-main testing. The inert path MUST install a no-op shim under the same window symbol (e.g. `window.VYVELocalDB`) so call-sites don't need to branch.
 
 ---
 
@@ -157,8 +159,11 @@ Full §23 lives in `master.md` (50+ rules). These are the ones that fire on most
 
 **P0 — must ship before 31 May launch:**
 
-1. **PF-1 — Dexie spike** (next task). See `playbooks/premium-feel-campaign.md`.
-2. **PF-2 through PF-20** — the migration itself. Sequenced in the playbook.
+1. **PF-1 — Dexie spike** SHIPPED to `local-first-spike` (PM-78, commit `8d07d26b`). Awaiting Dean merge + verification.
+2. **PF-2 — Full Dexie schema** SHIPPED to `local-first-spike` (PM-78, commit `e8f02742`).
+2.5. **PF-3 — Sync engine pull-on-login** SHIPPED to `local-first-spike` (PM-78, commit `e8f02742`).
+2.6. **PF-4 — Push-on-write through `_sync_queue`** next task. Repoints existing writeQueued/outbox to drain via new sync layer.
+2.7. **PF-5 through PF-20** — page refactors + iOS hardening. Sequenced in playbook.
 2a. **PF-21 — bottom nav restructure** to Mind / Body / Connect. Pencilled in post-PF-19. ~2-4 hours.
 2b. **PF-22 — hub landing pages** for each tab. Scope-flexible: build pre-launch if bandwidth allows, defer to V2 otherwise. ~4-8 hours per hub.
 3. **HAVEN clinical sign-off** (Phil). Currently auto-assignment is gated. Phil must review before HAVEN persona ships in production.
@@ -224,7 +229,7 @@ For full credentials, EF inventory, table inventory: fetch `master.md` §24 (ren
 
 ## 8. Editorial notes
 
-- **Last full rebuild:** 13 May 2026 PM-77 (this commit).
+- **Last full rebuild:** 13 May 2026 PM-77. Latest patch: PM-78 (PF-1/2/3 ship + spike-gate working-set rule).
 - **Next rebuild trigger:** campaign close (Premium Feel migration ship), OR 3+ patches accumulated to this file, OR drift detected (live state disagrees with §2).
 - **Commit discipline for active.md edits:** §2 SHA bumps are atomic with the session's main brain commit. §3 status flips when a campaign task ships. §4 only gains new rules when a rule earns working-set residency. §5 reorders on backlog grooming.
 - **What does NOT belong here:** anything from §7's fetch-on-demand list. If a question keeps surfacing that requires fetching the same canonical section session after session, that's the rebuild signal — promote it into active.md on the next rebuild.

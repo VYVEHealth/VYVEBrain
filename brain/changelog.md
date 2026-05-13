@@ -1,3 +1,74 @@
+## 2026-05-13 PM-78 (PF-1 + PF-2 + PF-3 shipped to local-first-spike — full Dexie schema + hydrate-on-login, spike-gated)
+
+Two atomic vyve-site commits this session on the `local-first-spike` branch (auto-created from `main` HEAD `ff3e0e0f`). `main` unchanged — the spike awaits Dean's verification + merge to publish.
+
+### Operating mode in effect
+
+Per active.md §0 / PM-77 locked decisions: Claude leads, Dean drives. Dean was off-keyboard for the latter two-thirds of this session. Claude proceeded with PF-2 + PF-3 build per active.md §3 + the campaign playbook, without architectural prompting. No menus presented; one architectural concern voiced once before each major decision and folded into the work rather than blocked on confirmation.
+
+### PF-1 ship — vyve-site `8d07d26b`
+
+5 files atomic commit, branch auto-created from main.
+
+NEW `/db.js` (10KB) — Dexie wrapper with v1 schema covering `daily_habits`, `member_habits`, `_sync_meta`. Loads Dexie v4.0.10 from `cdn.jsdelivr.net` (CSP allows). Compound PK `[member_email+activity_date+habit_id]` mirrors Supabase unique constraint. Public API: `VYVELocalDB.daily_habits.{upsert,delete,todayFor,allDatesFor}`, `VYVELocalDB.member_habits.{replaceForMember,allFor}`, `VYVELocalDB._sync_meta.{get,set}`, `VYVELocalDB.reset()`.
+
+NEW `/sync.js` (8KB) — `hydrate()` pulls last 365 days of `daily_habits` + active `member_habits` (with joined `habit_library` cols) on login. JWT read pattern: `localStorage.vyve_auth` direct, 30s clock-skew buffer, no `getSession()` SDK call (PM-67e / §23.5.3). visibilitychange listener wired but PF-5 will replace its body with proper since-cursor delta-pull.
+
+PATCH `habits.html` — 4 inserts. Adds `<script src="/db.js" defer>` and `<script src="/sync.js" defer>` to the defer chain. Additive Dexie write at 3 sites (`logHabit` / `undoHabit` / `runAutotickPass`) — Dexie write mirrors the Supabase write at the same moment, doesn't replace it. The existing `VYVEData.writeQueued` + outbox pipeline continues unchanged; Dexie is a parallel store in PF-1.
+
+PATCH `index.html` — 2 inserts. Same script-tag additions. After the existing `renderDailyCheckinStrip` call, a Dexie-derived pill-strip overlay reads today's `daily_habits` rows and re-renders the strip with today filled if any `habit_completed=true` row exists. Additive to the existing optimistic-outbox overlay; if Dexie is empty (flag off, or hydrate hasn't completed) the original render stands.
+
+PATCH `sw.js` — cache key `pm76-perf-promote-a` → `pm78-pf1-spike-a`, precaches `/db.js` + `/sync.js`.
+
+### PF-2 + PF-3 ship — vyve-site `e8f02742`
+
+3 files atomic commit on top of PF-1.
+
+`/db.js` v1 → v2 — additive Dexie `version()` migration. Schema extends from 3 tables to ~27. Member-scoped activity tables: `daily_habits`, `member_habits`, `workouts`, `exercise_logs`, `custom_workouts`, `exercise_swaps`, `workout_plan_cache`, `cardio`, `nutrition_logs`, `nutrition_my_foods`, `weight_logs`, `session_views`, `replay_views`, `wellbeing_checkins`, `monthly_checkins`, `weekly_goals`, `certificates`, `member_achievements`, `members`. Public-read catalogue tables: `habit_library`, `habit_themes`, `workout_plans`, `personas`, `service_catalogue`, `nutrition_common_foods`, `achievement_metrics`, `achievement_tiers`. Infrastructure: `_sync_queue` (PF-4 will drain), `_sync_meta`, `_kv`.
+
+Index design biased to hot-path queries: `[member_email+activity_date]` on every activity table (powers "today's <X>"), `[member_email+active]` on `member_habits` (assigned-and-active scan), `weight_logs` keyed by `[member_email+logged_date]` matching the table's one-per-day Supabase constraint.
+
+`/sync.js` v1 → v2 — `hydrate()` extended from 2 tables to 27. Bounded concurrency (4 — PostgREST connection-pool friendly). Per-table failure isolation: one bad pull doesn't abort the hydrate. Pull windows: 365 days for activity tables, 180 days for `weekly_goals`, 1000-row cap for `weight_logs`, full set for low-volume tables. Catalogue tables hydrate with 24h stale-policy via `_sync_meta.last_pulled_at` — returning members within 24h skip those calls entirely. Events fired: `vyve-localdb-hydrated` (one-shot), `vyve-localdb-table-pulled` (per table), `vyve-localdb-table-failed` (per table). `VYVESync.status()` returns DevTools-friendly introspection.
+
+`/sw.js` — cache key `pm78-pf1-spike-a` → `pm78-pf3-hydrate-a`.
+
+### Pre-flight RLS audit
+
+Before writing PF-3, `execute_sql` against `pg_policy` audited every target table. All 19 member-scoped tables have `member_email = (SELECT auth.email())` policies (PM-8 wrap pattern). All 8 catalogue tables have `*_public_read(r,true)`. `member_achievements` uses `lower(member_email) = lower(auth.email())` — functionally equivalent at our normalised email layer. `running_plan_cache` is `authenticated_read(r,true)` — global cache, kept out of the hydrate plan (member-keyed via cache_key client-side, on-demand). Audit caught nothing blocking; recorded the lowercase nuance for future reference.
+
+### Deploy constraint discovered + spike-gate pattern codified
+
+`vyve-site` GitHub Pages deploys from `main` only (`.github/workflows/static.yml`), no preview-branch tooling. The campaign playbook's PF-1 verification spec assumed a feature-branch URL existed, which it doesn't.
+
+**Resolution:** spike-gate everything behind `localStorage.vyve_lf_spike === '1'`. New code is dead weight for everyone except spike testers (the inert path installs a no-op shim under `window.VYVELocalDB` so call-sites don't need to branch). The `local-first-spike` branch tracks `main` plus the additive flag-gated files for atomic-revert purposes; when Dean merges, the spike-gated code reaches the cohort but only activates for accounts that flip the flag.
+
+This is now a §4 working-set rule in active.md — every future PF task inherits the pattern, and any other architectural slice that wants live-on-main testing without affecting the cohort can do the same.
+
+### Capacitor origin verification — still outstanding
+
+PM-77.1 §3.1 mitigation B (Capacitor origin check + scheme lock) blocked on Dean reading `~/Projects/vyve-capacitor/capacitor.config.ts`. The Capacitor repo is not in git (active.md §6, backlog risk). PF-2/3 ship did not affect this — same blocker. Carried forward into the open-question line in active.md §2.
+
+### Verification path for Dean (when he's back)
+
+1. Merge `local-first-spike` → `main` (https://github.com/VYVEHealth/vyve-site/compare/main...local-first-spike — PR or local `git merge --no-ff && push`).
+2. GitHub Pages deploys on push to main.
+3. Open `online.vyvehealth.co.uk` in Chrome, login.
+4. DevTools console: `localStorage.setItem('vyve_lf_spike','1'); location.reload()`.
+5. DevTools → Application → IndexedDB → `vyve_local_db` should show ~27 stores populated.
+6. Console: `await VYVESync.status()` shows hydrated_tables (~27 entries), failed_tables (`[]` expected).
+7. Navigate to `/habits.html`, tap a habit, return to home. Today's pill on the 7-day strip should be filled regardless of dashboard EF latency. Console filter `[PF-1]` to confirm Dexie write fired.
+8. Read out `~/Projects/vyve-capacitor/capacitor.config.ts` (`server` block + `ios.scheme` / `ios.hostname`) so we can document the origin pattern and lock the scheme in PF-15 (or earlier).
+
+### Brain commit shape
+
+3 files: `brain/active.md` (§2 live state bumped, §3 status flipped, §4 spike-gate rule added, §5 backlog reorganised, §8 last-rebuild note), `playbooks/premium-feel-campaign.md` (PF-1/2/3 status → SHIPPED with full ship notes), `brain/changelog.md` (this entry prepended). One atomic VYVEBrain commit.
+
+### What's queued next
+
+PF-4 — push-on-write through `_sync_queue`. The infrastructure is already in `/db.js` (`_sync_queue.{enqueue, peek, complete, fail, bumpAttempt}`). PF-4 repoints `habits.html`'s `writeQueued` calls (and the equivalent on other pages) to drain through the new sync layer instead of the legacy `vyve-offline.js` outbox. Self-contained build task per the playbook, no Dean needed for build (verification only).
+
+---
+
 ## 2026-05-13 PM-77.2 (PF-21/22 added — bottom nav restructure to Mind/Body/Connect; hub pages scope-flexible)
 
 Dean confirmed the front-end direction at session end: bottom nav restructures to Mind / Body / Connect, plus existing Home and More. Two new tasks added to the campaign playbook:

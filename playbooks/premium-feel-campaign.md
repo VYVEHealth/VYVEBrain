@@ -71,7 +71,16 @@ Format: `PF-N — Title`
 - **Verification:** node --check on new JS files. Manual: log in to the deployed feature branch, tap a habit, see instant tick, navigate to home, see pill count incremented without any network round trip. Check Supabase that the row also landed there (background sync). Also document: current Capacitor origin pattern (local-bundle vs remote-origin).
 - **Needs Dean:** session 1 timing. Dean opens the feature-branch URL and verifies the flow visually. If the flow works, decision is made to continue with Dexie. If it doesn't, decision is made to pivot to localStorage-with-aggressive-caching (Option A from the 13 May design conversation). Dean also needs to confirm `capacitor.config.ts` contents on his Mac since the repo is NOT in git.
 - **Estimated length:** one 3-6 hour evening session (+30 min for origin verification).
-- **Status:** QUEUED
+- **Status:** SHIPPED 13 May 2026 PM-78 to `local-first-spike` (`8d07d26b`). Awaiting Dean merge to main + verification.
+- **Ship notes:**
+  - New `/db.js` (10KB) wraps Dexie v4.0.10 (loaded from cdn.jsdelivr.net, CSP-allowed). Schema scoped to `daily_habits` + `member_habits` + `_sync_meta` for PF-1.
+  - New `/sync.js` (8KB) hydrates these two tables on login, scaffolds the visibilitychange listener (active inert beyond hydrate top-up — PF-5 replaces with proper since-cursor).
+  - `habits.html` patched at 3 write sites (`logHabit`/`undoHabit`/`runAutotickPass`): Dexie write/delete added additively after existing Supabase write. The Supabase write path is untouched — Dexie is a parallel store in PF-1.
+  - `index.html` patched: Dexie-derived pill-strip overlay added after `renderDailyCheckinStrip` call. Any `habit_completed=true` row for today in Dexie re-paints the pill filled, independent of dashboard EF latency.
+  - `sw.js` cache key bumped to `pm78-pf3-hydrate-a` (after PF-3 superseded it from `pm78-pf1-spike-a`). `/db.js` + `/sync.js` precached.
+  - Spike-gated: inert unless `localStorage.vyve_lf_spike === '1'`. Codified as §4 working-set rule in active.md.
+  - **Deploy constraint discovered:** vyve-site GitHub Pages deploys from `main` only (`.github/workflows/static.yml`), no preview-branch tooling. Resolution: ship onto main behind the spike flag; the `local-first-spike` branch tracks main + the additive flag-gated files for atomic-revert purposes.
+- **Capacitor origin verification:** OUTSTANDING. Blocked on Dean reading `~/Projects/vyve-capacitor/capacitor.config.ts` (the Capacitor repo is not in git per active.md §6). PM-77.1 §3.1 mitigation B remains open. PF-2/3 ship did not affect this — same blocker.
 
 ### PF-2 — Dexie schema for all member-scoped tables
 
@@ -80,7 +89,15 @@ Format: `PF-N — Title`
 - **Verification:** node --check. Open the deployed feature branch in browser dev tools → Application → IndexedDB → confirm all tables exist with correct indexes.
 - **Needs Dean:** nothing actively. Self-contained build task.
 - **Estimated length:** 1-2 hours, can run in a commute/lunch window.
-- **Status:** QUEUED
+- **Status:** SHIPPED 13 May 2026 PM-78 to `local-first-spike` (`e8f02742`).
+- **Ship notes:**
+  - `/db.js` extended from v1 schema (3 tables) to v2 schema (~27 tables + infrastructure). Dexie's `version()` chain handles the migration additively — existing PF-1 testers upgrade in place without losing `daily_habits` / `member_habits` state.
+  - Member-scoped tables: `daily_habits`, `member_habits`, `workouts`, `exercise_logs`, `custom_workouts`, `exercise_swaps`, `workout_plan_cache`, `cardio`, `nutrition_logs`, `nutrition_my_foods`, `weight_logs`, `session_views`, `replay_views`, `wellbeing_checkins`, `monthly_checkins`, `weekly_goals`, `certificates`, `member_achievements`, `members`.
+  - Catalogue tables (public-read): `habit_library`, `habit_themes`, `workout_plans`, `personas`, `service_catalogue`, `nutrition_common_foods`, `achievement_metrics`, `achievement_tiers`.
+  - Infrastructure: `_sync_queue` (PF-4 will drain), `_sync_meta`, `_kv`.
+  - Index design biased to the hot-path queries each page actually runs (`[member_email+activity_date]` on every activity table, `[member_email+active]` on `member_habits`, weight_logs keyed by `[member_email+logged_date]` matching the table's one-per-day constraint).
+  - Public API: generic CRUD on every table (`upsert`, `bulkUpsert`, `delete`, `allFor`, `replaceForMember`) + PF-1 specialised accessors preserved verbatim + `_sync_queue.{enqueue,peek,complete,fail,bumpAttempt}` ready for PF-4.
+  - `members.upsert` overrides the generic `touched_at` stamp because the table schema has no such column.
 
 ### PF-3 — Sync engine: pull-on-login
 
@@ -89,7 +106,17 @@ Format: `PF-N — Title`
 - **Verification:** Fresh login on feature branch, dev tools → IndexedDB → confirm every table populated with member's actual data. Compare row counts to what the EF returned.
 - **Needs Dean:** nothing actively.
 - **Estimated length:** 2-3 hours.
-- **Status:** QUEUED
+- **Status:** SHIPPED 13 May 2026 PM-78 to `local-first-spike` (`e8f02742`).
+- **Ship notes:**
+  - `/sync.js` extended from v1 (2 tables) to v2 (~27 tables). Bounded concurrency (4 — PostgREST connection-pool friendly).
+  - Pre-flight RLS audit via `pg_policy`: every member-scoped table has `member_email = (SELECT auth.email())` policy with the PM-8 `(SELECT …)` wrap. Hydrate succeeds under the member's JWT. `member_achievements` uses `lower(member_email)` comparison — functionally equivalent at our normalised email layer.
+  - Per-table failure isolation: one bad pull doesn't abort the hydrate. Failed tables get retried on next visibility-foreground.
+  - Pull windows: 365 days for activity tables, 180 days for `weekly_goals`, 1000-row cap for `weight_logs`, full set for low-volume tables (workout_plan_cache, custom_workouts, exercise_swaps, certificates, members, etc.).
+  - Catalogue tables hydrate with a 24h stale-policy via `_sync_meta.last_pulled_at` — fresh members get them on first login, returning members within 24h skip those calls entirely.
+  - Events fired: `vyve-localdb-hydrated` (one-shot), `vyve-localdb-table-pulled` (per table), `vyve-localdb-table-failed` (per table).
+  - `VYVESync.status()` returns introspection for DevTools: hydrated tables, failed tables with error details, last hydrate ms.
+  - JWT read pattern preserved from PF-1: localStorage.vyve_auth direct, 30s clock-skew buffer, no `getSession()` SDK side-effects (§23.5.3 / PM-67e).
+- **What PF-3 does NOT add:** push-on-write through `_sync_queue` (PF-4), Realtime merge subscriptions (PF-5), proper since-cursor delta-pull (PF-5).
 
 ### PF-4 — Sync engine: push-on-write + queue drain
 
