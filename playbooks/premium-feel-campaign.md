@@ -160,7 +160,24 @@ Format: `PF-N — Title`
 - **Verification:** habits.html opens with zero network activity. Tap habits, see instant ticks. Reload page, see persisted state. Compare against Supabase to confirm writes synced.
 - **Needs Dean:** verification at end of task.
 - **Estimated length:** 2 hours.
-- **Status:** QUEUED
+- **Status:** SHIPPED to `local-first-spike` (PM-80, commit `48c4d17e`).
+
+**Ship notes (PM-80):**
+
+Three Supabase reads replaced with Dexie reads: `member_habits` join → `VYVELocalDB.member_habits.allFor` (rows are denormalised at PF-3 hydrate time, then re-wrapped client-side into `r.habit_library` projection so the existing `.map()` downstream is untouched); today's `daily_habits` select → `VYVELocalDB.daily_habits.todayFor`; 365-day date history → `VYVELocalDB.daily_habits.allDatesFor`. Writes were already additive to Dexie via PF-1, so PF-6 is purely a read-path switch.
+
+`fetchDashboardHabits()` deliberately preserved on the wire on both paths — autotick metadata (`has_rule`, `health_auto_satisfied`, `health_progress`) is live HealthKit evaluator output computed per-request by member-dashboard EF, not persistable server state. Non-blocking — if the call fails, the page still renders, just without autotick badges (same fallback as today). This is the §3 carve-out: server-side compute for things that genuinely need it.
+
+Spike-gate posture (three-way branch inside the `try`):
+1. **Spike on AND Dexie has rows for this member** → all reads from Dexie.
+2. **Spike on AND Dexie returned empty** (no-op shim active, or pre-hydrate, or member genuinely has no habits) → fall through to legacy Supabase parallel fetches. If the member genuinely has no habits, Supabase returns `[]` too and we get the existing empty-state for free. No false-empty risk.
+3. **Spike off** → legacy Supabase parallel fetches, identical to pre-PF-6.
+
+Awaited `VYVESync.hydrate()` before reading — `hydrate()` is idempotent and returns the in-flight promise if one's running, so we never race PF-3's initial pull.
+
+Downstream parity verified during build: `calcStreak` re-sorts internally (`unique.sort((a,b)=>b-a)`), so the Dexie ASC vs Supabase DESC date-order difference is irrelevant. `renderWeekStrip` and `updateStats` work on string dates regardless of order. Three downstream consumers, all parity-clean.
+
+Cache key `vyve-cache-v2026-05-13-pm78-pf5-delta-a` → `pm78-pf6-habits-a`. sw.js + habits.html committed atomically.
 
 ### PF-7 — Page refactor: workouts.html + workouts-session.js + workouts-programme.js
 

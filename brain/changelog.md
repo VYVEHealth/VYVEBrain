@@ -1,3 +1,65 @@
+## 2026-05-13 PM-80 (PF-6 shipped — habits.html first Dexie-first read page on local-first-spike)
+
+First page on the local-first architecture to make the full read-path switch. vyve-site `local-first-spike` now 6 commits ahead of `main` at `48c4d17e`, awaiting Dean's merge + verification.
+
+### Operating mode in effect
+
+Dean off-keyboard after a one-paragraph "go" confirmation. Claude proceeded with PF-6 per active.md §3 + the playbook. One architectural concern voiced once during pre-flight (autotick metadata vs Dexie source-of-truth — see decision below) and folded into the implementation rather than blocked on confirmation. No menus presented.
+
+### PF-6 ship — vyve-site `48c4d17e`
+
+Two files, one atomic commit on top of PF-5 (`fa116ef2`).
+
+**Read path replacements (habits.html).** Three Supabase reads replaced with Dexie reads:
+- `/member_habits?...select=habit_id,assigned_by,habit_library(...)` → `VYVELocalDB.member_habits.allFor(memberEmail)`. PF-3 hydrate denormalises the `habit_library` join into flat cols on the Dexie row (`habit_pot`, `habit_title`, `habit_description`, `habit_prompt`, `difficulty`); PF-6 re-wraps them client-side into `r.habit_library` so the existing `.map(r => ({...r.habit_library}))` downstream is byte-identical between paths.
+- `/daily_habits?...activity_date=eq.${todayStr}` → `VYVELocalDB.daily_habits.todayFor(memberEmail, todayStr)`. Returns the same `{habit_id, habit_completed, notes}` projection.
+- `fetchHabitDates()` (365-day distinct date list) → `VYVELocalDB.daily_habits.allDatesFor(memberEmail)`.
+
+**Carve-out preserved: autotick HealthKit metadata stays on the wire.** `fetchDashboardHabits()` continues to hit member-dashboard EF on both spike-on and spike-off paths. `has_rule` / `health_auto_satisfied` / `health_progress` are live HealthKit evaluator output computed per-request by the EF — not persisted server state and therefore not Dexie-able under §3's source-of-truth definition. Call is non-blocking: failure means no autotick badges this render, exactly as the pre-PF-6 fallback. This is the §3 explicit carve-out ("server-side compute for things that genuinely need it") applied to a real case for the first time.
+
+**Spike-gate posture (three-way branch inside the existing `try`).**
+1. Spike on + Dexie has rows for this member → all reads from Dexie. Awaits `VYVESync.hydrate()` first (idempotent — joins in-flight promise or returns immediately). After hydrate, `member_habits.allFor()` is the gate: non-empty → Dexie path.
+2. Spike on + Dexie returned empty → falls through to legacy Supabase parallel fetches. Covers (a) no-op shim still active for any reason, (b) hydrate failed for this table specifically, (c) member genuinely has no habits assigned. Case (c) is harmless: Supabase returns `[]` too and we hit the existing empty-state.
+3. Spike off → legacy Supabase parallel fetches, byte-identical to pre-PF-6.
+
+**Downstream parity verified.** Three consumers of `allDates`: `renderWeekStrip` (filters by current week into a `Set`), `updateStats` → `calcStreak` (resorts internally with `.sort((a,b)=>b-a)`), and `localStorage` cache write (passes through). Dexie's ASC vs Supabase's DESC order is irrelevant to all three. No behavioural drift between paths.
+
+**sw.js cache key.** `pm78-pf5-delta-a` → `pm78-pf6-habits-a`.
+
+### Architectural decision recorded (autotick carve-out)
+
+The first time a PF-N task surfaced data that legitimately doesn't belong in Dexie. Recording the principle for future page refactors: **live evaluator output** (HealthKit rules evaluated per-request, AI recommendations generated per-submit, employer aggregate computations) is the §3 server-compute carve-out. It stays on the wire; it doesn't get persisted to Dexie just to satisfy "local-first for everything". The rule of thumb is: if the value would be stale the moment the device's underlying state changes (e.g., the member walked another 100 steps since the last EF call), it's evaluator output, not persisted state. Dexie holds the persisted writes; the EF computes the evaluator output. Both render together in the same UI.
+
+This will recur in PF-7 (workouts library catalogue items have a server-side "is_recommended_for_member" flag that's evaluator output), PF-8 (TDEE recalc currently runs server-side — could move client-side but doesn't have to), PF-10 (the weekly check-in submit response IS the AI moment — that's a deliberate evaluator wait, not a thing to remove).
+
+### What's queued next
+
+**PF-7 — workouts.html + workouts-session.js + workouts-programme.js Dexie-first reads.** Same template as PF-6 plus thumbnail prefetch per PM-77.3 note. ~3 hours. Self-contained build, no Dean needed for build (verification only).
+
+**Capacitor origin verification still outstanding.** PM-77.1 §3.1 mitigation B still blocked on Dean reading `~/Projects/vyve-capacitor/capacitor.config.ts`. Carried forward.
+
+### Verification path for Dean (when he's back)
+
+1. (If not yet done) Merge `local-first-spike` → `main`. Compare: https://github.com/VYVEHealth/vyve-site/compare/main...local-first-spike
+2. Open `online.vyvehealth.co.uk` in Chrome, login.
+3. DevTools console: `localStorage.setItem('vyve_lf_spike','1'); location.reload()`.
+4. Wait for `VYVESync.status()` to show `member_habits` and `daily_habits` in `hydrated_tables`.
+5. DevTools → Network tab, throttle to **Offline**.
+6. Navigate to `/habits.html`. Page should fully render — habits list populated, today's tick state correct, week strip correct, streak number correct — with **zero** non-cached network calls. (One `member-dashboard` call may still fire for autotick metadata; it'll fail silently and the page renders without autotick badges. That's the deliberate carve-out behaviour.)
+7. Tap a habit → instant tick, no spinner.
+8. Reload page (still offline) → state persists.
+9. Network back on. `localStorage.removeItem('vyve_lf_spike'); location.reload()`.
+10. Page should behave **identically to today** — full Supabase parallel-fetch path, autotick working, no Dexie involvement.
+11. (Brain housekeeping) Read out `~/Projects/vyve-capacitor/capacitor.config.ts` so PF-15 can lock the scheme.
+
+### Brain commit shape
+
+3 files: `brain/active.md` (§2 SHA bumps + last-verified + brain-HEAD line, §3 status flipped to PF-1..6 shipped, §5 PF-6 marked SHIPPED + PF-7 promoted to next, §8 last-patch note), `playbooks/premium-feel-campaign.md` (PF-6 Status → SHIPPED with full ship notes), `brain/changelog.md` (this entry prepended).
+
+---
+
+
+
 ## 2026-05-13 PM-79 (PF-4 shadow outbound queue + PF-5 delta-pull cursor shipped to local-first-spike; Realtime merge deferred to post-launch)
 
 Two atomic vyve-site commits this session on `local-first-spike`. Spike branch now 5 commits ahead of `main` (PF-1 → PF-5).
