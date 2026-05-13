@@ -1,3 +1,53 @@
+## 2026-05-13 PM-79 (PF-4 shadow outbound queue + PF-5 delta-pull cursor shipped to local-first-spike; Realtime merge deferred to post-launch)
+
+Two atomic vyve-site commits this session on `local-first-spike`. Spike branch now 5 commits ahead of `main` (PF-1 → PF-5).
+
+### Operating mode in effect
+
+Dean was off-keyboard from PM-78 close through this session. Claude proceeded with PF-4 and PF-5 per active.md §3 + the playbook. Two architectural concerns voiced once each (write-path regression risk on PF-4; Realtime cross-device scope on PF-5) and folded into the implementations as cautious shadow + deferred-Realtime postures. No menus presented; no Dean blocked-on confirmations.
+
+### PF-4 ship — vyve-site `903127d6`
+
+Shadow Dexie outbound queue. Mirror + parallel drainer behind the spike-gate; legacy localStorage outbox remains the canonical path.
+
+**Pre-flight audit.** `pg_index` against the production schema confirmed every member-scoped activity table has a `(member_email, client_id)` unique index: `daily_habits_member_client_uniq`, `workouts_member_client_uniq`, `cardio_member_client_uniq`, `exercise_logs_member_client_uniq`, `nutrition_logs_member_client_uniq`, `weight_logs_member_client_uniq`, `wellbeing_checkins_member_client_uniq`. `replay_views` and `session_views` have their own dedupe constraints. Shadow-drain via both paths is therefore safe — the second arrival 409s and both drainers treat that as success.
+
+**Architecture decision (cautious posture).** PF-4 does NOT replace `vyve-offline.js`'s `writeQueued` + `outboxFlush`. The Layer 4 (PM-58..PM-66) publisher/subscriber protocol around `vyve-outbox-dead` is intricate — replacing the drainer wholesale risks regressing those subscribers (habit:failed revert chains etc.). Instead PF-4 monkey-patches `window.VYVEData.writeQueued`: the patched version calls the original and then mirrors the queue item into Dexie `_sync_queue`. Zero callsite changes — every existing caller (habits.html, cardio.html, etc.) gets shadowed automatically.
+
+An independent Dexie drainer fires on a 25s interval (offset from legacy 30s so they don't always collide), with exponential backoff 2s→5min, max 3 server attempts, and dead-letter via a separate `vyve-syncqueue-dead` CustomEvent so Layer 4 subscribers don't double-fire. Full Layer 4 semantics honoured: 2xx complete; DELETE 404 idempotent success; 409 success-by-other-drainer; 4xx dead with reason `http_4xx`; 5xx bumpAttempt; network failure no-attempt-bump.
+
+`VYVESync.queueStatus()` / `drainOutbound()` / `resetOutboundQueue()` exposed for DevTools introspection. No-op shim when spike off.
+
+**db.js defensive fix.** `raw()` was returning `null` when `dbPromise` was uninitialised — would have crashed PF-4's `queueStatus()` if called before any prior method opened the DB. Now `raw()` always calls `getDB()`, guaranteed Promise return. Small but real bug; would have surfaced as the first DevTools call.
+
+### PF-5 ship (delta-pull only) — vyve-site `fa116ef2`
+
+Proper per-table since-cursor delta-pull. Replaces the PF-1 stub `runDeltaPull` that just retriggered hydrate.
+
+**Scope decision: Realtime cross-device merge DEFERRED to PF-5b / post-launch.** active.md §0 declares single-device-per-user the working assumption. With that, foreground delta-pull is sufficient — iOS WKWebView suspends Realtime websockets when backgrounded anyway, so §3.1 mitigation C explicitly called for foreground-trigger as the belt-and-braces channel. Realtime is optimisation, delta-pull is correctness. Layer 2's existing `installTableBridges` in `bus.js` continues to bridge Realtime → bus events for backward-compat with subscribers like habits.html optimistic patches; PF-5 doesn't disturb that. The missing piece — *merging incoming Realtime rows into Dexie* — is the PF-5b post-launch task.
+
+**Per-table cursor configuration.** `logged_at` is the cursor for activity tables (daily_habits, workouts, cardio, exercise_logs, session_views, replay_views, nutrition_logs, weight_logs, wellbeing_checkins, monthly_checkins) — set by SQL trigger on INSERT, never updated, monotonic. `created_at` for weekly_goals (immutable single-insert-per-week). No cursor for member_habits, members, workout_plan_cache, custom_workouts, exercise_swaps, nutrition_my_foods, certificates, member_achievements — these get full re-pull throttled by `DELTA_FULL_REPULL_MS = 5 min`. Catalogue tables keep their 24h stale-policy unchanged.
+
+**Algorithm.** Defer to hydrate if not yet started; await hydrate to settle (don't race the initial pull); for each plan() entry in parallel (concurrency 4), build `?<col>=gt.<since_iso>` as a sep-aware suffix on the existing entry path (preserves member_email filter etc.); `bulkUpsert` results into Dexie (NOT `replaceForMember` — delta is purely additive, replace would wipe rows the delta query didn't return); update `_sync_meta.last_pulled_at` to `max(returned row timestamps)` || `now`. Per-table failure isolation preserved (same as hydrate).
+
+PostgREST `gt.` is strict greater-than. Stamping cursor to `now` is safe — won't re-fetch rows just-written (their timestamps ≤ now), but prefer `max(row.cursor)` when available so the cursor matches real server data on the next cycle.
+
+Events fired: `vyve-localdb-table-delta { table, count, since }` per successful delta. `vyve-localdb-table-failed` on failure (same as hydrate).
+
+sw.js cache key: `pm78-pf4-mirror-a` → `pm78-pf5-delta-a`.
+
+### What's queued next
+
+**PF-6 — habits.html refactor (Dexie-first reads).** Self-contained build task, no Dean needed. The page already writes additively to Dexie via PF-1; PF-6 switches the read path from member-dashboard EF to Dexie. First page to make the full architectural transition. After it ships and Dean verifies, PF-7 through PF-12 follow the same template for workouts/nutrition/cardio/sessions/checkins/home/settings.
+
+**Capacitor origin verification still outstanding.** PM-77.1 §3.1 mitigation B still blocked on Dean reading `~/Projects/vyve-capacitor/capacitor.config.ts`. Carried forward in active.md §2 open-question line.
+
+### Brain commit shape
+
+3 files: `brain/active.md` (§2 SHA/HEAD bumps, §3 status flipped to PF-1..5 shipped, §5 backlog PF-4/5 marked SHIPPED + PF-6 next, §8 rebuild note), `playbooks/premium-feel-campaign.md` (PF-4 Status → SHIPPED with full ship notes; PF-5 Status → PARTIAL with delta-pull SHIPPED + Realtime-deferred-to-PF-5b note + mobile-verification-moved-to-PF-14 note), `brain/changelog.md` (this entry prepended).
+
+---
+
 ## 2026-05-13 PM-78 (PF-1 + PF-2 + PF-3 shipped to local-first-spike — full Dexie schema + hydrate-on-login, spike-gated)
 
 Two atomic vyve-site commits this session on the `local-first-spike` branch (auto-created from `main` HEAD `ff3e0e0f`). `main` unchanged — the spike awaits Dean's verification + merge to publish.

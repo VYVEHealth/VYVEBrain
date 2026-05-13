@@ -125,7 +125,15 @@ Format: `PF-N — Title`
 - **Verification:** Toggle airplane mode mid-write. Confirm write lands in Dexie + `_sync_queue`. Re-enable network. Confirm queue drains within seconds. Confirm row appears in Supabase.
 - **Needs Dean:** nothing actively for build. End-of-task: Dean verifies airplane-mode behaviour on his device.
 - **Estimated length:** 3-4 hours.
-- **Status:** QUEUED
+- **Status:** SHIPPED 13 May 2026 PM-79 to `local-first-spike` (`903127d6`). Cautious posture: shadow Dexie queue runs alongside the legacy localStorage outbox; both drainers POST to Supabase, server idempotency on `(member_email, client_id)` unique index makes duplicate writes safe.
+- **Ship notes:**
+  - Pre-flight audit (`pg_index`) confirmed every relevant table has the `(member_email, client_id)` unique constraint. Shadow-drain via both paths is safe — second arrival 409s, both drainers treat that as success.
+  - Architecture: monkey-patches `window.VYVEData.writeQueued`. Patched version calls the original and then mirrors the queue item into Dexie `_sync_queue`. **Zero callsite changes** — every existing caller (habits.html, cardio.html, etc.) gets shadowed automatically.
+  - Independent Dexie drainer: 25s interval (offset from legacy 30s), exponential backoff 2s→5min, max 3 server attempts, dead-letter via `vyve-syncqueue-dead` CustomEvent (separate from legacy `vyve-outbox-dead` so Layer 4 subscribers don't double-fire).
+  - Honours full Layer 4 (PM-58..PM-66) semantics: 2xx complete; DELETE 404 idempotent success; 409 success-by-other-drainer; 4xx dead with reason `http_4xx`; 5xx bumpAttempt + backoff; network failure no-attempt-bump.
+  - `db.js` defensive fix: `raw()` now always calls `getDB()` (was returning `null` if dbPromise was uninitialised — small but real correctness bug).
+  - `VYVESync.queueStatus()` / `drainOutbound()` / `resetOutboundQueue()` exposed for DevTools introspection. No-op shim when spike off.
+- **What PF-4 does NOT do** (deferred until PF-19 cleanup): remove the legacy `vyve-offline.js` outbox path. PF-4 is purely additive; the legacy drainer is still the canonical path.
 
 ### PF-5 — Sync engine: Realtime merge + reconnect-replay (belt-and-braces against iOS background WebSocket drops)
 
@@ -135,7 +143,15 @@ Format: `PF-N — Title`
 - **Verification:** Open the app on two browsers (same account). Add a habit on one. Confirm it appears on the other within a few seconds. **Also verify (mobile only — PF-14):** open app on iPhone, background it for 30+ seconds while logging a habit on the web (forces the iPhone to miss the Realtime event), foreground iPhone, confirm the habit appears within 1-2s of foreground via the delta-pull.
 - **Needs Dean:** verification step at end. Mobile verification in PF-14.
 - **Estimated length:** 2-3 hours.
-- **Status:** QUEUED
+- **Status:** PARTIAL — delta-pull SHIPPED 13 May 2026 PM-79 to `local-first-spike` (`fa116ef2`). **Realtime cross-device merge DEFERRED to PF-5b / post-launch** per active.md §0 single-device-per-user assumption.
+- **Ship notes (delta-pull only):**
+  - Replaces the PF-1 stub `runDeltaPull` with a real per-table since-cursor implementation. Foreground delta is the §3.1 mitigation C belt-and-braces channel for iOS WKWebView (which suspends Realtime websockets when backgrounded — Realtime is optimisation, delta-pull is correctness).
+  - Per-table cursor configuration: `logged_at` for activity tables (daily_habits, workouts, cardio, exercise_logs, session_views, replay_views, nutrition_logs, weight_logs, wellbeing_checkins, monthly_checkins); `created_at` for weekly_goals (immutable single-insert-per-week); no cursor for member_habits/members/workout_plan_cache/custom_workouts/exercise_swaps/nutrition_my_foods/certificates/member_achievements — these get a full re-pull throttled by `DELTA_FULL_REPULL_MS=5min`; catalogue tables keep their 24h stale-policy unchanged.
+  - Algorithm: defer to hydrate if not yet started; await hydrate to settle; for each plan() entry in parallel (concurrency 4), GET `?<col>=gt.<since_iso>`; bulkUpsert (NOT replaceForMember — delta is purely additive); update `_sync_meta.last_pulled_at` to `max(returned row timestamps)` || `now`. Per-table failure isolation preserved.
+  - Events fired: `vyve-localdb-table-delta { table, count, since }` per successful delta; `vyve-localdb-table-failed` on failure (same as hydrate).
+  - PostgREST `gt.` is strict greater-than. Cursor stamping to `now` is safe — won't re-fetch rows just-written (their timestamps are ≤ now), but prefers `max(row.logged_at)` when available so the cursor matches real server data.
+- **Why Realtime is deferred:** Layer 2 (`installTableBridges` in `bus.js`) already runs Realtime subscriptions and translates row events into bus events. PF-5 doesn't disturb that — habits.html's optimistic-revert path and similar still work. The missing piece is *merging incoming Realtime rows into Dexie*, which requires extending the bridge or running parallel subscriptions to get full rows. With single-device assumption + foreground delta-pull as backstop, the cross-device-instant case isn't a launch blocker. **PF-5b post-launch:** subscribe to filtered Realtime channels (one per table, filter `member_email=eq.{email}`) and merge full rows into Dexie inside the existing bridge handler.
+- **Mobile verification deferred to PF-14:** the 30s-background → foreground delta-pull test described in the original PF-5 verification spec moves to PF-14 device-testing.
 
 ### PF-6 — Page refactor: habits.html
 
