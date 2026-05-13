@@ -158,7 +158,9 @@ Full §23 lives in `master.md` (50+ rules). These are the ones that fire on most
 **P0 — must ship before 31 May launch:**
 
 1. **PF-1 — Dexie spike** (next task). See `playbooks/premium-feel-campaign.md`.
-2. **PF-2 through PF-N** — the migration itself. Sequenced in the playbook.
+2. **PF-2 through PF-20** — the migration itself. Sequenced in the playbook.
+2a. **PF-21 — bottom nav restructure** to Mind / Body / Connect. Pencilled in post-PF-19. ~2-4 hours.
+2b. **PF-22 — hub landing pages** for each tab. Scope-flexible: build pre-launch if bandwidth allows, defer to V2 otherwise. ~4-8 hours per hub.
 3. **HAVEN clinical sign-off** (Phil). Currently auto-assignment is gated. Phil must review before HAVEN persona ships in production.
 4. **Weekly check-in nudge copy** (Phil + Lewis). Currently uses placeholder.
 5. **Brevo logo removal** ($12/month addon). Lewis to action before any enterprise demo.

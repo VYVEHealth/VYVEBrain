@@ -1,3 +1,18 @@
+## 2026-05-13 PM-77.2 (PF-21/22 added — bottom nav restructure to Mind/Body/Connect; hub pages scope-flexible)
+
+Dean confirmed the front-end direction at session end: bottom nav restructures to Mind / Body / Connect, plus existing Home and More. Two new tasks added to the campaign playbook:
+
+- **PF-21:** the nav restructure itself, mechanical, 2-4 hours, pencilled in post-PF-19 cleanup and pre-PF-20 merge. Existing pages regrouped under the three tabs (Mind = check-ins + personas + V2 wellbeing content; Body = workouts/nutrition/cardio/movement/running/health; Connect = sessions + leaderboard + charity).
+- **PF-22:** optional hub landing pages for each of Mind/Body/Connect, scope-flexible. Per-hub 4-8 hours. Build pre-launch if Dean has bandwidth; defer to V2 otherwise. The local-first architecture makes these trivially fast to add post-launch — no architectural cost to delaying.
+
+Deferred V2 content explicitly documented: breathwork player, meditations library, mental health diagnosis flow (Mind side); community moments feed (Connect side). These require either audio content from Lewis/Calum (Mind) or new server tables + moderation (Connect), neither blocking launch.
+
+No architectural changes from this addition. PF-21/22 are pure presentation work on top of the local-first architecture committed at PM-77 and amended at PM-77.1. Dexie schema unchanged. Sync engine unchanged.
+
+Active.md §5 updated to reference PF-21/22 in the backlog. Campaign playbook updated with full task definitions.
+
+---
+
 ## 2026-05-13 PM-77.1 (research dive on Dexie + Capacitor + Supabase production reports; 3 iOS-specific mitigations folded into active.md + campaign playbook)
 
 **Trigger.** Immediately after PM-77 brain commit landing the Premium Feel Campaign, Dean asked for a research dive on the internet to surface concrete production issues people have hit with the Dexie + Capacitor + Supabase Realtime stack before committing to PF-1. Right call — would have been better to do this before PM-77 than after, but the architectural commitment was correct based on subsequent research findings.

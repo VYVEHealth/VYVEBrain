@@ -251,6 +251,49 @@ Format: `PF-N — Title`
 
 ---
 
+### PF-21 — Bottom nav restructure: Mind / Body / Connect
+
+- **What:** Replace the current bottom nav (Home / Workouts / Nutrition / Sessions / More) with the new three-tab structure: Mind / Body / Connect. Plus Home stays as the centre/default and More remains as overflow. Regroup existing pages under the new tabs — no page rebuilds, pure navigation reorganisation. The hub pages (PF-22) build on top of this; this task is just the nav itself.
+- **Page groupings:**
+  - **Mind tab:** weekly check-in, monthly check-in, AI persona chat (existing personas), wellbeing content surfaces (placeholders for breathwork/meditations until V2 content lands)
+  - **Body tab:** workouts, cardio, movement, nutrition, log-food, running-plan, apple-health, weight tracker
+  - **Connect tab:** sessions (live + on-demand), leaderboard, charity impact view
+  - **Home (centre):** existing dashboard, unchanged structurally
+  - **More:** settings, certificates, engagement, anything not yet rehoused
+- **Files touched:** `nav.js` (new tab structure, icons, active-state styling), every gated portal page (back-button + nav references update), `sw.js` cache bump.
+- **Verification:** Tap each tab, confirm correct group of pages reachable. Back-button behaviour unchanged. No 404s. Active-tab styling reflects current location.
+- **Needs Dean:** sign-off on the page-to-tab groupings before build. Lewis copy approval for the tab labels themselves (Mind / Body / Connect — confirm these are the final names, no variants like "Wellbeing" / "Train" / "Community").
+- **Estimated length:** 2-4 hours. Mechanical work once groupings are locked.
+- **Status:** QUEUED — pencilled in after PF-19 (cleanup) but before PF-20 (merge to main). Loosely scoped — can be expanded if Dean wants per-tab hub pages built pre-launch.
+
+### PF-22 — Hub landing pages (optional, scope-flexible)
+
+- **What:** Build a landing page for each of Mind / Body / Connect that surfaces the most useful content from each grouping at a glance. NOT new functionality — just better presentation of existing data.
+  - **Mind hub:** today's check-in status, current AI persona + quick-chat shortcut, recent wellbeing score trend, placeholder cards for breathwork/meditations (V2)
+  - **Body hub:** today's workout + complete/skip, today's macros vs target, recent cardio, latest weight log, Apple Health summary
+  - **Connect hub:** live now / up next session card, leaderboard position summary, charity impact strip, community moments placeholder (V2)
+- **Files touched:** new `mind.html`, `body.html`, `connect.html`. Each reads from Dexie (no new EFs). `nav.js` to route the tab to the hub page rather than directly to a sub-page.
+- **Verification:** Each hub paints instantly from Dexie (~50-100ms). Tap-through to sub-pages works. Empty states polished.
+- **Needs Dean:** Lewis copy/layout approval per hub. Possibly a quick mockup pass first.
+- **Estimated length:** 4-8 hours per hub depending on scope. 12-24 hours total if all three built pre-launch.
+- **Status:** QUEUED — flexible. If Dean has bandwidth post-migration, build all three. If tight, ship PF-21 nav restructure only and frame the hubs as V2 (mid-June). The local-first architecture makes these trivially fast to add later — they're not the kind of work that gets harder with delay.
+
+### Notes on PF-21 + PF-22 sequencing vs launch (added 13 May 2026 evening)
+
+Dean asked about adding Mind / Body / Connect to launch. The bottom nav restructure (PF-21) is small and fits comfortably pre-launch. The hub pages (PF-22) are scope-flexible — they can be built in the 26-30 May window if Dean has bandwidth, or deferred to V2.
+
+**The "deferred V2 content"** that PF-22 placeholders point to:
+- Breathwork player + library (Mind)
+- Meditations library (Mind)
+- Mental health diagnosis flow / self-assessment (Mind — needs design call on whether self-assessment or clinical-grade)
+- Community moments feed (Connect — anonymised member milestones, achievements, charity months funded)
+
+These are explicitly post-launch work, not blockers. The Mind tab in particular gates the most V2 content because breathwork/meditation requires audio content from Lewis or Calum that doesn't exist yet — better to ship the Mind tab with check-ins + persona chat at launch and roll content in over June.
+
+**No architectural changes from PF-21/22.** Both are pure presentation work on top of the local-first architecture. Dexie schema unchanged. Sync engine unchanged. New tables only needed for V2 community-moments feed which is post-launch.
+
+---
+
 ## How to operate during this campaign
 
 **Session start (every session):**
