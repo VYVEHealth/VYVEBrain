@@ -95,6 +95,22 @@ VYVE is a Capacitor-wrapped native iOS+Android app with web fallback at online.v
 
 ---
 
+### 3.1 iOS-specific mitigations (from PM-77.1 research dive)
+
+Added 13 May 2026 after web research dive on production reports of Dexie + Capacitor + Supabase. Three load-bearing risks identified, all mitigatable. Sync layer + page code must follow these patterns:
+
+**A. WKWebView IndexedDB crash-wipe (WebKit bug 144875, recurred iOS 17.4).** Process kills (low-memory, force-quit) can lose in-flight Dexie writes; rare full-store wipe possible. Apple has not fixed. **Mitigation:** keep Dexie transactions short, force a flush on `visibilitychange` to hidden (via `db.close()` then reopen, or explicit transaction commit), detect "Connection to Indexed Database server lost" errors and recover by re-hydrating from Supabase. **For VYVE specifically:** Supabase is the canonical store; worst-case wipe = member sees "preparing your VYVE" hydration screen on next open. Not data loss.
+
+**B. Capacitor origin pattern affects ITP exposure.** Apple ITP's 7-day script-writable-storage purge applies to **third-party (remote) origins** in WKWebView. Capacitor apps that bundle assets locally (`capacitor://localhost`) are first-party and **exempt**. Apps that load a remote origin (e.g., `https://online.vyvehealth.co.uk` inside the wrap) **may be subject** to the 7-day rule. **Action required:** PF-1 must verify which pattern the current iOS 1.1 build uses. If remote-origin, the campaign should migrate to local-bundle as part of PF-1 or PF-2, not after. Lock the scheme explicitly in `capacitor.config` to prevent reinstall/upgrade wipes (Capacitor 5→6→7 scheme migrations have wiped IndexedDB for users in the past).
+
+**C. Supabase Realtime WebSocket dropped when iOS backgrounds the app.** Realtime events delivered during background window are missed; JS client does not auto-replay on reconnect. **Mitigation:** sync layer must run a delta-pull (`?since=last_sync_at`) on every `visibilitychange` returning to visible, regardless of whether Realtime claims it stayed connected. Belt-and-braces. This is the Layer 3 pattern from PM-57 carried forward into the new sync engine.
+
+**Production evidence:** Multiple Capacitor + Dexie apps have shipped to the App Store and operated without systematic data loss when these patterns are followed (ParkManager, HandyCap, others). The pattern is well-trodden. The bugs are known. The mitigations are standard.
+
+**Escape hatch if needed:** Capacitor SQLite plugin stores data in a native file outside the WebKit sandbox — immune to crash-wipe and ITP. Considered as a fallback if Dexie surfaces problems we can't mitigate, but adds SQL surface area and loses Dexie's query convenience. NOT planned. Only invoke if PF-1 spike fails for crash-wipe reasons specifically.
+
+---
+
 ## 4. §23 hard rules — working-set subset (the 15 most load-bearing)
 
 Full §23 lives in `master.md` (50+ rules). These are the ones that fire on most sessions. If a question doesn't match one of these, check master.md §23 before assuming no rule applies.
@@ -125,6 +141,15 @@ Full §23 lives in `master.md` (50+ rules). These are the ones that fire on most
 ### Read me when about to make architectural changes
 
 - **For Premium Feel Campaign work specifically:** §3 of this file is immutable. Dexie is the local source. Don't propose alternatives.
+
+---
+
+### Dexie flush + reconnect discipline (PM-77.1, load-bearing for the campaign)
+
+- **On `visibilitychange` to hidden:** force-flush any open Dexie transactions (`db.close()` then auto-reopen on next access, OR ensure all transactions resolve before the event handler returns). Protects against WKWebView process-kill data loss.
+- **On `visibilitychange` to visible:** run sync layer delta-pull (`since=last_sync_at`) against Supabase regardless of Realtime connection state. iOS suspends WebSockets on background; the JS client does not auto-replay missed events.
+- **On "Connection to Indexed Database server lost" error:** trigger graceful re-hydration from Supabase, do not crash, do not silently lose writes. Use the existing offline outbox as the durable queue while DB is unreachable.
+- **Capacitor config:** lock the WebView scheme (`capacitor://localhost`) explicitly in `capacitor.config.ts` and never change it across releases — scheme migrations between Capacitor major versions have wiped user IndexedDB stores in past versions.
 
 ---
 

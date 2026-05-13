@@ -1,3 +1,35 @@
+## 2026-05-13 PM-77.1 (research dive on Dexie + Capacitor + Supabase production reports; 3 iOS-specific mitigations folded into active.md + campaign playbook)
+
+**Trigger.** Immediately after PM-77 brain commit landing the Premium Feel Campaign, Dean asked for a research dive on the internet to surface concrete production issues people have hit with the Dexie + Capacitor + Supabase Realtime stack before committing to PF-1. Right call — would have been better to do this before PM-77 than after, but the architectural commitment was correct based on subsequent research findings.
+
+**Research method.** 20 targeted web searches across Dexie + Capacitor, IndexedDB + WKWebView, iOS ITP, Supabase Realtime mobile, sync engine production lessons, Dexie schema migration, Capacitor app reinstall behaviour. Verified two highest-severity claims with a second-pass search. LLM-assisted synthesis of findings.
+
+**Three load-bearing risks identified, all mitigatable. No deal-breakers.**
+
+**A. WKWebView IndexedDB crash-wipe (WebKit bug 144875, recurred iOS 17.4).** Process kills (low-memory, force-quit) can lose in-flight Dexie writes; rare full-store wipe possible. Apple has not fixed in 10+ years. **For VYVE specifically:** Supabase is the canonical store; worst-case wipe = member sees "preparing your VYVE" hydration screen on next open. Not data loss, just inconvenience. Mitigation pattern (force-flush on visibilitychange, detect connection-lost errors, re-hydrate from Supabase) is well-trodden in production Capacitor apps.
+
+**B. Capacitor origin pattern affects ITP exposure.** Apple's 7-day script-writable-storage purge applies to third-party (remote) origins in WKWebView. Capacitor apps that bundle assets locally (`capacitor://localhost`) are first-party and exempt. Apps that load a remote origin (e.g., the current `online.vyvehealth.co.uk` pattern inside the wrap) may be subject. **Action required in PF-1:** verify which pattern the current iOS 1.1 build uses. If remote-origin, plan migration to local-bundle as part of PF-1 or PF-2.
+
+**C. Supabase Realtime drops when iOS backgrounds the app.** Events delivered during background window missed; JS client does not auto-replay. Mitigation: sync layer runs delta-pull on every visibilitychange returning to visible. This is the Layer 3 pattern from PM-57 carried forward.
+
+**Production evidence is positive but anecdotal.** Multiple Capacitor + Dexie apps in the App Store have shipped without systematic data loss when the standard mitigation patterns are followed (ParkManager, HandyCap, others referenced in GitHub issue trackers). No "everyone regrets this" pattern. The Linear/local-first criticism that does exist applies to teams rolling their own multi-user collaborative-editing engines — not single-device-per-user wellbeing apps.
+
+**Escape hatch documented but NOT planned.** Capacitor SQLite plugin stores data in native file outside the WebKit sandbox, immune to both WKWebView crash-wipe and ITP. Considered as fallback only if PF-1 spike fails for crash-wipe reasons that can't be mitigated with the standard patterns. Adds SQL surface area, loses Dexie's query convenience. Not the default path.
+
+**This commit (brain-only, 3 files):**
+
+1. **`brain/active.md`** — added §3.1 "iOS-specific mitigations" with the three risks + production evidence + escape hatch documented. Added one new §4 working-set §23 rule: "Dexie flush + reconnect discipline" covering visibilitychange flush, foreground delta-pull, connection-lost recovery, Capacitor scheme lock. Future Claudes loading active.md inherit these.
+
+2. **`playbooks/premium-feel-campaign.md`** — patched PF-1 to add Capacitor origin verification + scheme lock. Patched PF-5 to add foreground delta-pull as belt-and-braces for iOS background WebSocket drops. Patched PF-15 to expand hardening with the three explicit mitigations + a "force full resync" escape hatch in settings.
+
+3. **`brain/changelog.md`** — this entry.
+
+**No master.md change.** §24 from PM-77 remains the architectural commitment; PM-77.1 is implementation-level patches that fit underneath it.
+
+**Confidence after research dive:** HIGHER than before, not lower. The risks are bounded and known. The pattern is well-trodden. The amendments to active.md and the playbook codify the mitigations so a future Claude picking up PF-1 doesn't have to re-derive them. PF-1 is still the next task.
+
+---
+
 ## 2026-05-13 PM-77 (Premium Feel Campaign launched — local-first migration via Dexie; active.md rebuilt; Layer 5/6 work closed/superseded)
 
 **The architectural pivot.** After 4 sessions of work on PM-67e/74/75/76 (the perf telemetry + auth-loop fix cycle), Dean named the underlying problem: the app does not feel premium. Every tap waits on a server round trip because the rendering source is the Supabase Edge Function response, not on-device state. Layers 1-4 of the prior premium-feel campaign built optimistic UI + cross-device sync but did not change the fundamental rendering source. The work was correct but not load-bearing for the "feels instant" requirement.

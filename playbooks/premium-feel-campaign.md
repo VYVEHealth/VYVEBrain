@@ -63,13 +63,14 @@ Format: `PF-N — Title`
 - **Estimated length:** rough session-window
 - **Status:** QUEUED / IN PROGRESS / SHIPPED / BLOCKED
 
-### PF-1 — Dexie spike: daily_habits end-to-end
+### PF-1 — Dexie spike: daily_habits end-to-end + Capacitor origin verification
 
 - **What:** Prove the architecture works. Install Dexie on a feature branch, create a minimal schema with one table (daily_habits + member_habits). Wire habits.html to read habits from Dexie and write completions to Dexie. On write, queue to Supabase via existing log-activity EF. On home.html, read the "today's habits" pill count from Dexie. Test the flow end-to-end: tap a habit on habits.html, see the pill update instantly on home.html.
-- **Files touched:** new `/sync.js` (sync layer scaffolding, only daily_habits + member_habits scope), new `/db.js` (Dexie schema declaration), `habits.html` (swap reads/writes to Dexie), `index.html` (pill reads from Dexie), `sw.js` cache bump. Feature branch `local-first-spike` off main, not main.
-- **Verification:** node --check on new JS files. Manual: log in to the deployed feature branch, tap a habit, see instant tick, navigate to home, see pill count incremented without any network round trip. Check Supabase that the row also landed there (background sync).
-- **Needs Dean:** session 1 timing. Dean opens the feature-branch URL and verifies the flow visually. If the flow works, decision is made to continue with Dexie. If it doesn't, decision is made to pivot to localStorage-with-aggressive-caching (Option A from the 13 May design conversation).
-- **Estimated length:** one 3-6 hour evening session.
+- **Additionally (PM-77.1):** verify which Capacitor origin pattern the iOS 1.1 build uses. Check `capacitor.config.ts` and the running app's `window.location.origin`. If it's `capacitor://localhost` (local-bundle pattern), IndexedDB is ITP-exempt and we're good. If it's `https://online.vyvehealth.co.uk` (remote-origin pattern), the app **may** be subject to Apple's 7-day ITP wipe and we need to plan a migration to local-bundle as part of PF-2 or earlier. Document the finding in the PF-1 ship changelog. Lock the scheme explicitly in `capacitor.config.ts` either way.
+- **Files touched:** new `/sync.js` (sync layer scaffolding, only daily_habits + member_habits scope), new `/db.js` (Dexie schema declaration), `habits.html` (swap reads/writes to Dexie), `index.html` (pill reads from Dexie), `sw.js` cache bump. Feature branch `local-first-spike` off main, not main. Also check `~/Projects/vyve-capacitor/capacitor.config.ts` for origin pattern.
+- **Verification:** node --check on new JS files. Manual: log in to the deployed feature branch, tap a habit, see instant tick, navigate to home, see pill count incremented without any network round trip. Check Supabase that the row also landed there (background sync). Also document: current Capacitor origin pattern (local-bundle vs remote-origin).
+- **Needs Dean:** session 1 timing. Dean opens the feature-branch URL and verifies the flow visually. If the flow works, decision is made to continue with Dexie. If it doesn't, decision is made to pivot to localStorage-with-aggressive-caching (Option A from the 13 May design conversation). Dean also needs to confirm `capacitor.config.ts` contents on his Mac since the repo is NOT in git.
+- **Estimated length:** one 3-6 hour evening session (+30 min for origin verification).
 - **Status:** QUEUED
 
 ### PF-2 — Dexie schema for all member-scoped tables
@@ -99,12 +100,13 @@ Format: `PF-N — Title`
 - **Estimated length:** 3-4 hours.
 - **Status:** QUEUED
 
-### PF-5 — Sync engine: Realtime merge
+### PF-5 — Sync engine: Realtime merge + reconnect-replay (belt-and-braces against iOS background WebSocket drops)
 
 - **What:** Wire Supabase Realtime subscriptions to merge incoming events into Dexie. When another device writes a row, Realtime delivers it, we insert/update in Dexie, publish the appropriate bus event so any open page re-renders. Suppress own-echo using the existing `recordWrite` infrastructure from Layer 2.
-- **Files touched:** `/sync.js` (Realtime subscriber setup). Likely repoints or replaces parts of `bus.js`'s `installTableBridges` from Layer 2.
-- **Verification:** Open the app on two browsers (same account). Add a habit on one. Confirm it appears on the other within a few seconds.
-- **Needs Dean:** verification step at end.
+- **Critical (PM-77.1):** Realtime alone is insufficient on mobile because iOS suspends WebSockets when the app is backgrounded; events delivered during the background window are missed and the Supabase JS client does not auto-replay them on reconnect. **The sync layer must run a delta-pull on every `visibilitychange` returning to visible**, regardless of whether Realtime claims it stayed connected. Pattern: `if(document.visibilityState==='visible') { runDeltaPull() }` — pulls `?updated_at=gt.${last_sync_at}` per table, merges into Dexie, updates `last_sync_at`. This is the Layer 3 (PM-57) pattern carried forward into the new sync engine. The delta-pull is cheap (one query per table, only rows changed since last sync) so safe to run on every foreground.
+- **Files touched:** `/sync.js` (Realtime subscriber setup + visibility listener + delta-pull function). Likely repoints or replaces parts of `bus.js`'s `installTableBridges` from Layer 2.
+- **Verification:** Open the app on two browsers (same account). Add a habit on one. Confirm it appears on the other within a few seconds. **Also verify (mobile only — PF-14):** open app on iPhone, background it for 30+ seconds while logging a habit on the web (forces the iPhone to miss the Realtime event), foreground iPhone, confirm the habit appears within 1-2s of foreground via the delta-pull.
+- **Needs Dean:** verification step at end. Mobile verification in PF-14.
 - **Estimated length:** 2-3 hours.
 - **Status:** QUEUED
 
@@ -191,10 +193,14 @@ Format: `PF-N — Title`
 
 ### PF-15 — Hardening + edge cases (Sunday session)
 
-- **What:** Address everything that surfaced during PF-14 verification. Plus: storage-quota handling (what happens if Dexie hits a limit, how to recover), corrupt-DB recovery (if IndexedDB gets into a bad state, force-resync from Supabase), schema migration scaffolding (so future schema changes can be applied to existing local DBs without losing data), offline-online edge cases.
-- **Files touched:** TBD based on what PF-14 surfaces. Likely `/sync.js` extensions, `/db.js` migration logic, possibly a hidden /reset endpoint.
-- **Verification:** Stress-test scenarios — fill the local DB, corrupt a row deliberately, schema-change mid-session, etc.
-- **Needs Dean:** verification.
+- **What:** Address everything that surfaced during PF-14 verification. Plus the three iOS mitigations from PM-77.1 research dive (some may be done earlier; this is the catch-all):
+  1. **WKWebView crash-wipe protection.** Force-flush Dexie on `visibilitychange` to hidden. Pattern: ensure all open transactions resolve OR explicitly close/reopen the DB. Listen for `UnknownError: Connection to Indexed Database server lost` and trigger re-hydration from Supabase. Detect empty-DB-on-open after a previously-populated state (sign of crash-wipe) and re-hydrate gracefully.
+  2. **Capacitor scheme lock.** Set the WebView scheme explicitly in `capacitor.config.ts` (likely `capacitor://localhost` for ITP exemption per PF-1 finding) and document that it MUST NOT change between releases. Add a brain hard rule that future Capacitor major-version upgrades require a migration plan because past upgrades have wiped user IndexedDB stores when the scheme silently changed.
+  3. **Queue drain with batching + backoff.** When a member reconnects after long offline period (hours+), the `_sync_queue` could have hundreds of writes. Batch in groups of 20-50, with exponential backoff if Supabase responds with 429 or 5xx. Persist the queue to Dexie (not localStorage) so it survives app restart.
+- **Plus standard hardening:** storage-quota handling (what happens if Dexie hits a limit, how to recover), corrupt-DB recovery (if IndexedDB gets into a bad state, force-resync from Supabase), schema migration scaffolding (so future schema changes can be applied to existing local DBs without losing data), offline-online edge cases. Add a hidden "Force full resync" button to settings as the escape hatch — if anything goes wrong with sync state on a member's device, they (or Dean for support) can trigger a full Dexie wipe + re-hydration without needing a code release.
+- **Files touched:** TBD based on what PF-14 surfaces. Likely `/sync.js` extensions, `/db.js` migration logic, `capacitor.config.ts` scheme lock, `settings.html` for the force-resync button.
+- **Verification:** Stress-test scenarios — fill the local DB, corrupt a row deliberately, schema-change mid-session, force-kill the app mid-write, background for 10+ minutes with a Supabase write happening, etc.
+- **Needs Dean:** verification on real device. `capacitor.config.ts` confirmation since the Capacitor project is not in git.
 - **Estimated length:** 4-6 hours.
 - **Status:** QUEUED
 
