@@ -1506,6 +1506,35 @@ Default Dexie `.put()` is full-replace, not merge. Partial payloads silently dro
 
 **Related but distinct from §23.7.2** — that rule covers hydrate-side failures resolving silently as `true`. §23.7.5 covers write-side failures corrupting silently via default Dexie semantics. Both are "things that look right but aren't" classes of bug, both need diagnostic infra to surface, both deserve §23 codification.
 
+### §23.7.6 — UI state mutation must be synchronous on the active surface; the bus is fan-out, not the trigger (PM-98 ship night, 13 May 2026)
+
+User-perceived UI state changes must happen synchronously inside the event handler that triggers them, BEFORE any bus publish or network write. The bus is for fan-out to OTHER surfaces (home page count overlays, achievements eval, breadcrumb writes, cross-tab and cross-device sync via Layer 2 Realtime bridge) — not the trigger for the active surface's own re-render. Dexie writes can be fire-and-forget Promises but the in-memory state mutation that drives the render must be synchronous in the handler.
+
+**Discovery (PM-98, 13 May 2026):** habits.html `logHabit`/`undoHabit` ran tap → `VYVEBus.publish('habit:logged')` → subscriber mutates `logsToday` and calls `renderHabits`. iOS Safari and iOS Capacitor took 15+ seconds to flip the button. Even after the network write was made fire-and-forget, iOS still failed. The exact reason inside WebKit's task scheduler was never isolated and doesn't need to be — making the visible UI state change synchronous in the handler bypasses the question entirely. Desktop Chrome had hidden the problem.
+
+**Critical-path order for any write surface (use this template):**
+1. Synchronous in-memory state mutation (the variable that drives the render function)
+2. Synchronous re-sort if needed + synchronous render call — DOM flips this paint frame
+3. `showToast` feedback
+4. Dexie write — fire-and-forget Promise, no `await`
+5. `localStorage` cache persist (so nav-back paints correct state)
+6. `VYVEBus.publish` — fan-out for fan-out's sake
+7. `writeQueued` (NOT awaited) with `.then()` for 4xx/5xx → publish `<event>:failed`
+
+**Defensive subscriber pattern for the active surface's own publish:**
+The subscriber must compute `alreadyCorrect` from the envelope against current local state, and skip the resort + render when local already matches. The subscriber's real value is remote-origin publishes (cross-tab, cross-device) where local is NOT yet correct, plus side-effect work that runs unconditionally (cache persist, breadcrumb write/scrub, achievements eval, inflight tracker prune). Failure subscribers (`<event>:failed`) stay unconditional — failure is by definition a state change away from optimistic paint.
+
+**What stays unchanged about the bus:**
+- It is structurally required for cross-surface fan-out (home page count updates, achievements eval, breadcrumb writes).
+- It is the foundation for Layer 2 Realtime cross-device sync.
+- Active-surface publishes still fire for remote subscribers and side-effect handlers — just NOT for the active surface's own re-render.
+
+**Audit signal across the codebase:** ripgrep `VYVEBus\.subscribe\(['"]<event>['"]` and check whether the subscriber calls a `render<X>` function when `<event>` is also published from the same page. If yes, that subscriber needs the `alreadyCorrect` defensive check and the active surface needs the synchronous critical-path order above. Surfaces to audit: cardio.html, workouts.html (session save), wellbeing-checkin.html, monthly-checkin.html, nutrition.html (logWeight/logWater), log-food.html.
+
+**Exempt path:** `runAutotickPass` style flows that run during page load BEFORE the first `renderHabits()` — these can mutate `logsToday` synchronously and let the awaited page-load render paint the final state. No tap-to-flip latency to optimise.
+
+**Related but distinct from §23.7.5** — that rule is about write-side data corruption (partial-upsert landmine in Dexie). §23.7.6 is about write-side UI responsiveness on iOS WebKit. Both surface from the same broad principle (the user's hands and the data layer are not the same problem) but they live in different files.
+
 ### §23.5.1 — Member-dashboard EF latency is the dominant client-perceived perf bottleneck (PM-67 ship night, 12 May 2026)
 
 Discovered 12 May 2026 mid-session: member-dashboard EF v67 execution_time_ms regularly hits 17-38 seconds server-side. This is the dominant cause of the "everything feels slower" regression Dean reported the night of 12 May despite three client-side ships (PM-66 + PM-67a + PM-67d, 14 files). Client-side defer/paint-dispatch/Promise.all optimisations save 50-250ms per surface. The EF wastes 30,000-40,000 ms. **Fix the backend before shipping more client-side polish.**

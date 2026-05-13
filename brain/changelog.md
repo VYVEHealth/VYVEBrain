@@ -1,3 +1,46 @@
+## 2026-05-13 PM-98 (Habits write critical-path rewrite — bus demoted off active surface; §23.7.6 hard rule codified)
+
+Session opened ~23:45 BST as a clean continuation of the previous Claude's mid-session ship at vyve-site HEAD `0ae0f9b3`. That session had introduced a write-optimistic patch chain on habits.html that worked on desktop Chrome but broke on iOS Safari and the iOS Capacitor app — tap "Yes", 15+ seconds, no flip. Dean explicitly halted that diagnostic path. Tonight is the architectural fix and the codification.
+
+**The architectural insight (Dean):** the bus and Dexie solve different problems and the prior patches conflated them. Dexie is the local-first read/write layer that makes the app feel premium — it answers tap responsiveness. The bus is a fan-out mechanism for cross-surface side effects (home page count updates, achievements eval, breadcrumb writes, cross-device sync via the Layer 2 Realtime bridge). The bus is structurally required for those things — it should NOT be deleted. But it must be DEMOTED off the active surface's critical path.
+
+The previous patch had made the bus the trigger for `renderHabits` via the `habit:logged` subscriber. iOS WebKit couldn't paint inside a synchronous turn that ran tap → publish → subscriber → renderHabits + heavy diagnostic toasts + cache writes + breadcrumb + achievements eval, because the same turn also enqueued network work (writeQueued promise creation, auth.getSession, etc). Even with that network work made fire-and-forget, iOS still failed. The exact "why" inside WebKit's task scheduler was never isolated — and doesn't need to be. Taking the bus off the critical path makes the question moot.
+
+**Code commit shipped (1 atomic on main):**
+
+- `47630db8` — PM-98 ship. Two files touched.
+  - `habits.html`: `logHabit`, `undoHabit`, and the `habit:logged` subscriber rewritten. Critical-path order is now:
+    1. Synchronous in-memory mutation of `logsToday`
+    2. Synchronous re-sort + `renderHabits()` — DOM flips this paint frame
+    3. `showToast` feedback
+    4. Dexie write (fire-and-forget Promise — kicked off, not awaited)
+    5. `localStorage` cache persist
+    6. `VYVEBus.publish('habit:logged')` — fan-out to home, achievements, breadcrumb, cross-device
+    7. `writeQueued` (NOT awaited) with `.then()` for 4xx/5xx handling
+    The `habit:logged` subscriber is now defensive against already-correct `logsToday` state — it computes `alreadyCorrect` from the envelope and skips the resort + renderHabits when the active surface has already applied the mutation. Its remaining value: remote-origin publishes (cross-tab, cross-device) where logsToday is NOT yet correct, plus side-effect work (cache persist, breadcrumb write/scrub, achievements eval, inflight tracker prune) which runs unconditionally. The `habit:failed` subscriber stays unconditional — failure IS by definition a state change away from what was optimistically painted, so it always reverts and re-renders. `runAutotickPass` already had the synchronous-logsToday-mutation pattern; left untouched. The diagnostic `showToast` and `console.log` instrumentation from PM-98-diag-f removed (`SUB FIRED`, `REVERT FIRED`, `PUBLISHING habit`, `PUBLISH RETURNED`, `renderHabits called`, `undo result`, `[PM-98 undo diag]`, `[PM-98 habit:failed]`).
+  - `sw.js`: cache key `vyve-cache-v2026-05-13-pm98-diag-f` → `vyve-cache-v2026-05-13-pm98-ship-g`.
+
+**Verification:**
+- All 3 inline scripts in habits.html parse under `node --check`.
+- Byte-equal Contents API re-fetch at commit `47630db8` confirms habits.html 73,723 chars / 75,086 UTF-8 bytes (GitHub `size`=75,086) and sw.js 7,225 chars / 7,435 UTF-8 bytes (GitHub `size`=7,435) match locally-built content exactly.
+- Dean walk on iPhone Safari + iPhone Capacitor app expected to show <100ms tap-to-flip. If still slow, diagnostic infrastructure (PM-96's `dexie-source-indicator.js` IIFE) remains live and surfaces hydrate-side issues; tap-side timing now has no bus/network/await on the critical path so any remaining lag is necessarily in `renderHabits` itself (DOM rebuild) or earlier than the event handler.
+
+**§23.7.6 hard rule (codified in this brain commit):**
+
+User-perceived UI state changes must happen synchronously inside the event handler that triggers them, before any bus publish or network write. The bus is for fan-out to OTHER surfaces, not the trigger for the active surface's own re-render. Dexie writes can be fire-and-forget Promises but the in-memory state mutation that drives `renderHabits` must be synchronous. Active-surface bus subscribers must be defensive against already-correct local state (compute `alreadyCorrect` from envelope, skip the resort/render when local already matches) — their real value is remote-origin publishes and side-effect work, not driving the active surface's own paint.
+
+**Scope re-framing of PM-98:** the backlog entry inherited from PM-97 described PM-98 as a backend EF latency campaign (§23.5.1). Dean redirected at the start of this session — the actual root cause of "tap doesn't flip on iOS" was the client-side architecture, not backend latency. §23.5.1 remains real and remains the dominant cause of any page that paints from EF responses (header dashes on habits.html, etc.). It is now PM-99 P0 territory, not PM-98. The backlog is updated to reflect this split: PM-98 closed as "habits critical-path rewrite, §23.7.6 codified"; PM-99 carries the backend EF latency campaign forward unchanged.
+
+**Things still true at end of PM-98 (deferred to later sessions, not done tonight):**
+
+1. **PF-15.x sweep** — six unwired pages still on REST: movement, sessions, leaderboard, running-plan, certificates, engagement.
+2. **PF-14b bundled-mode Capacitor migration** — 7-day ITP Dexie purge still applies. Mac required. Launch blocker.
+3. **§23.5.1 backend EF latency** — dominant felt-perf bottleneck for any page driven by EF response (e.g. habits.html "Day Streak" / "Total Logged" header dashes). Now carried as PM-99 P0.
+4. **§23.7.6 audit across other writer pages** — the synchronous-critical-path pattern needs to be applied to (or verified safe on) every other write surface: cardio.html `logCardio`, workouts.html session save, wellbeing-checkin.html submit, monthly-checkin.html submit, nutrition.html `logWeight`/`logWater`, log-food.html food log entries. Each of these has a similar tap→writeQueued→render shape and may have the same iOS latency profile. Backlog item.
+5. **Other surfaces' bus subscribers** — same defensive pattern needed wherever an active-surface subscriber for the surface's own publish currently drives re-renders. Audit signal: `VYVEBus.subscribe('<event>', …)` followed by a `render<X>` call where `<event>` is also published from the same page.
+
+**State at end of PM-98:** vyve-site main HEAD `47630db8edd8c57db30a81e66a7ffddc67ab5365`. SW cache key `vyve-cache-v2026-05-13-pm98-ship-g`. Two files in this commit: habits.html (73,723 chars), sw.js (7,225 chars). Habits page write critical-path rewritten end-to-end. §23.7.6 codified. Bus role redefined as fan-out only on active surfaces.
+
 ## 2026-05-13 PM-97 (PF-15 P0 — partial-upsert landmine fixed; backend EF latency surfaced as the dominant felt-perf bottleneck)
 
 Session ran ~22:00-23:00 BST direct continuation of PM-96. Dean reported "data still pulls slow" — pushed back on PM-96 "session closed" framing. Diagnostic-first approach surfaced the actual issues blocking the Premium Feel campaign, not the assumed ones.

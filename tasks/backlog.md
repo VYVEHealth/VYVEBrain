@@ -1,8 +1,38 @@
-## Added 13 May 2026 PM-97 (PF-15 P0 partial-upsert landmine sealed; backend EF latency confirmed as PM-98 P0)
+## Added 13 May 2026 PM-98 (Habits write critical-path rewritten; §23.7.6 codified; backend EF latency re-scoped to PM-99)
 
-### PM-98 — Backend Edge Function latency campaign [P0 next session]
+### PM-98 — CLOSED [shipped 13 May 2026, vyve-site `47630db8`]
 
-**§23.5.1 logged 12 May 2026. Three weeks old. Never worked on. Tonight's session confirmed it is the dominant cause of every "data pulls slow" symptom in Dean's live experience. Next session is this campaign, not the PF-15 sweep.**
+Habits page write critical-path rewrite shipped. `logHabit`, `undoHabit`, and the `habit:logged` subscriber rewritten so user-perceived UI state mutation is fully synchronous inside the event handler, before any bus publish or network write. iOS Safari and iOS Capacitor flip latency: 15+ seconds → <100ms expected. §23.7.6 hard rule codified in master.md. Bus role redefined as fan-out only on active surfaces (still required for cross-surface side effects and cross-device Realtime). Diagnostic instrumentation from PM-98-diag-f removed. sw.js cache key bumped to `pm98-ship-g`.
+
+The PM-98 scope inherited from PM-97 (backend EF latency campaign) was redirected at the start of this session — that work is now PM-99 unchanged. See below.
+
+### §23.7.6 audit sweep — other write surfaces [P1, sequenced after PM-99]
+
+§23.7.6 was codified during the habits.html rewrite. The same critical-path pattern needs to be applied to (or verified safe on) every other write surface. Audit signal: ripgrep `VYVEBus\.subscribe\(['"]<event>['"]` and check whether the subscriber calls a `render<X>` function when `<event>` is also published from the same page. If yes, that subscriber needs the `alreadyCorrect` defensive check and the active surface needs the synchronous critical-path order.
+
+Surfaces to audit:
+- `cardio.html` — `logCardio` handler and any `cardio:logged` subscriber
+- `workouts.html` — session save flow, exercise log writes
+- `wellbeing-checkin.html` — submit handler
+- `monthly-checkin.html` — submit handler
+- `nutrition.html` — `logWeight` and `logWater` handlers
+- `log-food.html` — food log entry handlers
+
+Each surface gets the §23.7.6 critical-path order: synchronous in-memory state mutation → synchronous render → toast → Dexie fire-and-forget → cache persist → bus publish → writeQueued not awaited. The active-surface subscriber gets the `alreadyCorrect` defensive check. Failure subscribers stay unconditional.
+
+If any surface uses a Promise-flow or imperative rendering pattern that's already synchronous in spirit, document that and skip. The audit needs to be evidence-based per surface, not blanket-rewrites.
+
+**Estimated length:** One session per 2-3 surfaces depending on complexity. Cardio and nutrition are simplest (single-row writes); workouts is the heaviest (multi-exercise sessions).
+
+### §23.7.6 bus subscriber audit across the wider codebase [P2]
+
+Beyond writer pages, audit any place a page subscribes to its own publish to drive re-renders: bus.js, vyve-home-state.js helpers, vyve-achievements.js evaluator. The `alreadyCorrect` defensive pattern may or may not apply — the goal is to ensure NO subscriber blocks first paint of an active-surface change. Lower priority because none of these surfaces are tap-driven in the same way habits.html was.
+
+## Added 13 May 2026 PM-97 (PF-15 P0 partial-upsert landmine sealed; backend EF latency surfaced — see PM-99)
+
+### PM-99 — Backend Edge Function latency campaign [P0]
+
+**§23.5.1 logged 12 May 2026. Three weeks old. Never worked on. PM-97 confirmed it is the dominant cause of every "data pulls slow" symptom in Dean's live experience. Re-scoped from PM-98 to PM-99 at end of PM-98 (13 May) — PM-98 had been redirected to the iOS critical-path rewrite once Dean identified that as a separable problem. Carry forward.**
 
 **Symptoms surfaced in PM-97:**
 - Habits page header "Day Streak" and "Total Logged" show ━ placeholder loaders that never resolve. Page IS Dexie-wired but the dashboard refresh hits slow EFs and never returns.
