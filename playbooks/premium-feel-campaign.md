@@ -220,14 +220,23 @@ Format: `PF-N — Title`
 - **Estimated length:** 2 hours.
 - **Status:** SHIPPED to `local-first-spike` commit `9813e800` (PM-87 narrative). Eleven reads flipped total. **wellbeing-checkin.html:** 5/6 fetchMemberData reads flipped (daily_habits, workouts, cardio, session_views × 2) — `members` kept on Supabase per PF-8 PF-4b Part 1 carve-out. `fetchThisWeekCheckin` flipped. `fetchWellbeingHistory` carve-out: `weekly_scores` not in Dexie schema (PF-30 companion candidate to extend if telemetry shows it's hot). EF submit (L470 outbox-retry + L648 primary) stays on the wire — Anthropic Sonnet AI-moment carve-out. Optimistic `wellbeing_checkins.upsert` at renderResponse (synthetic id `${email}:${iso_year}:${iso_week}`, fields reconstructed from data.full + data.persona + selectedScore + flow + bstToday() + computed day_of_week/time_of_day) covers PF-4b Part 2 read-after-write hazard. **monthly-checkin.html:** all 6 loadRecap reads flipped (daily_habits, workouts, cardio, session_views, replay_views, wellbeing_checkins). EF submit + EF status GET stay on the wire (server-compute carve-out: AI report + newMemberLocked/alreadyDone logic). `members` first_name fetch (L884) kept on Supabase per PF-8 carve-out. No optimistic upsert (no on-page read-after-write — 409 already-done gate + reload on submit duplicate). Pre-existing bug spotted: `monthly-checkin.html` references `<script src="auth.js">` without leading slash — backlogged for P1 polish. Awaiting Dean's real-device verification: `localStorage.setItem('vyve_lf_spike','1')` → reload → throttle to Offline → `/wellbeing-checkin.html` → activity summary renders from Dexie; submit hits EF (online required for AI); already-done re-render works without trip to Supabase. Then `/monthly-checkin.html` → recap renders from Dexie; submit hits EF.
 
-### PF-11 — Page refactor: index.html (home dashboard)
+### PF-11a — Page refactor: index.html cold-start Dexie-derived paint
 
-- **What:** The big one. Home reads everything from Dexie. Engagement score computed client-side. Streak from local. Today's habits pill from local. Weekly goals from local. Progress tracks from local. The collective charity total still pulls from Supabase periodically (it's cross-member data) but caches locally and renders from cache.
+- **What:** When `vyve_home_v3_<email>` localStorage cache is empty, new `buildHomeFromDexie()` synthesises a partial member-dashboard payload from Dexie tables (progress counts, activity_log, weekly_goals + progress, habitDatesThisWeek, wellbeing.current_score, member, habit assignments). Painted immediately. `loadDashboard()` always fires to upgrade engagement.score + streaks + charity_total + achievements from the EF.
 - **Files touched:** `index.html`. SW cache bump.
-- **Verification:** Open home tab cold. Should paint within ~100ms with all real numbers. Tap into Habits, complete one, return to home — pill should be incremented without any visible fetch.
-- **Needs Dean:** verification — this is the most visible win, worth demoing properly.
-- **Estimated length:** 3 hours.
-- **Status:** QUEUED
+- **Verification:** `localStorage.setItem('vyve_lf_spike','1')` → clear `vyve_home_v3_<email>` from localStorage → reload. Dashboard should paint instantly with real progress counts + activity dots, NOT the skeleton. Engagement score + streaks arrive shortly after via EF.
+- **Needs Dean:** verification — this is the cold-start visible win for first-device launch demo.
+- **Estimated length:** 1 hour (was scoped at 3 in original PF-11 — split off the easier half).
+- **Status:** SHIPPED to `local-first-spike` commit `8b79c54d` (PM-88 narrative). New `buildHomeFromDexie(email)` returns null on Dexie-disabled / empty / error, falls through to skeleton. Non-empty gate covers 9 Dexie tables. Placeholders for server-computed fields (engagement.score=50 base, all streaks={current:0,best:0}, charity_total=0, achievements=empty, certificates=empty) — `renderDashboardData` handles missing fields defensively. `loadDashboard()` always upgrades. SW cache key bumped to `pm78-pf11a-home-a`. Telemetry hook: returned payload includes `__pf11a_dexie_source: true` for PF-30 to emit `dexie_cold_start_paints` counter.
+
+### PF-11b — Page refactor: index.html client-side member_home_state computation
+
+- **What:** Replace (or make optional / TTL-cached) the `member-dashboard` EF call. Port `member_home_state_get_fresh` RPC logic to client-side JS over Dexie data: engagement_score formula with 4 weighted components (recency, consistency, variety, wellbeing — each max 12.5pts, base 50), per-type streak computation (walk activity_log backward, count consecutive non-empty days), 30-day recent counts, weekly goal progress. The `charity_total` cross-member aggregate still requires a server call but could move to a separate lightweight endpoint or be folded into a longer-TTL cache. After this lands, the home dashboard would be entirely Dexie-rendered on warm + cold paths, with the EF only fetching `charity_total` + `achievements` + occasional `certificates` refreshes.
+- **Files touched:** `index.html` + possibly a new `home-state-local.js` helper module (analogous to `vyve-home-state.js` but for computation, not optimistic patching). Possibly a new lightweight `charity-total` EF that only returns the cross-member aggregate.
+- **Verification:** With spike on + Dexie hydrated, throttle to Offline. Home should paint full numbers (progress, streaks, engagement score, weekly goals) without any server fetch. Charity total may show as cached-or-zero on offline.
+- **Needs Dean:** verification — this is the architectural completion of PF-11.
+- **Estimated length:** 2-3 hours.
+- **Status:** QUEUED. Sequence: post-PF-12 (settings + remaining surfaces) if pre-launch bandwidth allows, otherwise post-launch. PF-11a already delivers the demo-visible win the launch cares about.
 
 ### PF-12 — Page refactor: settings.html + remaining surfaces
 

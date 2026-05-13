@@ -1,3 +1,66 @@
+## 2026-05-13 PM-88 (PF-11a SHIPPED — index.html cold-start Dexie-derived paint on local-first-spike; PF-11 split into PF-11a + PF-11b)
+
+PF-11a lands on vyve-site `local-first-spike` at commit `8b79c54d`. The playbook scoped PF-11 as a single 3-hour task ("read everything from Dexie. Engagement score computed client-side. Streak from local."), but on closer inspection the engagement-score path requires re-implementing `member_home_state_get_fresh` RPC client-side over Dexie data — significantly larger scope than the playbook estimate. Decision: split into PF-11a (cold-start Dexie-derived paint, this commit) and PF-11b (member_home_state client-side computation, queued).
+
+### What PF-11a actually flips
+
+Not Supabase reads. index.html's render path was already Layer-4-optimised: it reads `vyve_home_v3_<email>` from localStorage (Layer 4 optimistic-patch cache, see `vyve-home-state.js`) and paints immediately on warm load. The real cold-start cost was the EMPTY-CACHE path — a member arriving with no localStorage (first visit on a device, cache wipe, Capacitor scheme migration, ITP eviction) would see the skeleton for 200-800ms warm / 7-17s cold while `loadDashboard()` fetched from `member-dashboard` EF.
+
+PF-11a fills that gap. New function `buildHomeFromDexie(email)` synthesises a partial member-dashboard payload from Dexie tables that mirrors the EF's response shape. The bootstrap path at the old L1043 region now reads:
+
+```
+if (cached)       → render(cached) + loadDashboard()
+else if (Dexie)   → render(buildHomeFromDexie()) + loadDashboard()
+else              → showSkeleton() + loadDashboard()
+```
+
+`loadDashboard()` always runs to upgrade the Dexie-derived placeholder to full EF truth.
+
+### What `buildHomeFromDexie()` fills from Dexie
+
+All-time `progress.{habits,workouts,cardio,sessions,checkins}.count` from row counts of `daily_habits` (distinct activity_date where `habit_completed=true`), `workouts`, `cardio`, `session_views + replay_views`, `wellbeing_checkins`. `activity_log` for the last 30 days as a union with type tags. `weekly_goals` row from `weekly_goals` table for the current ISO Monday + computed `progress` (habits/exercise/sessions/checkin counts for this week) mirroring the EF's `goalsPayload`. `habitDatesThisWeek` from this-week filtered `daily_habits` rows with `habit_completed=true`. `wellbeing.current_score` from latest-`logged_at` `wellbeing_checkins` row. `member.first_name`/`persona`/`join_date` from `members.allFor` single row (still hydrated by PF-3). `habits` (assignments) from `member_habits.allFor` — habit_library JOIN fields stay undefined on cold-start, EF upgrades on its return. `recent.*` (30-day) from same activity tables.
+
+### What stays as placeholder (EF upgrades)
+
+`engagement.score = 50` (base, EF returns computed 0-100). All 4 components `recency/consistency/variety/wellbeing = 0`. All streaks `{current:0, best:0}` for all 5 types + overall. `charity_total = 0` (cross-member aggregate — fundamentally not in Dexie). `certificates = []`, `achievements = {unseen:[], inflight:[], recent:[], earned_count:0, hk_connected:false}`. `health_connection_state = 'none'`, `health_connections = []`. `health_feature_allowed = true`.
+
+These render as zeros / empty states for the brief window between Dexie paint and EF return. `renderDashboardData` handles missing fields defensively (`|| 0`, `|| {}`, `|| []`), so the placeholder values display safely. The visible effect is "real progress counts + activity dots paint instantly, engagement score arrives a second later". Vastly better than the empty-cache skeleton.
+
+### Non-empty gate
+
+Same canonical pattern as PF-6/7/8/9/10: if all 9 Dexie tables (`daily_habits`, `workouts`, `cardio`, `session_views`, `replay_views`, `wellbeing_checkins`, `weekly_goals`, `members`, `member_habits`) are empty, return null and fall through to skeleton. Avoids painting a "0 0 0 0" dashboard for a truly fresh member who has zero activity AND zero Dexie hydration yet.
+
+### Returns shape includes `__pf11a_dexie_source: true` marker
+
+For diagnostics + the PF-30 telemetry redirect (PM-85). PF-30 should emit a counter `dexie_cold_start_paints` so we can measure how many cold-starts get the Dexie path vs. fall through to skeleton.
+
+### What PF-11a does NOT do (deferred to PF-11b)
+
+- Replace the `member-dashboard` EF call entirely. PF-11a still always fires loadDashboard() to upgrade. PF-11b would make the EF call optional / background-refresh-only / part of a longer TTL cache strategy.
+- Compute `engagement.score` client-side. That requires porting the SQL function `member_home_state_get_fresh` (and its dependency on `member_home_state` materialised view) to client-side JS. Manageable but the home_state row contains 30+ columns of derived state including recency/consistency/variety/wellbeing components with their own SQL formulas. Estimated 2-3 hours on its own.
+- Compute streaks client-side. Requires walking `activity_log` backward from today, counting consecutive non-empty days per type. Also doable but not in this commit.
+- Replace `charity_total` source — would need a separate lightweight cache via a different EF or RPC that only returns the aggregate (not the full home_state payload). Out of scope.
+
+### Script chain unchanged
+
+index.html already had `/db.js` and `/sync.js` in its script chain (added at PF-1 or PF-3 — the prerequisites were always present). No script-chain mutation needed.
+
+### SW cache bumped pm78-pf10-checkins-a → pm78-pf11a-home-a
+
+### Brace/paren/bracket balance + byte-equal verification
+
+All balanced post-patch. Both files (index.html, sw.js) verified via Contents API base64-decode path pinned to the commit SHA (`8b79c54d…`) — bypasses the ref=branch CDN cache from the PM-86.1 lesson. head-100 + tail-100 + character-length + UTF-8-byte-length all match expected.
+
+### PF-11b — queued
+
+The full client-side member_home_state computation. Replaces (or makes optional / TTL-cached) the member-dashboard EF call. Includes engagement_score formula port, streak computation, recent counts. Pre-launch if bandwidth, post-launch otherwise — PF-11a already delivers the cold-start visible win the launch demo cares about.
+
+### Sequencing
+
+PF-1 through PF-10 + PF-11a SHIPPED. PF-11b (client-side member_home_state) queued. PF-12 (settings + remaining surfaces) next on the page-refactor track. PF-30 (telemetry redirect + observability stack) strongly recommended pre-launch.
+
+---
+
 ## 2026-05-13 PM-87 (PF-10 SHIPPED — wellbeing-checkin + monthly-checkin Dexie-first reads on local-first-spike; PF-4b Part 1 carve-out followed; weekly_scores schema-extension queued)
 
 PF-10 lands on vyve-site `local-first-spike` at commit `9813e800`. Two pages flipped, same canonical non-empty-gate three-way branch as PF-6/7/8/9. AI-moment EF submits stay on the wire as the deliberate server-compute carve-out.
