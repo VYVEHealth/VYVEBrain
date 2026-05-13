@@ -1,3 +1,30 @@
+## Added 14 May 2026 PM-100 (§23.8 timezone audit pending — codebase is BST-locked)
+
+### §23.8 timezone-correctness audit sweep [P1, sequenced before international launch]
+
+The codebase is BST-locked. `bstToday()` in 8 files (`habits.html`, `cardio.html`, `wellbeing-checkin.html`, `monthly-checkin.html`, `movement.html`, `home-state-local.js`, `workouts-session.js`, plus copies in `nutrition-setup.html` and `healthbridge.js`) hard-codes a UK +60min DST offset and returns today as a UTC-derived date with the offset bolted on. That gives the wrong date for any member outside UK and for UK members travelling. Separately, 20+ files use `toLocaleDateString('en-GB', ...)` which is device-local in clock but always renders UK format regardless of member preference — cosmetic inconsistency.
+
+Surfaced by Dean 14 May after the PM-100 ship. Carrying as backlog item not §23 hard rule yet because the audit + fix isn't done; §23.8 is logged as a known-gotcha in master.md to prevent further BST-locked code from being shipped while this sits unresolved.
+
+**Scope of the audit:**
+- Replace `bstToday()` with a shared `deviceLocalToday()` helper that returns the member's wall-clock date. Place in `vyve-time.js` (new) or fold into an existing shared module.
+- Audit every call site across 8 files. Most are in cache keys, `activity_date` payloads, the PM-100 visibility/midnight rollover handlers, and similar.
+- Verify NO Edge Function applies BST-specific date math to `activity_date` server-side. Expected count: zero — the column is opaque `date`. If any exist, decide per-EF whether to keep server-side or remove.
+- Optional: replace `toLocaleDateString('en-GB', ...)` with locale-respectful formatting where member-facing copy is visible. Lower priority.
+- Optional: stamp `Intl.DateTimeFormat().resolvedOptions().timeZone` onto the members row at login for analytics and future cron-reminder personalisation.
+
+**Why it matters:**
+- B2C members via Stripe can be anywhere in the world. Even pre-launch trial members could be travelling.
+- An Australian member at 10am AEST gets a "today" that's behind their wall clock — they log a habit on Wednesday morning Sydney time and it lands as Tuesday in the database.
+- UK members on holiday get the wrong "today" for the duration of the trip.
+- Sage enterprise is UK so this isn't blocking the first enterprise deal, but it's an international-launch blocker.
+
+**Audit signal at start of work:** `ripgrep "bstToday|isDST|toLocaleDateString\('en-GB'"` across vyve-site shows the current footprint. Re-run to confirm scope hasn't grown.
+
+**Estimated length:** Half-day Claude session. 8 files for the correctness fix; the cosmetic locale clean-up adds maybe another session if shipped together. SW cache key bump on every touched HTML.
+
+**Risk if not shipped before international launch:** every non-UK member sees wrong "today" on habits/cardio/wellbeing/monthly check-in pages, with all the downstream cascades — wrong streak math, wrong cache invalidation, wrong activity_date stamping, wrong "11/11 done today" pattern Dean caught in PM-100 but for every non-UK member every day.
+
 ## Added 14 May 2026 PM-100 (Habits cache-first first paint covers header; midnight rollover handler; §23.7.7 codified)
 
 ### PM-100 — CLOSED [shipped 14 May 2026, vyve-site `997c8621`]

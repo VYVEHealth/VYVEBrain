@@ -1559,6 +1559,44 @@ When a page implements cache-first first paint (paint from localStorage cache sy
 
 **Related to §23.7.6** — §23.7.6 was the synchronous critical-path for taps. §23.7.7 is the synchronous first-paint completeness for cache-first surfaces. Both are about delivering the premium-app feel: §23.7.6 says "user taps must feel instant"; §23.7.7 says "page first paint must be complete from local, not half-painted with stale or missing fields." A surface needs both to feel right.
 
+### §23.8 — Timezone correctness audit pending: codebase is BST-locked, needs to be device-local (logged 14 May 2026, PM-100 follow-up)
+
+**Status:** AUDIT PENDING. Documented as known-gotcha to prevent further BST-locked code being shipped. Fix carried as backlog item.
+
+**The problem (surfaced by Dean, 14 May 2026):** the codebase mixes two date-source approaches inconsistently. `bstToday()` is a UK-hardcoded function in 8 files (`habits.html`, `cardio.html`, `wellbeing-checkin.html`, `monthly-checkin.html`, `movement.html`, `home-state-local.js`, `workouts-session.js`, plus copies in `nutrition-setup.html` and `healthbridge.js`) that adds +60 minutes during DST and treats `bst.toISOString().slice(0,10)` as today. This gives the wrong date for any member outside UK:
+- Australian member at 10am AEST sees today = UTC date, often a day BEHIND their wall clock during evening logging
+- US east coast member at 9pm EST sees today = next day's UTC date if BST adds +60
+- Even UK members visiting another timezone get the wrong "today"
+
+Date FORMATTING is separately wrong: 20+ files use `toLocaleDateString('en-GB', ...)` to format display dates. That's device-local in terms of clock but always displays in UK format regardless of member preference. Not a correctness bug like `bstToday` but inconsistent.
+
+**The fix shape (to be applied during the audit sweep):**
+
+1. **Replace `bstToday()` with a shared device-local helper.** Conceptually:
+   ```javascript
+   function deviceLocalToday() {
+     const d = new Date();
+     return d.getFullYear() + '-' +
+            String(d.getMonth() + 1).padStart(2, '0') + '-' +
+            String(d.getDate()).padStart(2, '0');
+   }
+   ```
+   This is what the member's wall clock shows. UK winter, UK summer, Australia, US — all correct. Place the helper in a shared module (probably `vyve-time.js` or fold into an existing shared file) so every page uses one implementation.
+
+2. **Audit every `bstToday()` call site** and replace. Currently 8 files × ~2-6 calls each. Most are inside cache-keying, activity-date payloads, and the visibility/midnight rollover handlers we just shipped in PM-100.
+
+3. **Server-side implication: `activity_date` in writes is now device-local, which is what we want anyway.** The member's perception of "I logged this on Wednesday" matches the row's `activity_date`. Reporting/analytics that aggregate across timezones can use `created_at` (UTC) when needed. NO database migration required — `activity_date` is already a `date` column with no timezone; sending the device-local date string is exactly the correct shape. Verify before shipping that no Edge Function applies BST-specific date math to `activity_date` server-side (likely zero — the column is treated as opaque).
+
+4. **Replace `toLocaleDateString('en-GB', ...)` with locale-respectful formatting** where the display text matters. For most internal pages this is cosmetic; for member-facing "Friday 14 May" headers, use `toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })` so members see their device's locale formatting. Lower priority than the `bstToday()` correctness bug — can ship in the same audit sweep.
+
+5. **Member timezone display (optional polish):** consider stamping the member's IANA timezone (`Intl.DateTimeFormat().resolvedOptions().timeZone`) onto the `members` row at first login. Useful for analytics ("when does this member log activities?") and for any future server-driven date logic (cron reminders that fire at the member's local 9am, not 9am UTC). Not strictly needed for the correctness fix.
+
+**Until the audit ships:** treat any new code that touches "today" as a §23.8 obligation. New page or new feature → use device-local from day one, do NOT add another `bstToday()` import or copy the BST helper into a new file. The audit will retire the existing call sites in a single sweep; new code should not extend the surface area.
+
+**Audit signal for future work:** `ripgrep "bstToday|isDST|toLocaleDateString\('en-GB'"` across vyve-site shows the full current footprint. Run this at the start of the audit session to get a fresh count.
+
+**Estimated audit scope:** Half-day Claude minimum. 8 files for `bstToday` replacement (the correctness fix) and the locale formatting clean-up sweeps another 20+ files but is mechanical find-and-replace once the helper is in place. SW cache key bump on every touched HTML.
+
 ### §23.5.1 — Member-dashboard EF latency is the dominant client-perceived perf bottleneck (PM-67 ship night, 12 May 2026)
 
 Discovered 12 May 2026 mid-session: member-dashboard EF v67 execution_time_ms regularly hits 17-38 seconds server-side. This is the dominant cause of the "everything feels slower" regression Dean reported the night of 12 May despite three client-side ships (PM-66 + PM-67a + PM-67d, 14 files). Client-side defer/paint-dispatch/Promise.all optimisations save 50-250ms per surface. The EF wastes 30,000-40,000 ms. **Fix the backend before shipping more client-side polish.**
