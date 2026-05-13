@@ -1,82 +1,64 @@
-## 2026-05-13 PM-82 (PF-8 shipped — nutrition surfaces Dexie-first reads on local-first-spike; optimistic-write-to-Dexie gap surfaced)
+## 2026-05-13 PM-79.4 (PF-29 added — Android Health Connect autotick wiring; PF-14 scope expanded with Android two-device verification + Capacitor scheme check + Dexie source indicator)
 
-Third page-refactor session on the local-first architecture. vyve-site `local-first-spike` now 8 commits ahead of `main` at `d2fc1e89`. PM-79.3 captured PF-6/7 narrative; PM-82 adds PF-8 and the first significant architectural finding from the page-refactor pass.
+Brain-only commit. No vyve-site change. Conversational scoping with Dean produced one new pre-launch task plus a meaningful expansion of PF-14's verification scope.
 
-### Operating mode in effect
+### Context
 
-Dean off-keyboard. Single "go" confirmation that this chat would do PF-8. Claude proceeded with PF-8 per active.md §3 + the playbook, including a decision to skip the proposed PM-82 brain restore of PM-80/PM-81 once PM-79.3 was discovered to have consolidated their narratives correctly. Two architectural concerns voiced once each (optimistic-write gap — folded into PF-8 scope decision; PM-80/PM-81 restore — skipped after reviewing PM-79.3) and not blocked on confirmation.
+Dean now has an Android device, which unblocks two streams of work that were previously "parked pending test device":
 
-### PF-8 ship — vyve-site `d2fc1e89`
+1. **Android-side verification of the local-first migration.** PF-1 through PF-7 have shipped to `local-first-spike` on iOS only in spirit (the spike branch is web code, but the only test device the playbook assumed was iPhone). Adding Android to the verification path catches Android WebView quirks iOS doesn't surface and validates the delta-pull cross-device test in a way single-device verification cannot.
 
-Three files, one atomic commit on top of PF-7 (`97863198`).
+2. **Android Health Connect autotick.** The web-side memory note read "Android HealthKit (Health Connect) parity — parked pending test device" — but that was conflating the test-device blocker with an integration blocker. Capacitor side is fully configured: Health Connect plugin in the project, manifest permissions declared, plugin compiled into 1.0.2 binary in Play Store review. The outstanding work is web-side wiring + member-facing permissions UX. Pre-launch scope.
 
-**Read path replacements (4 sites):**
+### What was added
 
-1. `loadWtLogs()` in `nutrition.html` flipped to read `weight_logs` from Dexie when spike on. Returns rows mapped to `{date, kg}` and writes through to the existing `vyve_wt_cache_<email>` localStorage cache so the cross-architecture network-failure fallback still works.
-2. `loadDiary()` in `log-food.html` flipped to read today's `nutrition_logs` from Dexie. Filtered by `activity_date === currentDate` locally (Dexie has all rows; no `activity_date=eq.` filter on `allFor`). Sort ASC by `logged_at` locally. The existing localStorage diary cache and offline-paint flow are preserved untouched — they front-run as the synchronous optimistic paint before either Dexie or Supabase resolves.
-3. `loadRecent()` in `log-food.html` flipped to read the full `nutrition_logs` history for the recent-foods picker. Sort DESC by `logged_at`, dedupe by `food_name+brand`, slice 20 — same semantics as the Supabase `limit=100` query plus client-side dedupe.
-4. `loadMyFoods()` in `log-food.html` flipped to read `nutrition_my_foods` sorted DESC by `created_at`.
+**PF-29 — Android Health Connect autotick wiring (pre-launch).** Web-side evaluator (`fetchDashboardHabits`) routes Android requests to the Health Connect plugin path; mirrors iOS HealthKit routing via Capgo plugin. Android-specific permissions UX explainer in onboarding + settings (Health Connect permissions are granted per-data-type via the Health Connect app itself, not an in-app prompt — needs deep-link + explainer). Verification on Dean's Android device. No Play Store re-review needed since permissions are already declared in the 1.0.2 manifest — web changes deploy via the standard GitHub Pages + sw.js cache bump path with no native involvement. **Estimated 3-4 hours build.** Hard blocker: Lewis copy for Android permissions explainer. Surfaces the PM-80 server-compute carve-out principle cleanly: autotick evaluator is live state against the current platform health store, not persistable, must stay on the wire on both spike-on and spike-off paths.
 
-All four use the non-empty-gate three-way branch from PF-6/7: spike-on AND non-empty rows → Dexie; empty or error → Supabase fall-through; spike-off → legacy.
+**PF-14 scope expanded** with three sub-bullets:
 
-**Architectural finding: optimistic-write-to-Dexie gap.**
+1. **Two-device cross-sync test.** Both devices logged in to same account simultaneously. Log a habit on Android while iPhone is backgrounded for 60+ seconds. Foreground iPhone. Habit must appear within 1-2s via PF-5 delta-pull. This is the test that proves the visibility-change delta-pull belt-and-braces (PM-77.1 §3.1 mitigation C) actually works end-to-end. Single-device verification cannot validate this path. Added 30-60 min to PF-14's Dean-time estimate.
 
-While scoping PF-8 I traced what happens when nutrition.html PATCHes the `members` row on TDEE recalc and then re-reads it. PF-4's shadow drainer mirrors the write to Dexie `_sync_queue` (the durable outbound log) — but does NOT update the actual Dexie data tables. So if nutrition.html were to read `members` from Dexie, the next render after a TDEE recalc would show stale values until the drainer caught up to Supabase and a subsequent hydrate refreshed the row.
+2. **Capacitor config check on both `ios.*` and `android.*` blocks.** Dean reads out `~/Projects/vyve-capacitor/capacitor.config.ts` on his Mac. Documents the iOS origin pattern (PM-77.1 §3.1 mitigation B — `capacitor://localhost` vs remote-origin; ITP exemption hinges on this). Documents Android scheme + hostname. Locks both schemes explicitly in `capacitor.config.ts` so Capacitor major-version upgrades can't silently change the scheme and wipe member IndexedDB. **This is the long-outstanding mitigation B from PM-77.1.** Carrying it forward through PM-78, PM-79, PM-79.1/2/3 — finally gets resolved when PF-14 runs.
 
-This affects every page that reads-after-write its own data. It hasn't surfaced before because:
-- PF-6 (habits.html) — habit writes go to `daily_habits`; PF-1 already wires an optimistic Dexie write at the page level alongside `writeQueued` (the page knows to write to Dexie too).
-- PF-7 (workouts surfaces) — workout completion goes through `writeQueued`; the page navigates away before re-reading.
-- PF-8 (nutrition.html) — TDEE recalc PATCHes `members` and stays on the same page. The gap surfaces here.
+3. **Temporary Dexie source indicator.** Build a spike-gated visual indicator: small dot in the top corner of every page. Green = read came from Dexie. Amber = Supabase fallthrough fired (Dexie empty / shim active / hydrate failed for this table). Red = fully offline. Pure CSS/JS, works identically on iOS and Android. ~30 min Claude build. Used during PF-14 verification on both devices, carries through PF-15 as a debugging aid, PF-19 cleanup strips it before merge to main.
 
-**Decision for PF-8:** keep `members` reads on Supabase (it's a small one-row pull). Document the gap as a follow-up architectural concern that wants codification across all writes — probably as PF-4b: extend the shadow drainer to apply optimistic Dexie writes alongside the `_sync_queue` enqueue. Or alternatively, add a per-page optimistic-Dexie write at every `writeQueued` call site (matches the PF-1 pattern). Either path is bigger than PF-8 scope. Recording for later.
+### The Dexie source indicator question — why it slots into PF-14 vs standalone
 
-**Other carve-outs preserved.** `off-proxy` (Open Food Facts external API) stays on the wire in `log-food.html`. `platform-alert` telemetry stays on the wire in both pages. Third application of the PM-79.3 server-compute carve-out principle.
+Dean's question: "How will I know it's Dexie working and it's not edge functions?" Initial answer covered the 6 ways to tell (network tab silence, IndexedDB Application tab, [PF-1] console logs, offline mode, cold-cache reload time, `_sync_meta` table inspection). Conversation then surfaced: a visual indicator would compress all 6 tests into a single glance during the verification session.
 
-**Writes unchanged.** PF-4's shadow drainer already covers every nutrition write via `VYVEData.writeQueued`: POST `weight_logs` + PATCH `members` in nutrition.html, POST/DELETE `nutrition_logs` in log-food.html.
+First proposal: PF-12.5 standalone task between PF-12 and PF-13. Reasoning to slot it pre-PF-13: every page is Dexie-source by default after PF-12, so the indicator's amber-state means a real signal worth chasing rather than "this page hasn't been refactored yet" noise.
 
-**Script chain.** `/db.js` + `/sync.js` added to both pages immediately after `/bus.js`, matching the canonical position from habits.html/workouts.html.
+Dean's better call: group it with PF-14 rather than standalone. Reasoning: the indicator isn't its own deliverable, it's a verification tool — tools belong with the work they enable. PF-14 is "Dean on iPhone (and now Android) walks through every flow"; the indicator is built immediately before that session, used during it, carries through PF-15 hardening as a debug aid, stripped at PF-19 cleanup. Cleaner than a freestanding task with no audience.
 
-Cache key `vyve-cache-v2026-05-13-pm78-pf7-workouts-a` → `pm78-pf8-nutrition-a`.
+### What "Capacitor is ready for Health Connect" actually means (clarification logged for future Claudes)
 
-### Brain-restore decision: PM-80 + PM-81 NOT restored
+Initial framing of PF-29 had it as a V2 task — sized 15-25 hours including Capacitor plugin selection, native integration, manifest permission declarations, and Play Store re-review cycle. Dean clarified: the Capacitor side is already configured — plugin is in the project, manifest permissions are declared in the 1.0.2 binary in current review, the work is purely web-side wiring + permissions UX. Resized accordingly: 3-4 hours, pre-launch scope, no Play Store re-review needed because no permission changes between 1.0.2 and 1.0.3 web update.
 
-Per the prompt for this session, I was set up to restore PM-80 + PM-81 changelog entries that PM-79.1 dropped overnight. Inspecting PM-79.3 (the most recent sibling-session brain commit), I found it had already consolidated PF-6 + PF-7 ship narrative correctly, captured the autotick carve-out and three-way branch principles, and brought §2/§3/§5 into a consistent post-PF-7 state. Restoring PM-80 + PM-81 would have regressed the brain by introducing duplicate ship narratives and stale §2/§3 figures.
+Lesson logged: when surfacing tasks that bridge Capacitor native + web, distinguish carefully between "Capacitor side configured" (plugin installed, manifest set up, native compile complete) and "Capacitor side not started." The former is web-only work; the latter is multi-day work plus Play Store cycle. Don't conflate. Dean had to clarify this twice in the conversation before the sizing landed.
 
-**Decision: leave the live brain at PM-79.3's state, build PM-82 on top.** PM-80 (commit `99e066ae41`) and PM-81 (commit `cf9fa0a88f`) remain in git history forever — anyone wanting the original ship-day narrative can `git show <sha>:brain/changelog.md`. The principle that emerged in PM-80/PM-81 (server-compute carve-out, post-commit content-presence check rule candidate) was correctly absorbed by PM-79.3.
+### Sequencing
 
-### Drift-detection signal worth keeping
+PF-29 slots into the pre-launch window, no hard ordering dependency. Could ship anytime between PF-1's foundation and PF-19's cleanup. Lewis copy gate suggests slotting it alongside the other Lewis-copy-gated tasks (PF-13, PF-18) to batch his review time.
 
-The PM-79.x ↔ PM-80/PM-81 race tonight produced a clear pattern: when a sibling brain session writes against a stale base, the resulting commit lands cleanly in git but the prior session's content disappears from the live file. **The post-commit verification rule from PM-81** — check that prior PM-N headers still exist in the live changelog, not just byte-equality of what was just pushed — would catch this within seconds of a push. Candidate for §23 hard-rule promotion on the next active.md rebuild. Recorded again here so it survives any future overwrite.
+PF-14 expansion doesn't change PF-14's position in the sequence — it remains the device verification gate before PF-15 hardening. The added scope (two-device, scheme check, indicator) is in scope for the same session, not separate sessions.
 
-### Verification path for Dean (when he's back)
+### MVP/Premium tiering update
 
-1. Merge `local-first-spike` → `main`. Compare: https://github.com/VYVEHealth/vyve-site/compare/main...local-first-spike
-2. Open `online.vyvehealth.co.uk`, login.
-3. DevTools console: `localStorage.setItem('vyve_lf_spike','1'); location.reload()`.
-4. `VYVESync.status()` should show `weight_logs`, `nutrition_logs`, `nutrition_my_foods` in `hydrated_tables`.
-5. Throttle Network to Offline.
-6. Navigate to `/nutrition.html` — weight chart renders from Dexie. TDEE values render from Supabase (deliberate — see optimistic-write gap above).
-7. Tap "Log food" → `/log-food.html` — today's diary, recent foods picker, my foods tab all render with zero non-cached network calls. (Food search via off-proxy will fail offline — that's the external-API carve-out.)
-8. Network back on, log a food, see instant ack. PF-4 drainer eventually catches up on Supabase.
-9. Spike off → reload → behaviour identical to today.
-
-### What's queued next
-
-**PF-9 — cardio.html refactor.** Same template as PF-6/7/8. Read cardio history from Dexie; writes through `VYVEData.writeQueued`. ~1-2 hours.
-
-After PF-9: PF-10 (weekly/monthly check-in — first AI-moment refactor where the EF generation is the deliberate carve-out moment), PF-11 (index.html home dashboard — most visible win), PF-12 (settings + remaining surfaces). Then PF-13 (hydration screen), PF-14 (device verification), PF-15 (hardening including the optimistic-write-to-Dexie codification + iOS mitigations), PF-16-18 (polish), PF-19 (cleanup), PF-21 (nav restructure), PF-20 (merge to main).
+PF-29 lands as **MVP** — Android members at launch without autotick is a meaningfully worse experience than iOS members. The asymmetry would be visible in any side-by-side member comparison and would feel like Android is a second-tier platform. 3-4 hours is cheap enough that pre-launch is the right call. Total MVP estimate now ~60-65 hours.
 
 ### Outstanding from prior sessions
 
-Capacitor origin verification (PM-77.1 §3.1 mitigation B) still blocked on Dean reading `~/Projects/vyve-capacitor/capacitor.config.ts`. Carried forward.
+Capacitor `capacitor.config.ts` origin verification (PM-77.1 §3.1 mitigation B) now folded into PF-14's expanded scope. No longer carried as a separate open question — resolves when PF-14 runs.
 
 ### Brain commit shape
 
-3 files: `brain/active.md` (§2 SHAs + last-verified + brain-HEAD + last-shipped + status flipped to PF-1..8; §5 PF-8 marked SHIPPED + PF-9 promoted to next; §8 editorial bumped to PM-82), `playbooks/premium-feel-campaign.md` (PF-8 Status → SHIPPED with full ship notes covering three-way branch pattern, members carve-out for optimistic-write gap, server-compute carve-out continuity), `brain/changelog.md` (this entry prepended).
+3 files: `brain/active.md` (§5 backlog row 2.12 PF-29 added; §8 editorial bumped to PM-79.4), `playbooks/premium-feel-campaign.md` (PF-14 What + Needs Dean + Estimated length expanded with three sub-bullets, PF-29 new task inserted between PF-28 and "Out of scope"), `brain/changelog.md` (this entry prepended).
+
+### What's still queued next on the build side
+
+Unchanged: PF-8 (nutrition.html + log-food.html refactor) is the next vyve-site task. PM-79.4 doesn't change the page-refactor sequence — PF-29 slots alongside, PF-14 stays in its original position.
 
 ---
-
-
 
 ## 2026-05-13 PM-79.3 (PF-6 + PF-7 SHIPPED to local-first-spike — habits + workouts Dexie-first reads, including PM-77.3 thumbnail prefetch)
 
