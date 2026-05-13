@@ -1,3 +1,60 @@
+## 2026-05-13 PM-87 (PF-10 SHIPPED — wellbeing-checkin + monthly-checkin Dexie-first reads on local-first-spike; PF-4b Part 1 carve-out followed; weekly_scores schema-extension queued)
+
+PF-10 lands on vyve-site `local-first-spike` at commit `9813e800`. Two pages flipped, same canonical non-empty-gate three-way branch as PF-6/7/8/9. AI-moment EF submits stay on the wire as the deliberate server-compute carve-out.
+
+### wellbeing-checkin.html — 5 reads flipped, 2 carve-outs
+
+**Flipped to Dexie-first:**
+1. `fetchMemberData` Promise.all activity batch — 5 of 6 reads flipped: `daily_habits`, `workouts`, `cardio`, and two `session_views` reads (week-filtered + all-time-categories — collapsed to one Dexie scan, sliced locally). Sixth read in batch is `members` — see carve-out below. Non-empty-gate covers the 5 activity tables; if all 5 are empty in Dexie, fall through to the existing Supabase Promise.all. `memberFetch` Promise is created once outside the if-block and reused in both paths so we never double-fetch.
+2. `fetchThisWeekCheckin` — flipped to read `wellbeing_checkins.allFor(email)` then filter by `iso_year+iso_week` locally. If Dexie has *any* check-ins but none matching this week, return null (member hasn't checked in this week yet — Dexie is authoritative). Empty Dexie falls through to Supabase.
+
+**Carve-outs (stay on Supabase):**
+- `fetchWellbeingHistory` — reads `weekly_scores` table. **`weekly_scores` is NOT in the Dexie schema** (db.js v2 covers `wellbeing_checkins`, `monthly_checkins`, `weekly_goals` — not `weekly_scores`). Low-frequency `limit=8` history read, only fires on trend chart render. Documented inline with a forward note: extend the Dexie schema in PF-30 if telemetry shows the read is hot.
+- `members` first_name + cert counts — per PF-8's PF-4b Part 1 carve-out (shadow drainer doesn't apply optimistic Dexie writes; settings.html TDEE recalc PATCHes members and that read-after-write hazard is unresolved). Same decision logic as PF-8.
+- `EDGE_FN_URL` POST (L470 outbox-retry + L648 primary submit) — deliberate server-compute carve-out. The wellbeing-checkin EF v29 runs Anthropic Sonnet against persona-voiced system prompts. Output is AI-generated, not persistable client-side.
+- `/functions/v1/platform-alert` — telemetry on error path. Stays on the wire.
+
+**Optimistic Dexie upsert (PF-4b Part 2 cover):**
+The EF response shape is `{success, ack, recs, persona, full, deferred}` — no inserted row returned. So we reconstruct the `wellbeing_checkins` row from known fields (email + isoWeek + isoYear + selectedScore + flow + data.persona + data.full + bstToday() + computed day_of_week + time_of_day) and `VYVELocalDB.wellbeing_checkins.upsert(...)` before calling `renderResponse(data, selectedScore)`. The id key is synthetic `${email}:${iso_year}:${iso_week}`. Without this insert, a member re-opening the page on the same device before the next visibilitychange delta-pull would see Dexie return null from `fetchThisWeekCheckin` and re-render the check-in flow instead of the already-done panel. Cheap insurance, failure is non-fatal (try/catch wraps the call, only emits a console.warn).
+
+### monthly-checkin.html — 6 reads flipped, 3 carve-outs
+
+**Flipped to Dexie-first:**
+1. `loadRecap` Promise.all — all 6 reads flipped: `daily_habits`, `workouts`, `cardio`, `session_views`, `replay_views`, `wellbeing_checkins`. Activity reads filter by month-window locally (`activity_date >= startStr && activity_date <= endStr`). `wellbeing_checkins` slice is sorted by `iso_year` then `iso_week` desc and sliced 0..4 locally to mirror the original `order=iso_year.desc,iso_week.desc&limit=4`. Non-empty-gate covers union of all 6 tables.
+
+**Carve-outs (stay on Supabase):**
+- `CHECKIN_EF` POST (L772 submit) — deliberate server-compute carve-out. monthly-checkin EF v18 runs Anthropic Haiku against persona-voiced + 500-word constrained system prompts with member profile + baseline deltas + historical 4-month comparison + weight + nutrition summaries.
+- `CHECKIN_EF` GET (L890 status check) — server-computed (`newMemberLocked`, `alreadyDone`, `availableFrom`, `opensNext`). Logic depends on `members.created_at` and `monthly_checkins.iso_month` — server can answer in one call; client would need at least two Dexie reads + date math. Net cost roughly equal, keep on EF for simplicity.
+- `members` first_name (L889) — same PF-8 carve-out as wellbeing-checkin.
+
+**No optimistic Dexie upsert on monthly.** The submit path has no on-page read-after-write hazard: the EF's 409 `already_done` gate blocks re-submits, the status check is server-side, and the page reloads on 409. The next visit's status check is also server-side. Skipping the optimistic upsert keeps the patch smaller; the next visibilitychange delta-pull will hydrate `monthly_checkins` into Dexie before any local read of it.
+
+### Script chain + SW cache
+
+Both pages: `/db.js` + `/sync.js` added immediately after `/bus.js` (canonical position established at PF-6). SW cache key bumped `pm78-pf9-cardio-a` → `pm78-pf10-checkins-a`.
+
+### Brace/paren/bracket balance + byte-equal verification
+
+Both pages: braces, parens, brackets all balanced post-patch. Byte-equal post-commit verification via Contents API base64-decode path (NOT raw S3, which CDN-caches stale content — see PM-86.1 §23 candidate). All three files (wellbeing-checkin.html, monthly-checkin.html, sw.js) head-100-chars + tail-100-chars + length-equal verified.
+
+### PF-30 follow-up: weekly_scores schema extension candidate
+
+PF-30 is currently scoped as telemetry redirect (PostHog + Sentry + session replay + Supabase Logs per PM-84/85). A small companion scope item lands here: if the telemetry shows `fetchWellbeingHistory`'s Supabase round-trip materially affects check-in TTI, add `weekly_scores` to the Dexie schema (v3 migration: additive `db.version(3).stores({...all v2 tables..., weekly_scores: '[member_email+iso_year+iso_week], member_email, activity_date'})` plus a hydrate-on-login slice). Estimated 30-45 minutes if needed. Not blocking PF-11.
+
+### Pre-existing bug spotted, logged for backlog
+
+`monthly-checkin.html` references `<script src="auth.js" defer></script>` without a leading slash (L884 in the original). Other scripts in the same chain use `/auth.js`. Relative-path resolution would break for any sub-route. Not in PF-10 scope. Adding to P1 polish backlog.
+
+### Pre-launch sequencing
+
+PF-1..PF-10 SHIPPED. PF-11 (home dashboard — most visible win, hits index.html which currently dominates first-paint) is next. PF-12 (settings + remaining surfaces) after that. PF-30 telemetry pre-launch.
+
+### Pre-commit drift check
+
+All three vyve-site files (`wellbeing-checkin.html`, `monthly-checkin.html`, `sw.js`) had SHA-stable fresh fetches immediately before commit. No sibling-session collision on the build side this time. Brain commit performs the same drift check before prepending PM-87.
+
+---
+
 ## 2026-05-13 PM-86.1 (Repair commit — PM-86 base64 double-encoding incident; §23 hard rule candidate logged)
 
 Same-session repair. PM-86 (commit `06142eff`) used `base64.b64encode(text).decode('utf-8')` on file content before passing it to `GITHUB_COMMIT_MULTIPLE_FILES`'s `upserts[].content` field. The Composio tool then base64-encoded the input AGAIN internally, so the live files on `main` ended up as `base64(intended_markdown)` — clean-looking on the byte level but garbage when GitHub renders them, and the §23 drift-detection rule would have fired on the next session load.
