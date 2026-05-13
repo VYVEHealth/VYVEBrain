@@ -1535,6 +1535,30 @@ The subscriber must compute `alreadyCorrect` from the envelope against current l
 
 **Related but distinct from §23.7.5** — that rule is about write-side data corruption (partial-upsert landmine in Dexie). §23.7.6 is about write-side UI responsiveness on iOS WebKit. Both surface from the same broad principle (the user's hands and the data layer are not the same problem) but they live in different files.
 
+### §23.7.7 — Cache-first first paint must cover ALL surface counters, not just the main list; surfaces must self-correct on date rollover (PM-100, 14 May 2026)
+
+Two rules in one section because they were discovered together in the post-PM-98 walk and they share a common root: the cache-first paint pattern was implemented for the visible "main content" of habits.html but not extended to the header counters or to the date-context, leaving the user-perceived first paint half-instant and stale across midnight.
+
+**Rule 1: cache-first paint covers every counter, not just the main list.**
+
+When a page implements cache-first first paint (paint from localStorage cache synchronously, then refresh in the background), the cache MUST include every datum the page renders on first paint. Habits page cached `habitsData` + `logsToday` and re-rendered the list instantly, but DAY STREAK / TOTAL LOGGED sat on em-dash placeholders until the awaited `fetchHabitDates() → updateStats(allDates)` chain completed because `activeDates` was not in the cache. The post-PM-98 Dexie-first `fetchHabitDates()` helped — but it only ran AFTER the awaits in `loadHabitsPage`, defeating the local-first promise for the header.
+
+**The fix shape (PM-100):** stamp `activeDates: allDates` into the canonical full-paint cache write. Cache-first paint branches read `_hc.activeDates` and call `updateStats(_hc.activeDates) + renderWeekStrip(...)` synchronously alongside `renderHabits()`. Header populates this paint frame.
+
+**Audit signal for other pages:** for every cache-first paint site, enumerate every DOM element the page renders on first paint. If any of them are populated from data the cache doesn't include, the cache is incomplete and that element will sit on placeholder text until the slow path returns. Surfaces to audit: workouts.html (programme progress %, week badge), nutrition.html (TDEE values, macro rings, water tracker, weight chart), cardio.html (week count / target / history rows), engagement.html (score ring components), index.html (already covered by vyve-home-state.js).
+
+**Rule 2: date-anchored surfaces must self-correct on date rollover.**
+
+`todayStr` captured at page load is correct at page load. If the page is open or backgrounded across midnight, every downstream calc still uses yesterday's date — habits render as "Done today" against yesterday's logsToday, the week strip points to yesterday's column, the daily check-in / habit-log button references yesterday's slot. Dean's PM-100 screenshot: 11/11 done today on Thursday because yesterday's `logsToday` was rendered as today's "Done" state. Home page correctly showed empty pill because it captures `todayStr` from a different entry point — surfaces disagreed on what "today" means.
+
+**The fix shape (PM-100):**
+1. Cache writes stamp `todayStr` into every cache entry. Cache-first paint date-guards stateful fields: `logsToday = (_hc.todayStr === todayStr) ? (_hc.logsToday || {}) : {}`. The date-stable fields (assigned habits list, exercise plan, etc.) are still reused — they don't roll over.
+2. `visibilitychange` + `focus` handler at page bottom: re-evaluates `bstToday()`. If `todayStr` changed since page load, wipe today-specific state, reset the date label, and re-run the page-load function for a clean fetch. Cheap, runs once per resume.
+
+**Audit signal for other pages:** any page that captures `todayStr` or equivalent date variable once at page load and references it for "today's" data MUST have a visibility/focus handler. Surfaces to audit: index.html (home; check `vyve-home-state.js`), workouts.html (today's session selection), nutrition.html (today's macro totals, today's water entries), cardio.html (today's row in history), wellbeing-checkin.html (today's check-in slot), monthly-checkin.html (this month's slot — same problem at month boundaries).
+
+**Related to §23.7.6** — §23.7.6 was the synchronous critical-path for taps. §23.7.7 is the synchronous first-paint completeness for cache-first surfaces. Both are about delivering the premium-app feel: §23.7.6 says "user taps must feel instant"; §23.7.7 says "page first paint must be complete from local, not half-painted with stale or missing fields." A surface needs both to feel right.
+
 ### §23.5.1 — Member-dashboard EF latency is the dominant client-perceived perf bottleneck (PM-67 ship night, 12 May 2026)
 
 Discovered 12 May 2026 mid-session: member-dashboard EF v67 execution_time_ms regularly hits 17-38 seconds server-side. This is the dominant cause of the "everything feels slower" regression Dean reported the night of 12 May despite three client-side ships (PM-66 + PM-67a + PM-67d, 14 files). Client-side defer/paint-dispatch/Promise.all optimisations save 50-250ms per surface. The EF wastes 30,000-40,000 ms. **Fix the backend before shipping more client-side polish.**

@@ -1,3 +1,50 @@
+## Added 14 May 2026 PM-100 (Habits cache-first first paint covers header; midnight rollover handler; §23.7.7 codified)
+
+### PM-100 — CLOSED [shipped 14 May 2026, vyve-site `997c8621`]
+
+Two issues surfaced on the iPhone walk immediately after PM-98 shipped: DAY STREAK / TOTAL LOGGED header sat on em-dash placeholders until the awaited network/Dexie chain completed (cache-first paint covered the list but not the header); BST midnight rollover left yesterday's `logsToday` rendering as today's "Done" state because `todayStr` was captured once at page load with no resume handler.
+
+Fix: all 5 cache writes stamp `todayStr`; canonical write stamps `activeDates: allDates`; both cache-first paint paths date-guard `logsToday` and paint header counters from cached activeDates synchronously; new `visibilitychange`/`focus` handler re-runs `loadHabitsPage` on date change. sw.js cache key bumped to `pm100-ship-a`. §23.7.7 codified in master.md.
+
+### §23.7.7 audit sweep — other cache-first surfaces [P1, sequenced after PM-99]
+
+§23.7.7 has two rules; both need an audit pass across every member-data page that paints from cache or captures a date variable at load.
+
+**Rule 1 (cache-first paint covers all counters):** for every cache-first paint site, enumerate every DOM element the page renders on first paint and verify the cache includes the data needed to populate it.
+
+Surfaces to audit:
+- `workouts.html` — programme progress %, week badge, today's session card
+- `nutrition.html` — TDEE values, macro rings, water tracker, weight chart 7d/30d/90d
+- `cardio.html` — week count, target, history rows (counter populates from `vyve_cardio_cache` but audit completeness)
+- `engagement.html` — score ring component values, activity breakdown table
+- `index.html` — already largely covered by `vyve-home-state.js` but verify the "Up Next Sessions" and live session badges
+
+**Rule 2 (date-rollover self-correction):** every page that captures `todayStr` (or equivalent date variable) at page load MUST have a `visibilitychange` + `focus` handler that re-evaluates and refreshes today-specific state.
+
+Surfaces to audit:
+- `index.html` (home) — `vyve-home-state.js` capture point
+- `workouts.html` — today's session selection
+- `nutrition.html` — today's macro totals, today's water entries, today's food log
+- `cardio.html` — today's row in history
+- `wellbeing-checkin.html` — today's check-in slot
+- `monthly-checkin.html` — **this month's slot — same problem at month boundaries**, not just daily
+
+Each surface gets the §23.7.7 template applied (or documents a deliberate carve-out in the commit).
+
+**Estimated length:** Audit and patch 1-2 surfaces per session. Six rule-1 surfaces + six rule-2 surfaces = ~3-4 sessions. Some surfaces (cardio, workouts) will land both rules in the same commit.
+
+### Android auth-init failure under offline + cold install [P1, carry forward from PM-100]
+
+Dean's mam's Android phone showed "Preview mode: Auth failed to initialise" banner + "You're offline" + permanent loading state on first launch with no wifi. Root cause: `vyveInitAuth` in auth.js calls `vyveLoadSupabaseSDK()` at line 800 BEFORE the `if (!navigator.onLine)` check at line 855. SDK fetch from CDN fails on no-network cold-install, throws, hits catch block at line 907 which reveals the app with dev copy `"Preview mode: Auth failed to initialise."` — copy that should never reach a member.
+
+**Two fixes needed (separable, ship together):**
+1. **Re-order:** move the offline check ABOVE `vyveLoadSupabaseSDK()`. If `!navigator.onLine` AND no cached session in localStorage, redirect to login (which itself needs an offline screen — "Connect to wifi to sign in" rather than its own broken state). If `!navigator.onLine` AND cached session present, fast-path the cached session and skip SDK load entirely until back online.
+2. **Replace dev copy:** the catch block at line 909 should show a real member-facing error state, not "Preview mode: Auth failed to initialise." — "Couldn't load. Check connection and try again." with a reload button.
+
+Capacitor build implications: the iOS Capacitor build will hit this same path if offline at first launch with no cached session. Mac required to rebuild Capacitor for iOS; web/PWA fix ships directly. Android Play review status separate.
+
+**Estimated length:** ~1-2 hours Claude-assisted. Single auth.js patch, plus a small login.html offline state.
+
 ## Added 13 May 2026 PM-98 (Habits write critical-path rewritten; §23.7.6 codified; backend EF latency re-scoped to PM-99)
 
 ### PM-98 — CLOSED [shipped 13 May 2026, vyve-site `47630db8`]

@@ -1,3 +1,41 @@
+## 2026-05-14 PM-100 (Habits cache-first first paint covers header; midnight rollover handler; §23.7.7 codified)
+
+Session opened ~00:02 BST post-PM-98 iPhone walk. PM-98's habits.html rewrite worked — tap-to-flip <100ms on iPhone Safari and Capacitor — but Dean immediately surfaced two related issues on the same page that PM-98 hadn't touched:
+
+1. **DAY STREAK / TOTAL LOGGED header dashes.** Cache-first paint at lines 1201-1227 rendered the habits list synchronously from `vyve_habits_cache_v3` but did NOT call `updateStats`, leaving the header un-rendered until the awaited `fetchHabitDates() → updateStats(allDates)` chain completed. Even though PM-98 piece 2 had made `fetchHabitDates()` Dexie-first, it only ran AFTER the awaits in `loadHabitsPage` — defeating the local-first promise for the header. First paint was half-instant: list immediate, counters stuck on em-dashes for 1-3+ seconds.
+
+2. **BST midnight rollover stale state.** Dean's screenshot: 11/11 done today on Thursday at 00:02 BST. He'd completed all 11 habits Wednesday. `todayStr` is captured ONCE inside `loadHabitsPage` at line 1180; cross-midnight (page open or backgrounded resumed) every downstream calc still anchored to yesterday's date. Cache-first paint at 1188/1221 read `(Date.now() - _hc.ts < 86400000)` which lets yesterday-evening cache paint as today-morning state. Home page correctly showed empty pill (different surface, different `todayStr` capture point) — surfaces disagreed on what "today" means.
+
+**Code commit shipped (1 atomic on main):**
+
+- `997c8621a047027379b4d5560319ce2dbe0fe4eb` — PM-100 ship. Two files touched.
+  - `habits.html`:
+    - All 5 cache write sites stamp `todayStr` into `vyve_habits_cache_v3`. The canonical full-paint write at line 1348 also stamps `activeDates: allDates` so the cache contains everything first paint needs.
+    - Both cache-first paint paths (offline + online) now date-guard `logsToday`: `(_hc.todayStr === todayStr) ? (_hc.logsToday || {}) : {}`. Cross-midnight cache no longer paints as today's "Done" state. `habitsData` itself is still reused — assigned habits don't roll over.
+    - Both cache-first paint paths call `updateStats(_hc.activeDates) + renderWeekStrip(...)` synchronously when `activeDates` is present, so DAY STREAK / TOTAL LOGGED populate this paint frame. Legacy caches without `activeDates` fall through to the post-await path as before.
+    - New `vyveHabitsMidnightWatch()` IIFE at page bottom: `visibilitychange` + `focus` handlers re-evaluate `bstToday()` on every resume. If `todayStr` changed since page load, wipe `logsToday`, reset `page-date` label, and re-run `loadHabitsPage()` for a clean fetch. Cheap, runs once per resume.
+  - `sw.js`: cache key `vyve-cache-v2026-05-13-pm98-ship-g` → `vyve-cache-v2026-05-14-pm100-ship-a`.
+
+**Verification:**
+- All 3 inline scripts in habits.html parse under `node --check`.
+- Byte-equal Contents API re-fetch at commit `997c8621` confirms habits.html 76,463 chars / 77,836 UTF-8 bytes (GitHub `size`=77,836) and sw.js 7,226 chars / 7,436 UTF-8 bytes (GitHub `size`=7,436) match locally-built content exactly.
+
+**§23.7.7 hard rule (codified in this brain commit):**
+
+Two rules in one section. Rule 1: cache-first first paint must cover ALL surface counters, not just the main list — every datum the page renders on first paint must be in the cache, or that element will sit on placeholder text until the slow path returns. Rule 2: date-anchored surfaces must self-correct on date rollover — pages that capture `todayStr` once at load MUST have a `visibilitychange`/`focus` handler that re-evaluates and refreshes on date change. Audit signals enumerated in master.md for the surfaces that need the same treatment (workouts, nutrition, cardio, engagement, wellbeing-checkin, monthly-checkin).
+
+**Things still true at end of PM-100:**
+
+1. The §23.7.6 audit sweep started for cardio. Cardio audit conclusion deferred to next session — Dean pivoted to the visible PM-100 issues before completing the cardio walk. Cardio.html is structurally different from habits (no in-page state to flip optimistically; button feedback already synchronous; subscriber is achievements-eval-only and not in §23.7.6 violation) but the `await fetch` blocking the "Logged" confirmation + counter increment is still a real lag on iOS. Carry forward.
+
+2. PM-99 backend EF latency campaign (§23.5.1) still untouched. Header dashes on first-ever load (no cache) still apply: with no `_hc.activeDates` to seed from, the first-time experience falls through to the post-await path, which inherits the slow-EF cost. PM-100 makes returning members instant; first-time members get whatever the EFs can deliver.
+
+3. §23.7.7 audit sweep across other pages: workouts, nutrition, cardio, engagement, wellbeing-checkin, monthly-checkin. Each surface needs to enumerate its first-paint DOM bindings + check date-rollover correctness. Backlog item.
+
+4. Android app issue Dean flagged earlier (parked): "Preview mode: Auth failed to initialise" on `vyveLoadSupabaseSDK()` failure under offline + cold-install conditions on Android. Real auth.js bug — order is wrong (SDK load happens before offline check) and dev copy is leaking to members. Carry forward.
+
+**State at end of PM-100:** vyve-site main HEAD `997c8621a047027379b4d5560319ce2dbe0fe4eb`. SW cache key `vyve-cache-v2026-05-14-pm100-ship-a`. Two files in this commit: habits.html (76,463 chars), sw.js (7,226 chars). §23.7.7 codified. Habits page first paint is now complete from local across both online and offline cache-first paths, and self-corrects on midnight rollover.
+
 ## 2026-05-13 PM-98 (Habits write critical-path rewrite — bus demoted off active surface; §23.7.6 hard rule codified)
 
 Session opened ~23:45 BST as a clean continuation of the previous Claude's mid-session ship at vyve-site HEAD `0ae0f9b3`. That session had introduced a write-optimistic patch chain on habits.html that worked on desktop Chrome but broke on iOS Safari and the iOS Capacitor app — tap "Yes", 15+ seconds, no flip. Dean explicitly halted that diagnostic path. Tonight is the architectural fix and the codification.
