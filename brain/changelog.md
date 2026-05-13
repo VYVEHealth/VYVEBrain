@@ -1,3 +1,83 @@
+## 2026-05-13 PM-89 (PF-11b SHIPPED — index.html client-side member_home_state computation via new home-state-local.js module; PF-11 complete)
+
+PF-11b lands on vyve-site `local-first-spike` at commit `a248bfef`. The architectural completion of PF-11. Where PF-11a (PM-88) painted with real progress counts + activity_log + placeholder zeros for engagement/streaks, PF-11b replaces those placeholders with REAL computed values via a JS port of the server-side `refresh_member_home_state` PL/pgSQL function. Cold-start paint now produces a dashboard with real engagement score, real streaks (current + best per type + overall + weekly check-in streak), real progress counts, real recent-30d counts, real weekly-goal progress — all from Dexie, no server round-trip.
+
+### New file: `home-state-local.js` (~25KB, 700 LOC)
+
+A standalone module exposing `window.VYVEHomeStateLocal.computeHomeStateFromDexie(email)`. Returns the same row shape that `member_home_state` table holds server-side — the EF destructures from that row, so client-side and server-side outputs converge on the same set of fields.
+
+Ported functions:
+- **`compute_engagement_components(last_activity_at, active_days_30, variety_7d, latest_wellbeing)`** → 4 weighted points + total. Formula identical to the SQL: each component clamped to [0, 12.5] and rounded 1dp; total = clamp(0..100, round(50 + sum)). The activity component uses `12.5 × (1 - min(7, days_since_last) / 7)` so falls to 0 over a 7-day window of inactivity.
+- **`refresh_member_home_state(email)`** → the big one. Computes ~50 fields: per-type counts (today/week/month/total), per-type streaks (current + best via gaps-and-islands algorithm), weekly goal targets + progress (from `weekly_goals` table), last_*_at + last_activity_at timestamps, active_days_30, variety_7d, recent_*_30d counts, latest wellbeing score + iso_week. Direct ports of the SQL aggregates.
+
+Helpers:
+- BST-aware date math via local-date-components (matches the rest of the portal). Server uses `now() AT TIME ZONE 'Europe/London'`; client uses an isBST check on UTC month and adds an hour offset.
+- Streak algorithm: classic gaps-and-islands — distinct dates → integer day-indices → runs of consecutive indices → run ending today is current, max run is best.
+- Weekly streak (check-ins): same shape but indices are `iso_year * 53 + iso_week`. 53 (not 52) avoids week 1 of year N+1 looking contiguous with week 52 of year N when there were 53 weeks. Direct port of the SQL.
+- Capped daily count: `SUM(LEAST(2, daily_count))` semantic for the session totals and monthly aggregates (anti-spam — a member logging 5 sessions in a day still only counts as 2 toward totals).
+
+### What PF-11b's `buildHomeFromDexie` returns
+
+Same EF response shape as before, but with real values where PF-11a had placeholders:
+
+- **engagement.score**: real computed value, not 50 base.
+- **engagement.components.{recency,consistency,variety,wellbeing}**: real 1dp values.
+- **engagement.streak / streak_by_type**: real {current, best} per type. Overall, habits, workouts, cardio, sessions, checkins.
+- **engagement.active_days_30**: real distinct-active-day count from all activity tables unioned.
+- **progress.{habits,workouts,cardio,sessions,checkins}.best_streak**: now populated (was 0 in PF-11a).
+- **progress.*.count**: same totals, but `sessions.count` now uses the SQL's capped daily count (`SUM(LEAST(2, daily_count))`) which matches the EF — PF-11a was undercounting by ignoring the cap.
+- **recent.* (30d)**: real capped counts.
+- **weekly_goals.targets**: from the `weekly_goals` row (or sensible defaults: habits=3, exercise=3, sessions=2, checkin=1). `exercise_target` = workouts_target + cardio_target (combined per current home-page semantics).
+- **weekly_goals.progress**: real this-week counts.
+- **wellbeing.current_score**: latest from `wellbeing_checkins.score_wellbeing` (note: the SQL reads from `weekly_scores` which isn't in Dexie schema — PF-30 companion candidate still tracks adding it; for now `wellbeing_checkins` is the same data on a different table).
+
+What stays cached or server-only:
+- **charity_total**: cross-member aggregate. New behaviour: reads from the last cached `vyve_home_v3_<email>` value (i.e., last EF response) before falling to 0. So a returning member with a stale cache sees the previous charity total instead of 0 until the EF call returns the fresh number.
+- **certificates**: not in Dexie schema. New behaviour: reads `vyve_engagement_cache` (same source the engagement page uses) for last-known list before falling to []. EF returns the fresh list.
+- **achievements**: server-side evaluator. Returns empty + EF upgrades.
+- **habits library JOIN** (habit_title/description/prompt/difficulty): not stored in Dexie member_habits. Returns null on these fields + EF upgrades.
+- **HK connection state**: `member_health_connections` not in Dexie schema. Returns 'none' + EF upgrades.
+
+### loadDashboard() still always fires
+
+By design. The Dexie path now provides the full visible UI but the EF call upgrades the truly-server-only fields (charity_total most importantly, plus achievements + certificates + HK state). loadDashboard is parallel with the paint and only "upgrades" on its return — for a member whose engagement_score + streaks are unchanged since the last EF call, the upgrade is effectively a no-op for the visible UI. Network bandwidth is the only cost.
+
+The natural next iteration (post-launch / part of PF-30 telemetry pass) would be a TTL-cache that skips loadDashboard when the cache + Dexie are fresher than, say, 60 seconds. Out of scope here — the visible win is already delivered.
+
+### Module loading + SW precache
+
+`home-state-local.js` added to index.html script chain immediately after `/sync.js` (defer attribute; all three module dependencies load in order). Also added to sw.js precache list so the spike works offline once enabled.
+
+### SW cache key bumped pm78-pf11a-home-a → pm78-pf11b-home-b
+
+Note the `-b` suffix this time: same PF group changing the SW precache list invalidates everything, so the version suffix moves forward even within the same PF.
+
+### Verification: node --check on inline JS
+
+Extracted all 8 inline `<script>` blocks from the patched index.html and ran `node --check` on each — all passed. Same for the patched sw.js. Catches any subtle bracket/template-literal mismatch before commit.
+
+### Marker for PF-30 telemetry
+
+Returned payload now includes `__pf11b_dexie_source: true` (replacing the PF-11a `__pf11a_dexie_source` marker) plus `__computed_at` from the home-state-local computation. PF-30 should emit:
+- `dexie_full_paints` (PF-11b path) and `dexie_cold_paints` (PF-11a path) as separate counters.
+- `dexie_to_ef_engagement_drift` — diff between the Dexie-computed engagement.score and the EF return. Non-zero diffs indicate the Dexie hydration is missing rows or the formula has drifted from server. Useful audit metric.
+
+### Files changed in PM-89
+
+- NEW: `home-state-local.js` (25,232 bytes)
+- MOD: `index.html` (size 125104 → 124975 bytes; -129. The buildHomeFromDexie body net-shrunk because constructing the EF response shape from the computed state row is denser than the PF-11a placeholder block.)
+- MOD: `sw.js` (cache key + precache list)
+
+### Pre-launch sequencing
+
+PF-1 through PF-11 complete. PF-12 (settings + remaining surfaces) next on the page-refactor track. PF-30 telemetry pre-launch strongly recommended. PF-21 (bottom nav restructure) + PF-23 (interactive tutorial) + PF-24/25/26/27/28 (polish) follow per playbook order.
+
+### Pre-commit drift check
+
+All three target files SHA-stable between load and commit. Brain commit performs same drift check before prepending PM-89.
+
+---
+
 ## 2026-05-13 PM-88 (PF-11a SHIPPED — index.html cold-start Dexie-derived paint on local-first-spike; PF-11 split into PF-11a + PF-11b)
 
 PF-11a lands on vyve-site `local-first-spike` at commit `8b79c54d`. The playbook scoped PF-11 as a single 3-hour task ("read everything from Dexie. Engagement score computed client-side. Streak from local."), but on closer inspection the engagement-score path requires re-implementing `member_home_state_get_fresh` RPC client-side over Dexie data — significantly larger scope than the playbook estimate. Decision: split into PF-11a (cold-start Dexie-derived paint, this commit) and PF-11b (member_home_state client-side computation, queued).
