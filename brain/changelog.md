@@ -1,3 +1,64 @@
+## 2026-05-13 PM-85 (PF-30 scope sharpened — observability stack: PostHog + Sentry + session replay for launch week + Supabase Logs)
+
+Brain-only commit. Single-file edit to the campaign playbook. No active.md change (PF-30 already in §5 backlog from PM-84, stack details don't promote to working-set).
+
+### Context
+
+Dean question: "Is PostHog the best way of checking?" — and the more honest underlying question: "if everything is instant post-migration, is telemetry even worth doing?"
+
+Walked the actual answer in conversation. The short version: PostHog stays because the integration cost is already paid + the product-analytics side (funnels, retention, per-member behaviour) is what Lewis cares about long-term. The performance side is mostly tripwire data — boring "yep, fast" until something breaks, which is exactly when telemetry earns its keep. The genuine gap is **error/crash reporting**, which PostHog doesn't natively do. The "Connection to Indexed Database server lost" errors from PM-77.1 §3.1 mitigation A need somewhere to land. Sentry is the standard answer.
+
+### What was added to PF-30
+
+The PF-30 task previously named PostHog identity wiring as the observability scope. PM-85 sharpens this into the full stack:
+
+1. **PostHog** for product analytics — every metric from PF-30's list (first-paint, cross-nav, spike-fallthrough rate, sync queue depth, hydration timing, crash recovery events) plus per-member behaviour patterns (funnels, retention cohorts, feature adoption). Identity wiring via `posthog.identify(member_email)` post-`vyveAuthReady` is the existing PF-30 scope.
+
+2. **Sentry** added alongside as the error/crash channel. PostHog isn't a crash reporter. Free tier covers our scale, JS SDK wiring is ~30 minutes on top of PF-30's existing 2-3 hour estimate. Catches WKWebView IndexedDB errors, sync drainer failures, any unhandled exception.
+
+3. **PostHog session replay turned up to 100% sampling for the soft-launch week** (target soft-launch window is roughly 23 May → 31 May; hard-launch 1 June). Included in PostHog free tier up to 5,000 recordings/month — effectively unlimited for the 15-member cohort. Watching real sessions during launch is the single fastest way to catch "subtle bug no member would describe to support" issues. Drop sampling to 10% after hard-launch +1 week for cost discipline.
+
+4. **Supabase Logs** — already in the dashboard, no integration work. Covers backend EF errors, RLS denials, slow queries. Just remember to check it during soft-launch.
+
+Combined stack is industry-standard early-stage SaaS observability. No exotic tooling, no additional per-month cost above what's already paid (PostHog free tier, Sentry free tier, Supabase Logs included).
+
+### Why each component earns its slot
+
+- **PostHog product analytics** — only way to answer "is the architecture actually working in the field?" Spike-fallthrough rate >5% on any page = a hydration bug that no member would ever complain about because the page renders fine (server-first fallback works), but the local-first promise is silently broken. Without this metric you'd never know.
+
+- **Sentry crash reporting** — only way to know if the iOS WKWebView mitigations from PM-77.1 are actually holding up in the wild. Crash recovery events emitted to PostHog tell you "the recovery fired"; Sentry tells you "this is the actual stack trace and Android Pixel 6 reproduced it." Different question, both worth answering.
+
+- **Session replay** — only way to catch the long tail of "members are doing something weird that nobody would describe." A member tapping the same button 5 times because they don't realise the first tap worked. A page transition that visibly stutters on a specific device. These are invisible to event-stream telemetry.
+
+- **Supabase Logs** — only way to see backend issues (cron failures, slow EF responses, RLS denials). The local-first migration reduces the backend's role but doesn't eliminate it — AI moments, leaderboard reads, charity totals, sync queue drains still hit Supabase.
+
+### Cost accounting
+
+PF-30 estimate was 2-3 hours pre-PM-85. PM-85 adds:
+- Sentry JS SDK wiring + DSN config + error boundary integration: ~30 min
+- PostHog session replay flag toggle to 100% (config only, no code): ~5 min
+- Notes-to-self about dropping replay back to 10% after hard-launch +1 week: 0 min (calendar reminder)
+
+Revised PF-30 estimate: **2.5-3.5 hours**. Cost increase trivial, observability coverage substantially better.
+
+### Operating mode
+
+Dean directive: "Ok" — proceed with the addendum. Per active.md §0 (Claude leads, Dean drives).
+
+### Brain commit shape
+
+2 files: `playbooks/premium-feel-campaign.md` (PF-30 block extended with "Observability stack — full picture" addendum after the existing Status line), `brain/changelog.md` (this entry prepended). active.md unchanged — PF-30 already in §5 backlog row 2.13 from PM-84; stack details belong in the playbook, not the working set.
+
+### Pre-launch sequencing reminder
+
+PF-30 stays strongly-recommended pre-launch — launch-day cold-start data is the single most valuable telemetry window and shipping the redirect post-launch loses it permanently. The Sentry addition reinforces this: catching the first iOS WKWebView crash-wipe event in the wild during soft-launch is the data point that tells you whether the PM-77.1 mitigations are sufficient or need tightening.
+
+### What's still queued next on the build side
+
+Unchanged: PF-9 (cardio refactor) remains the next vyve-site task. PM-85 doesn't change the build sequence — pure brain commit to sharpen an existing task scope.
+
+---
+
 ## 2026-05-13 PM-84 (PF-30 added — local-first telemetry redirect; PF-24 + PF-25 scope expanded with bottom-nav-as-persistent-floor + chrome dimension audit)
 
 Brain-only commit. No vyve-site change. Conversational scoping with Dean produced one new pre-launch task plus a sharpening of two existing polish tasks. PM-84 lands after PM-83 (PF-13 persona-led welcome) and PM-82 (PF-8 ship); Claude was a few minutes behind real-time brain state at the start of this update — caught via `GITHUB_LIST_COMMITS` audit before staging.
