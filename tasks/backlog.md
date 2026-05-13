@@ -1,3 +1,53 @@
+## Added 13 May 2026 PM-95 (PF-14 device verification findings)
+
+### PF-14b — Bundled-mode migration + live-updates service [P0 LAUNCH BLOCKER]
+
+**Why launch blocker.** Tonight's PF-14 walk confirmed Dean's `~/Projects/vyve-capacitor/capacitor.config.json` is `{"appId":"co.uk.vyvehealth.app","appName":"VYVE Health","webDir":"www","server":{"url":"https://online.vyvehealth.co.uk","cleartext":false}}` — i.e. remote-origin Capacitor wrap. Per PM-77.1 §3.1B, Apple's ITP 7-day script-writable-storage purge applies to remote-origin WKWebView content. Pre-Dexie this didn't matter (we stored ~50KB localStorage that we didn't depend on for paint). Post-Dexie this directly breaks the Premium Feel campaign's "instant always" promise: a member who hasn't opened VYVE for 7 days returns to a 5-30s "preparing your VYVE" rehydrate screen, defeating the entire reason for the campaign.
+
+**Scope.**
+1. Edit `~/Projects/vyve-capacitor/capacitor.config.json`: remove `server.url`, add explicit `server.iosScheme: "capacitor"` and `server.hostname: "localhost"` per Capacitor 7+ pattern (locks scheme to prevent Capacitor major-version migration wipes).
+2. Decide and integrate live-updates service. **Recommended: Capawesome Cloud (£~£7-9/mo starter tier, fixed-price transparent pricing, founded by Ionic Developer Experts).** Alternative: Capgo (£~£10-12/mo, more established with 3,500+ companies, open-source self-hostable). Cost-trivial against any spend tier; main decision factors are operational reliability and SDK quality. Both swap-compatible if we ever want to migrate later.
+3. Add Capacitor SDK to the wrap, configure update channel, point it at our build pipeline.
+4. Local-bundle workflow: `npx cap copy ios` after every vyve-site main push to refresh `www/`, then re-build IPA.
+5. Submit iOS 1.2 + Android 1.0.3 to App Store / Play Store. ETA Apple 24-72h, Google 4-24h.
+6. Codify in active.md §3.1B that future bundled-mode migrations (e.g. Capacitor 8 upgrade) require an explicit scheme-migration plan to avoid wiping member Dexie stores.
+
+**Estimated length.** ~2-3h Claude (config + scheme lock + SDK integration + brain update). Dean: Xcode rebuild + IPA archive + App Store Connect submission (~30-60 min if pipeline already works). + Apple review wait.
+
+**Sequencing.** This weekend session. Earliest submit: Sun/Mon 17-18 May. Review through ~20 May. Polish + remaining PF tasks 21-30 May. Launch 31 May.
+
+**Status.** QUEUED — sequenced for Sunday 17 May session.
+
+### PF-15 expanded scope from PM-95 device walk
+
+In addition to original PF-15 hardening (PM-77.1 mitigations A/B/C codification, force-resync escape hatch, queue drain batching, storage quota handling), tonight added:
+
+**[P0-1] Dexie hydration coverage gap.** Five page surfaces showed `Paint: supabase` on Dean's iPhone despite spike flag on: Cardio, Workouts session (exercise_logs), Wellbeing Check-in, Monthly Check-in, Settings (probably members table). Diagnosis: tables not arriving on hydrate. Investigation plan:
+- Spot-check Dexie state via temporary diagnostic harness OR live-load `VYVELocalDB.cardio.allFor('deanonbrown@hotmail.com')` from console
+- Audit `sync.js` HYDRATE_TABLES list — confirm cardio/exercise_logs/wellbeing_checkins/monthly_checkins/member_achievements are present and using correct PostgREST select
+- Check whether `since_cursor`-style tables have last_pulled_at preventing first-hydrate when no rows existed initially
+- Fix: extend HYDRATE_TABLES + ensure first-hydrate always runs regardless of cursor state
+
+**[P0-2] PF-12 partial-upsert merge.** Three call sites in settings.html write `VYVELocalDB.member_habits.upsert({member_email, habit_id, active})` without denormalised cols. Will paint 'undefined' on habits.html for any member who deactivates/adds habits in settings (Dean didn't trigger tonight). Fix: change `member_habits.upsert` override in db.js to merge with existing row rather than overwrite — `db.member_habits.get(key).then(row => db.member_habits.put({...row, ...partial}))`. Same audit needed across other tables with denormalised cols.
+
+**[P0-3] localStorage shape-cache audit + version-bump.** Tonight's habits cache fix (v2 → v3) revealed a class of bug: long-lived localStorage caches that survive payload-shape changes paint-poison the page. Pages with similar caches to audit/fix: index.html (`vyve_home_v3_<email>`), workouts.html (`vyve_programme_cache_<email>`), nutrition.html (`vyve_wt_cache_<email>`), log-food.html (`vyve_food_diary_<email>:<date>`). For each: confirm current shape matches cached shape OR bump version suffix preemptively before any future shape change.
+
+**[P1] PF-13 hydration overlay didn't render on Dean's spike-toggle reload.** Investigation needed: either overlay-render conditions stricter than documented, hydrate completes before overlay can mount, or spike-toggle reload path skips the overlay code. Likely a separate session item.
+
+**[P1] Monthly Check-in name token race.** First paint of monthly-checkin.html shows "How's your month been, there?" (placeholder substitution failure). Reload fixes it. Members row hydrate timing issue. Adjust template to wait for members row before render OR use a sensible fallback name.
+
+**[P2] Log Food cold-paint visual stacking.** Header line overlaps Calories card for ~1s on cold paint. Cosmetic only; fold into PF-25 typography pass or PF-19 cleanup.
+
+**[P2] Cardio "4/3 this week" target overflow rendering.** No bug — exists for documentation. Copy "Target hit — nice work. Bonus sessions welcome." handles the >100% case cleanly. Worth keeping consistent across all weekly-target surfaces during messaging review.
+
+### §23 hard-rule candidates surfaced tonight (codify in PF-15 ship or next master.md update)
+
+- **localStorage shape-caches MUST include a version suffix that bumps with every payload shape change.** Habits cache was 'v2' from 2025 to 2026 across multiple PostgREST shape iterations. Any unmigrated cache surface is a paint-poison vector.
+- **VYVELocalDB.{table}.upsert call sites that lack denormalised columns MUST do a merge, not overwrite.** Either the table override merges by default (preferred), or every call site does read-modify-write. Partial-upsert surfaces only on the next read — invisible during testing.
+- **Capacitor wrap `server.url` in `capacitor.config.json` indicates remote-origin and subjects the app to Apple ITP 7-day storage purge.** Was known/documented in active.md §3.1B; tonight's confirmation locks it as a launch-blocker for any local-first data architecture. Document at codify-time of PF-14b.
+
+---
+
 ## Added 13 May 2026 PM-94 (Trial-phase placeholders consciously deferred — hydration copy + Achievements overhaul)
 
 Dean's decision 13 May 2026 evening session: both items below are knowingly-placeholder for the 15-20 person soft-launch trial. Goal is not to block the rest of the pre-launch work polishing them. Real overhaul happens after trial data lands. Memory entry #17 captures the operating mode.

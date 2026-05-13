@@ -1,3 +1,50 @@
+## 2026-05-13 PM-95 (PF-14 device verification — local-first architecture validated on iOS Capacitor WKWebView; eight findings logged; ITP risk locked in as launch blocker)
+
+Tonight's session shipped four code commits + the brain commit. Spike merged to main. Dean's first PF-14 device walk on iPhone delivered the architectural validation we needed and surfaced eight separable findings for PF-15.
+
+**Code commits (all on main; spike was merged this session):**
+- `82524093` — PF-14 part 1: NEW `/dexie-source-indicator.js` (13KB) — spike-gated corner-dot showing Dexie vs Supabase reads with three-state colour (green/amber/red). Wraps VYVELocalDB read methods, patches fetch for Supabase REST + EF detection, tap-to-pin, long-press tooltip. nav.js boot block injects on every page when spike flag is on.
+- `fa3bd6e6` — PF-14 part 2: 7-tap toggle on settings.html version footer flips localStorage.vyve_lf_spike. Toast + reload. Invisible to normal members. Tap 3+ fades footer slightly as confirmation.
+- `c469e504` (merge commit) — local-first-spike → main. 15 commits brought across including PF-1..PF-13 scaffolding + PF-30 + PF-14 parts 1-2. All new code dormant behind localStorage.vyve_lf_spike. Spike code now available on production distribution path (remote-origin Capacitor wrap).
+- `244d96fc` — PF-14 part 3: indicator paint-grace semantics. Dean's first walk showed every page going amber within 1-2s because every page does Dexie-then-Supabase reads (Dexie paint + post-paint EF upgrade). New rule: once a Dexie read fires, dot stays GREEN for PAINT_GRACE_MS=3000ms regardless of subsequent reads. Tooltip now shows `Paint:` separately from `Last:`. Telemetry event includes `in_grace` flag.
+- `a3c74734` — PF-14 part 4: bump `vyve_habits_cache_v2` → `v3` across habits.html (7), auth.js (1), index.html (2). Stale localStorage shape-cache was paint-poisoning habits.html with 12 'undefined' cards on Dean's device. Cache key hadn't bumped through multiple PostgREST shape iterations.
+
+**Architectural commitment verification — PASSED.** Dexie alive on iOS WKWebView. After PF-14 part 4 fix, Habits page rendered correctly with `Paint: dexie`, Drink 2 litres of water, Consistent bedtime, all 12 habits real, EASY badges, day strip showing yesterday's tick. PM-77.1 mitigation A (WKWebView IndexedDB crash-wipe) survives basic open + read on real iPhone 17 (Dean's device). Indicator's paint-grace semantics correctly capture Dexie-then-Supabase architecture.
+
+**ITP risk locked in as launch blocker.** capacitor.config.json on Dean's Mac (~/Projects/vyve-capacitor) was read tonight — confirms server.url = "https://online.vyvehealth.co.uk", i.e. **remote-origin Capacitor wrap**. Per PM-77.1 §3.1B this is subject to Apple's 7-day ITP script-storage-purge rule. For the Premium Feel Campaign specifically — where Dexie is the source of truth for member data — that purge rule directly contradicts the campaign's "instant always" promise. A member who goes 7 days without opening VYVE would return to a 5-30s "preparing your VYVE" rehydrate screen. Pre-Dexie this was a non-issue (no local data). Post-Dexie this is the failure mode the whole campaign was built to avoid.
+
+**Decision: PF-14b promoted from "post-launch consideration" to launch blocker.** Migrate to bundled-mode (server.url removed, www/ bundled, scheme locked to `capacitor://localhost`) + Capacitor Live Updates service (Capgo £~£10-12/mo or Capawesome £~£7-9/mo, both >5x cheaper than Appflow). Apple sees `capacitor://localhost` as first-party content, ITP rule does not apply. Live-updates service preserves over-the-air web push (no every-change-is-an-App-Store-cycle penalty of pure bundled mode). Costs and operational considerations workable at every scale from current 15 trial members to hypothetical 1M MAU. Submit as iOS 1.2 / Android 1.0.3. Apple review 24-72hr. Sequencing: this weekend (PF-14b session) → submit Sunday/Monday → review through ~20 May → polish + remaining PF tasks → launch 31 May.
+
+**Eight findings from Dean's device walk (P0-P2 triaged):**
+
+1. **[P0] Habits localStorage shape-cache paint-poison.** `vyve_habits_cache_v2` had stale row shape causing 12 'undefined' cards before any read fired. **FIXED tonight** (cache key bump). Class of bug: similar localStorage shape-caches likely exist on other pages — needs audit. See §23 candidate below.
+
+2. **[P0] Dexie hydration coverage gap.** Pages with `Paint: dexie`: Home, Habits, Nutrition (weight_logs), Log Food (nutrition_logs/nutrition_my_foods). Pages with `Paint: supabase` despite spike on: Cardio, Workouts session (exercise_logs), Wellbeing Check-in, Monthly Check-in, Settings. The pattern suggests partial hydrate — some tables arrive on first login, others don't. Could be: (a) sync.js HYDRATE_TABLES coverage incomplete, (b) hydrate runs but specific tables 404/error silently, (c) tables hydrate but page-side adapters need updating to use Dexie path. Diagnosis required at start of PF-15 session — likely 30 min in sync.js + spot-check Dexie inspector.
+
+3. **[P0] PF-12 settings.html partial-upsert bug.** Three call sites in settings.html call `VYVELocalDB.member_habits.upsert({member_email, habit_id, active})` without the denormalised cols (habit_pot/habit_title/etc). Hasn't bit Dean tonight (didn't touch settings habit management). Will bite any member who deactivates/adds habits via settings — those rows will then render as 'undefined' on habits.html. Two fix options: (i) every upsert that lacks denormalised cols does a follow-up `habit_library.get(id)` and merges, (ii) `member_habits.upsert` override in db.js merges with existing row by default rather than overwriting. Option (ii) is the cleaner fix.
+
+4. **[P1] PF-13 hydration overlay didn't appear on Dean's device tonight.** Spike was first toggled on after an existing session, so localStorage.vyve_hydration_shown was already absent — should have shown the welcome. Did not appear visually in the walk. Either: (a) overlay-render conditions are stricter than once-per-device, (b) hydrate completed before the overlay could mount, (c) the spike flag toggle reload path doesn't reach the overlay code. Needs investigation. Low-stakes since this is fresh-onboarding flow that real members will hit, not spike-toggle path.
+
+5. **[P1] Monthly Check-in name token race.** First paint of monthly-checkin.html on Dean's device showed "How's your month been, there?" (placeholder substitution failure). Reload fixed it. Means there's a window before the name resolves where the template renders with empty/placeholder. Race condition between member-row hydrate and template render.
+
+6. **[P2] Log Food visual stacking on cold paint.** Brief moment where "Today / Wednesday 13 May 2026" header overlapped with the Calories card. Cleared after ~1s once main data settled. Cosmetic only, pre-launch polish (PF-25 typography pass / PF-19 cleanup zone).
+
+7. **[P2] Dean's persona on this account is SPARK, not NOVA.** Settings shows "Dean Brown · SPARK". Brain may have had stale assumption. Not a bug, just brain-memory correction.
+
+8. **[P2] Cardio "4/3 this week" — target overflow.** "Target hit — nice work. Bonus sessions welcome." copy handles this. Not a bug, but worth noting for the messaging review pass that the >100% case has real copy and renders cleanly.
+
+**§23 hard-rule candidates (codify in next master.md update or PF-15 ship):**
+
+- **localStorage shape-caches MUST include version suffix that bumps with every payload shape change.** Habits cache went from v2 in 2025 to v2 in 2026 across multiple shape iterations without invalidation. Any cache that survives a shape change becomes a paint-poison vector. Audit candidates: `vyve_home_v3_<email>`, `vyve_programme_cache_<email>`, `vyve_wt_cache_<email>`, `vyve_food_diary_<email>:<date>` — verify each is keyed to current shape, or bump now.
+- **VYVELocalDB.{table}.upsert call sites that lack denormalised columns MUST do follow-up merge.** Either the override merges by default (preferred), or the call site does a `read-modify-write`. Partial-upsert is a landmine that surfaces only on the next read.
+- **Capacitor wrap server.url indicates remote-origin and subjects the app to ITP 7-day purge.** This was a known but unresolved finding in active.md §3.1B; tonight's session locks it as a launch blocker.
+
+**Spike → main merge confirmed clean.** All 15 spike commits brought across (PF-1 through PF-13 scaffolding + PF-30 + tonight's PF-14 parts 1-2). Non-spike members continue running noop shim, no production behavioural change. Spike branch can now be deleted in PF-15 cleanup pass (or kept as historical reference).
+
+**Production paths tonight:** Dean operated on actual production distribution — App Store-installed iOS 1.1 (Build 3) wrap loading online.vyvehealth.co.uk via WKWebView. The findings reflect real user experience under the architecture as it'd ship to enterprise customers if launched as-is. PF-14b will move this to bundled-mode so launch members get the ITP-exempt path.
+
+**Brain hygiene:** No drift this session. Brain commit lands fresh after the four code commits. `playbooks/premium-feel-campaign.md` not updated tonight — PF-14 task status remains QUEUED in playbook for fresh sessions to see "device walk partial" rather than "shipped" (PF-15 is where the actual fixes ship). Active.md §2 updated with new HEAD values.
+
 ## 2026-05-13 PM-94 (Trial-phase placeholders consciously deferred — hydration COPY_TABLE finalisation + Achievements system overhaul both logged as P1 post-launch)
 
 Dean's decision in this evening session: don't block the rest of pre-launch work polishing two items that are functionally correct and trial-safe but acknowledged as needing rework.
