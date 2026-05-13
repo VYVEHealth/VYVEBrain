@@ -188,11 +188,19 @@ Format: `PF-N — Title`
 ### PF-8 — Page refactor: nutrition.html + log-food.html
 
 - **What:** Read TDEE, weight log, water log, today's macros from Dexie. Writes (log food, log weight, log water) go through sync layer. Food search continues to hit Open Food Facts via off-proxy (that's the external API, can't be local). My-foods (member's saved foods) cached locally.
-- **Files touched:** `nutrition.html`, `log-food.html`. SW cache bump.
+- **Files touched:** `nutrition.html`, `log-food.html`, `sw.js` (4 reads flipped, cache key bump).
 - **Verification:** Open nutrition tab cold. Should paint instantly. Log a food item — instant. Reload, persisted.
-- **Needs Dean:** verification.
+- **Needs Dean:** verification at end.
 - **Estimated length:** 2-3 hours.
-- **Status:** QUEUED
+- **Status:** SHIPPED 13 May 2026 PM-82 narrative to `local-first-spike` (commit `d2fc1e89`). Build chat shipped immediately after PF-7. Brain landed via PM-82.5 reconciliation (PM-82 commit landed on an orphan ref; PM-82.5 spliced it into main).
+- **Ship notes:**
+  - Four reads flipped: `loadWtLogs()` in `nutrition.html` (`weight_logs` ORDER BY `date ASC` locally); `loadDiary()` in `log-food.html` (today's `nutrition_logs` filtered by `activity_date` locally, sort ASC by `logged_at`); `loadRecent()` in `log-food.html` (`nutrition_logs` full history, sort DESC by `logged_at`, dedupe by `food_name+brand`, slice 20); `loadMyFoods()` in `log-food.html` (`nutrition_my_foods` sort DESC by `created_at`). Same non-empty-gate three-way branch as PF-6/7.
+  - **`members` reads deliberately kept on Supabase.** PF-4's shadow drainer mirrors writes to the Dexie `_sync_queue` but does NOT update Dexie data tables optimistically — so reading `members` from Dexie after a TDEE recalc PATCH (which stays on the same page) would render stale values until the drainer caught up and a subsequent hydrate refreshed the row. Folded into PF-8 scope decision; the larger fix is **PF-4b** below.
+  - **PF-4b — Optimistic-write-to-Dexie gap (architectural follow-up surfaced PM-82).** Either extend the shadow drainer to apply optimistic Dexie writes alongside `_sync_queue` enqueue, or add per-page optimistic-Dexie writes at every `writeQueued` call site (matches PF-1 pattern on `daily_habits`). Decision and codification deferred to PF-15 hardening pass. Page-level workaround until then: keep read-after-write reads on Supabase and document the carve-out per page. Applied here for `members`. Each subsequent page refactor (PF-9, PF-10, PF-11, PF-12) must audit for read-after-write hazards.
+  - **Off-proxy carve-out preserved.** Open Food Facts food search in `log-food.html` stays on the wire — third instance of the server/external-compute carve-out principle (PM-80 share-workout, PM-81 platform-alert, PM-82 off-proxy).
+  - **Writes unchanged.** PF-4's shadow drainer already covers every nutrition write via `VYVEData.writeQueued`: POST `weight_logs` + PATCH `members` in nutrition.html, POST/DELETE `nutrition_logs` in log-food.html.
+  - `/db.js` + `/sync.js` added to both pages immediately after `/bus.js`, matching canonical position from habits.html/workouts.html.
+  - Cache key bumped `pm78-pf7-workouts-a` → `pm78-pf8-nutrition-a`. Files changed: `sw.js`, `nutrition.html`, `log-food.html` (3 files).
 
 ### PF-9 — Page refactor: cardio.html + movement.html
 
