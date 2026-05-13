@@ -238,14 +238,42 @@ Format: `PF-N — Title`
 - **Estimated length:** 2 hours.
 - **Status:** QUEUED
 
-### PF-13 — First-login hydration polish
+### PF-13 — First-login hydration polish (persona-led welcome + safe goal echo)
 
-- **What:** Build a proper "preparing your VYVE" screen for the one-time first-login hydration. On-brand, warm, not "loading...". Shows during the few-second window where Dexie hydrates from Supabase. Since all data is wiped at launch (per active.md §0), every member sees this once and never again.
-- **Files touched:** new `/onboarding-hydration.html` or modal injection on index.html. Coordinate with the onboarding EF flow.
-- **Verification:** Sign up as a fresh test member, complete onboarding, land in app, see polished hydration screen for 1-3 seconds, then app is fully populated.
-- **Needs Dean:** Lewis copy approval for the screen text.
-- **Estimated length:** 2 hours.
-- **Status:** QUEUED — BLOCKED on Lewis copy.
+- **What:** Build a polished first-login hydration screen that surfaces during the 1-3 second Dexie hydration window. Persona-led welcome line in the member's assigned persona voice, optionally echoing back a goal-shaped piece of their onboarding questionnaire data. Persona-matched animation. On-brand, warm, not "loading…". Members see this once on their first ever app open and never again (per active.md §0, all member data wiped at launch).
+- **Dean owns copy directly, NOT Lewis.** Removed from Lewis copy blocker list 13 May 2026 (PM-83). Dean writes the persona welcome lines + the goal-echo variants. 5 personas + ~20-30 line variants total. 30-45 min of Dean writing time.
+- **Personalisation architecture (the safe way):**
+  - Persona welcome line is persona-conditional. NOVA sharp + directive, RIVER soft + settled, SPARK energetic + exclamatory, SAGE measured + thoughtful, HAVEN warm + reassuring. Voice shows up in verb choice and cadence even at 5-7 words.
+  - **Optional goal echo** — pulls the member's primary goal from the onboarding questionnaire (the goal-shaped field that's already captured). Only goal-shaped data is mirrored. Lookup table of `(persona, primary_goal) → line`.
+  - **HARD SAFETY RULE — `safe_echo` whitelist:** ONLY echo goal-shaped questionnaire data. NEVER echo state-shaped, struggle-shaped, or Section G data. Whitelisted echo dimensions: primary fitness/wellbeing goal, framing they chose ("long run" vs "fresh start"), prioritised pillar (Mind/Body/Connect), aspirational training frequency. NEVER mirror: anything from Section G (life context, bereavement, mental health history), stress scores, wellbeing ratings, sleep quality, anything weight/body-image/appearance-related, anything that names a specific struggle. A member who said "I'm dealing with grief" in Section G must NEVER be greeted with a hydration line that references it — the temporal mismatch and vulnerability risk far outweigh the personalisation upside.
+  - **HAVEN-specific constraint:** HAVEN members get the generic HAVEN welcome line EVERY TIME, never a goal-shaped echo. HAVEN's whole assignment basis is "member flagged serious life context" — echoing back anything they said in the questionnaire is the highest-risk move in the entire app. The vulnerability risk on HAVEN members is categorical, not statistical. Hard rule.
+- **Persona welcome line drafts (Dean to finalise):**
+  - NOVA + "build strength" goal: "Hi {name}. I'm NOVA. Let's get you stronger."
+  - NOVA + "improve performance": "Hi {name}. I'm NOVA. Let's go to work."
+  - RIVER + "find calm": "Hi {name}. I'm RIVER. Let's settle in."
+  - RIVER + "better sleep": "Hi {name}. I'm RIVER. Let's get you resting properly."
+  - SPARK + "build a habit": "Hi {name}! I'm SPARK. Day one starts now."
+  - SPARK + "lose weight": *generic SPARK fallback — weight is never mirrored*
+  - SAGE + "understand my body": "Hi {name}. I'm SAGE. Let's understand what works for you."
+  - SAGE + "build a routine": "Hi {name}. I'm SAGE. Let's build something that sticks."
+  - HAVEN + ANY goal: "Hi {name}. I'm HAVEN. You're in the right place." (never personalised — hard rule)
+- **Generic fallback** (used when localStorage.vyve_persona is absent, e.g. fresh device + cleared storage): "Hi {name}. Welcome to VYVE. We're getting you set up." Members who hit this are a tiny fraction (manually cleared storage + first login on new device).
+- **Persona-matched animation** — same animation system that gets reused by PF-27 (loading-to-success on AI moments):
+  - NOVA — sharp pulsing dot
+  - RIVER — soft breathing circle (4s in / hold / 4s out / hold)
+  - SPARK — energetic ripple
+  - SAGE — slow steady rotation
+  - HAVEN — warm gentle wave
+- **Persona assignment timing — already solved.** Persona is assigned during onboarding (Phase 1 of onboarding EF v37), written to `members.persona` and the EF response payload BEFORE the member ever reaches first-login. Two stash paths:
+  1. Onboarding-completion writes `localStorage.vyve_persona` + `localStorage.vyve_primary_goal` alongside the existing auth token write. Hydration screen reads them synchronously on first render. Zero network calls for persona resolution. This is the canonical path.
+  2. Returning-member-on-fresh-device fallback: Dexie hydrates `members` row first (~50-100ms — single-row pull at the start of the hydrate sequence). Hydration screen shows generic fallback line for the first 100ms, swaps to persona variant once `members` lands. The swap is below human perceptual threshold and looks instant.
+- **Minimum display duration: 1500ms.** Hard rule. Even if hydration completes in 600ms, the screen stays visible for the minimum, then fades to home. Implementation: `Promise.all([hydrate(), minimumWait(1500)])`. Prevents the "flash of NOVA-says-hi-then-disappears" jank case on fast hydration. The maximum is implicit (screen stays until hydrate completes), which is fine because the member is engaged with the persona voice.
+- **Files touched:** new `/hydration.js` (orchestration + minimum-wait gate + lookup table), new CSS additions for the 5 persona animations (shared with PF-27), modal injection on `index.html` (renders before any other paint, dismisses on hydrate+min-wait complete), patch to `onboarding_v8.html` or onboarding EF response handler to stash `vyve_persona` + `vyve_primary_goal` to localStorage. SW cache bump.
+- **Verification:** Sign up as fresh test member with each of the 5 personas (5 separate test runs), complete onboarding for each, log out, log in fresh, see correct persona welcome + correct animation + correct goal echo (where applicable). Dean + Lewis spot-check each persona's tone landing. Repeat one run with localStorage cleared between onboarding and first login to verify the fresh-device fallback path. Test with hydration deliberately slowed (network throttled) to confirm the screen stays visible until hydrate completes.
+- **Needs Dean:** Dean writes the persona welcome lines + goal echo variants (~30-45 min). Lewis spot-check on tone (light review, not gating).
+- **Estimated length:** ~4 hours build. Hydration orchestration + min-wait gate + lookup table ~1h. 5 persona animations (shared with PF-27) ~2h. Modal injection + onboarding-stash patch ~1h. Dean's copy work is separate from build time.
+- **Status:** QUEUED — pre-launch. Dean owns copy directly. NO Lewis copy blocker. Animations shared with PF-27 (2 features of build for 1 — assets get reused).
+- **Reuses PF-27 assets:** the 5 persona-matched animations are the same animations PF-27 uses for the AI-moment loading state. PF-13 builds them; PF-27 picks them up later in the pipeline. Worth noting for sequencing — PF-13 effectively front-loads PF-27's animation cost.
 
 ### PF-14 — Capacitor device verification
 

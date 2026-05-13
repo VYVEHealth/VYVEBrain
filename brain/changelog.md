@@ -1,3 +1,75 @@
+## 2026-05-13 PM-83 (PF-13 scope expanded — persona-led welcome + safe goal echo from onboarding questionnaire; Dean owns copy directly, no Lewis blocker)
+
+Brain-only commit. No vyve-site change. Conversational scoping with Dean on the hydration screen — the moment between onboarding completion and first home dashboard.
+
+### Context
+
+PF-13 originally scoped as "polished hydration screen, on-brand, warm, Lewis copy gate, 2 hours." Dean off-keyboard for PF-1..PF-8 ship cycle and now back briefly to scope ahead. Two strategic decisions in this conversation:
+
+1. **Dean owns the hydration copy directly, not Lewis.** Removes a long-standing Lewis copy blocker from the pre-launch path. PF-13 no longer waits on copy review — Dean writes the persona welcome lines + goal-echo variants himself. ~30-45 minutes of his writing time vs Lewis-time-of-unknown-shape.
+2. **Hydration screen becomes the moment the persona becomes a character.** Persona-led welcome line in the assigned persona's voice (NOVA sharp + directive, RIVER soft + settled, SPARK energetic + exclamatory, SAGE measured + thoughtful, HAVEN warm + reassuring). Persona-matched animation. This is the highest-leverage premium-feel moment in the whole app — every member sees it once, on their first ever open, and it sets the relationship tone.
+
+### Personalisation added: safe goal echo
+
+Dean proposed mirroring something specific from the onboarding questionnaire ("you mentioned X — let's go"). Conversational pushback surfaced two genuine risks:
+
+1. **The mismatch risk.** Questionnaire captures Section G data (bereavement, mental health history, life context). Mirroring vulnerability back at a member who's recovered or shifted state since filling in the questionnaire is the most powerful first second in wellbeing tech OR the worst — depending on the member's emotional state at that exact moment. The 10% bad-case is not "slightly awkward," it's "I'm closing this app and never opening it again."
+2. **The temporal mismatch.** The member filled in the questionnaire hours or days ago. Their state has shifted. "I want to lose weight" said in a moment of self-loathing is not what they want greeted with on a fresh Saturday morning.
+
+### The hard safety rule (codified into the playbook)
+
+**`safe_echo` whitelist.** ONLY goal-shaped questionnaire data may be echoed on the hydration screen. NEVER state-shaped, struggle-shaped, or Section G data.
+
+- Whitelisted echo dimensions: primary fitness/wellbeing goal, framing choice ("long run" vs "fresh start"), prioritised pillar (Mind/Body/Connect), aspirational training frequency.
+- Banned echoes: anything from Section G, stress scores, wellbeing ratings, sleep quality, weight/body-image/appearance-related items, anything that names a specific struggle.
+
+**HAVEN-specific constraint.** HAVEN members get the generic HAVEN welcome line every single time. Never a goal-shaped echo. HAVEN's whole assignment basis is "member flagged serious life context" — the vulnerability risk on HAVEN members is categorical, not statistical. Echoing back anything they said in the questionnaire is the highest-risk move in the entire app. Hard rule. Future Claudes are explicitly forbidden from softening this constraint regardless of how strong the personalisation upside looks.
+
+### Architecture: persona assignment timing already solved
+
+Dean asked how the persona gets assigned quickly enough to avoid a delay on the hydration screen. Answer: persona is assigned during onboarding (Phase 1 of onboarding EF v37), written to `members.persona` AND returned in the EF response payload BEFORE the member ever reaches first-login.
+
+Canonical path: onboarding-completion writes `localStorage.vyve_persona` + `localStorage.vyve_primary_goal` alongside the existing auth token write. Hydration screen reads them synchronously on first render. Zero network calls for persona resolution.
+
+Fresh-device fallback (member cleared storage + new device): Dexie hydrates `members` row first (~50-100ms — single-row pull at start of hydrate sequence). Hydration screen shows generic fallback line for ~100ms, swaps to persona variant once `members` lands. Swap is below human perceptual threshold and looks instant.
+
+### Minimum display duration codified: 1500ms
+
+Hydration on fast networks may complete in 600ms. Without a minimum-display gate the persona welcome would flash and disappear — jank. Hard rule: `Promise.all([hydrate(), minimumWait(1500)])`. Maximum is implicit (screen stays until hydrate completes), which is fine because the member is engaged with the persona voice.
+
+### Persona-matched animations: shared with PF-27
+
+The 5 persona animations (NOVA sharp pulsing dot, RIVER soft breathing circle, SPARK energetic ripple, SAGE slow steady rotation, HAVEN warm gentle wave) get reused by PF-27 (loading-to-success on AI moments). Two features of build for one set of assets. PF-13 effectively front-loads PF-27's animation cost. Worth noting for sequencing: when PF-27 lands later in the pipeline, its animation work is already done.
+
+### Estimate update
+
+Original PF-13: 2 hours, Lewis copy blocker.
+PM-83 expanded PF-13: ~4 hours build (hydration orchestration + min-wait gate + lookup table ~1h, 5 persona animations shared with PF-27 ~2h, modal injection + onboarding-stash patch ~1h). Plus Dean's ~30-45 min copy work. NO Lewis copy blocker.
+
+Net change: PF-13 is twice the build but unblocked on Lewis, and pays for PF-27's animation work as a side effect.
+
+### Why this is in the brain not just in the build chat's working notes
+
+The HAVEN-never-personalised rule and the safe_echo whitelist are exactly the kind of constraint that gets eroded over multiple sessions of "but couldn't we mirror just this one extra thing?" Future Claudes may look at the questionnaire schema and think "the data is rich, let's reflect more of it on the hydration screen" — without re-deriving the temporal-mismatch and vulnerability risks. Locking the rule into the playbook + this changelog entry means the reasoning survives the inevitable next-session re-litigation. The rule also generalises beyond hydration: any future surface that considers echoing questionnaire data inherits the same whitelist.
+
+### Operating mode in effect
+
+Dean returning briefly to scope, build chat has carried PF-1..PF-8 in parallel. This commit is purely strategic scope work on a task that isn't ready to build yet. Per active.md §0 — Claude leads, Dean drives. Dean confirmed "Yes" on the commit; no further menu of options surfaced.
+
+### Brain commit shape
+
+3 files: `playbooks/premium-feel-campaign.md` (PF-13 block fully rewritten from minimal QUEUED stub to full spec with persona welcome line drafts, safe_echo whitelist, HAVEN-never-personalised hard rule, persona assignment timing architecture, minimum-display-duration rule, animation reuse with PF-27, build estimate update), `brain/active.md` (§8 editorial bumped with PM-83 entry), `brain/changelog.md` (this entry prepended).
+
+### What's still queued next on the build side
+
+Unchanged: PF-9 (cardio.html refactor) is the next vyve-site task per PM-82. PM-83 doesn't change the build sequence — PF-13 was already further down the queue, and this is scope refinement not promotion.
+
+### Outstanding from prior sessions
+
+Capacitor `capacitor.config.ts` origin verification (PM-77.1 §3.1 mitigation B) still folded into PF-14's expanded scope. Local-first-spike → main merge still outstanding. Both Dean-side, neither blocking the build chat.
+
+---
+
 ## 2026-05-13 PM-82.5 (Brain restore — PM-80/PM-81/PM-82 ship narratives spliced into main; active.md + campaign.md advanced to true PF-8-SHIPPED state)
 
 Reconciliation commit. PM-80, PM-81, PM-82 each landed in the VYVEBrain repo as orphan commits (reachable in git history, not from `main` HEAD) because a sibling-session PM-79.4 chain (`f718a66b` → `2edd11b3` → `afc32c3e`) wrote on top of PM-79.3 (`fc18016dff76`) at roughly the same time as PM-82 (`2abef955` parent also `fc18016dff76`). The PM-79.4 chain reached main first; the PM-82 line never did. Same pattern affected PM-80 (`99e066ae`) and PM-81 (`cf9fa0a8`) earlier in the evening but was less obvious because they had been narratively "consolidated" by PM-79.3 — they were never restored to live changelog state either.
