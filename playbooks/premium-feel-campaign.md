@@ -241,11 +241,14 @@ Format: `PF-N — Title`
 
 ### PF-14 — Capacitor device verification
 
-- **What:** Build and install the iOS Capacitor app from the local-first branch to Dean's iPhone. Run through every member-facing flow on the real device. Verify Dexie behaviour inside WKWebView (storage isolated from Safari, persists across app restarts, survives backgrounding). Check airplane-mode behaviour, queue drain on reconnect.
+- **What:** Build and install the Capacitor app from the local-first branch to Dean's iPhone AND Android device. Run through every member-facing flow on both real devices. Verify Dexie behaviour inside WKWebView (iOS) and Android WebView (Chrome WebView): storage isolated from browser, persists across app restarts, survives backgrounding. Check airplane-mode behaviour, queue drain on reconnect.
+- **Two-device cross-sync test (new scope per PM-79.4):** With both devices logged in to the same account, log a habit on Android while iPhone is backgrounded for 60+ seconds. Foreground iPhone. The habit must appear within 1-2s via the PF-5 visibility-change delta-pull. This is the test that proves the delta-pull belt-and-braces (PM-77.1 §3.1 mitigation C) actually works end-to-end. Cannot be verified on a single device.
+- **Capacitor config check (new scope per PM-79.4):** Read out `~/Projects/vyve-capacitor/capacitor.config.ts` `ios.*` AND `android.*` blocks. Document the iOS origin pattern (PM-77.1 §3.1 mitigation B — `capacitor://localhost` vs remote-origin; ITP exemption hinges on this). Document the Android scheme + hostname (`https://localhost` or custom). Lock both schemes explicitly in `capacitor.config.ts` so future Capacitor major-version upgrades can't silently change the scheme and wipe member IndexedDB.
+- **Temporary Dexie source indicator (new scope per PM-79.4):** Before walking flows, build a spike-gated visual indicator: small dot in the top corner of every page. Green = read came from Dexie. Amber = Supabase fallthrough fired (Dexie empty / shim active / hydrate failed for this table). Red = fully offline. Three states, zero ambiguity. Used during PF-14 verification on both devices, carries through PF-15 as a debugging aid. PF-19 cleanup strips it before merge to main. ~30 min build. Works identically on iOS and Android since it's pure CSS/JS.
 - **Files touched:** none — this is a verification task, not a code change.
 - **Verification:** Real-device usage of every flow. Look for jank, missing data, anything that doesn't feel native.
-- **Needs Dean:** Dean must physically install on iPhone and use it. Whole task is Dean's hands-on test plus Claude triage of anything that surfaces.
-- **Estimated length:** 2 hours of Dean using the app + however long fixes take.
+- **Needs Dean:** Dean must physically install on BOTH iPhone and Android device and use them side-by-side for the cross-sync test. Whole task is Dean's hands-on test plus Claude triage of anything that surfaces. Also: Dean reads out `capacitor.config.ts` on the Mac since the Capacitor repo is not in git.
+- **Estimated length:** ~30 min Claude build for the Dexie source indicator. Then 2-3 hours of Dean using the app on both devices + however long fixes take.
 - **Status:** QUEUED
 
 ### PF-15 — Hardening + edge cases (Sunday session)
@@ -461,6 +464,21 @@ These are explicitly post-launch work, not blockers. The Mind tab in particular 
 - **Needs Dean:** real-device verification on iPhone (the iOS-suspended-then-killed case is the hard one). Lewis copy for the resume prompts and the stale-draft restore prompt.
 - **Estimated length:** 3-4 hours. `_workout_session_state` + workouts integration ~1.5h, cardio session state ~30min, `_drafts` table + helper module + form integrations ~1.5h, polish + verification ~30min.
 - **Status:** QUEUED — pre-launch. Slots between PF-9 (cardio refactor) and PF-13 (hydration screen). High value-per-hour: the mid-workout-close case is the most "is this a real fitness app?" test surface and gets us level with Strong/Strava on that one moment.
+
+### PF-29 — Android Health Connect autotick wiring (pre-launch)
+
+- **What:** Wire the existing autotick evaluator to read from Android Health Connect on Android devices, mirroring what it already does for HealthKit on iOS via the Capgo plugin. The Capacitor side is already set up — the Health Connect plugin is in the Capacitor project, the Android manifest declares the `android.permission.health.READ_*` permissions, and the plugin is compiled into the 1.0.2 binary currently in Play Store review. The outstanding work is web-side and member-facing.
+- **Scope:**
+  1. **Web-side autotick evaluator routes Android requests to the Health Connect plugin path.** The `fetchDashboardHabits` live evaluator currently routes only to iOS HealthKit. Add an Android branch that calls the Health Connect plugin via the same Capacitor JS API surface. Per-platform data type mapping where Health Connect's types differ from HealthKit's (workouts being the main one — Health Connect's "strength training" granularity differs from Apple's).
+  2. **Android-specific permissions UX.** Health Connect permissions flow differently: members grant per-data-type access via the Health Connect app itself, not an in-app prompt. The onboarding flow + settings page need an Android-specific path that explains this and deep-links to Health Connect. Lewis copy gate for the explainer copy.
+  3. **Verification on Android device** — confirm the plugin reads correctly, autotick fires for habits that should fire, doesn't fire for habits that shouldn't. Run side-by-side with iPhone to verify cross-platform parity for the same member account.
+- **Why no Play Store re-review:** Capacitor apps only require Play Store re-review when permissions change. The Health Connect permissions are already declared in the 1.0.2 manifest (which is currently in review). Web-side changes deploy via GitHub Pages with the standard `sw.js` cache key bump — no Play Store involvement, no review timing risk. The only blocker is Lewis copy.
+- **Architectural note:** This is exactly the PM-80 server-compute-carve-out principle in action. Autotick evaluator output is live evaluator state against the current platform health store — it's not persistable, it must stay on the wire on both spike-on and spike-off paths, and the platform-specific routing happens at the evaluator layer not the page layer. Already established as the pattern in PF-6 (HealthKit autotick stayed on the wire on both paths). PF-29 extends the pattern to Android.
+- **Files touched:** server-side `fetchDashboardHabits` evaluator (likely an Edge Function or member-dashboard endpoint) — add Android Health Connect routing branch. Web-side onboarding / settings pages — add Android-detection branch that surfaces the Health Connect permissions explainer. SW cache bump.
+- **Verification:** On Android device, sign up as a fresh test member (or use existing account), grant Health Connect permissions via the in-app prompt path, perform an activity that should trigger autotick (e.g., 30+ active minutes for a movement habit), confirm the habit auto-ticks within the expected evaluation window. Side-by-side with iPhone: same account, both devices grant permissions, both surface autotick correctly.
+- **Needs Dean:** Verification on Android device. Lewis copy for the Android permissions explainer (1-2 short copy blocks).
+- **Estimated length:** 3-4 hours build. Web-side evaluator routing ~2h, Android permissions UX ~1h, verification + polish ~1h.
+- **Status:** QUEUED — pre-launch. Hard blocker: Lewis copy for Android permissions explainer. Memory line in active.md previously read "Android HealthKit (Health Connect) parity — parked pending test device" — that's now superseded by this task since Dean has an Android device.
 
 ---
 

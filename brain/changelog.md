@@ -1,3 +1,83 @@
+## 2026-05-13 PM-82 (PF-8 shipped — nutrition surfaces Dexie-first reads on local-first-spike; optimistic-write-to-Dexie gap surfaced)
+
+Third page-refactor session on the local-first architecture. vyve-site `local-first-spike` now 8 commits ahead of `main` at `d2fc1e89`. PM-79.3 captured PF-6/7 narrative; PM-82 adds PF-8 and the first significant architectural finding from the page-refactor pass.
+
+### Operating mode in effect
+
+Dean off-keyboard. Single "go" confirmation that this chat would do PF-8. Claude proceeded with PF-8 per active.md §3 + the playbook, including a decision to skip the proposed PM-82 brain restore of PM-80/PM-81 once PM-79.3 was discovered to have consolidated their narratives correctly. Two architectural concerns voiced once each (optimistic-write gap — folded into PF-8 scope decision; PM-80/PM-81 restore — skipped after reviewing PM-79.3) and not blocked on confirmation.
+
+### PF-8 ship — vyve-site `d2fc1e89`
+
+Three files, one atomic commit on top of PF-7 (`97863198`).
+
+**Read path replacements (4 sites):**
+
+1. `loadWtLogs()` in `nutrition.html` flipped to read `weight_logs` from Dexie when spike on. Returns rows mapped to `{date, kg}` and writes through to the existing `vyve_wt_cache_<email>` localStorage cache so the cross-architecture network-failure fallback still works.
+2. `loadDiary()` in `log-food.html` flipped to read today's `nutrition_logs` from Dexie. Filtered by `activity_date === currentDate` locally (Dexie has all rows; no `activity_date=eq.` filter on `allFor`). Sort ASC by `logged_at` locally. The existing localStorage diary cache and offline-paint flow are preserved untouched — they front-run as the synchronous optimistic paint before either Dexie or Supabase resolves.
+3. `loadRecent()` in `log-food.html` flipped to read the full `nutrition_logs` history for the recent-foods picker. Sort DESC by `logged_at`, dedupe by `food_name+brand`, slice 20 — same semantics as the Supabase `limit=100` query plus client-side dedupe.
+4. `loadMyFoods()` in `log-food.html` flipped to read `nutrition_my_foods` sorted DESC by `created_at`.
+
+All four use the non-empty-gate three-way branch from PF-6/7: spike-on AND non-empty rows → Dexie; empty or error → Supabase fall-through; spike-off → legacy.
+
+**Architectural finding: optimistic-write-to-Dexie gap.**
+
+While scoping PF-8 I traced what happens when nutrition.html PATCHes the `members` row on TDEE recalc and then re-reads it. PF-4's shadow drainer mirrors the write to Dexie `_sync_queue` (the durable outbound log) — but does NOT update the actual Dexie data tables. So if nutrition.html were to read `members` from Dexie, the next render after a TDEE recalc would show stale values until the drainer caught up to Supabase and a subsequent hydrate refreshed the row.
+
+This affects every page that reads-after-write its own data. It hasn't surfaced before because:
+- PF-6 (habits.html) — habit writes go to `daily_habits`; PF-1 already wires an optimistic Dexie write at the page level alongside `writeQueued` (the page knows to write to Dexie too).
+- PF-7 (workouts surfaces) — workout completion goes through `writeQueued`; the page navigates away before re-reading.
+- PF-8 (nutrition.html) — TDEE recalc PATCHes `members` and stays on the same page. The gap surfaces here.
+
+**Decision for PF-8:** keep `members` reads on Supabase (it's a small one-row pull). Document the gap as a follow-up architectural concern that wants codification across all writes — probably as PF-4b: extend the shadow drainer to apply optimistic Dexie writes alongside the `_sync_queue` enqueue. Or alternatively, add a per-page optimistic-Dexie write at every `writeQueued` call site (matches the PF-1 pattern). Either path is bigger than PF-8 scope. Recording for later.
+
+**Other carve-outs preserved.** `off-proxy` (Open Food Facts external API) stays on the wire in `log-food.html`. `platform-alert` telemetry stays on the wire in both pages. Third application of the PM-79.3 server-compute carve-out principle.
+
+**Writes unchanged.** PF-4's shadow drainer already covers every nutrition write via `VYVEData.writeQueued`: POST `weight_logs` + PATCH `members` in nutrition.html, POST/DELETE `nutrition_logs` in log-food.html.
+
+**Script chain.** `/db.js` + `/sync.js` added to both pages immediately after `/bus.js`, matching the canonical position from habits.html/workouts.html.
+
+Cache key `vyve-cache-v2026-05-13-pm78-pf7-workouts-a` → `pm78-pf8-nutrition-a`.
+
+### Brain-restore decision: PM-80 + PM-81 NOT restored
+
+Per the prompt for this session, I was set up to restore PM-80 + PM-81 changelog entries that PM-79.1 dropped overnight. Inspecting PM-79.3 (the most recent sibling-session brain commit), I found it had already consolidated PF-6 + PF-7 ship narrative correctly, captured the autotick carve-out and three-way branch principles, and brought §2/§3/§5 into a consistent post-PF-7 state. Restoring PM-80 + PM-81 would have regressed the brain by introducing duplicate ship narratives and stale §2/§3 figures.
+
+**Decision: leave the live brain at PM-79.3's state, build PM-82 on top.** PM-80 (commit `99e066ae41`) and PM-81 (commit `cf9fa0a88f`) remain in git history forever — anyone wanting the original ship-day narrative can `git show <sha>:brain/changelog.md`. The principle that emerged in PM-80/PM-81 (server-compute carve-out, post-commit content-presence check rule candidate) was correctly absorbed by PM-79.3.
+
+### Drift-detection signal worth keeping
+
+The PM-79.x ↔ PM-80/PM-81 race tonight produced a clear pattern: when a sibling brain session writes against a stale base, the resulting commit lands cleanly in git but the prior session's content disappears from the live file. **The post-commit verification rule from PM-81** — check that prior PM-N headers still exist in the live changelog, not just byte-equality of what was just pushed — would catch this within seconds of a push. Candidate for §23 hard-rule promotion on the next active.md rebuild. Recorded again here so it survives any future overwrite.
+
+### Verification path for Dean (when he's back)
+
+1. Merge `local-first-spike` → `main`. Compare: https://github.com/VYVEHealth/vyve-site/compare/main...local-first-spike
+2. Open `online.vyvehealth.co.uk`, login.
+3. DevTools console: `localStorage.setItem('vyve_lf_spike','1'); location.reload()`.
+4. `VYVESync.status()` should show `weight_logs`, `nutrition_logs`, `nutrition_my_foods` in `hydrated_tables`.
+5. Throttle Network to Offline.
+6. Navigate to `/nutrition.html` — weight chart renders from Dexie. TDEE values render from Supabase (deliberate — see optimistic-write gap above).
+7. Tap "Log food" → `/log-food.html` — today's diary, recent foods picker, my foods tab all render with zero non-cached network calls. (Food search via off-proxy will fail offline — that's the external-API carve-out.)
+8. Network back on, log a food, see instant ack. PF-4 drainer eventually catches up on Supabase.
+9. Spike off → reload → behaviour identical to today.
+
+### What's queued next
+
+**PF-9 — cardio.html refactor.** Same template as PF-6/7/8. Read cardio history from Dexie; writes through `VYVEData.writeQueued`. ~1-2 hours.
+
+After PF-9: PF-10 (weekly/monthly check-in — first AI-moment refactor where the EF generation is the deliberate carve-out moment), PF-11 (index.html home dashboard — most visible win), PF-12 (settings + remaining surfaces). Then PF-13 (hydration screen), PF-14 (device verification), PF-15 (hardening including the optimistic-write-to-Dexie codification + iOS mitigations), PF-16-18 (polish), PF-19 (cleanup), PF-21 (nav restructure), PF-20 (merge to main).
+
+### Outstanding from prior sessions
+
+Capacitor origin verification (PM-77.1 §3.1 mitigation B) still blocked on Dean reading `~/Projects/vyve-capacitor/capacitor.config.ts`. Carried forward.
+
+### Brain commit shape
+
+3 files: `brain/active.md` (§2 SHAs + last-verified + brain-HEAD + last-shipped + status flipped to PF-1..8; §5 PF-8 marked SHIPPED + PF-9 promoted to next; §8 editorial bumped to PM-82), `playbooks/premium-feel-campaign.md` (PF-8 Status → SHIPPED with full ship notes covering three-way branch pattern, members carve-out for optimistic-write gap, server-compute carve-out continuity), `brain/changelog.md` (this entry prepended).
+
+---
+
+
+
 ## 2026-05-13 PM-79.3 (PF-6 + PF-7 SHIPPED to local-first-spike — habits + workouts Dexie-first reads, including PM-77.3 thumbnail prefetch)
 
 Brain-only commit. Two vyve-site commits shipped in the parallel build chat between PM-79.2 and now: PF-6 (`48c4d17e`, +28 minutes after PF-5) and PF-7 (`97863198`, +9 minutes after PF-6). Spike branch now 7 commits ahead of `main` (PF-1 → PF-7).
