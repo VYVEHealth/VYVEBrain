@@ -1,3 +1,58 @@
+## 2026-05-14 PM-113 — Hotfix on PM-112: habits pills paint from localStorage cache, not Dexie
+
+**Session shape:** Continuation of PM-112 device walk. Single 2-file atomic commit `692927e3` on vyve-site main. ~15 min total including the diagnostic conversation. Brain entry follows.
+
+**Symptom (on iPhone, native Capacitor 1.1 Build 3):**
+- Habit cards rendered instantly on cold app reopen (good — cache-first paint working as designed).
+- DAY STREAK + TOTAL LOGGED pills at top showed `—` placeholders for 10-15s before populating.
+- Inconsistent: sometimes both cards + pills painted instant, sometimes only cards did. Reproducible by closing app fully, swiping away from app switcher, reopening.
+
+**Root cause traced through 4 turns of conversation:**
+
+1. First instinct (wrong) — auth blocking. `loadHabitsPage` awaits `_vyveWaitAuth()` if `vyveCurrentUser` isn't ready, and email-from-cache fallback only fires when localStorage cache exists. If cache missing AND auth slow → blocks. Ruled out: Dean confirmed cards rendered instant which means cache exists and email resolved fast.
+
+2. Second instinct (wrong) — Dexie open slow on cold start. WKWebView Dexie cold-open can take 500-2000ms. Ruled out by timing: 10-15s is far past Dexie open ceiling; would have to be something else.
+
+3. Third instinct (right) — WKWebView IDB wipe pattern. Two separate sources fed two parts of the page:
+   - Cards: `vyve_habits_cache_v3` localStorage (synchronous, paint-time).
+   - Pills: `VYVELocalDB.daily_habits.allDatesFor(email)` (async, Dexie-backed).
+   On Capacitor iOS 1.1 Build 3 (remote-origin, pre-PF-14b), Apple ITP rules apply differently to remote-origin wraps than to first-party bundled apps. IndexedDB gets purged more aggressively than localStorage between app closes. Net: localStorage survives, IDB sometimes doesn't, pills show `—` until criticalHydrate refills daily_habits from network (~5-15s).
+
+4. Verification: Dean confirmed it's the 1.1 Build 3 remote-origin build (the brain's active.md §3.1 + PF-14b entries explicitly note this build is subject to ITP exposure). PF-14b bundled-mode migration remains the real fix — still a launch blocker.
+
+**What shipped (`692927e3`, 2 files):**
+
+- `habits.html` L1252 cache-first paint block — after the existing card render, read `_hc.activeDates` from the cache object and if non-empty call `updateStats(_hc.activeDates)` + `renderWeekStrip(_hc.activeDates.filter(d => getWeekDates().includes(d)))`. Cache writes at L1506 already stamp `activeDates` into the cache; we were just not reading it back on cold reopen. Dexie's `allDatesFor` still fires at L1275 in parallel and silently upgrades the pills with fresher numbers when (if) it returns rows. Same silent-upgrade pattern as cards.
+- `sw.js` cache key `pf40-2-firstpaint-a` → `pm113-pills-cache-a` so the patch propagates on next visit.
+
+**Pre-ship verification:**
+- node --check rc=0 on all 3 inline `<script>` blocks in patched `habits.html`.
+- node --check rc=0 on patched `sw.js`.
+- Pre-commit SHA recheck: vyve-site main `58f9c75b` unchanged from PM-112 ship.
+
+**Post-commit byte-equal verification (§4):**
+- Both files MD5-matched at commit SHA `692927e3` via Contents API base64. 2/2 byte-equal.
+
+**Held findings worth carrying forward:**
+
+- **The local-first architecture's offline-equivalence promise (§3) currently has a gap on Capacitor iOS 1.1 Build 3.** IndexedDB is not durable across app closes on remote-origin Capacitor under ITP. Until PF-14b ships (bundled mode + Capgo, weekend campaign), every Dexie-only data path on iOS is exposed to this wipe pattern. The architectural answer is PF-14b. The trial-phase answer is **degrade gracefully to localStorage for member-visible state**, the way habits.html now does for both cards and pills.
+- **Two-source paint coordination pattern.** When a page paints from two sources for two regions (cards from localStorage, pills from Dexie), the slower source dictates the perceived-loading time of the worse region. The fix is to make both regions read from the same fast source on first paint, with the slower source acting as a silent upgrade. Worth surfacing as a §23 candidate if it recurs on other pages.
+- **The Dexie-wipe pattern is inconsistent across consecutive closes** — sometimes IDB survives, sometimes not. iOS WebKit behaviour is non-deterministic here; we can't reliably reproduce it to assert "fixed". The localStorage path closes the gap whether or not IDB survives.
+
+**Patterns reinforced this session:**
+
+- **Diagnostic-by-elimination beats diagnostic-by-guesswork.** Four candidate causes (auth, Dexie open, IDB wipe, EF latency); ruled three out by asking 2-3 precise device questions; landed on the right cause with low cycles. The PM-110 / PM-111 lesson (instrument the path that runs in production) generalises: confirm where the actual paint comes from before reasoning about why it's slow.
+- **Ship the workaround when the real fix is days away.** PF-14b is the architectural fix but it's a multi-day Capacitor rebuild + Apple review. Tonight's localStorage-pills patch is a 15-line edit that makes the pills honest TODAY, with PF-14b still scheduled. Don't let "the proper fix is queued" gate the cheap interim.
+
+**Brain commits this session (atomic):**
+- `brain/active.md` §2 — PM-113 paragraph prepended; main HEAD bumped to `692927e3`; SW cache key bumped to `pm113-pills-cache-a`.
+- `brain/changelog.md` PM-113 prepended (this entry).
+
+**On the horizon:**
+- **PF-14b — bundled mode + Capgo** remains the proper fix for IDB durability on Capacitor iOS. Still a launch blocker. The PM-113 workaround buys time for it, doesn't replace it.
+- **Other Dexie-only paint paths** that could exhibit the same `—`-on-cold-reopen symptom: index.html progress strip (currently parked behind home redesign), nutrition.html weight chart (PF-8 wired but reads Dexie for the 30-day series), cardio.html week summary. None reported as symptomatic yet — patch them only when device walk shows the same shape.
+- **Engagement.html still on EF**, ~3s cold. Not Dexie-wired. Defer to post-launch unless trial member feedback flags it.
+
 ## 2026-05-14 PM-112 — PF-40.2 SHIPPED: thin first-paint hydrate replaces 81s mass-hydrate blocker
 
 **Session shape:** 14 May 2026 late-late night. Continuation of PM-111. Single atomic vyve-site commit `58f9c75b` on main. Brain commit follows. The session that took PM-111's reframe and executed against it.
