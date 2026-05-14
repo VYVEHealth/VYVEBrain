@@ -57,20 +57,32 @@ Tap habit → habit card flips instantly (correct). Header DAY STREAK / TOTAL LO
 
 **Estimated:** ~2 hours + device verification.
 
-### PF-34 — PF-15.x sweep [P0, mechanical] (RENAMED from existing PF-15.x backlog item for clarity)
+### PF-34 — PF-15.x sweep [PARTIALLY SHIPPED 14 May 2026 PM-104]
 
-**Status:** OPEN P0. Six pages still unwired from Dexie, all slow.
+**Status:** Six pages audited. **Two wired and SHIPPED** (`certificates.html`, `movement.html`). **Three are REST carve-outs** by their nature (no schema work would change this for `sessions.html`/`leaderboard.html`; `running-plan.html` deferred to PF-34b). **One deferred** pending design decision (`engagement.html`).
 
-| Page | Wiring needed | Est |
+| Page | Outcome | Detail |
 |---|---|---|
-| `engagement.html` | 3 EF calls → Dexie reads (audit aggregate vs member-row first) | ~30 min |
-| `certificates.html` | 2 EF calls → Dexie read of `certificates` table | ~30 min |
-| `running-plan.html` | 2 EF calls → Dexie read of `running_plan_cache` | ~30 min |
-| `movement.html` | 5 REST calls → Dexie wire (cardio pattern) | ~30 min |
-| `sessions.html` | Audit member-scope vs catalogue-only | ~15 min audit + maybe wire |
-| `leaderboard.html` | Audit; likely REST carve-out documented | ~15 min audit |
+| `certificates.html` | **SHIPPED** `be690345` | Clean PM-96 clone. `loadPage()` builds member-dashboard payload locally via Promise.all over `certificates` + raw activity tables + `members.first_name`. EF still fires for authoritative `global_cert_number` + `charity_moment_triggered`. |
+| `movement.html` | **SHIPPED** `f8bc15cf` | 1 read flip (`fetchPlan`/`workout_plan_cache`) + 4 optimistic Dexie upserts before direct-fetch writes (PF-4b Part 2 hazard closure on `workouts` POST x2, `cardio` POST, `workout_plan_cache` PATCH). Filter preserved: `is_active && category === 'movement'`. |
+| `running-plan.html` | **AUDIT-ONLY, deferred to PF-34b** | Reads `member_running_plans` (not in Dexie schema) + `running_plan_cache` (cross-member shared cache by `cache_key`, only mentioned in db.js as future `_kv` use). Proper wire needs schema additions + cross-member sync rule. ~1 session. |
+| `sessions.html` | **AUDIT-ONLY, no wire needed** | Fully static page: hardcoded literal `SESSIONS` array in inline JS (8 session types). Zero EF/REST calls. No member-scope state. |
+| `leaderboard.html` | **AUDIT-ONLY, REST carve-out documented** | Single `leaderboard` EF call computing cross-member aggregates server-side; cannot be local-first by nature. Existing localStorage `vyve_leaderboard_cache` pattern (24h TTL, optimistic-render-from-cache, `VYVEOffline.showBanner`, 401 redirect) is the right shape — REST carve-outs with offline UX should mirror this. |
+| `engagement.html` | **DEFERRED — design decision needed** | Reads `member-dashboard` EF (engagement components — score, recent_30d, streaks) + `member-achievements` EF. These are server-derived **aggregates**, not raw rows. Wire requires either using `home-state-local.js` to compute aggregates from Dexie raw tables client-side (PF-11b extension), OR sequencing after PF-35 (§23.11 pre-aggregated summaries) so engagement reads from a single `member_home_state`-shaped Dexie row. Bigger lift than backlog "30 min" estimate. |
 
-Single 3-4 hour session ships all six. Pattern matches PM-96 exercise.html (`433d0650`): hydrate-await + Dexie-first + REST fallback + sw.js cache bump per page.
+Pattern matches PM-96 exercise.html (`433d0650`) for the clean clones. PF-4b Part 2 direct-fetch hazard handling matches PF-9 cardio.html for write-side upserts.
+
+### PF-34b — running-plan.html Dexie wire (requires schema work) [P1, post-launch viable]
+
+**Status:** OPEN P1, queued. Surfaced 14 May 2026 PM-104 during PF-34 audit. Two schema gaps:
+
+1. `member_running_plans` is not in the Dexie schema. Add as member-scoped table (PK `(member_email, plan_id)` or similar), wire `sync.js` plan().
+2. `running_plan_cache` is mentioned in db.js docs only as a future `_kv` use ("small key/value store (running_plan_cache lookups etc.)"). It's a **cross-member shared cache** keyed by `(goal, level, days_per_week, timeframe_weeks, long_run_day)` so the Dexie copy is only useful when the same `cache_key` was previously hit on this member's device. Three approaches: (a) add as a non-member-scoped `_kv` entry, only useful for same-member regenerations (low value); (b) add a sync rule that pulls `cache_key`s recently popular across all members (cross-member denormalisation, useful but adds sync complexity); (c) leave on REST (current behaviour).
+
+Approach (a) is the smallest ship and matches the db.js doc intent. After both schema additions, flip `running-plan.html`'s 5 call sites: 3 `running_plan_cache` reads/writes → Dexie-first + REST fallback (keeping REST as cache-discovery for cross-member hits); 1 `member_running_plans` read/write → Dexie-first + REST fallback; `anthropic-proxy` EF stays on wire (AI moment carve-out per PF-10 pattern).
+
+Estimated ~1 session including schema migration, sync.js plan() additions, page wire, and SW cache bump.
+
 
 ### PF-35 — Page-header numbers must read pre-aggregated summaries, never raw row counts [P1, codify as §23.11]
 
@@ -116,9 +128,9 @@ Both: Dean's members shape (kg/cm, individual, dark, SPARK), 12 member_habits (1
 
 ## Added 14 May 2026 PM-102 (§23.7.8 hard rule: in-app cache reset must trigger full Dexie rehydrate; §23.8 field-test confirmation)
 
-### PM-97 in-app cache reset fix [P0 HOT, surfaced 14 May 2026 in PM-102]
+### PM-97 in-app cache reset fix [SHIPPED 14 May 2026 PM-104 — `361b44dc`]
 
-**Status:** OPEN P0. Currently broken on production iPhone — confirmed by Dean's session-end test 14 May 2026 ~00:35 BST. The PM-97 settings.html long-press footer recovery gesture clears Dexie tables + `vyve_home_v3_*` + sync_meta then `location.reload()`. The reload is not gated on `VYVESync.hydrate(email)` completion, so the post-reload page paint happens while Dexie is still mid-persist for member_habits and other member-scoped tables. Result: home renders "HABITS 1" instead of the real distinct-day count; habits.html renders every card as "undefined" because the denormalised join columns haven't arrived yet on the Dexie member_habits rows being read.
+**Status:** SHIPPED 14 May 2026 daytime (PM-104). Commit `361b44dc4abac5755ba378df6f25dc5e7cf36d0d`. Root cause was subtly different from the original spec: the gesture WAS awaiting `VYVESync.hydrate()` before reload, but `hydrate()` is **idempotent within a session** — it returns the page-boot-cached `hydratePromise`, so the await was a no-op. Reload then fired with empty Dexie tables. Fix: replace `hydrate()` with three per-table `hydrateTable()` calls for `members`, `member_habits`, `workout_plan_cache` — these bypass `hydratePromise` and actually pull. Failure path now BLOCKS the reload and toasts `"Reset paused / Check connection then try again"` per §23.7.8 spec point 3. **Verification pending**: Dean to long-press version footer in settings on iPhone 17 tonight.
 
 **Fix shape (per §23.7.8):**
 1. Reset gesture must await `VYVESync.hydrate(email)` for at least `members`, `member_habits`, `workout_plan_cache` before reloading. 2-3s loading toast is acceptable; rendering empty/undefined state is not.
