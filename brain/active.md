@@ -50,7 +50,7 @@ When the three disagree:
 
 ## 2. Live state snapshot (refreshed every session-end)
 
-**Last verified:** 13 May 2026 PM-97 (PF-15 P0 partial-upsert landmine sealed via db.js merge overrides + recovery gesture in settings.html; habits page now renders correctly after device long-press reset). PF-14 device verification COMPLETE on iPhone 17. Backend EF latency from §23.5.1 confirmed as the actual felt-perf bottleneck — three-week-old finding, dominant cause of slow paint and 20s write-UI lag. Next session P0 = backend EF latency campaign (PM-98), not PF-15 sweep. PM-78..PM-93 history preserved above; tonight added PM-95 parts 1-4 (`82524093`, `fa3bd6e6`, `244d96fc`, `a3c74734`) + the spike→main merge (`c469e504`). PF-1..PF-13 scaffolding + PF-30 are now LIVE ON MAIN behind the spike-gate, dormant for non-spike members.
+**Last verified:** 14 May 2026 PM-103 (canary walk on test1@test.com surfaced PF-14c offline-cold-boot launch blocker + PF-31/32/33 read/sync gaps; brain commit landed before fix work). PF-14 device verification COMPLETE on iPhone 17. PF-15 PARTIAL — P0 partial-upsert landmine sealed via PM-97 (`ddc13271`), six unwired pages still queued (PF-15.x: engagement, certificates, running-plan, movement, sessions-audit, leaderboard-carve-out). PM-78..PM-102 history preserved above; tonight added PM-103 — provisioned `test@test.com` + `test1@test.com` (password `1234`), surfaced the full bug map below. PF-1..PF-13 + PF-30 LIVE ON MAIN behind spike-gate; spike→main merged via PM-95 `c469e504`. PM-99 backend EF latency still P0 unstarted (parked behind PF-14c which is now the dominant launch risk).
 
 | What | Value |
 |---|---|
@@ -68,6 +68,45 @@ When the three disagree:
 | Deferred campaigns | Layer 6 (SPA shell) — dropped in favour of local-first migration which delivers the same perceived speed |
 
 ---
+
+
+### Canary walk findings (PM-103, 14 May 2026 evening)
+
+**Two test accounts provisioned, fully Supabase-side:**
+- `test1@test.com` / `1234` — clean fresh-onboarding account. No daily activity. Mirrors Dean's `members` profile shape (SPARK, kg/cm, individual, dark theme, onboarding_complete true). 12 member_habits (11 active + 1 inactive). Workout plan cloned (8-wk PPL Holiday Shred). Engagement score 50 base, all zeros. **Purpose: launch-experience canary** — every Sage employee day-1 looks like this account.
+- `test@test.com` / `1234` — seeded mid-journey. 48 daily_habits rows across 12 distinct days, 4 workouts, 6 cardio. Engagement score 78, plausible streaks. **Purpose: existing-customer-reinstall canary** — the path where Dexie has to rehydrate from a populated Supabase. Both accounts share Dean's habit set + WPC.
+
+**Surfaced bugs (severity-ordered):**
+
+1. **PF-14c P0 LAUNCH BLOCKER — Offline cold-boot fails completely.** App opens to a black screen when network is dead. Nav between pages doesn't work offline. Once logged in, the app should function fully offline for non-network-bound surfaces. Currently fails on every test. Codified as §23.10 Offline-equivalence contract. Sub-tasks PF-14c (cold-boot), PF-14d (SW nav), PF-14e (offline UX states).
+
+2. **PF-31 P0 — Page re-entry reads from a source that clobbers Dexie writes.** Workouts page shows session complete locally + fires "First Tonne Lifted" achievement. Navigate to home (still 0/0). Navigate back to workouts — green check has DISAPPEARED. Server-side verified: write landed, achievement evaluator fired correctly, 14 achievements queued. The bug is in the client read path on page mount somehow not finding or being overwritten by stale data. Diagnostic shape: probe `exercise.html`/`workouts-session.js` page-mount read sequence; trace whether REST fallback runs and clobbers fresh Dexie rows.
+
+3. **PF-32 P0 — Home page doesn't reflect cross-page writes.** Log a habit → home page progress strip stays at 0 until cache-bust or hard reload. Log a workout → home stays at 0. Log cardio → home stays at 0. Achievement toast queue on server has 14 entries; client showed 1 toast. The bus publish exists but home either isn't subscribed or its subscriber doesn't re-paint from local. Fix shape: home subscribes to all activity bus events, re-paints from `member_home_state` (which is trigger-maintained server-side already) AND local Dexie summary, whichever is fresher. Achievement toast drain on every page mount, not just on originating-page evaluation event.
+
+4. **PF-33 P1 — Synchronous header counter mutation missing.** Tap habit → habit card flips (instant, correct, §23.7.6 satisfied) but the page-header counters (DAY STREAK / TOTAL LOGGED) wait for round-trip. Same on every activity-logging page. Fix: mutate in-memory dataset synchronously, repaint header same-tick, fire Dexie write + bus publish in background. §23.7.6 was only partially applied — only the visible card-flip got synchronous treatment, the header didn't.
+
+5. **PF-34 P1 — Engagement.html / certificates.html / running-plan.html / movement.html cold-load is 10-15s.** These are the PF-15.x unwired pages. Mechanical clone of PM-96 exercise.html pattern. Single session to sweep all four.
+
+6. **PF-35 P2 — Home page "HABITS 11" vs habits.html header "1 total logged" disagree on the same concept.** Home reads raw row count; habits.html header reads distinct-day count from member_home_state. Both technically correct for their source, both showing the same logical thing. Fix: enforce "page-header numbers must read from a pre-aggregated summary, never raw row count" as a §23 rule. Likely §23.11 candidate.
+
+7. **PF-36 P2 — Warmup orchestrator with consent gate / first-run tour as natural hold window.** Dean's architectural insight: consent gate + 60-90s first-run tour give the warmup window for free; reinstall path needs an explicit "Getting your VYVE ready..." holding screen. Three flows (brand-new, returner-warm-Dexie, reinstall-cold), one warmup engine. Summary-first design (Tier 1: pre-aggregated summaries; Tier 2: rolling-window detail; Tier 3: on-demand archive) keeps the warmup payload BOUNDED regardless of member tenure — critical for the 6-month / 12-month-tenured member case.
+
+8. **PM-97 P0 HOT — reset-rehydrate gesture currently breaks production.** Long-press footer reset in settings.html clears Dexie tables then reloads BEFORE hydrate completes. Fix specified in backlog under PM-97 section. 30-min ship.
+
+### Sequencing for next session(s)
+
+Priority order — does NOT match campaign playbook PF-N ordering, deliberately:
+
+1. **PM-97 reset-rehydrate fix** (30 min, P0 HOT, no device verification required)
+2. **PF-14c offline cold-boot diagnostic** (1-2 hours, read-only, scope the fix precisely; device verification needed before shipping fix itself)
+3. **PF-15.x sweep** (3-4 hours, mechanical, ships engagement/certificates/running-plan/movement; sessions audit + leaderboard carve-out documentation)
+4. **PF-31 + PF-32 + PF-33** (2-3 sessions combined, all need device verification — pair with Dean on iPhone)
+5. **PF-14d (offline SW nav) + PF-14e (offline UX states)** (1-2 sessions, paired with Dean)
+6. **PF-36 warmup orchestrator** (1 session, paired with consent-gate-on-first-load integration)
+
+Estimated total: 6-8 focused Claude sessions over 2½-3 weeks to "Sage demo ready." Each ship paired with Dean's canary walk on test1 before stacking the next phase.
+
 
 ## 3. The active campaign — Premium Feel Migration (local-first via Dexie)
 

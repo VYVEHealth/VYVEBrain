@@ -1,3 +1,50 @@
+## 2026-05-14 PM-103 — Canary walk on test1@test.com + brain commit before fix work
+
+**Session shape:** 14 May 2026 evening (UK time). Dean drove a canary walk on the freshly-provisioned `test1@test.com` clean account. Goal was field-validation of the felt experience for a brand-new Sage employee. Captured the friction without shipping fixes — deliberate sequencing: surface the full bug map, brain commit it for an honest baseline, THEN plan the campaign to close it.
+
+**Test accounts provisioned (this session):**
+- `test1@test.com` / password `1234` — clean fresh-onboarding canary. UUID `11111111-1111-1111-1111-111111111111`. Mirrors Dean's `members` profile shape (SPARK, kg/cm, individual, dark theme, onboarding_complete=true). 12 member_habits (11 active, 1 inactive), workout_plan_cache cloned (8-wk PPL Holiday Shred), all activity zero. **Purpose: launch-experience canary** — every Sage employee day-1 looks like this account.
+- `test@test.com` / password `1234` — seeded mid-journey canary. UUID `22222222-2222-2222-2222-222222222222`. 48 daily_habits across 12 distinct days, 4 workouts, 6 cardio. Engagement score 78, plausible streaks. **Purpose: existing-customer-reinstall canary** — exercises the Dexie-rehydrate-from-populated-Supabase path. Both accounts use bcrypt-hashed password via `extensions.crypt('1234', extensions.gen_salt('bf'))`. `member_home_state` refreshed via `refresh_member_home_state(email)` post-seed so home paints non-zero on first login. Both accounts replace Dean's real account as primary test surfaces going forward.
+
+**§23.9 codified — `auth.users` INSERT via SQL must default token columns to `''`, never NULL.** Discovered when test1 logged in and got "Database error querying schema" from gotrue. Root cause: gotrue string-ops on `confirmation_token`, `recovery_token`, `email_change_token_new`, `email_change` columns — they're nullable in the schema but gotrue treats them as empty strings. Fixed with a single UPDATE setting all four to `COALESCE(col, '')`. Auth Admin API would set these correctly; SQL-only provisioning is the only path that hits the gotcha. Hard rule for all future manual auth provisioning.
+
+**§23.10 codified — Offline-equivalent operation is the contract, not a feature.** Surfaced during the canary walk when Dean tried to open the app without signal: black screen, nav between pages doesn't work offline. The Premium Feel campaign scoped local-first reads/writes but did NOT scope offline-equivalent operation explicitly. The contract: once logged in, app must function fully offline for every non-network-bound surface. Specifically: cold-boot to home in <2s with zero network awaited; nav between pages works offline; all Dexie-wired reads + writes work offline (queue with "saved locally, will sync"); only genuinely-network-bound surfaces (sessions schedule, leaderboard, AI moments, live chat) show honest offline states. Codified five engineering primitives (offline-safe boot chain, SW offline navigation, per-page offline-resilience, designed offline UX states, navigator.onLine treated as hint not gospel). Sequenced as PF-14c (cold boot) + PF-14d (SW nav) + PF-14e (offline UX states) — all P0 LAUNCH BLOCKER.
+
+**Canary walk findings (severity-ordered):**
+
+1. **PF-14c P0 LAUNCH BLOCKER** — Offline cold-boot fails completely (black screen). Diagnostic deferred to next session.
+2. **PF-31 P0 LAUNCH BLOCKER** — Page re-entry reads clobber Dexie writes. Workouts page shows session complete + achievement fires inline; nav away to home; nav back to workouts — green check has VANISHED. Server-verified the write landed (2 workouts, 14 exercise_logs, 14 achievements). Client display loses state on mount. Root cause TBD (REST clobber, in-memory-only write, or hydrate-pull overwrite).
+3. **PF-32 P0 LAUNCH BLOCKER** — Home page doesn't reflect cross-page writes. Bus publish exists; home subscriber broken or missing. Achievement toast queue: server has 14 unseen, client showed 1 toast — queue isn't draining on page mount.
+4. **PF-33 P1** — Synchronous header counter mutation missing. Tap habit → card flips instantly (correct, §23.7.6 satisfied), but page-header counters (DAY STREAK / TOTAL LOGGED) wait for round-trip. §23.7.6 was only partially applied — card flip got synchronous treatment, header didn't. Same pattern on cardio/workouts/wellbeing-checkin/monthly-checkin.
+5. **PF-34 P0 mechanical** — PF-15.x sweep. Six pages still unwired from Dexie: engagement, certificates, running-plan, movement, sessions (audit), leaderboard (likely carve-out). engagement.html confirmed 10-15s cold-load on the walk. Single 3-4 hour mechanical session.
+6. **PF-35 P1** — Page-header numbers must read pre-aggregated summaries, never raw row counts. Home "HABITS 11" disagrees with habits.html header "1 total logged" — same concept, two read paths. Codify as §23.11 candidate after PF-34 sweep.
+7. **PF-36 P1** — Warmup orchestrator with consent gate / first-run tour as natural hold window. Dean's architectural insight: consent gate gives the warmup window for free. Three flows (brand-new / returner-warm / reinstall-cold), one engine. Bounded-payload Tier 1/2/3 design (summaries / rolling-window detail / on-demand archive) keeps cold-start cost CONSTANT regardless of member tenure.
+8. **PM-97 P0 HOT** — Reset-rehydrate gesture breaks production. Long-press footer reset clears Dexie tables then reloads BEFORE hydrate completes. Fix shape fully specified in backlog. 30-min ship, no device verification required for the wiring (existing pattern).
+
+**Sequencing for next sessions (Dean-approved):**
+1. PM-97 reset-rehydrate fix (30 min)
+2. PF-14c diagnostic + scope (1-2 hours, read-only)
+3. PF-15.x sweep / PF-34 mechanical (3-4 hours)
+4. PF-31 + PF-32 + PF-33 combined session (2-3 hours, paired with Dean on iPhone)
+5. PF-14d + PF-14e offline polish (1-2 sessions, paired)
+6. PF-36 warmup orchestrator (1 session, paired)
+
+Estimated 6-8 focused Claude sessions over 2½-3 weeks to "Sage demo ready."
+
+**Honest reframe of campaign timeline.** Last session estimated 2 weeks to demo-ready on the assumption that offline operation emerged naturally from local-first reads/writes. The canary walk showed it doesn't — offline cold-boot has its own explicit engineering, the SW needs an offline navigation strategy, and per-page offline UX states need designing as components. Revised estimate: 2½-3 weeks. Still within the Sage trial window if it starts late May, but no buffer.
+
+**Brain commit landed BEFORE any fix work this session.** Deliberate: Dean wanted an honest baseline of the bug map before sequencing the campaign to close it. Future Claude sessions reading this changelog entry have ground-truth without needing to rediscover via canary walk.
+
+**Files touched (this commit):**
+- `brain/master.md` — appended §23.9 (auth.users token defaults) + §23.10 (offline-equivalence contract).
+- `brain/active.md` — updated §2 Last verified + appended Canary walk findings sub-section with full bug map and sequencing.
+- `tasks/backlog.md` — prepended PF-14c/d/e, PF-31, PF-32, PF-33, PF-34 (rename of PF-15.x), PF-35, PF-36 entries plus test account provisioning record.
+- `brain/changelog.md` — this entry.
+
+No vyve-site commits this session. Test account provisioning was Supabase-side only.
+
+---
+
 ## 2026-05-14 PM-102 (§23.7.8 hard rule: in-app cache reset must trigger full Dexie rehydrate; §23.8 field-test confirmation)
 
 Session opened ~00:35 BST in the same continuous overnight push that produced PM-98, PM-100, PM-101. Dean had walked the production iPhone build through several test loops to verify PM-98+ ships were holding. They were — habit tap flips instantly, midnight rollover would self-correct on focus, header counters paint from Dexie not stale cache. Then Dean tapped the in-app cache reset gesture (settings.html long-press footer recovery from PM-97) to see how a fresh-state member would experience the surfaces.

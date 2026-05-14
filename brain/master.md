@@ -1624,6 +1624,68 @@ Date FORMATTING is separately wrong: 20+ files use `toLocaleDateString('en-GB', 
 
 **Field-test confirmation (14 May 2026 ~00:01 BST):** Dean's iPhone screenshot captured the exact bug §23.7.7 documented and PM-100 fixed. App had been backgrounded across midnight (13→14 May). On resume, habits.html still rendered "11 of 11 done today" for Thursday using Wednesday's logsToday because `todayStr = bstToday()` was captured once at `loadHabitsPage()` and never re-evaluated. Home page correctly showed empty pill (different `todayStr` capture point — surfaces disagreed on what "today" means). PM-100's `vyveHabitsMidnightWatch()` IIFE on visibilitychange/focus is the right fix for habits.html; same pattern must extend to cardio, wellbeing-checkin, monthly-checkin, nutrition, log-food when §23.7.7 audit sweep runs. Confirms the rule is non-theoretical.
 
+### §23.9 — `auth.users` INSERT via SQL must default token columns to empty string, never NULL (logged 14 May 2026, PM-103)
+
+**Status:** HARD RULE. Codified after the test1@test.com / test@test.com provisioning session (14 May 2026 ~01:00 BST).
+
+**The bug.** Creating Supabase auth users via raw SQL (instead of the Auth Admin API) requires populating `auth.users.encrypted_password` with `crypt(password, gen_salt('bf'))` and explicitly setting `email_confirmed_at`, `aud='authenticated'`, `role='authenticated'`, plus an `auth.identities` row. All standard. The non-obvious gotcha: gotrue's signin path string-ops on FOUR token columns that are technically nullable in the schema but treated as empty strings by gotrue:
+
+- `confirmation_token`
+- `recovery_token`
+- `email_change_token_new`
+- `email_change`
+
+If any of those are left NULL on the inserted row, gotrue returns `400 "Database error querying schema"` to the client on every signin attempt — making the account appear broken even though the password is valid and the row exists.
+
+**The fix shape.** Either set the columns to `''` in the INSERT, or run a post-INSERT UPDATE:
+
+```sql
+UPDATE auth.users
+SET confirmation_token = COALESCE(confirmation_token, ''),
+    recovery_token = COALESCE(recovery_token, ''),
+    email_change_token_new = COALESCE(email_change_token_new, ''),
+    email_change = COALESCE(email_change, '')
+WHERE email IN (...);
+```
+
+**The lesson.** The Auth Admin API would set these correctly. SQL-only provisioning is fine for test accounts and seeding but every future invocation MUST set these four columns to `''` explicitly. Brain commit memory entry "auth.users INSERT via SQL: token columns must default to '' not NULL" carries the rule forward.
+
+**Affected only by manual provisioning paths.** Real members onboarding via Stripe → onboarding EF v37 → `auth.admin.createUser()` get the correct defaults from gotrue itself. This is exclusively a manual-seed-via-SQL gotcha.
+
+### §23.10 — Offline-equivalent operation is the contract, not a feature (logged 14 May 2026, PM-103)
+
+**Status:** ARCHITECTURAL CONTRACT. Codified after Dean's canary walk on test1@test.com (14 May 2026 evening) surfaced that the app currently fails to open at all when offline. The Premium Feel campaign scoped local-first reads/writes; it did NOT scope offline-equivalent operation explicitly. This rule closes that gap.
+
+**The contract.** Once a member has logged in successfully at least once, the app must function fully offline for every surface that doesn't strictly require the network. There is no "offline mode" with reduced functionality; offline is the same mode, just with network-bound surfaces showing honest offline states.
+
+**Surfaces that MUST work offline (no exceptions):**
+
+- Cold-boot to home page paint in under 2 seconds with zero network calls awaited.
+- Nav between pages. Every page boot is offline-safe.
+- All Dexie-wired data reads: home dashboard, habits, workouts, cardio, nutrition, settings, certificates view (already-earned), engagement score (computed client-side), achievements (already-earned).
+- All Dexie-wired data writes: habit ticks, workout logs, cardio logs, weight entries, food entries, persona changes, theme toggle, habit add/remove via settings.
+- Offline writes queue visibly with a "saved locally, will sync" affordance. PF-4 sync engine already has the queue infrastructure (`_sync_queue` table); the UI surface is missing.
+
+**Surfaces that MAY require network — must show honest offline state, not blank or hung:**
+
+- Sessions schedule listing (server-driven calendar).
+- Live session chat (Supabase Realtime — needs connection).
+- Leaderboard (cross-member aggregate compute, server-side).
+- AI moments: weekly check-in submit (Anthropic call), monthly check-in submit, running plan generation, persona switches that trigger re-generation.
+- Cron-driven content (newly-earned certificates after server cron fires).
+
+**Required engineering primitives:**
+
+1. **Boot chain must be offline-safe end-to-end.** Every `await` between page load and `vyveSignalAuthReady` event MUST tolerate network failure. `auth.js` session restore reads the locally-persisted Supabase session FIRST, paints from it immediately, and only attempts server-side token refresh as a background non-blocking step. PostHog `posthog.init` must NEVER block paint — wrap in a non-awaited promise or load lazily after auth-ready.
+2. **Service Worker offline navigation strategy.** `sw.js` must serve cached app shell for navigation requests when the network fails. Currently configured as network-first with no offline fallback for navigation — must shift to cache-first OR network-falling-back-to-cache for HTML routes. Asset cache must include every wired-page's HTML + its critical inline JS dependencies.
+3. **Per-page boot must be offline-resilient.** No `await fetch(...)` in any page's initial paint path. All reads go through `VYVELocalDB.<table>.allFor(email)` first; REST is fallback only when Dexie has nothing. Already a §23.7.1 rule but worth restating as part of the offline contract.
+4. **Offline-bound UX states must exist as first-class affordances.** "Connect to view live sessions", "Leaderboard refreshes when you're online", "Your check-in is saved and will submit when connection returns" — all need to ship before launch as designed components, not gracefully-degrading-into-blank.
+5. **`navigator.onLine` is a HINT, not gospel.** Combined with actual fetch failure detection. Many devices report `onLine = true` when on a captive portal or weak signal that drops fetches.
+
+**Audit signal:** turn iPhone airplane mode on after a successful login. Cold-boot the app. Nav between pages. Every Dexie-wired surface must paint identically to online state. Every network-bound surface must show a designed offline affordance, not a blank.
+
+**Sequencing within the Premium Feel campaign.** PF-14c carries the offline-cold-boot diagnostic and fix. PF-14d carries the offline-nav SW work. PF-14e carries the per-page offline-bound UX states. All are P0 LAUNCH BLOCKER alongside PF-14b bundled-mode migration. None can be deferred to post-launch — the moment a Sage employee opens the app on the Tube and sees black, the trial is over.
+
 ### §23.5.1 — Member-dashboard EF latency is the dominant client-perceived perf bottleneck (PM-67 ship night, 12 May 2026)
 
 Discovered 12 May 2026 mid-session: member-dashboard EF v67 execution_time_ms regularly hits 17-38 seconds server-side. This is the dominant cause of the "everything feels slower" regression Dean reported the night of 12 May despite three client-side ships (PM-66 + PM-67a + PM-67d, 14 files). Client-side defer/paint-dispatch/Promise.all optimisations save 50-250ms per surface. The EF wastes 30,000-40,000 ms. **Fix the backend before shipping more client-side polish.**

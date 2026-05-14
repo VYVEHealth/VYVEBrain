@@ -1,3 +1,119 @@
+## Added 14 May 2026 PM-103 (Canary walk on test1@test.com surfaced PF-14c offline launch blocker + PF-31..36 read/sync/UX gaps; §23.9 + §23.10 codified)
+
+### PF-14c — Offline cold-boot must paint home from local within 2s with zero network [P0 LAUNCH BLOCKER]
+
+**Status:** OPEN P0. Surfaced 14 May 2026 evening canary walk. Codified as §23.10 Offline-equivalence contract (master.md).
+
+App opens to a black screen when network is dead. Once logged in, app must function fully offline. Currently fails. Root cause TBD — likely candidates (in order):
+1. `auth.js` initial session restore awaits a Supabase server call before painting (Supabase `getSession()` does try server-side token refresh by default).
+2. `posthog.init` in critical paint path with no timeout / no lazy-load wrapper.
+3. Service worker not pre-caching navigation HTML; network-first strategy with no offline fallback.
+4. `vyveSignalAuthReady` waits on a Supabase round-trip before firing the event downstream paint code listens for.
+
+**Diagnostic shape (next session, before any code change):** Read `index.html` head + boot scripts in order, `auth.js` boot sequence (every `await` between page load and `vyveSignalAuthReady`), `sync.js` `hydrate()` entry (offline-safe?), `db.js`, `sw.js` precache manifest + fetch strategy. Write the diagnosis: "the hang is at line N of file X because Y, fix shape is Z."
+
+**Fix shape (post-diagnostic):** Likely wraps await chain in `Promise.race` with cached-session-fallback timeout; PostHog moves to lazy-init after auth-ready; SW shifts to cache-first for HTML navigation.
+
+**Estimated:** Diagnostic ~1-2 hours (no device). Fix ~1-2 hours + device verification. Total likely one session.
+
+### PF-14d — Offline navigation between pages [P0 LAUNCH BLOCKER]
+
+**Status:** OPEN P0. Same root cause as PF-14c (every page boot uses the same auth chain). Fix likely emerges as a side effect of PF-14c. If not, service worker fetch strategy needs explicit `caches.match()` fallback on navigation request failure. Ship paired with PF-14c if possible.
+
+### PF-14e — Offline-bound UX states must exist as designed components [P1, post-PF-14c]
+
+**Status:** OPEN P1. Sessions schedule list, leaderboard, AI moments need explicit offline states ("Connect to view live sessions", "Leaderboard refreshes when you're online", "Your check-in is saved and will submit when connection returns"). Currently degrade to blank or hang. Each one a small design+component ship — likely a session of work bundled together.
+
+### PF-31 — Page re-entry read path clobbers Dexie writes [P0 LAUNCH BLOCKER]
+
+**Status:** OPEN P0. Surfaced 14 May 2026 canary walk on test1@test.com.
+
+Workouts page shows session complete + achievement fires inline. Navigate away to home. Navigate back to workouts — green check has VANISHED. Server-verified the write landed correctly (2 workouts, 14 exercise_logs, 14 achievements queued). The local client-side display loses state on re-entry. Possible root causes:
+1. Write went to in-memory only, never persisted to IndexedDB durably. Page state mutated, no real Dexie write.
+2. Dexie write happened; page re-mount reads from REST fallback (because Dexie key lookup was wrong, or REST race won), REST returned empty because Supabase write hadn't landed yet, REST clobbered the local Dexie row.
+3. Hydrate-pull pattern on every page mount is overwriting fresh writes before they propagate back.
+
+**Diagnostic shape:** Read `exercise.html` + `workouts-session.js` page-mount read sequence; trace which Dexie key the completion-state read uses; confirm whether REST is called on mount and whether it overwrites Dexie. Add a `updated_at` guard so REST never overwrites a Dexie row whose `updated_at` is newer than the REST response.
+
+**Estimated:** Diagnostic ~30 min. Fix ~1 hour + device verification. Likely combined with PF-32 + PF-33 into one cross-page sync session.
+
+### PF-32 — Home page must reflect cross-page writes inline [P0 LAUNCH BLOCKER]
+
+**Status:** OPEN P0. Surfaced 14 May 2026 canary walk.
+
+Log a habit/workout/cardio on its page → home page progress strip stays at 0 until full reload. The bus publish exists; home either isn't subscribed or its subscriber doesn't re-paint.
+
+**Fix shape:** Home subscribes to all activity bus events (habit:logged, workout:logged, cardio:logged, session:viewed, food:logged, weight:logged, wellbeing:logged, check-in events). On any event, home re-paints from local `home-state-local.js` (PF-11b shipped). Achievement toast queue drains unseen entries (`seen_at IS NULL` from Dexie) on every page mount, not just on originating-page evaluation event.
+
+**Estimated:** ~2 hours + device verification. Combine with PF-31 + PF-33 in one session.
+
+### PF-33 — Synchronous header counter mutation sweep [P1]
+
+**Status:** OPEN P1. §23.7.6 PARTIAL — applied to card flips, missed page headers.
+
+Tap habit → habit card flips instantly (correct). Header DAY STREAK / TOTAL LOGGED waits for round-trip. Same on cardio/workouts/wellbeing-checkin/monthly-checkin.
+
+**Fix shape:** Mutate in-memory dataset synchronously, recompute and repaint header same tick, fire Dexie write + bus publish in background. Pattern applied uniformly across all activity-logging pages.
+
+**Estimated:** ~2 hours + device verification.
+
+### PF-34 — PF-15.x sweep [P0, mechanical] (RENAMED from existing PF-15.x backlog item for clarity)
+
+**Status:** OPEN P0. Six pages still unwired from Dexie, all slow.
+
+| Page | Wiring needed | Est |
+|---|---|---|
+| `engagement.html` | 3 EF calls → Dexie reads (audit aggregate vs member-row first) | ~30 min |
+| `certificates.html` | 2 EF calls → Dexie read of `certificates` table | ~30 min |
+| `running-plan.html` | 2 EF calls → Dexie read of `running_plan_cache` | ~30 min |
+| `movement.html` | 5 REST calls → Dexie wire (cardio pattern) | ~30 min |
+| `sessions.html` | Audit member-scope vs catalogue-only | ~15 min audit + maybe wire |
+| `leaderboard.html` | Audit; likely REST carve-out documented | ~15 min audit |
+
+Single 3-4 hour session ships all six. Pattern matches PM-96 exercise.html (`433d0650`): hydrate-await + Dexie-first + REST fallback + sw.js cache bump per page.
+
+### PF-35 — Page-header numbers must read pre-aggregated summaries, never raw row counts [P1, codify as §23.11]
+
+**Status:** OPEN P1.
+
+Home page "HABITS 11" disagrees with habits.html header "1 total logged" — same concept, two read paths, two different numbers. Home reads raw daily_habits row count from Dexie; habits.html reads `member_home_state.habits_total` (distinct days). Both are "correct" for their source, both rendering same logical surface.
+
+**Fix shape:** Audit every page-header number across the app. Identify each one's current read source. Ensure each reads from a pre-aggregated summary that's trigger-maintained server-side and warmup-pulled client-side. Any header doing `count()` or `length` over raw Dexie rows gets refactored. Codify rule as §23.11. Bounded-payload property: a 6-month-tenured member's warmup pulls one row from `member_home_state`, not 180 daily_habits rows — keeps the cold-start cost CONSTANT regardless of tenure.
+
+**Estimated:** ~2 hours audit + ~2 hours refactor. Single session.
+
+### PF-36 — Warmup orchestrator with consent gate / first-run tour as natural hold window [P1]
+
+**Status:** OPEN P1.
+
+**Dean's architectural insight (14 May 2026 evening):** consent gate + 60-90s first-run tour give the warmup window for free — user is occupied on a non-data-dependent surface while Dexie hydrates everything. Three flows, one engine:
+
+- **Brand-new member:** consent gate → warmup fires in parallel → first-run tour starts only on `vyve-warmup-complete` → tour content while user reads → app fully hot before they tap.
+- **Returning member with warm Dexie:** no consent gate, no tour, just login. Warmup runs as delta-refresh; pages paint from existing Dexie immediately while refresh happens silently in background. No holding screen needed.
+- **Reinstall path (Dexie wiped, account exists server-side):** explicit "Getting your VYVE ready..." holding screen, gated on `vyve-warmup-complete`. Sub-3-second usually; worst-case ~10s on bad networks.
+
+**Bounded-payload design (Tier 1 / 2 / 3):**
+- **Tier 1: pre-aggregated summaries.** `member_home_state`, `member_stats`, programme-progress, certificate-count, etc. ONE row per table regardless of tenure.
+- **Tier 2: rolling-window detail.** daily_habits last 14d, workouts last 30d, cardio last 30d, check-ins last 8wk. FIXED sizes regardless of tenure.
+- **Tier 3: full history.** Past Sessions archive, full leaderboard timeline. NEVER in Dexie. Fetched on-demand from REST, cached briefly, discarded.
+
+**Estimated:** ~3-4 hours + device verification. Single session. Best paired with PF-14c+d+e session since consent gate is on the cold-boot path.
+
+---
+
+## Added 14 May 2026 PM-103 (test account provisioning complete)
+
+### Test accounts now provisioned and stable
+
+- `test1@test.com` / `1234` — clean fresh-onboarding canary. UUID `11111111-1111-1111-1111-111111111111`. Onboarding_complete=true, persona SPARK, all zeros. **Use for: launch-experience canary walks.**
+- `test@test.com` / `1234` — seeded mid-journey canary. UUID `22222222-2222-2222-2222-222222222222`. 48 daily_habits / 4 workouts / 6 cardio across 12-14 days. Engagement score 78. **Use for: existing-customer-reinstall + Dexie-rehydrate-from-populated-Supabase scenario.**
+
+Both: Dean's members shape (kg/cm, individual, dark, SPARK), 12 member_habits (11 active + 1 inactive — deliberate, exercises the inactive-habit-should-not-render path), cloned 8-wk PPL Holiday Shred workout_plan_cache.
+
+**Replaces Dean's real account as the primary test surface going forward.** Use these for every canary walk. Dean's account stays untouched.
+
+---
+
 ## Added 14 May 2026 PM-102 (§23.7.8 hard rule: in-app cache reset must trigger full Dexie rehydrate; §23.8 field-test confirmation)
 
 ### PM-97 in-app cache reset fix [P0 HOT, surfaced 14 May 2026 in PM-102]
