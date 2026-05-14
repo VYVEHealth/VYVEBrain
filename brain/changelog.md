@@ -1,3 +1,51 @@
+## 2026-05-14 PM-110 — PF-40.2 Part A SHIPPED: probe on habits.html + SW bump; Q8 verification gap surfaced
+
+**Session shape:** 14 May 2026 late night, follow-up to PM-109. PF-40.2 Part A as specified: query-param-gated diagnostic probe on `habits.html` (`?debug=hydrate`) plus SW cache key bump. Single atomic vyve-site commit `3d9abe44`. Brain commit follows.
+
+**Live-state surprise on session start — PM-108 Q8 lock and PM-109 brief BOTH WRONG.** Brief asked for `member_achievements` to be added to `sync.js` plan() as the second of three pieces. Live state on `main@66f02b84`:
+- `sync.js` L268-276 already has the entry (`table: 'member_achievements', scope: 'member'`, path with `&order=earned_at.desc`, persist via `VYVELocalDB.member_achievements.replaceForMember`).
+- `db.js` L210 declares the schema slot, L440 instantiates the table, L113 confirms `replaceForMember` is available via the default base.
+- `GITHUB_LIST_COMMITS` on `sync.js` shows the entry has been on main since `e8f02742` (13 May 2026, PF-2 + PF-3 "full Dexie schema + hydrate-on-login for all member-scoped tables") — three weeks of live state that PM-108's diagnostic dive and PM-109's brief both encoded as "missing".
+
+This is **the first failure case §23.14 was written to catch.** PM-108 #5: "Diagnostic dives during an audit are out of scope … verified findings only land in §23. Unverified ones go in the changelog entry of the session that surfaced them and stay there until probed." The Q8 "missing pull entry" finding was promoted to a DEAN_DECISIONS_LOCKED row of the PF-40 playbook without anyone reading the live `sync.js` plan() body. PM-109 then carried it forward into the next session brief verbatim. The §23.14 rule fired exactly as designed — pre-edit live-file read flagged the contradiction before any code went out. The brief expected a 1-entry edit; live state required a 0-entry edit; correct behaviour was to ship neither sync.js whitespace nor the redundant entry, and surface the gap to Dean.
+
+**Decision in chat:** Dean instructed to proceed however Claude judged best toward the end-state goal (probe captures ground truth on `test1@test.com`). The end-state goal is served entirely by the habits.html probe + SW bump; the sync.js edit was solving a problem that did not exist. Dropped Part 2. No-op whitespace ships were rejected as carrying a non-zero risk of accidental regression (cursor logic, indentation-sensitive helpers in pullOneTable) for zero functional gain.
+
+**What shipped (vyve-site `3d9abe44`):**
+
+- `habits.html` — Probe inserted at L1313-1396 inside the existing `_pf6Local` Dexie-first read path in `loadHabitsPage()`. The `await VYVESync.hydrate()` call is wrapped with timing measurement (performance.now() delta from probe start). The first `localHabits` row is dumped in full, field-by-field, plus a list of which of `habit_pot/habit_title/habit_description/habit_prompt/difficulty` are `=== undefined`. Two `setTimeout` re-fetches at +3s and +10s capture the same row-shape state later — diagnoses both "Dexie returned thin rows immediately" and "Dexie returned thin rows for 10s then got backfilled" cases. All output prefixed `[VYVE-PROBE]` for iOS Safari console grep. Inert when `?debug=hydrate` is absent from the URL: the IIFE returns `null` immediately and every guarded block short-circuits.
+- `sw.js` — Cache key bump `vyve-cache-v2026-05-14-pf14c-precache-a` → `vyve-cache-v2026-05-14-pf40-2-probe-a`. Forces fresh service-worker activation so the new habits.html is what runs, not a stale cache.
+
+**Pre-ship discipline applied:**
+- §23 `node --check` on extracted inline `<script>` blocks. Used the DOTALL regex `<script(?![^>]*\bsrc\b)[^>]*>(.*?)</script>` to find inline-only blocks. 3 blocks extracted (64881, 81, 987 chars), all exit 0.
+- §23.14 #1 pre-ship SHA re-check: `GITHUB_GET_A_REFERENCE` immediately before `GITHUB_COMMIT_MULTIPLE_FILES` returned `66f02b84`, matching session-start SHA. No parallel session collision.
+- Post-commit verification: re-fetched both files at commit `3d9abe44`, byte-equal to local-patched copies (82,565 bytes for habits.html, 8,133 for sw.js). 11 `[VYVE-PROBE]` markers present in remote habits.html (start + hydrate-resolved + hydrate-threw + post-hydrate + 3 nested in +3s block + 3 nested in +10s block + header comment).
+
+**Test walk after deploy (Part B trigger):**
+1. Dean iPhone, `test1@test.com` logged in, spike flag ON via 7-tap on version footer in settings.
+2. Navigate to `online.vyvehealth.co.uk/habits.html?debug=hydrate`.
+3. Open iOS Safari Develop → Web Inspector → Console, grep `[VYVE-PROBE]`.
+4. Paste output back. Part B (structural fix) lands with that ground truth — which of the diagnostic theories (memoised promise vs late join populate vs spike-toggle race vs thin-row writeback) actually fired.
+
+**Brain commits this session (atomic):**
+- `brain/master.md` §23.14 — strengthened with PM-110 as the first concrete example of the rule firing successfully (caught a "missing pull entry" claim before redundant code shipped).
+- `brain/active.md` §2 — Live-state cell updated: new main HEAD `3d9abe44`, new SW key `pf40-2-probe-a`, PM-110 paragraph prepended. §5 PF-40.2 entry: Part A status flipped to SHIPPED; Q8 reclassified — schema slot + pull entry both already shipped at PF-2 (13 May, `e8f02742`); the original Q8 "ADD" answer becomes "VERIFY ON DEVICE" since the wiring exists but the canary still fired.
+- `brain/changelog.md` PM-110 prepended (this entry).
+
+**Patterns reinforced this session:**
+
+- **Live-state-first reads before pre-edit assumptions.** PM-109 spent diagnostic effort confirming the sync.js pull chain reasoning ("L142 includes the join correctly") but did NOT confirm whether the `member_achievements` entry was actually present. Two minutes of `grep -nE "member_achievements" sync.js` at PM-108 would have caught it; two minutes more at PM-109 would have caught it. The PM-110 session-opener grep DID catch it. Future session-openers: when a brief says "X is missing from Y, add it", first verify "X is missing from Y" against live state. Cheap, high-leverage.
+
+- **Brief errors propagate forward unless explicitly verified.** PM-108 → PM-109 → PM-110 brief: three sessions inherited a single unverified assertion. The PM-108 audit's "missing pull entry" finding never had a verification step. It was promoted into a decision lock, into a playbook, into the next session brief, and into this session's prompt — all without a single grep against live `sync.js`. §23.14 #5 was written generically; PM-110 is the concrete proof of why it earns hard-rule status.
+
+- **End-state framing beats tactical compliance.** Dean's "we need to do whatever to get to the end state goal" framing reframed the decision from "ship all three pieces because the brief says so" to "ship what actually advances the end-state goal". The end-state goal was unblocking Part B with a probe; sync.js was a tactical side-quest born of a wrong premise. Dropping it was the correct call.
+
+**Held-back findings (not codified, may matter for Part B):**
+- The brief mentioned a possible `spike-toggle race` theory. The probe captures `localStorage.vyve_lf_spike` raw value at start, BEFORE `await VYVESync.hydrate()` runs. If the spike flag is ON at probe-start but `VYVESync.isEnabled()` returns false, the probe entry block won't fire at all — no `[VYVE-PROBE]` output. That signal itself is diagnostically useful: it means the spike-gate is reading a different source than `localStorage.vyve_lf_spike`. If Dean sees a probe-equipped page render `undefined` cards with zero console output, the gate reading is the bug.
+- The first-row dump uses `localHabits[0]` which is whichever row Dexie returns first for the index. Not deterministic across runs. If Part B reveals row-shape inconsistency between rows, expand the probe to log all rows. For Part A, a single sample-row is enough signal.
+
+**On the horizon:** Part B is the next ship after Dean walks the probe. Scope is conditional on what the probe reveals; the four candidate theories (A/B/C/D in PM-109) map to four different structural fixes. After Part B, the rest of PF-40.2 (fat-row enforcement structurally, write-path verification, Q3 `_kv` engagement cache) proceeds in one combined session. PF-40.3 and PF-40.4 sequence after.
+
 ## 2026-05-14 PM-109 — PF-40.2 diagnostic dive: live schema captured, canary partially traced, probe-first plan locked; §23.14 codified
 
 **Session shape:** 14 May 2026 late night. Continuation of PM-108. Goal was to start PF-40.2 fat-row hydrate work. Outcome: read-only diagnostic dive that produced enough scope clarity to split PF-40.2 into a probe-first Part A + structural Part B. No vyve-site ships. Brain commit only: master.md §23.14 added, changelog PM-109 prepended, active.md §2/§5 patched.
