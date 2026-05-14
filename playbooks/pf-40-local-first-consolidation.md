@@ -219,17 +219,120 @@ Lewis copy gate covers ~10 strings. Currently the rate-limiting step for PF-40.1
 
 - **push_subscriptions in vapid.js** — vapid.js writes push subscriptions to push_subscriptions on bell-tap. Memory note from session continuity: iOS 1.2 (Build 3, submitted 27 Apr 2026) shipped native APNs path; existing push_subscriptions rows are stale PWA artefacts. Recommend: gate vapid.js subscribePush() on `!window.Capacitor || Capacitor.getPlatform() === 'web'` so the table only receives writes from the web fallback. Long-term cleanup at PF-40.12 if the native path proves fully reliable.
 
-### 4.6 Open questions surfaced (decision needed before PF-40.2 ship)
+### 4.6 DEAN_DECISIONS_LOCKED — answers from PM-108
 
-- weekly_scores is referenced for trend reads (wellbeing-checkin.html:1121, monthly-checkin.html — similar pattern) but is NOT in the Dexie schema (active.md §2 / PM-89). Per PF-11b, the engagement-drift telemetry already tags this with `known_divergence_sources: ['weekly_scores_v_wellbeing_checkins']`. Decision needed in PF-40.2 / PF-40.3 scope: add weekly_scores as a member-scoped Dexie table (it is member-scoped, one row per ISO week per member), or derive trend-chart data client-side from wellbeing_checkins which IS in Dexie. Derivation is preferable — fewer tables, one source of truth.
+The original §4.6 of the PM-107 ship contained 4 open questions with self-supplied recommendations. The PM-108 follow-up surfaced 6 additional behaviour-divergence questions from the audit data and put all 10 to Dean. These are the locked answers.
 
-- member_running_plans and running_plan_cache are both referenced by running-plan.html (3 NET_BOUND sites via anthropic-proxy) and currently NOT in the Dexie schema (PF-34b deferred). PF-40.3 absorbs this — add both to catalogue/member schema with cross-member sync rule for the shared cache.
-
-- monthly_checkins table referenced — confirm row in Dexie schema (likely member-scoped, similar shape to wellbeing_checkins).
-
-- achievements table — needs schema confirmation per PM-94 (32 metrics × 327 tiers placeholder system). Currently member-dashboard EF computes; PF-40.5 needs to know whether achievements rows are member-scoped Dexie data or kept on the server for cron-driven authoritative numbering.
+PF-40.2 onwards proceeds under these decisions. Future Claudes: don't re-raise these unless data emerges that wasn't on the table at PM-108.
 
 ---
+
+#### Q1. Habit log → home page update timing → **(a) optimistic-immediate**
+
+Dexie write + bus publish + return synchronously. Home page re-paints from Dexie before HTTP confirms. Supabase write fires in background; Dean's explicit clarification: "data needs to be sent to Supabase as well". The `_sync_queue` drainer handles the network half. The user never waits.
+
+Implication for PF-40.4 `VYVEData.write()`: returns when Dexie write + bus publish complete, not when HTTP confirms. HTTP failures surface as toast/banner, not as UI revert. Cross-page propagation via bus.
+
+---
+
+#### Q2. Achievement fire → toast location → **(a) originating page only, instant**
+
+When you log a habit/workout/cardio and it earns an achievement, the toast appears on the page where you did the action, immediately. No queue-and-drain pattern.
+
+Edge case: HealthKit autotick at 3am has no originating page. Two acceptable handlings: (i) queue the achievement, toast on next page mount (drain-on-mount as a fallback for the zero-active-page case only), or (ii) suppress toasts for autotick-earned achievements (they appear silently in the certificates list when next viewed). Default to (i) — it's cheap and matches the rest of the model. Confirm with Dean if it shows up in device verification as weird UX.
+
+Implication: `achievements.js` evaluation fires the toast directly from the activity-write handler. No bus-driven toast subscribers on non-originating pages. Server queue exists only as a backstop for the autotick-no-active-page case.
+
+---
+
+#### Q3. Engagement score refresh → **(b) computed once per session, cached, bus invalidates**
+
+Engagement page loads instantly from a cached computation. When new activity logs land (e.g. logging a second cardio session), the bus publishes; cached engagement invalidates; next read recomputes; calendar tick + count update before HTTP confirms.
+
+Dean's exact scenario: "If I am on 1 cardio and I do another cardio session (2) and click engagement, that should show 2 cardio, and also have the cardio tick on the calendar action list." This works because Q1(a) means the Dexie write lands before the navigation. PF-11b's home-state-local.js stays as the compute engine, gains cache+invalidate semantics.
+
+Implication: `_kv` table gets a cached engagement entry. Writes to any source table publish bus event; bus event invalidates `_kv`. PF-11b survives; doesn't become PF-40.3 catalogue work.
+
+---
+
+#### Q4. `members` writes ownership → **(a) all writes through `VYVEData.write('members', ...)`**
+
+theme.js gets refactored to use the same path. Sync.js hydrate writes go through the same path. PM-97 §23.7.5 merge logic is in db.js's `members.upsert` — `VYVEData.write` delegates to it. Single merge path eliminates the "did the direct PATCH bypass the merge" question forever.
+
+Tension with Q9: theme stays as a write target on `members` (so it can sync cross-device), but the read path is localStorage-first. Q4 covers the write; Q9 covers the read.
+
+Implication: theme.js's 1 direct PATCH site (audit:`theme.js`, W_MEMBER) gets refactored in PF-40.4 alongside the other 5 settings.html `members` upserts.
+
+---
+
+#### Q5. Catalogue residency → **(a) every catalogue as first-class Dexie**
+
+All catalogue tables join the Dexie schema during PF-40.3: `habit_library`, `workout_plans` (all 5 plans), `nutrition_common_foods` (125 rows), `personas`, `service_catalogue`, `knowledge_base`, `exercises` (TBD: real table or denormalised inside `workout_plans.programme_json` — confirm during PF-40.3).
+
+~5MB first-login hydrate budget, masked by consent gate + persona-led walkthrough (~60-90s window per the PM-106 contract). Enables offline library-browse, offline workout-plan-switching, offline persona-switching.
+
+Dean's intent expressed alongside Q8: "as an achievement is earned it is given instantly. Think first habit submitted achievement pops up instantly" — same instant-feel principle applies here: switching workout plans should feel instant whether on or offline because the data is local.
+
+Implication: PF-40.3 scope is locked at ~7 catalogue tables + `running_plan_cache` (Q6).
+
+---
+
+#### Q6. Running plans schema → **(b) saved plans in Dexie, shared cache stays server-only**
+
+`member_running_plans` becomes a member-scoped Dexie table — your saved plans render offline. `running_plan_cache` (the cross-member shared cache of common plan combinations) stays server-only — generation is anthropic-proxy network-bound by definition, so caching only matters server-side.
+
+Sidesteps the codebase's only cross-member sync rule. running-plan.html plan-generation remains §23.10 (network-bound, can't AI-generate offline); plan-reading is local.
+
+Implication: PF-40.3 adds `member_running_plans` to schema. PF-34b deferral is mostly closed by this — `running_plan_cache` stays a server concern, no schema work needed for it.
+
+---
+
+#### Q7. `weekly_scores` → **(a) derive client-side from `wellbeing_checkins`**
+
+The wellbeing trend chart computes from the same `wellbeing_checkins` rows the page already reads. No new Dexie table. One source of truth. Removes a §23.11 hydrate gap by removing the gap.
+
+Implication: wellbeing-checkin.html:1121 and the equivalent monthly-checkin.html site get a small `computeWeeklyTrend(checkins)` helper in PF-40.5. `weekly_scores` table not added to Dexie schema.
+
+---
+
+#### Q8. Achievements residency → **(b) pulled to Dexie on hydrate**
+
+Server-side cron continues to evaluate authoritatively (preserves global cert numbering). Results are pulled into the `member_achievements` Dexie table (schema row already declared in db.js v2 — sync.js plan() entry was missing and gets added in PF-40.3).
+
+Reads go local. `achievements-mark-seen` writes go through PF-40.4 `VYVEData.write`. Closes the PM-103 finding directly: server queue and local "unseen" set stay in sync via the regular sync path.
+
+Q2(a) + Q8(b) combined: in-app actions fire instant toasts from the originating page; cron-earned achievements (HealthKit at 3am) sync to Dexie at next hydrate and toast on next page mount via the backstop in Q2's autotick handling.
+
+Implication: sync.js plan() gets a `member_achievements` entry in PF-40.3. engagement.html and achievements.js switch from EF reads to Dexie reads in PF-40.5.
+
+---
+
+#### Q9. Theme + UI preferences → **(c) hybrid: localStorage fast-path + `members` sync layer**
+
+Theme reads from localStorage on every page boot (instant, no Dexie await). `members.theme` is the cross-device sync target — writes go through Q4(a)'s `VYVEData.write` path, last-write-wins between devices.
+
+Sets policy for future preferences (notifications, font size, accessibility): localStorage for paint-time read, `members.<field>` for sync.
+
+Implication: theme.js keeps localStorage read; PATCH writes route via `VYVEData.write('members', {email, theme})`. Same shape applies to any future device-vs-member preference where the device path needs to be instant.
+
+---
+
+#### Q10. Offline UX states → **(b) notifications only; platform-alert silent**
+
+`notifications` (1 caller, index.html) gets an offline UX state — personal notifications should explain themselves when network is dead. Lewis copy gate: one string.
+
+`platform-alert` (11 callers) silently fails offline. Admin broadcasts most users will never see anyway. "No banner shown" is fine.
+
+Implication: PF-40.11 copy gate is ~1 string for the notifications offline state, plus whatever the other §23.10 carve-outs need (sessions, AI moments, leaderboard, live chat). platform-alert gets no copy.
+
+---
+
+### 4.6.1 Decision consistency notes
+
+- **Instant feel is the dominant theme.** Q1+Q2+Q3+Q5+Q8 all locked the "user sees the result before the network confirms" answer. The Q9 localStorage-first read continues the pattern. The PF-40.4 `VYVEData.write()` contract must support this end-to-end: return when Dexie+bus complete, never await HTTP.
+- **Q4 + Q9 reconciled.** Single write path (`VYVEData.write`) for `members`; two-tier read (localStorage fast-path, Dexie/`members` row authoritative). theme.js refactor under PF-40.4 covers both.
+- **Q6 narrows the cross-member sync question.** Only `running_plan_cache` would have needed it; (b) defers that. PF-40.3 schema is purely member-scoped + global catalogues with no cross-member dimension.
+- **Q2 + Q8 work together.** Q2(a) handles the originating-page case; Q8(b) handles autotick + offline-earned achievements via the Dexie pull + drain-on-next-mount backstop. The PM-103 "1 toast vs 14 server queue" finding closes as a side-effect.
 
 ## 5. Audit method (reproducible)
 

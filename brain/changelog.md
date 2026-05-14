@@ -1,3 +1,49 @@
+## 2026-05-14 PM-108 — PF-40.1 §4.6 reframed: 10 decisions LOCKED by Dean; PF-40.2 unblocked
+
+**Session shape:** 14 May 2026 late evening. Continuation of PM-107 (the PF-40.1 audit ship that landed earlier the same day). PM-108 closes a gap in PM-107: the audit's §4.6 shipped as "Open questions surfaced" with self-supplied recommendations, but the PF-40.1 brief required ambiguities to be batched and surfaced to Dean, NOT resolved. PM-108 corrects this — Dean answered all 10 questions and the playbook §4.6 is rewritten as DEAN_DECISIONS_LOCKED. No vyve-site ships; brain-only commit.
+
+**Method.** Read the shipped audit JSON (`audit/pf-40-1-callsites.json`) for behaviour-divergence patterns: same conceptual operation done multiple ways across files. Found 7 substantive divergences plus 3 of Dean's seed examples = 10 questions. Drafted them with options + recommendations; Dean answered live. The "comment_false_positive" finding from a parallel diagnostic dive into `habits.html` (root cause of the PM-106 "undefined" canary may not be the hydrate-pull as initially diagnosed) was held back from this commit — unverified, would encode a half-formed diagnosis into the brain. Defer to PF-40.2 device verification.
+
+**The 10 locked decisions:**
+
+1. **Habit log → home update timing → (a) optimistic-immediate.** Dexie + bus + return. HTTP fires in background. PF-40.4 `VYVEData.write()` returns when Dexie+bus complete, not when HTTP confirms.
+2. **Achievement toast location → (a) originating page, instant.** No bus-subscriber pattern on non-originating pages. HealthKit autotick (no active page) handled via drain-on-next-mount backstop.
+3. **Engagement score refresh → (b) computed once, cached, bus invalidates.** PF-11b's home-state-local.js stays as compute engine; gains cache+invalidate. Q1's instant-Dexie-write means logging cardio updates the count + calendar tick before HTTP confirms.
+4. **`members` writes → (a) all through `VYVEData.write`.** theme.js's direct PATCH gets refactored. Single merge path eliminates the PM-97 §23.7.5 question class forever.
+5. **Catalogue residency → (a) every catalogue first-class Dexie.** PF-40.3 absorbs ~7 catalogue tables. ~5MB first-login hydrate masked by consent gate.
+6. **Running plans → (b) saved plans local, shared cache server-only.** `member_running_plans` joins Dexie schema; `running_plan_cache` stays a server concern. Sidesteps the codebase's only cross-member sync rule.
+7. **`weekly_scores` → (a) derive client-side.** No new table. Trend chart computes from `wellbeing_checkins` Dexie rows.
+8. **Achievements → (b) pulled to Dexie on hydrate.** Server cron still authoritative (preserves global cert numbering). sync.js plan() gains `member_achievements` entry. Closes PM-103 "1 toast vs 14 server queue" finding as side-effect.
+9. **Theme + UI prefs → (c) hybrid.** localStorage fast-path on read; `members.<field>` for cross-device sync via Q4(a)'s write path. Sets policy for future preferences.
+10. **Offline UX → (b) notifications only.** `notifications` gets explicit offline state (1 string for Lewis); `platform-alert` silently fails (11 sites get no copy).
+
+**Cross-question consistency:** Q1 + Q2 + Q3 + Q5 + Q8 all locked the "user sees the result before network confirms" answer. Q9 extends the pattern to UI preferences. The PF-40.4 `VYVEData.write()` contract must support end-to-end instant feel: return when Dexie+bus complete, never await HTTP. Q4 + Q9 reconciled — single write path; two-tier read.
+
+**PF-40.2 scope is now fixed.** Fat-row member-scoped hydrate against the 17 member-scoped Dexie tables. Specific shapes informed by the decisions:
+
+- `member_habits` ← `habit_library` join (the canary case, PM-106). Hydrate already correct in sync.js L142 + db.js — PF-40.2 audits whether write paths bypass the denormalisation (unverified finding from this session: a write path may be writing thin rows that the joined-pull then loads thin).
+- `member_achievements` gains a sync.js plan() entry (Q8) — wasn't being pulled at all despite schema slot existing.
+- `weekly_scores` deliberately NOT added (Q7 = derive from `wellbeing_checkins`).
+- Q3 caching needs `_kv` engagement entry — separate sub-task within PF-40.2 or first item in PF-40.3.
+
+**Brain commits this session (atomic):**
+
+- `playbooks/pf-40-local-first-consolidation.md` §4.6 rewritten — "Open questions" → "DEAN_DECISIONS_LOCKED" with full options + locked answer + implication per question. ~9KB section (was ~1.4KB).
+- `brain/active.md` §2 Active campaign cell + §5 PF-40 backlog entry — flipped from "gated on Dean" to "decisions locked, PF-40.2 is next ship".
+- `brain/changelog.md` PM-108 prepended (this entry).
+
+**Patterns reinforced this session:**
+
+- **Audit deliverables that batch decisions for Dean are non-trivial value vs audits that batch recommendations.** The PM-107 ship was complete by every technical metric (321 sites, classified, JSON map, living playbook) but missed the part of the brief that mattered most — surfacing decisions held back for Dean. The PF-40.1 brief was explicit: "Surface them, don't resolve them." PM-108 closes that gap. Future audit-shaped sessions: when the brief says "batch decisions", batch decisions, even if recommendations feel cheaper to write.
+- **Parallel sessions hitting the same PM number is now a confirmed risk pattern.** PM-104 noted "brain-update-after-ship discipline slipped." PM-108 is the second incident: two Claudes shipped PM-107 within 26 minutes. The earlier session beat this one on substance for the audit itself but missed the brief on decision-surfacing. Worth a §23 hard rule on session coordination — flagged for Dean, not shipped reactively.
+- **Held-back findings are a valid output.** The habits.html "undefined" diagnostic from this session's diagnostic dive was held back — unverified, would encode a half-formed diagnosis if shipped to brain. PF-40.2 device verification will surface the ground truth. Recording the finding in this changelog entry only, not in master.md §23, until verified.
+
+**On the horizon (PF-40.2, next ship):**
+
+PF-40.2 fat-row member-scoped hydrate. Solo-shippable; device verification on iPhone + Android after. The Habits "undefined" canary on `test1@test.com` is the test case. Estimated 1-2 sessions. Specific scope informed by Q1 + Q2 + Q3 + Q5 + Q8 above — write paths through `VYVEData.write`, cache layer for engagement, `member_achievements` sync.js plan entry, no `weekly_scores` table.
+
+Parallel paths: PF-40.6 (Tier 1 bundled assets, folds into PF-14b), PF-40.9 (boot chain offline-equivalence), PF-40.10 (catalogue delta-pull), PF-40.11 (offline UX — 1 string for Lewis on notifications offline state).
+
 ## 2026-05-14 PM-107 — PF-40.1 write-path & read-path audit SHIPPED
 
 **Session shape:** 2026-05-14 solo daytime, read-only ship. No vyve-site changes. Brain-only commit: two new artefacts + active.md/backlog.md/changelog.md edits. Sub-item PF-40.1 (audit) of the PF-40 Local-First Consolidation Campaign scoped at PM-106 ([prior changelog entry]).
