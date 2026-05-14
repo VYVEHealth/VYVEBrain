@@ -1,3 +1,84 @@
+## 2026-05-14 PM-111 — Late-night session close: spike-on default shipped + exposed 81s mass-hydrate problem; PF-40 reframed around first-paint hydrate
+
+**Session shape:** 14 May 2026 late night. Continuation of PM-110. Two vyve-site ships landed (`3d9abe44` PM-110 probe + `83521f27` spike-on-by-default flip). Live device walk on `test1@test.com` produced concrete findings that reframe the entire PF-40 campaign. No further vyve-site commits this session; this brain commit closes the session honestly so the next one starts from clean ground.
+
+**The PM-106 canary, finally explained.** Three sessions (PM-106, PM-108, PM-109) framed the Habits "undefined" cards as a Dexie hydrate gap. Tonight's device walk proved that framing wrong:
+
+- `localStorage.vyve_lf_spike` was `null` on the production iPhone. `VYVELocalDB.isEnabled()` returned `false`. **Dexie has never been the rendering source for any member on any device.** The spike was a 7-tap-gated dev toggle; it's been off in production since PF-1 (13 May).
+- PostgREST returns rich join data correctly. Confirmed via supabase-js client query: `member_habits` join `habit_library` returns all 11 rows with full `habit_title`, `habit_pot`, `difficulty`, etc.
+- The renderer (`habits.html` L1372-1384) maps the joined rows correctly. The reproduced filter+map produces `"Consistent bedtime"` not `undefined`.
+- **The "undefined" cards are a transient cache-first paint state.** The cache-first paint at `loadHabitsPage` entry (L1252-1262) reads `vyve_habits_cache_v3` from localStorage and calls `renderHabits()` synchronously. The cache contains rows with FLAT shape (`habit_title` directly on the row). The render template reads `r.habit_library.habit_title` (nested shape). Cache shape ≠ render shape → cards paint `undefined` for the 5-10s window until the Supabase fetch resolves and `renderHabits()` re-runs with correctly-shaped data.
+
+This is a render-template / cache-writer shape mismatch inside `habits.html`. Not a hydrate gap. Not a Dexie bug. Not a server bug. Two functions in the same file disagree about cache shape.
+
+**The PM-110 ship that fixed the wrong thing.** PM-110's `?debug=hydrate` probe was instrumented for the Dexie hydrate path that wasn't running in production. The probe outputs zero logs because the `_pf6Local` branch never enters when spike is off. The PM-110 ship was technically clean (commit `3d9abe44`, byte-equal verified, node --check passed) but operationally inert because it instrumented a code path that fires only behind a dev toggle. Lesson: instrument the path that runs in production, not the path you wish was running.
+
+**The spike-on-by-default flip and the 81s hydrate problem.** Commit `83521f27` flipped `db.js`/`sync.js` `spikeEnabled()` semantics from "ON only if flag === '1'" to "ON unless flag === '0'", plus added `habit_title`-required guards in `habits.html` so cached-paint can never render `undefined` cards. Walked on test1's iPhone:
+
+- Spike confirmed ON: `VYVELocalDB.isEnabled()` returned `true`, `caches.keys()` showed `pf40-2-spike-default-a`.
+- Hydrate overlay sat on screen ~2-3s then index loaded "Loading..." for 2-3 minutes.
+- Console showed `[VYVESync] hydrate complete: 23 "tables ok," 4 "failed in" 81493 "ms"`. **81 seconds for a near-empty test account.**
+- 4 tables failed with concrete errors:
+  - `monthly_checkins` — HTTP 400 `column monthly_checkins.activity_date does not exist` (code 42703)
+  - `achievement_metrics` — HTTP 400 `column achievement_metrics.active does not exist`
+  - `member_achievements` — IndexedDB DataError `Evaluating the object store's key path did not yield a value`
+  - `achievement_tiers` — IndexedDB DataError, same shape
+
+The sync.js plan() has drifted from live Supabase schema. PF-2/PF-3 was written 13 May 2026; the spike has been off since (gated behind the 7-tap toggle), so the broken pulls never surfaced in production. Flipping the default exposed three weeks of accumulated schema drift in one night.
+
+**Why 81 seconds for 11 habits + nothing else.** `sync.js pullOneTable()` makes one full-table REST call per table (`select=*&order=logged_at.desc` etc). `runWithConcurrency(tasks, 4)` runs 4 at a time and waits for the slowest in each batch before starting the next. 23 tables ÷ 4 = 6 sequential batches. HTTP 400s don't fail fast — `authedFetch` reads the response body (`r.text()`) on error, throws, and the persist step waits. IndexedDB write errors fire AFTER fetch returns and delay batch completion further. None of the 23 tables have a per-request timeout. Result: every slow table + every failure compounds, and a near-empty account waits 81s because the architecture pulls EVERYTHING in parallel-of-4 with no critical-path prioritisation.
+
+**The architectural insight that should have been the plan from PM-106.** Dean's framing in chat: "On first load, Supabase queries habits/workouts/nutrition/index data, write to Dexie, load instantly forever." That's correct. The current `sync.js` mass-hydrate pulls 23 tables because it was scoped as a "full schema hydrate" for offline-equivalence. But first-paint doesn't need 23 tables. It needs 4-5 per page. The other 18 can lazy-load in the background after the page is interactive, or never if they're rarely-accessed catalogues.
+
+**PF-40 reframed.** The audit-driven 13-16-session campaign (321 call sites, fat-row hydrate, write API, catalogue residency, offline UX) was the wrong scaffolding for the actual problem. The actual problem is "first paint must be fast and instant-from-Dexie thereafter." That needs:
+
+- **A thin first-paint hydrate** (~4-5 tables per page, parallel, 5s per-request timeout)
+- **Schema fixes in the existing sync.js plan()** so the lazy background hydrate stops spamming 400s
+- **The render-template/cache-writer shape mismatch fix** so cards never paint "undefined" (PM-110 added a partial guard; the proper fix is to canonicalise cache shape OR canonicalise template path)
+
+That's 2-3 sessions of shipping, not 13-16. The remaining PF-40 sub-items (PF-40.3 catalogue residency, PF-40.4 write API, PF-40.11 offline UX, PF-40.5/40.6/40.9/40.10/40.12) defer to post-launch unless they directly impact a member-facing bug.
+
+**State at session end:**
+
+- **vyve-site main HEAD:** `83521f27b09d7c6a420215f51ae53aaa0ebe65fd` (spike-on-default + undefined guards). Spike is ON by default for every member. The 4 broken table pulls in sync.js still happen on every hydrate; they spam console but don't break the app (each one returns null/throws, the other 19 succeed, page-level Supabase fallback paths render correctly).
+- **SW cache key:** `vyve-cache-v2026-05-14-pf40-2-spike-default-a`.
+- **Critical NOT rolled back:** the spike-on default stays. Rolling back would lose the architectural commitment to local-first. The 81s mass-hydrate is the lazy background path; the next ship adds a fast first-paint path on top of it. After the next ship lands, the 81s background hydrate is invisible to the member because the page is already painted from the thin hydrate.
+- **VYVEBrain main HEAD:** this commit (PM-111).
+
+**The next session ships `firstPaintHydrate.js`.** New module. Exports `criticalHydrate(pageName)` returning a Promise that resolves when Dexie has fresh rows for the 4-5 critical tables for that page, or rejects after 5s. Each page calls `await criticalHydrate('home')` etc before render. If it resolves, page reads from Dexie. If rejects, page falls through to existing Supabase-fetch path. Each query uses `Promise.race([fetch, timeout(5000)])`. Failed queries don't block others. Function resolves on minimum-viable subset, not on completeness. Also patches the 4 broken-pull entries in sync.js plan() so the lazy background hydrate stops 400-spamming.
+
+Critical tables per page (verify against live render paths in each file before coding):
+- **home (index.html):** `members`, `daily_habits` (today), `workouts` (last 7d), `cardio` (last 7d)
+- **habits.html:** `member_habits`, `habit_library`, `daily_habits` (today)
+- **workouts.html:** `workout_plan_cache`, `workouts` (last 30d)
+- **nutrition.html:** `members` (TDEE), `weight_logs` (last 90d), `nutrition_logs` (today)
+- **cardio.html:** `cardio` (last 30d), `weekly_goals`
+
+Architectural target: every page renders real member data in <2s from cold app open. After first paint, lazy background sync runs. Members never see "Loading..." for more than 2s. Members never see "undefined" cards.
+
+**Held findings worth carrying forward:**
+
+- **`habits.html` cache-writer/template shape mismatch.** The cache writer flattens (`habit_title` flat); the render template expects nested (`r.habit_library.habit_title`). PM-110 added a `habit_title`-required filter that masks this on the read side. The proper fix is to canonicalise shape — pick flat or nested, make both writer and reader agree. Same audit needed on every other page that has a cache-first paint (workouts, nutrition, cardio, sessions).
+- **sync.js schema drift.** Beyond the 4 documented broken pulls, the next session should run a schema audit against live Supabase for all 23 tables in plan() — confirm every column referenced in every `select=*&order=X.desc` actually exists. PostgREST `select=*` is forgiving but `&order=` and filter columns are not.
+- **`achievement_metrics`/`achievement_tiers` DataError on IndexedDB write.** Key path mismatch — `db.js` declares an index that requires a field the row doesn't have. Could be a server-side rename, could be a client-side stale schema declaration. Check db.js v2 schema for these two tables against what the server returns.
+- **The `Consent check: member row not found, allowing through — TypeError: Load failed` log line** seen during index load. Auth chain has a fallback that bypasses the consent check when the EF call fails. That's the right behaviour (don't block legitimate members on a flaky check) but the failure should be surfaced — currently it's just a console warning.
+- **Index hangs for 2-3 minutes** on first load post-login, separately from the 81s hydrate. The platform-alert EF and the member-dashboard EF both hang/timeout on cold start. This is a separate issue from the Dexie hydrate — even with spike off, members hit this. Next session may discover that fixing first-paint hydrate fixes the visible symptom even without fixing the EF itself, because the page no longer waits on the EF before rendering.
+
+**Patterns reinforced this session (worth codifying as §23 if they recur):**
+
+- **Instrument the path that runs in production, not the path you wish was running.** PM-110's probe was wired for the Dexie path; the page was on the Supabase-fetch path. Three turns of diagnostic dive could have been skipped by checking `VYVELocalDB.isEnabled()` in the first console minute.
+- **Live-state-first reads before pre-edit assumptions.** Documented in §23.14 from PM-109/PM-110. Tonight's session applied the rule correctly to drop the redundant `member_achievements` sync.js edit. Should have applied it BEFORE shipping the spike-on default (would have caught the 81s hydrate via dry-run instead of shipping it live).
+- **Dean's framing in plain English is often the right architecture.** "First load, Supabase to Dexie, instant forever" was the original brief from PF-77. The PF-40 audit obscured this with 321 call sites and 13-16 sessions of structural plan. Tonight clarified it back to the brief. Honour the brief; resist the urge to over-scaffold.
+- **Three wrong-premise ships in one campaign is a pattern.** PM-106 (canary as hydrate gap), PM-108 (Q8 missing pull entry), PM-110 (probe on wrong code path). Each individually a small mistake; together they're a campaign-scale wrong direction. The retrospective is in this PM-111 entry. The next session has the corrected direction in its brief.
+
+**Brain commits this session (atomic):**
+
+- `brain/active.md` §2 — PM-111 paragraph prepended. State table refreshed: main HEAD `83521f27`, SW key `pf40-2-spike-default-a`, VYVEBrain HEAD this commit. §3 active campaign reframed: "PF-40 thin first-paint hydrate" replaces the 13-16-session structural plan.
+- `brain/changelog.md` PM-111 prepended (this entry).
+- `brain/master.md` — no §23 changes this session. The patterns above sit in this changelog entry until they recur, at which point they earn §23 status per §23.14 #5.
+
+**On the horizon:** Next session ships `firstPaintHydrate.js` + sync.js schema fixes + page-level wires. Target: 1 session, atomic vyve-site commit, soak on test1 + test, then 11-member verification walk. After that, PF-40 sub-items beyond first-paint hydrate defer to post-launch unless a member-facing bug demands them.
+
 ## 2026-05-14 PM-110 — PF-40.2 Part A SHIPPED: probe on habits.html + SW bump; Q8 verification gap surfaced
 
 **Session shape:** 14 May 2026 late night, follow-up to PM-109. PF-40.2 Part A as specified: query-param-gated diagnostic probe on `habits.html` (`?debug=hydrate`) plus SW cache key bump. Single atomic vyve-site commit `3d9abe44`. Brain commit follows.
