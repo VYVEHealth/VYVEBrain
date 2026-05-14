@@ -1,3 +1,84 @@
+## 2026-05-14 PM-106 — Contract codification: local-first becomes the complete reading source; PF-40 consolidation campaign scoped
+
+**Session shape:** 14 May 2026 evening. Dean home with iPhone 17, Mac, and an Android device. Started as a verification walk for today's daytime ships (PM-97 reset-rehydrate, PF-34 1/3 + 2/3, PF-14c offline cold-boot) and pivoted mid-session into an architectural conversation that re-shaped the campaign. No vyve-site ships this session; the deliverable is the contract codification + PF-40 campaign scope, committed to brain only.
+
+**Verification findings (partial):**
+
+1. **PM-97 reset-rehydrate** — verified inertly on `test1@test.com` (spike was OFF at first visit; toast read "Local-first OFF · Nothing to reset" per the spike-gate check in `resetLocalCache()`). The §23.7.8 addendum logic was therefore not exercised against real data. Trust to code review; defer device-verify-with-real-data until a session on `test@test.com` (seeded canary).
+
+2. **Spike-flag toggle** — flipped ON on `test1@test.com` via 7-tap on the version footer (gesture documented in settings.html line ~2178). Toast: "Local-first spike: ON · Reloading…". Functioning as designed.
+
+3. **Exercise.html cold-load (spike-on, first visit)** — ~15-20s skeleton wait, then full paint. Consistent with §23.5.1 member-dashboard EF backend latency. Not a regression. Second visit was Dexie-fast.
+
+4. **Habits.html (PF-15.x candidate, but NOT yet wired in PM-104)** — **surfaced the canary bug that re-shaped the campaign.** Page painted from Dexie immediately (per §23.7.1) showing all habit cards as `undefined / undefined / undefined`. ~10 seconds later, EF round-trip returned full denormalised data and the page re-rendered with real habit names ("10-minute walk", "Consistent bedtime", etc.). Dexie source indicator stayed amber throughout, then resolved green after EF re-paint.
+
+5. **PF-14c airplane-mode cold-boot test** — NOT performed. Habits bug above made it clear we'd have hit a misleading signal; the offline test against an incomplete hydrate would have surfaced the same "undefined" cards offline and we'd have mis-attributed the cause. Deferred to post-PF-40-hydrate-completeness work.
+
+**The Habits "undefined" finding is the campaign canary.** Root cause: `db.js pullOneTable('member_habits')` pulls the column subset native to `member_habits` (member_email, habit_id, is_active, assigned_at, last_completed_at). The denormalised join columns the UI reads from (name, description, category, difficulty — all owned by `habit_library`) are NOT in the hydrate payload. The page renders from Dexie unconditionally per §23.7.1, finds rows, renders them, but the join columns are missing — so the template prints `undefined`. The EF backfill later returns fat-row data and the page re-renders correctly. This is the read-path equivalent of the §23.7.5 partial-upsert landmine, and the §23.7.8 reset-rehydrate rule — it's the same family of bug, surfaced from a different direction. The PF-15.x clones we shipped today work for pages where the denormalised columns happen to already be in the Dexie schema (workouts, cardio); they fail on pages where they're not (habits). Every future Dexie-wired page is one schema audit away from the same bug.
+
+**The conversation that re-shaped the campaign.** Dean stated the contract he wants, in his own words:
+
+> "First time load (longer load to begin with pulling workout habits settings nutrition etc — covered by consent gate and walkthrough) then once loaded it is all there. Customer could put their phone on airplane mode forever and the app itself would work but not things like sessions and weekly check-ins. But they could use this app for weeks. Including all thumbnails for exercises. Changing exercise plans from the library. Creating workouts, changing habits in sections etc. Then when they go online it sends all data to databases and then pull any updates we send in the background."
+
+Three pushbacks raised, all surmountable:
+1. **Catalogue staleness has a one-online-session lag.** Acceptable; mitigated by `updated_at` discipline + emergency force-refresh lever for clinical retractions.
+2. **First-login hydrate cost has a ceiling.** Resolved by tiered asset strategy — Tier 1 bundled in IPA, Tier 2 pre-fetched for current programme only, Tier 3 CDN-on-view. ~5MB JSON + ~5MB images for first-login, not 15MB+.
+3. **Multi-device under offline-forever expands the conflict window.** Acceptable through 31 May launch (single-device-per-user working assumption); last-write-wins; proper conflict resolution post-launch.
+
+**The locked contract** (replaces `active.md` §3 paragraph):
+
+> Dexie is the source of truth for everything the app reads. Network is for sync, for honestly-network-bound surfaces (§23.10), and for non-current-programme assets fetched on view.
+>
+> First-login is the long load, masked by the consent gate and persona-led walkthrough. Pulls all member-scoped data with denormalised join columns, all catalogue tables as metadata (workout_plans, habit_library, nutrition_common_foods, personas, service_catalogue, knowledge_base, exercises), and pre-fetches thumbnails for the member's current programme only. Total: ~5MB JSON + ~5MB images. Subsequent opens are instant from Dexie.
+>
+> Asset strategy is tiered. Tier 1 (brand chrome, persona portraits) bundles in IPA via PF-14b. Tier 2 (current programme thumbnails + assigned habit images) pre-fetches on first-login or plan switch. Tier 3 (non-current-programme assets) fetches CDN-on-view, HTTP-cached per session, no local persistence. Library-browse surfaces show placeholder + exercise name when offline; honest §23.10 affordance.
+>
+> Network is invisible to the UI on Tier 1+2 surfaces. Writes mutate Dexie synchronously, return control immediately, queue to `_sync_queue`. The drainer is the only code that knows HTTP. Reads come from Dexie unconditionally on Tier 1+2 surfaces. No page-level fallback fetches.
+>
+> Catalogue updates arrive on next online connection via delta-pull respecting `updated_at`. Emergency catalogue retractions (clinical safety) have a force-refresh-on-launch lever.
+>
+> Single-device-per-user is the working assumption through 31 May launch. Multi-device works but with last-write-wins semantics. Proper conflict resolution is post-launch work.
+
+**Three new §23 hard rules** (added to master.md §23 in this commit as placeholders ready for PF-40 work to populate fully):
+
+- **§23.11 — Hydrate completeness.** Every page-read against Dexie must find fat-row data with denormalised join columns. Missing columns are hydrate bugs, not page bugs.
+- **§23.12 — No page-level network fetches.** Reads go through `VYVEData.read()`, writes through `VYVEData.write()`. No `fetch()` calls in page code for member or catalogue data, ever. Network-bound carve-outs go through `VYVEData.fetchNetworkBound()`.
+- **§23.13 — Tiered asset strategy.** Tier 1 bundled in IPA, Tier 2 pre-fetched on first-login / plan-switch, Tier 3 CDN-on-view.
+
+**PF-40 — Local-First Consolidation Campaign** scoped end-to-end. 12 sub-items, total estimate ~13-16 Claude-assisted sessions:
+
+- PF-40.1 audit — read-only, unblocks everything else (next ship)
+- PF-40.2 fat-row member-scoped hydrate — fixes tonight's Habits "undefined" bug at the root
+- PF-40.3 catalogue tables as first-class
+- PF-40.4 `VYVEData.write()` API + per-page migration — collapses PF-1/9/10/12/34 per-page upsert workarounds
+- PF-40.5 `VYVEData.read()` API + page-level fetch removal
+- PF-40.6 Tier 1 assets bundled in IPA (folds into PF-14b)
+- PF-40.7 Tier 2 pre-fetch on first-login / plan-switch
+- PF-40.8 Tier 3 CDN-on-view with placeholders
+- PF-40.9 boot chain offline-equivalence (folds PF-14d)
+- PF-40.10 catalogue delta-pull with `updated_at` + force-refresh lever
+- PF-40.11 offline UX states for §23.10 carve-outs (folds PF-14e)
+- PF-40.12 spike-flag removal + main-only path (campaign closer)
+
+Folded into PF-40 (closed as standalone backlog items): PF-14c (done), PF-14d, PF-14e, PF-15.write-optimistic, PF-31, PF-32, PF-33, PF-34 (partial — 3/3 deferred as PF-34b folds in), PF-34b, PF-35, PF-36. All become symptoms PF-40 fixes structurally. Backlog gets cleaned up at campaign close.
+
+Stays separate: PF-14b (bundled-mode migration — same review cycle but its own commit), PF-21 (nav restructure), PF-23 (interactive tutorial, V2), HAVEN clinical sign-off (Phil-blocked), achievements overhaul (post-trial), copy gates.
+
+**Patterns reinforced this session:**
+
+- **The hydrate is the foundation, not an optimisation.** Two days of PF-15.x clone-pattern work shipped pages that paint from Dexie successfully — but only for tables where the denormalised columns happen to be in the hydrate. The pattern survives because workouts/cardio rows happen to be self-contained. Habits fails because habit_library is a separate table. Building more clones would have built more latent bugs. The PF-40 reframing — fix the hydrate layer once, then every page is mechanical — is the right move.
+- **Per-page workarounds are symptoms; consolidate the cause.** PF-1 daily_habits upsert, PF-9 cardio upsert, PF-10 wellbeing upsert, PF-12 six settings upserts, PF-34 four movement upserts — all the same shape, all duplicated code. `VYVEData.write()` collapses them into one API. Same for reads. The cost of building it correctly once is less than the cost of maintaining the per-page workarounds.
+- **Verification before shipping changes shape.** Tonight's plan was "verify PM-97, PF-34, PF-14c on device, then ship." The verification surfaced the Habits bug and the conversation that re-shaped the campaign. If we'd skipped verification and just shipped the next per-page clone, we'd have built another month of clones before hitting the same wall. Pairing-on-device sessions are the highest-leverage way to catch architectural-shape problems that solo audits miss.
+
+**On the horizon (PF-40 sequence):**
+
+- **PF-40.1 audit** — next solo daytime ship. Read-only. Enumerate every `fetch()` / `supaFetch()` / `writeQueued()` / direct PostgREST call across vyve-site. Classify each. Output is the JSON map driving the rest of the campaign. Includes drafting `playbooks/pf-40-local-first-consolidation.md` as the campaign reference doc (living document).
+- **PF-40.2 fat-row hydrate** — first ship that fixes tonight's Habits bug. Schema audit per member-scoped table. Hydrate pulls denormalised columns. Device-verify on iPhone after.
+- **PF-40.3 catalogues** — schema additions, pull-on-login, `_catalogue_meta` table.
+- **PF-40.4 + PF-40.5 APIs** — the consolidation point. Per-page migration mechanical once API exists.
+
+**Brain commits this session (atomic):** `brain/active.md` §2 + §3 + §4 + §5 updated; `brain/master.md` §23.11/§23.12/§23.13 added + §24 PF-40 framing appended; `brain/changelog.md` PM-106 prepended; `tasks/backlog.md` PF-40 section added with all 12 sub-items + folded-items closure markers.
+
 ## 2026-05-14 PM-105 — PF-14c offline cold-boot fix ship + §23.7.8 + §23.10 codification
 
 **Session shape:** 14 May 2026 daytime follow-up (still no device verification window). Dean asked "what else is possible without iPhone and Mac tonight?" — ranked options as #1 PF-14c fix ship (offline-only-affecting, online happy path byte-equivalent, ship-without-device-verify defensible) and #2 §23 codification refinement. Both shipped this session.

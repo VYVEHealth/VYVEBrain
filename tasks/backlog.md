@@ -1,3 +1,148 @@
+## Added 14 May 2026 PM-106 — PF-40 Local-First Consolidation Campaign (active meta-frame; supersedes per-page wire work)
+
+### PF-40 — Local-First Consolidation Campaign [P0 LAUNCH BLOCKER, active]
+
+**Status:** Scoped end-to-end PM-106. PF-40.1 audit is next ship. Folds PF-14d / PF-14e / PF-15.write-optimistic / PF-31 / PF-32 / PF-33 / PF-34 partial / PF-34b / PF-35 / PF-36 as symptoms. PF-14b stays separate (its own review cycle, sequences in parallel).
+
+**Why the campaign exists.** Per-page Dexie wires (PF-6..PF-12, PF-15.x, PF-34) ship pages that paint from Dexie successfully *when the table's denormalised columns happen to be in the hydrate*. They fail when they're not. The 14 May 2026 evening canary walk on `test1@test.com` surfaced this on `habits.html` — page painted `undefined / undefined / undefined` for ~10s until EF backfill arrived with the join columns. The pattern survives for workouts/cardio (self-contained rows) but is latent on every page that reads catalogue joins. Building more clones would build more latent bugs. PF-40 fixes the foundation (hydrate completeness, consolidated read/write APIs, tiered assets) so per-page work becomes mechanical and bug-free.
+
+**Contract (codified in active.md §3 + §23.11/§23.12/§23.13):** Dexie is the source of truth for *everything* the app reads. First-login is a deliberate long load (~5MB JSON + ~5MB images) masked by the consent gate and persona-led walkthrough. After first-login, every subsequent open is instant from Dexie. Network is for sync, for §23.10 honest carve-outs (sessions, AI moments, leaderboard, live chat, cron content), and for Tier 3 library-browse assets. Single-device-per-user assumption through 31 May launch; last-write-wins; multi-device conflict resolution is post-launch.
+
+#### Sub-items (dependency order)
+
+**PF-40.1 — Write-path & read-path audit** [P0, next ship]
+- Read-only session, ~3-4h, solo daytime, no device required.
+- Enumerate every `fetch()` / `supaFetch()` / `writeQueued()` / direct PostgREST call across vyve-site (HTML + JS).
+- Classify each: member-scoped read | catalogue read | member-scoped write | §23.10 network-bound carve-out | dead code.
+- Output: JSON map keyed by file:line driving PF-40.4 + PF-40.5 mechanically.
+- Deliverable: `playbooks/pf-40-local-first-consolidation.md` as the campaign reference document (living, updated as audit surfaces shapes).
+
+**PF-40.2 — Hydrate completeness — fat-row member-scoped tables** [P0, depends on PF-40.1]
+- ~1-2 sessions. Device verify on iPhone after ship.
+- Expand `db.js pullOneTable()` for every member-scoped table to fetch with denormalised join columns the UI reads.
+- `member_habits` ← `habit_library` join (name, description, category, difficulty, theme). Tonight's canary.
+- Audit driven by PF-40.1 output. Each table gets its denormalised columns codified.
+- New `VYVELocalDB.<table>.upsertFat()` preserves join columns on writes.
+- Fixes PF-40.2's covering symptoms: tonight's Habits canary, PF-31 (page re-entry clobber — fat-row writes can't be clobbered by thinner cached reads).
+
+**PF-40.3 — Catalogue tables as first-class** [P0, depends on PF-40.1]
+- ~1 session. Read-only verify (catalogue data appears in Dexie after first-login).
+- Add `habit_library`, `workout_plans` (all 5 plans, not just active), `nutrition_common_foods`, `personas`, `service_catalogue`, `knowledge_base`, exercises, `running_plan_cache` to the Dexie schema.
+- Pull-on-login behind a one-time gate so existing members get catalogue tables on next visit.
+- New `_catalogue_meta` table tracks `last_updated_at` per catalogue for PF-40.10 delta-pulls.
+- Unlocks "switch your workout plan offline" — every plan is in Dexie, switching is a Dexie write.
+
+**PF-40.4 — `VYVEData.write(table, row)` API + per-page migration** [P0, depends on PF-40.1 + PF-40.2]
+- ~1 session for API + 2 sessions for per-page migration. Device verify each batch.
+- API does: optimistic Dexie upsert (with fat-row support), bus publish, `_sync_queue` enqueue, return synchronously.
+- Drainer is the only HTTP-aware code; pages never `fetch()` for writes.
+- Migrates: every direct-fetch write from PF-40.1 audit. Collapses PF-1 / PF-9 / PF-10 / PF-12×6 / PF-34×4 per-page upsert workarounds.
+- Cascading benefits: PF-4b Part 1 (`members` read-after-write hazard) ceases to exist. PF-8 `members` carve-out closes. PF-33 (synchronous header counter) becomes the API's responsibility, not the page's.
+
+**PF-40.5 — `VYVEData.read(table, query)` API + page-level fetch removal** [P0, depends on PF-40.2 + PF-40.3 + PF-40.4]
+- ~2 sessions. Device verify each batch.
+- API does: Dexie read with the table's denormalised shape; if empty post-first-hydrate, throw (hydrate bug, not a page bug).
+- Migrates: every direct read call from PF-40.1 audit.
+- §23.10 carve-outs use explicit `VYVEData.fetchNetworkBound(endpoint, options)` — nameable, auditable, distinguishable from accidental REST.
+
+**PF-40.6 — Tier 1 assets bundled in IPA** [P0, depends on PF-14b]
+- ~0.5 session. Folds into PF-14b's existing bundled-mode migration scope.
+- Identify brand chrome + persona portraits + persona animations + home/empty-state illustrations + achievement tier illustrations + icons.
+- ~2-3MB total. Move into `www/assets/` under Capgo bundled mode.
+- iOS 1.2 + Android 1.0.3 builds include Tier 1.
+
+**PF-40.7 — Tier 2 pre-fetch on first-login / plan-switch** [P0, depends on PF-40.3 + PF-40.6]
+- ~1 session. Device verify (timing during walkthrough must not block UI).
+- New `VYVEAssets.prefetch(programme)` extracts every exercise thumbnail referenced by a programme JSON, fetches them, persists into SW asset cache.
+- Runs as part of onboarding EF v37 success handler (after consent gate, during walkthrough).
+- Re-runs on plan switch.
+- Habit thumbnails pre-fetch similarly (assigned habits only). Persona-bound UI on persona switch.
+
+**PF-40.8 — Tier 3 CDN-on-view + placeholders** [P0, depends on PF-40.7]
+- ~0.5 session.
+- Non-current-programme assets render with `<img>` pointing at CDN URL, placeholder + exercise name while loading, no SW interception.
+- SW fetch handler explicitly excludes Tier 3 asset URLs from cache.
+- Library-browse page shows honest §23.10 offline state when no connection.
+
+**PF-40.9 — Boot chain offline-equivalence** [P0, depends on PF-40.5]
+- ~1 session. Airplane-mode cold-boot device test mandatory.
+- Every `await` between page load and `vyveSignalAuthReady` must tolerate network failure.
+- `auth.js` session restore reads locally-persisted session FIRST, paints, attempts server-side refresh non-blocking.
+- PostHog `posthog.init` deferred to post-auth-ready (currently `async=true` so non-blocking, but worth being explicit).
+- SW HTML strategy shifts cache-first for navigation requests.
+- PF-14c precache already handles SDK loaders (shipped PM-105). **PF-14d folds in here.**
+
+**PF-40.10 — Catalogue delta-pull with `updated_at` + force-refresh lever** [P1, depends on PF-40.3]
+- ~1 session.
+- Delta-pull on `visibilitychange-to-visible` respects `updated_at` per catalogue table.
+- Server publishes catalogue updates with monotonic `updated_at`.
+- New `_catalogue_force_refresh` table (single row holding a version int); bumped server-side triggers full re-pull of all catalogues on next launch.
+- Used for emergency clinical retractions (Phil pulls a clinically-inappropriate habit; force-refresh version bump; next launch re-pulls `habit_library`).
+
+**PF-40.11 — Offline UX states for §23.10 carve-outs** [P0, depends on PF-40.9]
+- ~1-2 sessions. Lewis copy gate is the rate-limiting step (~10 strings).
+- Designed offline states for: leaderboard, sessions schedule, live chat, AI moments, certificate-pending.
+- "Leaderboard refreshes when you're online" / "Your check-in is saved and will submit when connection returns" / "Connect to view live sessions" — explicit affordances, not graceful-degradation-to-blank.
+- **PF-14e folds in here.**
+
+**PF-40.12 — Spike-flag removal + main-only path** [P0, campaign closer]
+- ~0.5 session.
+- All spike-off code paths deleted, toggle UI in settings.html removed, `vyve_lf_spike` localStorage key treated unconditionally as ON.
+- The PF-19 cleanup deferred during PF-14.
+- Final ship of the campaign.
+
+#### Total estimate
+
+~13-16 Claude-assisted sessions. Hard sequencing: PF-40.1 first; everything else parallelises into four work streams (data layer / asset layer / boot layer / UX layer). Against 31 May launch (17 days from PM-106): tight but doable if Sundays and evening sessions cover the device-verification batches. If launch slips by a week, comfortable.
+
+#### Device-requirement table
+
+| Sub-item | Solo-shippable | Device verify | Phase |
+|---|---|---|---|
+| PF-40.1 audit | ✓ | — | Foundation |
+| PF-40.2 fat-row | ship | iPhone + Android | Data |
+| PF-40.3 catalogues | ship | iPhone | Data |
+| PF-40.4 write API | ship | iPhone (each batch) | Data |
+| PF-40.5 read API | ship | iPhone (each batch) | Data |
+| PF-40.6 Tier 1 | ship | post-Apple-review | Assets |
+| PF-40.7 Tier 2 | ship | iPhone (walkthrough) | Assets |
+| PF-40.8 Tier 3 | ship | iPhone (offline browse) | Assets |
+| PF-40.9 boot chain | ship | iPhone airplane mode | Boot |
+| PF-40.10 delta-pull | ship | — | Data |
+| PF-40.11 offline UX | ship (Lewis copy) | iPhone (each surface) | UX |
+| PF-40.12 cleanup | ship | smoke test | Closer |
+
+#### Folded into PF-40 (closed as standalone backlog items)
+
+- **PF-14c — Offline cold-boot** (SHIPPED PM-105, kept in changelog for history)
+- **PF-14d — Offline nav between pages** → folds into PF-40.9
+- **PF-14e — Offline UX states** → folds into PF-40.11
+- **PF-15.write-optimistic — await/optimisticPatch order flip on habits/cardio/wellbeing-checkin** → folds into PF-40.4 (the API makes this the default)
+- **PF-31 — Page re-entry read path clobbers Dexie writes** → folds into PF-40.5 (fat-row reads can't be clobbered) + PF-40.4 (writes guarantee Dexie state)
+- **PF-32 — Home page doesn't reflect cross-page writes** → folds into PF-40.4 (bus publish is part of write API; every page subscribes via `VYVEData.subscribe()`)
+- **PF-33 — Synchronous header counter mutation missing** → folds into PF-40.4 (the API mutates in-memory + bus-publishes synchronously before returning)
+- **PF-34 — engagement/certificates/running-plan/movement Dexie wires (partial)** → already-shipped slices (certs, movement) survive; running-plan + engagement re-architect as PF-40 sub-items
+- **PF-34b — running-plan.html schema work** → folds into PF-40.3 (`running_plan_cache` becomes a first-class catalogue table)
+- **PF-35 — Home vs habits.html counter disagreement** → resolved by PF-40.5 (both pages read from `home-state-local.js` summary, which is single source of truth)
+- **PF-36 — Warmup orchestrator with consent-gate-as-hold-window** → folds into PF-40.7 (Tier 2 pre-fetch runs during the consent-gate / walkthrough window)
+
+#### Stays separate
+
+- **PF-14b — Bundled-mode migration** (sequences with PF-40.6 but is its own commit for Apple/Google review reasons)
+- **PF-21 — Bottom nav restructure** (pure UI, post-PF-19 / PF-40.12)
+- **PF-23 — Interactive guided tutorial** (V2 target, post-PF-21, Lewis copy gate)
+- **HAVEN clinical sign-off** (Phil-blocked, parallel)
+- **Achievements overhaul** (post-trial)
+- **All copy gates** (PF-13 hydration, PF-23 tutorial, PF-27 AI-moment, PF-40.11 offline UX)
+
+#### First ship after this commit
+
+**PF-40.1 audit.** Read-only, no device required, unblocks everything else. Drafts `playbooks/pf-40-local-first-consolidation.md` as the campaign reference document.
+
+The reason this is the right first ship rather than `VYVEData.write()` API directly: without the audit, the API design doesn't have ground truth on what call sites it needs to cover. Better to scan the surface area first, design the API to fit it, than build the API and discover at the migration phase that it can't handle the 47th edge case.
+
+---
+
 ## Added 14 May 2026 PM-103 (Canary walk on test1@test.com surfaced PF-14c offline launch blocker + PF-31..36 read/sync/UX gaps; §23.9 + §23.10 codified)
 
 ### PF-14c — Offline cold-boot must paint home from local within 2s with zero network [CAUSES A+B SHIPPED 14 May 2026 PM-105 — `66f02b84`; CAUSE C DEFERRED pending tonight's device verification]

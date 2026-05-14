@@ -2106,6 +2106,63 @@ Migrations 1c-2 through 1c-14 follow the same pattern. The cleanup commit (post-
 
 Schema discipline for 1c-* migrations: undo / clear / no-op publishes go through the same event with a discriminator (e.g. `is_yes:null`), not a separate `<noun>:cleared` event. Achievement evaluator eligibility is gated by the subscriber on the discriminator (`if (is_yes === true || autotick === true)`). The achievements.js debouncer (1.5s) makes multi-subscriber double-fires safe; subscribers do NOT need to gate on `origin === 'local'` to avoid double eval — over-inclusivity is the right call because at least one open tab needs to fire eval for the inline path to run.
 
+### §23.11 — Hydrate completeness (logged 14 May 2026, PM-106)
+
+**Status:** HARD RULE. Surfaced on `test1@test.com` canary walk 14 May 2026 ~19:46 BST. The Habits page painted from Dexie immediately per §23.7.1 (`member_habits` rows existed in Dexie post-hydrate) but every card rendered `undefined / undefined / undefined` because the hydrate had pulled the column subset native to `member_habits` (member_email, habit_id, is_active, assigned_at, last_completed_at) and NOT the denormalised join columns the template reads from (name, description, category, difficulty — all owned by `habit_library`). EF backfill ~10s later returned fat-row data; page re-rendered correctly. Indicator stayed amber throughout, then resolved green after EF re-paint. Same family as §23.7.5 (partial-upsert landmine) and §23.7.8 (reset-rehydrate before paint), from the **read** direction not the write direction.
+
+**Hard rule:** Every page-read against Dexie must find fat-row data with every column the UI renders, including denormalised columns from joined catalogue tables. Missing columns are **hydrate bugs**, not page bugs. The fix shape is to expand `db.js pullOneTable(table)` to fetch with the relevant PostgREST embedded joins (`select=*,habit_library(name,description,...)`) and denormalise onto the row before storing in Dexie. Same shape as what member-dashboard EF v40 already does server-side.
+
+**Audit signal:** for every member-scoped table in the Dexie schema, list the columns the UI reads on the consuming pages. Cross-reference against the columns `pullOneTable` pulls. Gaps are bugs.
+
+**Tables known affected at PM-106 (audit driving PF-40.2):**
+- `member_habits` ← needs `habit_library` join (name, description, category, difficulty, theme)
+- Almost certainly: `workout_plan_cache` ← needs `workout_plans`-derived metadata where surfaced
+- Almost certainly: `daily_habits` ← when surfaced with habit context
+- Audit pending for: nutrition_logs, exercise_logs, wellbeing_checkins, weekly_goals
+
+**Fix lands in PF-40.2.** Until then, pages that hit this bug will see the same 10s "undefined → real" transition; no per-page workaround should be deployed (would be wasted code that PF-40 deletes). This rule extends §23.10 — offline-equivalent operation requires hydrate completeness as a precondition.
+
+### §23.12 — No page-level network fetches for member or catalogue data (logged 14 May 2026, PM-106)
+
+**Status:** HARD RULE. Codifies the read-path direction of the local-first contract (active.md §3). Page code must never directly call `fetch()` / `supaFetch()` / PostgREST endpoints for member-scoped or catalogue data. Reads go through the upcoming `VYVEData.read(table, query)` API (PF-40.5). Writes go through `VYVEData.write(table, row)` (PF-40.4). The data layer is the only code that knows HTTP.
+
+**The carve-outs (§23.10 honest-network-bound surfaces)** go through an explicit `VYVEData.fetchNetworkBound(endpoint, options)` API so they're nameable and auditable rather than indistinguishable from accidental REST calls. Carve-outs: leaderboard, AI moments (Anthropic round-trips), live session schedule, live session chat (Realtime), cron-driven content (newly-earned certs).
+
+**Audit signal:** `ripgrep "fetch\(|supaFetch\(" --type=html --type=js` across `vyve-site`. Every hit that isn't inside `db.js`, `auth.js`, the upcoming `VYVEData.*` modules, or an explicit §23.10 carve-out is a violation.
+
+**Cascading benefit when shipped:** PF-4b Part 1 (`members` read-after-write hazard) ceases to exist — `VYVEData.write()` does optimistic Dexie upsert before queueing the network write. PF-8's `members` carve-out closes. PF-33 (synchronous header counter mutation) becomes the API's responsibility, not the page's. PF-31 (page re-entry clobber) is impossible because reads only consult Dexie.
+
+**Fix lands incrementally PF-40.4 (writes) + PF-40.5 (reads).** Until then, new code SHOULD follow the pattern (so the migration is mechanical) but existing code stays as-is until the audit (PF-40.1) drives the mechanical sweep.
+
+### §23.13 — Tiered asset strategy (logged 14 May 2026, PM-106)
+
+**Status:** HARD RULE. Codifies the asset direction of the local-first contract (active.md §3). Assets fall into one of three tiers; the tier determines storage strategy.
+
+**Tier 1 — Bundled in IPA via PF-14b. ~2-3MB total.**
+- Brand chrome (logo, icons, gradients, illustration system)
+- Persona portraits (5 personas) + persona-matched animations (reusable by PF-13 hydration overlay + PF-27 AI-moment loading states)
+- Home/empty-state illustrations
+- Achievement tier illustrations
+- Available offline forever, even before first login.
+
+**Tier 2 — Pre-fetched on first-login / plan-switch. ~3-4MB.**
+- Thumbnails for every exercise in the member's **currently active** workout plan
+- Thumbnails for assigned habits (member_habits set)
+- Persona-bound UI assets for daily surfaces
+- Pre-fetch runs as part of onboarding EF v37 success handler (after consent gate, during walkthrough)
+- Re-runs on plan switch
+- Persisted in SW asset cache; lives until programme changes
+
+**Tier 3 — CDN-on-view, HTTP-cached per session, no local persistence. Unbounded library size.**
+- Non-current-programme exercise thumbnails (browsing the library when changing plans)
+- Session card images (live session catalogue)
+- Library-browse surfaces show placeholder + exercise name when offline; the library is a connected-state activity per §23.10
+
+**Audit signal:** for every `<img src="...">` in vyve-site HTML/JS, classify the asset Tier 1 / 2 / 3. Tier 1 → must be in `www/assets/` under Capgo bundled mode. Tier 2 → must be in the pre-fetch list emitted by `VYVEAssets.prefetch(programme)`. Tier 3 → CDN URL only, must NOT be in SW asset cache, MUST have a placeholder fallback.
+
+**Fix lands PF-40.6 (Tier 1) + PF-40.7 (Tier 2) + PF-40.8 (Tier 3).** PF-14b expands its scope to include Tier 1 asset bundling.
+
+
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.
@@ -2146,6 +2203,34 @@ These remain in the historical backlog as superseded. Post-launch they can be re
 **Status:** Campaign just launched at this commit. PF-1 (Dexie spike) is the next task. Ready to pick up.
 
 ---
+
+### PF-40 Local-First Consolidation Campaign (logged PM-106, 14 May 2026 evening)
+
+**The consolidation phase of the Premium Feel Campaign.** Strengthens the architectural commitment from "Dexie is the source for member-scoped reads/writes" to **"Dexie is the complete reading source for the app"** — every page renders from Dexie unconditionally, with explicit §23.10 carve-outs for honestly-network-bound surfaces. The campaign exists because the per-page wire pattern (PF-6 through PF-12, PF-15.x, PF-34) was correct in shape but incomplete in foundation — the hydrate layer pulls thin rows where the UI reads fat data, the write path bypasses any consolidation point, and assets have no tiering. The Habits "undefined" canary on 14 May 2026 evening surfaced this gap on production. PF-40 fixes the foundation; the per-page work becomes mechanical.
+
+**Sub-items in dependency order:**
+
+- **PF-40.1 audit** (read-only, ~3-4h solo daytime, no device). Enumerate every `fetch()`, every `supaFetch()`, every `writeQueued()`, every direct PostgREST call across vyve-site. Classify as member-scoped read / catalogue read / member-scoped write / §23.10 carve-out / dead code. Output a JSON map keyed by file:line that drives PF-40.4 + PF-40.5 mechanically. Also produces `playbooks/pf-40-local-first-consolidation.md` as the campaign reference document.
+- **PF-40.2 fat-row member-scoped hydrate** (~1-2 sessions, device verify). Expand `db.js pullOneTable()` for every member-scoped table to fetch with denormalised join columns. Fixes the Habits "undefined" canary at the root. Schema audit per table.
+- **PF-40.3 catalogue tables as first-class** (~1 session). Add `habit_library`, `workout_plans` (all 5 plans), `nutrition_common_foods`, `personas`, `service_catalogue`, `knowledge_base`, exercises, `running_plan_cache` to the hydrate. `_catalogue_meta` table tracks `last_updated_at` per catalogue for delta-pulls.
+- **PF-40.4 `VYVEData.write(table, row)` API + per-page migration** (~1 session API + 2 sessions migration, device verify each batch). Optimistic Dexie upsert with fat-row support, bus publish, `_sync_queue` enqueue, return synchronously. Drainer is the only HTTP-aware code. Per-page workarounds (PF-1 daily_habits, PF-9 cardio, PF-10 wellbeing, PF-12 settings × 6, PF-34 movement × 4) all collapse into the API.
+- **PF-40.5 `VYVEData.read(table, query)` API + page-level fetch removal** (~2 sessions, device verify each batch). Page reads from Dexie unconditionally. If Dexie is empty post-first-hydrate, that's a hydrate bug — throw, don't fall back. Carve-outs use explicit `VYVEData.fetchNetworkBound()`.
+- **PF-40.6 Tier 1 assets bundled in IPA** (~0.5 session, folds into PF-14b). Move brand chrome + persona portraits/animations + illustrations into `www/assets/` under Capgo bundled mode. iOS 1.2 build includes Tier 1.
+- **PF-40.7 Tier 2 pre-fetch** (~1 session, device verify). `VYVEAssets.prefetch(programme)` runs as part of onboarding EF v37 success handler + on plan switch. Persists into SW asset cache.
+- **PF-40.8 Tier 3 CDN-on-view + placeholders** (~0.5 session). SW fetch handler explicitly excludes Tier 3 URLs from cache. Library-browse surfaces show honest offline state.
+- **PF-40.9 boot chain offline-equivalence** (~1 session, airplane-mode device test mandatory). Every `await` between page load and `vyveSignalAuthReady` tolerates network failure. PF-14d folds here.
+- **PF-40.10 catalogue delta-pull with `updated_at` + force-refresh lever** (~1 session). Delta-pull respects `updated_at`. Emergency catalogue retractions via `_catalogue_force_refresh` version bump.
+- **PF-40.11 offline UX states for §23.10 carve-outs** (~1-2 sessions, Lewis copy gate). Designed offline states for leaderboard, sessions schedule, AI moments, live chat, certificate-pending. Folds PF-14e.
+- **PF-40.12 spike-flag removal + main-only path** (~0.5 session, campaign closer). All spike-off code paths deleted, toggle UI removed, `vyve_lf_spike` treated as unconditionally ON.
+
+**Total estimate:** 13-16 Claude-assisted sessions. Two batches are device-required (the read/write API migrations). Hard sequencing: PF-40.1 must land first; everything else parallelises into four work streams (data layer, asset layer, boot layer, UX layer).
+
+**Folded into PF-40 (closed as standalone backlog items at campaign launch):** PF-14c (already shipped PM-105), PF-14d, PF-14e, PF-15.write-optimistic, PF-31, PF-32, PF-33, PF-34 partial, PF-34b, PF-35, PF-36. All become symptoms PF-40 fixes structurally. Backlog cleanup at PF-40 close.
+
+**Stays separate:** PF-14b (bundled-mode migration — same review cycle but its own commit), PF-21 (nav restructure), PF-23 (interactive tutorial — V2), HAVEN clinical sign-off (Phil-blocked), achievements overhaul (post-trial), copy gates.
+
+**Status at PM-106 commit:** scoped and approved by Dean. Next ship is PF-40.1 audit (solo daytime, read-only).
+
 
 ## 25. Key references, credentials & URLs
 
