@@ -1,3 +1,42 @@
+## 2026-05-14 PM-105 — PF-14c offline cold-boot fix ship + §23.7.8 + §23.10 codification
+
+**Session shape:** 14 May 2026 daytime follow-up (still no device verification window). Dean asked "what else is possible without iPhone and Mac tonight?" — ranked options as #1 PF-14c fix ship (offline-only-affecting, online happy path byte-equivalent, ship-without-device-verify defensible) and #2 §23 codification refinement. Both shipped this session.
+
+**vyve-site ship:** `66f02b84` PF-14c — Offline cold-boot precache + Dexie vendoring. Three files changed:
+
+- `dexie.min.js` (NEW, 94277 bytes, dexie@4.0.10 vendored from jsDelivr — version verified via grep `"4.0.10"`). Same UMD bundle the old runtime CDN URL was loading; now same-origin.
+- `db.js` — `DEXIE_CDN` constant changed from `https://cdn.jsdelivr.net/npm/dexie@4.0.10/dist/dexie.min.js` to `/dexie.min.js`. Constant name retained for diff-stability; comment block above explains the PM-105 vendoring.
+- `sw.js` — `urlsToCache` array adds `/supabase.min.js`, `/dexie.min.js`, `/achievements.js`. Cache key bumped `pf34-movement-a` → `pf14c-precache-a`.
+
+Both PF-14c causes from the PM-104 diagnostic addressed in this ship:
+
+- **Cause A** (sw.js precache gap on `/supabase.min.js`): closed. SW install-phase `cache.addAll()` now precaches the file on first online visit; subsequent offline cold-boots find it in cache, `auth.js` `vyveLoadSupabaseSDK()` resolves rather than hanging, `vyveRevealApp()` fires, `#app` flips to `display:block`.
+- **Cause B** (Dexie loaded cross-origin): closed. Same-origin URL means the SW asset handler can cache it, the same `cache.addAll()` populates it on install.
+
+**Cause C deferred.** `Promise.race` timeout wrap on `vyveLoadSupabaseSDK()` with a "Preview mode: offline" fallback. Belt-and-braces in case A+B aren't the full picture. Ship in a follow-up only if device verification reveals further hangs.
+
+**Risk profile.** Ship is offline-only-affecting. Asset content is byte-identical (we vendored the exact bytes from jsDelivr). Online users see no functional difference — the move is from "cache populates lazily on first fetch" to "cache populates at SW install." Either path produces the same eventual cache state. Worst-case scenario from this ship: offline cold-boot still fails (A+B weren't enough, Cause C is real). In that scenario, no online behaviour has changed and we ship the Promise.race wrap next. Cannot make anything worse than today's broken state.
+
+**VYVEBrain master.md updates (§23 codification):**
+
+- **§23.7.8 addendum** (lines added at end of existing rule). Names the **`hydrate()` vs `hydrateTable()` API distinction** that PM-97's first fix attempt missed. The existing rule said "force a full Dexie rehydrate before next paint" but didn't name the API. PM-97 followed the rule and still shipped broken because `VYVESync.hydrate()` is idempotent-within-session — it returns the page-boot `hydratePromise` cache, so any `await` later in the same page lifetime is a no-op. Per-table `VYVESync.hydrateTable(t)` calls `pullOneTable` directly each invocation and bypasses the memoised promise. Hard rule extension: post-clear rehydrate MUST iterate the relevant tables via `hydrateTable(t)` per table, never `hydrate()` alone. PM-97's shipped fix awaits hydrateTable for `members`, `member_habits`, `workout_plan_cache` in sequence.
+- **§23.10 primitives 2a + 2b** (inserted as new sub-primitives after the existing primitive 2). 2a: **SW urlsToCache must include every runtime-loaded script the app fetches** — not just the ones referenced via `<script src>` tags in HTML. Scripts injected dynamically by other scripts (auth.js → supabase.min.js, db.js → dexie.min.js) MUST be in `urlsToCache` despite never appearing in HTML head. Audit signal: grep all `.js` files for `document.createElement('script')` or `appendChild` patterns. 2b: **No cross-origin runtime dependencies in the critical path.** SW skips cross-origin requests (correct policy — can't cache other people's CDN). Vendor every critical-path dependency locally. Cross-origin OK only for non-critical-path features with their own offline UX (PostHog, fonts). Critical path = anything `await`ed in any page boot before `vyveSignalAuthReady`.
+
+**Patterns reinforced this session:**
+
+- **Rules name the WHAT, code-walking finds the HOW.** §23.7.8 (rehydrate before paint) was correct but didn't anticipate the API-level gotcha. The PM-97 fix discovery is now in the rule. Future Claudes who write reset paths will reach for `hydrateTable()` automatically.
+- **Online-equivalent ship without device verification IS sometimes defensible** — when the change is offline-only-affecting and online behaviour is byte-identical. Test: can the change make the online happy path measurably different in any way? If no, ship. PF-14c passed this test. Most ships don't.
+
+**On the horizon (unchanged from PM-104):**
+
+- Tonight (Dean iPhone): verify PM-97 long-press reset + PF-34 ships + PF-14c offline cold-boot. If PF-14c still black-screens, ship Cause C (Promise.race timeout wrap).
+- PF-31/PF-32/PF-33 cross-page sync work — needs device verification, evening window with Dean.
+- PF-14d (SW navigation offline strategy) — paired with Dean, evening.
+- PF-14e (offline UX states for network-bound surfaces) — design-and-ship session.
+- PF-34b — running-plan.html schema work for Dexie wire (~1 session).
+- engagement.html — design decision needed (home-state-local.js extension vs PF-35 prerequisite).
+- PF-15.write-optimistic — habits.html, cardio.html, wellbeing-checkin.html await/optimisticPatch order flip (~1 session, needs device verify).
+
 ## 2026-05-14 PM-104 — Daytime ships: PM-97 reset-rehydrate fix, PF-34 1/3 + 2/3 wires, PF-14c offline cold-boot diagnostic, brain realignment
 
 **Session shape:** 14 May 2026 daytime (Dean at work, no device verification window). Three production ships landed sequentially on `vyve-site main` plus the PF-14c diagnostic, three audit-only outcomes documented, and the brain realigned to live state (a pre-session drift between `active.md` §2 and live `sw.js` was visible at session-start). Every ship was scoped tight enough to not require device verification; Dean tests the lot tonight.

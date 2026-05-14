@@ -1,20 +1,33 @@
 ## Added 14 May 2026 PM-103 (Canary walk on test1@test.com surfaced PF-14c offline launch blocker + PF-31..36 read/sync/UX gaps; §23.9 + §23.10 codified)
 
-### PF-14c — Offline cold-boot must paint home from local within 2s with zero network [P0 LAUNCH BLOCKER]
+### PF-14c — Offline cold-boot must paint home from local within 2s with zero network [CAUSES A+B SHIPPED 14 May 2026 PM-105 — `66f02b84`; CAUSE C DEFERRED pending tonight's device verification]
 
-**Status:** OPEN P0. Surfaced 14 May 2026 evening canary walk. Codified as §23.10 Offline-equivalence contract (master.md).
+**Status:** Causes A+B shipped 14 May 2026 daytime (PM-105). Commit `66f02b84f0588d0bc2fdbed4ca06ae684e10f685` on vyve-site main. Awaiting Dean's device verification tonight to confirm fix is sufficient or Cause C is real.
 
-App opens to a black screen when network is dead. Once logged in, app must function fully offline. Currently fails. Root cause TBD — likely candidates (in order):
-1. `auth.js` initial session restore awaits a Supabase server call before painting (Supabase `getSession()` does try server-side token refresh by default).
-2. `posthog.init` in critical paint path with no timeout / no lazy-load wrapper.
-3. Service worker not pre-caching navigation HTML; network-first strategy with no offline fallback.
-4. `vyveSignalAuthReady` waits on a Supabase round-trip before firing the event downstream paint code listens for.
+**Root causes (diagnosed PM-104, fixed PM-105):**
 
-**Diagnostic shape (next session, before any code change):** Read `index.html` head + boot scripts in order, `auth.js` boot sequence (every `await` between page load and `vyveSignalAuthReady`), `sync.js` `hydrate()` entry (offline-safe?), `db.js`, `sw.js` precache manifest + fetch strategy. Write the diagnosis: "the hang is at line N of file X because Y, fix shape is Z."
+- **Cause A: `/supabase.min.js` not in sw.js urlsToCache.** auth.js `vyveLoadSupabaseSDK()` injects `<script src="/supabase.min.js">`. Offline cold-boot: SW asset handler cache-miss → falls to network → fails → WKWebView inconsistent on rejected `respondWith` (sometimes fires onerror, sometimes hangs). When it hangs, `await vyveLoadSupabaseSDK()` never resolves → `vyveRevealApp()` never fires → `#app` stays `display:none` → black screen. **FIX:** added `/supabase.min.js`, `/dexie.min.js`, `/achievements.js` to sw.js urlsToCache.
 
-**Fix shape (post-diagnostic):** Likely wraps await chain in `Promise.race` with cached-session-fallback timeout; PostHog moves to lazy-init after auth-ready; SW shifts to cache-first for HTML navigation.
+- **Cause B: Dexie loaded cross-origin from cdn.jsdelivr.net.** db.js `DEXIE_CDN` constant pointed to `https://cdn.jsdelivr.net/npm/dexie@4.0.10/dist/dexie.min.js`. SW skips cross-origin (correct policy). Offline native fetch fails. Local-first dead. **FIX:** vendored dexie.min.js (94KB, dexie@4.0.10) into the repo at `/dexie.min.js`; db.js `DEXIE_CDN` constant changed to same-origin path; added to sw.js urlsToCache.
 
-**Estimated:** Diagnostic ~1-2 hours (no device). Fix ~1-2 hours + device verification. Total likely one session.
+- **Cause C (deferred): No Promise.race timeout on `vyveLoadSupabaseSDK()`.** Belt-and-braces. If A+B aren't sufficient, the await chain wants a 5s race with a "Preview mode: offline" fallback so `vyveRevealApp` fires regardless. Ship only if device verification reveals further hangs.
+
+**Cosmetic primitives that the original spec named but which turned out to be non-issues for the actual symptom:**
+
+- `posthog.init` is async (the script-loader is `async=true`); not in the blocking paint path. Telemetry to PostHog still fails offline but doesn't block paint.
+- `vyveSignalAuthReady` fires synchronously from the fast-path BEFORE the authoritative `getSession()`. The fast-path also short-circuits on `!navigator.onLine`. So the auth chain itself was already offline-resilient — the failure was earlier, at SDK load.
+- SW HTML strategy (stale-while-revalidate) was already correct for HTML; the cache miss was on JS assets, not HTML.
+
+**Verification protocol (Dean tonight):**
+
+1. Open app online, log in, navigate around — let SW install + cache.addAll() populate every urlsToCache entry.
+2. Force-close app entirely.
+3. Airplane mode ON.
+4. Re-open app cold.
+5. Expected: cold-boot to home in under 2s with no network. Page nav works. Dexie-wired surfaces render from local data.
+6. If still black-screens: Cause C is real, ship the Promise.race timeout wrap.
+
+**Estimated remaining if Cause C ships:** 30-45 min Claude + ~15 min Dean device verification.
 
 ### PF-14d — Offline navigation between pages [P0 LAUNCH BLOCKER]
 
