@@ -2,7 +2,7 @@
 
 ### PF-40 — Local-First Consolidation Campaign [P0 LAUNCH BLOCKER, active]
 
-**Status:** Scoped end-to-end PM-106. PF-40.1 audit is next ship. Folds PF-14d / PF-14e / PF-15.write-optimistic / PF-31 / PF-32 / PF-33 / PF-34 partial / PF-34b / PF-35 / PF-36 as symptoms. PF-14b stays separate (its own review cycle, sequences in parallel).
+**Status:** Scoped end-to-end PM-106. **PF-40.1 audit SHIPPED PM-107 (2026-05-14)** — 321 call sites enumerated and classified; artefacts at `audit/pf-40-1-callsites.json` + `playbooks/pf-40-local-first-consolidation.md`. **PF-40.2 (fat-row member-scoped hydrate) is the next ship.** Folds PF-14d / PF-14e / PF-15.write-optimistic / PF-31 / PF-32 / PF-33 / PF-34 partial / PF-34b / PF-35 / PF-36 as symptoms. PF-14b stays separate (its own review cycle, sequences in parallel).
 
 **Why the campaign exists.** Per-page Dexie wires (PF-6..PF-12, PF-15.x, PF-34) ship pages that paint from Dexie successfully *when the table's denormalised columns happen to be in the hydrate*. They fail when they're not. The 14 May 2026 evening canary walk on `test1@test.com` surfaced this on `habits.html` — page painted `undefined / undefined / undefined` for ~10s until EF backfill arrived with the join columns. The pattern survives for workouts/cardio (self-contained rows) but is latent on every page that reads catalogue joins. Building more clones would build more latent bugs. PF-40 fixes the foundation (hydrate completeness, consolidated read/write APIs, tiered assets) so per-page work becomes mechanical and bug-free.
 
@@ -10,14 +10,14 @@
 
 #### Sub-items (dependency order)
 
-**PF-40.1 — Write-path & read-path audit** [P0, next ship]
+**PF-40.1 — Write-path & read-path audit** [✅ SHIPPED PM-107 / 2026-05-14]
 - Read-only session, ~3-4h, solo daytime, no device required.
 - Enumerate every `fetch()` / `supaFetch()` / `writeQueued()` / direct PostgREST call across vyve-site (HTML + JS).
 - Classify each: member-scoped read | catalogue read | member-scoped write | §23.10 network-bound carve-out | dead code.
 - Output: JSON map keyed by file:line driving PF-40.4 + PF-40.5 mechanically.
 - Deliverable: `playbooks/pf-40-local-first-consolidation.md` as the campaign reference document (living, updated as audit surfaces shapes).
 
-**PF-40.2 — Hydrate completeness — fat-row member-scoped tables** [P0, depends on PF-40.1]
+**PF-40.2 — Hydrate completeness — fat-row member-scoped tables** [P0, NEXT SHIP, depends on PF-40.1 ✅]
 - ~1-2 sessions. Device verify on iPhone after ship.
 - Expand `db.js pullOneTable()` for every member-scoped table to fetch with denormalised join columns the UI reads.
 - `member_habits` ← `habit_library` join (name, description, category, difficulty, theme). Tonight's canary.
@@ -137,9 +137,31 @@
 
 #### First ship after this commit
 
-**PF-40.1 audit.** Read-only, no device required, unblocks everything else. Drafts `playbooks/pf-40-local-first-consolidation.md` as the campaign reference document.
+**PF-40.2 fat-row member-scoped hydrate.** PF-40.1 audit shipped 2026-05-14 (PM-107) — the JSON map at `audit/pf-40-1-callsites.json` enumerates 321 call sites across vyve-site at main `66f02b84`, classified into 13 categories. PF-40.2 is the structural fix for the Habits "undefined" canary that re-shaped the campaign at PM-106.
 
-The reason this is the right first ship rather than `VYVEData.write()` API directly: without the audit, the API design doesn't have ground truth on what call sites it needs to cover. Better to scan the surface area first, design the API to fit it, than build the API and discover at the migration phase that it can't handle the 47th edge case.
+PF-40.2 work shape: schema audit per member-scoped table; expand `db.js pullOneTable()` to fetch with denormalised join columns; introduce `VYVELocalDB.<table>.upsertFat()` preserving join columns on writes; device-verify on iPhone + Android. The `member_habits` ← `habit_library` join is the canary fix.
+
+#### Audit findings (PF-40.1 / PM-107 ship)
+
+**Migration target counts** (full map in `audit/pf-40-1-callsites.json`):
+
+- PF-40.4 writes: 55 sites across 16 files. By category: 21 LOCAL_UPSERT + 13 W_QUEUED + 21 W_MEMBER. By table: workouts (8), cardio (5), daily_habits (4), workout_plan_cache (4), members (4).
+- PF-40.5 reads: 137 sites across 27 files. By category: 73 R_MEMBER + 4 R_CATALOGUE + 60 LOCAL_READ. Heaviest: index.html (13), monthly-checkin.html (13), wellbeing-checkin.html (13), certificates.html (11).
+- PF-40.11 offline UX: 36 NET_BOUND sites across 18 files. Top EFs: platform-alert (11), share-workout (6), anthropic-proxy (2). Lewis copy gate ~10 strings.
+
+**Pre-existing API found.** `window.VYVEData` already defined in `vyve-offline.js` with `cacheGet / cacheSet / fetchCached / writeQueued / outboxFlush / outboxList / outboxClear / newClientId`. PF-40.4 and PF-40.5 evolve this surface; do not rebuild.
+
+**Dead-code candidates surfaced (clean up at PF-40.12):**
+
+- `log-perf` EF (4 references) — dead since PF-30 (PM-90) redirected perf.js to PostHog.
+- `register-push-token` EF (1 ref) + `vapid.js` writes to `push_subscriptions` (1 ref) — stale post-1.2 native APNs migration. Gate `vapid.js subscribePush()` on `!window.Capacitor || Capacitor.getPlatform() === 'web'` before cleanup.
+
+**Open questions for PF-40.2 / PF-40.3 ships:**
+
+1. **`weekly_scores` not in Dexie schema** (wellbeing-checkin.html:1121, monthly-checkin.html similar). Decision: derive trend-chart data client-side from `wellbeing_checkins` (already in Dexie) rather than adding `weekly_scores` as a member-scoped table. Single source of truth.
+2. **`member_running_plans` + `running_plan_cache`** schema work for running-plan.html (3 NET_BOUND anthropic-proxy sites). PF-34b folds into PF-40.3 with a cross-member sync rule for the shared `running_plan_cache`.
+3. **`monthly_checkins` table schema** — confirm shape in Dexie (likely member-scoped, similar to wellbeing_checkins).
+4. **`achievements` table schema** — server-only with cron-driven authoritative numbering is the recommendation; achievements overhaul is post-trial scope per PM-94 anyway.
 
 ---
 

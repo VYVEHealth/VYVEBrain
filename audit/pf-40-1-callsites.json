@@ -1,0 +1,5075 @@
+{
+  "campaign": "PF-40 Local-First Consolidation",
+  "sub_item": "PF-40.1 \u2014 Write-path & read-path audit",
+  "vyve_site_main_sha": "66f02b84f0588d0bc2fdbed4ca06ae684e10f685",
+  "audit_method": "GITHUB_GET_A_TREE recursive + parallel-fetch all HTML/JS blobs + multi-pattern grep + per-line classification",
+  "files_audited": 78,
+  "lines_scanned": 40400,
+  "categories": {
+    "R_MEMBER": 73,
+    "W_MEMBER": 21,
+    "WRAPPER": 86,
+    "NET_BOUND": 36,
+    "REALTIME": 1,
+    "LOCAL_READ": 60,
+    "LOCAL_UPSERT": 21,
+    "W_QUEUED": 13,
+    "INTERNAL": 1,
+    "NET_BOUND_DEAD": 4,
+    "DEAD": 1,
+    "NEEDS_SCHEMA": 1,
+    "R_CATALOGUE": 4
+  },
+  "category_definitions": {
+    "R_MEMBER": "Member-scoped read. Target: VYVEData.read() in PF-40.5. Must read from Dexie unconditionally after PF-40.2 fat-row hydrate.",
+    "R_CATALOGUE": "Catalogue table read (habit_library, workout_plans, personas, etc). Target: VYVEData.read() in PF-40.5 after PF-40.3 adds catalogue tables to Dexie schema.",
+    "W_MEMBER": "Member-scoped write (POST/PATCH/PUT/DELETE on member table OR write-shaped EF call). Target: VYVEData.write() in PF-40.4. Migration collapses per-page upsert workarounds.",
+    "W_QUEUED": "Write already routed through PF-4 writeQueued shadow drainer. PF-40.4 promotes these to optimistic-Dexie-upsert + bus-publish + queue, removing the page-side workaround pattern.",
+    "LOCAL_UPSERT": "Direct VYVELocalDB.<table>.upsert/put/add/update/delete call. The per-page workaround pattern (PF-1/PF-9/PF-10/PF-12/PF-34) that PF-40.4 absorbs into VYVEData.write().",
+    "LOCAL_READ": "Existing Dexie-first read via VYVELocalDB.<table>. Informational \u2014 shows where Dexie reads are already wired (PF-6/PF-7/PF-8/PF-9/PF-10/PF-11/PF-12/PF-34 surfaces). PF-40.5 standardises these through VYVEData.read().",
+    "NET_BOUND": "\u00a723.10 honest network-bound carve-out. Anthropic AI moments, off-proxy (Open Food Facts), leaderboard cross-member aggregate, send-email, github-proxy, etc. Target: VYVEData.fetchNetworkBound() in PF-40.5 \u2014 nameable, auditable.",
+    "REALTIME": "Supabase Realtime channel subscription. Session chat. \u00a723.10 carve-out; needs PF-40.11 offline UX state.",
+    "CDN_RUNTIME": "Cross-origin runtime fetch from page code. \u00a723.10 primitive 2b: vendor critical-path deps locally. PF-14c shipped dexie+supabase vendoring; this audit surfaces any remaining instances.",
+    "WRAPPER": "Helper definition itself (auth.js supaFetch, sync.js writeQueued). Not a user-facing call site; do not migrate.",
+    "UNKNOWN": "Needs human review.",
+    "UNKNOWN_EF": "EF slug not yet classified \u2014 review and add to NETWORK_BOUND_EFS or EF_UPGRADERS table.",
+    "UNKNOWN_TABLE": "REST URL points at a table not in MEMBER_TABLES or CATALOGUE_TABLES \u2014 schema audit needed.",
+    "UNKNOWN_EXTERNAL": "fetch() to an unrecognised external URL.",
+    "NET_BOUND_DEAD": "Network-bound EF that has been superseded \u2014 references remain in page code but the EF is dead-lettering. Candidates: log-perf (PF-30 redirected to PostHog), register-push-token (post-1.2 native APNs migration).",
+    "DEAD": "Reference to a table/EF that should no longer be written or read. e.g. push_subscriptions post-1.2 native APNs. Flag for cleanup at PF-40.12.",
+    "INTERNAL": "Internal admin tool (internal-dashboard/). Out of PF-40 scope \u2014 separate access pattern, password-gated, not member-facing.",
+    "UNKNOWN_CATALOGUE_WRITE": "Catalogue table being written to from page code \u2014 should never happen post-PF-40.3. Audit gate."
+  },
+  "per_file_summary": {
+    "settings.html": {
+      "WRAPPER": 22,
+      "LOCAL_READ": 2,
+      "LOCAL_UPSERT": 6,
+      "NET_BOUND": 1
+    },
+    "wellbeing-checkin.html": {
+      "NET_BOUND": 2,
+      "WRAPPER": 4,
+      "LOCAL_UPSERT": 1,
+      "R_MEMBER": 10,
+      "LOCAL_READ": 5,
+      "NEEDS_SCHEMA": 1
+    },
+    "index.html": {
+      "R_MEMBER": 6,
+      "LOCAL_READ": 7,
+      "NET_BOUND": 2,
+      "WRAPPER": 4
+    },
+    "cardio.html": {
+      "R_MEMBER": 5,
+      "WRAPPER": 7,
+      "LOCAL_READ": 4,
+      "W_MEMBER": 1,
+      "LOCAL_UPSERT": 1
+    },
+    "movement.html": {
+      "LOCAL_READ": 2,
+      "R_MEMBER": 2,
+      "LOCAL_UPSERT": 8,
+      "W_MEMBER": 5,
+      "WRAPPER": 1
+    },
+    "monthly-checkin.html": {
+      "NET_BOUND": 2,
+      "LOCAL_READ": 6,
+      "R_MEMBER": 7,
+      "WRAPPER": 2
+    },
+    "workouts-programme.js": {
+      "LOCAL_READ": 4,
+      "R_MEMBER": 5,
+      "WRAPPER": 3,
+      "R_CATALOGUE": 1,
+      "NET_BOUND": 4
+    },
+    "running-plan.html": {
+      "NET_BOUND": 3,
+      "WRAPPER": 10
+    },
+    "workouts-session.js": {
+      "W_QUEUED": 3,
+      "W_MEMBER": 5,
+      "LOCAL_READ": 1,
+      "R_MEMBER": 1,
+      "WRAPPER": 1,
+      "NET_BOUND": 2
+    },
+    "auth.js": {
+      "R_MEMBER": 7,
+      "WRAPPER": 4,
+      "NET_BOUND": 1
+    },
+    "certificates.html": {
+      "R_MEMBER": 2,
+      "LOCAL_READ": 9,
+      "NET_BOUND": 1
+    },
+    "habits.html": {
+      "WRAPPER": 1,
+      "W_QUEUED": 4,
+      "LOCAL_UPSERT": 3,
+      "NET_BOUND": 2,
+      "R_MEMBER": 1,
+      "LOCAL_READ": 1
+    },
+    "log-food.html": {
+      "NET_BOUND": 2,
+      "WRAPPER": 4,
+      "LOCAL_READ": 3,
+      "W_QUEUED": 3
+    },
+    "sync.js": {
+      "WRAPPER": 3,
+      "LOCAL_UPSERT": 2,
+      "LOCAL_READ": 4
+    },
+    "vyve-offline.js": {
+      "W_QUEUED": 2,
+      "WRAPPER": 6
+    },
+    "home-state-local.js": {
+      "LOCAL_READ": 7
+    },
+    "workouts-notes-prs.js": {
+      "R_MEMBER": 6,
+      "W_MEMBER": 1
+    },
+    "engagement.html": {
+      "R_MEMBER": 3,
+      "WRAPPER": 1,
+      "NET_BOUND": 1
+    },
+    "workouts-library.js": {
+      "R_MEMBER": 2,
+      "R_CATALOGUE": 3
+    },
+    "achievements.js": {
+      "R_MEMBER": 1,
+      "W_MEMBER": 1,
+      "WRAPPER": 2
+    },
+    "events-live.html": {
+      "NET_BOUND": 3,
+      "R_MEMBER": 1
+    },
+    "exercise.html": {
+      "LOCAL_READ": 2,
+      "R_MEMBER": 2
+    },
+    "healthbridge.js": {
+      "NET_BOUND": 1,
+      "R_MEMBER": 1,
+      "WRAPPER": 2
+    },
+    "nutrition.html": {
+      "LOCAL_READ": 1,
+      "W_QUEUED": 1,
+      "WRAPPER": 1,
+      "NET_BOUND": 1
+    },
+    "session-live.js": {
+      "NET_BOUND": 3,
+      "R_MEMBER": 1
+    },
+    "hk-diagnostic.html": {
+      "WRAPPER": 1,
+      "R_MEMBER": 2
+    },
+    "tracking.js": {
+      "W_MEMBER": 3
+    },
+    "workouts-builder.js": {
+      "W_MEMBER": 3
+    },
+    "activity.html": {
+      "R_MEMBER": 2
+    },
+    "certificate.html": {
+      "R_MEMBER": 2
+    },
+    "gdpr-erasure-cancel.html": {
+      "NET_BOUND": 1,
+      "WRAPPER": 1
+    },
+    "perf-test.html": {
+      "WRAPPER": 1,
+      "R_MEMBER": 1
+    },
+    "perf-v2.js": {
+      "NET_BOUND_DEAD": 2
+    },
+    "push-native.js": {
+      "NET_BOUND_DEAD": 1,
+      "WRAPPER": 1
+    },
+    "sw.js": {
+      "WRAPPER": 2
+    },
+    "theme.js": {
+      "R_MEMBER": 1,
+      "W_MEMBER": 1
+    },
+    "apple-health.html": {
+      "R_MEMBER": 1
+    },
+    "bus.js": {
+      "REALTIME": 1
+    },
+    "consent-gate.html": {
+      "R_MEMBER": 1
+    },
+    "dexie-source-indicator.js": {
+      "LOCAL_READ": 1
+    },
+    "events-rp.html": {
+      "NET_BOUND": 1
+    },
+    "hydration.js": {
+      "LOCAL_READ": 1
+    },
+    "internal-dashboard/index.html": {
+      "INTERNAL": 1
+    },
+    "leaderboard.html": {
+      "NET_BOUND": 1
+    },
+    "nutrition-setup.html": {
+      "WRAPPER": 1
+    },
+    "perf.js": {
+      "NET_BOUND_DEAD": 1
+    },
+    "session-rp.js": {
+      "NET_BOUND": 1
+    },
+    "shared-workout.html": {
+      "WRAPPER": 1
+    },
+    "vapid.js": {
+      "DEAD": 1
+    },
+    "workouts-exercise-menu.js": {
+      "W_MEMBER": 1
+    },
+    "workouts.html": {
+      "NET_BOUND": 1
+    }
+  },
+  "call_sites": [
+    {
+      "file": "achievements.js",
+      "line": 28,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": "GET",
+      "ef_slug": "log-activity",
+      "snippet": "var EVAL_URL = SUPA_URL + '/functions/v1/log-activity';"
+    },
+    {
+      "file": "achievements.js",
+      "line": 29,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "achievements-mark-seen",
+      "snippet": "var MARK_SEEN_URL = SUPA_URL + '/functions/v1/achievements-mark-seen';"
+    },
+    {
+      "file": "achievements.js",
+      "line": 170,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await fetch(MARK_SEEN_URL, {"
+    },
+    {
+      "file": "achievements.js",
+      "line": 211,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var res = await fetch(EVAL_URL, {"
+    },
+    {
+      "file": "activity.html",
+      "line": 173,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "get-activity-feed",
+      "snippet": "const res = await fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/get-activity-feed', {"
+    },
+    {
+      "file": "activity.html",
+      "line": 195,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "get-health-data",
+      "snippet": "const res = await fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/get-health-data', {"
+    },
+    {
+      "file": "apple-health.html",
+      "line": 239,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "get-health-data",
+      "snippet": "const res = await fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/get-health-data', {"
+    },
+    {
+      "file": "auth.js",
+      "line": 267,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "wellbeing_checkins",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "// /rest/v1/wellbeing_checkins \u2014 but suppression logic is the same:"
+    },
+    {
+      "file": "auth.js",
+      "line": 564,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_sdk_from"
+      ],
+      "table": "members",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": ".from('members')"
+    },
+    {
+      "file": "auth.js",
+      "line": 622,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": "GET",
+      "ef_slug": "member-dashboard",
+      "snippet": "var _VYVE_PF_FN   = _VYVE_PF_REST + '/functions/v1/member-dashboard';"
+    },
+    {
+      "file": "auth.js",
+      "line": 663,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var res = await fetch(_VYVE_PF_FN, { headers: { 'Authorization': 'Bearer ' + jwt } });"
+    },
+    {
+      "file": "auth.js",
+      "line": 677,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "members",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "var url = _VYVE_PF_REST + '/rest/v1/members?email=eq.' + encodeURIComponent(email)"
+    },
+    {
+      "file": "auth.js",
+      "line": 679,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var res = await fetch(url, { headers: _vyvePfRestHeaders(jwt) });"
+    },
+    {
+      "file": "auth.js",
+      "line": 691,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "workout_plan_cache",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "var url = _VYVE_PF_REST + '/rest/v1/workout_plan_cache?member_email=eq.' + encodeURIComponent(email)"
+    },
+    {
+      "file": "auth.js",
+      "line": 693,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var res = await fetch(url, { headers: _vyvePfRestHeaders(jwt) });"
+    },
+    {
+      "file": "auth.js",
+      "line": 712,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "member_habits",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(_VYVE_PF_REST + '/rest/v1/member_habits?member_email=eq.' + emailEnc"
+    },
+    {
+      "file": "auth.js",
+      "line": 715,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "daily_habits",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(_VYVE_PF_REST + '/rest/v1/daily_habits?member_email=eq.' + emailEnc"
+    },
+    {
+      "file": "auth.js",
+      "line": 959,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "platform-alert",
+      "snippet": "var ALERT_URL = 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert';"
+    },
+    {
+      "file": "auth.js",
+      "line": 975,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "fetch(ALERT_URL, {"
+    },
+    {
+      "file": "bus.js",
+      "line": 434,
+      "categories": [
+        "REALTIME"
+      ],
+      "evidence": [
+        "realtime_channel"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var channel = bridgeSupabase.channel(channelName);"
+    },
+    {
+      "file": "cardio.html",
+      "line": 304,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "member_running_plans",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const url = `${SUPA_URL}/rest/v1/member_running_plans?member_email=eq.${encodeURIComponent(memberEmail)}&is_active=eq.true&select=plan_name,goal,level,days_per_week,timeframe_weeks,start_date,plan_json,completions&limit=1`;"
+    },
+    {
+      "file": "cardio.html",
+      "line": 305,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch(url, { headers: hdrs });"
+    },
+    {
+      "file": "cardio.html",
+      "line": 531,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "weekly_goals",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.weekly_goals.allFor(memberEmail),"
+    },
+    {
+      "file": "cardio.html",
+      "line": 532,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "cardio",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.cardio.allFor(memberEmail),"
+    },
+    {
+      "file": "cardio.html",
+      "line": 533,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "workouts",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.workouts.allFor(memberEmail)"
+    },
+    {
+      "file": "cardio.html",
+      "line": 560,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "weekly_goals",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const goalUrl    = `${SUPA_URL}/rest/v1/weekly_goals?member_email=eq.${encodeURIComponent(memberEmail)}&week_start=eq.${wk}&select=exercise_target&limit=1`;"
+    },
+    {
+      "file": "cardio.html",
+      "line": 561,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "cardio",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const cardioUrl  = `${SUPA_URL}/rest/v1/cardio?member_email=eq.${encodeURIComponent(memberEmail)}&activity_date=gte.${wk}&select=id`;"
+    },
+    {
+      "file": "cardio.html",
+      "line": 562,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "workouts",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const workoutUrl = `${SUPA_URL}/rest/v1/workouts?member_email=eq.${encodeURIComponent(memberEmail)}&activity_date=gte.${wk}&select=id`;"
+    },
+    {
+      "file": "cardio.html",
+      "line": 565,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "fetch(goalUrl, { headers: hdrs }),"
+    },
+    {
+      "file": "cardio.html",
+      "line": 566,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "fetch(cardioUrl, { headers: hdrs }),"
+    },
+    {
+      "file": "cardio.html",
+      "line": 567,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "fetch(workoutUrl, { headers: hdrs })"
+    },
+    {
+      "file": "cardio.html",
+      "line": 594,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "cardio",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const rows = await VYVELocalDB.cardio.allFor(memberEmail);"
+    },
+    {
+      "file": "cardio.html",
+      "line": 619,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "cardio",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const url = `${SUPA_URL}/rest/v1/cardio?member_email=eq.${encodeURIComponent(memberEmail)}&select=cardio_type,duration_minutes,distance_km,activity_date,logged_at&order=logged_at.desc&limit=10`;"
+    },
+    {
+      "file": "cardio.html",
+      "line": 620,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch(url, { headers: hdrs });"
+    },
+    {
+      "file": "cardio.html",
+      "line": 756,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "cardio",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "const res = await fetch(`${SUPA_URL}/rest/v1/cardio`, {"
+    },
+    {
+      "file": "cardio.html",
+      "line": 764,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "// the optimistic patch. Direct fetch (no outbox), so any non-ok is"
+    },
+    {
+      "file": "cardio.html",
+      "line": 792,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "// surfaced as PF-4b (PM-82). cardio writes here use a direct fetch (not"
+    },
+    {
+      "file": "cardio.html",
+      "line": 802,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "cardio",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.cardio.upsert({"
+    },
+    {
+      "file": "certificate.html",
+      "line": 279,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": "GET",
+      "ef_slug": "member-dashboard",
+      "snippet": "const DASHBOARD_URL = 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard';"
+    },
+    {
+      "file": "certificate.html",
+      "line": 470,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "member-dashboard",
+      "snippet": "const res = await fetch(DASHBOARD_URL, { headers: { 'Authorization': 'Bearer ' + jwt } });"
+    },
+    {
+      "file": "certificates.html",
+      "line": 258,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": "GET",
+      "ef_slug": "member-dashboard",
+      "snippet": "const DASHBOARD_URL  = 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard';"
+    },
+    {
+      "file": "certificates.html",
+      "line": 410,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "certificates",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "&& typeof window.VYVELocalDB.certificates.allFor === 'function') {"
+    },
+    {
+      "file": "certificates.html",
+      "line": 412,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "certificates",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "window.VYVELocalDB.certificates.allFor(email).catch(() => []),"
+    },
+    {
+      "file": "certificates.html",
+      "line": 413,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "daily_habits",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "window.VYVELocalDB.daily_habits ? window.VYVELocalDB.daily_habits.allFor(email).catch(() => []) : Promise.resolve([]),"
+    },
+    {
+      "file": "certificates.html",
+      "line": 414,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "workouts",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "window.VYVELocalDB.workouts ? window.VYVELocalDB.workouts.allFor(email).catch(() => []) : Promise.resolve([]),"
+    },
+    {
+      "file": "certificates.html",
+      "line": 415,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "cardio",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "window.VYVELocalDB.cardio ? window.VYVELocalDB.cardio.allFor(email).catch(() => []) : Promise.resolve([]),"
+    },
+    {
+      "file": "certificates.html",
+      "line": 416,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "wellbeing_checkins",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "window.VYVELocalDB.wellbeing_checkins ? window.VYVELocalDB.wellbeing_checkins.allFor(email).catch(() => []) : Promise.resolve([]),"
+    },
+    {
+      "file": "certificates.html",
+      "line": 417,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "session_views",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "window.VYVELocalDB.session_views ? window.VYVELocalDB.session_views.allFor(email).catch(() => []) : Promise.resolve([]),"
+    },
+    {
+      "file": "certificates.html",
+      "line": 418,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "replay_views",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "window.VYVELocalDB.replay_views ? window.VYVELocalDB.replay_views.allFor(email).catch(() => []) : Promise.resolve([]),"
+    },
+    {
+      "file": "certificates.html",
+      "line": 419,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "members",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "window.VYVELocalDB.members ? window.VYVELocalDB.members.allFor(email).catch(() => []) : Promise.resolve([]),"
+    },
+    {
+      "file": "certificates.html",
+      "line": 474,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "member-dashboard",
+      "snippet": "const res = await fetch(DASHBOARD_URL, { headers: { 'Authorization': 'Bearer ' + jwt } });"
+    },
+    {
+      "file": "certificates.html",
+      "line": 545,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "platform-alert",
+      "snippet": "fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert', {"
+    },
+    {
+      "file": "consent-gate.html",
+      "line": 346,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_sdk_from"
+      ],
+      "table": "members",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": ".from('members')"
+    },
+    {
+      "file": "dexie-source-indicator.js",
+      "line": 487,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "_sync_meta",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "return window.VYVELocalDB._sync_meta.get(table)"
+    },
+    {
+      "file": "engagement.html",
+      "line": 477,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": "GET",
+      "ef_slug": "member-dashboard",
+      "snippet": "const EDGE_URL = 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard';"
+    },
+    {
+      "file": "engagement.html",
+      "line": 846,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "member-dashboard",
+      "snippet": "const res = await fetch(EDGE_URL,{headers:{'Authorization':'Bearer '+jwt}});"
+    },
+    {
+      "file": "engagement.html",
+      "line": 978,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "member-achievements",
+      "snippet": "var EF_URL = 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-achievements';"
+    },
+    {
+      "file": "engagement.html",
+      "line": 1562,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var res = await fetch(EF_URL, {"
+    },
+    {
+      "file": "engagement.html",
+      "line": 1618,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "platform-alert",
+      "snippet": "fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert', {"
+    },
+    {
+      "file": "events-live.html",
+      "line": 233,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "session_chat",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "await fetch(CHAT_SUPA_URL + '/rest/v1/session_chat', {"
+    },
+    {
+      "file": "events-live.html",
+      "line": 263,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "members",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(CHAT_SUPA_URL + '/rest/v1/members?email=eq.' + encodeURIComponent(chatUserEmail) + '&select=first_name&limit=1', {"
+    },
+    {
+      "file": "events-live.html",
+      "line": 318,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "session_chat",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const r = await fetch(CHAT_SUPA_URL + '/rest/v1/session_chat?session_type=eq.' + encodeURIComponent(CHAT_SESSION_TYPE) + '&order=created_at.desc&limit=' + CHAT_LIMIT, {"
+    },
+    {
+      "file": "events-live.html",
+      "line": 372,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "session_chat",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "await fetch(CHAT_SUPA_URL + '/rest/v1/session_chat', {"
+    },
+    {
+      "file": "events-rp.html",
+      "line": 217,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "external_third_party",
+        "fetch_call"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "youtube_data_api_external",
+      "snippet": "fetch('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=20&playlistId=' + PLAYLIST_ID + '&key=' + API_KEY)"
+    },
+    {
+      "file": "exercise.html",
+      "line": 312,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "workout_plan_cache",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "&& typeof window.VYVELocalDB.workout_plan_cache.allFor === 'function') {"
+    },
+    {
+      "file": "exercise.html",
+      "line": 313,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "workout_plan_cache",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const rows = await window.VYVELocalDB.workout_plan_cache.allFor(memberEmail);"
+    },
+    {
+      "file": "exercise.html",
+      "line": 331,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "multiline_rest_resolved"
+      ],
+      "table": "workout_plan_cache",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const res = await fetch("
+    },
+    {
+      "file": "exercise.html",
+      "line": 332,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "workout_plan_cache",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "`${SUPA_URL}/rest/v1/workout_plan_cache?member_email=eq.${encodeURIComponent(memberEmail)}&is_active=eq.true` +"
+    },
+    {
+      "file": "gdpr-erasure-cancel.html",
+      "line": 133,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "gdpr-erase-cancel",
+      "snippet": "var ENDPOINT = SUPABASE_URL + '/functions/v1/gdpr-erase-cancel';"
+    },
+    {
+      "file": "gdpr-erasure-cancel.html",
+      "line": 171,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var res = await fetch(ENDPOINT, { method: 'POST', headers: headers, body: JSON.stringify({ token: token }) });"
+    },
+    {
+      "file": "habits.html",
+      "line": 370,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch(REST + path, { ...opts, headers });"
+    },
+    {
+      "file": "habits.html",
+      "line": 555,
+      "categories": [
+        "W_QUEUED"
+      ],
+      "evidence": [
+        "write_queued"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "//   6. writeQueued (NOT awaited) with .then() for failure handling."
+    },
+    {
+      "file": "habits.html",
+      "line": 583,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "daily_habits",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.daily_habits.upsert({"
+    },
+    {
+      "file": "habits.html",
+      "line": 640,
+      "categories": [
+        "W_QUEUED"
+      ],
+      "evidence": [
+        "write_queued"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "return await VYVEData.writeQueued({"
+    },
+    {
+      "file": "habits.html",
+      "line": 744,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "daily_habits",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.daily_habits.delete(memberEmail, todayStr, habit.habit_id)"
+    },
+    {
+      "file": "habits.html",
+      "line": 791,
+      "categories": [
+        "W_QUEUED"
+      ],
+      "evidence": [
+        "write_queued"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "return await VYVEData.writeQueued({"
+    },
+    {
+      "file": "habits.html",
+      "line": 981,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "schedule-push",
+      "snippet": "const res = await fetch(SUPA_URL + '/functions/v1/schedule-push', {"
+    },
+    {
+      "file": "habits.html",
+      "line": 1027,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": "GET",
+      "ef_slug": "member-dashboard",
+      "snippet": "const res = await fetch(SUPA_URL + '/functions/v1/member-dashboard', {"
+    },
+    {
+      "file": "habits.html",
+      "line": 1076,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "daily_habits",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.daily_habits.upsert({"
+    },
+    {
+      "file": "habits.html",
+      "line": 1121,
+      "categories": [
+        "W_QUEUED"
+      ],
+      "evidence": [
+        "write_queued"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "return await VYVEData.writeQueued({"
+    },
+    {
+      "file": "habits.html",
+      "line": 1309,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "member_habits",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const localHabits = await VYVELocalDB.member_habits.allFor(memberEmail);"
+    },
+    {
+      "file": "habits.html",
+      "line": 1706,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "platform-alert",
+      "snippet": "fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert', {"
+    },
+    {
+      "file": "healthbridge.js",
+      "line": 136,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "sync-health-data",
+      "snippet": "const EF_URL = 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/sync-health-data';"
+    },
+    {
+      "file": "healthbridge.js",
+      "line": 137,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": "GET",
+      "ef_slug": "member-dashboard",
+      "snippet": "const DASHBOARD_URL = 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard';"
+    },
+    {
+      "file": "healthbridge.js",
+      "line": 153,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch(EF_URL, {"
+    },
+    {
+      "file": "healthbridge.js",
+      "line": 773,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch(DASHBOARD_URL, {"
+    },
+    {
+      "file": "hk-diagnostic.html",
+      "line": 68,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "<h2>Direct dashboard fetch (manual)</h2>"
+    },
+    {
+      "file": "hk-diagnostic.html",
+      "line": 219,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": "GET",
+      "ef_slug": "member-dashboard",
+      "snippet": "res = await fetch(\"https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard\", {"
+    },
+    {
+      "file": "hk-diagnostic.html",
+      "line": 282,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": "GET",
+      "ef_slug": "member-dashboard",
+      "snippet": "const res = await fetch(\"https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard\", {"
+    },
+    {
+      "file": "home-state-local.js",
+      "line": 247,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "daily_habits",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.daily_habits.allFor(email),"
+    },
+    {
+      "file": "home-state-local.js",
+      "line": 248,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "workouts",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.workouts.allFor(email),"
+    },
+    {
+      "file": "home-state-local.js",
+      "line": 249,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "cardio",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.cardio.allFor(email),"
+    },
+    {
+      "file": "home-state-local.js",
+      "line": 250,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "session_views",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.session_views.allFor(email),"
+    },
+    {
+      "file": "home-state-local.js",
+      "line": 251,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "replay_views",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.replay_views.allFor(email),"
+    },
+    {
+      "file": "home-state-local.js",
+      "line": 252,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "wellbeing_checkins",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.wellbeing_checkins.allFor(email),"
+    },
+    {
+      "file": "home-state-local.js",
+      "line": 253,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "weekly_goals",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.weekly_goals.allFor(email)"
+    },
+    {
+      "file": "hydration.js",
+      "line": 29,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "members",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.members.allFor(email)[0].persona once hydrate fires the"
+    },
+    {
+      "file": "index.html",
+      "line": 611,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": "GET",
+      "ef_slug": "member-dashboard",
+      "snippet": "const EDGE_URL='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard';"
+    },
+    {
+      "file": "index.html",
+      "line": 680,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "members",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.members.allFor(email),"
+    },
+    {
+      "file": "index.html",
+      "line": 681,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "member_habits",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.member_habits.allFor(email),"
+    },
+    {
+      "file": "index.html",
+      "line": 682,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "daily_habits",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.daily_habits.allFor(email),"
+    },
+    {
+      "file": "index.html",
+      "line": 683,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "workouts",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.workouts.allFor(email),"
+    },
+    {
+      "file": "index.html",
+      "line": 684,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "cardio",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.cardio.allFor(email),"
+    },
+    {
+      "file": "index.html",
+      "line": 685,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "session_views",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.session_views.allFor(email),"
+    },
+    {
+      "file": "index.html",
+      "line": 686,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "replay_views",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.replay_views.allFor(email)"
+    },
+    {
+      "file": "index.html",
+      "line": 1138,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "member-dashboard",
+      "snippet": "const res=await fetch(EDGE_URL,{headers:{'Authorization':'Bearer '+jwt}});"
+    },
+    {
+      "file": "index.html",
+      "line": 1201,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "members",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(SUPA + '/rest/v1/members?email=eq.' + encodeURIComponent(email) + '&select=first_name,last_name,tdee_maintenance,tdee_target,deficit_percentage,weight_kg,height_cm,goal_focus,persona,activity_level,gender,age,weight_unit&limit=1', { h"
+    },
+    {
+      "file": "index.html",
+      "line": 1220,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "workout_plan_cache",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(SUPA + '/rest/v1/workout_plan_cache?member_email=eq.' + encodeURIComponent(email) + '&is_active=eq.true&select=*', { headers: _hdrs })"
+    },
+    {
+      "file": "index.html",
+      "line": 1249,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "member_habits",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(SUPA + '/rest/v1/member_habits?member_email=eq.' + emailEnc + '&active=eq.true&select=habit_id,assigned_by,habit_library(habit_pot,habit_title,habit_description,habit_prompt,difficulty)', { headers: _hdrs }).then(function(r){ return r"
+    },
+    {
+      "file": "index.html",
+      "line": 1250,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "daily_habits",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(SUPA + '/rest/v1/daily_habits?member_email=eq.' + emailEnc + '&activity_date=eq.' + todayStr + '&select=habit_id,habit_completed,notes', { headers: _hdrs }).then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return "
+    },
+    {
+      "file": "index.html",
+      "line": 1499,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "notifications",
+      "snippet": "const NURL='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/notifications';"
+    },
+    {
+      "file": "index.html",
+      "line": 1514,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const r=await fetch(NURL,{headers:{'Authorization':'Bearer '+jwt}});"
+    },
+    {
+      "file": "index.html",
+      "line": 1534,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const r=await fetch(NURL,{headers:{'Authorization':'Bearer '+jwt}});"
+    },
+    {
+      "file": "index.html",
+      "line": 1570,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "fetch(NURL,{method:'POST',headers:{'Authorization':'Bearer '+j,'Content-Type':'application/json'},body:JSON.stringify({action:'mark_read',id:id})});"
+    },
+    {
+      "file": "index.html",
+      "line": 1587,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await fetch(NURL,{method:'POST',headers:{'Authorization':'Bearer '+jwt,'Content-Type':'application/json'},body:JSON.stringify({action:'mark_read'})});"
+    },
+    {
+      "file": "index.html",
+      "line": 1883,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "platform-alert",
+      "snippet": "fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert', {"
+    },
+    {
+      "file": "internal-dashboard/index.html",
+      "line": 684,
+      "categories": [
+        "INTERNAL"
+      ],
+      "evidence": [
+        "fetch_call"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}&limit=10000`, {"
+    },
+    {
+      "file": "leaderboard.html",
+      "line": 689,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "leaderboard",
+      "snippet": "const res = await fetch(SUPA_URL + '/functions/v1/leaderboard?' + qs, { headers });"
+    },
+    {
+      "file": "log-food.html",
+      "line": 464,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "off-proxy",
+      "snippet": "const OFF_PROXY = 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/off-proxy';"
+    },
+    {
+      "file": "log-food.html",
+      "line": 507,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res=await fetch(REST+path,{...opts,headers:{'Content-Type':'application/json','apikey':SUPA_ANON,'Authorization':'Bearer '+jwt,...(opts.headers||{})}});"
+    },
+    {
+      "file": "log-food.html",
+      "line": 665,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "nutrition_logs",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const allLogs = await VYVELocalDB.nutrition_logs.allFor(memberEmail);"
+    },
+    {
+      "file": "log-food.html",
+      "line": 894,
+      "categories": [
+        "W_QUEUED"
+      ],
+      "evidence": [
+        "write_queued"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const _delResult = await VYVEData.writeQueued({"
+    },
+    {
+      "file": "log-food.html",
+      "line": 945,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await fetch(url, { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'apikey': SUPA_ANON, 'Authorization': 'Bearer ' + jwt, 'Prefer': 'return=minimal' } });"
+    },
+    {
+      "file": "log-food.html",
+      "line": 963,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "nutrition_logs",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const all = await VYVELocalDB.nutrition_logs.allFor(memberEmail);"
+    },
+    {
+      "file": "log-food.html",
+      "line": 999,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "nutrition_my_foods",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const rows = await VYVELocalDB.nutrition_my_foods.allFor(memberEmail);"
+    },
+    {
+      "file": "log-food.html",
+      "line": 1122,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res=await fetch(url,{headers:{'apikey':SUPA_ANON,'Authorization':'Bearer '+SUPA_ANON}});"
+    },
+    {
+      "file": "log-food.html",
+      "line": 1281,
+      "categories": [
+        "W_QUEUED"
+      ],
+      "evidence": [
+        "write_queued"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const _insResult = await VYVEData.writeQueued({"
+    },
+    {
+      "file": "log-food.html",
+      "line": 1386,
+      "categories": [
+        "W_QUEUED"
+      ],
+      "evidence": [
+        "write_queued"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const _insResult = await VYVEData.writeQueued({"
+    },
+    {
+      "file": "log-food.html",
+      "line": 1472,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res=await fetch(url,{headers:{'apikey':SUPA_ANON,'Authorization':'Bearer '+SUPA_ANON}});"
+    },
+    {
+      "file": "log-food.html",
+      "line": 1517,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "platform-alert",
+      "snippet": "fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert', {"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 495,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "monthly-checkin",
+      "snippet": "const CHECKIN_EF    = `${SUPABASE_URL}/functions/v1/monthly-checkin`;"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 675,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "daily_habits",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.daily_habits.allFor(email),"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 676,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "workouts",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.workouts.allFor(email),"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 677,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "cardio",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.cardio.allFor(email),"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 678,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "session_views",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.session_views.allFor(email),"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 679,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "replay_views",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.replay_views.allFor(email),"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 680,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "wellbeing_checkins",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.wellbeing_checkins.allFor(email)"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 739,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "daily_habits",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(`${SUPABASE_URL}/rest/v1/daily_habits?member_email=eq.${enc}&${df}&select=activity_date`,    {headers}).then(r=>r.json()),"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 740,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "workouts",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(`${SUPABASE_URL}/rest/v1/workouts?member_email=eq.${enc}&${df}&select=activity_date`,        {headers}).then(r=>r.json()),"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 741,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "cardio",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(`${SUPABASE_URL}/rest/v1/cardio?member_email=eq.${enc}&${df}&select=activity_date`,          {headers}).then(r=>r.json()),"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 742,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "session_views",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(`${SUPABASE_URL}/rest/v1/session_views?member_email=eq.${enc}&${df}&select=activity_date`,   {headers}).then(r=>r.json()),"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 743,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "replay_views",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(`${SUPABASE_URL}/rest/v1/replay_views?member_email=eq.${enc}&${df}&select=activity_date`,    {headers}).then(r=>r.json()),"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 744,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "wellbeing_checkins",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(`${SUPABASE_URL}/rest/v1/wellbeing_checkins?member_email=eq.${enc}&select=iso_week&order=iso_year.desc,iso_week.desc&limit=4`,{headers}).then(r=>r.json()),"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 851,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch(CHECKIN_EF, {"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 968,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "members",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const _nameFetch = fetch(`${SUPABASE_URL}/rest/v1/members?email=eq.${encodeURIComponent(email)}&select=first_name&limit=1`, { headers: _nameHeaders });"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 969,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const _statusFetch = fetch(`${CHECKIN_EF}?email=${encodeURIComponent(email)}`, {"
+    },
+    {
+      "file": "monthly-checkin.html",
+      "line": 1144,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "platform-alert",
+      "snippet": "fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert', {"
+    },
+    {
+      "file": "movement.html",
+      "line": 356,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "workout_plan_cache",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "&& typeof window.VYVELocalDB.workout_plan_cache.allFor === 'function') {"
+    },
+    {
+      "file": "movement.html",
+      "line": 357,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "workout_plan_cache",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const rows = await window.VYVELocalDB.workout_plan_cache.allFor(memberEmail);"
+    },
+    {
+      "file": "movement.html",
+      "line": 382,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "multiline_rest_resolved"
+      ],
+      "table": "workout_plan_cache",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const res = await fetch("
+    },
+    {
+      "file": "movement.html",
+      "line": 383,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "workout_plan_cache",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "`${SUPA_URL}/rest/v1/workout_plan_cache` +"
+    },
+    {
+      "file": "movement.html",
+      "line": 560,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "workouts",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "&& typeof window.VYVELocalDB.workouts.upsert === 'function') {"
+    },
+    {
+      "file": "movement.html",
+      "line": 562,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "workouts",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await window.VYVELocalDB.workouts.upsert({"
+    },
+    {
+      "file": "movement.html",
+      "line": 582,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "workouts",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "const _mvRes = await fetch(`${SUPA_URL}/rest/v1/workouts`, {"
+    },
+    {
+      "file": "movement.html",
+      "line": 631,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "workout_plan_cache",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "&& typeof window.VYVELocalDB.workout_plan_cache.upsert === 'function') {"
+    },
+    {
+      "file": "movement.html",
+      "line": 633,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "workout_plan_cache",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await window.VYVELocalDB.workout_plan_cache.upsert({"
+    },
+    {
+      "file": "movement.html",
+      "line": 647,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "multiline_rest_resolved"
+      ],
+      "table": "workout_plan_cache",
+      "verb": "PATCH",
+      "ef_slug": null,
+      "snippet": "await fetch("
+    },
+    {
+      "file": "movement.html",
+      "line": 648,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "workout_plan_cache",
+      "verb": "PATCH",
+      "ef_slug": null,
+      "snippet": "`${SUPA_URL}/rest/v1/workout_plan_cache?member_email=eq.${encodeURIComponent(memberEmail)}&is_active=eq.true`,"
+    },
+    {
+      "file": "movement.html",
+      "line": 869,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "cardio",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "&& typeof window.VYVELocalDB.cardio.upsert === 'function') {"
+    },
+    {
+      "file": "movement.html",
+      "line": 871,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "cardio",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await window.VYVELocalDB.cardio.upsert({"
+    },
+    {
+      "file": "movement.html",
+      "line": 877,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "cardio",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "res = await fetch(`${SUPA_URL}/rest/v1/cardio`, {"
+    },
+    {
+      "file": "movement.html",
+      "line": 912,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "workouts",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "&& typeof window.VYVELocalDB.workouts.upsert === 'function') {"
+    },
+    {
+      "file": "movement.html",
+      "line": 914,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "workouts",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await window.VYVELocalDB.workouts.upsert({"
+    },
+    {
+      "file": "movement.html",
+      "line": 920,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "workouts",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "res = await fetch(`${SUPA_URL}/rest/v1/workouts`, {"
+    },
+    {
+      "file": "movement.html",
+      "line": 971,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "// pure direct-fetch (no writeQueued, no outbox), so the eager-fire path"
+    },
+    {
+      "file": "nutrition-setup.html",
+      "line": 323,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch(REST + path, {"
+    },
+    {
+      "file": "nutrition.html",
+      "line": 635,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "weight_logs",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const rows = await VYVELocalDB.weight_logs.allFor(email);"
+    },
+    {
+      "file": "nutrition.html",
+      "line": 764,
+      "categories": [
+        "W_QUEUED"
+      ],
+      "evidence": [
+        "write_queued"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "_wtWriteResult = await VYVEData.writeQueued({"
+    },
+    {
+      "file": "nutrition.html",
+      "line": 894,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch(REST+path,{...opts,headers:{'Content-Type':'application/json','apikey':SUPA_ANON,'Authorization':'Bearer '+jwt,...(opts.headers||{})}});"
+    },
+    {
+      "file": "nutrition.html",
+      "line": 1490,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "platform-alert",
+      "snippet": "fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert', {"
+    },
+    {
+      "file": "perf-test.html",
+      "line": 150,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "// \u2500\u2500 Member-dashboard fetch (replicates index.html's call shape) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+    },
+    {
+      "file": "perf-test.html",
+      "line": 165,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": "GET",
+      "ef_slug": "member-dashboard",
+      "snippet": "var res = await fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard', {"
+    },
+    {
+      "file": "perf-v2.js",
+      "line": 42,
+      "categories": [
+        "NET_BOUND_DEAD"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "log-perf",
+      "snippet": "* DELIVERY: POST to /functions/v1/log-perf via fetch+keepalive on pagehide"
+    },
+    {
+      "file": "perf-v2.js",
+      "line": 282,
+      "categories": [
+        "NET_BOUND_DEAD"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "log-perf",
+      "snippet": "fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/log-perf', {"
+    },
+    {
+      "file": "perf.js",
+      "line": 5,
+      "categories": [
+        "NET_BOUND_DEAD"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "log-perf",
+      "snippet": "*   1. Delivery target moved from /functions/v1/log-perf to PostHog capture."
+    },
+    {
+      "file": "push-native.js",
+      "line": 34,
+      "categories": [
+        "NET_BOUND_DEAD"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "register-push-token",
+      "snippet": "const REGISTER_FN = SUPABASE_URL + '/functions/v1/register-push-token';"
+    },
+    {
+      "file": "push-native.js",
+      "line": 107,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch(REGISTER_FN, {"
+    },
+    {
+      "file": "running-plan.html",
+      "line": 321,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "anthropic_ref",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "anthropic-proxy",
+      "snippet": "const PROXY_URL  = 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/anthropic-proxy';"
+    },
+    {
+      "file": "running-plan.html",
+      "line": 385,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await fetch(MRP_TABLE_URL + '?member_email=eq.' + encodeURIComponent(email) + '&is_active=eq.true',"
+    },
+    {
+      "file": "running-plan.html",
+      "line": 392,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch(MRP_TABLE_URL,"
+    },
+    {
+      "file": "running-plan.html",
+      "line": 414,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const getRes = await fetch(getUrl, { headers: hdrs });"
+    },
+    {
+      "file": "running-plan.html",
+      "line": 425,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await fetch(MRP_TABLE_URL + '?id=eq.' + encodeURIComponent(row.id),"
+    },
+    {
+      "file": "running-plan.html",
+      "line": 442,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const countRes = await fetch(countUrl, { headers: hdrs });"
+    },
+    {
+      "file": "running-plan.html",
+      "line": 495,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch(MRP_TABLE_URL,"
+    },
+    {
+      "file": "running-plan.html",
+      "line": 667,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "anthropic_ref"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "anthropic-proxy",
+      "snippet": "// \u2500\u2500 GENERATE (calls anthropic-proxy Edge Function) \u2500\u2500\u2500\u2500"
+    },
+    {
+      "file": "running-plan.html",
+      "line": 715,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const cacheRes=await fetch(SUPA_URL+'/running_plan_cache?cache_key=eq.'+encodeURIComponent(sharedCacheKey)+'&select=plan_json,use_count',{headers:SUPA_HDR});"
+    },
+    {
+      "file": "running-plan.html",
+      "line": 720,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "fetch(SUPA_URL+'/running_plan_cache?cache_key=eq.'+encodeURIComponent(sharedCacheKey),{method:'PATCH',headers:SUPA_HDR,body:JSON.stringify({last_used_at:new Date().toISOString(),use_count:(cacheRows[0].use_count||1)+1})}).catch(()=>{});"
+    },
+    {
+      "file": "running-plan.html",
+      "line": 739,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const response = await fetch(PROXY_URL, {"
+    },
+    {
+      "file": "running-plan.html",
+      "line": 780,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "fetch(SUPA_URL+'/running_plan_cache', {"
+    },
+    {
+      "file": "running-plan.html",
+      "line": 1000,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "platform-alert",
+      "snippet": "fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert', {"
+    },
+    {
+      "file": "session-live.js",
+      "line": 168,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "session_chat",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "await fetch(CHAT_SUPA_URL + '/rest/v1/session_chat', {"
+    },
+    {
+      "file": "session-live.js",
+      "line": 199,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "members",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(CHAT_SUPA_URL + '/rest/v1/members?email=eq.' + encodeURIComponent(chatUserEmail) + '&select=first_name&limit=1', {"
+    },
+    {
+      "file": "session-live.js",
+      "line": 242,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "session_chat",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "var r = await fetch(CHAT_SUPA_URL + '/rest/v1/session_chat?session_type=eq.' + encodeURIComponent(CHAT_SESSION_TYPE) + '&order=created_at.desc&limit=' + CHAT_LIMIT, {"
+    },
+    {
+      "file": "session-live.js",
+      "line": 294,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "session_chat",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "await fetch(CHAT_SUPA_URL + '/rest/v1/session_chat', {"
+    },
+    {
+      "file": "session-rp.js",
+      "line": 105,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "external_third_party",
+        "fetch_call"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "youtube_data_api_external",
+      "snippet": "fetch('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=20&playlistId=' + playlistId + '&key=' + YT_API_KEY)"
+    },
+    {
+      "file": "settings.html",
+      "line": 963,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "async function supaFetch(path, opts = {}) {"
+    },
+    {
+      "file": "settings.html",
+      "line": 965,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "return fetch(SUPA_URL + path, {"
+    },
+    {
+      "file": "settings.html",
+      "line": 1032,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await supaFetch("
+    },
+    {
+      "file": "settings.html",
+      "line": 1094,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const memberPromise = supaFetch(`/members?email=eq.${encodeURIComponent(user.email)}&select=first_name,last_name,persona,persona_reason,specific_goal,weight_unit,height_unit,display_name_preference`);"
+    },
+    {
+      "file": "settings.html",
+      "line": 1102,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "habit_library",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.habit_library.all().catch(function () { return []; }),"
+    },
+    {
+      "file": "settings.html",
+      "line": 1103,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "member_habits",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.member_habits.allFor(user.email).catch(function () { return []; }),"
+    },
+    {
+      "file": "settings.html",
+      "line": 1134,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "supaFetch(`/habit_library?or=(created_by.is.null,created_by.eq.${encodeURIComponent(user.email)})&active=eq.true&select=id,habit_pot,habit_title,habit_description,difficulty,created_by&order=habit_pot.asc,habit_title.asc`),"
+    },
+    {
+      "file": "settings.html",
+      "line": 1135,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "supaFetch(`/member_habits?member_email=eq.${encodeURIComponent(user.email)}&active=eq.true&select=habit_id`),"
+    },
+    {
+      "file": "settings.html",
+      "line": 1299,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const updateRes = await supaFetch("
+    },
+    {
+      "file": "settings.html",
+      "line": 1308,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "members",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "try { await VYVELocalDB.members.upsert({ email: _memberEmail, persona: _selectedPersona, persona_assigned_at: new Date().toISOString() }); } catch (_) {}"
+    },
+    {
+      "file": "settings.html",
+      "line": 1311,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await supaFetch('/persona_switches', {"
+    },
+    {
+      "file": "settings.html",
+      "line": 1317,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await supaFetch('/ai_decisions', {"
+    },
+    {
+      "file": "settings.html",
+      "line": 1367,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await supaFetch('/habit_library', {"
+    },
+    {
+      "file": "settings.html",
+      "line": 1389,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "habit_library",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "try { await VYVELocalDB.habit_library.upsert(newHabit); } catch (_) {}"
+    },
+    {
+      "file": "settings.html",
+      "line": 1415,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await supaFetch("
+    },
+    {
+      "file": "settings.html",
+      "line": 1421,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "member_habits",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "try { await VYVELocalDB.member_habits.upsert({ member_email: _memberEmail, habit_id: id, active: false }); } catch (_) {}"
+    },
+    {
+      "file": "settings.html",
+      "line": 1424,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await supaFetch(`/habit_library?id=eq.${id}&created_by=eq.${encodeURIComponent(_memberEmail)}`, { method: 'DELETE' });"
+    },
+    {
+      "file": "settings.html",
+      "line": 1427,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "habit_library",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "try { await VYVELocalDB.habit_library.delete(id); } catch (_) {}"
+    },
+    {
+      "file": "settings.html",
+      "line": 1536,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await supaFetch("
+    },
+    {
+      "file": "settings.html",
+      "line": 1542,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "member_habits",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "try { await VYVELocalDB.member_habits.upsert({ member_email: _memberEmail, habit_id: id, active: false }); } catch (_) {}"
+    },
+    {
+      "file": "settings.html",
+      "line": 1552,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await supaFetch('/member_habits', {"
+    },
+    {
+      "file": "settings.html",
+      "line": 1565,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await supaFetch('/ai_decisions', {"
+    },
+    {
+      "file": "settings.html",
+      "line": 1593,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await supaFetch("
+    },
+    {
+      "file": "settings.html",
+      "line": 1599,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "members",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "try { await VYVELocalDB.members.upsert({ email: _memberEmail, specific_goal: _pendingGoal }); } catch (_) {}"
+    },
+    {
+      "file": "settings.html",
+      "line": 1601,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "supa_fetch"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await supaFetch('/ai_decisions', {"
+    },
+    {
+      "file": "settings.html",
+      "line": 1819,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "// Next dashboard fetch (or page reload) will reaffirm via member_health_connections."
+    },
+    {
+      "file": "settings.html",
+      "line": 1848,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "gdpr-export-request",
+      "snippet": "const GDPR_EXPORT_FUNCTIONS_URL = 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/gdpr-export-request';"
+    },
+    {
+      "file": "settings.html",
+      "line": 1880,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const r = await fetch(GDPR_EXPORT_FUNCTIONS_URL, {"
+    },
+    {
+      "file": "settings.html",
+      "line": 2037,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var r = await fetch(EF('gdpr-erase-status'), { method:'POST', headers: headers });"
+    },
+    {
+      "file": "settings.html",
+      "line": 2059,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var r = await fetch(EF('gdpr-erase-cancel'), {"
+    },
+    {
+      "file": "settings.html",
+      "line": 2115,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var r = await fetch(EF('gdpr-erase-request'), {"
+    },
+    {
+      "file": "shared-workout.html",
+      "line": 281,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const resp = await fetch(`${EF_BASE}/share-workout?id=${shareId}`);"
+    },
+    {
+      "file": "sw.js",
+      "line": 122,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const networkFetch = fetch(req)"
+    },
+    {
+      "file": "sw.js",
+      "line": 147,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "return fetch(req).then(resp => {"
+    },
+    {
+      "file": "sync.js",
+      "line": 90,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "return fetch(REST + path, {"
+    },
+    {
+      "file": "sync.js",
+      "line": 105,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "// Each entry is { table, scope, fetch(email), persist(email, rows) }."
+    },
+    {
+      "file": "sync.js",
+      "line": 132,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "daily_habits",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "p = p.then(window.VYVELocalDB.daily_habits.upsert.bind(null, rows[i]));"
+    },
+    {
+      "file": "sync.js",
+      "line": 285,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "members",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "return window.VYVELocalDB.members.upsert(rows[0]);"
+    },
+    {
+      "file": "sync.js",
+      "line": 393,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "_sync_meta",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "return window.VYVELocalDB._sync_meta.get(table).then(function (meta) {"
+    },
+    {
+      "file": "sync.js",
+      "line": 543,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "_sync_meta",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var fresh = await window.VYVELocalDB._sync_meta.get(table).then(function (m) {"
+    },
+    {
+      "file": "sync.js",
+      "line": 554,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "_sync_meta",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var meta = await window.VYVELocalDB._sync_meta.get(table);"
+    },
+    {
+      "file": "sync.js",
+      "line": 562,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "_sync_meta",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var meta2 = await window.VYVELocalDB._sync_meta.get(table);"
+    },
+    {
+      "file": "sync.js",
+      "line": 845,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var resp = await fetch(item.url, {"
+    },
+    {
+      "file": "theme.js",
+      "line": 63,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "members",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(SUPA_URL + '/rest/v1/members?email=eq.' + encodeURIComponent(user.email) + '&select=theme_preference&limit=1', {"
+    },
+    {
+      "file": "theme.js",
+      "line": 107,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "members",
+      "verb": "PATCH",
+      "ef_slug": null,
+      "snippet": "fetch(SUPA_URL + '/rest/v1/members?email=eq.' + encodeURIComponent(user.email), {"
+    },
+    {
+      "file": "tracking.js",
+      "line": 114,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch("
+    },
+    {
+      "file": "tracking.js",
+      "line": 141,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch("
+    },
+    {
+      "file": "tracking.js",
+      "line": 162,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await fetch("
+    },
+    {
+      "file": "vapid.js",
+      "line": 33,
+      "categories": [
+        "DEAD"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "push_subscriptions",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "await fetch(SUPABASE_URL + '/rest/v1/push_subscriptions', {"
+    },
+    {
+      "file": "vyve-offline.js",
+      "line": 13,
+      "categories": [
+        "W_QUEUED"
+      ],
+      "evidence": [
+        "write_queued"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "writeQueued({ url, method, headers, body, table?, optimistic? })"
+    },
+    {
+      "file": "vyve-offline.js",
+      "line": 182,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var resp = await fetch(url, { headers: headers });"
+    },
+    {
+      "file": "vyve-offline.js",
+      "line": 260,
+      "categories": [
+        "W_QUEUED"
+      ],
+      "evidence": [
+        "write_queued"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "async function writeQueued(args) {"
+    },
+    {
+      "file": "vyve-offline.js",
+      "line": 291,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "firstResp = await fetch(item.url, {"
+    },
+    {
+      "file": "vyve-offline.js",
+      "line": 355,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var resp = await fetch(it.url, { method: it.method, headers: it.headers, body: it.body });"
+    },
+    {
+      "file": "vyve-offline.js",
+      "line": 515,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "this list IN ADDITION to the outbox, so direct fetch() writes (which"
+    },
+    {
+      "file": "vyve-offline.js",
+      "line": 519,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "Most VYVE write sites use direct `fetch('POST')` rather than writeQueued"
+    },
+    {
+      "file": "vyve-offline.js",
+      "line": 680,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "// Also walk the recent-activity breadcrumb store. Direct fetch() writes"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 335,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "wellbeing-checkin",
+      "snippet": "const EDGE_FN_URL   = `${SUPABASE_URL}/functions/v1/wellbeing-checkin`;"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 472,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch(EDGE_FN_URL, {"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 650,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const res = await fetch(EDGE_FN_URL, {"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 734,
+      "categories": [
+        "LOCAL_UPSERT"
+      ],
+      "evidence": [
+        "vyve_local_upsert"
+      ],
+      "table": "wellbeing_checkins",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.wellbeing_checkins.upsert({"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 758,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "// PM-65: network-throw is the third failure class. fetch() never"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1007,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "multiline_rest_resolved"
+      ],
+      "table": "members",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const memberFetch = fetch("
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1008,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "members",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "`${SUPABASE_URL}/rest/v1/members?email=eq.${enc}&select=first_name,cert_habits_count,cert_workouts_count,cert_cardio_count,cert_sessions_count`,"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1016,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "daily_habits",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.daily_habits.allFor(email),"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1017,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "workouts",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.workouts.allFor(email),"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1018,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "cardio",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.cardio.allFor(email),"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1019,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "session_views",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "VYVELocalDB.session_views.allFor(email),"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1074,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "daily_habits",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(`${SUPABASE_URL}/rest/v1/daily_habits?member_email=eq.${enc}&activity_date=gte.${weekStart}&select=activity_date`, { headers }),"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1075,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "workouts",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(`${SUPABASE_URL}/rest/v1/workouts?member_email=eq.${enc}&activity_date=gte.${weekStart}&select=id`, { headers }),"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1076,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "cardio",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(`${SUPABASE_URL}/rest/v1/cardio?member_email=eq.${enc}&activity_date=gte.${weekStart}&select=id`, { headers }),"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1077,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "session_views",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(`${SUPABASE_URL}/rest/v1/session_views?member_email=eq.${enc}&activity_date=gte.${weekStart}&select=category,minutes_watched`, { headers }),"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1079,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "session_views",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "fetch(`${SUPABASE_URL}/rest/v1/session_views?member_email=eq.${enc}&select=category`, { headers }),"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1121,
+      "categories": [
+        "NEEDS_SCHEMA",
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "multiline_rest_resolved",
+        "not_in_dexie_schema"
+      ],
+      "table": "weekly_scores",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const res = await fetch("
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1122,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "weekly_scores",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "`${SUPABASE_URL}/rest/v1/weekly_scores?member_email=eq.${enc}&select=wellbeing_score,engagement_score,iso_week,iso_year,activity_date&order=activity_date.desc&limit=8`,"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1147,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "wellbeing_checkins",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var allRows = await VYVELocalDB.wellbeing_checkins.allFor(email);"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1172,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "wellbeing_checkins",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "var url = SUPABASE_URL + \"/rest/v1/wellbeing_checkins?member_email=eq.\" + enc + \"&iso_week=eq.\" + isoWeek + \"&iso_year=eq.\" + isoYear + \"&select=score_wellbeing,ai_recommendation,logged_at&limit=1\";"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1173,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "var res = await fetch(url, { headers: await getAuthHeaders() });"
+    },
+    {
+      "file": "wellbeing-checkin.html",
+      "line": 1363,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "platform-alert",
+      "snippet": "fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert', {"
+    },
+    {
+      "file": "workouts-builder.js",
+      "line": 98,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "custom_workouts",
+      "verb": "PATCH",
+      "ef_slug": null,
+      "snippet": "await fetch(`${SUPA_URL}/rest/v1/custom_workouts?id=eq.${editingWorkoutId}`, {"
+    },
+    {
+      "file": "workouts-builder.js",
+      "line": 126,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "custom_workouts",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "await fetch(`${SUPA_URL}/rest/v1/custom_workouts`, {"
+    },
+    {
+      "file": "workouts-builder.js",
+      "line": 140,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "custom_workouts",
+      "verb": "DELETE",
+      "ef_slug": null,
+      "snippet": "await fetch(`${SUPA_URL}/rest/v1/custom_workouts?id=eq.${id}`, {"
+    },
+    {
+      "file": "workouts-exercise-menu.js",
+      "line": 224,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "exercise_swaps",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "fetch(`${SUPA_URL}/rest/v1/exercise_swaps`, {"
+    },
+    {
+      "file": "workouts-library.js",
+      "line": 52,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "workout_plan_cache",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "url: `${SUPA_URL}/rest/v1/workout_plan_cache?member_email=eq.${encodeURIComponent(memberEmail)}&is_active=eq.false&select=id,programme_json->programme_name,source,current_week,current_session,plan_duration_weeks,paused_at&order=paused_at.de"
+    },
+    {
+      "file": "workouts-library.js",
+      "line": 61,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "workout_plan_cache",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const resp = await fetch(`${SUPA_URL}/rest/v1/workout_plan_cache?member_email=eq.${encodeURIComponent(memberEmail)}&is_active=eq.false&select=id,programme_json->programme_name,source,current_week,current_session,plan_duration_weeks,paused_a"
+    },
+    {
+      "file": "workouts-library.js",
+      "line": 101,
+      "categories": [
+        "R_CATALOGUE"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "workout-library",
+      "snippet": "const resp = await fetch(`${SUPA_URL}/functions/v1/workout-library`, {"
+    },
+    {
+      "file": "workouts-library.js",
+      "line": 311,
+      "categories": [
+        "R_CATALOGUE"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "workout-library",
+      "snippet": "const resp = await fetch(`${SUPA_URL}/functions/v1/workout-library`, {"
+    },
+    {
+      "file": "workouts-library.js",
+      "line": 390,
+      "categories": [
+        "R_CATALOGUE"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "workout-library",
+      "snippet": "const resp = await fetch(`${SUPA_URL}/functions/v1/workout-library`, {"
+    },
+    {
+      "file": "workouts-notes-prs.js",
+      "line": 16,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "exercise_notes",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "url: SUPA_URL + '/rest/v1/exercise_notes?member_email=eq.' + encodeURIComponent(memberEmail) + '&select=exercise_name,note',"
+    },
+    {
+      "file": "workouts-notes-prs.js",
+      "line": 25,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "exercise_notes",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const res = await fetch(SUPA_URL + '/rest/v1/exercise_notes?member_email=eq.' + encodeURIComponent(memberEmail) + '&select=exercise_name,note', {"
+    },
+    {
+      "file": "workouts-notes-prs.js",
+      "line": 37,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "exercise_notes",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "await fetch(SUPA_URL + '/rest/v1/exercise_notes', {"
+    },
+    {
+      "file": "workouts-notes-prs.js",
+      "line": 127,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "workouts",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const res = await fetch(SUPA_URL + '/rest/v1/workouts?member_email=eq.' + encodeURIComponent(memberEmail) + '&workout_name=eq.' + encodeURIComponent(sessionName) + '&select=activity_date,duration_minutes&order=activity_date.desc&limit=1', {"
+    },
+    {
+      "file": "workouts-notes-prs.js",
+      "line": 134,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "exercise_logs",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const logRes = await fetch(SUPA_URL + '/rest/v1/exercise_logs?member_email=eq.' + encodeURIComponent(memberEmail) + '&activity_date=eq.' + last.activity_date + '&select=weight_kg,reps_completed', {"
+    },
+    {
+      "file": "workouts-notes-prs.js",
+      "line": 193,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "workouts",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const res = await fetch(SUPA_URL + '/rest/v1/workouts?member_email=eq.' + encodeURIComponent(memberEmail) + '&select=activity_date,workout_name,duration_minutes&order=activity_date.desc&limit=50', {"
+    },
+    {
+      "file": "workouts-notes-prs.js",
+      "line": 199,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "exercise_logs",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const logRes = await fetch(SUPA_URL + '/rest/v1/exercise_logs?member_email=eq.' + encodeURIComponent(memberEmail) + '&activity_date=in.(' + dates.map(d => '\"' + d + '\"').join(',') + ')&select=activity_date,exercise_name,weight_kg,reps_compl"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 84,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "workout_plan_cache",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const localRows = await VYVELocalDB.workout_plan_cache.allFor(memberEmail);"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 92,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "workout_plan_cache",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const res = await fetch(`${SUPA_URL}/rest/v1/workout_plan_cache?member_email=eq.${encodeURIComponent(memberEmail)}&is_active=eq.true&select=*`, {"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 111,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "// off parallel fetch() for every thumbnail URL referenced in the active"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 145,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "try { fetch(u, { mode: 'no-cors', credentials: 'omit' }).catch(function(){}); } catch(_) {}"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 265,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "workout_plans",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const localRows = await VYVELocalDB.workout_plans.allFor();"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 272,
+      "categories": [
+        "R_CATALOGUE"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "workout_plans",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const res = await fetch(`${SUPA_URL}/rest/v1/workout_plans?select=exercise_name,muscle_group,equipment_needed,video_url,thumbnail_url,plan_type&order=exercise_name`, {"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 370,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "exercise_logs",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const rows = await VYVELocalDB.exercise_logs.allFor(memberEmail);"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 383,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "exercise_logs",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "url: `${SUPA_URL}/rest/v1/exercise_logs?member_email=eq.${encodeURIComponent(memberEmail)}&select=*&order=logged_at.desc`,"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 392,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "exercise_logs",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const res = await fetch(`${SUPA_URL}/rest/v1/exercise_logs?member_email=eq.${encodeURIComponent(memberEmail)}&select=*&order=logged_at.desc`, {"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 411,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "custom_workouts",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const rows = await VYVELocalDB.custom_workouts.allFor(memberEmail);"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 425,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "custom_workouts",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "url: `${SUPA_URL}/rest/v1/custom_workouts?member_email=eq.${encodeURIComponent(memberEmail)}&select=*&order=created_at.desc`,"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 437,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "custom_workouts",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const res = await fetch(`${SUPA_URL}/rest/v1/custom_workouts?member_email=eq.${encodeURIComponent(memberEmail)}&select=*&order=created_at.desc`, {"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 497,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "share-workout",
+      "snippet": "const resp = await fetch(`${SUPA_URL}/functions/v1/share-workout`, {"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 622,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "share-workout",
+      "snippet": "const resp = await fetch(`${SUPA_URL}/functions/v1/share-workout?code=${code}`);"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 667,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "share-workout",
+      "snippet": "? `${SUPA_URL}/functions/v1/share-workout?action=add_programme&id=${shareId}`"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 668,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "share-workout",
+      "snippet": ": `${SUPA_URL}/functions/v1/share-workout?action=save_session`;"
+    },
+    {
+      "file": "workouts-programme.js",
+      "line": 671,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const resp = await fetch(url, {"
+    },
+    {
+      "file": "workouts-session.js",
+      "line": 422,
+      "categories": [
+        "W_QUEUED"
+      ],
+      "evidence": [
+        "write_queued"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await VYVEData.writeQueued({"
+    },
+    {
+      "file": "workouts-session.js",
+      "line": 423,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "exercise_logs",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "url: `${SUPA_URL}/rest/v1/exercise_logs`,"
+    },
+    {
+      "file": "workouts-session.js",
+      "line": 435,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "exercise_logs",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "await fetch(`${SUPA_URL}/rest/v1/exercise_logs`, { method: 'POST', headers, body: JSON.stringify(payload) });"
+    },
+    {
+      "file": "workouts-session.js",
+      "line": 550,
+      "categories": [
+        "LOCAL_READ"
+      ],
+      "evidence": [
+        "vyve_local_read"
+      ],
+      "table": "workouts",
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "const rows = await VYVELocalDB.workouts.allFor(memberEmail);"
+    },
+    {
+      "file": "workouts-session.js",
+      "line": 555,
+      "categories": [
+        "R_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "workouts",
+      "verb": "GET",
+      "ef_slug": null,
+      "snippet": "const res = await fetch(`${SUPA_URL}/rest/v1/workouts?member_email=eq.${encodeURIComponent(memberEmail)}&select=id`, {"
+    },
+    {
+      "file": "workouts-session.js",
+      "line": 605,
+      "categories": [
+        "W_QUEUED"
+      ],
+      "evidence": [
+        "write_queued"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "_workoutWriteResult = await VYVEData.writeQueued({"
+    },
+    {
+      "file": "workouts-session.js",
+      "line": 606,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "workouts",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "url: `${SUPA_URL}/rest/v1/workouts`,"
+    },
+    {
+      "file": "workouts-session.js",
+      "line": 615,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_rest_url"
+      ],
+      "table": "workouts",
+      "verb": "POST",
+      "ef_slug": null,
+      "snippet": "await fetch(`${SUPA_URL}/rest/v1/workouts`, { method: 'POST', headers: _workoutHeaders, body: JSON.stringify(_workoutPayload) });"
+    },
+    {
+      "file": "workouts-session.js",
+      "line": 703,
+      "categories": [
+        "W_MEMBER"
+      ],
+      "evidence": [
+        "supabase_rest_url"
+      ],
+      "table": "workout_plan_cache",
+      "verb": "PATCH",
+      "ef_slug": null,
+      "snippet": "const _planUrl = `${SUPA_URL}/rest/v1/workout_plan_cache?member_email=eq.${encodeURIComponent(memberEmail)}`;"
+    },
+    {
+      "file": "workouts-session.js",
+      "line": 707,
+      "categories": [
+        "W_QUEUED"
+      ],
+      "evidence": [
+        "write_queued"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await VYVEData.writeQueued({ url: _planUrl, method: 'PATCH', headers: _planHeaders, body: _planBody, table: 'workout_plan_cache' });"
+    },
+    {
+      "file": "workouts-session.js",
+      "line": 709,
+      "categories": [
+        "WRAPPER"
+      ],
+      "evidence": [
+        "fetch_call_no_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": null,
+      "snippet": "await fetch(_planUrl, { method: 'PATCH', headers: _planHeaders, body: _planBody });"
+    },
+    {
+      "file": "workouts-session.js",
+      "line": 830,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "share-workout",
+      "snippet": "const resp = await fetch(`${SUPA_URL}/functions/v1/share-workout`, {"
+    },
+    {
+      "file": "workouts-session.js",
+      "line": 881,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "share-workout",
+      "snippet": "const resp = await fetch(`${SUPA_URL}/functions/v1/share-workout`, {"
+    },
+    {
+      "file": "workouts.html",
+      "line": 672,
+      "categories": [
+        "NET_BOUND"
+      ],
+      "evidence": [
+        "fetch_call",
+        "supabase_ef_url"
+      ],
+      "table": null,
+      "verb": null,
+      "ef_slug": "platform-alert",
+      "snippet": "fetch('https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert', {"
+    }
+  ],
+  "edge_function_taxonomy": {
+    "anthropic-proxy": "NET_BOUND",
+    "off-proxy": "NET_BOUND",
+    "github-proxy": "NET_BOUND",
+    "github-proxy-marketing": "NET_BOUND",
+    "leaderboard": "NET_BOUND",
+    "send-email": "NET_BOUND",
+    "send-session-recap": "NET_BOUND",
+    "send-journey-recap": "NET_BOUND",
+    "internal-dashboard": "NET_BOUND",
+    "ops-brief": "NET_BOUND",
+    "storage-cleanup": "NET_BOUND",
+    "wellbeing-checkin": "NET_BOUND",
+    "monthly-checkin": "NET_BOUND",
+    "share-workout": "NET_BOUND",
+    "platform-alert": "NET_BOUND",
+    "schedule-push": "NET_BOUND",
+    "notifications": "NET_BOUND",
+    "register-push-token": "NET_BOUND_DEAD",
+    "sync-health-data": "NET_BOUND",
+    "get-health-data": "R_MEMBER",
+    "gdpr-export-request": "NET_BOUND",
+    "gdpr-erase-cancel": "NET_BOUND",
+    "log-perf": "NET_BOUND_DEAD",
+    "workout-library": "R_CATALOGUE",
+    "achievements-mark-seen": "W_MEMBER",
+    "get-activity-feed": "R_MEMBER",
+    "member-achievements": "R_MEMBER",
+    "member-dashboard": "R_MEMBER",
+    "log-activity": "W_MEMBER",
+    "certificate-checker": "W_MEMBER",
+    "certificate-serve": "NET_BOUND",
+    "employer-dashboard": "NET_BOUND",
+    "onboarding": "W_MEMBER",
+    "re-engagement-scheduler": "NET_BOUND",
+    "daily-report": "NET_BOUND",
+    "weekly-report": "NET_BOUND",
+    "monthly-report": "NET_BOUND",
+    "backfill-auth-users": "NET_BOUND",
+    "send-test-welcome": "NET_BOUND",
+    "re-engagement-test-sender": "NET_BOUND"
+  },
+  "dead_code_candidates": {
+    "register-push-token + vapid.js push_subscriptions writes": "Pre-1.2 web-push subscription pipeline. iOS 1.2 (Build 3, submitted 27 Apr 2026) ships native APNs via Capgo HealthKit plugin path. Web-push path remains live for Android pre-Play-store-update + web fallback, but post-launch on 1.2 the iOS path is dead. push_subscriptions writes should be conditioned on platform OR the table marked legacy and pruned. Flag for PF-40 closer (PF-40.12).",
+    "log-perf EF references (3 sites)": "PF-30 (PM-90) redirected perf telemetry to PostHog; EF stopped receiving traffic. Any remaining /functions/v1/log-perf POSTs are dead-letter writes \u2014 confirm with grep against perf.js and delete the EF reference.",
+    "Other dead EFs (89 patchers)": "Per vyve_security_audit_2026-04-09: 89 one-shot patcher EFs are slated for deletion (pwa-*/push-*/pw-patch-*/patch-*/fix-*/write-*/theme-*/setup-*). Out of PF-40 scope but worth keeping in the campaign brain.",
+    "push_subscriptions in vapid.js": "vapid.js writes push subscriptions to push_subscriptions on bell-tap. Memory note from session continuity: iOS 1.2 (Build 3, submitted 27 Apr 2026) shipped native APNs path; existing push_subscriptions rows are stale PWA artefacts. Recommend: gate vapid.js subscribePush() on `!window.Capacitor || Capacitor.getPlatform() === 'web'` so the table only receives writes from the web fallback. Long-term cleanup at PF-40.12 if the native path proves fully reliable."
+  },
+  "pf_40_4_migration_targets": {
+    "total_write_sites": 55,
+    "by_category": {
+      "LOCAL_UPSERT": 21,
+      "W_QUEUED": 13,
+      "W_MEMBER": 21
+    },
+    "by_file": {
+      "movement.html": 13,
+      "workouts-session.js": 8,
+      "habits.html": 7,
+      "settings.html": 6,
+      "log-food.html": 3,
+      "tracking.js": 3,
+      "workouts-builder.js": 3,
+      "cardio.html": 2,
+      "sync.js": 2,
+      "vyve-offline.js": 2,
+      "achievements.js": 1,
+      "nutrition.html": 1,
+      "theme.js": 1,
+      "wellbeing-checkin.html": 1,
+      "workouts-exercise-menu.js": 1,
+      "workouts-notes-prs.js": 1
+    },
+    "by_table": {
+      "?": 16,
+      "workouts": 8,
+      "cardio": 5,
+      "workout_plan_cache": 5,
+      "daily_habits": 4,
+      "members": 4,
+      "custom_workouts": 3,
+      "habit_library": 2,
+      "member_habits": 2,
+      "exercise_logs": 2,
+      "achievements-mark-seen": 1,
+      "wellbeing_checkins": 1,
+      "exercise_swaps": 1,
+      "exercise_notes": 1
+    }
+  },
+  "pf_40_5_migration_targets": {
+    "total_read_sites": 137,
+    "by_category": {
+      "R_MEMBER": 73,
+      "R_CATALOGUE": 4,
+      "LOCAL_READ": 60
+    },
+    "by_file": {
+      "wellbeing-checkin.html": 15,
+      "index.html": 13,
+      "monthly-checkin.html": 13,
+      "certificates.html": 11,
+      "workouts-programme.js": 10,
+      "cardio.html": 9,
+      "auth.js": 7,
+      "home-state-local.js": 7,
+      "workouts-notes-prs.js": 6,
+      "workouts-library.js": 5,
+      "exercise.html": 4,
+      "movement.html": 4,
+      "sync.js": 4,
+      "engagement.html": 3,
+      "log-food.html": 3,
+      "activity.html": 2,
+      "certificate.html": 2,
+      "habits.html": 2,
+      "hk-diagnostic.html": 2,
+      "settings.html": 2,
+      "workouts-session.js": 2,
+      "achievements.js": 1,
+      "apple-health.html": 1,
+      "consent-gate.html": 1,
+      "dexie-source-indicator.js": 1,
+      "events-live.html": 1,
+      "healthbridge.js": 1,
+      "hydration.js": 1,
+      "nutrition.html": 1,
+      "perf-test.html": 1,
+      "session-live.js": 1,
+      "theme.js": 1
+    },
+    "by_table": {
+      "member-dashboard": 14,
+      "workout_plan_cache": 14,
+      "members": 13,
+      "workouts": 13,
+      "cardio": 11,
+      "daily_habits": 9,
+      "session_views": 8,
+      "wellbeing_checkins": 7,
+      "member_habits": 5,
+      "replay_views": 5,
+      "_sync_meta": 5,
+      "exercise_logs": 5,
+      "weekly_goals": 3,
+      "workout-library": 3,
+      "custom_workouts": 3,
+      "get-health-data": 2,
+      "certificates": 2,
+      "nutrition_logs": 2,
+      "weekly_scores": 2,
+      "exercise_notes": 2,
+      "workout_plans": 2,
+      "log-activity": 1,
+      "get-activity-feed": 1,
+      "member_running_plans": 1,
+      "member-achievements": 1,
+      "nutrition_my_foods": 1,
+      "weight_logs": 1,
+      "habit_library": 1
+    }
+  },
+  "pf_40_11_offline_ux_targets": {
+    "total_network_bound_sites": 36,
+    "by_ef_slug": {
+      "platform-alert": 11,
+      "share-workout": 6,
+      "youtube_data_api_external": 2,
+      "anthropic-proxy": 2,
+      "gdpr-erase-cancel": 1,
+      "schedule-push": 1,
+      "sync-health-data": 1,
+      "notifications": 1,
+      "leaderboard": 1,
+      "off-proxy": 1,
+      "monthly-checkin": 1,
+      "gdpr-export-request": 1,
+      "wellbeing-checkin": 1
+    },
+    "by_file": {
+      "workouts-programme.js": 4,
+      "events-live.html": 3,
+      "running-plan.html": 3,
+      "session-live.js": 3,
+      "habits.html": 2,
+      "index.html": 2,
+      "log-food.html": 2,
+      "monthly-checkin.html": 2,
+      "wellbeing-checkin.html": 2,
+      "workouts-session.js": 2,
+      "auth.js": 1,
+      "certificates.html": 1,
+      "engagement.html": 1,
+      "events-rp.html": 1,
+      "gdpr-erasure-cancel.html": 1,
+      "healthbridge.js": 1,
+      "leaderboard.html": 1,
+      "nutrition.html": 1,
+      "session-rp.js": 1,
+      "settings.html": 1,
+      "workouts.html": 1
+    }
+  },
+  "pre_existing_apis": {
+    "VYVEData (vyve-offline.js)": {
+      "current_surface": [
+        "cacheGet",
+        "cacheSet",
+        "fetchCached",
+        "writeQueued",
+        "outboxFlush",
+        "outboxList",
+        "outboxClear",
+        "newClientId"
+      ],
+      "pf_40_4_evolution": "Add VYVEData.write(table, row, opts) \u2192 optimistic Dexie upsert via VYVELocalDB.<table>.upsert + bus publish + outbox enqueue (current writeQueued path) + return synchronously.",
+      "pf_40_5_evolution": "Add VYVEData.read(table, query) \u2192 Dexie read with denormalised shape; if empty post-first-hydrate throw HydrateBug. Replaces the cache-first fetchCached pattern for Tier 1+2 surfaces.",
+      "pf_40_5_evolution_net_bound": "Add VYVEData.fetchNetworkBound(endpoint, options) \u2192 typed wrapper around fetch for \u00a723.10 carve-outs. Distinguishes intentional network calls from accidental REST.",
+      "pf_40_4_evolution_subscribe": "Add VYVEData.subscribe(table, handler) \u2192 bus subscription helper. PF-32 (cross-page write reflection) becomes a one-liner on every page."
+    }
+  },
+  "open_questions_for_pf_40_2": [
+    "weekly_scores is referenced for trend reads (wellbeing-checkin.html:1121, monthly-checkin.html \u2014 similar pattern) but is NOT in the Dexie schema (active.md \u00a72 / PM-89). Per PF-11b, the engagement-drift telemetry already tags this with `known_divergence_sources: ['weekly_scores_v_wellbeing_checkins']`. Decision needed in PF-40.2 / PF-40.3 scope: add weekly_scores as a member-scoped Dexie table (it is member-scoped, one row per ISO week per member), or derive trend-chart data client-side from wellbeing_checkins which IS in Dexie. Derivation is preferable \u2014 fewer tables, one source of truth.",
+    "member_running_plans and running_plan_cache are both referenced by running-plan.html (3 NET_BOUND sites via anthropic-proxy) and currently NOT in the Dexie schema (PF-34b deferred). PF-40.3 absorbs this \u2014 add both to catalogue/member schema with cross-member sync rule for the shared cache.",
+    "monthly_checkins table referenced \u2014 confirm row in Dexie schema (likely member-scoped, similar shape to wellbeing_checkins).",
+    "achievements table \u2014 needs schema confirmation per PM-94 (32 metrics \u00d7 327 tiers placeholder system). Currently member-dashboard EF computes; PF-40.5 needs to know whether achievements rows are member-scoped Dexie data or kept on the server for cron-driven authoritative numbering."
+  ]
+}

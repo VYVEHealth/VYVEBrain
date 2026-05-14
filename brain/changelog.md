@@ -1,3 +1,72 @@
+## 2026-05-14 PM-107 — PF-40.1 write-path & read-path audit SHIPPED
+
+**Session shape:** 2026-05-14 solo daytime, read-only ship. No vyve-site changes. Brain-only commit: two new artefacts + active.md/backlog.md/changelog.md edits. Sub-item PF-40.1 (audit) of the PF-40 Local-First Consolidation Campaign scoped at PM-106 ([prior changelog entry]).
+
+**Method.** `GITHUB_GET_A_REFERENCE` for `VYVEHealth/vyve-site` `refs/heads/main` returned `66f02b84f0588d0bc2fdbed4ca06ae684e10f685` (PF-14c precache ship from PM-105 — matches active.md §2). `GITHUB_GET_A_TREE` recursive returned 99 entries; filtered to 78 in-scope source files (`*.html` + `*.js`, excluding `*.min.js`, `archive/`, `legacy/`, `.github/`). Parallel `GITHUB_GET_A_BLOB` fetch via `ThreadPoolExecutor(max_workers=15)` — 78/78 byte-exact (integrity verified against tree-reported size on `index.html`: 128,714b match). 40,400 source lines scanned with 18 regex patterns covering REST URLs, EF URLs, `fetch(`, `supaFetch(`, `writeQueued(`, `VYVELocalDB.<table>.*`, `supabase.from()`, `supabase.functions.invoke()`, Realtime, PostHog, Anthropic, CDN, XHR, `sendBeacon`.
+
+**Classification pass.** Per-line classification using ±4-6 line context windows for ambiguous matches. Manual override pass on `UNKNOWN_*` buckets: 5 multi-line REST URLs the single-line grep missed (exercise.html:331, movement.html:382 + 647, wellbeing-checkin.html:1007 + 1121), 14 EF slugs needing taxonomy extension (platform-alert, share-workout, log-perf, workout-library, get-health-data, achievements-mark-seen, get-activity-feed, member-achievements, gdpr-erase-cancel, schedule-push, sync-health-data, notifications, register-push-token, gdpr-export-request), 7 untracked table references (6× session_chat for live chat REST, 1× push_subscriptions in vapid.js), 2 external API hits initially mis-bucketed as CDN_RUNTIME but actually NET_BOUND third-party APIs (YouTube Data API in events-rp.html and session-rp.js).
+
+**Result: 321 unique call sites, 322 category tags, zero unresolved.**
+
+| Category | Count | Migration target |
+|---|---|---|
+| WRAPPER | 86 | Helper definitions in `vyve-offline.js` / `auth.js` / `sync.js` — not user-facing call sites; do not migrate. |
+| R_MEMBER | 73 | PF-40.5 → `VYVEData.read()` after PF-40.2 fat-row hydrate. |
+| LOCAL_READ | 60 | Already Dexie-first via `VYVELocalDB.<table>.*`. PF-40.5 standardises through `VYVEData.read()` for consistent denormalised-shape contracts. |
+| NET_BOUND | 36 | PF-40.11 → `VYVEData.fetchNetworkBound()` + offline UX states (Lewis copy gate). |
+| W_MEMBER | 21 | PF-40.4 → `VYVEData.write()` (direct-fetch writes bypassing `writeQueued`, PF-4b Part 2 hazards). |
+| LOCAL_UPSERT | 21 | PF-40.4 → `VYVEData.write()` (the per-page workaround pattern PF-1/9/10/12/34 absorbs). |
+| W_QUEUED | 13 | PF-40.4 → `VYVEData.write()` (already routed through `writeQueued` shadow drainer; PF-40.4 promotes to optimistic-Dexie-upsert + bus-publish + queue). |
+| NET_BOUND_DEAD | 4 | log-perf EF references — dead since PF-30 (PM-90) redirected telemetry to PostHog. Cleanup at PF-40.12. |
+| R_CATALOGUE | 4 | PF-40.3 + PF-40.5 — catalogue tables enter Dexie schema; reads route through `VYVEData.read()`. |
+| REALTIME | 1 | session_chat Realtime subscription — §23.10 carve-out, stays as-is. |
+| INTERNAL | 1 | `internal-dashboard/index.html` — admin tool, out of PF-40 scope. |
+| DEAD | 1 | `vapid.js` write to `push_subscriptions` — stale post-1.2 native APNs migration. Gate on web platform; cleanup at PF-40.12. |
+| NEEDS_SCHEMA | 1 | `weekly_scores` not in Dexie schema (active.md §2 / PM-89 known gap). Open question for PF-40.2. |
+
+**Migration target summaries:**
+
+- **PF-40.4 (writes):** 55 total sites across 16 files. Hotspots: movement.html (12), workouts-session.js (8), habits.html (7), settings.html (6). By table: workouts (8), cardio (5), daily_habits (4), workout_plan_cache (4), members (4), custom_workouts (3), member_habits (2), exercise_logs (2). The single API signature `VYVEData.write(table, row, opts)` collapses all three pre-existing patterns (per-page upserts, writeQueued, direct fetch) into one.
+
+- **PF-40.5 (reads):** 137 total sites across 27 files. Read-heavy pages: index.html (13), monthly-checkin.html (13), wellbeing-checkin.html (13), certificates.html (11), workouts-programme.js (10), cardio.html (9), auth.js (7), home-state-local.js (7). After PF-40.2 fat-row hydrate, every `VYVEData.read()` returns the denormalised shape the UI expects — Habits "undefined" canary fixed structurally.
+
+- **PF-40.11 (offline UX):** 36 network-bound sites across 18 files. By EF: platform-alert (11), share-workout (6), anthropic-proxy (2), youtube_data_api_external (2), and 8 single-site EFs (gdpr-erase-cancel, schedule-push, sync-health-data, notifications, leaderboard, off-proxy, monthly-checkin, gdpr-export-request, wellbeing-checkin). Lewis copy gate ~10 strings.
+
+**Key finding: `window.VYVEData` already exists.** Defined in `vyve-offline.js` with `cacheGet / cacheSet / fetchCached / writeQueued / outboxFlush / outboxList / outboxClear / newClientId`. PF-40.4 and PF-40.5 are **evolving** the existing API, not building from scratch — adding `.read(table, query)`, `.write(table, row, opts)`, `.fetchNetworkBound(endpoint, options)`, and `.subscribe(table, handler)` on top of the existing outbox + cache surface. This is materially less work than the campaign scope at PM-106 implied (the outbox primitives, dead-letter handling, idempotency keys, per-member queue adoption — all already exist).
+
+**Dead-code candidates flagged for PF-40.12 cleanup:**
+
+- **`log-perf` EF (4 references)** — PF-30 (PM-90) redirected perf.js telemetry to PostHog capture; backend EF stopped receiving traffic. References across page code are dead-letter writes — confirm with grep and delete.
+- **`register-push-token` EF (1 reference)** — pre-1.2 web-push subscription pipeline. iOS 1.2 (Build 3, submitted 27 Apr 2026) ships native APNs via Capgo HealthKit plugin path. Web-push remains live for Android pre-Play-store-update + web fallback only.
+- **`vapid.js` writes to `push_subscriptions`** — same root cause as register-push-token. Recommend gating `subscribePush()` on `!window.Capacitor || Capacitor.getPlatform() === 'web'` before PF-40.12 cleanup. Memory entry on stale `push_subscriptions` rows confirmed via audit.
+
+**Open questions surfaced (decision points for PF-40.2 / PF-40.3 ships):**
+
+1. **`weekly_scores` not in Dexie schema** (wellbeing-checkin.html:1121 trend-chart read, monthly-checkin.html similar). Two options: add `weekly_scores` as member-scoped Dexie table (one row per ISO week per member), or derive trend-chart data client-side from `wellbeing_checkins` which IS in Dexie. **Recommendation: derive.** Fewer tables, single source of truth, matches PF-11b's home-state-local.js precedent of computing aggregates client-side from raw event data.
+2. **`member_running_plans` + `running_plan_cache` schema work** for running-plan.html (3 NET_BOUND anthropic-proxy sites). PF-34b deferral folds into PF-40.3 — add both as first-class Dexie tables with a cross-member sync rule for the shared `running_plan_cache` (pull `cache_key`s touched by this member + freshly-popular).
+3. **`monthly_checkins` table schema** — confirm row in Dexie schema (likely member-scoped, shape similar to wellbeing_checkins).
+4. **`achievements` table schema** — currently member-dashboard EF computes per PM-94 placeholder system (32 metrics × 327 tiers). PF-40.5 decision: are achievement rows member-scoped Dexie data, or server-only with cron-driven authoritative numbering? Recommendation: server-only for now; achievements overhaul is post-trial scope anyway.
+
+**Audit method documented for re-run cadence.** Each subsequent PF-40 ship should re-run the audit against the new vyve-site HEAD. The category-counts table should drift toward `LOCAL_READ` + `WRAPPER` + `NET_BOUND` only, with `R_MEMBER` / `R_CATALOGUE` / `W_MEMBER` / `W_QUEUED` / `LOCAL_UPSERT` → zero. Campaign close (PF-40.12) requires those five buckets at zero.
+
+**Brain-vs-live drift check.** Pre-session `active.md` §2 stated vyve-site main HEAD `66f02b84` and SW cache key `vyve-cache-v2026-05-14-pf14c-precache-a`. Re-fetched HEAD this session matched. No drift — first clean session since PM-104's realignment.
+
+**Patterns reinforced this session:**
+
+- **Whole-tree audit per §23 hard rule.** `GITHUB_GET_A_TREE` recursive + parallel-fetch all source files is the correct approach. The single-line grep produced 5 false negatives on multi-line REST URLs; ±4-6 line context windows + manual override pass caught them. Future audits should reach for this pattern by default — do not pre-select a subset.
+- **Pre-existing API discovery before designing new ones.** Reading `vyve-offline.js` revealed `window.VYVEData` already exists with the outbox primitives PF-40.4 was scoped to build. Scope tightened: evolve, don't rebuild. A 30-minute read of the existing helper file saves a session of duplicative work.
+- **EF taxonomy is operational data.** The 24-core / 89-dead split in `vyve_security_audit_2026-04-09.md` plus the new slugs surfaced this session (platform-alert, share-workout, achievements-mark-seen, member-achievements, get-activity-feed, get-health-data, sync-health-data, notifications, schedule-push, gdpr-export-request, gdpr-erase-cancel, workout-library, youtube_data_api_external) form a working classification table — codified in `audit/pf-40-1-callsites.json` `edge_function_taxonomy` and the playbook's §4 tables. Future EF additions should land in this table at deploy time.
+
+**Brain commits this session (atomic):**
+
+- NEW `audit/pf-40-1-callsites.json` (129KB structured call-site map keyed by `file:line`).
+- NEW `playbooks/pf-40-local-first-consolidation.md` (21KB living campaign reference document).
+- `brain/active.md` §2 / §5 / §8 patched.
+- `brain/changelog.md` PM-107 prepended.
+- `tasks/backlog.md` PF-40.1 status flipped to SHIPPED; PF-40.2 promoted to next ship; 4 open questions appended to the PF-40 section.
+
+**Next ship after this commit: PF-40.2 fat-row member-scoped hydrate.** Schema audit per member-scoped table, expand `db.js pullOneTable()` to include denormalised join columns the UI reads (`member_habits` ← `habit_library` join is the canary fix), introduce `VYVELocalDB.<table>.upsertFat()` preserving join columns on writes. ~1-2 sessions. Device verify on iPhone + Android after ship.
+
 ## 2026-05-14 PM-106 — Contract codification: local-first becomes the complete reading source; PF-40 consolidation campaign scoped
 
 **Session shape:** 14 May 2026 evening. Dean home with iPhone 17, Mac, and an Android device. Started as a verification walk for today's daytime ships (PM-97 reset-rehydrate, PF-34 1/3 + 2/3, PF-14c offline cold-boot) and pivoted mid-session into an architectural conversation that re-shaped the campaign. No vyve-site ships this session; the deliverable is the contract codification + PF-40 campaign scope, committed to brain only.
