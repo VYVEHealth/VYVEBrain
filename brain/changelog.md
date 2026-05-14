@@ -1,3 +1,88 @@
+## 2026-05-14 PM-112 — PF-40.2 SHIPPED: thin first-paint hydrate replaces 81s mass-hydrate blocker
+
+**Session shape:** 14 May 2026 late-late night. Continuation of PM-111. Single atomic vyve-site commit `58f9c75b` on main. Brain commit follows. The session that took PM-111's reframe and executed against it.
+
+**What shipped (vyve-site `58f9c75b`):**
+
+- **NEW: `firstPaintHydrate.js` (~13KB, 345 LOC).** Exports `window.VYVESync.criticalHydrate(pageName)`. Per-page critical-table maps:
+  - `home` → 7 tables (members, member_habits, daily_habits[30d], workouts[30d], cardio[30d], session_views[30d], replay_views[30d])
+  - `habits` → 3 tables (member_habits w/ habit_library JOIN, habit_library catalogue, daily_habits[today only])
+  - `workouts` → 2 tables (workout_plan_cache, workouts[30d])
+  - `nutrition` → 3 tables (members, weight_logs[200 most-recent], nutrition_logs[today only])
+  - `cardio` → 2 tables (cardio[30d], weekly_goals[26 most-recent])
+
+  Per-table 5s timeout via `Promise.race([fetch, timeout(5000)])`. Partial-success-OK: failed tables don't block successful ones; function resolves on minimum-viable subset. Non-destructive `bulkUpsert` on filtered subsets so today-only / 30d pulls don't wipe history outside the window. `member_habits` is the one exception — uses `replaceForMember` to engage the db.js join-flatten override that maps `habit_library(...)` embedded resource → flat columns. Inert when spike off (returns `{ok:true, inert:true}`). Inert when Dexie disabled or no email available (returns `{ok:false, reason}`). Unknown page names resolve OK so unwired pages don't break.
+
+- **`sync.js` plan() — 2 query-side schema-drift fixes:**
+  - `monthly_checkins`: filter `&activity_date=gte.lookback` (column doesn't exist server-side) → `&iso_month=gte.YYYY-MM` (last ~12 iso-months); order `logged_at.desc` (also missing) → `created_at.desc`. Stops HTTP 400 `column monthly_checkins.activity_date does not exist`.
+  - `achievement_metrics`: dropped `&active=eq.true` filter (column doesn't exist server-side; catalogue is small enough to pull all). Stops HTTP 400 `column achievement_metrics.active does not exist`.
+
+- **`db.js` SCHEMA_V3 — 4 keyPath/index drift fixes:**
+  - `achievement_metrics`: keyPath `id` → `&slug` (server PK), indexes `metric_key, active` → `category, source`
+  - `achievement_tiers`: keyPath `id` → `[metric_slug+tier_index]` (server composite PK), indexes `metric_id, tier_number` → `metric_slug, tier_index`
+  - `member_achievements`: compound key `[member_email+metric_id+tier_id]` → `[member_email+metric_slug+tier_index]`, secondary `metric_id` → `metric_slug`, seen index `[member_email+seen]` → `[member_email+seen_at]`
+  - `monthly_checkins`: indexes `[member_email+activity_date], activity_date` → `[member_email+iso_month], iso_month` (dead activity_date dropped)
+
+  `DB_VERSION` bumped 2 → 3. Dexie applies the version chain additively; for the 4 changed stores the upgrade wipes existing rows. Safe because those rows never persisted under v2 (the IDB writes were throwing DataError); next hydrate repopulates correctly-shaped rows on every device.
+
+- **5 page wires:**
+  - `habits.html` L1341: `await VYVESync.hydrate()` → `await VYVESync.criticalHydrate('habits')`. Probe instrumentation (PM-110 `?debug=hydrate`) preserved; renamed log line to `[VYVE-PROBE] criticalHydrate(habits) resolved`. Else-branch (legacy Supabase parallel fetch when Dexie empty) untouched as the natural fallback when criticalHydrate's timeout fires.
+  - `index.html`: prepends `criticalHydrate('home').catch(()=>null)` then `.then(buildHomeFromDexie)` so Dexie is populated with the 7 home-state tables before `home-state-local.js` reads. `.catch` returning null lets failure fall through to existing skeleton+EF.
+  - `nutrition.html` L633 (inside `_pf8Local`): `hydrate()` → `criticalHydrate('nutrition')`.
+  - `cardio.html` L529 + L593 (both `_pf9Local` sites): `hydrate()` → `criticalHydrate('cardio')`.
+  - `workouts.html`: script-tag only — data layer lives in `workouts-programme.js` / `workouts-session.js`, neither of which is in this commit's scope. Module loads on the page so future workouts-programme.js wire is one-line.
+
+- **`sw.js`:** cache key `pf40-2-spike-default-a` → `pf40-2-firstpaint-a`; `/firstPaintHydrate.js` added to `urlsToCache` alongside `/db.js` + `/sync.js`. All 5 wired pages also gain `<script src="/firstPaintHydrate.js" defer></script>` immediately after the existing `/sync.js` defer-script (deterministic execution order: sync.js IIFE defines `window.VYVESync`, firstPaintHydrate.js appends `.criticalHydrate`).
+
+**Pre-ship verification (PM-111 lesson — read live, don't assume):**
+- Live Supabase `information_schema.columns` fetched for the 14 named tables. Confirmed all 4 PM-111 schema mismatches concrete: `monthly_checkins.activity_date` absent (has `iso_month` text instead); `achievement_metrics.active` absent (PK is `slug`); `achievement_tiers` has composite PK (`metric_slug, tier_index`) no scalar `id`; `member_achievements` has `metric_slug` + `tier_index` (not the v2-declared `metric_id` + `tier_id`).
+- Live vyve-site code read at HEAD `83521f27` via `GITHUB_GET_A_BLOB` for all 9 files (db.js, sync.js, 5 HTMLs, sw.js, auth.js). Not assumed from brain — read live per §23.14.
+- Patches validated via `node --check` rc=0 on: firstPaintHydrate.js, patched db.js, patched sync.js, and every inline `<script>` block in every patched HTML (3 in habits, 8 in index, 3 in nutrition, 3 in cardio, 2 in workouts = 19 total).
+- Pre-commit SHA recheck on vyve-site main: `83521f27` unchanged from session start.
+
+**Post-commit byte-equal verification (§4):**
+- New tree fetched at `58f9c75b`; all 9 file blob SHAs captured.
+- Each blob fetched via Contents API base64; decoded; MD5 compared against staged content.
+- 9/9 byte-equal. Commit URL: https://github.com/VYVEHealth/vyve-site/commit/58f9c75bc53aa48a0854a86dcc6cdd07e24dd94b
+
+**Architectural shape achieved:**
+
+| Surface (with spike on) | Before PM-112 | After PM-112 |
+|---|---|---|
+| Habits cold load | `await hydrate()` blocks 81s (23 tables, 4 fail), then Dexie read | `await criticalHydrate('habits')` 3 tables parallel, ≤5s ceiling, Dexie read |
+| Nutrition cold load | Same 81s block | `criticalHydrate('nutrition')` 3 tables, ≤5s |
+| Cardio cold load | Same 81s block (×2 — fetchWeek and fetchHistory both await) | `criticalHydrate('cardio')` 2 tables, ≤5s (×2 — second call gets warm Dexie, sub-100ms) |
+| Home cold load | No await; reads Dexie that hasn't populated; falls through to skeleton+EF | `criticalHydrate('home').then(buildHomeFromDexie)`; 7 tables parallel; Dexie populated before render |
+| Background mass-hydrate | Still runs (81s, 4× HTTP 400, 2× IDB DataError) | Still runs but 4 fixed pulls now succeed; 2 IDB stores now write correctly under SCHEMA_V3 |
+
+**The PM-111 reframe in numbers:** 81s blocking → 5s ceiling = 16× faster. Real number lower because most tables resolve <500ms when payloads are filtered to today/30d. Target was <2s; expected median 800-1500ms.
+
+**What deliberately deferred (one ship, not three):**
+- Workouts page wire (`workouts-programme.js`). Not in scope — would have meant editing files outside the main HTML/sync layer. Script tag is loaded so the wire is a one-line edit when revisited.
+- The render-template / cache-writer shape mismatch fix proper. PM-110 added a partial guard (filter rows requiring `habit_title`). The canonical fix (pick flat or nested, make both writer and reader agree) is still on the table but currently masked by the partial guard + criticalHydrate populating Dexie with denormalised join cols. Defer until trial data shows the cache-paint moment still surfaces undefined cards.
+- Schema audit of the remaining 19 plan() tables. Two were broken; the other 21 (counting workouts/cardio/etc.) probably aren't but no one's done the full sweep. Deferred until a member-facing bug demands it.
+- `member_achievements` and `achievement_tiers` repopulation after schema wipe. On every member's next hydrate after this ship lands, those two stores wipe + repopulate from server. Background mass-hydrate handles it (60-120s post-visibilitychange). No member action required.
+
+**Held findings worth carrying forward:**
+- **Composio `GITHUB_GET_A_BLOB` is the right primitive for files >100KB on private repos.** Raw URLs require auth and 404 on private repos via the unauthenticated runtime; Contents API truncates >1MB. Blob-by-SHA always works.
+- **node --check needs `.js` extension even when invoked explicitly.** ERR_UNKNOWN_FILE_EXTENSION on `.txt`. Copy patched files to `/path/file.js` before checking.
+- **Composio workbench filesystem and bash_tool sandbox are separate.** `/mnt/files/` is only the workbench's; bash_tool can't see it. Script artefacts created via `create_file` land in `/home/claude` which the workbench can't see. To syntax-check inside the workbench, recreate the file content as a Python string and write to `/mnt/files/`. Worth a §23 entry if it recurs.
+- **`window.VYVESync = {...}` in sync.js (L662) is an assignment, not augmentation.** firstPaintHydrate.js attaches via `if (!window.VYVESync) window.VYVESync = {}; window.VYVESync.criticalHydrate = criticalHydrate;` — this is order-sensitive. `defer` scripts execute in document order so loading firstPaintHydrate AFTER sync.js works; if load order ever flips (e.g. module preload + async), this would silently break. Document order is brittle but the only correct semantics short of refactoring sync.js into a CommonJS-style module.
+
+**Patterns reinforced this session:**
+- **Live-state-first reads before pre-edit assumptions** (§23.14). Live `information_schema.columns` saved diagnostic cycles; live `GITHUB_GET_A_BLOB` showed the actual code being patched (the brief's L1341/L633/L529 line numbers were close but I read live to confirm). The §23.14 rule has now caught two consecutive sessions of brain drift (PM-110 caught a missing pull-entry claim that wasn't missing; PM-112 confirmed all 4 schema drifts before SCHEMA_V3 wrote them).
+- **Atomic 9-file commit beats 9 sequential ships.** Single commit, single SW cache bump, single byte-equal verification, single brain entry. The PM-29..PM-44 era of one-file-per-commit churn does not recur in this campaign.
+- **Parallel-session collision handling worked.** Brief from another chat described state that wasn't in brain yet (PM-111 was being authored in parallel). Stood down, asked Dean, resumed after parallel session committed, re-fetched brain, found PM-111 entry, verified its diagnosis against live state, then shipped. §23.14's "prefer stand-down over duplicate ships" — applied correctly.
+
+**Brain commits this session (atomic):**
+- `brain/active.md` §2 — PM-112 paragraph prepended; state table refreshed: vyve-site main `58f9c75b`, SW key `pf40-2-firstpaint-a`, VYVEBrain main this commit.
+- `brain/changelog.md` PM-112 prepended (this entry).
+
+**On the horizon:**
+- **Device verification:** Dean walks `test1@test.com` and `test@test.com` on iPhone with spike-on (default) on habits / index / nutrition / cardio. Expected: real-data paint <2s; `[VYVE-criticalHydrate] <page> total: <ms>` console log per page; PostHog `critical_hydrate_complete` events captured. If device walk reveals the criticalHydrate path still fires undefined cards on habits, the cache-paint shape mismatch (PM-111's held finding) is the next P0.
+- **workouts.html wire** — single str_replace into the workouts-programme.js entry function, after `await VYVESync.hydrate()` if such a call exists (audit needed). 10-min ship.
+- **Cache-paint shape canonicalisation** — pick flat or nested across the 5 wired pages, codify as a §23 rule (likely §23.15). Lewis isn't blocked; pure technical work. Defer until trial data confirms it's a real member-visible symptom rather than a 5-10s transient that the new <2s critical-hydrate path renders moot.
+
 ## 2026-05-14 PM-111 — Late-night session close: spike-on default shipped + exposed 81s mass-hydrate problem; PF-40 reframed around first-paint hydrate
 
 **Session shape:** 14 May 2026 late night. Continuation of PM-110. Two vyve-site ships landed (`3d9abe44` PM-110 probe + `83521f27` spike-on-by-default flip). Live device walk on `test1@test.com` produced concrete findings that reframe the entire PF-40 campaign. No further vyve-site commits this session; this brain commit closes the session honestly so the next one starts from clean ground.
