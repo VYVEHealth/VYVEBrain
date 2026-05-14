@@ -1,3 +1,69 @@
+## 2026-05-14 PM-109 — PF-40.2 diagnostic dive: live schema captured, canary partially traced, probe-first plan locked; §23.14 codified
+
+**Session shape:** 14 May 2026 late night. Continuation of PM-108. Goal was to start PF-40.2 fat-row hydrate work. Outcome: read-only diagnostic dive that produced enough scope clarity to split PF-40.2 into a probe-first Part A + structural Part B. No vyve-site ships. Brain commit only: master.md §23.14 added, changelog PM-109 prepended, active.md §2/§5 patched.
+
+**Live Supabase schema captured (was previously inferred).** Ran `information_schema.columns` against the 22 member-scoped + catalogue tables. Key corrections to working-set assumptions:
+
+- **`member_habits` has only 6 native columns**: `id, member_email, habit_id, assigned_at, assigned_by, active`. Every other field the UI renders (`habit_pot`, `habit_title`, `habit_description`, `habit_prompt`, `difficulty`) lives ONLY on `habit_library`. The join is mandatory; without it the page literally cannot render.
+- **`habit_library` is the only declared FK target from `member_habits`** (FK constraint `member_habits_habit_id_fkey` confirmed via `pg_constraint`). PostgREST embedded resource syntax `habit_library(...)` returns a single object (many-to-one), not an array.
+- **`workout_plan_cache` has no `category` column.** Movement.html's `&category=movement` filter is silently ignored by PostgREST. Flagged for PF-40.2 / PF-40.4 audit — either the filter is harmless cruft or there's a hidden expectation that the server should support.
+- **`members.theme_preference`** is the actual column name (not `theme` as some code paths assume). Worth verifying theme.js writes the right column when Q4 PF-40.4 refactor lands.
+- **`workout_plans` (catalogue) has 19 columns** including `thumbnail_url`, `equipment_needed`, `muscle_group`. Confirms PF-40.3 catalogue residency scope (Q5 = (a)).
+- **`weekly_scores` exists as a real table** (8 cols: `id, member_email, iso_week, iso_year, activity_date, wellbeing_score, engagement_score, logged_at`). Q7 still locks deriving from `wellbeing_checkins`. Table stays server-side, untouched.
+
+Schema snapshot saved to `/mnt/files/live_schema.json` in the workbench for the session's lifetime — re-fetchable via `information_schema.columns` in any future session.
+
+**Join-column audit per table (PF-40.2 scope confirmation).** For each of the 17 member-scoped tables, scanned every read site in the audit map (321 sites total) and ±60 lines of context for field accesses on the read result. Cross-referenced against the live schema:
+
+- **`member_habits` ← `habit_library`** — confirmed only genuine join. The PM-106 canary case.
+- **All other "join columns" flagged in early diagnostic noise turned out to be JSONB-blob field accesses** (`programme_json.sessions[*].exercises[*].name` etc, denormalised inside `workout_plan_cache.programme_json` or `custom_workouts.exercises`). Not joins; not in PF-40.2 scope. They are correctly handled by `select=*` returning the blob in full.
+- **`exercise_logs` native cols verified**: `weight_kg, reps_completed, sets_completed, exercise_name` — earlier diagnostic guess was wrong; no join.
+- **PF-40.2 fat-row work narrows substantially.** Only `member_habits` needs join-aware hydrate logic beyond what's already shipped in db.js `replaceForMember` (which already correctly maps `r.habit_library.habit_pot → habit_pot` etc).
+
+**The PM-106 Habits "undefined" canary — diagnostic findings (UNVERIFIED, do not codify as §23 rule yet).** The full chain is correct on inspection:
+
+1. SQL confirms `test1@test.com` has 3 active habits with fully-populated `habit_library` data on the server (verified by `SELECT to_jsonb(hl) FROM member_habits LEFT JOIN habit_library...`).
+2. The `member_habits_habit_id_fkey` FK is properly declared so PostgREST embedded join `habit_library(habit_pot,habit_title,...)` returns a single object.
+3. sync.js L142 pull query includes the join correctly.
+4. db.js `member_habits.replaceForMember` correctly maps `r.habit_library.X` → flat columns.
+5. db.js `member_habits.upsert` override (PM-97 §23.7.5 fix) does read-modify-write merge so partial upserts preserve cols.
+6. habits.html L1315-1325 explicitly wraps Dexie's flat rows back into `{habit_library: {...}}` shape before the render template's `r.habit_library` spread at L1379.
+
+Everything checks out, yet PM-106 saw `undefined` cards for ~10 seconds before re-render. Root cause cannot be pinned without runtime instrumentation. Theories considered:
+- (A) `hydrate()` resolved (memoised) before `pullOneTable('member_habits')` actually completed — REJECTED: sync.js's `hydrate()` only resolves after `runWithConcurrency` resolves which waits on every `pullOneTable` task's `entry.persist()` to resolve which awaits `replaceForMember()`.
+- (B) PostgREST returned `habit_library` as an array (one-to-many shape) — REJECTED: FK is declared correctly; embedded resource is single-object.
+- (C) Stale Dexie rows from a prior schema version — POSSIBLE but `test1@test.com` is a fresh-onboarded canary that shouldn't have prior rows.
+- (D) The 7-tap spike toggle + reload sequence created a state where habits.html's `await VYVESync.hydrate()` returned a still-running promise that resolved to false (failed) silently and habits.html proceeded to render an empty Dexie set — POSSIBLE.
+
+**The probe ships first.** PF-40.2 splits:
+
+- **Part A (next ship, solo, no device required):** `?debug=hydrate` query-param gated logger in habits.html. Captures localStorage spike state, hydrate() resolution time + result (true/false), member_habits Dexie row sample post-await pre-render, same row re-fetched 3 seconds later. Plus add `member_achievements` to sync.js plan() (Q8 lock — schema slot already exists, missing pull entry). Plus SW cache key bump. ~30 lines added to habits.html, 1 entry to sync.js, gated to no-op unless `?debug=hydrate` is present. Risk to production: zero.
+- **Part B (next session after Part A, requires Dean on iPhone with `test1@test.com`):** Dean walks `test1@test.com?debug=hydrate&spike=1`, pastes console output. Structural fix lands with ground truth, not guesswork.
+
+**Cross-question fixes lined up alongside PF-40.2 Part B (when scope is confirmed):**
+
+- Q3 engagement cache via `_kv` (locked PM-108). Probably lands with Part B since it touches the same files (home-state-local.js + index.html).
+- Q4 + Q9 theme refactor — defers to PF-40.4 (write API ship).
+- Q7 weekly_scores derive — small one-liner, lands with Part B or PF-40.5.
+
+**§23.14 codified — parallel-session collision discipline.** The PM-104 brain drift, the PM-107 double-ship, and the PM-108 cleanup form a pattern: two Claude sessions running against the same campaign in parallel, both shipping with stale main HEAD assumptions. §23.14 codifies the response: pre-commit SHA re-check (already in §4, emphasized), read parallel commits before assuming new work is needed, prefer stand-down over duplicate ships, use the next PM number after a collision, and during long-running sessions occasionally re-check main commits. The diagnostic dive caveat from PM-108 is also pulled in: audits don't fix, they catalogue.
+
+**Held-back findings worth surfacing if they recur in PF-40.2 Part A:**
+- `workout_plan_cache` filtered by `category` (no such column) in movement.html — silent PostgREST ignore.
+- `member_habits.upsert` partial-upsert merge from settings.html L1421/L1542 writes `{member_email, habit_id, active: false}` — correctly merges per PM-97 §23.7.5 BUT if those settings.html paths fire on a member who never had a successful initial hydrate, the row would be created thin and never get backfilled (no hydrate retry on settings.html). Possible but not the test1 canary cause (test1's habits exist on Supabase, not via settings).
+
+**Brain commits this session (atomic):**
+- `brain/master.md` §23.14 added (parallel-session collision discipline)
+- `brain/active.md` §2 PM-109 paragraph prepended, §5 PF-40.2 entry updated to reflect Part A / Part B split
+- `brain/changelog.md` PM-109 prepended (this entry)
+
+**Patterns reinforced this session:**
+- **Fetching live schema before guessing column shapes saves cycles.** The early diagnostic noise (`exercise_logs.reps_completed` flagged as a join) came from inferring columns instead of reading them. One `information_schema.columns` query collapsed 30 minutes of false-positive grep into 30 seconds of ground truth.
+- **The pull-query + FK + denormalisation logic for `member_habits` was correct already.** The Habits canary is NOT a hydrate-pull bug as PM-106 initially framed it. PF-40.2's structural shape (codify `pullOneTable` to include join cols) won't fix the canary because that's already done. The real fix is whatever the probe reveals — possibly a timing / Dexie-init / spike-toggle race rather than a data-shape issue.
+- **Probe-first beats structure-first when the diagnosis is incomplete.** Shipping a structural fat-row enforcement layer to "address" the canary without knowing what actually broke would have made the brain narrative wrong AND wasted device-verification cycles when test1 still showed `undefined`. The probe costs less than the alternative.
+
+**On the horizon:** PF-40.2 Part A is the very next ship. After Part B reveals ground truth, the rest of PF-40.2 + the Q3 engagement cache work proceeds in one session. PF-40.3 (catalogue residency) and PF-40.4 (write API) sequence after.
+
 ## 2026-05-14 PM-108 — PF-40.1 §4.6 reframed: 10 decisions LOCKED by Dean; PF-40.2 unblocked
 
 **Session shape:** 14 May 2026 late evening. Continuation of PM-107 (the PF-40.1 audit ship that landed earlier the same day). PM-108 closes a gap in PM-107: the audit's §4.6 shipped as "Open questions surfaced" with self-supplied recommendations, but the PF-40.1 brief required ambiguities to be batched and surfaced to Dean, NOT resolved. PM-108 corrects this — Dean answered all 10 questions and the playbook §4.6 is rewritten as DEAN_DECISIONS_LOCKED. No vyve-site ships; brain-only commit.

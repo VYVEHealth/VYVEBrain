@@ -2163,6 +2163,32 @@ Schema discipline for 1c-* migrations: undo / clear / no-op publishes go through
 **Fix lands PF-40.6 (Tier 1) + PF-40.7 (Tier 2) + PF-40.8 (Tier 3).** PF-14b expands its scope to include Tier 1 asset bundling.
 
 
+### §23.14 — Parallel-session collision discipline (logged 14 May 2026, PM-109)
+
+**Status:** HARD RULE. Two PM-107 commits within 26 minutes (PM-108 context) and one mid-session brain drift in PM-104 prove that the "Live > Brain > Chat" source-of-truth chain leaves a real gap when two Claude sessions run against the same campaign in parallel.
+
+**The risk pattern.** Session A loads brain at T=0, works for 30+ minutes, ships at T=45. Session B starts at T=15 with the same brain snapshot, doesn't see Session A's in-flight work, ships at T=20. Both sessions believe they hold the next PM number. The later-merged commit overwrites or duplicates the earlier one. Brain narrative drifts. Dean inherits the cleanup.
+
+**Rules:**
+
+1. **Pre-ship SHA re-check is non-optional.** Already in §4 — restated here for emphasis: immediately before any GITHUB_COMMIT_MULTIPLE_FILES, re-fetch main HEAD via GITHUB_GET_A_REFERENCE and compare to the SHA you started from. If it has moved, STOP. Read the new commit. Decide whether to rebase, merge, or stand down. Do not commit blind.
+
+2. **If main moved during your session, read what shipped before assuming you have new work to do.** Fetch the parallel commit's diff via GITHUB_GET_A_COMMIT. Compare its deliverables to yours. Common outcomes:
+   - **Stand down** — the parallel session covered everything you would have. Do not commit redundant work.
+   - **Patch differences** — your work caught something theirs missed; commit only the delta as a follow-up (next PM number).
+   - **Replace** — only if their work is materially worse, which is rare and requires Dean confirmation in chat.
+
+3. **PM numbering after a parallel collision: take the next number, not the same.** If main has PM-107 from a parallel session and your work is a meaningful follow-up, it's PM-108, not "PM-107 part 2". Sequencing reflects what landed, not what you set out to do.
+
+4. **Brief gaps left by a parallel session are valid follow-up work.** PM-108 is the canonical example: PM-107 shipped the audit but missed the DEAN_DECISION_NEEDED batch the brief specified. PM-108 closed that gap as a clean follow-up commit. Future sessions facing the same shape: read the brief carefully, compare to what the parallel session shipped, and commit the missing piece — not the whole thing again.
+
+5. **Diagnostic dives during an audit are out of scope.** PM-108 dove into habits.html / db.js / sync.js trying to root-cause the PM-106 canary mid-audit. Brief said audit; auditing means cataloguing, not fixing. If you find yourself wanting to fix something during a read-only ship, log it as a finding in the playbook and keep auditing. Verified findings only land in §23. Unverified ones go in the changelog entry of the session that surfaced them and stay there until probed.
+
+6. **Long-running sessions are at higher collision risk.** If you've been holding context for 45+ minutes without committing, the probability that another session has shipped against your campaign rises. Cheap mitigation: occasional `GITHUB_LIST_COMMITS` checks during long reads, particularly before any new tool-using sub-phase.
+
+**Why this earns hard-rule status:** The parallel-collision shape has now appeared three times in five days (PM-104 brain drift after PM-98..PM-101 shipped silently, PM-107×2, PM-108 cleanup). It's not a freak occurrence; it's a property of how the brain-first / multi-session pattern interacts with GitHub's last-write-wins semantics. The rule documents the response so each future occurrence is cheap to handle.
+
+
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.
