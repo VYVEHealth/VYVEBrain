@@ -12,13 +12,26 @@ See `audit/dexie-audit-2026-05-15.md` for the full audit narrative and `audit/de
 **Next from PM-117 P0 priority list:** item #3 — engagement.html criticalHydrate + Dexie wire (~2 hr). Engagement score ring currently entirely server-bound; zero VYVELocalDB refs in engagement.html.
 
 
-### PM-119 candidate — engagement.html zero-Dexie wire [P0 LAUNCH BLOCKER, ~2 hr]
+### PM-119 — engagement.html Dexie-first wire [SHIPPED 2026-05-15]
 
-**Status:** P0 because engagement ring is one of the most visible surfaces and currently goes server-bound (5-15s round-trip on cold cache). Page has zero VYVELocalDB refs.
+**Status:** SHIPPED in vyve-site commit `17318f12d0c737dc8df8095beb16a4737ea867de` — atomic 3-file commit (engagement.html, firstPaintHydrate.js, sw.js) on main. See changelog PM-119 entry.
 
-**Fix shape:** Either (a) add `engagement` page key to firstPaintHydrate.js (overlaps home key's tables: members, daily_habits 30d, workouts 30d, cardio 30d, session_views 30d, replay_views 30d, wellbeing_checkins 30d — all already wired) and call `criticalHydrate('engagement')` from engagement.html, then build the engagement view by calling `home-state-local.js` `computeHomeStateFromDexie()` directly. OR (b) recognise that home + engagement share the same critical hydrate set and just call `criticalHydrate('home')` from engagement.html. Recommendation: (b) — saves a page-key entry and the engagement view is largely a subset of the home view.
+**Approach taken:** option (a) — separate `engagement` page key (9 tables) including a new `WELLBEING_CHECKINS_30D` entry that didn't previously exist. Chose option (a) over the audit's recommended (b) (reuse `home` page key) because (a) is more explicit and decouples engagement.html's hydrate set from home's, and importantly the new WELLBEING_CHECKINS_30D entry materially closes the wellbeing-component gap in the engagement score ring on first paint.
 
-Keep `member-dashboard` EF as a background upgrade for charity_total + achievements (these stay server-canonical).
+**Wire-in shape:** 4 new `<script src>` tags (db.js, sync.js, firstPaintHydrate.js, home-state-local.js — identical chain to index.html PF-11b). New `buildEngagementFromDexie(email)` helper in engagement.html calls `VYVEHomeStateLocal.computeHomeStateFromDexie` and reshapes its output into the render-ready `{counts, streaks, checkinStreak, score, activityLog}` shape. Dexie-first paint block in `loadPage()` runs between the localStorage cache early-paint and the EF fetch: `criticalHydrate('engagement') → buildEngagementFromDexie → render`. EF still fires and remains authoritative.
+
+**Closes PM-117 audit findings:** P0 hydrate_missing_page_key (engagement.html), P0 no_dexie_wiring (engagement.html). 13 of 23 P0s closed by PM-118 + PM-119.
+
+**Next from PM-117 P0 priority list:** item #4 — workouts-session.js 3 QUEUED_NO_OPTIMISTIC writes (exercise_logs POST, workouts POST, workout_plan_cache PATCH). Root cause of PF-31 page-re-entry green-check disappear. ~2 hr.
+
+### home page key widening — add WELLBEING_CHECKINS_30D + WEEKLY_GOALS [P1, ~10 min]
+
+**Surfaced by PM-119.** The new `engagement` page key (PM-119) is a superset of the existing `home` page key — it adds `WELLBEING_CHECKINS_30D` and `WEEKLY_GOALS`. The `home` key is missing both. Impact: on index.html first paint, `engagement_wellbeing` component (12.5 pts of 100) reads 0 until lazy mass-hydrate populates wellbeing_checkins. Same gap exists for weekly_goals (used for goal-target progress widgets).
+
+**Fix:** in firstPaintHydrate.js return block, change `home` array from 7 tables to 9 by adding `WELLBEING_CHECKINS_30D` and `WEEKLY_GOALS`. Both entries already declared. Single-line array change. SW cache key bump.
+
+**Not P0 because:** (a) symptom is silent — wellbeing component degrades to 0, not visible undefined, (b) lazy mass-hydrate populates within seconds, (c) the same gap has been live since PM-112 so any user with non-empty Dexie has the data already from a prior session.
+
 
 ### PM-120 candidate — workouts-session.js write-path Dexie sync [P0 LAUNCH BLOCKER, ~2 hr]
 

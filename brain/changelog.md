@@ -1,3 +1,87 @@
+## 2026-05-15 PM-119 — PM-117 audit P0 #3 SHIPPED: engagement.html Dexie-first wire (atomic 3-file commit `17318f12`)
+
+**Session shape:** Direct execution against PM-117's prioritised fix list item #3. Closes the master.md §3 violation flagged by the audit: engagement.html had ZERO VYVELocalDB refs, ZERO criticalHydrate, ZERO sync.hydrate — score ring entirely server-bound via member-dashboard EF. ~75 min from "go" to shipped + brain committed.
+
+**Approach decision — option (a) over option (b):**
+
+The backlog entry written by PM-117 recommended option (b): reuse the existing `home` page key by calling `criticalHydrate('home')` from engagement.html, on the grounds that engagement is largely a subset of home. I went with option (a): create a separate `engagement` page key. Reasons:
+
+- A separate page key is more explicit about what data engagement.html actually needs. Coupling to `home`'s key would mean every future home-view evolution affects engagement and vice-versa.
+- The new key let me add `WELLBEING_CHECKINS_30D` to the critical hydrate set specifically — closing a real gap. The engagement score has a wellbeing component (12.5 of 100 pts) computed from latest wellbeing_checkin; without WELLBEING_CHECKINS_30D in critical hydrate, that component lands as 0 on first paint until lazy mass-hydrate populates. With (b) the gap stays.
+- Cost is trivial: one extra page-key entry in a return block.
+
+**Pre-flight discipline:**
+
+- Brain pre-load: `brain/active.md` + `brain/changelog.md` (head only via raw S3) + `tasks/backlog.md` + audit narrative `.md` + audit structured `.json`. Audit JSON cross-referenced for engagement findings (3× P0 directly relevant: `hydrate_missing_page_key`, `no_dexie_wiring`, `architectural_drift`).
+- vyve-site main HEAD pinned: `e8df0dbd6a0336fb2d18f3b1232cc1301f59f0de` (PM-118 ship from earlier this session).
+- Live file fetches at pinned SHA: `engagement.html` blob `d6b5e99f` (90695 bytes; matches the audit's pinned blob SHA — no drift); `firstPaintHydrate.js` blob `1ff55523` (13838 bytes — same blob as pre-PM-118 since PM-118 didn't touch it); `sw.js` blob `99483e78` (8938 bytes — the PM-118 file with `vyve-cache-v2026-05-15-pm118-precache-a` cache key); `home-state-local.js` blob `8c3200f9` (25232 bytes); plus `index.html` and `db.js` for pattern reference.
+- Confirmed via grep that engagement.html had 0 matches each for `VYVELocalDB`, `criticalHydrate`, `VYVESync`, `/db.js`, `/sync.js`, `/firstPaintHydrate.js` — audit's "0 of everything" classification accurate at HEAD.
+- Confirmed `home-state-local.js` already in sw.js precache (L47 of post-PM-118 sw.js — was added pre-PM-118). No precache additions needed for PM-119.
+- Confirmed `wellbeing_checkins` + `weekly_goals` both first-class Dexie tables in db.js (L209-210 schema; L464/L466 makeTable; L124-125 in the source-of-truth `vyve_*` table list).
+- Confirmed `VYVEHomeStateLocal.computeHomeStateFromDexie` is the public API on `window.VYVEHomeStateLocal` (home-state-local.js L522-530).
+
+**Part A — firstPaintHydrate.js:**
+
+- New `WELLBEING_CHECKINS_30D` entry inserted after `WEEKLY_GOALS`, using the same `entry()` factory pattern as adjacent declarations: `/wellbeing_checkins?member_email=eq.{ee}&activity_date=gte.{d30}&select=*` with `bulkUpsertMember('wellbeing_checkins')` persistence.
+- New `engagement` page-key array added to the `return {}` block of `plansForPage()`: 9 tables — `MEMBERS, MEMBER_HABITS, DAILY_HABITS_30D, WORKOUTS_30D, CARDIO_30D, SESSION_VIEWS_30D, REPLAY_VIEWS_30D, WELLBEING_CHECKINS_30D, WEEKLY_GOALS`. Superset of `home` (7 tables) — `home` page key remains missing wellbeing_checkins + weekly_goals (known gap, added to backlog as P1 follow-up).
+- Header comment updated: "Pages currently mapped: home, habits, workouts, nutrition, cardio, engagement."
+- File grew 13838 → 14284 utf-8 bytes (+446).
+
+**Part B — engagement.html:**
+
+- 4 new `<script src>` tags injected after `<script src="/achievements.js" defer></script>` (between the achievements load and `</head>`): `/db.js`, `/sync.js`, `/firstPaintHydrate.js`, `/home-state-local.js`. All `defer`. Order mirrors index.html L306-309 (PF-11b reference pattern). Inline HTML comment block documents the PM-119 wire-in.
+- New `buildEngagementFromDexie(email)` async helper function (~70 LOC) injected just above `async function loadPage() {` (anchored to the unique `// ---- Main load ----` comment). Returns `{counts, streaks, checkinStreak, score, activityLog, __pm119_dexie_source: true, __computed_at}` — the same shape that `loadPage`'s EF translation block (L856 onwards in the original) produces, so the existing render functions (`renderScoreHero`, `renderStreaksFromPrecomputed`, `renderActivityGridFromPrecomputed`, `renderLogFromPrecomputed`) consume it without modification. Returns `null` on any Dexie unavailability (no email, no LocalDB, no Sync, no compute module, no state row yet) so caller falls through to EF-only path. The function calls `VYVEHomeStateLocal.computeHomeStateFromDexie(email)` (same call index.html uses), then reshapes (streaks naming: home returns `workouts_*` keys, engagement renderer expects `workout` singular — mapped explicitly). activityLog is rebuilt from raw rows via parallel `VYVELocalDB.*.allFor(email)` reads (same logic the EF uses server-side).
+- Dexie-first paint block injected into `loadPage()` between the localStorage cache early-paint (`} catch(_) {}` at the cache-first try end) and the EF fetch try (`try { // Network refresh path`). Block fires `VYVESync.criticalHydrate('engagement').catch(() => null).then(() => buildEngagementFromDexie(email))`; on success renders all four panels and sets `_renderedFromDexie = true`; dispatches `vyvePaintDone { source: 'dexie' }` for telemetry alignment with index.html PF-11b.
+- File grew 90695 → 96679 utf-8 bytes (+5984), 1694 → 1814 lines.
+
+**Part C — sw.js:**
+
+- CACHE_NAME bumped: `vyve-cache-v2026-05-15-pm118-precache-a` → `vyve-cache-v2026-05-15-pm119-engagement-dexie-a`. Single-line change.
+- No precache additions (home-state-local.js was already added pre-PM-118).
+- File: 8938 → 8946 utf-8 bytes (+8).
+
+**Pre-commit verification:**
+
+- `node --check firstPaintHydrate.patched.js` rc=0 ✓.
+- `node --check sw.patched.pm119.js` rc=0 ✓.
+- engagement.patched.html has 5 non-empty inline `<script>` blocks; each extracted into a tmp .js file and node-checked individually — all rc=0 (610 + 621 + 1 + 26 + 62 lines). The 610-line block contains the new buildEngagementFromDexie helper + the Dexie-first paint wire; rc=0 confirms no JS syntax errors introduced.
+- Final structural verification: 4 new script tags present at L279-282; buildEngagementFromDexie defn at L784; criticalHydrate call at L938; ordering check confirmed db.js (L279) < home-state-local.js (L282) < buildEngagementFromDexie defn (L784) < Dexie-first paint call (L924). All exact-one occurrences.
+- vyve-site main HEAD re-verified `e8df0dbd` immediately before commit per §23.14 — unchanged from session start.
+
+**Ship:**
+
+- Atomic 3-file commit via `GITHUB_COMMIT_MULTIPLE_FILES` from Composio workbench (plain UTF-8 in `upserts[].content`, no base64 pre-encoding per the PM-86.1/87 codified rule).
+- Result: `17318f12d0c737dc8df8095beb16a4737ea867de`. New tree `208dec91`. retry_count 0. Blobs: engagement.html `e17a847d`, firstPaintHydrate.js `f6f90586`, sw.js `9db1fa2e`.
+
+**Post-commit byte-equal verification (per §23.15, Contents API only):**
+
+- `engagement.html` at `ref=17318f12`: 96679 utf-8 bytes ✓ matches local. SHA-256 `b8da3c79…a69a2c0` matches local-built ✓.
+- `firstPaintHydrate.js` at `ref=17318f12`: 14284 utf-8 bytes ✓. SHA-256 `500ed0cb…891132` matches ✓.
+- `sw.js` at `ref=17318f12`: 8946 utf-8 bytes ✓. SHA-256 `4218c902…03b7e7fd` matches ✓.
+- Spot-checks against remote engagement.html: `[PM-119] Dexie-first paint` comment present (1 match), `async function buildEngagementFromDexie` present (1 match), `VYVESync.criticalHydrate('engagement')` present (1 match), all 4 new script-tag lines present (1 match each). Spot-checks against remote firstPaintHydrate.js: `WELLBEING_CHECKINS_30D` entry present, `engagement: [` page-key opening present, comment lists `cardio, engagement`. Spot-check against remote sw.js: new cache key present, old PM-118 key absent.
+
+**Closed by this ship (from PM-117 audit findings):**
+
+- P0 `hydrate_missing_page_key` on engagement.html (§23.7.1 + §23.11).
+- P0 `no_dexie_wiring` on engagement.html (§23.7.1 + §23.11 + §23.12).
+- Total: 2 P0s closed in 75 min. Combined with PM-118: **13 of 23 P0 findings closed in this session.**
+
+**Architectural impact:** engagement.html now follows the PF-11b shape: three-tier paint (localStorage cache → Dexie compute → EF authoritative). Master.md §3 violation specifically called out by the audit ("entirely server-bound") is closed — Dexie is now the first authoritative read path; EF upgrades values rather than being the only source. The PF-11b pattern is now applied to: index.html, engagement.html (PM-119), and partially to habits.html (PM-112) / nutrition.html (PM-112) / cardio.html (PM-112) / workouts.html (PM-118).
+
+**Surfaced for backlog:**
+
+- `home` page key in firstPaintHydrate.js should also include `WELLBEING_CHECKINS_30D` + `WEEKLY_GOALS` for consistency with the new engagement key. Same gap exists on index.html today (silent — components.wellbeing degrades to 0 until lazy hydrate). ~10 min fix; added to backlog as P1.
+
+**Not touched this session (deliberate, per Dean's standing PM-118 instruction):**
+
+- System B (`vyve_*_cache_*` localStorage prewarmers in auth.js `_vyvePf*`). The page still reads `vyve_engagement_cache` for the synchronous pre-auth early paint (L949-967), and the EF success path still writes `vyve_engagement_cache` (L927). PM-119 adds a Dexie tier between those two; it doesn't replace either. Dual-cache architecture decision remains open for Dean.
+- The `engagement.html → member-achievements EF` call at L978 (achievements grid) untouched — out of scope, no Dexie wiring exists for member_achievements outside achievements.js itself.
+- The `engagement.html → platform-alert EF` call at L1618 untouched — push notification permission check, not a data fetch.
+
+**No new §23 hard rules earned.** All architectural patterns followed PF-11b precedent verbatim.
+
+**Device verification (deferred per Dean):** Dean to cold-boot engagement.html on iPhone (online), expect three paint events in console: `vyvePaintDone source: 'cache'` (synchronous, ~50ms), then `[VYVE-criticalHydrate] engagement total: Xms tables: {...}` followed by `vyvePaintDone source: 'dexie'` (post-hydrate compute, expected <500ms), then EF response within ~1-2s. Subsequent navigations to engagement.html on warm Dexie should skip the criticalHydrate network round-trip (per-table 5s timeout returns near-instantly when rows already present) and paint computed values immediately.
+
 ## 2026-05-15 PM-118 — PM-117 audit P0.2 + P0.3 SHIPPED: sw.js urlsToCache +10, workouts criticalHydrate wire-in (atomic 2-file commit `e8df0dbd`)
 
 **Session shape:** Direct execution against PM-117's prioritised fix list. Two smallest-scope P0s combined as the audit recommended — both mechanical, both atomic-commit-eligible together, ~90 min budget. No new diagnostics or architecture decisions; pure follow-through.
