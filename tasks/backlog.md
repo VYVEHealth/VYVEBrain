@@ -2,27 +2,15 @@
 
 See `audit/dexie-audit-2026-05-15.md` for the full audit narrative and `audit/dexie-audit-2026-05-15.json` for structured per-file findings. Items below are the actionable fix list, ordered by smallest scope first within each priority.
 
-### PM-118 candidate — sw.js urlsToCache 10-script add + workouts criticalHydrate wire-in [P0 LAUNCH BLOCKER, ~90 min]
+### PM-118 — sw.js urlsToCache 10-script add + workouts criticalHydrate wire-in [SHIPPED 2026-05-15]
 
-**Status:** Two mechanical fixes, atomic-commit-eligible together. Both have zero ambiguity, both are pure additions to existing patterns, both have low regression risk.
+**Status:** SHIPPED in vyve-site commit `e8df0dbd6a0336fb2d18f3b1232cc1301f59f0de` — atomic 2-file commit on main. See changelog PM-118 entry.
 
-**Part A — sw.js urlsToCache (~30 min):** Add these 10 scripts to `urlsToCache` in `/sw.js`:
-- `/vapid.js`
-- `/session-live.js`
-- `/session-rp.js`
-- `/workouts-config.js`
-- `/workouts-programme.js`
-- `/workouts-session.js`
-- `/workouts-exercise-menu.js`
-- `/workouts-builder.js`
-- `/workouts-notes-prs.js`
-- `/workouts-library.js`
+- `sw.js`: 10 critical-path scripts added to urlsToCache (`/vapid.js`, `/session-live.js`, `/session-rp.js`, `/workouts-config.js`, `/workouts-programme.js`, `/workouts-session.js`, `/workouts-exercise-menu.js`, `/workouts-builder.js`, `/workouts-notes-prs.js`, `/workouts-library.js`); CACHE_NAME bumped to `vyve-cache-v2026-05-15-pm118-precache-a`. Closes PM-117 audit P0.3 (sw_precache_gap, 10 findings).
+- `workouts-programme.js`: 4 `await VYVESync.hydrate()` sites (L82, L263, L368, L409) replaced with `await VYVESync.criticalHydrate('workouts')`. Closes PM-117 audit P0.2 and the PM-112 deferred follow-up.
 
-Bump SW cache key (`vyve-cache-v2026-05-14-pm114-hydration-fast-a` → `vyve-cache-v2026-05-15-pm118-precache-a`). Per §23.10 / §23 PF-14c rule 2a: any runtime-loaded script not in urlsToCache will black-screen offline.
+**Next from PM-117 P0 priority list:** item #3 — engagement.html criticalHydrate + Dexie wire (~2 hr). Engagement score ring currently entirely server-bound; zero VYVELocalDB refs in engagement.html.
 
-**Part B — workouts criticalHydrate wire-in (~1 hr):** In `workouts-programme.js`, replace the 4 `await VYVESync.hydrate()` sites (L82, L263, L368, L409) with `await VYVESync.criticalHydrate('workouts')`. The `workouts` page key (workout_plan_cache + workouts[30d]) is already declared in firstPaintHydrate.js — this is the deferred wire-in the PM-112 brain entry flagged.
-
-**Verification:** node --check on workouts-programme.js + sw.js. Pre-commit SHA recheck of vyve-site main. Post-commit byte-equal verification of all changed files via Contents API base64. Optional iPhone device walk: airplane-mode-on cold-boot workouts.html — should paint <2s instead of failing.
 
 ### PM-119 candidate — engagement.html zero-Dexie wire [P0 LAUNCH BLOCKER, ~2 hr]
 

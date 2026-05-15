@@ -1,3 +1,62 @@
+## 2026-05-15 PM-118 — PM-117 audit P0.2 + P0.3 SHIPPED: sw.js urlsToCache +10, workouts criticalHydrate wire-in (atomic 2-file commit `e8df0dbd`)
+
+**Session shape:** Direct execution against PM-117's prioritised fix list. Two smallest-scope P0s combined as the audit recommended — both mechanical, both atomic-commit-eligible together, ~90 min budget. No new diagnostics or architecture decisions; pure follow-through.
+
+**Pre-flight discipline:**
+
+- vyve-site main HEAD pinned at session start: `83874dd5cd8ff9650497c7c631ccb9bc6baf8fd2` (same SHA the PM-117 audit was run against — audit line numbers should be byte-accurate).
+- Brain loaded: `brain/active.md`, `brain/changelog.md` head, `tasks/backlog.md`, `audit/dexie-audit-2026-05-15.md`, `audit/dexie-audit-2026-05-15.json`.
+- Audit JSON cross-check: 10× P0 `sw_precache_gap` findings present with exact script paths matching the PM-117 brain entry; 1× P0 `workouts_critical_hydrate_missing` finding present with L82/L263/L368/L409 specified.
+- Live file fetches at the pinned SHA: `sw.js` blob `30d433eb` (8222 utf-8 bytes), `workouts-programme.js` blob `9af00fbb` (39930 utf-8 bytes). Local decode bytes matched remote size — clean transport.
+- firstPaintHydrate.js inspected at the pinned SHA to confirm the `workouts` page key exists and maps to `WORKOUT_PLAN_CACHE` + `WORKOUTS_30D`. Confirmed: `Pages currently mapped: home, habits, workouts, nutrition, cardio.` Wire-in is safe.
+
+**Part A — sw.js (~30 min):**
+
+- `CACHE_NAME` const at L10 bumped: `vyve-cache-v2026-05-14-pm114-hydration-fast-a` → `vyve-cache-v2026-05-15-pm118-precache-a`.
+- urlsToCache (L11..L74 in source) gained 10 entries inserted after `/achievements.js` and before `/manifest.json` (logically adjacent to the existing PF-14c block which justified the same kind of additions): `/vapid.js`, `/session-live.js`, `/session-rp.js`, `/workouts-config.js`, `/workouts-programme.js`, `/workouts-session.js`, `/workouts-exercise-menu.js`, `/workouts-builder.js`, `/workouts-notes-prs.js`, `/workouts-library.js`. Inline comment block names PM-118 + the §23.10/PF-14c rule + the offline-cold-boot failure mode it closes. File grew 212 → 229 lines, 8008 → 8723 decoded chars (8222 → 8938 utf-8 bytes).
+
+**Part B — workouts-programme.js (~1 hr):**
+
+- All 4 sites that previously called `await VYVESync.hydrate()` (L82, L263, L368, L409 — confirmed via grep against the pinned-SHA source, byte-identical 4-space-indented occurrences of `    try { await VYVESync.hydrate(); } catch (_) {}`) replaced with `await VYVESync.criticalHydrate('workouts')`. Same try/catch shape, same error swallow, same async semantics. File line count unchanged at 725. 39628 → 39700 decoded chars, 39930 → 40002 utf-8 bytes.
+- Pre-patch assertion: `wp_text.count(old_line) == 4` ✓, `'criticalHydrate' not in wp_text` ✓ (no double-firing risk).
+- Post-patch assertion: 0× old form, 4× new form at exact line positions L82/L263/L368/L409 ✓.
+
+**Pre-commit verification:**
+
+- `node --check sw.patched.js` rc=0 ✓.
+- `node --check workouts-programme.patched.js` rc=0 ✓.
+- vyve-site main HEAD re-checked immediately before commit: `83874dd5` unchanged from session start (§23.14 parallel-collision discipline satisfied).
+
+**Ship:**
+
+- Atomic 2-file commit via `GITHUB_COMMIT_MULTIPLE_FILES` from the Composio workbench (plain UTF-8 in `upserts[].content`, no double-base64-encoding per the PM-86.1/87 codified rule).
+- Commit message documents both changes, closes-which-audit-findings, the unchanged System B status, and the pre-commit SHA recheck result.
+- Result: `e8df0dbd6a0336fb2d18f3b1232cc1301f59f0de`. New tree `21c0b54a`. retry_count 0 (no race). sw.js blob `99483e78`, workouts-programme.js blob `ad71ae63`.
+
+**Post-commit byte-equal verification (per §23.15, Contents API only, no raw CDN):**
+
+- `sw.js` at `ref=e8df0dbd`: 8938 utf-8 bytes ✓ matches local. SHA-256 `33b2b420…dc85e51c` matches local-built file exactly.
+- `workouts-programme.js` at `ref=e8df0dbd`: 40002 utf-8 bytes ✓ matches local. SHA-256 `be046239…8c511ec2` matches.
+- Spot-checks confirmed in remote: cache key present, all 10 precache scripts present, 4× `criticalHydrate('workouts')` present, 0× legacy `VYVESync.hydrate()`.
+
+**Closed by this ship (from PM-117 audit findings list of 46):**
+
+- P0.2 workouts_critical_hydrate_missing — 1 finding (workouts.html + workouts-programme.js).
+- P0.3 sw_precache_gap — 10 findings (one per missing script).
+- Total: 11 of 23 P0 findings closed in 90 min. The PM-112 brain entry's "workouts.html script-tag only — wire in follow-up" is now done.
+
+**Remaining audit fix queue (35 of 46):**
+
+- 21 P0 still open. Next priority per PM-117 ordering: item #3 engagement.html zero-Dexie wire (~2 hr — engagement ring entirely server-bound, master.md §3 violated); then #4 workouts-session.js 3 QUEUED_NO_OPTIMISTIC writes (~2 hr — root cause of PF-31 page-re-entry green-check disappear); then #5 log-food.html 4 Dexie-bypass writes (~2 hr — read-after-write hazard via `diaryLogs[]` in-memory + saveDiaryCache localStorage); then the 9 member-data pages with Dexie reads but no criticalHydrate call (~3-4 hr collectively); then the 8 DIRECT_FETCH write sites bypassing both writeQueued and Dexie (~3 hr).
+- 20 P1, 1 P2, 2 INFO.
+
+**Not touched this session (deliberate, per Dean's brief):**
+
+- System B (`vyve_*_cache_*` localStorage prewarmers fanning out from `auth.js _vyvePf*` on `vyveSignalAuthReady`). The PM-117 audit surfaced this as the architectural deviation explaining the recurring "Dexie problems keep surfacing in different shapes" pattern, but the retirement-vs-codify decision is Dean's. The dual-cache decision remains open. No `_vyvePf*` code or `vyve_*_cache_*` keys were read or modified.
+- No new §23 hard rules earned — both changes followed existing rules cleanly. §23.10 (sw.js precache completeness) and §23.14 (parallel-collision SHA refresh) are the load-bearing ones for this ship.
+
+**Device verification (deferred per Dean):** offline cold-boot of workouts.html airplane-mode-on — expected: SW serves all 7 workouts-*.js modules + vapid.js + session-live.js + session-rp.js from precache instead of network-404ing; criticalHydrate('workouts') resolves <2s with workout_plan_cache + workouts[30d] in parallel instead of awaiting the 81s mass-hydrate. Online behaviour is byte-equivalent to pre-ship (sw.js delta is pure cache-list additions, hydrate fn swap returns same Promise shape, firstPaintHydrate degrades to legacy fetch when Dexie disabled).
+
 ## 2026-05-15 PM-117 — Dexie audit (read-only): whole-tree scan against vyve-site `83874dd5`, 46 findings, dual-cache architecture surfaced as root cause
 
 **Session shape:** Whole-tree Dexie audit per Dean's brief — read-only, no vyve-site ships. Pulled vyve-site HEAD `83874dd5cd8ff9650497c7c631ccb9bc6baf8fd2` via Composio workbench parallel-blob fetch, 81 source files (49 HTML + 32 JS, ~2.47M chars). Live Supabase `information_schema` cross-referenced for 42 in-scope tables. Brain pre-load (`master.md` + `changelog.md` + `tasks/backlog.md` + `active.md`) for §23 rules and PF-40 narrative — but per brief, narrative not trusted; every classification re-derived from live code.
