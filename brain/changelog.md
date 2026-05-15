@@ -1,3 +1,79 @@
+## 2026-05-15 PM-120 — PM-117 audit P0 #4 SHIPPED: workouts-session.js Dexie-first writes + criticalHydrate wire (atomic 2-file commit `3ce9c72f`)
+
+**Session shape:** Direct execution against PM-117's prioritised fix list item #4. Closes the root cause of PF-31 ("workouts page re-entry — green check has DISAPPEARED") at the source: 3 writeQueued sites with no synchronous Dexie write. ~50 min from "go" to shipped + brain committed.
+
+**Pre-flight discipline:**
+
+- vyve-site main HEAD pinned at session start: `17318f12d0c737dc8df8095beb16a4737ea867de` (PM-119 ship from this session).
+- workouts-session.js blob `db76ea28` (50251 utf-8 bytes) — matches the PM-117 audit's pinned blob SHA exactly, zero drift.
+- Verified `workouts.html` script chain (L562-572) loads `db.js` → `sync.js` → `firstPaintHydrate.js` → `workouts-config.js` → `workouts-programme.js` → `workouts-session.js`. So `VYVELocalDB` and `VYVESync` globals are guaranteed defined before workouts-session.js runs — no script-tag changes needed in workouts.html.
+- Verified `VYVEData.writeQueued` (vyve-offline.js L260) has ZERO Dexie integration — only writes to localStorage outbox + network. This is what makes every writeQueued site a read-after-write hazard from Dexie's perspective. The PM-117 audit's diagnosis "writeQueued without preceding synchronous VYVELocalDB write — read-after-write hazard" is correct: writeQueued does not shadow-write to Dexie at all.
+- Verified all 3 target Dexie tables exist with appropriate keyPaths: `workouts` (keyPath `id`, secondary index `[member_email+activity_date]`), `exercise_logs` (keyPath `id`, secondary index `[member_email+activity_date]`), `workout_plan_cache` (keyPath `member_email` — singleton row per member). Confirms the merge-vs-replace distinction for site 3.
+- Cardio.html PF-9 read as the reference pattern (L792-819): optimistic Dexie upsert post-network-call, catch+warn non-fatal, comment block noting future PF-15 shadow-drainer retirement.
+
+**Severity drift:**
+
+The audit JSON tagged all 3 write_bypass findings on workouts-session.js as P1; the audit narrative + Dean's brief named them as the next P0 (priority list item #4). PM-120 treated as P0 closures per the narrative source-of-truth principle. New backlog INFO item surfaced: codify in §23 that when audit JSON severity ≠ narrative priority, narrative wins for scheduling, JSON severity stays for audit-progress accounting.
+
+**Part A — L548 sync.hydrate → criticalHydrate('workouts'):**
+
+This was a bonus fix outside the original priority list — PM-118 fixed the four `await VYVESync.hydrate()` sites in workouts-programme.js (L82/L263/L368/L409 of that file). workouts-session.js has its OWN sync.hydrate call at L548 that PM-118 didn't catch because the PM-118 brief and the PM-117 audit narrative both scoped the fix to workouts-programme.js only. The audit JSON `per_file_audit` entry for workouts-session.js listed `sync_hydrate_calls: [{line: 548}]` and `localdb_refs: [{line: 550, table: 'workouts', op: 'allFor', kind: 'read'}]` — a Dexie read-after-hydrate that was on the slow 81s mass-hydrate path. Wired to criticalHydrate('workouts') here so the workouts page key (workout_plan_cache + workouts[30d]) hydrates in parallel with 5s timeout instead of awaiting the full mass-hydrate. Same shape as PM-118.
+
+**Part B — L422 exercise_logs POST optimistic upsert:**
+
+Inserted after `await VYVEData.writeQueued({...})` and before `_publishSetLogged()` so bus subscribers (`set:logged`) see the row in Dexie. Full payload `{id: payload.client_id, member_email, exercise_name, activity_date, sets_completed, reps_completed, weight_kg, logged_at, client_id}`. Wrapped in defensive `try { … upsert(...).catch(warn) … } catch(warn) {}` so any failure is non-fatal. Fire-and-forget — no `await`, the write returns a Promise but we don't gate the function on it.
+
+**Part C — L605 workouts POST optimistic upsert:**
+
+Same shape as Part B, with the additional discipline of `!_workoutWriteResult.dead` gating: PM-63 Layer 4 added a `dead` flag to writeQueued return values for 4xx terminal errors (vs queued 5xx/network) so the caller can fire `workout:failed` eagerly and `VYVEHomeState.revertPatch` can undo the optimistic patch within one paint frame. The Dexie upsert is gated on the same dead-check — if we know the row will never reach the server (4xx), we don't want it in local Dexie either, otherwise revertPatch and Dexie would disagree. Queued (5xx/network) and ok (2xx) paths both upsert.
+
+**Part D — L707 workout_plan_cache PATCH merged upsert:**
+
+The interesting one. workout_plan_cache is keyed by member_email (singleton row per member) and stores the programme JSONB, plan_duration_weeks, generated_at, plus the two counters `current_session` and `current_week`. The PATCH only sends `{current_session, current_week}` — those are the only fields the user mutated. A plain `VYVELocalDB.workout_plan_cache.upsert({member_email, current_session, current_week})` would `db[table].put(stamp(row))` and **replace** the entire Dexie row, dropping programme + plan_duration_weeks + generated_at + everything else.
+
+This is the same hazard codified for `member_habits` and `members` partial-upsert merges in db.js (PM-97 PF-15 §23.7.5). Those tables have custom `upsert` overrides that read-modify-write inside a transaction. `workout_plan_cache` doesn't have such an override (it uses the default `makeTable` factory), so PM-120 implements the merge inline via `VYVELocalDB.raw()` → `db.transaction('rw', db.workout_plan_cache, function () { ... })` — open a R/W transaction, get existing row, Object.assign merge, put. Touched_at stamped explicitly. Fire-and-forget per the pattern.
+
+Alternative considered: add a custom `upsert` override to db.js workout_plan_cache like the existing member_habits / members overrides. Rejected as out-of-scope for PM-120 — that would be a db.js schema-API change affecting every caller of workout_plan_cache.upsert (currently zero callers, but any future caller would inherit the merge semantic). Adding it inline at the call site keeps the change contained. Backlog item: if a second workout_plan_cache partial-upsert appears, promote the merge override into db.js then. Until then, inline is fine.
+
+**Part E — sw.js cache key bump:**
+
+`vyve-cache-v2026-05-15-pm119-engagement-dexie-a` → `vyve-cache-v2026-05-15-pm120-workouts-session-optimistic-a`. No precache additions (workouts-session.js was added to precache by PM-118).
+
+**Pre-commit verification:**
+
+- `node --check workouts-session.patched.js` rc=0 ✓.
+- `node --check sw.patched.pm120.js` rc=0 ✓.
+- Structural verification: 1× `VYVESync.criticalHydrate('workouts')`, 0× legacy `VYVESync.hydrate()`, 1× `VYVELocalDB.exercise_logs.upsert({`, 1× `VYVELocalDB.workouts.upsert({`, 1× `db.workout_plan_cache.put(merged)`, 6× `[PM-120]` markers (3 sites × {warn, throw}). Each optimistic upsert verified to land after its corresponding writeQueued (deltas +12, +12, +22 lines respectively — no transposition).
+- vyve-site main HEAD re-verified `17318f12` immediately before commit per §23.14 — unchanged from session start.
+
+**Ship:**
+
+- Atomic 2-file commit via `GITHUB_COMMIT_MULTIPLE_FILES` from Composio workbench (plain UTF-8 in upserts[].content per PM-86.1/87 rule).
+- Result: `3ce9c72f255bcb4aab666971ec5acbb16c96dbe8`. New tree `8bc4c0e5`. retry_count 0. Blobs: workouts-session.js `7ffe1f21`, sw.js `5ddca97b`.
+
+**Post-commit byte-equal verification (§23.15, Contents API only):**
+
+- `workouts-session.js` at `ref=3ce9c72f`: 54538 utf-8 bytes ✓. SHA-256 `cb22ef56…77b5355d` matches local ✓.
+- `sw.js` at `ref=3ce9c72f`: 8957 utf-8 bytes ✓. SHA-256 `07197ab9…84fcab60` matches local ✓.
+- Spot-checks against remote: 1× criticalHydrate('workouts'), 0× legacy hydrate(), 1× exercise_logs.upsert, 1× workouts.upsert, 1× workout_plan_cache merge put, new cache key present + old absent.
+
+**Closed by this ship (from PM-117 audit findings):**
+
+- L422 write_bypass on workouts-session.js (audit JSON: P1; narrative: P0 #4 part 1).
+- L605 write_bypass on workouts-session.js (audit JSON: P1; narrative: P0 #4 part 2).
+- L707 write_bypass on workouts-session.js (audit JSON: P1; narrative: P0 #4 part 3).
+- Bonus: L548 sync.hydrate → criticalHydrate('workouts') wire (not flagged as a separate finding but visible in per-file `sync_hydrate_calls`; closes the workouts page on the slow mass-hydrate path).
+
+**Cumulative across PM-118 + PM-119 + PM-120:** 16 of 46 audit findings closed (11 by PM-118 — 10× sw_precache_gap P0s + 1× workouts critical_hydrate_missing P0; 2 by PM-119 — both engagement.html P0s; 3 by PM-120 — three write_bypass P1s, plus L548 hydrate wire as bonus). Per audit JSON severities: 13 P0 + 3 P1 = 16. Per narrative priority: items #1, #2 (PM-118), #3 (PM-119), #4 (PM-120) = first 4 of 5 priorities.
+
+**Remaining queue per audit JSON severity:** 8 P0, 17 P1, 1 P2, 2 INFO. Per narrative priority: next is item #5 — log-food.html 4 writes bypass Dexie via in-memory `diaryLogs[]` JS array + `saveDiaryCache()` localStorage (~2 hr). Read-after-write hazard: log food → close app → reopen → Dexie has no record until queue drains.
+
+**System B (vyve_*_cache_* localStorage prewarmers) intentionally untouched.** Note: site 3 (L707) already had a localStorage cache update for `vyve_programme_cache_<email>` immediately after the writeQueued (pre-PM-117 behaviour) — left in place. The new Dexie merge runs in addition, not in replacement.
+
+**No new §23 hard rules earned.** All architectural patterns followed PF-9 cardio.html precedent + §23.7.5 partial-upsert merge precedent.
+
+**Device verification (deferred per Dean):** Dean to log a workout end-to-end on iPhone (start session → log some sets → complete) then immediately back-navigate to workouts.html. Expected: green check on the just-completed session persists (PF-31 closed). Console should show `[VYVE-criticalHydrate] workouts total: Xms tables: {workout_plan_cache: …ms, workouts: …ms}` on the back-nav (the L548 wire firing).
+
 ## 2026-05-15 PM-119 — PM-117 audit P0 #3 SHIPPED: engagement.html Dexie-first wire (atomic 3-file commit `17318f12`)
 
 **Session shape:** Direct execution against PM-117's prioritised fix list item #3. Closes the master.md §3 violation flagged by the audit: engagement.html had ZERO VYVELocalDB refs, ZERO criticalHydrate, ZERO sync.hydrate — score ring entirely server-bound via member-dashboard EF. ~75 min from "go" to shipped + brain committed.

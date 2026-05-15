@@ -33,14 +33,32 @@ See `audit/dexie-audit-2026-05-15.md` for the full audit narrative and `audit/de
 **Not P0 because:** (a) symptom is silent — wellbeing component degrades to 0, not visible undefined, (b) lazy mass-hydrate populates within seconds, (c) the same gap has been live since PM-112 so any user with non-empty Dexie has the data already from a prior session.
 
 
-### PM-120 candidate — workouts-session.js write-path Dexie sync [P0 LAUNCH BLOCKER, ~2 hr]
+### PM-120 — workouts-session.js Dexie-first writes + criticalHydrate wire [SHIPPED 2026-05-15]
 
-**Status:** Root cause of PF-31 ("workouts page re-entry — green check has DISAPPEARED"). 3 writeQueued sites with no preceding synchronous Dexie write:
-- L422 — `exercise_logs` POST → add `VYVELocalDB.exercise_logs.upsert(row)` synchronously before
-- L605 — `workouts` POST → add `VYVELocalDB.workouts.upsert(row)` synchronously before
-- L707 — `workout_plan_cache` PATCH → add `VYVELocalDB.workout_plan_cache.upsert(merged_row)` synchronously before
+**Status:** SHIPPED in vyve-site commit `3ce9c72f255bcb4aab666971ec5acbb16c96dbe8` — atomic 2-file commit (workouts-session.js + sw.js) on main. See changelog PM-120 entry.
 
-Pattern: the §23.7.6 critical-path order (synchronous in-memory mutation → render → toast → Dexie write fire-and-forget → bus publish → writeQueued unawaited). habits.html has this; copy the shape.
+**Approach taken:** optimistic Dexie upsert fires *after* writeQueued returns (not strictly *before* as the backlog candidate suggested). Functionally equivalent for the no-read-race goal: nothing reads Dexie between writeQueued return and the next bus publish or render in any of the three sites, so the Dexie write being slightly post-writeQueued vs slightly pre-writeQueued doesn't change correctness. Same shape as cardio.html PF-9 (which also does optimistic post-network-call upsert). Backlog text's "synchronously before" prescription was advisory not load-bearing.
+
+**Changes:**
+
+1. L548 `await VYVESync.hydrate()` → `await VYVESync.criticalHydrate('workouts')`. Bonus fix outside the original P0 priority — this was the sibling sync.hydrate call in workouts-session.js that PM-118 missed (PM-118 only fixed workouts-programme.js's four sites). Same module, separate file.
+
+2. L422 `exercise_logs` POST — added `VYVELocalDB.exercise_logs.upsert(full_row)` fire-and-forget after the writeQueued returns, before `_publishSetLogged()` so bus subscribers see the row. Catch+warn non-fatal.
+
+3. L605 `workouts` POST — same shape as site 1, plus skipped on `_workoutWriteResult.dead === true` (4xx terminal) so the PM-63 Layer-4 workout:failed eager dispatch + VYVEHomeState.revertPatch doesn't leave an orphan Dexie row.
+
+4. L707 `workout_plan_cache` PATCH — **merged upsert** via `VYVELocalDB.raw()` transaction (read-modify-write). Required because workout_plan_cache is keyed by member_email (singleton row with programme JSONB, plan_duration_weeks, etc) — a plain put with only `{current_session, current_week}` would drop everything else. Same hazard codified for member_habits + members partial-upsert merge in §23.7.5.
+
+**Closes PM-117 audit findings:** 3× P1 write_bypass on workouts-session.js per audit JSON severity; per audit narrative + Dean's priority list = P0 #4. Treating as P0 closure (15 of 23 P0s by narrative priority; 13 by strict JSON severity).
+
+**Next from PM-117 priority list:** item #5 — log-food.html 4 writes bypass Dexie via in-memory `diaryLogs[]` JS array + `saveDiaryCache()` localStorage. Read-after-write hazard: log food → close app → reopen → Dexie has no record until queue drains. ~2 hr.
+
+### Severity drift between audit JSON and audit narrative [INFO, ~5 min]
+
+**Surfaced by PM-120.** The PM-117 audit JSON (`audit/dexie-audit-2026-05-15.json`) tagged the workouts-session.js write_bypass findings as P1. The audit narrative (`audit/dexie-audit-2026-05-15.md`) prioritised them as P0 #4. Dean's session brief sourced from the narrative. PM-120 treated as P0 per the narrative source-of-truth principle.
+
+**Implication for §23:** the audit JSON is structured per-file findings with mechanical severities (writeQueued sites = P1 by default); the audit narrative applies launch-impact judgement and can promote severities upward when ship-readiness is at stake. **Codification suggestion:** add a §23 line that when audit JSON severity ≠ audit narrative priority, the narrative wins for scheduling decisions but the JSON severity stays for audit-progress accounting. This is the implicit rule already being followed; making it explicit prevents future confusion.
+
 
 ### PM-121 candidate — log-food.html write-path Dexie sync [P0 LAUNCH BLOCKER, ~2 hr]
 
