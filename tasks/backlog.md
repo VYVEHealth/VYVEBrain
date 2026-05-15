@@ -1,3 +1,103 @@
+## Added 15 May 2026 PM-117 — Dexie audit findings (46 total; prioritised fix list)
+
+See `audit/dexie-audit-2026-05-15.md` for the full audit narrative and `audit/dexie-audit-2026-05-15.json` for structured per-file findings. Items below are the actionable fix list, ordered by smallest scope first within each priority.
+
+### PM-118 candidate — sw.js urlsToCache 10-script add + workouts criticalHydrate wire-in [P0 LAUNCH BLOCKER, ~90 min]
+
+**Status:** Two mechanical fixes, atomic-commit-eligible together. Both have zero ambiguity, both are pure additions to existing patterns, both have low regression risk.
+
+**Part A — sw.js urlsToCache (~30 min):** Add these 10 scripts to `urlsToCache` in `/sw.js`:
+- `/vapid.js`
+- `/session-live.js`
+- `/session-rp.js`
+- `/workouts-config.js`
+- `/workouts-programme.js`
+- `/workouts-session.js`
+- `/workouts-exercise-menu.js`
+- `/workouts-builder.js`
+- `/workouts-notes-prs.js`
+- `/workouts-library.js`
+
+Bump SW cache key (`vyve-cache-v2026-05-14-pm114-hydration-fast-a` → `vyve-cache-v2026-05-15-pm118-precache-a`). Per §23.10 / §23 PF-14c rule 2a: any runtime-loaded script not in urlsToCache will black-screen offline.
+
+**Part B — workouts criticalHydrate wire-in (~1 hr):** In `workouts-programme.js`, replace the 4 `await VYVESync.hydrate()` sites (L82, L263, L368, L409) with `await VYVESync.criticalHydrate('workouts')`. The `workouts` page key (workout_plan_cache + workouts[30d]) is already declared in firstPaintHydrate.js — this is the deferred wire-in the PM-112 brain entry flagged.
+
+**Verification:** node --check on workouts-programme.js + sw.js. Pre-commit SHA recheck of vyve-site main. Post-commit byte-equal verification of all changed files via Contents API base64. Optional iPhone device walk: airplane-mode-on cold-boot workouts.html — should paint <2s instead of failing.
+
+### PM-119 candidate — engagement.html zero-Dexie wire [P0 LAUNCH BLOCKER, ~2 hr]
+
+**Status:** P0 because engagement ring is one of the most visible surfaces and currently goes server-bound (5-15s round-trip on cold cache). Page has zero VYVELocalDB refs.
+
+**Fix shape:** Either (a) add `engagement` page key to firstPaintHydrate.js (overlaps home key's tables: members, daily_habits 30d, workouts 30d, cardio 30d, session_views 30d, replay_views 30d, wellbeing_checkins 30d — all already wired) and call `criticalHydrate('engagement')` from engagement.html, then build the engagement view by calling `home-state-local.js` `computeHomeStateFromDexie()` directly. OR (b) recognise that home + engagement share the same critical hydrate set and just call `criticalHydrate('home')` from engagement.html. Recommendation: (b) — saves a page-key entry and the engagement view is largely a subset of the home view.
+
+Keep `member-dashboard` EF as a background upgrade for charity_total + achievements (these stay server-canonical).
+
+### PM-120 candidate — workouts-session.js write-path Dexie sync [P0 LAUNCH BLOCKER, ~2 hr]
+
+**Status:** Root cause of PF-31 ("workouts page re-entry — green check has DISAPPEARED"). 3 writeQueued sites with no preceding synchronous Dexie write:
+- L422 — `exercise_logs` POST → add `VYVELocalDB.exercise_logs.upsert(row)` synchronously before
+- L605 — `workouts` POST → add `VYVELocalDB.workouts.upsert(row)` synchronously before
+- L707 — `workout_plan_cache` PATCH → add `VYVELocalDB.workout_plan_cache.upsert(merged_row)` synchronously before
+
+Pattern: the §23.7.6 critical-path order (synchronous in-memory mutation → render → toast → Dexie write fire-and-forget → bus publish → writeQueued unawaited). habits.html has this; copy the shape.
+
+### PM-121 candidate — log-food.html write-path Dexie sync [P0 LAUNCH BLOCKER, ~2 hr]
+
+**Status:** 4 writeQueued sites bypass Dexie. Page does optimistic UI via in-memory `diaryLogs[meal].push()` + `saveDiaryCache()` localStorage. Keep that for in-session render. Add synchronous Dexie writes alongside:
+- L1281 — POST nutrition_logs → `VYVELocalDB.nutrition_logs.upsert(localRow)` synchronously before
+- L1386 — POST nutrition_logs (second insert path) — same
+- L894 — DELETE nutrition_logs → `VYVELocalDB.nutrition_logs.delete(id)` synchronously before
+- L686 — PATCH nutrition_logs (food edit) — switch from DIRECT_FETCH to writeQueued + add `VYVELocalDB.nutrition_logs.upsert(merged)` before
+
+Result: log food, close app, reopen — Dexie has the row, no read-after-write hazard.
+
+### PM-122 candidate — critical-hydrate coverage for 9 unmapped member-data pages [P0 LAUNCH BLOCKER, ~3-4 hr]
+
+**Status:** 9 pages paint member data but neither call criticalHydrate nor have a page key in firstPaintHydrate.js: engagement.html (handled in PM-119 above), log-food.html, monthly-checkin.html, wellbeing-checkin.html, exercise.html, movement.html, certificates.html, settings.html, activity.html.
+
+**Recommended fix shape:** Don't bloat the page-key map. Introduce a `criticalHydrateBase(email)` that always pulls members + this-week activity (covers most of the overlaps), then page-specific keys layer extras only when truly extra. Most of the 9 pages just need `criticalHydrateBase` + 0-1 extras.
+
+### PM-123 candidate — settings.html 3 DIRECT_FETCH writes [P0, ~1 hr]
+
+**Status:** 3 of settings.html's 6 write sites are DIRECT_FETCH (L1033 members PATCH, L1300 members PATCH, L1537 member_habits PATCH). The other 3 are correct DIRECT_WITH_OPTIMISTIC. Fix the 3 DIRECT_FETCH sites by routing through writeQueued + adding synchronous VYVELocalDB.<table>.upsert before. db.js merge override (§23.7.5) handles the partial-payload correctness.
+
+### PM-124 candidate — dual-cache architectural decision [P0 STRATEGIC, 30 min discussion + ~2 hr action]
+
+**Status:** This is the load-bearing decision from the audit. The codebase has two parallel local-data systems and the brain only documents one.
+
+**Option A — Codify System B as a §23.13-style L0 tier.** Add to master.md §3 + §23.13: "Tier 0 — localStorage cache. Same data as Dexie, written via auth.js `_vyvePf*` prewarmers at signal-auth-ready. Read first by cache-first paint blocks. Survives WKWebView ITP IDB wipe (PM-113 finding). Falls through to Dexie on miss; falls through to REST/EF on Dexie miss." Keep all `vyve_*_cache_*` keys, document each one. Outcome: complexity becomes explicit.
+
+**Option B — Retire System B post-PF-14b approval.** iOS 1.3 (2) and Android 1.0.3 (10) are both already submitted (PM-115/PM-116). Once approved (~24-48hr from now), members on the App Store / Play builds run in bundled mode — no remote-origin ITP IDB wipe risk. Strip `_vyvePf*` from auth.js, remove all `vyve_*_cache_*` reads from pages. Outcome: one source of truth, §3 contract honoured.
+
+**Recommendation:** Option B. The PM-113 hotfix was a trial-phase workaround; PF-14b is the architectural fix. Once both apps are approved, System B is technical debt. Keeping it doubles every future cache-shape change.
+
+**Caveat:** if either app review goes the wrong way (Apple rejects 1.3, Google rejects 1.0.3), Option A becomes the safer call. Decision can wait until both reviews land.
+
+### PM-125 candidate — sync.js plan() column gap + member_habits id/assigned_at [P1, ~45 min]
+
+**Status:** Two structural fixes to sync.js + db.js.
+
+1. `sync.js plan()` `daily_habits` pull at L121-131: change `select=member_email,activity_date,habit_id,habit_completed,notes` to `select=*` (matching firstPaintHydrate's behaviour). This means lazy/mass-hydrate paths get the full row including `logged_at`, closing the `last_habit_at` permanently-null bug in home-state-local.js. ~5 min.
+2. `sync.js plan()` `member_habits` pull at L139-146: add `id, assigned_at` to the select projection. `db.js` `member_habits.replaceForMember` (db.js L401-416): add `id: r.id` and `assigned_at: r.assigned_at` to the denormalisation. Closes the silent column drop. ~40 min including local testing.
+
+### PM-126 candidate — remaining 9 QUEUED_NO_OPTIMISTIC write-site sweep [P1, ~2-3 hr]
+
+**Status:** Routine §23.7.6 sweep across: habits.html L655 + L807 (undo paths), nutrition.html L765 (weight log), and the 6 from log-food.html + workouts-session.js (covered by PM-120/PM-121 above — these merge into those).
+
+Net new work after PM-120/PM-121: just habits.html L655 + L807 + nutrition.html L765. ~45 min.
+
+### PM-127 candidate — brain drift patches [P2, ~15 min]
+
+**Status:** Two INFO findings from the audit.
+
+1. `master.md §23.11` example denormalised columns ("name, description, category, difficulty, theme") don't match live `habit_library` schema. Update example to the actual columns: `habit_pot, habit_title, habit_description, habit_prompt, difficulty`. db.js code is correct; only the rule's example is the drift.
+2. `audit/pf-40-1-callsites.json` (PM-107) was flagged in the brief as potentially stale. Confirmed: PM-117 re-derived everything from live code. Either delete pf-40-1-callsites.json (replaced by dexie-audit-2026-05-15.json) or add a header note "SUPERSEDED by PM-117 audit". Either is fine.
+
+### PM-117 audit deliverables (already shipped this commit)
+
+- `audit/dexie-audit-2026-05-15.json` (~104KB) — structured per-file audit, 81 files, 46 findings, full per-file read/write/hydrate classifications.
+- `audit/dexie-audit-2026-05-15.md` (~26KB) — narrative companion with prioritised fix list, sequencing, 5 open Qs for Dean.
+
 ## Added 15 May 2026 PM-116 — PF-14b Android shipped; new launch-blocker follow-ups
 
 ### Android keystore + password 1Password backup [P0 LAUNCH BLOCKER, immediate]

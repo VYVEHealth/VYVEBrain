@@ -1,0 +1,3657 @@
+{
+  "audit_date": "2026-05-15",
+  "audited_by": "Claude session PM-117 (Dexie audit, read-only)",
+  "vyve_site_head": "83874dd5cd8ff9650497c7c631ccb9bc6baf8fd2",
+  "vyve_brain_head_at_audit_start": "9cb2410112da7f81d3075810707c23004c0916bf",
+  "scope": "Whole-tree vyve-site portal scope (online.vyvehealth.co.uk). 81 source files (49 HTML + 32 JS).",
+  "audit_method": "Recursive tree fetch + parallel blob fetch via Composio workbench, pinned to vyve-site HEAD. Live Supabase information_schema cross-referenced for 42 in-scope tables. All findings re-derived from live code; brain narrative not trusted (per brief).",
+  "summary": {
+    "total_findings": 46,
+    "by_severity": {
+      "P0": 23,
+      "P1": 20,
+      "P2": 1,
+      "INFO": 2
+    },
+    "by_category": {
+      "hydrate_gap": 1,
+      "hydrate_missing_page_key": 9,
+      "write_bypass": 9,
+      "direct_fetch_no_dexie": 8,
+      "sw_precache_gap": 10,
+      "architectural_drift": 1,
+      "hydrate_column_gap": 2,
+      "no_dexie_wiring": 1,
+      "workouts_critical_hydrate_missing": 1,
+      "optimistic_local_missing": 1,
+      "wrong_optimistic_layer": 1,
+      "brain_drift": 2
+    }
+  },
+  "findings": [
+    {
+      "severity": "P0",
+      "category": "hydrate_gap",
+      "page": "workouts.html",
+      "rule": "\u00a723.7.1 + PM-112 firstPaintHydrate",
+      "description": "Page paints member data and has page_key 'workouts' in firstPaintHydrate map, but does NOT call criticalHydrate. Uses slow sync.js mass-hydrate path."
+    },
+    {
+      "severity": "P1",
+      "category": "hydrate_missing_page_key",
+      "page": "log-food.html",
+      "rule": "\u00a723.7.1 + \u00a723.11",
+      "description": "Page paints member data but is not in firstPaintHydrate page-key map and does not call criticalHydrate."
+    },
+    {
+      "severity": "P0",
+      "category": "hydrate_missing_page_key",
+      "page": "engagement.html",
+      "rule": "\u00a723.7.1 + \u00a723.11",
+      "description": "Page paints member data but is not in firstPaintHydrate page-key map and does not call criticalHydrate."
+    },
+    {
+      "severity": "P1",
+      "category": "hydrate_missing_page_key",
+      "page": "movement.html",
+      "rule": "\u00a723.7.1 + \u00a723.11",
+      "description": "Page paints member data but is not in firstPaintHydrate page-key map and does not call criticalHydrate."
+    },
+    {
+      "severity": "P1",
+      "category": "hydrate_missing_page_key",
+      "page": "exercise.html",
+      "rule": "\u00a723.7.1 + \u00a723.11",
+      "description": "Page paints member data but is not in firstPaintHydrate page-key map and does not call criticalHydrate."
+    },
+    {
+      "severity": "P1",
+      "category": "hydrate_missing_page_key",
+      "page": "certificates.html",
+      "rule": "\u00a723.7.1 + \u00a723.11",
+      "description": "Page paints member data but is not in firstPaintHydrate page-key map and does not call criticalHydrate."
+    },
+    {
+      "severity": "P1",
+      "category": "hydrate_missing_page_key",
+      "page": "monthly-checkin.html",
+      "rule": "\u00a723.7.1 + \u00a723.11",
+      "description": "Page paints member data but is not in firstPaintHydrate page-key map and does not call criticalHydrate."
+    },
+    {
+      "severity": "P1",
+      "category": "hydrate_missing_page_key",
+      "page": "wellbeing-checkin.html",
+      "rule": "\u00a723.7.1 + \u00a723.11",
+      "description": "Page paints member data but is not in firstPaintHydrate page-key map and does not call criticalHydrate."
+    },
+    {
+      "severity": "P1",
+      "category": "hydrate_missing_page_key",
+      "page": "settings.html",
+      "rule": "\u00a723.7.1 + \u00a723.11",
+      "description": "Page paints member data but is not in firstPaintHydrate page-key map and does not call criticalHydrate."
+    },
+    {
+      "severity": "P1",
+      "category": "hydrate_missing_page_key",
+      "page": "activity.html",
+      "rule": "\u00a723.7.1 + \u00a723.11",
+      "description": "Page paints member data but is not in firstPaintHydrate page-key map and does not call criticalHydrate."
+    },
+    {
+      "severity": "P1",
+      "category": "write_bypass",
+      "page": "habits.html",
+      "line": 655,
+      "rule": "\u00a723.7.6 + PF-4b Part 2",
+      "description": "writeQueued to daily_habits without preceding synchronous VYVELocalDB write \u2014 read-after-write hazard."
+    },
+    {
+      "severity": "P1",
+      "category": "write_bypass",
+      "page": "habits.html",
+      "line": 807,
+      "rule": "\u00a723.7.6 + PF-4b Part 2",
+      "description": "writeQueued to daily_habits without preceding synchronous VYVELocalDB write \u2014 read-after-write hazard."
+    },
+    {
+      "severity": "P0",
+      "category": "direct_fetch_no_dexie",
+      "page": "log-food.html",
+      "line": 686,
+      "rule": "\u00a723.7.6 + PF-4b Part 2 + \u00a723.12",
+      "description": "Direct fetch PATCH to nutrition_logs bypasses both writeQueued AND Dexie \u2014 read-after-write hazard, no offline support."
+    },
+    {
+      "severity": "P1",
+      "category": "write_bypass",
+      "page": "log-food.html",
+      "line": 894,
+      "rule": "\u00a723.7.6 + PF-4b Part 2",
+      "description": "writeQueued to unknown without preceding synchronous VYVELocalDB write \u2014 read-after-write hazard."
+    },
+    {
+      "severity": "P1",
+      "category": "write_bypass",
+      "page": "log-food.html",
+      "line": 1281,
+      "rule": "\u00a723.7.6 + PF-4b Part 2",
+      "description": "writeQueued to unknown without preceding synchronous VYVELocalDB write \u2014 read-after-write hazard."
+    },
+    {
+      "severity": "P1",
+      "category": "write_bypass",
+      "page": "log-food.html",
+      "line": 1386,
+      "rule": "\u00a723.7.6 + PF-4b Part 2",
+      "description": "writeQueued to unknown without preceding synchronous VYVELocalDB write \u2014 read-after-write hazard."
+    },
+    {
+      "severity": "P0",
+      "category": "direct_fetch_no_dexie",
+      "page": "nutrition-setup.html",
+      "line": 526,
+      "rule": "\u00a723.7.6 + PF-4b Part 2 + \u00a723.12",
+      "description": "Direct fetch PATCH to members bypasses both writeQueued AND Dexie \u2014 read-after-write hazard, no offline support."
+    },
+    {
+      "severity": "P0",
+      "category": "direct_fetch_no_dexie",
+      "page": "nutrition.html",
+      "line": 1458,
+      "rule": "\u00a723.7.6 + PF-4b Part 2 + \u00a723.12",
+      "description": "Direct fetch PATCH to members bypasses both writeQueued AND Dexie \u2014 read-after-write hazard, no offline support."
+    },
+    {
+      "severity": "P1",
+      "category": "write_bypass",
+      "page": "nutrition.html",
+      "line": 765,
+      "rule": "\u00a723.7.6 + PF-4b Part 2",
+      "description": "writeQueued to unknown without preceding synchronous VYVELocalDB write \u2014 read-after-write hazard."
+    },
+    {
+      "severity": "P0",
+      "category": "direct_fetch_no_dexie",
+      "page": "running-plan.html",
+      "line": 720,
+      "rule": "\u00a723.7.6 + PF-4b Part 2 + \u00a723.12",
+      "description": "Direct fetch PATCH to running_plan_cache bypasses both writeQueued AND Dexie \u2014 read-after-write hazard, no offline support."
+    },
+    {
+      "severity": "P0",
+      "category": "direct_fetch_no_dexie",
+      "page": "settings.html",
+      "line": 1033,
+      "rule": "\u00a723.7.6 + PF-4b Part 2 + \u00a723.12",
+      "description": "Direct fetch PATCH to members bypasses both writeQueued AND Dexie \u2014 read-after-write hazard, no offline support."
+    },
+    {
+      "severity": "P0",
+      "category": "direct_fetch_no_dexie",
+      "page": "settings.html",
+      "line": 1300,
+      "rule": "\u00a723.7.6 + PF-4b Part 2 + \u00a723.12",
+      "description": "Direct fetch PATCH to members bypasses both writeQueued AND Dexie \u2014 read-after-write hazard, no offline support."
+    },
+    {
+      "severity": "P0",
+      "category": "direct_fetch_no_dexie",
+      "page": "settings.html",
+      "line": 1537,
+      "rule": "\u00a723.7.6 + PF-4b Part 2 + \u00a723.12",
+      "description": "Direct fetch PATCH to member_habits bypasses both writeQueued AND Dexie \u2014 read-after-write hazard, no offline support."
+    },
+    {
+      "severity": "P0",
+      "category": "direct_fetch_no_dexie",
+      "page": "theme.js",
+      "line": 107,
+      "rule": "\u00a723.7.6 + PF-4b Part 2 + \u00a723.12",
+      "description": "Direct fetch PATCH to members bypasses both writeQueued AND Dexie \u2014 read-after-write hazard, no offline support."
+    },
+    {
+      "severity": "P1",
+      "category": "write_bypass",
+      "page": "workouts-session.js",
+      "line": 422,
+      "rule": "\u00a723.7.6 + PF-4b Part 2",
+      "description": "writeQueued to unknown without preceding synchronous VYVELocalDB write \u2014 read-after-write hazard."
+    },
+    {
+      "severity": "P1",
+      "category": "write_bypass",
+      "page": "workouts-session.js",
+      "line": 605,
+      "rule": "\u00a723.7.6 + PF-4b Part 2",
+      "description": "writeQueued to unknown without preceding synchronous VYVELocalDB write \u2014 read-after-write hazard."
+    },
+    {
+      "severity": "P1",
+      "category": "write_bypass",
+      "page": "workouts-session.js",
+      "line": 707,
+      "rule": "\u00a723.7.6 + PF-4b Part 2",
+      "description": "writeQueued to unknown without preceding synchronous VYVELocalDB write \u2014 read-after-write hazard."
+    },
+    {
+      "severity": "P0",
+      "category": "sw_precache_gap",
+      "page": "sw.js",
+      "rule": "\u00a723.10 + PF-14c rule 2a",
+      "description": "/vapid.js loaded by HTML pages but NOT in urlsToCache \u2014 offline cold-boot of those pages will fail."
+    },
+    {
+      "severity": "P0",
+      "category": "sw_precache_gap",
+      "page": "sw.js",
+      "rule": "\u00a723.10 + PF-14c rule 2a",
+      "description": "/session-live.js loaded by HTML pages but NOT in urlsToCache \u2014 offline cold-boot of those pages will fail."
+    },
+    {
+      "severity": "P0",
+      "category": "sw_precache_gap",
+      "page": "sw.js",
+      "rule": "\u00a723.10 + PF-14c rule 2a",
+      "description": "/session-rp.js loaded by HTML pages but NOT in urlsToCache \u2014 offline cold-boot of those pages will fail."
+    },
+    {
+      "severity": "P0",
+      "category": "sw_precache_gap",
+      "page": "sw.js",
+      "rule": "\u00a723.10 + PF-14c rule 2a",
+      "description": "/workouts-config.js loaded by HTML pages but NOT in urlsToCache \u2014 offline cold-boot of those pages will fail."
+    },
+    {
+      "severity": "P0",
+      "category": "sw_precache_gap",
+      "page": "sw.js",
+      "rule": "\u00a723.10 + PF-14c rule 2a",
+      "description": "/workouts-programme.js loaded by HTML pages but NOT in urlsToCache \u2014 offline cold-boot of those pages will fail."
+    },
+    {
+      "severity": "P0",
+      "category": "sw_precache_gap",
+      "page": "sw.js",
+      "rule": "\u00a723.10 + PF-14c rule 2a",
+      "description": "/workouts-session.js loaded by HTML pages but NOT in urlsToCache \u2014 offline cold-boot of those pages will fail."
+    },
+    {
+      "severity": "P0",
+      "category": "sw_precache_gap",
+      "page": "sw.js",
+      "rule": "\u00a723.10 + PF-14c rule 2a",
+      "description": "/workouts-exercise-menu.js loaded by HTML pages but NOT in urlsToCache \u2014 offline cold-boot of those pages will fail."
+    },
+    {
+      "severity": "P0",
+      "category": "sw_precache_gap",
+      "page": "sw.js",
+      "rule": "\u00a723.10 + PF-14c rule 2a",
+      "description": "/workouts-builder.js loaded by HTML pages but NOT in urlsToCache \u2014 offline cold-boot of those pages will fail."
+    },
+    {
+      "severity": "P0",
+      "category": "sw_precache_gap",
+      "page": "sw.js",
+      "rule": "\u00a723.10 + PF-14c rule 2a",
+      "description": "/workouts-notes-prs.js loaded by HTML pages but NOT in urlsToCache \u2014 offline cold-boot of those pages will fail."
+    },
+    {
+      "severity": "P0",
+      "category": "sw_precache_gap",
+      "page": "sw.js",
+      "rule": "\u00a723.10 + PF-14c rule 2a",
+      "description": "/workouts-library.js loaded by HTML pages but NOT in urlsToCache \u2014 offline cold-boot of those pages will fail."
+    },
+    {
+      "severity": "P0",
+      "category": "architectural_drift",
+      "page": "auth.js + multiple",
+      "rule": "master.md \u00a73 architectural commitment",
+      "description": "auth.js `_vyvePf*` prewarmers write to localStorage caches (vyve_home_v3, vyve_engagement_cache, vyve_certs_cache, vyve_members_cache_, vyve_programme_cache_, vyve_exercise_cache_v2, vyve_habits_cache_v3) which pages read FIRST on cache-first paint \u2014 parallel to and independent of Dexie. Pages engagement.html, certificates.html (in part), index.html (in part), and the *-checkin pages depend on these localStorage caches as primary data source. Violates 'Dexie is the source of truth for everything the app reads.' Possibly intentional (faster paint than IDB on Capacitor iOS per PM-113), but not codified anywhere."
+    },
+    {
+      "severity": "P1",
+      "category": "hydrate_column_gap",
+      "page": "sync.js + home-state-local.js",
+      "rule": "\u00a723.11 hydrate completeness",
+      "description": "sync.js plan() pulls daily_habits with thin column subset (member_email, activity_date, habit_id, habit_completed, notes) \u2014 drops logged_at, day_of_week, time_of_day, id, client_id. home-state-local.js maxLoggedAt(habits) reads r.logged_at across all activity tables; for daily_habits via mass-hydrate, last_habit_at will always resolve null. firstPaintHydrate uses select=* so home page (criticalHydrate('home')) is fine; lazy/cold-start home computation before criticalHydrate runs is not."
+    },
+    {
+      "severity": "P2",
+      "category": "hydrate_column_gap",
+      "page": "sync.js + db.js member_habits",
+      "rule": "\u00a723.11",
+      "description": "sync.js plan() member_habits pull and db.js member_habits.replaceForMember denormalisation drop the row's `id` (server UUID PK) and `assigned_at` columns. If any future page sorts/filters by either, value will be undefined. No current page reads them but it's a structural drop worth fixing in the sweep."
+    },
+    {
+      "severity": "P0",
+      "category": "no_dexie_wiring",
+      "page": "engagement.html",
+      "rule": "\u00a723.7.1 + \u00a723.11 + \u00a723.12",
+      "description": "engagement.html has 0 VYVELocalDB references, 0 criticalHydrate, 0 sync.hydrate. Primary read path: localStorage (vyve_engagement_cache) + member-dashboard EF fetch. Engagement score ring is one of the most visible surfaces and is entirely server-bound. Master.md \u00a73 violated."
+    },
+    {
+      "severity": "P0",
+      "category": "workouts_critical_hydrate_missing",
+      "page": "workouts.html + workouts-programme.js",
+      "rule": "PM-112 follow-up",
+      "description": "firstPaintHydrate.js defines a 'workouts' page key (workout_plan_cache + workouts[30d]). workouts-programme.js calls VYVESync.hydrate() (slow 81s mass-hydrate) at four sites (L82, L263, L368, L409) instead of VYVESync.criticalHydrate('workouts'). The PM-112 brain entry called this out as 'wire in follow-up' \u2014 that follow-up has not shipped."
+    },
+    {
+      "severity": "P1",
+      "category": "optimistic_local_missing",
+      "page": "settings.html",
+      "rule": "\u00a723.7.5 + \u00a723.7.6",
+      "description": "settings.html has 6 write sites; 3 of them (L1033 members PATCH, L1300 members PATCH, L1537 member_habits PATCH) are DIRECT_FETCH without a preceding synchronous VYVELocalDB.<table>.upsert. The merge override in db.js (\u00a723.7.5) protects Dexie correctness IF the upsert happens; without an upsert at all, Dexie holds stale row until next mass-hydrate."
+    },
+    {
+      "severity": "P1",
+      "category": "wrong_optimistic_layer",
+      "page": "log-food.html",
+      "rule": "\u00a723.7.6 + master.md \u00a73",
+      "description": "log-food.html does optimistic UI via in-memory `diaryLogs[meal].push()` + localStorage `saveDiaryCache()` \u2014 never writes to VYVELocalDB.nutrition_logs. The 4 writeQueued sites (food insert \u00d72, food edit PATCH, food delete) all skip the Dexie write. Read-after-write hazard: log food, close app, reopen \u2014 Dexie has no record until queue drains and EF re-fetches."
+    },
+    {
+      "severity": "INFO",
+      "category": "brain_drift",
+      "page": "master.md \u00a723.11",
+      "rule": "documentation",
+      "description": "\u00a723.11 example denormalised columns ('name, description, category, difficulty, theme') do not match the live habit_library schema. Actual schema: habit_pot, habit_title, habit_description, habit_prompt, difficulty, active, health_rule. db.js replaceForMember stamps the correct columns (habit_pot, habit_title, habit_description, habit_prompt, difficulty); the rule example is the drift."
+    },
+    {
+      "severity": "INFO",
+      "category": "brain_drift",
+      "page": "audit/pf-40-1-callsites.json",
+      "rule": "\u00a723.14 + brief",
+      "description": "Brief warned not to trust pf-40-1-callsites.json as exhaustive. Confirmed: this audit re-derived all classifications from current main HEAD and did not consult the audit JSON. Several new findings (engagement.html zero-Dexie, the dual-cache architecture, sw.js urlsToCache gaps) appear to be new or expanded relative to the PF-40.1 audit scope."
+    }
+  ],
+  "per_file_audit": [
+    {
+      "path": "VYVE_Health_Hub.html",
+      "sha": "f7087880a85ee635667942a6c3f69773e816fc3e",
+      "size_bytes": 182689,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "achievements.js",
+      "sha": "775d9bde44c413a1f401825d9784f630ebe85ded",
+      "size_bytes": 10055,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 28,
+          "fn": "log-activity",
+          "path": "/functions/v1/log-activity",
+          "kind": "fetch"
+        },
+        {
+          "line": 29,
+          "fn": "achievements-mark-seen",
+          "path": "/functions/v1/achievements-mark-seen",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "activity.html",
+      "sha": "42544ef3ab133dab37795c8d6df6f93b873078a2",
+      "size_bytes": 18915,
+      "is_portal_page": true,
+      "paints_member_data": "member",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 173,
+          "fn": "get-activity-feed",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/get-activity-feed",
+          "kind": "fetch"
+        },
+        {
+          "line": 195,
+          "fn": "get-health-data",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/get-health-data",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "apple-health.html",
+      "sha": "79cff4110c2d8038a837b53596ff85dda27784fe",
+      "size_bytes": 33517,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 239,
+          "fn": "get-health-data",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/get-health-data",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "auth.js",
+      "sha": "ebac72de679560429c0cec66839500bd2bb273df",
+      "size_bytes": 50140,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [
+        {
+          "line": 677,
+          "table": "members",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 691,
+          "table": "workout_plan_cache",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 712,
+          "table": "member_habits",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 715,
+          "table": "daily_habits",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        }
+      ],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 622,
+          "fn": "member-dashboard",
+          "path": "/functions/v1/member-dashboard",
+          "kind": "fetch"
+        },
+        {
+          "line": 959,
+          "fn": "platform-alert",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "bus.js",
+      "sha": "0ba156f164e7acd779551d13fbe51551811a434c",
+      "size_bytes": 31305,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "cardio.html",
+      "sha": "92adf33cd240b8e6951bb6a6e1d212538822a6d1",
+      "size_bytes": 45462,
+      "is_portal_page": true,
+      "paints_member_data": "member",
+      "expected_critical_hydrate_page_key": "cardio",
+      "critical_hydrate_calls": [
+        {
+          "line": 530,
+          "page_key": "cardio"
+        },
+        {
+          "line": 594,
+          "page_key": "cardio"
+        }
+      ],
+      "sync_hydrate_calls": [
+        {
+          "line": 530,
+          "kind": "hydrate"
+        },
+        {
+          "line": 594,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": [
+        {
+          "line": 532,
+          "table": "weekly_goals",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 533,
+          "table": "cardio",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 534,
+          "table": "workouts",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 595,
+          "table": "cardio",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 803,
+          "table": "cardio",
+          "op": "upsert",
+          "kind": "write"
+        }
+      ]
+    },
+    {
+      "path": "certificate.html",
+      "sha": "4ea6a05b890c8646710067904667abf258eb2079",
+      "size_bytes": 21739,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 279,
+          "fn": "member-dashboard",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "certificates.html",
+      "sha": "c7088a238b6ceb1f086d96bfa59eee2340c53db9",
+      "size_bytes": 23178,
+      "is_portal_page": true,
+      "paints_member_data": "member",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [
+        {
+          "line": 406,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 258,
+          "fn": "member-dashboard",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard",
+          "kind": "fetch"
+        },
+        {
+          "line": 545,
+          "fn": "platform-alert",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": [
+        {
+          "line": 410,
+          "table": "certificates",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 412,
+          "table": "certificates",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 413,
+          "table": "daily_habits",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 414,
+          "table": "workouts",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 415,
+          "table": "cardio",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 416,
+          "table": "wellbeing_checkins",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 417,
+          "table": "session_views",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 418,
+          "table": "replay_views",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 419,
+          "table": "members",
+          "op": "allFor",
+          "kind": "read"
+        }
+      ]
+    },
+    {
+      "path": "checkin-live.html",
+      "sha": "ea8526985a98b4e03ffd89e980d4d03f11cb1a1a",
+      "size_bytes": 2002,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "checkin-rp.html",
+      "sha": "aba500358125c39c30d48e47e67bb58548c04f42",
+      "size_bytes": 1953,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "consent-gate.html",
+      "sha": "40499dc638746812493be493a793f5a7bf9bbef2",
+      "size_bytes": 19037,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "db.js",
+      "sha": "d905ab14cac26ef10fe37a602f350375e692bd05",
+      "size_bytes": 29630,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "dexie-source-indicator.js",
+      "sha": "3c5d0d4110c360851d047266ae2af56e65b62b56",
+      "size_bytes": 23502,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [
+        {
+          "line": 392,
+          "kind": "hydrate"
+        },
+        {
+          "line": 397,
+          "kind": "hydrate"
+        },
+        {
+          "line": 399,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": [
+        {
+          "line": 487,
+          "table": "_sync_meta",
+          "op": "get",
+          "kind": "read"
+        }
+      ]
+    },
+    {
+      "path": "dexie.min.js",
+      "sha": "48114a40563aab25f518a859acc5aead92a37f57",
+      "size_bytes": 94277,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "education-live.html",
+      "sha": "52b100a1fa5a5b21634ab852be9ce5048d75f83c",
+      "size_bytes": 2010,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "education-rp.html",
+      "sha": "1265ed220d360b6ce6dbfb556046b1107d997830",
+      "size_bytes": 1959,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "engagement.html",
+      "sha": "d6b5e99f733304a80cc4d088614a57f8f080602c",
+      "size_bytes": 90695,
+      "is_portal_page": true,
+      "paints_member_data": "member",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 477,
+          "fn": "member-dashboard",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard",
+          "kind": "fetch"
+        },
+        {
+          "line": 978,
+          "fn": "member-achievements",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-achievements",
+          "kind": "fetch"
+        },
+        {
+          "line": 1618,
+          "fn": "platform-alert",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "events-live.html",
+      "sha": "c7c7aae5d2556959b784b2b6f3df7ee3eb103c5d",
+      "size_bytes": 23929,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [
+        {
+          "line": 263,
+          "table": "members",
+          "kind": "rest",
+          "classification": "NETWORK_BOUND",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 318,
+          "table": "session_chat",
+          "kind": "rest",
+          "classification": "NETWORK_BOUND",
+          "has_dexie_first_before": false
+        }
+      ],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "events-rp.html",
+      "sha": "eceac541be19b98b8baaf08bf48655a9b47691a8",
+      "size_bytes": 17618,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "exercise.html",
+      "sha": "26db3bc820af574e8d32dc7a081be99a2579ea46",
+      "size_bytes": 22765,
+      "is_portal_page": true,
+      "paints_member_data": "member",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [
+        {
+          "line": 308,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": [
+        {
+          "line": 312,
+          "table": "workout_plan_cache",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 313,
+          "table": "workout_plan_cache",
+          "op": "allFor",
+          "kind": "read"
+        }
+      ]
+    },
+    {
+      "path": "firstPaintHydrate.js",
+      "sha": "1ff555236c791f834f09236a0b6aad32bb5c692c",
+      "size_bytes": 13838,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [
+        {
+          "line": 11,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [
+        {
+          "line": 137,
+          "table": "members",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 143,
+          "table": "member_habits",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 150,
+          "table": "habit_library",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 155,
+          "table": "daily_habits",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 160,
+          "table": "daily_habits",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 165,
+          "table": "workouts",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 170,
+          "table": "cardio",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 175,
+          "table": "session_views",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 180,
+          "table": "replay_views",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 185,
+          "table": "workout_plan_cache",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 190,
+          "table": "weight_logs",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 195,
+          "table": "nutrition_logs",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 200,
+          "table": "weekly_goals",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        }
+      ],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "gdpr-erasure-cancel.html",
+      "sha": "578a9c4f77fcaa09418c58f2b2bc40b817c9f318",
+      "size_bytes": 9777,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 133,
+          "fn": "gdpr-erase-cancel",
+          "path": "/functions/v1/gdpr-erase-cancel",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "habits.html",
+      "sha": "fd3bd06beb43a03305c00d7c93e0b5bcbdb31bfb",
+      "size_bytes": 86034,
+      "is_portal_page": true,
+      "paints_member_data": "member",
+      "expected_critical_hydrate_page_key": "habits",
+      "critical_hydrate_calls": [
+        {
+          "line": 1357,
+          "page_key": "habits"
+        },
+        {
+          "line": 1363,
+          "page_key": "habits"
+        }
+      ],
+      "sync_hydrate_calls": [
+        {
+          "line": 1334,
+          "kind": "hydrate"
+        },
+        {
+          "line": 1356,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [
+        {
+          "line": 715,
+          "table": "daily_habits",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 875,
+          "table": "daily_habits",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 906,
+          "table": "habit_themes",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 1461,
+          "table": "member_habits",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 1462,
+          "table": "daily_habits",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 1470,
+          "table": "member_habits",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 1471,
+          "table": "daily_habits",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        }
+      ],
+      "writes": [
+        {
+          "classification": "OPTIMISTIC_LOCAL",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": true,
+          "has_post_dexie_write": false,
+          "has_bus_publish": true,
+          "method": "POST",
+          "table": "daily_habits",
+          "kind": "rest",
+          "line": 642
+        },
+        {
+          "classification": "QUEUED_NO_OPTIMISTIC",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": true,
+          "method": "POST",
+          "table": "daily_habits",
+          "kind": "rest",
+          "line": 655
+        },
+        {
+          "classification": "QUEUED_NO_OPTIMISTIC",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": true,
+          "method": "DELETE",
+          "table": "daily_habits",
+          "kind": "rest",
+          "line": 807
+        },
+        {
+          "classification": "OPTIMISTIC_LOCAL",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": true,
+          "has_post_dexie_write": false,
+          "has_bus_publish": true,
+          "method": "POST",
+          "table": "daily_habits",
+          "kind": "rest",
+          "line": 1123
+        },
+        {
+          "classification": "OPTIMISTIC_LOCAL",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": true,
+          "has_post_dexie_write": false,
+          "has_bus_publish": true,
+          "method": "POST",
+          "table": "daily_habits",
+          "kind": "rest",
+          "line": 1136
+        },
+        {
+          "classification": "OPTIMISTIC_LOCAL",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": true,
+          "has_post_dexie_write": false,
+          "has_bus_publish": true,
+          "method": null,
+          "table": null,
+          "kind": "writeQueued",
+          "line": 641
+        },
+        {
+          "classification": "OPTIMISTIC_LOCAL",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": true,
+          "has_post_dexie_write": false,
+          "has_bus_publish": true,
+          "method": null,
+          "table": null,
+          "kind": "writeQueued",
+          "line": 792
+        },
+        {
+          "classification": "OPTIMISTIC_LOCAL",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": true,
+          "has_post_dexie_write": false,
+          "has_bus_publish": true,
+          "method": null,
+          "table": null,
+          "kind": "writeQueued",
+          "line": 1122
+        }
+      ],
+      "ef_invocations": [
+        {
+          "line": 982,
+          "fn": "schedule-push",
+          "path": "/functions/v1/schedule-push",
+          "kind": "fetch"
+        },
+        {
+          "line": 1028,
+          "fn": "member-dashboard",
+          "path": "/functions/v1/member-dashboard",
+          "kind": "fetch"
+        },
+        {
+          "line": 1828,
+          "fn": "platform-alert",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": [
+        {
+          "line": 863,
+          "table": "daily_habits",
+          "op": "allDatesFor",
+          "kind": "read"
+        },
+        {
+          "line": 865,
+          "table": "daily_habits",
+          "op": "allDatesFor",
+          "kind": "read"
+        },
+        {
+          "line": 1221,
+          "table": "daily_habits",
+          "op": "allDatesFor",
+          "kind": "read"
+        },
+        {
+          "line": 1222,
+          "table": "daily_habits",
+          "op": "allDatesFor",
+          "kind": "read"
+        },
+        {
+          "line": 1288,
+          "table": "daily_habits",
+          "op": "allDatesFor",
+          "kind": "read"
+        },
+        {
+          "line": 1289,
+          "table": "daily_habits",
+          "op": "allDatesFor",
+          "kind": "read"
+        },
+        {
+          "line": 1377,
+          "table": "member_habits",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 1402,
+          "table": "member_habits",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 1416,
+          "table": "member_habits",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 1445,
+          "table": "daily_habits",
+          "op": "todayFor",
+          "kind": "read"
+        },
+        {
+          "line": 1451,
+          "table": "daily_habits",
+          "op": "allDatesFor",
+          "kind": "read"
+        },
+        {
+          "line": 584,
+          "table": "daily_habits",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 745,
+          "table": "daily_habits",
+          "op": "delete",
+          "kind": "write"
+        },
+        {
+          "line": 1077,
+          "table": "daily_habits",
+          "op": "upsert",
+          "kind": "write"
+        }
+      ]
+    },
+    {
+      "path": "healthbridge.js",
+      "sha": "389932e5e56ce90ace0e3342f3183e947c165ee1",
+      "size_bytes": 44229,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 136,
+          "fn": "sync-health-data",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/sync-health-data",
+          "kind": "fetch"
+        },
+        {
+          "line": 137,
+          "fn": "member-dashboard",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "hk-diagnostic.html",
+      "sha": "be836cd394a0c0977114085061f2e42ef2f4250b",
+      "size_bytes": 15507,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 219,
+          "fn": "member-dashboard",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard",
+          "kind": "fetch"
+        },
+        {
+          "line": 282,
+          "fn": "member-dashboard",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "home-state-local.js",
+      "sha": "8c3200f9b36559a45db9b6b64aa337e86536747e",
+      "size_bytes": 25232,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": [
+        {
+          "line": 247,
+          "table": "daily_habits",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 248,
+          "table": "workouts",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 249,
+          "table": "cardio",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 250,
+          "table": "session_views",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 251,
+          "table": "replay_views",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 252,
+          "table": "wellbeing_checkins",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 253,
+          "table": "weekly_goals",
+          "op": "allFor",
+          "kind": "read"
+        }
+      ]
+    },
+    {
+      "path": "how-to-pdfs.html",
+      "sha": "707391486f739c91a731c0ba41da68cd8613df8a",
+      "size_bytes": 2756,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "how-to-videos.html",
+      "sha": "3845a6e780748a2392cb6f73ebee58ea3112634d",
+      "size_bytes": 2738,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "hydration.js",
+      "sha": "5e277961f66f342d09e5834c909ad1e3f891d6fc",
+      "size_bytes": 19502,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [
+        {
+          "line": 378,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": [
+        {
+          "line": 29,
+          "table": "members",
+          "op": "allFor",
+          "kind": "read"
+        }
+      ]
+    },
+    {
+      "path": "index.html",
+      "sha": "7e09f339453bd99a4d41061aa41a8c4b4f89863d",
+      "size_bytes": 129495,
+      "is_portal_page": true,
+      "paints_member_data": "member",
+      "expected_critical_hydrate_page_key": "home",
+      "critical_hydrate_calls": [
+        {
+          "line": 1323,
+          "page_key": "home"
+        },
+        {
+          "line": 1330,
+          "page_key": "home"
+        }
+      ],
+      "sync_hydrate_calls": [],
+      "reads": [
+        {
+          "line": 1202,
+          "table": "members",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 1221,
+          "table": "workout_plan_cache",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 1250,
+          "table": "member_habits",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 1251,
+          "table": "daily_habits",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        }
+      ],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 612,
+          "fn": "member-dashboard",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard",
+          "kind": "fetch"
+        },
+        {
+          "line": 1510,
+          "fn": "notifications",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/notifications",
+          "kind": "fetch"
+        },
+        {
+          "line": 1894,
+          "fn": "platform-alert",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": [
+        {
+          "line": 681,
+          "table": "members",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 682,
+          "table": "member_habits",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 683,
+          "table": "daily_habits",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 684,
+          "table": "workouts",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 685,
+          "table": "cardio",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 686,
+          "table": "session_views",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 687,
+          "table": "replay_views",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 1065,
+          "table": "daily_habits",
+          "op": "todayFor",
+          "kind": "read"
+        }
+      ]
+    },
+    {
+      "path": "internal-dashboard/index.html",
+      "sha": "b6bb0ed706f0c16e86993956792eb2e18c5f668c",
+      "size_bytes": 55427,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "leaderboard.html",
+      "sha": "220fd2b1310ec55a75dadea9f2acd0cdedbe8d44",
+      "size_bytes": 33020,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 689,
+          "fn": "leaderboard",
+          "path": "/functions/v1/leaderboard?",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "log-food.html",
+      "sha": "bd74cf3ee87b050566fc63b172ed0dd76512970c",
+      "size_bytes": 86128,
+      "is_portal_page": true,
+      "paints_member_data": "member",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [
+        {
+          "line": 663,
+          "kind": "hydrate"
+        },
+        {
+          "line": 961,
+          "kind": "hydrate"
+        },
+        {
+          "line": 997,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [
+        {
+          "line": 564,
+          "table": "members",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 675,
+          "table": "nutrition_logs",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 883,
+          "table": "nutrition_logs",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 979,
+          "table": "nutrition_logs",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 1009,
+          "table": "nutrition_my_foods",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        }
+      ],
+      "writes": [
+        {
+          "classification": "DIRECT_FETCH",
+          "is_queued": false,
+          "is_direct_fetch": true,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": false,
+          "method": "PATCH",
+          "table": "nutrition_logs",
+          "kind": "rest",
+          "line": 686
+        },
+        {
+          "classification": "QUEUED_NO_OPTIMISTIC",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": true,
+          "method": null,
+          "table": null,
+          "kind": "writeQueued",
+          "line": 894
+        },
+        {
+          "classification": "QUEUED_NO_OPTIMISTIC",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": true,
+          "method": null,
+          "table": null,
+          "kind": "writeQueued",
+          "line": 1281
+        },
+        {
+          "classification": "QUEUED_NO_OPTIMISTIC",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": true,
+          "method": null,
+          "table": null,
+          "kind": "writeQueued",
+          "line": 1386
+        }
+      ],
+      "ef_invocations": [
+        {
+          "line": 464,
+          "fn": "off-proxy",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/off-proxy",
+          "kind": "fetch"
+        },
+        {
+          "line": 1517,
+          "fn": "platform-alert",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": [
+        {
+          "line": 665,
+          "table": "nutrition_logs",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 963,
+          "table": "nutrition_logs",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 999,
+          "table": "nutrition_my_foods",
+          "op": "allFor",
+          "kind": "read"
+        }
+      ]
+    },
+    {
+      "path": "login.html",
+      "sha": "52fe0935cc854e99031a62118d643f40f20ca697",
+      "size_bytes": 12848,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "mindfulness-live.html",
+      "sha": "b9c4fc42f1f82ec8349cb9f6401075e666c12351",
+      "size_bytes": 2020,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "mindfulness-rp.html",
+      "sha": "5de57ebddfccf7472f28699eb422d301d84ff9f0",
+      "size_bytes": 1967,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "monthly-checkin.html",
+      "sha": "32cfae1acc1b712ef23a9d45628997ea2b08900c",
+      "size_bytes": 64290,
+      "is_portal_page": true,
+      "paints_member_data": "member",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [
+        {
+          "line": 673,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 495,
+          "fn": "monthly-checkin",
+          "path": "${SUPABASE_URL}/functions/v1/monthly-checkin",
+          "kind": "fetch"
+        },
+        {
+          "line": 1144,
+          "fn": "platform-alert",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": [
+        {
+          "line": 675,
+          "table": "daily_habits",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 676,
+          "table": "workouts",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 677,
+          "table": "cardio",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 678,
+          "table": "session_views",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 679,
+          "table": "replay_views",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 680,
+          "table": "wellbeing_checkins",
+          "op": "allFor",
+          "kind": "read"
+        }
+      ]
+    },
+    {
+      "path": "movement.html",
+      "sha": "eb91ff0010ccd2f734974ce2c09c89d8aa1ebe6d",
+      "size_bytes": 51011,
+      "is_portal_page": true,
+      "paints_member_data": "member",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [
+        {
+          "line": 352,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": [
+        {
+          "line": 356,
+          "table": "workout_plan_cache",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 357,
+          "table": "workout_plan_cache",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 560,
+          "table": "workouts",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 562,
+          "table": "workouts",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 631,
+          "table": "workout_plan_cache",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 633,
+          "table": "workout_plan_cache",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 869,
+          "table": "cardio",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 871,
+          "table": "cardio",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 912,
+          "table": "workouts",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 914,
+          "table": "workouts",
+          "op": "upsert",
+          "kind": "write"
+        }
+      ]
+    },
+    {
+      "path": "nav.js",
+      "sha": "d866f13e55c0f69d39ef01709344df7711956d53",
+      "size_bytes": 35910,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "nutrition-setup.html",
+      "sha": "4ec337493758e10c4679126f47865c0bde60cf52",
+      "size_bytes": 31381,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [
+        {
+          "line": 561,
+          "table": "members",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        }
+      ],
+      "writes": [
+        {
+          "classification": "DIRECT_FETCH",
+          "is_queued": false,
+          "is_direct_fetch": true,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": false,
+          "method": "PATCH",
+          "table": "members",
+          "kind": "rest",
+          "line": 526
+        }
+      ],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "nutrition.html",
+      "sha": "1cda71ca246c6a8952ac3fd45c75198e704fa66e",
+      "size_bytes": 93614,
+      "is_portal_page": true,
+      "paints_member_data": "member",
+      "expected_critical_hydrate_page_key": "nutrition",
+      "critical_hydrate_calls": [
+        {
+          "line": 634,
+          "page_key": "nutrition"
+        }
+      ],
+      "sync_hydrate_calls": [
+        {
+          "line": 634,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [
+        {
+          "line": 646,
+          "table": "weight_logs",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 1064,
+          "table": "members",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        }
+      ],
+      "writes": [
+        {
+          "classification": "DIRECT_FETCH",
+          "is_queued": false,
+          "is_direct_fetch": true,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": false,
+          "method": "PATCH",
+          "table": "members",
+          "kind": "rest",
+          "line": 1458
+        },
+        {
+          "classification": "QUEUED_NO_OPTIMISTIC",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": true,
+          "method": null,
+          "table": null,
+          "kind": "writeQueued",
+          "line": 765
+        }
+      ],
+      "ef_invocations": [
+        {
+          "line": 1491,
+          "fn": "platform-alert",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": [
+        {
+          "line": 636,
+          "table": "weight_logs",
+          "op": "allFor",
+          "kind": "read"
+        }
+      ]
+    },
+    {
+      "path": "offline-manager.js",
+      "sha": "82ee01ce6bc411952f90af764af38fc0f33245d1",
+      "size_bytes": 3823,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "offline.html",
+      "sha": "0b8ccbfe0f79a23561547985e00af5bdff1ea927",
+      "size_bytes": 3591,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "perf-test.html",
+      "sha": "0c9e4fea23c9d011187aac3173b6811eee4781bb",
+      "size_bytes": 10328,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 165,
+          "fn": "member-dashboard",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/member-dashboard",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "perf-v2.js",
+      "sha": "fd3bed52749345f17c376edfe08de16a6c230bb4",
+      "size_bytes": 13141,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 26,
+          "fn": "log-perf",
+          "path": "\n *   - member email matches the hardcoded allowlist (Capacitor escape hatch)\n *\n * CAPTURES (unchanged from v1 except w",
+          "kind": "fetch"
+        },
+        {
+          "line": 282,
+          "fn": "log-perf",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/log-perf",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "perf.js",
+      "sha": "0704f49613b5800d6023b36c79f39920ca9e1e74",
+      "size_bytes": 15309,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "podcast-live.html",
+      "sha": "1caad419ad466d3d25e5dd731b92333f5b12df03",
+      "size_bytes": 1981,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "podcast-rp.html",
+      "sha": "270cd076e53e35c57af25cafb8f146b19bf3b312",
+      "size_bytes": 1943,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "push-native.js",
+      "sha": "ff7512d22ba969ae901a7695de5653ff0a5ee38f",
+      "size_bytes": 9252,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 34,
+          "fn": "register-push-token",
+          "path": "/functions/v1/register-push-token",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "reset-cache.html",
+      "sha": "abd771fdbf52c731c2ea84298581e368d2240603",
+      "size_bytes": 4032,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "running-plan.html",
+      "sha": "ca3d61785149aedb8c925f7d97ce8d0d8fa2637e",
+      "size_bytes": 72727,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [
+        {
+          "line": 715,
+          "table": "running_plan_cache",
+          "kind": "rest",
+          "classification": "NETWORK_BOUND",
+          "has_dexie_first_before": false
+        }
+      ],
+      "writes": [
+        {
+          "classification": "DIRECT_FETCH",
+          "is_queued": false,
+          "is_direct_fetch": true,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": false,
+          "method": "PATCH",
+          "table": "running_plan_cache",
+          "kind": "rest",
+          "line": 720
+        }
+      ],
+      "ef_invocations": [
+        {
+          "line": 321,
+          "fn": "anthropic-proxy",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/anthropic-proxy",
+          "kind": "fetch"
+        },
+        {
+          "line": 1000,
+          "fn": "platform-alert",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "session-live.js",
+      "sha": "e129e3ee5f239aaf4b697b382fe5664ee2e71a99",
+      "size_bytes": 15756,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [
+        {
+          "line": 199,
+          "table": "members",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 242,
+          "table": "session_chat",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        }
+      ],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "session-rp.js",
+      "sha": "b35ce6faba455ea9cbe2d21d7dd2425c86aa4dfd",
+      "size_bytes": 9985,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "sessions.html",
+      "sha": "dc20773f670b9c42b80a0c0519522edb535fe6e7",
+      "size_bytes": 19313,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "set-password.html",
+      "sha": "1d3738731d6d1bdb4a7c52d61fc26b2d4ce5e38e",
+      "size_bytes": 16636,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "settings.html",
+      "sha": "6eb8b245333055d24d4ae31e7ea7185c9589052b",
+      "size_bytes": 113944,
+      "is_portal_page": true,
+      "paints_member_data": "member",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [
+        {
+          "line": 1100,
+          "kind": "hydrate"
+        },
+        {
+          "line": 2285,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [
+        {
+          "line": 1094,
+          "table": "members",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 1134,
+          "table": "habit_library",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 1135,
+          "table": "member_habits",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        }
+      ],
+      "writes": [
+        {
+          "classification": "DIRECT_FETCH",
+          "is_queued": false,
+          "is_direct_fetch": true,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": false,
+          "method": "PATCH",
+          "table": "members",
+          "kind": "rest",
+          "line": 1033
+        },
+        {
+          "classification": "DIRECT_FETCH",
+          "is_queued": false,
+          "is_direct_fetch": true,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": true,
+          "has_bus_publish": true,
+          "method": "PATCH",
+          "table": "members",
+          "kind": "rest",
+          "line": 1300
+        },
+        {
+          "classification": "DIRECT_WITH_OPTIMISTIC",
+          "is_queued": false,
+          "is_direct_fetch": true,
+          "has_pre_dexie_write": true,
+          "has_post_dexie_write": true,
+          "has_bus_publish": false,
+          "method": "PATCH",
+          "table": "member_habits",
+          "kind": "rest",
+          "line": 1416
+        },
+        {
+          "classification": "DIRECT_WITH_OPTIMISTIC",
+          "is_queued": false,
+          "is_direct_fetch": true,
+          "has_pre_dexie_write": true,
+          "has_post_dexie_write": true,
+          "has_bus_publish": false,
+          "method": "DELETE",
+          "table": "habit_library",
+          "kind": "rest",
+          "line": 1424
+        },
+        {
+          "classification": "DIRECT_FETCH",
+          "is_queued": false,
+          "is_direct_fetch": true,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": true,
+          "has_bus_publish": false,
+          "method": "PATCH",
+          "table": "member_habits",
+          "kind": "rest",
+          "line": 1537
+        },
+        {
+          "classification": "DIRECT_WITH_OPTIMISTIC",
+          "is_queued": false,
+          "is_direct_fetch": true,
+          "has_pre_dexie_write": true,
+          "has_post_dexie_write": true,
+          "has_bus_publish": false,
+          "method": "PATCH",
+          "table": "members",
+          "kind": "rest",
+          "line": 1594
+        }
+      ],
+      "ef_invocations": [
+        {
+          "line": 1848,
+          "fn": "gdpr-export-request",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/gdpr-export-request",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": [
+        {
+          "line": 1103,
+          "table": "member_habits",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 1308,
+          "table": "members",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 1389,
+          "table": "habit_library",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 1421,
+          "table": "member_habits",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 1427,
+          "table": "habit_library",
+          "op": "delete",
+          "kind": "write"
+        },
+        {
+          "line": 1542,
+          "table": "member_habits",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 1559,
+          "table": "member_habits",
+          "op": "bulkUpsert",
+          "kind": "write"
+        },
+        {
+          "line": 1599,
+          "table": "members",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 2272,
+          "table": "member_habits",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 2273,
+          "table": "members",
+          "op": "replaceForMember",
+          "kind": "write"
+        }
+      ]
+    },
+    {
+      "path": "shared-workout.html",
+      "sha": "0ab29343a741e6e9f48b88a63cb5d768957926eb",
+      "size_bytes": 32617,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "supabase.min.js",
+      "sha": "0f4389e26210800e0d26345dc752c92bddf4c00f",
+      "size_bytes": 185215,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "sw.js",
+      "sha": "30d433ebefe8585e34c3b658337d5a15266c1e9e",
+      "size_bytes": 8222,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "sync.js",
+      "sha": "f5c0f4455ffbec6433049eaaee6f23e6a1e356bc",
+      "size_bytes": 43155,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [
+        {
+          "line": 44,
+          "kind": "hydrate"
+        },
+        {
+          "line": 46,
+          "kind": "hydrate"
+        },
+        {
+          "line": 483,
+          "kind": "hydrate"
+        },
+        {
+          "line": 528,
+          "kind": "hydrate"
+        },
+        {
+          "line": 619,
+          "kind": "hydrate"
+        },
+        {
+          "line": 660,
+          "kind": "hydrate"
+        },
+        {
+          "line": 662,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [
+        {
+          "line": 123,
+          "table": "daily_habits",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 141,
+          "table": "member_habits",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 150,
+          "table": "workouts",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 159,
+          "table": "cardio",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 168,
+          "table": "exercise_logs",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 177,
+          "table": "session_views",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 186,
+          "table": "replay_views",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 195,
+          "table": "nutrition_logs",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 204,
+          "table": "nutrition_my_foods",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 211,
+          "table": "weight_logs",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 218,
+          "table": "custom_workouts",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 223,
+          "table": "exercise_swaps",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 231,
+          "table": "workout_plan_cache",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 240,
+          "table": "weekly_goals",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 247,
+          "table": "wellbeing_checkins",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 259,
+          "table": "monthly_checkins",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 268,
+          "table": "certificates",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 276,
+          "table": "member_achievements",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 285,
+          "table": "members",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 296,
+          "table": "habit_library",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 301,
+          "table": "habit_themes",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 306,
+          "table": "workout_plans",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 311,
+          "table": "personas",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 316,
+          "table": "service_catalogue",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 321,
+          "table": "nutrition_common_foods",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 327,
+          "table": "achievement_metrics",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 332,
+          "table": "achievement_tiers",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        }
+      ],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": [
+        {
+          "line": 398,
+          "table": "_sync_meta",
+          "op": "get",
+          "kind": "read"
+        },
+        {
+          "line": 548,
+          "table": "_sync_meta",
+          "op": "get",
+          "kind": "read"
+        },
+        {
+          "line": 559,
+          "table": "_sync_meta",
+          "op": "get",
+          "kind": "read"
+        },
+        {
+          "line": 567,
+          "table": "_sync_meta",
+          "op": "get",
+          "kind": "read"
+        },
+        {
+          "line": 133,
+          "table": "daily_habits",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 145,
+          "table": "member_habits",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 154,
+          "table": "workouts",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 163,
+          "table": "cardio",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 172,
+          "table": "exercise_logs",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 181,
+          "table": "session_views",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 190,
+          "table": "replay_views",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 199,
+          "table": "nutrition_logs",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 206,
+          "table": "nutrition_my_foods",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 214,
+          "table": "weight_logs",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 219,
+          "table": "custom_workouts",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 224,
+          "table": "exercise_swaps",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 233,
+          "table": "workout_plan_cache",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 242,
+          "table": "weekly_goals",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 251,
+          "table": "wellbeing_checkins",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 263,
+          "table": "monthly_checkins",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 271,
+          "table": "certificates",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 279,
+          "table": "member_achievements",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 289,
+          "table": "members",
+          "op": "upsert",
+          "kind": "write"
+        },
+        {
+          "line": 297,
+          "table": "habit_library",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 302,
+          "table": "habit_themes",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 307,
+          "table": "workout_plans",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 312,
+          "table": "personas",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 317,
+          "table": "service_catalogue",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 322,
+          "table": "nutrition_common_foods",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 328,
+          "table": "achievement_metrics",
+          "op": "replaceForMember",
+          "kind": "write"
+        },
+        {
+          "line": 333,
+          "table": "achievement_tiers",
+          "op": "replaceForMember",
+          "kind": "write"
+        }
+      ]
+    },
+    {
+      "path": "theme.js",
+      "sha": "40cbc270eda2031c757439052b02755f2626a2d4",
+      "size_bytes": 5439,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [
+        {
+          "line": 63,
+          "table": "members",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        }
+      ],
+      "writes": [
+        {
+          "classification": "DIRECT_FETCH",
+          "is_queued": false,
+          "is_direct_fetch": true,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": false,
+          "method": "PATCH",
+          "table": "members",
+          "kind": "rest",
+          "line": 107
+        }
+      ],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "therapy-live.html",
+      "sha": "915ed6af455ed1f186e555f9b2c5b43aeab3b377",
+      "size_bytes": 2005,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "therapy-rp.html",
+      "sha": "399e730454087ae3d8c11e2728d09d7fa9f408cd",
+      "size_bytes": 1956,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "tracking.js",
+      "sha": "46db65920f8c2c1a75b81639933f58c2b6e4fae7",
+      "size_bytes": 17523,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "vapid.js",
+      "sha": "c6037a7bbda222dd50bbf6dbc3605eeebc5414c3",
+      "size_bytes": 2649,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "vyve-home-state.js",
+      "sha": "33335ecb4dd52676bb15cc9bdd6cc49f614dda77",
+      "size_bytes": 8799,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "vyve-offline.js",
+      "sha": "336ae9453fd701d3341744626fb27cbfa43b1742",
+      "size_bytes": 33258,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "wellbeing-checkin.html",
+      "sha": "64b548cbc1c25681721a9180c29f94cdb71a1016",
+      "size_bytes": 73997,
+      "is_portal_page": true,
+      "paints_member_data": "member",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [
+        {
+          "line": 1014,
+          "kind": "hydrate"
+        },
+        {
+          "line": 1146,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [
+        {
+          "line": 1172,
+          "table": "wellbeing_checkins",
+          "kind": "rest",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        }
+      ],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 335,
+          "fn": "wellbeing-checkin",
+          "path": "${SUPABASE_URL}/functions/v1/wellbeing-checkin",
+          "kind": "fetch"
+        },
+        {
+          "line": 1363,
+          "fn": "platform-alert",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": [
+        {
+          "line": 1016,
+          "table": "daily_habits",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 1017,
+          "table": "workouts",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 1018,
+          "table": "cardio",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 1019,
+          "table": "session_views",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 1147,
+          "table": "wellbeing_checkins",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 734,
+          "table": "wellbeing_checkins",
+          "op": "upsert",
+          "kind": "write"
+        }
+      ]
+    },
+    {
+      "path": "workouts-builder.js",
+      "sha": "e554fd9696db73be96eeef416330e3a33b157d1e",
+      "size_bytes": 10050,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "workouts-config.js",
+      "sha": "c93090821b1f096012e0a148fe8e19dd75b69027",
+      "size_bytes": 4972,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "workouts-exercise-menu.js",
+      "sha": "32687e28a661e43a3a629db7a07dea95a3dde61c",
+      "size_bytes": 14127,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "workouts-library.js",
+      "sha": "73b86a8e65547c5c992eb0c090cca4c7af8ac9a6",
+      "size_bytes": 19693,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [
+        {
+          "line": 51,
+          "table": "unknown",
+          "kind": "fetchCached",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        }
+      ],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 101,
+          "fn": "workout-library",
+          "path": "${SUPA_URL}/functions/v1/workout-library",
+          "kind": "fetch"
+        },
+        {
+          "line": 311,
+          "fn": "workout-library",
+          "path": "${SUPA_URL}/functions/v1/workout-library",
+          "kind": "fetch"
+        },
+        {
+          "line": 390,
+          "fn": "workout-library",
+          "path": "${SUPA_URL}/functions/v1/workout-library",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "workouts-live.html",
+      "sha": "8e2e0c4a7a3f884174c959b831f12280b1e5b086",
+      "size_bytes": 1992,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "workouts-notes-prs.js",
+      "sha": "1adb1a6ac3a582e39b64208909979547922920db",
+      "size_bytes": 14775,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [
+        {
+          "line": 16,
+          "table": "exercise_notes",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 25,
+          "table": "exercise_notes",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 127,
+          "table": "workouts",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 134,
+          "table": "exercise_logs",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 193,
+          "table": "workouts",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 199,
+          "table": "exercise_logs",
+          "kind": "rest",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        },
+        {
+          "line": 15,
+          "table": "unknown",
+          "kind": "fetchCached",
+          "classification": "NOT_WIRED",
+          "has_dexie_first_before": false
+        }
+      ],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "workouts-programme.js",
+      "sha": "9af00fbbafdd1c10911fe8a32a72b931115ab355",
+      "size_bytes": 39930,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [
+        {
+          "line": 82,
+          "kind": "hydrate"
+        },
+        {
+          "line": 263,
+          "kind": "hydrate"
+        },
+        {
+          "line": 368,
+          "kind": "hydrate"
+        },
+        {
+          "line": 409,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [
+        {
+          "line": 382,
+          "table": "unknown",
+          "kind": "fetchCached",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        },
+        {
+          "line": 424,
+          "table": "unknown",
+          "kind": "fetchCached",
+          "classification": "DEXIE_WIRED",
+          "has_dexie_first_before": true
+        }
+      ],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 497,
+          "fn": "share-workout",
+          "path": "${SUPA_URL}/functions/v1/share-workout",
+          "kind": "fetch"
+        },
+        {
+          "line": 622,
+          "fn": "share-workout",
+          "path": "${SUPA_URL}/functions/v1/share-workout?code=${code}",
+          "kind": "fetch"
+        },
+        {
+          "line": 667,
+          "fn": "share-workout",
+          "path": "${SUPA_URL}/functions/v1/share-workout?action=add_programme&id=${shareId}",
+          "kind": "fetch"
+        },
+        {
+          "line": 668,
+          "fn": "share-workout",
+          "path": "${SUPA_URL}/functions/v1/share-workout?action=save_session",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": [
+        {
+          "line": 84,
+          "table": "workout_plan_cache",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 265,
+          "table": "workout_plans",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 370,
+          "table": "exercise_logs",
+          "op": "allFor",
+          "kind": "read"
+        },
+        {
+          "line": 411,
+          "table": "custom_workouts",
+          "op": "allFor",
+          "kind": "read"
+        }
+      ]
+    },
+    {
+      "path": "workouts-rp.html",
+      "sha": "da816529e4ccaa2181a4be0e630dfaea2bb9efc1",
+      "size_bytes": 1942,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "workouts-session.js",
+      "sha": "db76ea28f5e0da8260d18d2f7e1cbb8530e0ec0b",
+      "size_bytes": 50251,
+      "is_portal_page": false,
+      "paints_member_data": null,
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [
+        {
+          "line": 548,
+          "kind": "hydrate"
+        }
+      ],
+      "reads": [],
+      "writes": [
+        {
+          "classification": "QUEUED_NO_OPTIMISTIC",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": true,
+          "method": null,
+          "table": null,
+          "kind": "writeQueued",
+          "line": 422
+        },
+        {
+          "classification": "QUEUED_NO_OPTIMISTIC",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": false,
+          "method": null,
+          "table": null,
+          "kind": "writeQueued",
+          "line": 605
+        },
+        {
+          "classification": "QUEUED_NO_OPTIMISTIC",
+          "is_queued": true,
+          "is_direct_fetch": false,
+          "has_pre_dexie_write": false,
+          "has_post_dexie_write": false,
+          "has_bus_publish": true,
+          "method": null,
+          "table": null,
+          "kind": "writeQueued",
+          "line": 707
+        }
+      ],
+      "ef_invocations": [
+        {
+          "line": 830,
+          "fn": "share-workout",
+          "path": "${SUPA_URL}/functions/v1/share-workout",
+          "kind": "fetch"
+        },
+        {
+          "line": 881,
+          "fn": "share-workout",
+          "path": "${SUPA_URL}/functions/v1/share-workout",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": [
+        {
+          "line": 550,
+          "table": "workouts",
+          "op": "allFor",
+          "kind": "read"
+        }
+      ]
+    },
+    {
+      "path": "workouts.html",
+      "sha": "467bf165c7b69d07f430e1d364f26416ad4e2ed8",
+      "size_bytes": 57954,
+      "is_portal_page": true,
+      "paints_member_data": "member",
+      "expected_critical_hydrate_page_key": "workouts",
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [
+        {
+          "line": 673,
+          "fn": "platform-alert",
+          "path": "https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/platform-alert",
+          "kind": "fetch"
+        }
+      ],
+      "localdb_refs": []
+    },
+    {
+      "path": "yoga-live.html",
+      "sha": "0c740b2fb8c6e714235684a1428470723da58b91",
+      "size_bytes": 2054,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    },
+    {
+      "path": "yoga-rp.html",
+      "sha": "500dba94d87d633f1e0149a02477fcebc1e4af58",
+      "size_bytes": 2008,
+      "is_portal_page": true,
+      "paints_member_data": "network_bound",
+      "expected_critical_hydrate_page_key": null,
+      "critical_hydrate_calls": [],
+      "sync_hydrate_calls": [],
+      "reads": [],
+      "writes": [],
+      "ef_invocations": [],
+      "localdb_refs": []
+    }
+  ]
+}

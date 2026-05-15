@@ -1,3 +1,49 @@
+## 2026-05-15 PM-117 — Dexie audit (read-only): whole-tree scan against vyve-site `83874dd5`, 46 findings, dual-cache architecture surfaced as root cause
+
+**Session shape:** Whole-tree Dexie audit per Dean's brief — read-only, no vyve-site ships. Pulled vyve-site HEAD `83874dd5cd8ff9650497c7c631ccb9bc6baf8fd2` via Composio workbench parallel-blob fetch, 81 source files (49 HTML + 32 JS, ~2.47M chars). Live Supabase `information_schema` cross-referenced for 42 in-scope tables. Brain pre-load (`master.md` + `changelog.md` + `tasks/backlog.md` + `active.md`) for §23 rules and PF-40 narrative — but per brief, narrative not trusted; every classification re-derived from live code.
+
+**Two deliverables committed:**
+
+- `audit/dexie-audit-2026-05-15.json` (~104KB) — structured per-file entries (81 files): SHA at audit time, read-site classifications (DEXIE_WIRED / NOT_WIRED / NETWORK_BOUND), write-site classifications (OPTIMISTIC_LOCAL / DIRECT_WITH_OPTIMISTIC / QUEUED_NO_OPTIMISTIC / DIRECT_FETCH), firstPaintHydrate call presence + page key, EF invocations, full Dexie ref map, all 46 findings.
+- `audit/dexie-audit-2026-05-15.md` (~26KB) — narrative companion. Executive summary, P0/P1/P2 findings ordered by smallest-scope-first, per-page findings table, cross-cutting findings, prioritised fix list with session-hour estimates, sequencing against 31 May launch, 5 open questions for Dean.
+
+**Totals: 46 findings — 23 P0, 20 P1, 1 P2, 2 INFO.**
+
+**Root cause finding (the one we've been missing across three sessions):** The codebase has two parallel local-cache systems serving the same data needs.
+
+- **System A** — `VYVELocalDB` / Dexie / `sync.js` / `firstPaintHydrate.js` — the "official" §3 contract.
+- **System B** — `localStorage` caches written by `auth.js` `_vyvePfHome/Members/Exercise/Habits/Engagement/Certs` prewarmers firing once per session from `vyveSignalAuthReady`. Keys: `vyve_home_v3_<email>`, `vyve_engagement_cache`, `vyve_certs_cache`, `vyve_members_cache_<email>`, `vyve_programme_cache_<email>`, `vyve_exercise_cache_v2`, `vyve_habits_cache_v3`, plus log-food's `diaryLogs[]` in-memory + `saveDiaryCache()` localStorage.
+
+For most user-visible pages, cache-first paint reads localStorage first, then (sometimes) Dexie, then falls back to REST/EF. The Dexie path is often the third option, not the first. This is the architectural deviation that explains why "Dexie problems" keep surfacing in different shapes across sessions — PM-106 canary, PM-111 reframe, PM-113 hotfix. The PM-113 entry ("habits pills paint from localStorage cache, not Dexie") is not a one-off; it's the dominant pattern, retrofit-justified by iOS WKWebView ITP IDB durability concerns but never codified in §3 or §23.
+
+**Top P0 findings (in fix order — smallest scope first):**
+
+1. `sw.js urlsToCache` missing 10 critical-path scripts (`vapid.js`, `session-live.js`, `session-rp.js`, `workouts-config.js`, `workouts-programme.js`, `workouts-session.js`, `workouts-exercise-menu.js`, `workouts-builder.js`, `workouts-notes-prs.js`, `workouts-library.js`). Offline cold-boot of workouts.html and every `*-live.html` will fail. ~30 min fix.
+2. `workouts.html` / `workouts-programme.js` calls slow `VYVESync.hydrate()` (the 81s mass-hydrate) at 4 sites instead of `VYVESync.criticalHydrate('workouts')`. PM-112 brain entry flagged this as "wire in follow-up" — that follow-up has not shipped. ~1 hr fix.
+3. `engagement.html` has ZERO `VYVELocalDB` refs, ZERO `criticalHydrate`. Pure localStorage cache + `member-dashboard` EF. Engagement ring is one of the most visible surfaces and is entirely server-bound. ~2 hr fix.
+4. `workouts-session.js` has 3 `QUEUED_NO_OPTIMISTIC` writes (exercise_logs POST, workouts POST, workout_plan_cache PATCH) — explains PF-31 ("workouts page re-entry, green check disappears") at the source. ~2 hr fix.
+5. `log-food.html` 4 writes bypass Dexie entirely; optimistic via in-memory `diaryLogs[]` + `saveDiaryCache()` localStorage. Read-after-write hazard: log food, close app, reopen — Dexie has no record until queue drains. ~2 hr fix.
+6. 9 member-data pages (engagement, log-food, monthly-checkin, wellbeing-checkin, exercise, movement, certificates, settings, activity) have Dexie reads but no `criticalHydrate` call. All on the slow mass-hydrate path. ~3-4 hr fix collectively.
+7. 8 `DIRECT_FETCH` write sites (settings members×3, nutrition members, nutrition-setup members, theme.js members, running-plan running_plan_cache, log-food nutrition_logs PATCH) bypass writeQueued AND Dexie. ~3 hr fix.
+
+**Write-path bypass cardinality across the portal:** 26 portal write sites total. OPTIMISTIC_LOCAL = 6 (all habits.html, correct §23.7.6 pattern). DIRECT_WITH_OPTIMISTIC = 3 (all settings.html). QUEUED_NO_OPTIMISTIC = 9. DIRECT_FETCH = 8. **17 of 26 (65%) bypass Dexie locally.** The PF-4b Part 2 pattern is mostly aspirational outside habits.html.
+
+**Schema-drift findings (§23.11 hydrate completeness):**
+
+- `sync.js plan()` `daily_habits` pulls thin column subset (member_email, activity_date, habit_id, habit_completed, notes) — drops `logged_at`, `day_of_week`, `time_of_day`, `id`, `client_id`. `home-state-local.js` `maxLoggedAt(habits)` reads `r.logged_at`; for daily_habits via mass-hydrate, `last_habit_at` is permanently null until `criticalHydrate('home')` runs and overwrites with fat-row data. P1.
+- `sync.js plan()` `member_habits` pull + `db.js` `replaceForMember` denormalisation drop the server `id` (UUID PK) and `assigned_at` columns. No current page reads them, but structural drop worth fixing in the sweep. P2.
+
+**Brain drift findings (INFO):**
+
+- §23.11 example denormalised columns ("name, description, category, difficulty, theme") do not match the live `habit_library` schema. Actual columns are `habit_pot, habit_title, habit_description, habit_prompt, difficulty, active, health_rule`. db.js code is correct; the rule example is the drift. Should be patched alongside this audit.
+- `audit/pf-40-1-callsites.json` (PM-107 deliverable) was flagged in the brief as potentially stale. Confirmed: this audit re-derived all classifications from live code. New findings (engagement.html zero-Dexie, dual-cache architecture, sw.js urlsToCache gaps) appear to be new or expanded scope vs PF-40.1.
+
+**Pre-commit verification:** vyve-site HEAD recheck immediately before commit — `83874dd5` unchanged. VYVEBrain HEAD pre-check `9cb24101` unchanged from session start. §23.14 parallel-collision discipline satisfied.
+
+**No vyve-site ship this session.** Audit is read-only; all 46 findings are catalogued, not fixed. Fix work follows in subsequent sessions per the prioritised list in `audit/dexie-audit-2026-05-15.md`. PM-118 candidate: items #1 (sw.js urlsToCache) + #2 (workouts criticalHydrate wire-in) — 90 min combined, both are mechanical, low-risk, mechanical wins worth atomic-committing together.
+
+**Five open questions surfaced for Dean** — see `audit/dexie-audit-2026-05-15.md` "Open questions for Dean" section. The load-bearing one is the dual-cache decision: keep as a permanent tier (§23.13-style L0 paint accelerator), or retire post-PF-14b App Store / Play approval. Recommendation: retire — iOS 1.3 (2) and Android 1.0.3 (10) are both already submitted (PM-115/PM-116); once approved (~24-48hr), the ITP IDB wipe concern that prompted PM-113 evaporates for the 99%+ of trial users on native builds.
+
 ## 2026-05-15 PM-116 — PF-14b Android half SHIPPED: bundled-mode + Capawesome + Android 1.0.3 (10) submitted to Google Play review
 
 **Session shape:** Continued straight from PM-115 (iOS 1.3 (2) submitted earlier in the night). Single session, single objective: get the Android half across the line. ~2 hours including keystore recovery, gradle pipeline setup on a clean Mac, the Health Connect declaration marathon, and the versionCode collision dance. Brain commit follows.
