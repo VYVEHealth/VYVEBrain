@@ -59,6 +59,22 @@ See `audit/dexie-audit-2026-05-15.md` for the full audit narrative and `audit/de
 
 **Implication for §23:** the audit JSON is structured per-file findings with mechanical severities (writeQueued sites = P1 by default); the audit narrative applies launch-impact judgement and can promote severities upward when ship-readiness is at stake. **Codification suggestion:** add a §23 line that when audit JSON severity ≠ audit narrative priority, the narrative wins for scheduling decisions but the JSON severity stays for audit-progress accounting. This is the implicit rule already being followed; making it explicit prevents future confusion.
 
+### PM-122 — criticalHydrate migration long tail (6 pages, 7 hydrate sites) [SHIPPED 2026-05-15]
+
+**Status:** SHIPPED in vyve-site commit `6911b55aea5af82b271f043493b5168e45e1429e` — atomic 10-file commit on main. See changelog PM-122 entry. **Important:** preceded by a corrupted single-file commit `21b603be` that placed `<PLACEHOLDER_EXERCISE>` content into exercise.html for ~90 seconds before being corrected by `6911b55a`. New §23.26 PLACEHOLDER GUARD rule codifies the ship-discipline failure.
+
+**Closes PM-117 P0-1 (2.11g) carry — 6 pages still calling 81s mass-hydrate:** exercise / settings / certificates / monthly-checkin / movement / wellbeing-checkin all migrated to `criticalHydrate(pageKey)`. New `settings` page key added to firstPaintHydrate.js. habits.html unbinds first-paint from member-dashboard EF (Fix 3: deferred autotick application). sync.js authedFetch gets 8s AbortController backstop. SW cache key bumped to `pm122-fast-paint-a`.
+
+**UNVERIFIED ON DEVICE.** Dean's airplane-mode cold-boot iPhone walk pending — expected paint times 5-15s on the 6 migrated pages (was 30-81s). habits.html should paint cards immediately, autotick badges land 10-30s later.
+
+**Layer 5 long tail closed.** Next §23.5.1 layer work is backend EF latency — separate multi-session campaign.
+
+
+### PM-123 — Brain commit ship-discipline guard rule [SHIPPED 2026-05-15]
+
+**Status:** SHIPPED in VYVEBrain commit (this commit). New §23.26 PLACEHOLDER GUARD rule added to master.md. Closes the ship-discipline failure that produced corrupted commit `21b603be`. The rule mandates: (1) every tool-call field carrying real content MUST be populated from a runtime-resolved variable before the tool call is built, (2) multi-execute calls are not draftable in-place, (3) pre-flight assertion `assert u["content"] is patched[u["path"]]` before invoking any commit tool, (4) single-file commits MUST verify by content via Contents API post-commit, (5) workbench `run_composio_tool` path is preferred for >50KB files AND >2-entry upserts arrays.
+
+
 
 ### PM-121 candidate — log-food.html write-path Dexie sync [P0 LAUNCH BLOCKER, ~2 hr]
 

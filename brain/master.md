@@ -2477,6 +2477,30 @@ Cause: PKCS12 (`.jks` files created by modern keytool default to PKCS12 format s
 
 **Generality:** this rule applies to every Composio-mediated toolkit, not just GitHub. The same indirection (or lack thereof, depending on the host generation) affects brevo, googledocs, supabase-via-composio (separate from the first-party Supabase tools), and any other toolkit listed in the Composio account inventory.
 
+## §23.26 — PLACEHOLDER GUARD: never build an MCP tool call with literal placeholder strings as fields meant to carry real content.
+
+**Surfaced PM-122 (15 May 2026), at non-trivial cost.** First multi-execute commit shipped a `GITHUB_COMMIT_MULTIPLE_FILES` call where the `upserts[0].content` field was the literal string `<PLACEHOLDER_EXERCISE>` — built as a "template I'll populate" but fired without populating. Production exercise.html on vyve-site main was 22 bytes of `<PLACEHOLDER_EXERCISE>` for ~90 seconds (commit `21b603be`) before the corrective ship `6911b55a` restored real content + landed the other 9 files atomically.
+
+**Why this slipped past every other §23 discipline:**
+
+The PM-86.1 / PM-87 §23 base64-corruption rules guard the *encoding* of content (don't pre-base64; let the tool encode UTF-8). They don't guard the *origin* of content (is this string actually the file body, or is it scaffolding text?). `node --check` ran clean against the patched file in the workbench — but the call to `COMPOSIO_MULTI_EXECUTE_TOOL` was constructed by hand in the JSON args, and the placeholder was a separate string that never got swapped for the real `patched["exercise.html"]` value. Post-commit byte-equal verify would have caught it — but on a single-file commit there's no other file to compare against to surface the asymmetry, and ship discipline was "ship-then-verify" not "verify-then-ship".
+
+**The rule:**
+
+1. When constructing any tool call whose fields carry file content (or any data the user-visible system will treat as canonical), every such field MUST be populated with a runtime-resolved variable before the tool call object is built. Never `"content": "<PLACEHOLDER>"` then "I'll fill it in".
+2. Multi-execute MCP calls are not draftable in-place. Build the entire payload to a variable (`upserts = [...]` in workbench Python), assert content length and a head-sample against the patched file dict, THEN pass it to the tool.
+3. Pre-flight assertion before invoking any commit tool: for every upsert, `assert u["content"] is patched[u["path"]] and len(u["content"]) > 100` (or whatever sane floor). If the assertion fires, refuse to ship.
+4. If for any reason a single-file commit must ship (avoidable in almost every PM-prefixed scenario — coalesce into the next multi-file commit instead), do post-commit verify by base64-decoding the new blob via Contents API at the new commit SHA and asserting byte-equal against the local file string. Single-file commits MUST verify by content, not just blob SHA presence.
+5. The workbench `run_composio_tool` path is preferred for any commit touching >50KB files (per existing §23) AND for any commit where the upserts array has more than 2 entries — the workbench JSON-load discipline is harder to slip a placeholder through than building the tool args inline.
+
+**Recovery posture if this rule is breached again:**
+
+- Don't revert. Immediately re-fetch the broken file's NEW SHA (which now points to the corrupted blob), then ship a corrective multi-file commit that includes the broken file with REAL content + any other files you were trying to ship. Sequence: re-fetch broken-file SHA → build correct upserts dict → workbench commit → byte-equal verify. The corrupt content lives in the immediate parent commit (so any subscriber on the wire during that window saw it), but the timeline closes within seconds rather than minutes.
+- Promote a brain commit hygiene entry in active.md §2 acknowledging the breach. The corrective ship without the brain-side acknowledgment leaves the §23 rule un-strengthened and the lesson un-anchored.
+
+**Test for whether the rule applies in a given session:** any time you find yourself writing `"content": "<...>"` or `"content": "PLACEHOLDER"` or similar in a tool-call JSON args block — STOP. The right path is `"content": patched[path]` where `patched` is the dict you've populated upstream. There is no scenario where placeholder content is correct.
+
+
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.

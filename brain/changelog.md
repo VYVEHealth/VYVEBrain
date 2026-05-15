@@ -1,3 +1,44 @@
+## 2026-05-15 PM-122 — Fast-paint: 7 hydrate() → criticalHydrate, defer habits autotick, sync.js 8s timeout (§23.5.1 Layer 5 long tail closed)
+
+**Session shape:** Two vyve-site commits this session — `21b603be` (BAD, ship 1, single-file upserts with literal `<PLACEHOLDER_EXERCISE>` content — exercise.html replaced with 22-byte placeholder on production for ~90s) and `6911b55a` (CORRECTIVE, ship 2, restored exercise.html + landed the other 9 files in one atomic upsert). Brain commit closes the session, including a new §23.26 PLACEHOLDER GUARD rule that codifies the ship-discipline failure that produced ship 1.
+
+**The actual PM-122 work — closes PM-117 P0-1 (2.11g) carry:** Audit at vyve-site `3ce9c72f` found 7 stale `await VYVESync.hydrate()` call sites across 6 pages still using the 81s sequential 25-table sync.js mass-hydrate. Each missed page was sitting on a blank screen for up to 81s before painting on cold load. Not architectural — incomplete PM-112 migration. PM-112 introduced per-page 2-7 table parallel `criticalHydrate` with 5s per-request timeout and wired index + habits + workouts + nutrition + cardio + engagement, but missed: exercise / settings / certificates / monthly-checkin / movement / wellbeing-checkin (6 pages, 7 call sites).
+
+**Ship 2 contents (`6911b55a`, 10 files):**
+
+| File | Change |
+|---|---|
+| exercise.html L308 | `hydrate()` → `criticalHydrate('workouts')` |
+| settings.html L1100 | `hydrate()` → `criticalHydrate('settings')` (new page key) |
+| certificates.html L406 | `hydrate()` → `criticalHydrate('engagement')` |
+| monthly-checkin.html L673 | `hydrate()` → `criticalHydrate('home')` |
+| movement.html L352 | `hydrate()` → `criticalHydrate('workouts')` |
+| wellbeing-checkin.html L1014+L1146 | both `hydrate()` → `criticalHydrate('home')` (2 sites, batch replace 2→2) |
+| firstPaintHydrate.js | new `settings` page key in `plansForPage(email)` return — MEMBERS + HABIT_LIBRARY + MEMBER_HABITS; inline docstring updated |
+| habits.html | Fix 3 — defer fetchDashboardHabits (autotick EF). `const dashboardPromise = fetchDashboardHabits()` kicked off ONCE before any of the 3 branches; each branch's Promise.all loses fetchDashboardHabits + sets dashboardPayload=null; synchronous render path runs as before (autotickMap empty → cards paint immediately, runAutotickPass no-ops on zero candidates); NEW post-render `dashboardPromise.then(...)` rebuilds autotickMap, applies metadata, runs runAutotickPass (which now finds candidates), re-sorts, re-renders, refreshes localStorage cache. PM-98 write-optimistic autotick pattern preserved. |
+| sync.js authedFetch L88-103 | Wrapped in AbortController with 8000ms timeout. Clears timer in .finally. AbortError → labelled rejection. Pure backstop — happy path unchanged. |
+| sw.js | Cache key `vyve-cache-v2026-05-15-pm120-workouts-session-optimistic-a` → `vyve-cache-v2026-05-15-pm122-fast-paint-a`. |
+
+**Pre-flight:** `node --check` rc=0 on all 3 pure-JS files (firstPaintHydrate.js, sync.js, sw.js); inline-script extract + `node --check` rc=0 on all 7 patched HTMLs. All `str_replace` targets asserted unique-match single-occurrence before patch; wellbeing-checkin's 2-occurrence needle was an intentional 2→2 batch verified post-patch. vyve-site main HEAD `3ce9c72f` re-verified unchanged immediately pre-ship-1 (§23.14). Post-commit byte-equal verification at `6911b55a`: all 10 files local-string == Contents-API-base64-decode, no length mismatches, no char-level diffs (§23.15).
+
+**Ship 1 — `21b603be` — the placeholder ship-fail:** Constructed the `COMPOSIO_MULTI_EXECUTE_TOOL` args inline with a JSON `upserts: [{path: "exercise.html", content: "<PLACEHOLDER_EXERCISE>", sha: ...}]` array as a "template I'll populate". Fired the call without populating. GitHub accepted it (the call was well-formed, the placeholder is valid UTF-8) and committed exercise.html as a 22-byte file. Discovered immediately when the commit response came back with `changed_paths: ['exercise.html']` (only one file — should have been ten). Re-fetched the new exercise.html SHA `7abc10a9` (post-placeholder), built a complete 10-file upserts dict in the workbench using `patched[path]` references rather than inline JSON, fired the corrective commit via `run_composio_tool`. Window of corrupted state on production: ~90 seconds.
+
+**§23.26 codified:** PLACEHOLDER GUARD — never build an MCP tool call with a literal placeholder string as a field meant to carry real content. The rule, the failure mode that surfaced it, the workbench-first pre-flight assertions to prevent recurrence, and the recovery posture if it happens again are all in master.md §23.26. Key escape-clause: any time you find yourself writing `"content": "<...>"` or similar in a tool-call JSON args block, STOP. Build the payload to a variable first; assert each entry against the source-of-truth dict; THEN fire.
+
+**What this ship explicitly does NOT do:**
+- Does NOT touch backend EF latency (member-dashboard EF still 10-30s cold). Fix 3 just unbinds habits.html paint from the slow EF; the EF itself is unchanged. §23.5.1 backend EF latency campaign is the next session's stated P0.
+- Does NOT retire System B (vyve_*_cache_* localStorage prewarmers). Open decision deferred.
+- Does NOT touch activity.html — EF-only by design, out of scope.
+- Does NOT address first-ever-cold-load (Dexie empty by definition — must populate once).
+
+**§23.5.1 Layer accounting:** Layer 1 bus migration (DONE PM-30..PM-44). Layer 2 Realtime bridge (PM-45 deferred). Layer 3-4 Premium Feel local-first (PM-77+). Layer 5 criticalHydrate migration (STARTED PM-112, FINISHED PM-122 except activity.html — EF-only-by-design). Layer 6 SPA shell (permanently dropped). Layer 5 long tail closed.
+
+**UNVERIFIED ON DEVICE — next session first job:** Dean's airplane-mode cold-boot iPhone walk. Expected: (a) exercise / settings / certificates / monthly-checkin / movement / wellbeing-checkin paint in 5-15s on cold (was 30-81s same network), (b) habits.html paints card list immediately (cache-first already worked), autotick badges land second 10-30s later (EF still slow but no longer gates paint). If those pass → §23.5.1 backend EF latency is the next P0. If any fail → that's the next session's actual ship.
+
+**Open hygiene carried forward:**
+- `home` page key in firstPaintHydrate.js still missing `WELLBEING_CHECKINS_30D` + `WEEKLY_GOALS` (carried from previous session; same silent-degrade gap as engagement had before PM-119 fix). In backlog as P1.
+- §23 codification candidate from PM-120 (audit JSON severity vs narrative priority) still pending promotion — left in active.md §2 hygiene rather than promoted alone.
+
 ## 2026-05-15 PM-121 — Tool discovery brain commit: `tool_search` does not surface Composio toolkits, route via `COMPOSIO_SEARCH_TOOLS`
 
 **Session shape:** Not a vyve-site ship. Brain-only commit, no portal changes. Codifies a workflow gotcha that cost the first ~3 minutes of this session and would have cost every subsequent session the same amount until written down. Dean asked for real brainstorming on a separate topic after this commit lands; this is the housekeeping pass that closes the tool-discovery loop first.
