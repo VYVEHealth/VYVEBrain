@@ -75,6 +75,42 @@ See `audit/dexie-audit-2026-05-15.md` for the full audit narrative and `audit/de
 **Status:** SHIPPED in VYVEBrain commit (this commit). New §23.26 PLACEHOLDER GUARD rule added to master.md. Closes the ship-discipline failure that produced corrupted commit `21b603be`. The rule mandates: (1) every tool-call field carrying real content MUST be populated from a runtime-resolved variable before the tool call is built, (2) multi-execute calls are not draftable in-place, (3) pre-flight assertion `assert u["content"] is patched[u["path"]]` before invoking any commit tool, (4) single-file commits MUST verify by content via Contents API post-commit, (5) workbench `run_composio_tool` path is preferred for >50KB files AND >2-entry upserts arrays.
 
 
+### PM-128 candidate — Workout-in-progress session persistence (Strong-style resume) [P0 PRE-LAUNCH, ~2-3 hr]
+
+**Status:** Surfaced PM-122 session (15 May 2026) by Dean. Real product gap, not a perf issue. Members open a workout session, log 1-3 sets, close the app, reopen later (sometimes days later) — current behaviour is the in-progress session UI state is lost. Strong / Hevy / every serious fitness app persists this state across app closes. VYVE doesn't yet. Pre-launch fix, not v2.
+
+**What "this state" means:**
+- Which exercises in the session have been completed
+- For each exercise: which sets have been logged, with their reps + weight
+- Position in the session (which exercise + which set the user was on at close)
+- Notes if any were entered
+- NOT the rest timer — two days later that's stale and just resets
+
+**Architectural decision pending — Path A vs Path B:**
+
+Path A — Reconstruct from `exercise_logs` on session resume. Query exercise_logs filtered to current_session (from workout_plan_cache) + a sensible date window, render the page with "sets 1-3 done, sets 4-5 pending." No schema change. exercise_logs is already the source of truth for completed sets. Cons: requires "is this session still open" logic that handles the multi-day case; doesn't capture unsaved partial state (e.g. user typed `8 reps × 60kg` but hasn't tapped Save).
+
+Path B — Dedicated `workout_in_progress` Dexie table (local-only, no Supabase mirror). Keyed by member_email, holds JSON blob of entire in-progress session UI state. Write-on-mutation (every keystroke or set-tap, debounced). Cleared when session marked complete. Pros: captures every partial UI state including unsaved. Cons: schema addition + cleanup discipline. Local-only — no sync queue, no Supabase write, purely a UI helper. Completed sets still go to exercise_logs as canonical.
+
+**Claude's lean: Path B.** Reasoning: the "started Monday, opened it Wednesday" case is naturally represented by "is there a row in workout_in_progress for this member?" — much cleaner than the date-heuristic Path A would need. The cost is one local-only Dexie table that never syncs. Confirm with Dean before building.
+
+**Resume UX decision pending:** When user opens workouts.html mid-session, land directly in the session view, OR land on programme overview with a "Resume session" banner / button? Strong does the banner approach. Banner gives user agency ("I want to do a different workout today"). Direct-jump is more magical. Banner is probably the right default. Confirm with Dean.
+
+**Files in scope (estimated):**
+- New Dexie table declaration in db.js (workout_in_progress; schema = {member_email PK, session_state JSON, started_at, last_updated_at})
+- workouts-session.js — write-on-mutation hooks at every state-change site (set-tap, rep input, weight input, exercise navigation). Debounced 500ms.
+- workouts-programme.js — read on mount, render "Resume session" banner if a row exists for the current member.
+- Session-complete path — clear the workout_in_progress row when user marks session done (probably L605-ish workouts POST handler in workouts-session.js).
+- No backend changes. No EF changes. No new tables in Supabase.
+
+**Pre-flight hazard to think about during build:**
+- Don't conflict with the existing PM-120 workout_plan_cache merge logic — workout_in_progress is a different table tracking different state (singleton per-member open session vs the programme-level current_session/current_week markers).
+- §23.7.6 (UI state mutation must be synchronous on the active surface) applies — Dexie write goes through the same write-optimistic pattern as PM-98 autotick: synchronous UI update + Dexie write fire-and-forget.
+- §23.10 (offline-equivalent operation is the contract) applies — this entire feature MUST work offline. Member at the gym with no signal, mid-set, force-quits, reopens — must resume.
+
+**Sequencing note:** Not blocking PM-122 device walk. Not blocking the scope audit. Sized for one focused session post-audit.
+
+
 
 ### PM-121 candidate — log-food.html write-path Dexie sync [P0 LAUNCH BLOCKER, ~2 hr]
 
