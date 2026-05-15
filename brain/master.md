@@ -847,6 +847,50 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 15 May 2026 PM-115 (PF-14b iOS half SHIPPED; bundled-mode Capacitor + Capawesome live-updates wired; iOS 1.3 (2) submitted to App Review)
+
+**Headline:** the Apple ITP 7-day storage-purge problem that gated PF-14b is mechanically solved on iOS. New bundled-mode `capacitor.config.json` removed `server.url`, packaged vyve-site `83874dd5` into the IPA, integrated Capawesome live-updates SDK for OTA updates without going through Apple review each time. iOS 1.3 (2) is in App Review, auto-release on approval. ~24-48hr Apple review window. Android is the next session's work — same campaign, same architectural fix, separate native pipeline.
+
+**Why this matters for the Premium Feel Campaign:** the local-first commitment in `brain/active.md` §3 promised members instant page renders from on-device Dexie. That promise was always going to fail on iOS as soon as a member went 7 days without opening the app — ITP would wipe their IndexedDB and they'd hit a 5-30s re-hydrate screen on next open. Bundled-mode + first-party origin (`capacitor://localhost`) means VYVE is no longer subject to ITP's third-party storage purge. The local-first architecture now actually delivers on the architectural commitment.
+
+**Capawesome economics:** 14-day Starter trial started 14 May 2026. Cancel/keep decision **27 May 2026** — four days before the 31 May launch. £15/mo USD Starter (not £8 as the brain previously held — correction made in PM-115). At our scale Starter is sufficient. Trial gives time to validate one OTA update before paying.
+
+**Tonight's pipeline lessons:** five new §23 hard rules earned (§23.15 through §23.19). The version-bumping saga consumed most of the session — Xcode GUI silently rewriting pbxproj on view focus combined with Capacitor's Info.plist shipping literal version strings (not `$(MARKETING_VERSION)` placeholders) defeated every standard approach. Pipeline that finally worked: quit Xcode entirely → sed pbxproj → PlistBuddy to replace Info.plist literals with placeholders → `xcodebuild -archive` CLI → `xcodebuild -exportArchive` with `method=app-store-connect signingStyle=automatic` → Xcode Organizer Distribute App for upload.
+
+**State after this session:**
+
+- vyve-capacitor `~/Projects/vyve-capacitor` — bundled mode `capacitor.config.json` in place (backup at `.bak-pf14b`). `www/` populated with vyve-site `83874dd5` (96 files, 3.8MB). `@capawesome/capacitor-live-update@8.2.2` installed. `App/Info.plist` uses placeholder version strings. `App.xcodeproj/project.pbxproj` at `MARKETING_VERSION = 1.3` + `CURRENT_PROJECT_VERSION = 2`. Android side untouched.
+- vyve-capacitor still **not** a remote-tracked git repo on Dean's Mac. Hit twice this 48hr window. Now a launch blocker, not just hygiene.
+- Capawesome account: org "VYVE Health", app `f9961f66-eb66-4102-b1c5-f9b2c7baeebf`, production channel `89e12796-aa41-4176-8d78-bc2ef6dfd5c2`. Both iOS and Android will share these.
+- iOS App Store Connect: 1.3 (2) Waiting for Review. 1.2 (1) train closed. Older trains (1.0, 1.1) approved-and-released or stale.
+- Android Play Store: 1.0.2 still on Play review at last brain-check; status not re-verified tonight. Android 1.0.3 work is next session.
+
+**Sequencing into next session (Android 1.0.3):**
+
+1. `npx cap sync android` — confirm live-update plugin detected on Android side.
+2. Inspect `android/app/build.gradle` for current `versionCode` and `versionName`. Bump appropriately — Play Store rule is `versionCode` strictly greater than every previously uploaded build.
+3. Apply Android equivalent of the iOS Info.plist placeholder fix if `build.gradle` ships with hardcoded values (highly likely — same Capacitor template assumption).
+4. `./gradlew bundleRelease` from `android/` → produces signed-or-unsigned `.aab`.
+5. Locate keystore (currently undocumented — backlog item to find + document during this work).
+6. Sign AAB manually for tonight; portable CI signing stays on backlog.
+7. Upload to Google Play Console (Internal Testing or Production, whichever track 1.0.2 used).
+8. Mirror iOS 1.3 "What's New" release notes.
+9. Submit for review. Google review is usually hours, not days.
+
+**Open items NOT addressed tonight, all on backlog:**
+
+- Capawesome 27 May cancel/keep decision
+- vyve-capacitor git init + remote push (chronic, twice-hit)
+- Android 1.0.3 build + submit (next session)
+- Post-1.3-approval device verification that bundled mode actually loads from local `www/`, not remote `online.vyvehealth.co.uk`
+- Post-1.3-approval Apple Health (Capgo plugin) verification under bundled mode
+- Capawesome `publicKey` for OTA bundle code-signing (hardening, post-launch)
+- Android keystore documentation + portable CI signing pipeline
+
+**iOS 1.1 (Build 3) status:** the brain showed it as "Ready for Review, auto-release on approval" from 27 April. The fact that 1.2 (1) was uploaded and rejected between then and now means 1.1 likely approved-and-released at some point. Status will resolve when 1.3 (2) lands — will be visible in App Store Connect Distribution history.
+
+**Soft launch still targets 31 May 2026.** iOS pipeline now de-risked. Android remains. Once both stores have approved-and-released 1.3 / 1.0.3, every other PF-14 sub-item (PF-14c / PF-14d / PF-14e offline UX) can ship as OTA updates via Capawesome — no more 24-48hr review cycles for each one.
+
 ## 19. Current status — 13 May 2026 PM-97 (PF-15 P0 partial-upsert landmine sealed; backend EF latency confirmed as the actual felt-perf bottleneck)
 
 Continuation of PM-96 the same evening. Dean pushed back on "session closed" framing — "data still pulls slow" was the lived experience and the campaign wasn't finished. Right call. Three distinct issues surfaced this session, two of them root-caused, one of them shipped, one of them captured for the next session.
@@ -2190,6 +2234,126 @@ Schema discipline for 1c-* migrations: undo / clear / no-op publishes go through
 
 **Worked example — PM-110 (the rule's first successful firing).** Brief stated "add `member_achievements` to sync.js plan() — schema slot already declared in db.js v2 but the pull entry is missing". PM-108 had locked it as Q8 of DEAN_DECISIONS_LOCKED. PM-109 carried it forward verbatim. PM-110 ran a 3-second `grep -nE "member_achievements" sync.js` against live `main@66f02b84` and found the entry at L268-276, with `GITHUB_LIST_COMMITS` confirming it has been there since `e8f02742` (13 May 2026, PF-2 + PF-3 commit). The "missing pull entry" finding was a PM-108 diagnostic-dive assertion that never had a verification step against live code; it propagated through two PM brief documents before PM-110's pre-edit live-file read caught it. Outcome: PM-110 dropped the planned `sync.js` edit entirely (no-op whitespace ships were rejected on the cursor/indent regression risk vs zero functional gain), surfaced the gap to Dean in chat, and proceeded with the probe + SW bump only. The rule fired exactly as designed — pre-edit live-state verification before assuming the brief is correct about the current world. Lesson encoded for future sessions: **when a brief says "X is missing from Y, add it", first verify "X is missing from Y" against live Y.** Cheap, high-leverage, prevents redundant ships.
 
+
+### §23.15 — Quit Xcode fully before sed'ing `pbxproj`. The GUI silently rewrites it on view-focus.
+
+**Earned PM-115.** Tonight burned 17 archives at the wrong version because Xcode's General tab silently rewrote `App.xcodeproj/project.pbxproj` every time it had focus and we'd just sed'd a value into it. The pattern: sed `CURRENT_PROJECT_VERSION = 1` to `CURRENT_PROJECT_VERSION = 2`, verify on disk with grep, switch to Xcode to archive, archive completes with `CURRENT_PROJECT_VERSION = 1` because Xcode rewrote pbxproj back the moment its General tab rendered.
+
+**Rule:** Before editing `App.xcodeproj/project.pbxproj` directly via sed (or any other CLI tool), **fully quit Xcode** (`osascript -e 'tell application "Xcode" to quit'`), verify it's gone (`pgrep -x Xcode` returns nothing), THEN edit. Backgrounding Xcode is insufficient — the General tab must not be loaded into memory at all. After editing, you can reopen Xcode but do not focus the General tab unless the change has already been picked up by `xcodebuild -showBuildSettings`.
+
+**The deeper rule:** Xcode's General tab in Identity is a read-write reflection of `pbxproj` build settings, not a read-only view. When the tab loads, it re-asserts what it last "knew" the values to be. If your sed change happened while the tab was already showing old values, the tab clobbers your change on next focus. This is not documented behaviour; it is observed reality.
+
+**Mitigation alternatives:**
+- Use `xcconfig` files for version strings instead of pbxproj literals (more invasive refactor; not done in VYVE)
+- Use the GUI exclusively (slow, but Xcode doesn't fight itself)
+- Use the CLI exclusively and never reopen Xcode after a sed (what we did tonight, eventually)
+
+### §23.16 — Composio-tarball pattern for pulling vyve-site from Dean's Mac (private repo, no PAT, no `gh` CLI).
+
+**Earned PM-115 (second instance — first was an earlier session, escalated tonight).** Dean's Mac has no GitHub PAT configured in keychain (or osxkeychain helper has stale auth) and no `gh` CLI installed. `git clone https://github.com/VYVEHealth/vyve-site.git` returns 403 "Write access to repository not granted" — the auth flow for a private repo can't complete.
+
+**Pattern (validated PM-115):** use the assistant's Composio session to bundle the desired vyve-site state into a tarball, upload to S3 with a signed URL, share the URL + SHA-256, Dean runs `curl + tar -xzf` locally.
+
+Mechanics:
+1. Assistant fetches the target vyve-site commit via Composio `GITHUB_GET_A_TREE` recursive + parallel blob fetches.
+2. Assistant assembles files into `/mnt/files/staging/` in the workbench.
+3. `tar -czf /mnt/files/vyve-site-<sha>.tar.gz -C /mnt/files/staging .`
+4. Upload via `upload_local_file` → returns S3 URL.
+5. Compute SHA-256 of the tarball in the workbench.
+6. Share URL + SHA-256 with Dean. Dean runs `curl -L -o /tmp/vyve-site-<sha>.tar.gz <url>` → `shasum -a 256 /tmp/vyve-site-<sha>.tar.gz` → compare → `tar -xzf` into `www/`.
+
+**Tonight's instance:** vyve-site `83874dd5` (PM-114, 96 files, 3.8MB) into `~/Projects/vyve-capacitor/www/`. SHA-256 `288fda05bbbf765e8879010dcfbe8ad52e9a483552a04d20e47e07e151417b75` verified before extraction.
+
+**Backlog escalation:** vyve-capacitor needs to become a real remote-tracked git repo (private VYVEHealth org repo, PAT-configured), so this dance isn't required. Hit twice in 48hr. Filed as a launch blocker, not hygiene.
+
+### §23.17 — Capacitor's `App/Info.plist` ships with hardcoded version strings, not build-setting placeholders. Replace literals with `$(MARKETING_VERSION)` and `$(CURRENT_PROJECT_VERSION)` once per project.
+
+**Earned PM-115.** With `GENERATE_INFOPLIST_FILE = NO` (the Capacitor default for the App target), archives copy `App/Info.plist` verbatim into the bundle. `CFBundleShortVersionString` and `CFBundleVersion` values in Info.plist are used directly — pbxproj `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` are ignored even when set. The Capacitor template ships Info.plist with literal strings like `<string>1.2</string>` rather than the standard Xcode placeholder syntax `<string>$(MARKETING_VERSION)</string>`.
+
+This means: bumping `pbxproj` does nothing. The archive ships at whatever's in Info.plist.
+
+**Fix (one-time per project, before first version bump after PF-14b setup):**
+
+```bash
+cd ios/App
+cp App/Info.plist App/Info.plist.bak-pf14b
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString \$(MARKETING_VERSION)" App/Info.plist
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion \$(CURRENT_PROJECT_VERSION)" App/Info.plist
+# Verify
+/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" App/Info.plist  # should output: $(MARKETING_VERSION)
+/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" App/Info.plist             # should output: $(CURRENT_PROJECT_VERSION)
+```
+
+After this fix, subsequent version bumps follow the standard pattern: edit `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `pbxproj`, the archive picks up the new values via Info.plist placeholder resolution.
+
+**Re-verify after every Capacitor major upgrade.** `cap sync` is non-destructive to Info.plist as of Capacitor 8.3.0, but a major version migration (Capacitor 8 → 9 → ...) may overwrite. Confirm via PlistBuddy after any Capacitor upgrade. Same rule applies to the Android equivalent — check `android/app/build.gradle` for hardcoded versionCode/versionName when working on Android side.
+
+### §23.18 — Apple closes a version train on first upload, regardless of whether the build was approved, rejected, or never reviewed.
+
+**Earned PM-115.** Tonight's project was at iOS 1.2 (1) in App Store Connect. The 1.2 (1) build had been uploaded and ultimately rejected — never approved, never released. Despite this, the 1.2 train was closed: every subsequent upload attempt as 1.2.x was rejected at validation with "this version is no longer accepted." The only forward path was to bump marketing version to 1.3.
+
+**Rule:** Track which marketing versions have been uploaded, not just which have been approved. Once any build in a marketing version has touched Apple's servers via upload, that train is closed forever. The next forward path is marketing version + 1.
+
+**Pre-upload check:** before bumping `CURRENT_PROJECT_VERSION` (build number) and re-uploading under the same marketing version, verify in App Store Connect Distribution → iOS Builds that the marketing version still shows as "open" (i.e. accepting new builds). If it shows any historical builds at all — even rejected ones — bump marketing version.
+
+**Re-statement of an earlier draft rule in PM-100s era that wasn't formally codified.** Now formally codified with tonight's hard evidence (17 wasted archives).
+
+### §23.19 — CLI archive → CLI exportArchive → Organizer Distribute (or altool upload) bypasses every Xcode GUI rollback issue. Use when the GUI is fighting back.
+
+**Earned PM-115.** When `xcodebuild -archive` ran from the command line tonight, it produced a clean 1.3 (2) archive on first attempt — once §23.15 (quit Xcode) + §23.17 (Info.plist placeholder fix) were in place. Xcode's Organizer GUI then accepted the CLI-produced archive for Distribute → App Store Connect upload without any of the version-rollback issues that plagued the in-IDE archive flow.
+
+**Pipeline (validated PM-115):**
+
+```bash
+# 1. Archive from CLI (Xcode quit, do not reopen until step 3)
+xcodebuild \
+  -project ios/App/App.xcodeproj \
+  -scheme App \
+  -configuration Release \
+  -destination "generic/platform=iOS" \
+  archive \
+  -archivePath ~/Desktop/VYVE-1.3-2.xcarchive
+
+# 2. Export IPA from archive
+cat > /tmp/ExportOptions.plist <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>app-store-connect</string>
+  <key>signingStyle</key>
+  <string>automatic</string>
+</dict>
+</plist>
+EOF
+
+xcodebuild \
+  -exportArchive \
+  -archivePath ~/Desktop/VYVE-1.3-2.xcarchive \
+  -exportPath ~/Desktop/VYVE-1.3-2-export \
+  -exportOptionsPlist /tmp/ExportOptions.plist
+
+# 3a. Upload via Organizer GUI (what we did tonight)
+open ~/Desktop/VYVE-1.3-2.xcarchive  # opens in Organizer
+# Click "Distribute App" → App Store Connect → Upload → wait for processing
+
+# 3b. OR upload via altool CLI (alternative; not used tonight)
+xcrun altool --upload-app \
+  -f ~/Desktop/VYVE-1.3-2-export/App.ipa \
+  -t ios \
+  -u <apple-id-email> \
+  -p <app-specific-password>
+```
+
+**Verification checkpoints in the pipeline:**
+
+- After archive: `PlistBuddy -c "Print :CFBundleShortVersionString" ~/Desktop/VYVE-1.3-2.xcarchive/Products/Applications/App.app/Info.plist` should return the target marketing version
+- After archive: same path with `CFBundleVersion` should return the target build number
+- After export: IPA exists at `~/Desktop/VYVE-1.3-2-export/App.ipa`
+- After upload: App Store Connect Distribution → iOS Builds shows the new build appearing within minutes (processing state ~5min, then "Ready to Submit")
+
+**When to use this over the IDE flow:** anytime version values aren't sticking, anytime signing certs are being recalculated unexpectedly, anytime the IDE archive button is producing inconsistent output across attempts. The CLI is deterministic — same inputs produce same outputs. The IDE has hidden state.
 
 ## 24. Premium Feel Campaign — local-first migration (active)
 

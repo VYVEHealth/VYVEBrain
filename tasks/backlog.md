@@ -1,3 +1,83 @@
+## Added 15 May 2026 PM-115 — PF-14b iOS shipped, Android next; new launch-blocker items from tonight's pipeline
+
+### PF-14b Android 1.0.3 — bundled-mode Capacitor + Capawesome [P0 LAUNCH BLOCKER, next session]
+
+**Status:** iOS half shipped PM-115 (1.3 (2) submitted to App Review). Android side is mechanical — same `capacitor.config.json` already in place from tonight, same Capawesome app + production channel `89e12796-aa41-4176-8d78-bc2ef6dfd5c2`. Sequence:
+
+1. `npx cap sync android` — confirm `@capawesome/capacitor-live-update@8.2.2` + `@capgo/capacitor-health@8.4.7` detected on Android side.
+2. Inspect `android/app/build.gradle` for current `versionCode` and `versionName` literals. Bump appropriately — `versionCode` must be strictly greater than every previously uploaded build regardless of track; `versionName` bumps to `1.0.3` for parity with iOS marketing version pattern.
+3. **Apply Android equivalent of §23.17 Info.plist placeholder fix.** Capacitor's `build.gradle` likely ships hardcoded `versionCode 1` + `versionName "1.0.2"` rather than reading from a `gradle.properties` file. If hardcoded, refactor once to use `${rootProject.ext.versionCode}` / `${rootProject.ext.versionName}` so future bumps are clean. Same template lesson as iOS Info.plist, different file.
+4. Locate Android keystore — current location is undocumented per brain. Likely in `~/Projects/vyve-capacitor/android/` or in `~/Library/Android/`. Document the path during this session.
+5. `./gradlew bundleRelease` from `android/` → produces signed `.aab` at `android/app/build/outputs/bundle/release/app-release.aab`.
+6. Sign manually if not auto-signed (keystore path + alias + password).
+7. Upload to Google Play Console → whichever track 1.0.2 used (Internal Testing or Production).
+8. Release notes — mirror iOS 1.3 "What's New" copy.
+9. Submit for review. Google review usually hours, not days.
+
+**Capgo HealthKit plugin on Android.** Won't engage — Android needs Health Connect, separate plugin entirely. The Health Connect integration is a separate PF-29 backlog item, post-launch. For 1.0.3 the Capgo plugin should be silent / no-op on Android, not throw.
+
+**Estimated time:** 1-2 hours if no surprises. Bring §23.15 (quit Android Studio before sed'ing build files) and §23.17 (placeholder fix) into the session.
+
+### vyve-capacitor git init + remote push [P0 LAUNCH BLOCKER, escalated]
+
+**Status:** Hit twice in 48hr window via §23.16. Direct git clone of vyve-site from Dean's Mac returns 403 (no PAT, no `gh` CLI). Workaround pattern (Composio-tarball) works but is friction every session that needs vyve-site contents in `~/Projects/vyve-capacitor/www/`.
+
+**Fix:** make vyve-capacitor a real git repo, push to a private VYVEHealth org repo. Then Dean's Mac can `git pull` to refresh `www/` between iOS/Android builds without the Composio dance.
+
+Sequence:
+
+1. Generate a GitHub PAT scoped to `repo` (read+write) on the VYVEHealth org. Lewis may already have one in 1Password; if not, generate fresh.
+2. Store via `git config --global credential.helper osxkeychain` + first auth attempt seeds the keychain. Or use `gh auth login` if `gh` is being installed anyway.
+3. `cd ~/Projects/vyve-capacitor && git init && git add -A && git commit -m "PF-14b initial commit: bundled-mode + Capawesome"`.
+4. Create `VYVEHealth/vyve-capacitor` private repo via GitHub web or `gh repo create`.
+5. `git remote add origin git@github.com:VYVEHealth/vyve-capacitor.git` (SSH) or HTTPS with PAT.
+6. `git push -u origin main`.
+7. Add `.gitignore` for `node_modules/`, `ios/App/Pods/`, `android/.gradle/`, `android/app/build/`, `ios/App/build/`, `*.bak-*`, `~/Library/Developer/Xcode/DerivedData/`. Don't commit Capacitor's auto-generated `ios/App/App/public/` either — it's a build artefact of `cap sync`.
+8. Decide on `www/` policy: either commit it (snapshot of vyve-site at build time) or `.gitignore` it (pulled fresh per build via the Composio pattern). Recommend commit — gives reproducible builds, makes "what's in this build" answerable from git history.
+
+**Estimated time:** 30-45 min. Should land BEFORE Android 1.0.3 work so Android build artefacts don't muddy the first commit.
+
+### Capawesome trial decision — 27 May 2026 [P0 DECISION]
+
+14-day trial started 14 May 2026 PM-115. Decision day **27 May 2026** — four days before the 31 May launch. £15/mo USD Starter tier (corrected from earlier £8 figure).
+
+**Decision inputs needed by 27 May:**
+
+- Has an OTA update actually been tested via Capawesome between 15 May and 27 May? (At minimum: ship a trivial CSS change as an OTA bundle, verify it lands on a real device without going through Apple/Play review.)
+- Is Lewis comfortable with the £15/mo line item? At our scale (sub-100 members, sub-1000 OTA-eligible installs) Starter is plenty. Pro is unnecessary.
+- Alternative is Capgo (their consumer app, not the Capgo HealthKit plugin we already use). Capgo's OTA service is the established Capawesome competitor. Brain previously held them as the leading option. Worth a side-by-side on cost + reliability if there's an unhappy moment with Capawesome before 27 May.
+
+Default: keep Capawesome unless something specific surfaces. The integration is done, the trial is paid via card-on-file (auto-bills on day 15 if not cancelled). Cancellation is a website action, not a support ticket.
+
+### Post-1.3-approval device verification [P1, blocked on Apple approval]
+
+When iOS 1.3 (2) approves and auto-releases:
+
+1. Install on Dean's iPhone via App Store (not TestFlight — production install).
+2. Verify the app loads `index.html` from the bundled `www/` not from `https://online.vyvehealth.co.uk`. Best test: airplane mode → kill app → reopen → app should still load and render skeleton + cached data. Pre-PF-14b this would have failed (network-dependent first paint).
+3. Verify Capawesome live-update SDK initialised — should show in console at launch as "LiveUpdate initialized" or similar. Don't push an actual OTA bundle yet (test that during the Capawesome 27 May decision window).
+4. Verify Capgo HealthKit plugin works under bundled mode — open Settings → Apple Health, confirm the connect toggle works, data flows. Bundled mode shouldn't change anything HealthKit-wise (the plugin is native, not webview), but worth confirming once.
+5. Verify the persona welcome overlay closes in ~1500ms (PM-114 fix, untested on bundled iOS — only tested under remote-origin).
+
+**Time:** 15-20 min device walk. Document findings as a §19 update in the brain commit following the verification.
+
+### Post-1.3-approval Capawesome `publicKey` hardening [P2, post-launch]
+
+The `capacitor.config.json plugins.LiveUpdate.publicKey` is currently empty string. Means OTA bundles are not code-signed — any actor that compromises the Capawesome account could push a malicious bundle to production members. Mitigation: generate a code-signing keypair, embed public key in app, configure Capawesome to require signed bundles.
+
+**Time:** 30-45 min. Post-launch, not urgent until member count grows past trial cohort.
+
+### Android keystore documentation + portable CI signing [P1, post-launch]
+
+Current state: Android keystore exists somewhere on Dean's Mac but path is not documented in brain. Tonight's Android 1.0.3 work will surface the path. Once known:
+
+1. Document in `brain/master.md` §25 or §24 credentials section.
+2. Back up keystore + password to 1Password (Lewis owns 1Password).
+3. Set up GitHub Actions CI workflow that can build + sign AABs from a fresh clone of vyve-capacitor — requires the keystore secret in GitHub Actions secrets.
+4. Future Android releases run via CI, not from Dean's local Mac.
+
+**Time:** 2-3 hours total. Post-launch unless Lewis or other team members need to ship Android builds before then.
+
 ## Added 14 May 2026 PM-106 — PF-40 Local-First Consolidation Campaign (active meta-frame; supersedes per-page wire work)
 
 ### PF-40 — Local-First Consolidation Campaign [P0 LAUNCH BLOCKER, active]

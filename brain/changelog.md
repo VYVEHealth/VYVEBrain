@@ -1,3 +1,69 @@
+## 2026-05-15 PM-115 — PF-14b iOS half SHIPPED: bundled-mode Capacitor + Capawesome live-updates + iOS 1.3 (2) submitted to App Review
+
+**Session shape:** Long evening into the early hours. Single session, single objective: get the iOS half of PF-14b across the line. ~6 hours including pipeline debugging. Brain commit follows at session close.
+
+**What shipped:**
+
+- **vyve-capacitor `capacitor.config.json` rewritten** to bundled-mode. Removed `server.url: https://online.vyvehealth.co.uk`. Added `iosScheme: capacitor`, `androidScheme: https`, `hostname: localhost`. Backup at `capacitor.config.json.bak-pf14b`. After Capawesome setup, added `plugins.LiveUpdate` block pointing at appId `f9961f66-eb66-4102-b1c5-f9b2c7baeebf`.
+
+- **`www/` populated from vyve-site at `83874dd5` (PM-114 HEAD).** 96 files, 3.8MB. Transferred via Composio workbench tarball because direct git clone hit 403 on the private repo from Dean's Mac (no PAT, no `gh` CLI). SHA-256 verified `288fda05bbbf765e8879010dcfbe8ad52e9a483552a04d20e47e07e151417b75`. Pattern codified as §23.16. Same pattern that fired in earlier session for the same reason — second instance now, escalated to a backlog item: `vyve-capacitor` needs to become a real git repo with a PAT-authenticated remote.
+
+- **`@capawesome/capacitor-live-update@8.2.2` installed** as a runtime dependency. `@capawesome/cli` installed globally (required `sudo npm install -g`). CLI logged in as `team@vyvehealth.co.uk` via web browser device code `EXJ7-ORRB`. Capawesome organisation: "VYVE Health". App created: `f9961f66-eb66-4102-b1c5-f9b2c7baeebf`. Production channel created: `89e12796-aa41-4176-8d78-bc2ef6dfd5c2`. Git repo connected (the Capawesome dashboard side, not the actual repo init). 14-day Starter trial started **14 May 2026**, cancel/keep decision **27 May 2026** — four days before launch.
+
+- **Capawesome cost correction:** brain previously had Capawesome at ~£8/mo. Live pricing is **£15/mo USD Starter tier** (or trial). Updates §19 + active.md.
+
+- **`npx cap sync ios`** ran clean. 17 plugins detected including `@capawesome/capacitor-live-update@8.2.2` and `@capgo/capacitor-health@8.4.7`. Project uses Swift Package Manager (no CocoaPods); opens via `ios/App/App.xcodeproj` — there is no `.xcworkspace` to open.
+
+- **The version-bumping saga that ate most of the night.** Brief summary, full lessons codified as §23.15 through §23.19:
+  - First attempt: bumped `MARKETING_VERSION = 1.3` + `CURRENT_PROJECT_VERSION = 2` directly in `App.xcodeproj/project.pbxproj` via sed. Verified on disk + via `xcodebuild -showBuildSettings`. Every archive that followed shipped as `1.2 (1)`.
+  - Cause #1: **Xcode GUI silently rewrites `pbxproj` on view focus.** General tab opened → pbxproj rewrites back to `CURRENT_PROJECT_VERSION = 1` even though sed had just set it to 2. Mitigation: quit Xcode fully (`osascript -e 'tell application "Xcode" to quit'`) before editing pbxproj. Codified as §23.15.
+  - Cause #2: **Capacitor's `App/Info.plist` ships with hardcoded version strings**, not `$(MARKETING_VERSION)` / `$(CURRENT_PROJECT_VERSION)` placeholders. With `GENERATE_INFOPLIST_FILE = NO` (the Capacitor default), archives copy Info.plist verbatim and ignore pbxproj. The "real" version source for archives is Info.plist, not pbxproj. Mitigation: one-time fix per Capacitor project — replace the literals with placeholders via `PlistBuddy -c "Set :CFBundleShortVersionString \$(MARKETING_VERSION)"`. Codified as §23.17.
+  - Cause #3: **Apple closes a version train on first upload regardless of approval status.** A rejected 1.2 (1) still closes the 1.2 train. Tonight's project was at 1.2 (1) in App Store Connect (closed train) but we'd tried to ship as 1.2 (something) multiple times — every attempt rejected. Forward path: bump marketing to 1.3 + build to 2, ship that. Codified as §23.18.
+  - Final pipeline that worked: quit Xcode → sed pbxproj → PlistBuddy Info.plist → `xcodebuild -archive` from CLI → `xcodebuild -exportArchive` with `method=app-store-connect signingStyle=automatic` → IPA on Desktop → Xcode Organizer Distribute App for the upload (altool path not used; Organizer was already open and accepted the IPA). Pipeline codified as §23.19.
+
+- **iOS 1.3 (2) submitted to App Review.** Sidebar status "1.3 Waiting for Review". Auto-release on approval set. Apple's estimated review window 24-48hr. App Store Connect listing reused 1.2 metadata, with new "What's New in This Version" copy describing bundled-mode + faster startup. Encryption compliance: standard (HTTPS), not available in France (French regulations have separate import declaration paperwork; not pursuing).
+
+**What did NOT ship tonight:**
+
+- **Android 1.0.3** — bundled-mode build + submit. Next session work. Same `capacitor.config.json` already in place from tonight's iOS work, so `npx cap sync android` should detect the live-update plugin cleanly. `android/app/build.gradle` `versionCode` and `versionName` need bumping. Capacitor 8 produces `.aab` via `./gradlew bundleRelease`. Keystore location is on the backlog (needs to be found; portable CI signing pipeline also on the backlog).
+
+- **vyve-capacitor git init + push.** Still not a remote-tracked git project on Dean's Mac. Backlog risk hit twice in 48 hours now — once for the 403 on the source pull, once when the lack of a remote made the local-only edits feel fragile. Becoming a real launch blocker, not just a hygiene item.
+
+- **Capawesome `publicKey` in `capacitor.config.json`** — left as empty string. Code-signing OTA bundles is a hardening step, not required to ship the first build. Post-launch backlog.
+
+**Verification chain (what proved each thing):**
+
+- `pbxproj` MD5 hash before vs after archive: identical (`815bc7c9e4881a6f06e0af77ca15f4e0`) — confirmed pbxproj edits weren't being rewritten by the build pipeline. The rollback was happening at GUI-focus time, not build time.
+- `xcodebuild -showBuildSettings | grep MARKETING_VERSION` showed `1.3` while `PlistBuddy ~/Desktop/vyve-1.3-2.xcarchive/.../Info.plist Print CFBundleShortVersionString` showed `1.2` — proved archive was reading Info.plist not pbxproj.
+- After `PlistBuddy Set` to `$(MARKETING_VERSION)`: re-archive → PlistBuddy on archive Info.plist returned `1.3` → confirmed placeholder resolution works.
+- Final archive Info.plist read `1.3` / `2`. Validation in Xcode Organizer succeeded. Distribute → App Store Connect → Upload completed. Apple confirmed receipt.
+
+**iOS state after tonight:**
+
+- 1.2 (1) — closed train, never approved (rejected mid-review)
+- 1.2 train — dead, won't accept any further builds
+- 1.3 (2) — uploaded, in App Review, auto-release on approval, ~24-48hr expected
+- 1.1 (3) — previously "Ready for Review"; status unclear, may have approved-and-released between brain-write and now; will verify when 1.3 lands
+
+**Files committed this brain commit:**
+
+- `brain/changelog.md` — prepend PM-114 (retro-spliced) + PM-115 (this entry)
+- `brain/active.md` — refresh §2 state table head with PM-115 status, vyve-site HEAD pointer, SW cache key, iOS state, Capawesome details
+- `brain/master.md` — prepend new §19 (Current Status — 15 May 2026 PM-115), inject §23.15 through §23.19 new rules
+- `tasks/backlog.md` — add new items: Capawesome 27 May decision, vyve-capacitor git init, Android 1.0.3, post-1.3-approval device verification, post-1.3-approval HealthKit verification under bundled mode
+
+## 2026-05-14 PM-114 — Drop 8s hydration overlay timeout (vyve-site ship only; brain entry retro-spliced in PM-115)
+
+**Session shape:** Single-file vyve-site patch shipped 14 May 22:25 UTC as `83874dd5`. Brain never recorded it — entry retro-spliced from commit message during the PM-115 brain commit.
+
+**Symptom:** Members opening any page that triggered the persona-led welcome overlay saw it sit on screen for the full 8s timeout window before closing. PF-13 design intent was 1500ms min display, but the overlay's `hydrateWait` was awaiting the `vyve-localdb-hydrated` event which is fired only by the legacy 23-table mass-hydrate. Since PM-112 shipped `firstPaintHydrate`, no page awaits the mass-hydrate on critical path anymore — that event rarely fires within the 8s timeout window, so the wait timed out every time and the overlay got stuck at the full timeout duration.
+
+**Fix:** `hydration.js` patched so `hydrateWait = Promise.resolve('skipped')`. Overlay now gated only by `minWait` (1500ms) as originally intended. Pages handle their own data hydration via `VYVESync.criticalHydrate(pageName)` after the overlay closes.
+
+**Ship:** `83874dd5` on vyve-site main. Two-file commit: `hydration.js` patched, `sw.js` cache key `pm113-pills-cache-a` → `pm114-hydration-fast-a`. Pre-ship `node --check rc=0`. Pre-commit SHA recheck `692927e3` unchanged.
+
+**Why this entry is here in PM-115:** the brain commit didn't follow the vyve-site ship — Dean moved straight to the Capacitor session. Caught during PM-115 verification when active.md `vyve-site main HEAD` lagged behind live by one commit. Splice-into-changelog standard pattern per §23.9.
+
 ## 2026-05-14 PM-113 — Hotfix on PM-112: habits pills paint from localStorage cache, not Dexie
 
 **Session shape:** Continuation of PM-112 device walk. Single 2-file atomic commit `692927e3` on vyve-site main. ~15 min total including the diagnostic conversation. Brain entry follows.
