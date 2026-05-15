@@ -1,6 +1,56 @@
+## Added 15 May 2026 PM-116 — PF-14b Android shipped; new launch-blocker follow-ups
+
+### Android keystore + password 1Password backup [P0 LAUNCH BLOCKER, immediate]
+
+**Status:** Keystore recovered PM-116 from Google Drive folder "Dean's things" (two identical copies). Password `Weareinthis2026!` brute-force-recovered against Dean's candidates. Path: `~/Projects/vyve-capacitor/android/app/keystore/vyve-release-key.jks`. PKCS12 format, alias `vyve-key`, SHA1 `CC:48:EA:AF:C1:47:ED:43:20:63:4F:FF:07:99:79:20:55:7D:23:B9`, valid until 2051.
+
+**Risk:** If Dean's Mac is wiped, lost, or replaced before keystore + password are co-located in 1Password, the app is **un-shippable** for the entire lifetime of `co.uk.vyvehealth.app` on Play Store. Google does not let you re-sign a published app under a different upload key without a 14-90 day migration through their Play App Signing service, and that service has its own risk surface.
+
+**Fix:** 30-second action.
+
+1. Lewis: in 1Password (VYVE Health vault), create a new Secure Note: "Android Release Keystore (vyve-release-key.jks)".
+2. Attach the keystore file itself (binary attachment).
+3. Add fields: `Password: Weareinthis2026!`, `Alias: vyve-key`, `Created: 12 Apr 2026`, `Valid until: Apr 2051`, `SHA1: CC:48:EA:AF:C1:47:ED:43:20:63:4F:FF:07:99:79:20:55:7D:23:B9`, `Path on Dean's Mac: ~/Projects/vyve-capacitor/android/app/keystore/vyve-release-key.jks`.
+4. Tag for shared access between Lewis and Dean.
+
+**Estimated time:** 5 minutes including locating the file in Drive and downloading.
+
+### vyve-capacitor git init + remote push [P0 LAUNCH BLOCKER — escalated to same-week]
+
+**Status:** Same as PM-115 backlog item, now escalated. PM-116 hit the same problem a third time — cumulative uncommitted edits across `build.gradle`, `variables.gradle`, `keystore.properties`, `local.properties` over the iOS + Android ships now sitting in an unversioned working tree. Backup files (`.bak-pf14b`, `.bak-pf14b-android`, `.bak`) are the only history we have. Any accidental file overwrite is unrecoverable.
+
+**Fix:** Same as PM-115 sequence. Stop deferring. Land it in the next session before the next architectural ship.
+
+**Estimated time:** 30-45 min. Block on this before touching the Capacitor project again for any non-trivial work.
+
+### Health Connect native integration on Android (PF-29 advance) [P1, post-launch]
+
+**Status:** Capgo Health plugin (`@capgo/capacitor-health@8.4.7`) is in the Android bundle as of PM-116 but is no-op — Android needs the separate Health Connect SDK integration to actually read data. PM-116 declared 25+ permissions in Play Console under "planned use" framing. The declaration creates an honesty obligation: Google may revisit the declaration if we don't ship the integration within ~6 months (no hard deadline, but reasonable expectation).
+
+**Fix:** Wire `@capgo/capacitor-health` into actual Android Health Connect data reads — minimum: steps, heart rate, sleep. Mirror iOS HealthKit code path. Folds into PF-29 backlog scope.
+
+**Estimated time:** 1 session for read-only data ingestion, 1 session for UI surfaces that consume it.
+
+### Play Console state audit before next Android ship [P2, hygiene]
+
+**Status:** PM-116 surfaced ~3-4 weeks of brain drift on Android Play store state (brain said "1.0.2 awaiting review", live state was "1.0.2 live since 21 April 2026"). New §23.24 rule codifies the pre-ship audit. Future Android sessions should fetch Play Console state via screenshot or quick check before composing the ship plan.
+
+**Action when relevant:** add a step at the top of any Android ship playbook: "Open Play Console → screenshot dashboard + bundle explorer → confirm versionCode history + live version + last update date before composing the ship plan." Costs 30 seconds, prevents §23.20-style versionCode collisions and stale brain assumptions.
+
+### Capawesome 27 May trial decision — Android test path [extends PM-115 item]
+
+**Update to existing PM-115 backlog item.** With Android now also bundled-mode and Capawesome SDK in the AAB, the trial decision input set expands:
+
+- Test that Capawesome OTA bundle delivery works on **both iOS and Android** between 15 May and 27 May, not just iOS.
+- iOS test path: TestFlight install of 1.3, push trivial CSS-change OTA bundle, verify it lands.
+- Android test path: Internal testing install of 1.0.3, push same OTA bundle, verify it lands on Android too.
+- Capawesome charges per-app, so iOS + Android counts as 2 apps. Check whether the Starter tier covers both or whether we move to a higher tier. **Cost verification needed before 27 May decision.**
+
+---
+
 ## Added 15 May 2026 PM-115 — PF-14b iOS shipped, Android next; new launch-blocker items from tonight's pipeline
 
-### PF-14b Android 1.0.3 — bundled-mode Capacitor + Capawesome [P0 LAUNCH BLOCKER, next session]
+### PF-14b Android 1.0.3 — bundled-mode Capacitor + Capawesome [✅ SHIPPED PM-116 / 2026-05-15 — Android 1.0.3 (versionCode 10) submitted to Google Play Production track. AAB at `~/Desktop/vyve-1.0.3-build10.aab`. In review.]
 
 **Status:** iOS half shipped PM-115 (1.3 (2) submitted to App Review). Android side is mechanical — same `capacitor.config.json` already in place from tonight, same Capawesome app + production channel `89e12796-aa41-4176-8d78-bc2ef6dfd5c2`. Sequence:
 
@@ -67,7 +117,7 @@ The `capacitor.config.json plugins.LiveUpdate.publicKey` is currently empty stri
 
 **Time:** 30-45 min. Post-launch, not urgent until member count grows past trial cohort.
 
-### Android keystore documentation + portable CI signing [P1, post-launch]
+### Android keystore documentation + portable CI signing [PARTIAL — keystore + password documented PM-116; 1Password backup + CI signing pipeline outstanding]
 
 Current state: Android keystore exists somewhere on Dean's Mac but path is not documented in brain. Tonight's Android 1.0.3 work will surface the path. Once known:
 

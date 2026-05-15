@@ -847,7 +847,52 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
-## 19. Current status — 15 May 2026 PM-115 (PF-14b iOS half SHIPPED; bundled-mode Capacitor + Capawesome live-updates wired; iOS 1.3 (2) submitted to App Review)
+## 19. Current status — 15 May 2026 PM-116 (PF-14b Android half SHIPPED; Android 1.0.3 (versionCode 10) submitted to Google Play; both stores now awaiting platform review)
+
+**Headline:** the PF-14b architectural fix is now mechanically complete on both platforms. iOS 1.3 (2) submitted to App Review last night (PM-115), Android 1.0.3 (versionCode 10) submitted to Google Play Production track tonight. Same `capacitor.config.json` from PM-115, same `www/` packaged from vyve-site `83874dd5`, same Capawesome production channel `89e12796-aa41-4176-8d78-bc2ef6dfd5c2`. Both apps now bundled-mode with OTA updates available, both awaiting platform review. Once approved and released, the Apple ITP 7-day storage-purge problem and the equivalent Android WebView storage policies stop applying — local-first becomes architecturally guaranteed on production devices.
+
+**What shipped this session (PM-116):**
+
+- Android keystore recovered from Google Drive — `vyve-release-key.jks` (PKCS12, alias `vyve-key`, password `Weareinthis2026!`, valid until 2051, SHA1 `CC:48:EA:AF:C1:47:ED:43:20:63:4F:FF:07:99:79:20:55:7D:23:B9`). Path: `~/Projects/vyve-capacitor/android/app/keystore/vyve-release-key.jks`. **NOT YET in 1Password.**
+- Android build pipeline established on Dean's Mac from scratch — `local.properties` rewritten from Windows path (`C:\\Users\\DeanO\\AppData\\Local\\Android\\Sdk`) to `/Users/deanbrown/Library/Android/sdk`. JBR (Android Studio bundled JDK 21) used as `JAVA_HOME`.
+- `android/app/build.gradle` patched with keystore loader + `signingConfigs.release` block + version bumps. Backup at `.bak-pf14b-android`.
+- `android/variables.gradle` minSdkVersion bumped 24 → 26 (required by Capgo Health Android manifest, drops ~1,460 long-tail devices). Backup at `.bak-pf14b`.
+- `android/keystore.properties` written with `storeFile=keystore/vyve-release-key.jks` (NOT `app/keystore/...` — see §23.21).
+- Health Connect declaration completed in Play Console covering 25+ permissions. Permanent on Play Console once approved.
+- versionCode 10 assigned (after 2 and 3 were rejected — see §23.20).
+- Release notes mirror iOS 1.3 "What's New" copy.
+
+**State of the two platforms now:**
+
+- **iOS:** 1.3 (2) in App Review since PM-115. Auto-release on approval. 1.2 train closed (rejected mid-review pre-PM-115). 1.1 (3) status unclear — may have approved-and-released between PM-113 and now.
+- **Android:** 1.0.3 (versionCode 10) in Google Play review since PM-116. Auto-publish on approval, Production track. Prior: 1.0.2 (versionCode 2) live since 21 April 2026 (brain previously said "awaiting review" — 3-4 week silent drift, corrected this session per §23.24).
+
+**Five §23 rules earned PM-116 (full text in §23):**
+
+- §23.20 — when re-establishing Android shipping for an existing app, jump versionCode to a clearly-higher integer (10+) rather than next-from-source-of-truth.
+- §23.21 — `keystore.properties storeFile` path is relative to `android/app/`, not `android/`.
+- §23.22 — PKCS12 keystores enforce store password === key password; don't loop them separately.
+- §23.23 — any Android bundle containing a plugin that declares health permissions in its manifest triggers Play Console Health Declaration even if the plugin is dormant at runtime.
+- §23.24 — verify live Play/App Store state before re-shipping an app that hasn't been touched in weeks (brain drift gate).
+
+**Launch-window posture (15 May 2026, 16 days from 31 May target):**
+
+- Both apps in platform review. Apple typically 24-48hr, Google typically hours-to-a-day.
+- Capawesome 14-day trial expires 28 May 2026 (cancel/keep decision **27 May 2026**, four days before launch). Default: keep, £15/mo USD Starter tier.
+- HAVEN Phil sign-off still pending — not blocking the bundled-mode ship, blocks broader promotion only.
+- vyve-capacitor still not a git repo on Dean's Mac. Hit three times in 72hr now. P0 same-week priority.
+- 1Password backup of Android keystore + password is P0 — must land before any Mac risk window.
+
+**What did NOT ship this session:**
+
+- vyve-capacitor `git init` + remote push (P0 same-week, escalated).
+- 1Password keystore backup (P0).
+- Capawesome `publicKey` hardening (post-launch).
+- Native Health Connect integration on Android (PF-29, post-launch).
+
+---
+
+
 
 **Headline:** the Apple ITP 7-day storage-purge problem that gated PF-14b is mechanically solved on iOS. New bundled-mode `capacitor.config.json` removed `server.url`, packaged vyve-site `83874dd5` into the IPA, integrated Capawesome live-updates SDK for OTA updates without going through Apple review each time. iOS 1.3 (2) is in App Review, auto-release on approval. ~24-48hr Apple review window. Android is the next session's work — same campaign, same architectural fix, separate native pipeline.
 
@@ -2354,6 +2399,61 @@ xcrun altool --upload-app \
 - After upload: App Store Connect Distribution → iOS Builds shows the new build appearing within minutes (processing state ~5min, then "Ready to Submit")
 
 **When to use this over the IDE flow:** anytime version values aren't sticking, anytime signing certs are being recalculated unexpectedly, anytime the IDE archive button is producing inconsistent output across attempts. The CLI is deterministic — same inputs produce same outputs. The IDE has hidden state.
+
+### §23.20 — When re-establishing Android shipping for an existing app, jump versionCode to a clearly-higher integer rather than next-from-source-of-truth.
+
+**Earned PM-116.** Local source had `versionCode 1`. iOS-equivalent reasoning suggested bumping to 2 for the next ship. Play Console rejected: "Version code 2 has already been used." Bumped to 3. Rejected. Bumped to 10. Accepted.
+
+Cause: Play Console retains versionCode history across **all** uploads ever made to the application — not just published releases. Internal testing tracks, abandoned test uploads, legacy package-name uploads under the same dev account, all consume integers in the same monotonic sequence. The local source-of-truth (build.gradle) only knows what was committed; it doesn't know what was uploaded.
+
+**Rule:** When the local Android build environment has been re-established on a new machine, when shipping the first build after a long gap, or when Play Console history is uncertain — start at versionCode 10 (or higher) rather than `prior + 1`. Cheap insurance against three to five rejected upload cycles. The wasted integers don't matter; you'll hit 100, 200, 1000 over the app's lifetime and the numbers are private to Play Console anyway.
+
+**Pre-upload check (when uncertainty matters):** Play Console → App bundle explorer → see the highest existing versionCode across every track ever uploaded. Bump from that + 5-10 buffer.
+
+### §23.21 — `keystore.properties storeFile` path is relative to `android/app/`, not `android/`.
+
+**Earned PM-116.** First `keystore.properties` written with `storeFile=app/keystore/vyve-release-key.jks`. Gradle build failed: `Keystore file '/Users/deanbrown/Projects/vyve-capacitor/android/app/app/keystore/vyve-release-key.jks' not found for signing config 'release'.` Double `app/app/` in the resolved path.
+
+Cause: `signingConfigs.release { storeFile file(...) }` block sits inside `android/app/build.gradle`. Gradle evaluates relative paths from the directory containing the `build.gradle` file doing the evaluation — that's `android/app/`. So `storeFile=app/keystore/...` resolves to `android/app/app/keystore/...`.
+
+**Rule:** in `android/keystore.properties`, `storeFile` is relative to `android/app/`. Correct value when keystore lives at `android/app/keystore/vyve-release-key.jks` is `storeFile=keystore/vyve-release-key.jks`. The `keystore.properties` file itself sits at `android/keystore.properties` (rootProject level), but its `storeFile` value gets re-resolved at the `app/` level.
+
+Workaround if path discipline gets confused: use an absolute path in `keystore.properties`. Costs portability across machines, fine for solo dev.
+
+### §23.22 — PKCS12 keystores enforce store password === key password. Don't write a brute-force loop that tries them separately.
+
+**Earned PM-116.** Recovered keystore from Drive. Tried Dean's candidate passwords against store password — `Weareinthis2026!` hit. Wrote a second loop to brute-force the key password separately. Result: same password also worked as the key password.
+
+Cause: PKCS12 (`.jks` files created by modern keytool default to PKCS12 format since Java 9+, including the Android Studio bundled keytool) does not support separate store and key passwords. The format mandates they be identical. JKS-format keystores (legacy) allow separate passwords; PKCS12 doesn't.
+
+**Rule:** When working with a `.jks` file of unknown provenance, first check its format with `keytool -list -keystore <path>` and look at the storetype header (or just try the store password as the key password first). If PKCS12, save the loop time. If legacy JKS, expect they may differ.
+
+**Detection one-liner:** `keytool -list -v -keystore foo.jks -storepass <password> | grep -i "Keystore type"` returns either `PKCS12` or `jks`.
+
+### §23.23 — Any Android bundle containing a plugin that declares health permissions in its manifest triggers the Play Console Health Declaration, even if the plugin is dormant at runtime.
+
+**Earned PM-116.** Capgo Health plugin (`@capgo/capacitor-health@8.4.7`) is installed in the project but has no runtime activation path on Android today — Health Connect integration is a future PF-29 backlog item. The plugin's manifest still declares 25+ `android.permission.health.READ_*` permissions. Play Console's AAB scanner detected those and raised a hard release-blocking error: "You must complete the health declaration."
+
+**Rule:** Before the first Android build that includes any plugin whose manifest declares `android.permission.health.*` permissions, plan time for the Health Declaration in Play Console. It is a 25+ field free-text form covering each declared permission, with each field requiring a written description of intended use. The declaration is permanent — once approved, future builds skip the form unless new health permissions are added to the manifest.
+
+**Honest declaration is the right move when the plugin will be activated within ~6 months.** Strip-the-plugin is the right move if the plugin is incidental and won't ship in the live feature set within that window — it's faster, more truthful, and avoids maintaining a declaration that drifts from reality.
+
+**Copy guidance:** descriptions should be in "planned use case" framing, naming the surface the data feeds (dashboard, AI coach recommendations, nutrition module, etc.), and explicitly stating data is private to the member if true. Google's review process for the declaration is automated for new declarations on existing apps; only edge cases or contradictory descriptions get manual review.
+
+### §23.24 — Play Console retains state independent of the brain — verify live state before re-shipping an Android app that hasn't been touched in weeks.
+
+**Earned PM-116.** Brain said: "Android 1.0.2 awaiting Play review." Pre-upload check showed 1.0.2 had been live since 21 April 2026 (3-4 weeks earlier), 3 installs, 100% rollout. Brain drift was silent because no PM-* between then and now had reason to touch Android state.
+
+**Rule:** Same shape as §23.5 / §23.6 / §23.14 — when about to ship to a platform brain hasn't touched in weeks, fetch the live state of that platform's developer console (Play Console for Android, App Store Connect for iOS) before composing the ship plan. The pre-upload state-fetch costs a screenshot and 30 seconds; the cost of shipping based on stale brain assumptions is wasted version codes, mis-framed release notes, and bad assumptions about which track to upload to.
+
+**Verification surfaces to fetch before any Android ship:**
+
+- Play Console → App dashboard → live version + last-update timestamp + install count + rollout %
+- Play Console → Test and release → Latest production release card (closed/open status, versionCode)
+- Play Console → App bundle explorer → highest versionCode ever uploaded (drives §23.20)
+- Play Console → App content → existing Health Declaration status (skips §23.23 marathon if already done)
+
+**Same for iOS:** App Store Connect Distribution → iOS Builds (closed-train status per §23.18), Privacy → Health/Activity declarations, App Review status of all version trains.
 
 ## 24. Premium Feel Campaign — local-first migration (active)
 

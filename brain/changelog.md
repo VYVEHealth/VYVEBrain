@@ -1,3 +1,55 @@
+## 2026-05-15 PM-116 — PF-14b Android half SHIPPED: bundled-mode + Capawesome + Android 1.0.3 (10) submitted to Google Play review
+
+**Session shape:** Continued straight from PM-115 (iOS 1.3 (2) submitted earlier in the night). Single session, single objective: get the Android half across the line. ~2 hours including keystore recovery, gradle pipeline setup on a clean Mac, the Health Connect declaration marathon, and the versionCode collision dance. Brain commit follows.
+
+**What shipped:**
+
+- **Android 1.0.3 (versionCode 10) submitted to Google Play Production track.** Same bundled-mode `capacitor.config.json` from PM-115 already in place — `npx cap sync android` detected all 17 plugins cleanly including `@capawesome/capacitor-live-update@8.2.2` and `@capgo/capacitor-health@8.4.7`. AAB at `~/Desktop/vyve-1.0.3-build10.aab` (10.3MB). Signed against the existing upload key so Play Console authenticated against the prior 1.0.2 signature — no Play App Signing key dispute. Status: in review, Google review window typically hours to a day. No managed publishing — will auto-publish on approval.
+
+- **Android keystore recovered from Google Drive.** `vyve-release-key.jks` (2716 bytes, PKCS12, created 12 April 2026 by Dean Brown / VYVE Health CIC / Newcastle, valid until 2051). Located in Drive folder "Dean's things" (folder ID `1vXirolxZJQFx5ZU8mXOi8cyVmjsMS_M-`), two identical copies (IDs `13zu-mJ73JWsTBaxS_bxie1znyUbg5wfH` and `1EtFOzionk_XcTa1TiGDGJz2Eea3trOzJ`). Keystore password recovered via brute force against Dean's password candidates: **`Weareinthis2026!`** (PKCS12 enforces store password === key password, so both share the same value). Alias `vyve-key`. SHA1 fingerprint `CC:48:EA:AF:C1:47:ED:43:20:63:4F:FF:07:99:79:20:55:7D:23:B9` confirmed matching the in-AAB signing cert. Closes the PM-115 backlog item "Android keystore documentation". Path now committed at `~/Projects/vyve-capacitor/android/app/keystore/vyve-release-key.jks`. **The keystore + password are NOT yet co-located in 1Password — that is a P0 follow-up before Dean's Mac is ever wiped or replaced.**
+
+- **Android build pipeline established on Mac.** Previous Android build (1.0.2, live since 21 April 2026) was shipped from a Windows machine — `local.properties` contained `sdk.dir=C:\\Users\\DeanO\\AppData\\Local\\Android\\Sdk`. Tonight that was rewritten to `/Users/deanbrown/Library/Android/sdk`. Android Studio Panda 3 installed fresh, SDK already in place via Studio install, JBR (bundled JDK 21.0.10) used as `JAVA_HOME` at `/Applications/Android Studio.app/Contents/jbr/Contents/Home` — no separate JDK install required.
+
+- **minSdkVersion bumped 24 → 26** in `android/variables.gradle`. Required by `@capgo/capacitor-health@8.4.7` which declares `minSdkVersion 26` in its manifest — gradle manifest merger blocks the build at minSdk 24. Trade-off: drops support for ~1,460 devices (Android 7.x and below, mostly long-tail). Tablet -6%, phone -9%, TV -25%. Acceptable: Android 8.0+ is 98%+ of active devices in 2026. Capgo Health doesn't actually engage on Android until we wire Health Connect (PF-29 backlog item), so the plugin is silent / no-op at runtime, but its manifest-declared permissions are what forced the Play Console health declaration.
+
+- **`android/keystore.properties` + signing config wired into `android/app/build.gradle`.** Keystore loader at top of build.gradle reads `rootProject.file("keystore.properties")`, `signingConfigs.release` block references the four properties (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`), `buildTypes.release` references the signing config. Backup at `android/app/build.gradle.bak-pf14b-android`. **`keystore.properties storeFile` value is `keystore/vyve-release-key.jks` (relative to `app/`, NOT `android/`) — see §23.21.** `versionCode` bumped to 10 (not 1 → 2 as initially planned — see §23.20). `versionName` set to `"1.0.3"`.
+
+- **Health Connect declaration completed in Play Console.** 25+ fields covering every permission the Capgo Health Android manifest declares: Active calories, Distance, Exercise, Floors climbed, Steps, Respiratory rate, Basal metabolic rate, Body fat, Height, Weight, Basal body temperature, Total calories burned, Sleep, Blood pressure, Body temperature, Heart rate, Heart rate variability, Oxygen saturation, Resting heart rate, Mindfulness, Blood glucose. Each field given a truthful "planned use case" description — honest about Capgo Health being latent on Android today and intended for activation once Health Connect integration ships. Declaration is now permanent on Play Console — future Android releases skip this 25-field form unless new health permissions are added. Codified as §23.23.
+
+- **Release notes:**
+  ```
+  What's new in 1.0.3:
+  • Live updates: the app can now receive bug fixes and improvements without needing a Play Store update
+  • Performance and stability improvements
+  ```
+
+**What did NOT ship tonight:**
+
+- **vyve-capacitor git init + remote push.** Still not a git repo on Dean's Mac. Hit a third time tonight via cumulative edits to `build.gradle`, `variables.gradle`, `keystore.properties`, `local.properties` — all uncommitted. Backlog risk now hit three times in 72 hours. Escalating priority to P0 same-week.
+
+- **Capawesome `publicKey` hardening** — still empty string. Same as iOS. Post-launch task.
+
+- **1Password backup of keystore + password.** Critical follow-up before any Mac wipe/replace risk window.
+
+**The versionCode dance.**
+
+First Play upload attempt: versionCode 2 (matching the build number used for 1.0.2's upload). Rejected: "Version code 2 has already been used." Second attempt: versionCode 3. Rejected: "Version code 3 has already been used." Apparent that historical Play uploads (pre-1.0.2 internal testing builds, the legacy `com.kahunas.io.VYVE` app on the same dev account, or test uploads we have no record of) have burned low versionCodes. Jumped to 10 — accepted. Codified as §23.20: when re-establishing Android shipping for an existing app with uncertain version history, start at a clearly-higher integer (10+) rather than the next-from-source-of-truth value. Cheap insurance against burned-versionCode collisions.
+
+**The Health Connect declaration marathon.**
+
+Pre-AAB-upload it wasn't obvious that the Capgo Health plugin manifest permissions would trigger a Play Console "health declaration" requirement. AAB processing surfaced it as a hard error blocking release submission — "You must complete the health declaration." Two paths: (1) strip Capgo Health from Android-only, skip declaration entirely; (2) declare honestly with "planned use" language. Chose (2) because Dean confirmed HealthKit-via-Capgo is shipping soon on iOS (PF-29 forward), and re-adding the plugin to Android later means doing the declaration anyway. Better to land the declaration once now. 25+ free-text fields, ~15 minutes of typing. All copy is "planned use case" framed — truthful that the plugin is latent on Android today.
+
+**The Play Console state surprise.**
+
+Brain said: "Android 1.0.2 awaiting Play review." Live state: **1.0.2 has been live since 21 April 2026, 3 installs, 100% rollout, 18 April last update.** Brain drift of ~3-4 weeks. Caught during pre-upload state check. Codified note in §24 audit candidates. PM-116 corrects active.md §2 state-table to match live.
+
+**Files committed this brain commit:**
+
+- `brain/changelog.md` — prepend PM-116 (this entry)
+- `brain/active.md` — refresh §2 state-table head with PM-116 status, Android Play store live state, keystore path, new §23 rule references
+- `brain/master.md` — prepend new §19 (Current Status — 15 May 2026 PM-116), inject §23.20 through §23.24 new rules
+- `tasks/backlog.md` — close "Android 1.0.3" + "Android keystore documentation" items; add 1Password backup, Health Connect integration tracking, Play Console state-audit follow-up; update Capawesome 27 May decision item to add the new Android-OTA test path
+
 ## 2026-05-15 PM-115 — PF-14b iOS half SHIPPED: bundled-mode Capacitor + Capawesome live-updates + iOS 1.3 (2) submitted to App Review
 
 **Session shape:** Long evening into the early hours. Single session, single objective: get the iOS half of PF-14b across the line. ~6 hours including pipeline debugging. Brain commit follows at session close.
