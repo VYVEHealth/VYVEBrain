@@ -2455,6 +2455,28 @@ Cause: PKCS12 (`.jks` files created by modern keytool default to PKCS12 format s
 
 **Same for iOS:** App Store Connect Distribution → iOS Builds (closed-train status per §23.18), Privacy → Health/Activity declarations, App Review status of all version trains.
 
+### §23.25 — `tool_search` does not surface third-party MCP toolkits directly; route through `COMPOSIO_SEARCH_TOOLS` → `COMPOSIO_MULTI_EXECUTE_TOOL`.
+
+**Surfaced PM-121 (15 May 2026).** `tool_search(query="github get repository content")` and any variant returns Google Drive write tools and Supabase `deploy_edge_function` — NOT the GitHub Composio toolkit. The GitHub MCP connection is active and operational; the host's `tool_search` discovery layer simply does not index Composio-provided toolkits (github, brevo, supabase via Composio, etc.) the way it surfaces first-party tools.
+
+**The working pattern (verified PM-121):**
+
+1. **Discovery:** call `tool_search(query="composio <toolkit>")` — e.g. `composio github repository`. This loads the Composio meta-tools (`COMPOSIO_SEARCH_TOOLS`, `COMPOSIO_MULTI_EXECUTE_TOOL`, `COMPOSIO_REMOTE_WORKBENCH`, `COMPOSIO_GET_TOOL_SCHEMAS`, `COMPOSIO_MANAGE_CONNECTIONS`, `COMPOSIO_WAIT_FOR_CONNECTIONS`, `COMPOSIO_REMOTE_BASH_TOOL`).
+2. **Plan + schema fetch:** call `COMPOSIO_SEARCH_TOOLS` with a structured `queries` array and `session: {generate_id: true}` on first use. This returns connection status for the toolkit, the recommended plan, known pitfalls, and the input schemas for all relevant tool slugs in a single call. Reuse the returned `session_id` for the rest of the workflow.
+3. **Execution:** call `COMPOSIO_MULTI_EXECUTE_TOOL` with the resolved tool slugs (`GITHUB_GET_REPOSITORY_CONTENT`, `GITHUB_COMMIT_MULTIPLE_FILES`, `GITHUB_GET_A_BRANCH`, `GITHUB_GET_A_TREE`, etc.) inside a `tools[]` array. Batch independent calls — the executor parallelises automatically. Pass `session_id` always.
+4. **Heavy lifting:** for large file decoding, multi-file parallel fetches via raw URL, hashing, byte-equal verification, etc., use `COMPOSIO_REMOTE_WORKBENCH` (Jupyter sandbox with persistent state). `run_composio_tool(tool_slug, arguments)` from inside the workbench is the in-script equivalent of `COMPOSIO_MULTI_EXECUTE_TOOL`.
+
+**Response handling quirks:**
+- Large responses (`>300k tokens`) get saved to `/mnt/files/mex/trip.json` automatically; structure_info + data_preview returned inline. Always parse from the file when present rather than retrying for inline.
+- `GITHUB_GET_REPOSITORY_CONTENT` returns `encoding: 'none'` and empty `content` for files over GitHub's Contents API 1MB limit (changelog.md hits this). Workaround: fetch via raw URL at the pinned commit SHA (`https://raw.githubusercontent.com/<owner>/<repo>/<sha>/<path>`), or via blob SHA from the `_links.git` URL on a prior call. Raw-at-branch is CDN-cached and stale per §23.15 — only use it for read-only loads where stale-by-minutes is acceptable.
+- The Contents API returns base64 with embedded newlines. Decode with `re.sub(r'\s+', '', b64)` + pad to multiple of 4 + `base64.b64decode`.
+
+**What this rule replaces:** prior sessions' implicit assumption that `tool_search` was the single discovery entry point for any tool. That worked for the previous interface generation; the current generation routes Composio toolkits through Composio's own meta-tools. The transition is invisible to the human — Dean's POV is "GitHub still works" — but it broke this session's first three minutes when `tool_search` returned only Google Drive and one Supabase tool repeatedly. Future Claudes: if `tool_search` returns suspiciously-narrow first-party results for an apparently-Composio-mediated toolkit (github, brevo, hubspot, the various Make/Slack/etc. integrations), jump straight to `tool_search(query="composio <toolkit>")` and proceed via the meta-tools. Don't burn turns retrying `tool_search` with variant phrasings.
+
+**Connection status check:** `COMPOSIO_SEARCH_TOOLS` returns a `toolkit_connection_statuses` array. For github, expect `has_active_connection: true` and `accounts[].status: "ACTIVE"` with the `VYVEHealth` GitHub user. If not, `COMPOSIO_MANAGE_CONNECTIONS` with action `add` for the toolkit slug initiates a re-auth flow; surface the returned `redirect_url` as a markdown link and call `COMPOSIO_WAIT_FOR_CONNECTIONS` to poll. This has not yet fired in production but is the documented path.
+
+**Generality:** this rule applies to every Composio-mediated toolkit, not just GitHub. The same indirection (or lack thereof, depending on the host generation) affects brevo, googledocs, supabase-via-composio (separate from the first-party Supabase tools), and any other toolkit listed in the Composio account inventory.
+
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.

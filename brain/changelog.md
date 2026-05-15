@@ -1,3 +1,41 @@
+## 2026-05-15 PM-121 — Tool discovery brain commit: `tool_search` does not surface Composio toolkits, route via `COMPOSIO_SEARCH_TOOLS`
+
+**Session shape:** Not a vyve-site ship. Brain-only commit, no portal changes. Codifies a workflow gotcha that cost the first ~3 minutes of this session and would have cost every subsequent session the same amount until written down. Dean asked for real brainstorming on a separate topic after this commit lands; this is the housekeeping pass that closes the tool-discovery loop first.
+
+**The symptom:** Session opened with Dean's standard "Load VYVE brain". I called `tool_search(query="github get repository content")` expecting to load `GITHUB_GET_REPOSITORY_CONTENT` directly — the way it worked in PM-114 through PM-120. It returned only Google Drive write tools and one Supabase first-party tool. Three more `tool_search` variants ("github file content fetch", "GITHUB_GET_REPOSITORY_CONTENT" as literal slug, etc.) returned the same set. I told Dean I couldn't reach GitHub.
+
+**Dean's response was correct:** "this always just normally works. It's just worked in the last chat, and it's worked for the last six months." He was right — the underlying connection was active the whole time. The failure was in the discovery layer, not the connection.
+
+**Root cause:** `tool_search(query="composio github repository")` — adding the literal word "composio" — returned the seven Composio meta-tools (`COMPOSIO_SEARCH_TOOLS`, `COMPOSIO_MULTI_EXECUTE_TOOL`, `COMPOSIO_REMOTE_WORKBENCH`, etc.). From there the working pattern is: `COMPOSIO_SEARCH_TOOLS` to get the plan + tool schemas, `COMPOSIO_MULTI_EXECUTE_TOOL` to actually invoke `GITHUB_GET_REPOSITORY_CONTENT` / `GITHUB_COMMIT_MULTIPLE_FILES` / etc. The host generation in this session routes Composio-mediated toolkits through Composio's own meta-tools rather than surfacing the underlying GitHub MCP slugs directly through `tool_search`.
+
+**Why this surfaced now:** likely a host-side change between the last session and this one. Probably won't revert. Whatever the cause, codifying the routing pattern is cheaper than re-discovering it every time, and the symptom (host claims it can't reach a connected service) is exactly the shape that destroys session trust in the way Dean experienced today.
+
+**Pre-flight discipline:**
+
+- VYVEBrain main HEAD pinned at session start: `068266becmd0407792ef54c9b3978d3b73211a763c3` (PM-120 session-handoff commit).
+- master.md size 450,443 chars; §23 tail is §23.24 (PM-116 ship); next rule number is §23.25.
+- changelog.md size 1,374,669 chars — confirmed >1MB Contents API limit; fetched via raw-at-branch (acceptable for read-only load, current rule §23.15 stale-by-minutes caveat applies but we are not mutating these reads).
+- Confirmed via `COMPOSIO_SEARCH_TOOLS` that the GitHub Composio connection is `ACTIVE` under account `github_peste-herse`, VYVEHealth user, account_type `PRIVATE`. Connection health is not the issue — discovery is.
+
+**Brain changes shipped this commit:**
+
+1. **`brain/master.md` §23.25 appended** — new hard rule codifying the tool-discovery routing pattern, response-handling quirks (1MB Contents API limit + raw-at-SHA workaround, base64 newline stripping), connection-status check via `toolkit_connection_statuses`, and explicit generality clause covering all Composio-mediated toolkits (not just GitHub). Sits below §23.24.
+
+2. **`brain/active.md` §4 patched** — appended a one-line pointer to §23.25 under "Commit discipline" so the rule is visible from the working-set load. The full rule lives in master.md.
+
+3. **`brain/changelog.md` PM-121 prepended** — this entry.
+
+**Open hygiene carried forward (unchanged from PM-120 session handoff):**
+
+- Device walk for PM-118 + PM-119 + PM-120 still pending. Dean to cold-boot iPhone in airplane mode, walk workouts.html and engagement.html, report back.
+- Dual-cache (System B) retirement decision still Dean's call, still untouched.
+- `home` page key in firstPaintHydrate.js still missing `WELLBEING_CHECKINS_30D` + `WEEKLY_GOALS` — P1 ~10 min follow-up in backlog.
+- Severity-drift §23 codification candidate (audit JSON severity ≠ narrative priority — narrative wins for scheduling, JSON severity for accounting) — still INFO in backlog, still awaiting a co-rule landing to avoid a lone-rule brain commit. PM-121 itself is a lone rule, but it is acutely operational (every future session is affected) rather than a tactical pattern (severity drift only matters during audit-fix sessions), so the bar for promoting it earlier is met.
+
+**No new §23 rules beyond §23.25 itself.** No vyve-site changes. No PM-117 audit findings affected.
+
+**Next:** Dean has flagged "real brainstorming about fixing this" as the next topic — scope unclear from the brief, will surface when he opens the conversation. Likely either (a) further tooling robustness work, (b) the deferred device walks, or (c) something else entirely. Brain is up to date and ready for either direction.
+
 ## 2026-05-15 PM-120 — PM-117 audit P0 #4 SHIPPED: workouts-session.js Dexie-first writes + criticalHydrate wire (atomic 2-file commit `3ce9c72f`)
 
 **Session shape:** Direct execution against PM-117's prioritised fix list item #4. Closes the root cause of PF-31 ("workouts page re-entry — green check has DISAPPEARED") at the source: 3 writeQueued sites with no synchronous Dexie write. ~50 min from "go" to shipped + brain committed.

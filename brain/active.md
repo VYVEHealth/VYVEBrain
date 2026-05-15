@@ -221,6 +221,7 @@ Full §23 lives in `master.md` (50+ rules). These are the ones that fire on most
 - **Plain UTF-8 in `upserts[].content` — NEVER pre-base64-encode** (PM-86.1, codified PM-93). The tool base64-encodes internally. Pre-encoding causes silent double-encoding: commit succeeds, blob SHAs look normal, content renders as garbage. The single-file `GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS` accepts either plain or base64 (auto-detected); the multi-file tool does NOT. Pass strings directly.
 - **Post-commit byte-equal verification on every changed file.** Use Contents API base64-decode at commit-SHA ref, OR raw at commit-SHA (not branch — raw at branch is CDN-cached for several minutes). MD5 or head-100-chars equality against the staged content. Contents API returns `encoding=none` with empty content for files >1MB — switch to raw-at-commit-SHA or blob-by-SHA in that case.
 - **One atomic commit per logical unit of work.** Don't dribble related changes across multiple commits.
+- **`tool_search` does not surface Composio toolkits — route via `COMPOSIO_SEARCH_TOOLS` → `COMPOSIO_MULTI_EXECUTE_TOOL`** (PM-121, §23.25). If `tool_search` returns only first-party tools for an apparently-Composio-mediated toolkit (github, brevo, hubspot, etc.), call `tool_search(query="composio <toolkit>")` to load the meta-tools, then `COMPOSIO_SEARCH_TOOLS` for the plan + schemas, then `COMPOSIO_MULTI_EXECUTE_TOOL` for execution. Full rule + response-handling quirks (1MB Contents API limit, base64 newline stripping, raw-at-SHA workaround) in master.md §23.25.
 
 ### Audit method
 
