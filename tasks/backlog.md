@@ -1,3 +1,14 @@
+## Added 16 May 2026 PM-147 — Open items from the PM-142–147 engagement/cardio session
+
+### PM-145 — member-dashboard EF (v69) 504-ing [PENDING — own session]
+Edge-function logs show `member-dashboard` GETs hitting the 150s platform ceiling and returning 504; earlier 200s took 18-93s. `member-achievements` separately logged at 100s+. member-dashboard calls `getMemberAchievementsPayload` inline, which fans out over 23 evaluators — the likely drag. This is the edge-case/reinstall path (empty Dexie needs the server); the normal-user path is now Dexie-first and unaffected. Needs a dedicated EF diagnosis session — probable fix is moving the achievements payload off the critical path (non-blocking, or its own endpoint).
+
+### Workout-logging multi-fire [PENDING — investigate]
+Dean reported one workout-log action producing 5-6 inserts. PM-147 caps the COUNT (2/day) so the phantom rows no longer inflate the engagement score, but the rows still exist in Dexie (and server-side `activity_dedupe`). Root cause unfixed — likely a logging button not disabling on first tap, or a retry loop. Separate from PM-147.
+
+### PM-135 — running plan card on cardio.html [CLOSED — superseded by PM-142]
+PM-135 (`e88c57f1`) shipped a botched commit (duplicate `logCardio` overwrote `getActiveRunningPlan`; `renderRunningPlan` called undefined functions). Fully recovered by PM-142 (`f5675542`): functions restored, `renderRunningPlan` paints synchronously first, `_kv` tier working. No further action.
+
 ## Added 16 May 2026 PM-133 — Open items from the Updates 1–6 local-first session
 
 ### PM-134 — Movement device confirmation + probe removal [PENDING]
