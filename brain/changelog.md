@@ -1,3 +1,41 @@
+## 2026-05-17 PM-159 — Mind section: strip leftover mockup nav from 7 pages, wire real chrome (+ PM-158 retro-doc)
+
+**vyve-site commit `59a3fff6` — 8 files (7 Mind pages + sw.js).** This entry also retro-documents PM-158 (last session), which never reached the brain.
+
+### PM-158 (last session, 16 May 2026, retro-documented here)
+Seven Mind-section pages were built from ChatGPT mockups and shipped to vyve-site main:
+- `mind.html` (Mind hub landing), `mind-library.html`, `breathwork.html`, `journal.html`, `affirmations.html`, `visualisation.html`, `mind-insights.html`.
+- Commit history: the seven pages landed as `ca08f2966` ("Add files via upload" — raw mockup HTML, unconverted). nav.js gained the Mind tab as `e1c29a722` ("PM-158: add Mind tab to nav.js").
+- nav.js now renders a **5-tab bottom bar: Home / Body / Mind / Sessions / More.** `getActiveTab()` recognises mind/breathwork/journal/affirmations/visualisation paths; `hubPaths` includes `/mind.html`; `hubLabels`/`desktopLinks`/`navItems` carry the Mind tab; `subPageLabels` has all six Mind sub-pages.
+- **The Mind pages are scaffold** — placeholder content, no Dexie/Supabase wiring. Mind data architecture is decided but not built (see below).
+- PM-158 the number was also used by exercise.html-audit commit 5 (`a3b32065`, workout-history) — hence sw.js had cache key `pm158-workout-history`. The number is consumed twice; this nav-fix session is PM-159.
+
+### PM-159 — the nav bug (this session)
+**Symptom (Dean, device screenshots end of last session):** Mind pages rendered a bottom nav of Home / Body / Mind / **Connect** / **Profile** with a brain-pair "Mind" glyph, while the rest of the app (post-PM-158) correctly shows Home / Body / Mind / Sessions / More.
+
+**Root cause — worse than the brief's hypothesis, cleaner to fix.** The Mind pages were uploaded raw (`ca08f2966`) with the ChatGPT mockup's own hardcoded `<nav class="bnav">` (Home/Body/Mind/Connect/Profile, dead `href="#"` links, brain-pair glyph) **and its `.bnav*` CSS block intact**. They also had **zero `<script>` tags** — no `theme.js`, no `auth.js`, no `nav.js`. So the pages were not rendering nav.js *alongside* a leftover nav; they were rendering **only** the fake mockup nav, with no real nav.js at all, and were **not auth-gated**. nav.js itself was already correct from PM-158.
+
+**Fix — uniform across all 7 pages:**
+- Stripped the `<nav class="bnav">…</nav>` block + the 5 `.bnav*` CSS rules.
+- Injected `theme.js` + `auth.js` into `<head>`; `sw.js` registration + `nav.js` before `</body>` — mirroring habits.html ordering.
+- **Scope decision (Dean's autonomy standard):** wired the *minimal correct chain* — theme.js, auth.js, nav.js, sw-registration — NOT the full local-first stack (`db.js`/`sync.js`/`firstPaintHydrate.js`/etc.). The Mind pages are scaffold with no data; dead Dexie scripts on placeholder pages would be noise. The local-first chain lands per page when each Mind page gets real `mind_sessions` wiring — breathwork first.
+- Chrome now byte-identical to every other portal page: real 5-tab nav, no Connect, no Profile, standard mobile header.
+
+**sw.js (caught in passing — a PM-158 gap):** the 7 Mind pages were never added to `urlsToCache`, so they round-tripped to the GitHub Pages CDN every load and failed offline cold-boot — the same gap PM-67a/PM-118 fixed for other pages. Added all 7 in the same commit. Cache key bumped `vyve-cache-v2026-05-17-pm158-workout-history-a` → `vyve-cache-v2026-05-17-pm159-mind-nav-fix-a`.
+
+`node --check` passed on every inline JS block (8 pages) and on sw.js. Post-commit verified all 8 files against the pinned commit SHA `59a3fff6` — every Mind page byte-equal to the local transform; bnav absent; theme.js/auth.js/nav.js present; sw.js carries pm159 key + 7 precache entries. **Device verification pending Dean.**
+
+### Mind section architecture (decided, recorded here; not all built)
+Captured from Dean across PM-77.2 (PF-21/PF-22 plan) and the PM-158/159 sessions:
+- **Nav direction is BODY / Mind / Connect**, not the original five-pillar website framing. **Nutrition folds into BODY** (done PM-154 — nutrition.html + log-food.html are Body sub-pages; "Body" replaced "Exercise"). Mind is the new section being built out. "Connect" is the future social/community tab — not yet a live nav tab (current live nav is Home/Body/Mind/Sessions/More; Sessions occupies the 4th slot until Connect exists).
+- **Mind data architecture:** a dedicated `mind_sessions` Supabase table with an `activity_type` discriminator column. Mind activity is **never** written to `daily_habits`. Schema is **deferred** until breathwork's real fields exist (build the first real feature, then derive the schema from it).
+- **`mind-insights.html` is Phil-gated** — clinical sign-off required before promotion. It is reachable (linked from mind.html) but treated as staged content; correctly absent from nav.js `navItems`/`moreItems` so it never surfaces in the nav bar.
+- **Breathwork is the next real feature build** after this nav fix — first page to get real `mind_sessions` wiring and the local-first chain.
+- **Goal/certificate re-pillaring** (moving goals + certificate tracks off the per-activity Habits/Workouts/Cardio model onto the BODY/Mind/Connect pillars) is **deferred to post-launch**.
+
+**Open:** device verification of the 7 fixed pages; breathwork feature build + `mind_sessions` schema; per-page local-first wiring of Mind pages; Phil sign-off on mind-insights.html.
+
+
 ## 2026-05-16 PM-155 FOLLOW-UP — BUG: Recent Movement log list shows empty (source-vocabulary mismatch)
 
 **Found by Dean's device walk same night.** Logged a walk + a stretch on movement.html; the new Recent Movement list still showed "no movement logged yet". cardio.html history showed the walk fine (it filters nothing).
