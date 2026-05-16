@@ -1,3 +1,20 @@
+## Added 16 May 2026 PM-133 — Open items from the Updates 1–6 local-first session
+
+### PM-134 — Movement device confirmation + probe removal [PENDING]
+Movement Update 6 (db4156835d713c8d677dc4957f8e6de613ed81bc) shipped but not device-confirmed. Dean to cold-open movement: probe strip should read `dexie rows:0/1` not `dexie-off`, page should paint from Dexie on second cold open. Once confirmed, ship a cleanup commit stripping the `__mvProbe` instrumentation (probe div, init, fetchPlan/readCache/reveal tags) from movement.html.
+
+### PM-135 — Running plan card on cardio.html not loading [PENDING]
+`member_running_plans` is a pure network fetch with no local tier. Cardio's running-plan hero card stays empty. Needs a Dexie tier or a localStorage cache, same pattern as the other cardio surfaces.
+
+### PM-136 — Delete-a-cardio-session feature [DESIGNED, NOT BUILT]
+Approved design: swipe-to-delete on the Recent sessions row + undo toast (~5s), optimistic delete (remove from Dexie + repaint immediately, background DELETE to Supabase by `client_id`). On a failed server DELETE after the undo window: row reappears (revert-on-failure). Requires threading `client_id`/`id` through renderHistory (currently stripped at the fetchHistory map step). Self-contained swipe handler in cardio.html — workouts.html has no reusable swipe pattern to borrow.
+
+### PM-137 — Identify the server.url dev-loop caching layer [PENDING]
+Updates take 3-4 cold reopens to land; build banner shows stale "Update N" until a page navigation. Not a service worker (banner reports `no-sw`). Candidate: WKWebView HTTP cache, or Capacitor bundle-mode serving baked-in www/. capacitor.config.json read was started, not finished. Resolving this de-risks every future dev-loop test. See §23.29.
+
+### PM-138 — Catalogue bundling + OTA architecture [DEFERRED — needs its own scoped session]
+Dean's proposal, confirmed sound and consistent with the existing PF-40.6/40.7/40.8 asset-tiering plan: bundle catalogue data (exercise plan TEMPLATES, exercise thumbnails) into the app binary, ship catalogue updates via OTA (Capawesome) rather than Supabase. Member data stays on the Dexie→Supabase write loop; bus handles cross-page sync. Refinement: which plan a member is on + week/session position is member-data (Dexie+Supabase pointer), not bundled. 100MB app size acceptable. To be planned properly in a dedicated session, not as a debugging tail-end.
+
 ## Added 15 May 2026 PM-117 — Dexie audit findings (46 total; prioritised fix list)
 
 See `audit/dexie-audit-2026-05-15.md` for the full audit narrative and `audit/dexie-audit-2026-05-15.json` for structured per-file findings. Items below are the actionable fix list, ordered by smallest scope first within each priority.
