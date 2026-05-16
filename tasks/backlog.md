@@ -1,3 +1,20 @@
+## Added 16 May 2026 PM-148 — completeWorkout optimistic-first; updated PM-145 + multi-fire findings
+
+### PM-148 — completeWorkout 'Saving...' hang [SHIPPED 2026-05-16 — device confirm pending]
+`completeWorkout` rewritten optimistic-first in vyve-site `b1470698` (+ `b5ee7854` build banner Update 13). Root cause: `await VYVEData.writeQueued(...)` — `writeQueued` awaits the network POST internally (not a fire-and-forget queue; see §23.32). Three serial awaited network calls on the button path → "Saving..." frozen 75s+ on a slow backend; the `optimisticPatch` + `workout:logged` bus publish sat downstream so the home score never updated (stale 74 vs engagement's 87). Fix mirrors cardio `logCardio`: Dexie write + home patch + bus publish + completion screen all before the network, POST + plan_cache PATCH un-awaited in background closures. **Device confirm:** Complete Workout → instant completion screen, no hang; home engagement score moves immediately.
+
+### Per-set save path (`tickSet` / exercise_logs) — same `await writeQueued` shape [PENDING — latent]
+workouts-session.js ~L421: the per-set save does `await VYVEData.writeQueued(...)` for the `exercise_logs` POST — the identical network-blocking pattern PM-148 fixed in `completeWorkout`. Not reported as slow by Dean, left untouched this session, but it is the same latent bug and will hang the set-tick under backend load. Apply the same optimistic-first treatment when next touching the set path.
+
+### PM-145 — member-dashboard EF (v69) 504-ing [BACK-BURNERED by Dean — findings recorded]
+Investigated PM-148 session. NOT primarily the achievements payload. Real chain: workout/exercise write errors → `auth.js` global client error catcher POSTs `platform-alert` on every JS error → `platform-alert` v8 has three bugs: (1) dedups on raw `type` which varies per-error so nothing ever dedupes; (2) no rate limit; (3) pushes to the dead `push_subscriptions` table with the pre-`send-push`-v12 `'raw'` VAPID import bug. Result: alert storm (20+ calls/90s, 27-64s each) drains the shared EF compute pool → member-dashboard (fattest function) 504s; even 401s take 100s queued. Also: two achievements evaluators query dead columns — `workouts_shared` filters `shared_workouts.member_email` (real column `shared_by`); a `monthly_checkins.logged_at` query (no such column). §11A is stale — describes v55/23-serial-evaluators; live is v69, v60 already parallelised via `Promise.all`. Dean's call: back burner — edge-case/reinstall path only, normal users are Dexie-first and unaffected. When picked up: fix `platform-alert` (dedup key, rate-limit, drop the dead-table push) FIRST — it's the root of the compute drain — then trim member-dashboard (pull `getMemberAchievementsPayload` off the critical path) and fix the two dead-column evaluators.
+
+### Workout-logging multi-fire [RESOLVED — was not a bug]
+The "5-6 log entries from one tap" was NOT a misfire. Dean clarified PM-148: the workout sat on "Complete workout" for a long time (the §23.32 hang), looked dead, so he tapped repeatedly — each tap eventually POSTed. Root cause is the completion hang, fixed by PM-148. No separate multi-fire bug. `completeWorkout` also now has a `btn.disabled` re-tap guard. (PM-148 caps and the §23.31 Dexie cap mean even a stray double-tap can't inflate the score.)
+
+### Check-in + sessions missing from "This Week's Goals" [PENDING — investigate]
+Dean (PM-148): a completed weekly check-in and 2 watched sessions show correctly on the engagement page but do NOT appear in the "This Week's Goals" strip on the home page. Separate from PM-148 (which fixes the workout write path only). Likely the check-in and session write paths don't fire the optimistic home patch / `*:logged` bus publish the way the workout path now does — or the goals strip reads a field the optimistic patch doesn't update. Investigate the check-in (wellbeing-checkin) and session-view write paths against the cardio/PM-148 reference pattern.
+
 ## Added 16 May 2026 PM-147 — Open items from the PM-142–147 engagement/cardio session
 
 ### PM-145 — member-dashboard EF (v69) 504-ing [PENDING — own session]
