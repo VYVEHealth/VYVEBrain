@@ -1,3 +1,35 @@
+## 2026-05-16 PM-150 — session_views storage/cap decoupled + 60s dwell threshold
+
+**Context.** Page-by-page paint audit, index.html. Dean reported the home "This week's goals" sessions row stuck at 1/2 while "Your Progress" showed 2. Investigation found a far bigger issue than a paint bug.
+
+**Root cause — a schema/trigger mismatch silently destroying data.** The `cap_session_views` / `cap_replay_views` BEFORE INSERT triggers enforced a flat 2/day cap by *rerouting* the 3rd+ session insert of the day into `activity_dedupe` — and the cap counted `session_views` + `replay_views` summed, ignoring category. The app's data model (tracking.js, `on_conflict=member_email,category,activity_date`) assumes one row per category per day across 8 categories. So from the 3rd category onward, every session view silently vanished — PostgREST returned 201, the API log showed success, tracking.js saw success, but the row was gone. `test1@test.com` had 10 such rows stranded in `activity_dedupe`; 544 total across 5 members historically.
+
+**Compounding finding.** The magic number `2` was hardcoded into FOUR triggers with THREE different counting rules: `cap_*` (cross-table sum ≥2 → reroute), `charity_count_*` (per-table <2), `counter_sessions` (per-table <2, bumps cert_sessions_count), `update_cert_sessions_count` (LEAST(count,2) per table per day). `cert_sessions_count` had two writers (`counter_sessions` + `update_cert_sessions_count`) — latent divergence bug.
+
+**Decision (Dean).** Keep the 2/day cap, but as a CERTIFICATE COUNTING rule only — not a storage rule. Anti-farm moves from the destructive storage cap to a tracking.js dwell threshold. Storage saves everything; the certificate counter keeps LEAST(...,2) unchanged. No uncapping of certificates — explicitly declined ("I don't want people watching eight different things and getting eight certificates").
+
+**Shipped — migration (4 statements, applied + verified via pg_trigger):**
+- Dropped `enforce_cap_session_views` / `enforce_cap_replay_views` triggers + `cap_session_views()` / `cap_replay_views()` functions. Session views no longer rerouted.
+- Dropped redundant `counter_sessions` trigger + `increment_session_counter()` — `update_cert_sessions_count` is now the single writer for `cert_sessions_count`.
+- Rewrote `charity_count_session_views()` — kept the per-day <2 sibling guard so charity stays 2/day-capped, matching the certificate rule. `charity_count_replay_views` left unchanged (already per-table <2, correct).
+- `update_cert_sessions_count` LEFT UNTOUCHED — LEAST(daily,2) intact. The 2/day cap is fully preserved, now living only in the counting layer.
+- One-time backfill: recomputed `cert_sessions_count` across all members under the unchanged LEAST(daily,2) rule.
+
+**Shipped — tracking.js v9 (vyve-site `9a95ab5c`, 3 files atomic):**
+- 60s cumulative dwell threshold. `onVisitStart` no longer inserts on page load — it starts the heartbeat timer as a threshold poller. `crossThreshold()` fires the insert + optimistic patch + `session:viewed` bus publish once, when `totalMinutes() >= 1`. Sub-minute open-and-bounce visits never insert (anti-farm).
+- `baseMinutes >= 1` fast-paths an already-qualified category straight to heartbeats.
+- Failed insert resets the `inserted` flag so a later heartbeat retries (improvement over v8's one-shot give-up).
+- PM-43/54/61 bus discipline (recordWrite / recordCanonical / canonical envelope) moved verbatim into `crossThreshold`.
+- Build banner Update 14 → 15; sw cache key → `vyve-cache-v2026-05-16-pm150-session-threshold-a`.
+
+**Data repair.** `test1@test.com`'s 10 stranded `activity_dedupe` rows replayed into `session_views`/`replay_views` — collapsed per (category, table) with minutes SUMmed, merged into existing live rows via ON CONFLICT DO UPDATE. The 534 historical rows for other members deliberately LEFT in `activity_dedupe` — they were legitimately capped under the old rule; replaying them would retroactively rewrite member history (would be a Lewis decision; not done).
+
+**Device-verified.** Yoga 20s → no row (sub-threshold rejected). Workouts two short bounces → no row (each visit resets; neither crossed 60s — correct, that is the farm pattern). Podcast 70s uninterrupted → row inserted, `minutes_watched=1.24` (the accumulated value proves the insert fired at threshold-cross, not on load). Ship Unit 1 verified end-to-end.
+
+**Known caveat (not fixed, noted).** The dwell accumulator resets on page unload — `visitStartTime` is in-memory, only `baseMinutes` (server `minutes_watched`) survives. Two sub-threshold visits do not sum. Correct for anti-farm; if true cross-visit accumulation is wanted later, the row must be created early-but-unqualified or minutes tracked in Dexie. Post-launch, backlogged.
+
+**New §23 rule:** §23.34 — a counting cap implemented as a storage-destroying trigger; magic numbers duplicated across triggers with divergent rules.
+
 ## 2026-05-16 PM-149 — INCIDENT: site-wide login outage — `platform-alert` storm drained the nano-tier connection pool; no-op mitigation + project restart
 
 **Shape:** Live production incident, picked up mid-debug from a prior session that had shipped four vyve-site commits (`b1470698`, `b5ee7854`, `207aa1b0`, `9e1d83bb` — PM-148/148b) and then hit a site-wide login break. The prior session had ruled the four commits out (correctly) and pinned the symptom: `login.html` hangs on "Signing in…", app shows "Preview mode: Auth failed to initialise", browser console `POST /auth/v1/token → net::ERR_FAILED 522`. Not a vyve-site ship — one Edge Function deploy (`platform-alert` v8 → v9) plus a Dean-executed project restart.

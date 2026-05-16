@@ -1,3 +1,20 @@
+## Added 16 May 2026 PM-150 — session_views fix follow-ons + two new feature backlog items
+
+### PM-150 — session_views storage/cap decoupled + 60s dwell threshold [SHIPPED 2026-05-16 — migration applied + tracking.js v9 `9a95ab5c` — device-verified]
+Storage cap removed (rerouting triggers dropped), 60s dwell threshold shipped in tracking.js v9, certificate 2/day cap preserved in `update_cert_sessions_count` only. Full detail in changelog PM-150 + master §19 PM-150 + §23.34. Closed.
+
+### Cross-visit dwell accumulation [PENDING — post-launch, low priority]
+tracking.js v9's dwell accumulator resets on page unload — `visitStartTime` is in-memory; only `baseMinutes` (server `minutes_watched`) survives. Two sub-60s visits to the same session do not sum, so an interrupted viewer can watch 40s + 40s and earn nothing. Correct as anti-farm; wrong if we want to credit genuinely-interrupted viewing. Fix options if pursued: (a) create the row early marked unqualified and accumulate server-side, or (b) track cumulative minutes per (category, date) in Dexie across page loads. Defer until post-launch + evidence it matters.
+
+### tracking.js outbox wiring [PENDING — §23.10 hardening candidate, post-launch]
+tracking.js is a critical activity-write path with NO outbox — direct fetch, `session:viewed:failed` to a bus nobody surfaces, no retry beyond the in-visit heartbeat. A member who loses connection right at the 60s mark and leaves can lose a legit session view. vyve-offline.js has the outbox infrastructure; tracking.js was never wired to it (file comment: "no outbox — same dichotomy as PM-58 cardio"). Wire tracking.js writes through the offline outbox. Not launch-blocking.
+
+### NEW FEATURE — `page_visits` owned visit/dwell analytics [PENDING — post-launch, ~2 sessions]
+Dean wants an owned, queryable record of page visits + time-on-page, pushed Dexie→Supabase, SEPARATE from PostHog (PostHog stays as the deep web-analytics/replay layer — explicitly kept). New `page_visits` table (`member_email`, `page`, `entered_at`, `duration_seconds`, `activity_date` — one row per visit, Dean's call). A small shared tracker script on every portal page captures entry on load + duration on `pagehide`/`visibilitychange` (same shape tracking.js already uses; `keepalive` on the final beacon for the iOS WKWebView caveat). Local-first: write to a Dexie table first, background-drain to Supabase via the existing `_sync_queue` pattern — works offline, reuses PF-40.4 write API if/when it lands. Value: owned analytics, re-engagement triggers ("hasn't opened in 5 days"), employer insight, a future member-facing "your week" view (any displayed surface → Lewis copy gate; the pipeline itself does not need him). Not launch-blocking.
+
+### NEW FEATURE — `session_schedule` table + live-session minute-windowing [PENDING — post-launch, ~1.5–2 sessions]
+Dean wants live-session minutes to only count *during the actual broadcast window* (e.g. a 09:00–09:30 live session: a member on the page 09:15–11:00 is credited 15 min, not 105). Two pieces: (1) FOUNDATION — a `session_schedule` table (`category`, `day_of_week` or date, `start_time`, `end_time`) — the schedule currently exists only as text on sessions.html. This table also unblocks a real "live now" home slot and a real "Coming Up This Week" block (the latter was removed 06 May for being a hardcoded placeholder). (2) tracking.js clamps live-session minutes to `overlap(visit_window, broadcast_window)`; replays unaffected (on-demand, no window). Caveat: tracking.js measures page dwell, not video play-state — "present during the window" is a strong proxy but not true watch-tracking; true play-state needs the YouTube iframe API (V2, do not pre-launch). Pairs naturally with future minutes-based session goals ("watch 60 min of live sessions" = SUM(minutes_watched) over the week — data already captured). Not launch-blocking.
+
 ## Added 16 May 2026 PM-148 — completeWorkout optimistic-first; updated PM-145 + multi-fire findings
 
 ### PM-148 — completeWorkout 'Saving...' hang [SHIPPED 2026-05-16 b1470698 + PM-148b hotfix 207aa1b0 — device confirm pending]
