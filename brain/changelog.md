@@ -1,3 +1,15 @@
+## 2026-05-16 PM-155 FOLLOW-UP — BUG: Recent Movement log list shows empty (source-vocabulary mismatch)
+
+**Found by Dean's device walk same night.** Logged a walk + a stretch on movement.html; the new Recent Movement list still showed "no movement logged yet". cardio.html history showed the walk fine (it filters nothing).
+
+**Root cause.** PM-155's `renderMovementLog` filters rows on `source==='movement_walk'` (cardio) / `source==='movement'` (workouts). But `logMovement`'s PostgREST `payload` writes `source:'manual'` — verified against live rows (`test1@test.com`, all tonight's movement logs are `source:'manual'`). The `movement_walk`/`movement` strings only ever existed in the **bus publish vocabulary**, never in the stored `source` column. PM-155 built the reader against the bus namespace, not the column. The optimistic Dexie write spreads `...payload`, so Dexie rows are `source:'manual'` too — reader misses everything.
+
+**Why the obvious fix (retag source) is WRONG — do not do it.** `cap_cardio` / `cap_workouts` enforce the 2/day activity cap ONLY on rows where `coalesce(source,'manual')='manual'`; non-manual sources are deliberate pass-through (Watch users). Changing movement logs to `source='movement'/'movement_walk'` would silently remove the 2/day cap from every movement-logged walk/stretch — breaking activity-cap integrity, the certificate counters, and the charity mechanic. `source:'manual'` on movement quick-log rows is CORRECT and must stay.
+
+**Fix direction (pending Dean's decision).** The movement log list must discriminate its rows WITHOUT touching `source`. The tag is already in the data: movement-logged walks are `cardio` rows with `cardio_type='walking'`; movement-logged non-walk are `workouts` rows with `plan_name='Movement'` (the payload sets this literally). Filter `renderMovementLog` + movement-history.html on those instead. Open question for Dean: a walk logged from cardio.html is also `cardio_type='walking'` — accept it appearing in Recent Movement, or keep cardio-page walks out (needs a real discriminator, more work).
+
+**Status: NOT FIXED. Live breakage — Recent Movement list non-functional on production.** Must be the first task of the next session, before commits 5–7.
+
 ## 2026-05-16 PM-154/155/156/157 — exercise.html paint audit: Body nav + Movement/Cardio logging + history pages
 
 **Context.** Page-by-page paint audit, page 3 (exercise.html / the Exercise Hub) after index.html and habits.html. Dean walked the hub and directed four pieces of work; the Movement-track question was split out as a separate future job. Four vyve-site commits shipped; commits 5–7 of the planned set (workout-history page + My PRs Dexie wiring + Browse library prefetch) carried to a follow-up session.

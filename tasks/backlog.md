@@ -1,3 +1,8 @@
+## Added 16 May 2026 — PM-155 BUG (live breakage, fix first next session)
+
+### Recent Movement log list shows empty — source-vocabulary mismatch [BUG — NOT FIXED — fix before commits 5–7]
+movement.html's Recent Movement list (PM-155) filters on `source==='movement_walk'/'movement'`, but `logMovement` writes `source:'manual'` (correct — the 2/day `cap_cardio`/`cap_workouts` triggers only cap `source='manual'` rows; retagging would break the cap). Reader was built on the bus-event vocabulary, not the stored column. Fix: discriminate on `cardio_type='walking'` (walks) + `plan_name='Movement'` (non-walk) instead — already in the data, no schema change, cap untouched. Apply to `renderMovementLog` in movement.html AND movement-history.html's `collectLogs`. Decision needed from Dean: walks logged via cardio.html are also `cardio_type='walking'` — allow them in Recent Movement or exclude. Full root-cause in changelog PM-155 FOLLOW-UP. cardio.html / cardio-history.html unaffected (they show all cardio).
+
 ## Added 16 May 2026 — exercise.html audit: two product directions captured (Dean, end of PM-157 session)
 
 ### Bundle exercise thumbnails + workout plan data into the Capacitor build [PENDING — own scoped vyve-capacitor session]
