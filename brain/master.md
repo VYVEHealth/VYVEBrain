@@ -847,6 +847,22 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 16 May 2026 PM-154/155/156/157 (exercise.html paint audit: Body nav + Movement/Cardio logging + history pages; commits 5–7 outstanding)
+
+**16 May 2026 — exercise.html paint audit (page 3 of the portal audit).** Four vyve-site commits shipped. Full detail in changelog PM-154/155/156/157.
+
+- **PM-154 (`aa525993`)** — Exercise hub renamed **Body**. exercise.html title/eyebrow/sub updated; **Nutrition added as a fourth stream card** (#5BB98C, `ico-leaf`). nav.js option (b): nutrition.html + log-food.html are now **Body sub-pages** (back button, own header label), removed from `hubPaths`/`hubLabels`/`desktopLinks`; the nutrition tab object removed from the bottom `navItems`. **Bottom nav is now Home / Body / Sessions** (was Home / Exercise / Nutrition / Sessions). Internal tab key stays `exercise`.
+- **PM-155 (`86cf2c69`)** — movement.html gains a **"Recent Movement" log list** (shared new `mvlog-*` component): 5 most recent movement-logged activities, Dexie-first paint, "View all" → movement-history.html. firstPaintHydrate.js `workouts` page-key plan gained `CARDIO_30D` (movement.html's walk rows live in `cardio`; the plan didn't hydrate it).
+- **PM-156 (`54096a7a`)** — cardio.html's existing "Recent sessions" list moved onto the same `mvlog-*` component; cap **10→5**; "View all" → cardio-history.html.
+- **PM-157 (`9c0fc648`)** — new pages **movement-history.html** + **cardio-history.html**: full day-grouped log, summary strip, Dexie-first, no cap; both precached in sw.js.
+
+sw cache key now `vyve-cache-v2026-05-16-pm157-history-pages-a`. No EF or schema change. **Device-verification pending Dean's walk.** exercise.html paint audit is **NOT closed** — three planned commits remain (workout-history.html + workouts.html view-all; My PRs Dexie wiring; Browse library prefetch). See backlog "exercise.html audit — commits 5–7 outstanding".
+
+**Audit findings logged this session:**
+- movement.html quick-logger routes walk→`cardio` (`source:'movement_walk'`) and stretch/yoga/pilates/mobility/other→`workouts` (`source:'movement'`) — a deliberate PM-47/PM-48 decision, NOT a bug. There is no `movement` table, no movement activity cap, no movement certificate track. Movement-as-its-own-track is deferred (see backlog).
+- The walk `cardio` payload does NOT persist the member's note — walk rows in the log list render type-name ("Walk") titles only. Non-walk (`workouts`) rows persist `workout_name`. Walk-note persistence is a small follow-up (see backlog).
+- workouts-notes-prs.js (My PRs) and workouts-library.js (Browse library) are **not Dexie-wired** — zero `VYVELocalDB`, raw `fetch()` on tap. §23.7.1 / §23.12 violations. Fix is commits 6 + 7.
+
 ## 19. Current status — 16 May 2026 PM-153 (habits.html paint audit complete; settings saves local-first; card redesign)
 
 **16 May 2026 PM — PM-151/152/153: habits.html page audit (paint audit, page 2 of 2 after index.html).** Three commits closed habits.html.

@@ -1,3 +1,21 @@
+## Added 16 May 2026 PM-154/155/156/157 — exercise.html audit follow-ons
+
+### PM-154/155/156/157 — exercise.html paint audit (Body nav + Movement/Cardio logging) [SHIPPED 2026-05-16 — vyve-site `aa525993` + `86cf2c69` + `54096a7a` + `9c0fc648` — device-verification pending]
+Body nav rename + Nutrition fold-in, movement.html Recent Movement log list, cardio.html restyled onto the shared mvlog component, and movement-history.html + cardio-history.html shipped. Full detail in changelog PM-154/155/156/157 + master §19. The exercise.html audit is NOT closed — see the next item.
+
+### exercise.html audit — commits 5–7 outstanding [PENDING — next session, ~1 session]
+Three pieces of the exercise.html audit did not ship and carry to a follow-up:
+- **Commit 5 — workout-history.html + workouts.html view-all.** New full-history page for gym workouts, same day-grouped Dexie-first pattern as movement-history.html / cardio-history.html (derive from one of those as the template). Wherever workouts.html surfaces recent/past sessions, add a "View all" → workout-history.html. Must precache in sw.js `urlsToCache`.
+- **Commit 6 — My PRs Dexie wiring.** workouts-notes-prs.js is NOT Dexie-wired: zero `VYVELocalDB` refs, 6 raw `fetch()` calls against `exercise_logs` / `exercise_notes`, fetch-on-tap. §23.7.1 + §23.12 violation. Wire it to a Dexie-first read with REST fallback + background prefetch so the My PRs sub-tab is instant.
+- **Commit 7 — Browse library prefetch.** workouts-library.js is NOT Dexie-wired (zero `VYVELocalDB`/`hydrate`/`prefetch`; 4 raw `fetch()`; has its own localStorage `cache` layer). Add background prefetch so the exercise library is warm by the time the member taps in (often minutes later). Dean's words: loaded in the background, already there on click.
+Note: workouts-programme.js (Past Sessions) is already Dexie-wired (12 `VYVELocalDB` refs, `criticalHydrate`, `prefetch`) — verify-only, no work expected.
+
+### Movement as its own activity track [PENDING — own scoped session, needs Dean + Lewis decision]
+movement.html currently routes a logged walk to the `cardio` table and stretch/yoga/pilates/mobility/other to the `workouts` table (PM-47/PM-48). There is no `movement` table, no movement activity cap, no movement certificate track. Dean's direction (16 May): the bigger move is to take certificates OFF the per-activity tracks (Habits/Workouts/Cardio) and onto **pillar-level tracks — Mind / Body / Connect** (or Movement). That restructure is the proper home for "walking counts as Movement, not Cardio". Until it happens, walks stay in `cardio` and credit the cardio track — leave as-is. The restructure touches: table structure, `member-dashboard` EF, activity-score component weighting, the leaderboard metric, the Dexie stores, the bus event taxonomy, and the certificate tracks — all member-facing, Lewis-gated. Scope as its own session; do NOT half-build it inside an audit pass.
+
+### Walk-note persistence in the movement quick-logger [PENDING — small, ~quarter session]
+The walk branch of movement.html `logMovement()` writes a `cardio` payload (`cardio_type:'walking'`, `duration_minutes`, `distance_km`, `client_id`) that does NOT carry the member's note. The non-walk branch persists `workout_name: sessionName`. Result: walk rows in the Recent Movement list + movement-history.html render the type-name ("Walk") as title, never the member's label. Fix: add the note to the walk's `cardio` payload (confirm the `cardio` table's free-text column name first — cardio.html's own logger likely uses one). The mvlog render already shows `r.workout_name||r.notes||'Walk'` for walk rows, so walk titles light up automatically once the column is populated. Not trial-blocking.
+
 ## Added 16 May 2026 PM-153 — habits.html audit follow-ons
 
 ### PM-151/152/153 — habits.html paint audit [SHIPPED 2026-05-16 — vyve-site `03d2b247` + `4baa445c` + `deec34f8` — device-verified]

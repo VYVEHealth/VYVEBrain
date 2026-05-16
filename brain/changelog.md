@@ -1,3 +1,27 @@
+## 2026-05-16 PM-154/155/156/157 — exercise.html paint audit: Body nav + Movement/Cardio logging + history pages
+
+**Context.** Page-by-page paint audit, page 3 (exercise.html / the Exercise Hub) after index.html and habits.html. Dean walked the hub and directed four pieces of work; the Movement-track question was split out as a separate future job. Four vyve-site commits shipped; commits 5–7 of the planned set (workout-history page + My PRs Dexie wiring + Browse library prefetch) carried to a follow-up session.
+
+**PM-154 (`aa525993`) — Exercise hub renamed Body; Nutrition folds into the Body nav.**
+- exercise.html: page title Exercise→Body, eyebrow Your Training→Your Wellbeing, page-sub rewritten. Nutrition added as a fourth stream card (`ico-leaf` symbol, colour #5BB98C) after Cardio. Cardio card desc trimmed "Running, cycling, walking & more" → "Running, cycling & more" (walking now belongs to Movement framing).
+- nav.js (option b — Nutrition stops being a bottom-nav hub, becomes a Body sub-page): `getActiveTab` folds nutrition + log-food into the `exercise` tab key; `/nutrition.html` removed from `hubPaths`; `hubLabels` exercise→"Body", nutrition entry removed; `subPageLabels` gains nutrition + log-food (so they get a back button and own header label); `desktopLinks` drops the Nutrition link and renames Exercise→Body; the nutrition tab object removed from the bottom `navItems` (bottom nav now Home / Body / Sessions). The internal tab KEY stays `exercise` everywhere — only labels changed, to keep the diff small and the prefetch map / firstPaintHydrate page-keys untouched.
+- Member-facing nav change (a bottom-nav tab removed) — flagged for Lewis's awareness; structural not copy, so not gated.
+
+**PM-155 (`86cf2c69`) — movement.html "Recent Movement" log list.**
+- New always-visible section below the plan/quick-log states (outside `#no-plan` and `#session-card` so it survives a member later getting a movement plan). `renderMovementLog()` reads movement-tagged rows from the local cardio store (`source==='movement_walk'`) + workouts store (`source==='movement'`), merges, sorts desc, renders 5; "View all movement history" → movement-history.html. Painted synchronously on early-paint boot and re-rendered after a successful quick-log. Empty state included. Shared `mvlog-*` component (new).
+- firstPaintHydrate.js: `CARDIO_30D` added to the `workouts` page-key plan. movement.html calls `criticalHydrate('workouts')`, whose plan was `[WORKOUT_PLAN_CACHE, WORKOUTS_30D]` — it did NOT hydrate `cardio`, where the walk rows live, so the log list would have shown zero walks on cold open (§23.7.1 / §23.7.2 failure mode). Fixed by adding cardio to the plan.
+
+**PM-156 (`54096a7a`) — cardio.html Recent Sessions onto the shared mvlog component.**
+- cardio.html already had a Dexie-first history list (`renderHistory` / `fetchHistory` PF-9), capped at 10, titled "Recent sessions", with no view-all and no history page. Swapped its `hist-section` markup + `renderHistory` onto the same `mvlog-*` component movement.html uses so Movement and Cardio logs are visual siblings. Cap reduced 10→5. "View all cardio history" → cardio-history.html. Paint path unchanged (already Dexie-first). Old `hist-*` CSS left in place unused — harmless, hygiene-pass sweep.
+
+**PM-157 (`9c0fc648`) — movement-history.html + cardio-history.html.**
+- Two new pages. Full log grouped by day (Today / Yesterday / weekday+date), with a sessions + total-time summary strip. Dexie-first paint, no cap, REST-free (read straight from the local stores `criticalHydrate` already fills). movement-history reads movement-tagged rows from cardio+workouts; cardio-history reads ALL rows from the cardio store. Both added to sw.js `urlsToCache` (offline-equivalent, §23.10 / PM-118).
+- Known intended overlap: a walk logged via movement.html is a `cardio`-table row, so it appears in BOTH movement-history (source-filtered) and cardio-history (all-cardio). Correct until the Mind/Body/Connect certificate restructure relocates walks.
+
+**Build banner unchanged this session (no version-surface touched). sw cache key walked pm154 → pm155 → pm156 → pm157-history-pages-a.** No EF or schema change across all four commits. Device-verification of the four ships pending Dean's walk. Audit NOT yet closed — commits 5–7 outstanding (see backlog).
+
+**Product direction captured (NOT built):** Dean is leaning toward moving certificates off the per-activity tracks (Habits/Workouts/Cardio) onto pillar-level tracks — Mind / Body / Connect (or Movement). Until then, walks logged via movement.html continue to write to the `cardio` table and credit the cardio track. The Movement track / Movement cap / Movement certificate question is explicitly deferred to its own scoped session.
+
 ## 2026-05-16 PM-153 — fix PM-151 regression: added habits invisible on habits.html + un-saved on settings reopen
 
 **Context.** Page-by-page paint audit, habits.html. After PM-151 shipped, Dean device-tested the settings habit picker: adding a habit + Save showed "saved" instantly in settings, but (a) the habits page did not show the new habit, and (b) reopening settings showed the habit set un-saved.
