@@ -1,3 +1,51 @@
+## 2026-05-16 PM-153 — fix PM-151 regression: added habits invisible on habits.html + un-saved on settings reopen
+
+**Context.** Page-by-page paint audit, habits.html. After PM-151 shipped, Dean device-tested the settings habit picker: adding a habit + Save showed "saved" instantly in settings, but (a) the habits page did not show the new habit, and (b) reopening settings showed the habit set un-saved.
+
+**Diagnosis — both symptoms read-side; Supabase writes were landing fine.** Live query of `test1@test.com` `member_habits` confirmed the adds persisted server-side correctly (Morning light exposure `active:true assigned_by:self`, Caffeine curfew add+remove both landed). So PM-151's background Supabase path worked. Both failures were the local read layer.
+
+**Bug 1 — added habit invisible on habits.html.** PM-151's `_toAddRows` wrote THIN rows to Dexie `member_habits` — `id, member_email, habit_id, assigned_at, assigned_by, active` — with none of the denormalised `habit_library` join columns. habits.html's `loadHabitsPage` reshape and cache-first paint both `.filter()` on `habit_title` (the PM-110 undefined-card guard) — so the new titleless row was silently dropped from the render. The habit was in Dexie; it just had no title. This is the §23.7.5 / PM-106 fat-row rule — PM-151 broke it by writing thin into a fat store.
+
+**Bug 2 — reopen settings shows habits un-saved.** `saveHabits` never busted `vyve_settings_cache` (the 10-min settings cache). `savePersona` and `setDisplayNamePref` always have. On nav-back, `populateFromCache` painted the stale cached `memberHabits` synchronously before `loadProfile` refreshed.
+
+**Shipped (vyve-site `deec34f8`, settings.html + sw.js + index.html):**
+- `saveHabits` now builds TWO row shapes: `_supaAddRows` (thin — FK columns only, what Postgres wants) and `_dexieAddRows` (fat — `habit_pot/habit_title/habit_description/habit_prompt/difficulty` joined from `_habitLibrary`, plus `active:1`). The POST sends thin; the Dexie `bulkUpsert` writes fat.
+- `habit_prompt` was missing from `_habitLibrary` itself — added to both source queries (the Dexie habitLib map and the Supabase `habit_library` select).
+- `saveHabits` now rewrites `vyve_settings_cache.memberHabits` to the selected set, same pattern `savePersona` uses.
+- sw cache key → `pm153-habit-fatrow-a`. Build banner 17 → 18.
+
+**No EF or schema change.** New §23 rule: §23.7.9 — optimistic INSERT rows must be fat for fat stores.
+
+**Device-side caveat (not a code issue):** Dean's `test1@test.com` Dexie still holds the one thin Morning light exposure row written by the broken PM-151 code. The fix is correct for all future saves but does not retroactively fatten that row — an in-app cache reset (settings long-press footer, PM-104 gesture) re-hydrates it fat. Fresh members never hit this.
+
+## 2026-05-16 PM-152 — habits.html card redesign: difficulty pill removed, description/prompt in tap-to-expand dropdown
+
+**Context.** Page-by-page paint audit, habits.html. Dean requested two card changes: remove the easy/medium/hard difficulty pill, and collapse the habit explanation behind a dropdown so the resting card shows only the title.
+
+**Decision.** Mockup presented with two options (prompt-in-dropdown vs prompt-stays-visible). Dean chose **Option A** — both `habit_description` and `habit_prompt` collapse into the dropdown; resting card shows title + chevron + assignment eyebrow only. Collapsed by default every render; whole title row is the tap target.
+
+**Shipped (vyve-site `4baa445c`, habits.html + sw.js + index.html):**
+- `habitCardHTML`: difficulty `<span>` removed; title wrapped in a `.habit-title-row` (role=button, tabindex=0, aria-expanded) with a chevron; `habit_description` + `habit_prompt` moved into a `.habit-collapse` region with no `expanded` class at build time.
+- CSS: three `.habit-difficulty` rules removed; `.habit-title-row` / `.habit-chevron` / `.habit-collapse` added; `.habit-prompt` bottom margin dropped (no longer the element above the action buttons).
+- `renderHabits`: title-row click + Enter/Space toggles `.expanded` and flips `aria-expanded`, wired in the existing per-card forEach so re-renders (incl. PM-151 `reloadHabitSet`) keep the handler.
+- The `difficulty` column still flows through member-dashboard + the Dexie reshape — simply no longer rendered.
+- sw cache key → `pm152-habit-card-a`. Build banner 16 → 17.
+
+## 2026-05-16 PM-151 — settings habit/persona/goal saves: local-first critical-path order
+
+**Context.** Page-by-page paint audit, habits.html. Dean reported the settings "manage habits" save taking a couple of seconds and not propagating to habits.html. Diagnosed against §23.7.6: all three settings save handlers awaited their Supabase writes ON the critical path before any local state moved.
+
+**Correction to an earlier diagnosis.** An earlier read of this called the Dexie `member_habits.upsert` a hang caused by a missing `id` keypath. That was wrong — `member_habits` PK is the compound `[member_email+habit_id]`, the upsert override supplies both halves and is correct. The real "couple of seconds" was the awaited sequential network: a 3-habit removal made 3 blocking PATCH round trips before the modal closed. Dean's own read of it ("saving works, it just needs to hit Dexie + bus instantly") was the correct one.
+
+**Shipped (vyve-site `03d2b247`, settings.html + habits.html + sw.js + index.html):**
+- `saveHabits`, `savePersona`, `saveGoal` rewritten to the §23.7.6 critical-path order: Dexie write + bus publish + local UI state first; the Supabase PATCH/POST calls move to a fire-and-forget background block. The member sees the modal close instantly; Supabase catches up after.
+- `saveHabits` publishes a NEW `habits:set-changed` event (only per-tick `habit:logged` existed before). Added rows get a client-side `crypto.randomUUID()` so Dexie and Supabase agree on the row id. Failed background writes publish `habits:set-changed:failed`. The `size===0` early-return dropped in favour of a no-change guard (a member can now clear all habits).
+- `saveGoal` gained a `specific_goal:changed` publish it never had.
+- habits.html: new `habits:set-changed` + `:failed` subscribers + a `reloadHabitSet()` helper that re-reads `member_habits` from Dexie and rebuilds `habitsData`.
+- sw cache key → `pm151-settings-localfirst-a`. Build banner 15 → 16.
+
+**Note.** PM-151 introduced a regression (thin Dexie rows) fixed same session by PM-153 — see above. **Known parked:** re-adding a previously-removed habit creates a second `member_habits` row (no unique constraint on `member_email,habit_id`); rides with the future locked-habits feature.
+
 ## 2026-05-16 PM-150 — session_views storage/cap decoupled + 60s dwell threshold
 
 **Context.** Page-by-page paint audit, index.html. Dean reported the home "This week's goals" sessions row stuck at 1/2 while "Your Progress" showed 2. Investigation found a far bigger issue than a paint bug.

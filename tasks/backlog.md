@@ -1,3 +1,18 @@
+## Added 16 May 2026 PM-153 — habits.html audit follow-ons
+
+### PM-151/152/153 — habits.html paint audit [SHIPPED 2026-05-16 — vyve-site `03d2b247` + `4baa445c` + `deec34f8` — device-verified]
+Settings saves local-first (§23.7.6 critical-path order), habits.html card redesign (difficulty pill removed, description/prompt dropdown), and the PM-151 thin-row regression fixed. Full detail in changelog PM-151/152/153 + master §19 + §23.7.9. habits.html audit closed. Next audit page: exercise.html.
+
+### NEW FEATURE — locked / mandatory habits model [PENDING — post-trial, ~1 session + mockup, Lewis copy gate on the label]
+Dean's product decision (16 May 2026): habits VYVE assigns to a member — monthly theme habits, the autotick HealthKit set — should be MANDATORY. The member cannot remove them. They CAN add their own habits on top and remove the ones they added themselves. So habits split into two classes: VYVE-given (locked) and self-added (removable).
+
+Current state is NOT this model — it is an accident: the four `autotick-7b` library habits are un-removable only because they fall outside the settings picker's `created_by IS NULL OR created_by = <email>` filter (a `created_by` mistag — `autotick-7b` is a build label sitting in the ownership column). Monthly theme habits, assigned with `created_by = null`, currently ARE removable — violating the intended model. So today the app enforces "locked" on 4 habits by bug and "removable" on the theme habits by default. Decision at PM-153: leave as-is, build the real model later.
+
+Clean implementation when picked up: a `removable` (or `locked`) boolean on `member_habits`, set false where `assigned_by IN ('admin','onboarding','autotick','theme_update')` and true where `assigned_by = 'self'`. Settings picker renders locked habits as un-checkboxable with a small "Set by VYVE" label (label copy → Lewis). Separately, the `autotick-7b` `created_by` mistag should be corrected to `null` as part of this work (4 library rows, assigned to 3 members each) so the column means one thing — ownership — again. Not trial-blocking.
+
+### `member_habits` re-add creates a duplicate row [PENDING — rides with locked-habits feature]
+`member_habits` has no unique constraint on `(member_email, habit_id)`. The settings add path POSTs fresh rows with `Prefer: resolution=ignore-duplicates`, which only dedupes on the primary key — and the PM-153 client-side `id` is a fresh UUID each time. So removing a habit (soft-delete `active=false`) then re-adding it creates a SECOND row rather than reviving the first. Functionally habits.html and the picker both filter on `active` so it renders fine, but the table accumulates dead rows and loses the original `assigned_at`/`assigned_by` provenance. Fix options: (a) add a unique constraint on `(member_email, habit_id)` and switch the add path to an upsert that revives the existing row (`active=true`), or (b) hard-DELETE on removal. Recommendation: (a) revive-on-readd — preserves history. Pairs naturally with the locked-habits work since both touch `member_habits` write paths. Not trial-blocking.
+
 ## Added 16 May 2026 PM-150 — session_views fix follow-ons + two new feature backlog items
 
 ### PM-150 — session_views storage/cap decoupled + 60s dwell threshold [SHIPPED 2026-05-16 — migration applied + tracking.js v9 `9a95ab5c` — device-verified]

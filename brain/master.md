@@ -408,7 +408,7 @@ All portal pages live at `online.vyvehealth.co.uk` and are bundled inside the iO
 | Page | Purpose |
 |---|---|
 | `index.html` | Member dashboard. Cache-first (skeleton on first load, instant on return). Reads `member-dashboard` v57. Daily check-in pill strip, activity score ring, recurring 4-row weekly goals strip (refreshed every Monday by `seed-weekly-goals` cron), live session slot, charity banner. "Coming Up This Week" block removed 06 May PM (was hardcoded placeholder, never dynamic). Orphan `.upcoming-*` CSS still in stylesheet pending hygiene pass. |
-| `habits.html` | Daily habit logging. 7-day pill strip, streak + dot strip, monthly theme badge. Wired to HealthKit autotick: fourth parallel fetch to `member-dashboard` v55 merges `has_rule` + `health_auto_satisfied` + `health_progress` into `habitsData` by `habit_id`; pre-render `runAutotickPass()` stamps satisfied rule rows as yes with `notes='autotick'`; `.hk-progress` bar + text on unsatisfied rows; done-state sub-label reads "from Apple Health" on auto-ticked rows, "Logged to your progress" on manual-yes rows. No visual badge — attribution is copy-only. Cache key `vyve_habits_cache_v2`. |
+| `habits.html` | Daily habit logging. 7-day pill strip, streak + dot strip, monthly theme badge. Wired to HealthKit autotick: fourth parallel fetch to `member-dashboard` v55 merges `has_rule` + `health_auto_satisfied` + `health_progress` into `habitsData` by `habit_id`; pre-render `runAutotickPass()` stamps satisfied rule rows as yes with `notes='autotick'`; `.hk-progress` bar + text on unsatisfied rows; done-state sub-label reads "from Apple Health" on auto-ticked rows, "Logged to your progress" on manual-yes rows. No visual badge — attribution is copy-only. Cache key `vyve_habits_cache_v3`. PM-152: difficulty pill removed, description/prompt in tap-to-expand dropdown. PM-151: settings saves wired via `habits:set-changed` bus event. |
 | `exercise.html` | **Exercise Hub.** Hero card + stream cards linking to Movement / Workouts / Cardio / Classes. |
 | `workouts.html` | Gym programme page. My Programme / My Workouts tabs. Custom workouts, exercise logs, swap. Reads `workout_plan_cache`. |
 | `movement.html` | Movement stream. Reads `workout_plan_cache`, activity list, video modal, Mark as Done. No content yet in `programme_library` — default-state members see no-plan state. |
@@ -846,6 +846,18 @@ Rebrand *The Everyman* → *The VYVE Podcast* in progress. Guest expression-of-i
 Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The portal pages at `online.vyvehealth.co.uk` are bundled inside the iOS + Android Capacitor binaries; the web URL itself is a browser-accessible account-management fallback (still service-worker-cached for offline resilience).
 
 ---
+
+## 19. Current status — 16 May 2026 PM-153 (habits.html paint audit complete; settings saves local-first; card redesign)
+
+**16 May 2026 PM — PM-151/152/153: habits.html page audit (paint audit, page 2 of 2 after index.html).** Three commits closed habits.html.
+
+- **PM-151 (`03d2b247`)** — settings.html `saveHabits`/`savePersona`/`saveGoal` rewritten to the §23.7.6 critical-path order: Dexie write + bus publish + local UI first, Supabase PATCH/POST fire-and-forget after. Pre-PM-151 the network was awaited sequentially on the critical path (a 3-habit removal = 3 blocking round trips before the modal closed). New `habits:set-changed` bus event + habits.html `reloadHabitSet()` subscriber. Client-side `crypto.randomUUID()` on added rows. `saveGoal` gained a `specific_goal:changed` publish.
+- **PM-152 (`4baa445c`)** — habits.html card redesign. Difficulty pill removed; `habit_description` + `habit_prompt` collapse into a tap-to-expand dropdown (Option A — resting card shows title + chevron + assignment eyebrow only). `.habit-title-row` / `.habit-chevron` / `.habit-collapse`; toggle wired in `renderHabits`. `difficulty` column still flows through the data layer, just unrendered.
+- **PM-153 (`deec34f8`)** — fixed a PM-151 regression. PM-151 wrote THIN `member_habits` rows to Dexie (no denormalised `habit_library` cols); habits.html's `habit_title` undefined-card filter silently dropped them, and `saveHabits` never busted `vyve_settings_cache`. Fix: `saveHabits` writes FAT Dexie rows (`_dexieAddRows`, joined from `_habitLibrary`) while the POST stays thin (`_supaAddRows`); `habit_prompt` added to both `_habitLibrary` source queries; `vyve_settings_cache` now busted on save. New §23 rule §23.7.9.
+
+Build banner 15 → 18. sw cache key now `vyve-cache-v2026-05-16-pm153-habit-fatrow-a`. No EF or schema change across all three. **Device-verified by Dean** end-to-end (add/remove habit, save, propagation to habits page, settings reopen). habits.html paint audit signed off — instant local-first render, cards paint from Dexie, no skeleton lingering. Next audit page: `exercise.html`.
+
+**§8 corrections found during the audit:** habits.html cache key is `vyve_habits_cache_v3` (master §8 previously said v2). `member-dashboard` EF is live at **v69** (master §8 / §7 previously referenced v55/v57). §8 table text below corrected.
 
 ## 19. Current status — 16 May 2026 PM-150 (session_views storage/cap decoupled; 60s dwell threshold shipped; tracking.js v9)
 
@@ -1699,6 +1711,18 @@ This rule extends §23.7.5 (partial-upsert landmine) and §23.7.7 (cache-first f
 PM-97's shipped fix awaits `hydrateTable()` for `members`, `member_habits`, `workout_plan_cache` in sequence, then reloads. Failure on any table blocks the reload and surfaces a user-facing error. The same shape applies to any future reset path (admin dev tools, persona-switch flow if it ever resets state, etc.) — search for callers of `VYVELocalDB.<table>.clear()` or `_sync_meta.set(table, 0)` and ensure each one uses the per-table API.
 
 
+
+### §23.7.9 — Optimistic INSERT rows must be FAT for denormalised stores (PM-153, 16 May 2026)
+
+**Surfaced PM-153.** PM-151's `saveHabits` add path wrote optimistic `member_habits` rows to Dexie carrying only the FK/scalar columns — `id, member_email, habit_id, assigned_at, assigned_by, active` — and none of the denormalised `habit_library` join columns (`habit_pot/habit_title/habit_description/habit_prompt/difficulty`). The Dexie `member_habits` store is FAT by design (the hydrate's `replaceForMember` writes the join columns so pages can render without a server round trip). habits.html's render path then `.filter()`s every row on `habit_title` — the PM-110 undefined-card guard. Result: the optimistically-inserted habit landed in Dexie titleless and was **silently dropped from the render**. The row existed; it just had no title, so the guard ate it.
+
+**Rule.** An optimistic write that INSERTS a new row into a denormalised/fat Dexie table MUST populate the denormalised columns, not just the scalar/FK columns. Thin optimistic inserts are invisible to any reader that guards on a denormalised field. Where the writing page already holds the source data (settings.html holds `_habitLibrary`), join against it to build the fat row. Where it does not, either fetch the joined shape first or do not claim the write is optimistically complete.
+
+**Distinct from §23.7.5.** §23.7.5 covers partial-*upsert* corruption of an *existing* fat row (default `.put()` replacing and dropping columns) — fixed there by a merge override. §23.7.9 covers the *insert* case: there is no existing row to merge with, so a merge override cannot save it; the inserted row must be born fat. Both are "the write looks right but the reader can't use it" — §23.7.5 on update, §23.7.9 on insert.
+
+**Two-shape discipline.** The fix pattern is two row arrays from one source: a THIN array for the PostgREST write (Postgres has the real joined table; it must not receive denormalised copies) and a FAT array for the Dexie write. PM-153's `saveHabits` ships exactly this — `_supaAddRows` (thin) and `_dexieAddRows` (fat). Do not send the fat shape to Postgres and do not write the thin shape to Dexie.
+
+**Audit signal:** any `VYVELocalDB.<table>.bulkUpsert(` / `.upsert(` whose row literal is an INSERT (no pre-existing row) — check the column set against what the table's hydrate `replaceForMember` writes and against what reader pages `.filter()` on. If the insert omits a column a reader guards on, the row will be invisible.
 
 ### §23.8 — Timezone correctness audit pending: codebase is BST-locked, needs to be device-local (logged 14 May 2026, PM-100 follow-up)
 
