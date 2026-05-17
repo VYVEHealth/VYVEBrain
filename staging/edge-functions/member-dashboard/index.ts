@@ -2,22 +2,28 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyOp, ukLocalDateISO, lastNightWindow, dailyMetricColumn, dailyUnitFor } from './_shared/taxonomy.ts';
 import { getMemberAchievementsPayload } from './_shared/achievements.ts';
-// member-dashboard v61 — PM-17 perf: drop 4 of 5 this-week PostgREST queries.
+// member-dashboard v69 — PM-68b + PM-70: unified dirty-aware home-state RPC,
+// with charity_total folded in to save one more round trip.
 //
-// CHANGES vs v60:
-//   - Promise.all gateway no longer issues workoutsThisWeek / cardioThisWeek /
-//     sessionsThisWeek / checkinsThisWeek queries. The four counts are now read
-//     directly from the cached member_home_state row (state.workouts_this_week,
-//     state.cardio_this_week, state.sessions_this_week, state.checkins_this_week)
-//     populated by refresh_member_home_state(). Saves 4 round trips per dashboard load.
-//   - habitsThisWeek query stays — the goal-progress meter needs COUNT(DISTINCT
-//     activity_date) and member_home_state.habits_this_week is COUNT(*).
-//   - 3 INLINE achievement evaluators (workouts_logged / cardio_logged /
-//     checkins_completed) routed through the cached homeStateRow via PM-17 changes
-//     in _shared/achievements.ts — saves 3 more round trips per achievements pass.
-//   - Inherits the same staleness contract as the totals already served from
-//     member_home_state. recompute_all_member_stats refreshes every 30 min and
-//     the EF refreshes on-demand when the row is absent.
+// CHANGES vs v68:
+//   - Removed the separate refresh_member_home_state_if_dirty pre-call.
+//   - Removed the separate q('member_home_state') query.
+//   - Removed the separate rpc('get_charity_total') call.
+//   - All three replaced by ONE rpc('member_home_state_get_fresh', { p_email })
+//     which: (a) checks dirty + refreshes if so + clears dirty flag;
+//     (b) returns the fresh home_state row as jsonb; (c) folds in __charity_total.
+//   - Saves 2 PostgREST gateway round trips per dashboard load (~60-150ms).
+//
+// NET LATENCY MODEL (warm path, clean cache):
+//   - 1 RPC for home state + charity (single SQL func, ~5-20ms incl. PostgREST overhead)
+//   - 16 parallel PostgREST queries (largest ~50-200ms each, all concurrent)
+//   - 1 achievements payload (internal Promise.all over 23 evaluators)
+//   - Expected wallclock: 200-800ms steady state.
+//
+// NET LATENCY MODEL (dirty cache, single member):
+//   - 1 RPC absorbing the ~32ms refresh + state read + charity read
+//   - Same parallel fan-out
+//   - Expected wallclock: 250-900ms.
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const SUPABASE_ANON = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
@@ -52,7 +58,7 @@ async function q(table, params) {
   if (!res.ok) throw new Error(`Query failed on ${table}: ${await res.text()}`);
   return res.json();
 }
-async function rpc(fn) {
+async function rpc(fn, body = {}) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
     method: 'POST',
     headers: {
@@ -60,9 +66,9 @@ async function rpc(fn) {
       'Authorization': `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({})
+    body: JSON.stringify(body)
   });
-  if (!res.ok) return 0;
+  if (!res.ok) return null;
   return res.json();
 }
 function ukToday() {
@@ -132,13 +138,10 @@ function evaluateHealthRule(rule, snap) {
       };
       let value = Number(row.value);
       const unitIn = row.unit || '';
-      if (rule.metric === 'distance_km' && (unitIn === 'meter' || unitIn === 'm' || unitIn === '')) {
-        value = value / 1000;
-      }
+      if (rule.metric === 'distance_km' && (unitIn === 'meter' || unitIn === 'm' || unitIn === '')) value = value / 1000;
       const target = rule.value ?? 0;
-      const satisfied = applyOp(rule.op, value, target);
       return {
-        satisfied,
+        satisfied: applyOp(rule.op, value, target),
         progress: {
           value: Number(value.toFixed(2)),
           target,
@@ -147,12 +150,10 @@ function evaluateHealthRule(rule, snap) {
       };
     }
     if (rule.source === 'samples_sleep') {
-      if (snap.sleepLastNightAsleepMin === null) {
-        return {
-          satisfied: null,
-          progress: null
-        };
-      }
+      if (snap.sleepLastNightAsleepMin === null) return {
+        satisfied: null,
+        progress: null
+      };
       const value = snap.sleepLastNightAsleepMin;
       const target = rule.value ?? 0;
       return {
@@ -241,16 +242,17 @@ serve(async (req)=>{
     const sleepStartIso = sleepStart.toISOString();
     const sleepEndIso = sleepEnd.toISOString();
     const currentWeekStart = isoMondayUtcStr();
-    const [member, homeState, weeklyGoalsRow, habitsRecent, workoutsRecent, cardioRecent, sessionsRecent, replaysRecent, charityTotal, certificates, healthConnections, memberHabits, dailyToday, sleepLastNight, workoutsToday, cardioToday, habitsThisWeek, achievementsPayload] = await Promise.all([
+    const [member, homeStateRpc, weeklyGoalsRow, habitsRecent, workoutsRecent, cardioRecent, sessionsRecent, replaysRecent, certificates, healthConnections, memberHabits, dailyToday, sleepLastNight, workoutsToday, cardioToday, habitsThisWeek, achievementsPayload] = await Promise.all([
       q('members', `email=eq.${enc}&select=*`).then((r)=>r[0]),
-      q('member_home_state', `member_email=eq.${enc}&select=*`).then((r)=>r[0]),
+      rpc('member_home_state_get_fresh', {
+        p_email: user.email
+      }),
       q('weekly_goals', `member_email=eq.${enc}&week_start=eq.${currentWeekStart}&select=*&limit=1`).then((r)=>r[0]),
       q('daily_habits', `member_email=eq.${enc}&select=activity_date&activity_date=gte.${recent30Start}`),
       q('workouts', `member_email=eq.${enc}&select=activity_date&activity_date=gte.${recent30Start}`),
       q('cardio', `member_email=eq.${enc}&select=activity_date&activity_date=gte.${recent30Start}`),
       q('session_views', `member_email=eq.${enc}&select=activity_date&activity_date=gte.${recent30Start}`),
       q('replay_views', `member_email=eq.${enc}&select=activity_date&activity_date=gte.${recent30Start}`),
-      rpc('get_charity_total'),
       q('certificates', `member_email=eq.${enc}&select=id,activity_type,milestone_count,earned_at,certificate_url,charity_moment_triggered,global_cert_number&order=earned_at.desc`),
       q('member_health_connections', `member_email=eq.${enc}&select=platform,granted_scopes,connected_at,last_sync_at,last_sync_status,total_synced,revoked_at`),
       q('member_habits', `member_email=eq.${enc}&active=eq.true&select=habit_id,active,assigned_at,habit_library(id,habit_pot,habit_title,habit_description,habit_prompt,difficulty,health_rule)`),
@@ -284,29 +286,13 @@ serve(async (req)=>{
         }
       });
     }
-    let state = homeState;
-    if (!state) {
-      await fetch(`${SUPABASE_URL}/rest/v1/rpc/refresh_member_home_state`, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          p_email: user.email
-        })
-      });
-      const refreshed = await q('member_home_state', `member_email=eq.${enc}&select=*`);
-      state = refreshed[0] || {};
-    }
+    const state = homeStateRpc && typeof homeStateRpc === 'object' ? homeStateRpc : {};
+    const charityTotal = Number(state.__charity_total ?? 0);
     const dailyByType = new Map();
-    for (const row of dailyToday || []){
-      dailyByType.set(row.sample_type, {
-        value: Number(row.value),
-        unit: row.unit || ''
-      });
-    }
+    for (const row of dailyToday || [])dailyByType.set(row.sample_type, {
+      value: Number(row.value),
+      unit: row.unit || ''
+    });
     let sleepLastNightAsleepMin = null;
     const sleepRows = sleepLastNight || [];
     if (sleepRows.length > 0) {
@@ -384,9 +370,6 @@ serve(async (req)=>{
     const joinDate = member.created_at ? String(member.created_at).slice(0, 10) : null;
     const tgt = weeklyGoalsRow || {};
     const habitDaysThisWeek = new Set((habitsThisWeek || []).map((r)=>r.activity_date).filter(Boolean)).size;
-    // PM-17: workouts/cardio/sessions/checkins this-week counts now read from member_home_state
-    // instead of issuing 4 PostgREST queries. See refresh_member_home_state() — populates these
-    // columns from the same source tables with the same week boundaries.
     const goalsPayload = {
       week_start: currentWeekStart,
       targets: {
@@ -470,7 +453,7 @@ serve(async (req)=>{
         current_score: state.wellbeing_latest_score ?? null,
         last_checkin: state.wellbeing_latest_iso_week ?? null
       },
-      charity_total: charityTotal || 0,
+      charity_total: charityTotal,
       certificates: certificates,
       habits: habits,
       health_feature_allowed: true,

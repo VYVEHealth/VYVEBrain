@@ -1,11 +1,27 @@
-// Edge Function: wellbeing-checkin v28 — Security commit 1B fix-up (07 May 2026).
+// Edge Function: wellbeing-checkin v29 — Supabase write hardening (12 May 2026 PM-66 session).
 //
-// CHANGES vs v27:
+// CHANGES vs v28:
+//   - weekly_scores write now checks res.ok and logs HTTP failures.
+//     (Still best-effort; non-critical for trend display.)
+//   - wellbeing_checkins write now propagates failures to the caller as a
+//     200-with-error-envelope: {success: false, error: 'wellbeing_checkins_write_failed', detail}.
+//     The page-side PM-65 failure-class discriminator (!res.ok || data.success !== true)
+//     catches the new envelope and fires wellbeing:failed → invalidateHomeCache.
+//     No client-side change required.
+//   - 200 status (not 500) on Supabase-write-failure: the Anthropic call already
+//     succeeded and we don't want the caller retrying with another API spend.
+//     The error envelope tells the page exactly what failed.
+//
+// FIXES backlog item carried from PM-65: "wellbeing-checkin EF v28 hardening —
+//   200-with-success-true-on-Supabase-write-fail". Option A from the backlog
+//   (propagate failure to response shape; preferred over Option B re-throw + 500
+//   because page-side discrimination is cleaner and we avoid wasted API spend).
+//
+// CHANGES vs v27 (still applies):
 //   - triggered_by value corrected to 'weekly_checkin' to satisfy the existing
 //     ai_interactions_triggered_by_check CHECK constraint (which allows only
 //     ['weekly_checkin', 'onboarding', 'running_plan', 'milestone', 'manual',
 //     're_engagement']). v27's 'wellbeing-checkin' would silently fail every insert.
-//   - All other behaviour byte-identical to v27.
 //
 // CHANGES from v27 (still applies):
 //   - getCORSHeaders no longer returns '*'. Falls through to https://online.vyvehealth.co.uk.
@@ -270,8 +286,11 @@ serve(async (req)=>{
     ][today.getUTCDay()];
     const time_of_day = getTimeOfDay();
     const nowISO = today.toISOString();
+    // v29: weekly_scores is non-critical (trend display only) — keep best-effort
+    //      swallow. Still check res.ok so we log real HTTP failures instead of
+    //      silently passing through 4xx/5xx as fetch resolves on those.
     try {
-      await fetch(`${SUPABASE_URL}/rest/v1/weekly_scores`, {
+      const wsRes = await fetch(`${SUPABASE_URL}/rest/v1/weekly_scores`, {
         method: 'POST',
         headers: {
           apikey: SUPABASE_KEY,
@@ -288,11 +307,21 @@ serve(async (req)=>{
           logged_at: nowISO
         })
       });
+      if (!wsRes.ok) {
+        console.warn(`weekly_scores write returned ${wsRes.status}: ${await wsRes.text()}`);
+      }
     } catch (e) {
       console.warn('weekly_scores write failed:', e);
     }
+    // v29: wellbeing_checkins IS the critical row. If it fails to land the
+    // member's check-in is effectively lost — no point returning success.
+    // Propagate the failure to the caller as a 200-with-error-envelope so
+    // the page-side failure-class discriminator (PM-65) catches it cleanly.
+    // Choice rationale: 200 status (not 500) because the Anthropic call DID
+    // succeed and we don't want the caller retrying with another API spend.
+    // The error envelope tells the page exactly what failed.
     try {
-      await fetch(`${SUPABASE_URL}/rest/v1/wellbeing_checkins`, {
+      const wcRes = await fetch(`${SUPABASE_URL}/rest/v1/wellbeing_checkins`, {
         method: 'POST',
         headers: {
           apikey: SUPABASE_KEY,
@@ -314,8 +343,34 @@ serve(async (req)=>{
           logged_at: nowISO
         })
       });
+      if (!wcRes.ok) {
+        const errBody = await wcRes.text();
+        console.warn(`wellbeing_checkins write returned ${wcRes.status}: ${errBody}`);
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'wellbeing_checkins_write_failed',
+          detail: `HTTP ${wcRes.status}`
+        }), {
+          status: 200,
+          headers: {
+            ...CORS,
+            'Content-Type': 'application/json'
+          }
+        });
+      }
     } catch (e) {
       console.warn('wellbeing_checkins write failed:', e);
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'wellbeing_checkins_write_failed',
+        detail: e.message
+      }), {
+        status: 200,
+        headers: {
+          ...CORS,
+          'Content-Type': 'application/json'
+        }
+      });
     }
     EdgeRuntime.waitUntil(writeAiInteraction(email, persona, `Weekly check-in (score=${score}, flow=${flow === 'quiet' ? 'quiet' : 'active'}${isDeferred ? ', deferred' : ''})`, text, {
       model: 'claude-sonnet-4-20250514',

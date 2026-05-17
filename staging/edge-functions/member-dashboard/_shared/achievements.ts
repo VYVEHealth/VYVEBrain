@@ -1,20 +1,4 @@
-// _shared/achievements.ts — VYVE Achievements evaluator (Phase 1)
-// Spec: VYVEBrain backlog item 7. Schema: achievement_metrics × achievement_tiers × member_achievements.
-// Evaluator returns earned tier rows for inline (sync) metrics. Sweep metrics are handled by achievements-sweep EF.
-//
-// PM-13 perf: the two Object.entries(INLINE) loops below are wrapped in Promise.all
-// so all 23 metric evaluators fire concurrently instead of serially.
-//
-// PM-17 perf: 3 additional INLINE evaluators (workouts_logged, cardio_logged, checkins_completed)
-// now read from the pre-fetched member_home_state row instead of issuing PostgREST count queries.
-// Combined with the streak fields already cached in PM-13, every numeric INLINE metric except
-// habits_logged/sessions_watched/replays_watched/monthly_checkins_completed/meals_logged/
-// weights_logged/exercises_logged/custom_workouts_created/workouts_shared/running_plans_generated/
-// workout_minutes_total/cardio_minutes_total/cardio_distance_total/persona_switched is now served
-// from the cached row — saving 3 round trips per evaluator pass on top of PM-13's savings.
-// Trade-off: workouts_logged/cardio_logged/checkins_completed now inherit member_home_state staleness
-// (refreshed by recompute_all_member_stats every 30 min, plus on-demand from the dashboard EF when
-// the row is missing). Acceptable — the dashboard's totals already serve from the same row.
+// _shared/achievements.ts — unchanged from v68 / PM-17.
 async function count(s, table, email) {
   const { count: c } = await s.from(table).select('*', {
     count: 'exact',
@@ -28,11 +12,6 @@ async function sumColumn(s, table, col, email) {
   let total = 0;
   for (const r of data)total += Number(r[col] ?? 0);
   return total;
-}
-async function homeStateField(s, email, field) {
-  const { data } = await s.from('member_home_state').select(field).eq('member_email', email).maybeSingle();
-  if (!data) return 0;
-  return Number(data[field] ?? 0);
 }
 function homeStateFieldFromCtx(ctx, field) {
   if (!ctx.homeStateRow) return 0;
@@ -69,8 +48,6 @@ const INLINE = {
   streak_checkin_weeks: async (_s, _e, c)=>homeStateFieldFromCtx(c, 'checkin_streak_current'),
   persona_switched: (s, e, _c)=>personaSwitched(s, e)
 };
-// Streak + total columns we need to pre-fetch in one shot.
-// PM-17: extended with workouts_total, cardio_total, checkins_total.
 const HOME_STATE_STREAK_FIELDS = [
   'overall_streak_current',
   'habits_streak_current',
@@ -117,7 +94,6 @@ async function fetchHomeStateRow(supabase, email) {
   return data ?? null;
 }
 export async function evaluateInline(supabase, email) {
-  // PM-13: parallelise the catalog/HK/existing-rows/home-state fetches at the top.
   const [{ metrics, tiers }, hk, existingRowsRes, homeStateRow] = await Promise.all([
     loadCatalog(supabase),
     isHkConnected(supabase, email),
@@ -129,8 +105,6 @@ export async function evaluateInline(supabase, email) {
   };
   const earnedSet = new Set();
   for (const r of existingRowsRes.data ?? [])earnedSet.add(`${r.metric_slug}:${r.tier_index}`);
-  // PM-13: parallelise the per-metric evaluator calls. Pre-PM-13 these ran serially
-  // — 23 sequential PostgREST round trips per dashboard load. Now ~1 batch round-trip.
   const slugs = Object.keys(INLINE);
   const valueResults = await Promise.all(slugs.map(async (slug)=>{
     const m = metrics.get(slug);
@@ -194,7 +168,6 @@ export async function evaluateInline(supabase, email) {
 export async function getMemberAchievementsPayload(supabase, email, opts = {}) {
   const inflightLimit = opts.inflightLimit ?? 3;
   const recentLimit = opts.recentLimit ?? 8;
-  // PM-13: parallelise the four independent top-level fetches.
   const [{ metrics, tiers }, hk, earnedRes, homeStateRow] = await Promise.all([
     loadCatalog(supabase),
     isHkConnected(supabase, email),
@@ -238,7 +211,6 @@ export async function getMemberAchievementsPayload(supabase, email, opts = {}) {
     const cur = earnedMaxByMetric.get(r.metric_slug) ?? 0;
     if (r.tier_index > cur) earnedMaxByMetric.set(r.metric_slug, r.tier_index);
   }
-  // PM-13: parallelise inflight evaluation.
   const slugs = Object.keys(INLINE);
   const valueResults = await Promise.all(slugs.map(async (slug)=>{
     const m = metrics.get(slug);

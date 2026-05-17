@@ -1,5 +1,5 @@
 {
-  "snapshot_at": "2026-05-10T05:41:50Z",
+  "snapshot_at": "2026-05-17T05:53:29Z",
   "supabase_project": "ixjfklpckgxrwjlfsaaz",
   "brain_repo": "VYVEHealth/VYVEBrain",
   "brain_branch": "main",
@@ -593,14 +593,14 @@
       "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_bd663a89-08f6-465b-9144-d8af2b3f8364_34/source/index.ts",
       "files": [
         {
-          "name": "index.ts",
-          "sha256": "4a5f9c55bd11da9e91c228e6163d26843f3104a300f8f22ca634359135e0aece",
-          "bytes": 17094
-        },
-        {
           "name": "_shared/achievements.ts",
           "sha256": "e281aaadf6838698d5ac164bf7f883f51a1175bb3b58569c1cd0fb68fed22f87",
           "bytes": 15482
+        },
+        {
+          "name": "index.ts",
+          "sha256": "4a5f9c55bd11da9e91c228e6163d26843f3104a300f8f22ca634359135e0aece",
+          "bytes": 17094
         }
       ]
     },
@@ -614,40 +614,40 @@
       "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_7c6364b5-f8b8-492f-a429-da3c6cc1fdd5_2/source/index.ts",
       "files": [
         {
-          "name": "index.ts",
-          "sha256": "59ab58a20e463c2aee4d453c379da20fa53fe2957e87420374dbeca3f63380cc",
-          "bytes": 3051
-        },
-        {
           "name": "_shared/achievements.ts",
           "sha256": "f9dab3acac3138a9b15e407ae4885ac04d63f6a212ad741fcdf8da1ea8456db9",
           "bytes": 15326
+        },
+        {
+          "name": "index.ts",
+          "sha256": "59ab58a20e463c2aee4d453c379da20fa53fe2957e87420374dbeca3f63380cc",
+          "bytes": 3051
         }
       ]
     },
     {
       "slug": "member-dashboard",
       "ok": true,
-      "platform_version": 67,
+      "platform_version": 69,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "72ce2bbea98b1a477b9e6883b95ed8776c69f486d19f335ec321e1b78da2964d",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c950ab00-49f3-4c07-bd77-83b57c644069_67/source/index.ts",
+      "ezbr_sha256": "5ee3a7ba6c371c005b6e6af7d695b01a70b8de66ec77ef0af44c32ba4c8111c3",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c950ab00-49f3-4c07-bd77-83b57c644069_69/source/index.ts",
       "files": [
-        {
-          "name": "index.ts",
-          "sha256": "0e42fcb22ea91e93283c2dca9c88d80c5ff97aa0fe910afa2864d80fa380c2ec",
-          "bytes": 18652
-        },
-        {
-          "name": "_shared/achievements.ts",
-          "sha256": "047b7d8b2a9c73066d1792a37e349b437e5dd2e74547125970a7073a142a7029",
-          "bytes": 11496
-        },
         {
           "name": "_shared/taxonomy.ts",
           "sha256": "f67f4d779160acd5d3c115f360eeb28067d2d49a336cc6157a91fa0c0b2487fd",
           "bytes": 3481
+        },
+        {
+          "name": "_shared/achievements.ts",
+          "sha256": "230a6d40a7bba229741097ec4ff3461cc22fb15ee4c96314b30d99ccdad536c8",
+          "bytes": 9410
+        },
+        {
+          "name": "index.ts",
+          "sha256": "3b2eaf974e482b64697c872a6c55d867c9b474bc151833f4c7f4fad173b0502f",
+          "bytes": 17956
         }
       ]
     },
@@ -750,16 +750,16 @@
     {
       "slug": "platform-alert",
       "ok": true,
-      "platform_version": 8,
+      "platform_version": 9,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "6c5bd52c8573ea6a2c91e1bbd87fd4b5bdeae7df4fb6ccb09f75ae1697dc216e",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_f033566c-6f1c-422c-a149-7680cd189cde_1/source/index.ts",
+      "ezbr_sha256": "86edbffe90c4ecf588f720d43ddebd4e15c237da2846c23a327dcebae7baa1c6",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_f033566c-6f1c-422c-a149-7680cd189cde_9/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "3d2a8cf1699aaa77b872ed841b6a51dfcc00c436c4542150259c2ab9c9a83a80",
-          "bytes": 13072
+          "sha256": "240dace47b8b7124d4e7a278e0ab6b7229b0589e1f6881c7de3241c3e4c22d7b",
+          "bytes": 1936
         }
       ]
     },
@@ -1013,14 +1013,14 @@
       "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_1b0d57b9-cbd2-4d6c-86e8-796bc9b42e4a_12/source/index.ts",
       "files": [
         {
-          "name": "index.ts",
-          "sha256": "d5e209df58573d7432b5d517df975850b0b7471ec67d425cc67207e6e7ea0535",
-          "bytes": 18666
-        },
-        {
           "name": "_shared/taxonomy.ts",
           "sha256": "fd8bde77df8671b24df90fb5ca29af86651c6b39037cffc6c8310a2566cd14ee",
           "bytes": 3725
+        },
+        {
+          "name": "index.ts",
+          "sha256": "d5e209df58573d7432b5d517df975850b0b7471ec67d425cc67207e6e7ea0535",
+          "bytes": 18666
         }
       ]
     },
@@ -1059,16 +1059,16 @@
     {
       "slug": "wellbeing-checkin",
       "ok": true,
-      "platform_version": 43,
+      "platform_version": 44,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "bbce9c4b5b7db9e960b810220edf6046d11e35b223d0a0bceff833d818326a1d",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_7fcc8d02-03b1-4905-a701-ce85eb048cea_41/source/index.ts",
+      "ezbr_sha256": "d8dc7f772314bab96506716fc5c63af0281a61c20ae34252f3eb188cbdba9f09",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_7fcc8d02-03b1-4905-a701-ce85eb048cea_44/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "e99f252cd02396de52246e9178b580c626721744aed719c381d921c506185089",
-          "bytes": 16458
+          "sha256": "2f19c40b3306942e061492947f194ae939c36c858c04eb61fff5d8aefedf743a",
+          "bytes": 19190
         }
       ]
     },
