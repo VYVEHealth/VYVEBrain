@@ -847,6 +847,10 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 17 May 2026 PM-170 (movement.html Recent list cold-load cache)
+
+**17 May 2026 — PM-170 (`d6a96a3f`): movement.html Recent list given a localStorage cache.** PM-169 device-test surfaced the Recent Movement list painting blank on cold open (Dexie-only, unhydrated at boot) — cardio.html never does this because it persists rendered history to localStorage. Fixed by mirroring cardio's `readCache`/`writeCache`+sync-paint pattern: new `vyve_movement_log_cache` key, `renderMovementLog(logs?)` renders synchronously from cache on cold load then refreshes from Dexie post-hydrate. movement.html now mirrors cardio.html on both logging path and cold-load history paint. sw.js key + marker (27→28) bumped. §23.38 added. Device-test pending.
+
 ## 19. Current status — 17 May 2026 PM-169 (movement.html logging path converged to cardio.html)
 
 **17 May 2026 — PM-169 (`44f19732`): movement.html quick-log rewritten as a structural mirror of cardio.html.** `logMovement` and `markDone` converted from blocking `await`-the-POST to cardio.html's optimistic-first shape (Dexie write → publish → flip button → repaint → un-awaited background POST; 4xx reverts the optimistic Dexie row, network error keeps it). Closes the drift behind PM-166/167/168 — movement and cardio loggers now share one proven shape. Two-table routing (walk→cardio `logged_via:'movement'`, rest→workouts `plan_name:'Movement'`) and the read-only movement-plan section kept divergent by design. No UI change. sw.js key + index.html marker (26→27) bumped in the same commit. Device-test pending.
@@ -2662,6 +2666,10 @@ The cost asymmetry is the point: a 5-minute parity diff at conversion time versu
 
 The 2/day (and per-period) activity cap exists ONLY for credits — certificates, the charity mechanic, the engagement score. Raw activity tables (`cardio`, `workouts`, `daily_habits`, ...) MUST store every logged activity uncapped: 100 sessions in a day = 100 rows, all visible in history and weekly/monthly totals. `BEFORE INSERT` triggers that divert over-cap rows to `activity_dedupe` and return NULL are **forbidden** — they destroy member data. `enforce_cap_cardio` / `enforce_cap_workouts` were dropped 17 May for exactly this. The correct shape is the `update_cert_sessions_count` pattern: a stateless recompute that reads the raw table and applies `LEAST(daily_count, cap)` when computing the credit. The increment-style counters still need converting to this recompute pattern — P0, see backlog.
 
+
+## §23.38 — a cold-load list paint must read from a persistent (localStorage) cache, not Dexie alone (PM-170, 17 May 2026)
+
+A list surface that paints on page open MUST have a `localStorage` snapshot to paint from synchronously — Dexie alone is not enough. Dexie is empty on a cold boot until `criticalHydrate` (a network pull) resolves, so a Dexie-only first paint shows a false empty state until hydration completes or the member writes a row. cardio.html does this right: `readCache`/`writeCache` persist the rendered history to localStorage and `onAuthReady` paints from it synchronously before any hydrate. movement.html's Recent list shipped Dexie-only (PM-168/169) and painted blank on every cold open — fixed PM-170 by adding a localStorage cache (`vyve_movement_log_cache`) and a sync-paint path. **Rule:** when a page renders a member-data list at boot, give it a localStorage cache written on every render and read synchronously on cold load; the Dexie/hydrate read is the *refresh*, never the *first paint*. Audit signal: a render function whose only data source is a `VYVELocalDB.<table>.allFor()` call, reached on the boot path.
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.

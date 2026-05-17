@@ -1,3 +1,15 @@
+## 2026-05-17 PM-170 — movement.html Recent list: localStorage cache for cold-load paint
+
+**vyve-site `d6a96a3f`.** Follow-up to PM-169. Dean device-tested PM-169 and found the Recent Movement list blank on a cold open — it only populated after logging an activity, and went blank again on app-close/reopen. cardio.html does not behave this way. PM-169 converged the *logging* path but missed the *cold-load history paint*.
+
+**Root cause — the real divergence.** cardio.html persists its rendered history to `localStorage` (`readCache`/`writeCache`); `onAuthReady` paints the Recent list synchronously from that cache before any Dexie hydrate, so it is never blank on open and survives app-close. movement.html's `readCache`/`writeCache` only ever cached the *plan*, never the Recent Movement list — `renderMovementLog` read Dexie via `_mvCollectLogs`, and on a cold open Dexie is unhydrated, so it painted the empty state. Logging an activity wrote a row straight to Dexie, which is why the list appeared then; closing the app left nothing in any movement-list cache, so the next open was blank again.
+
+**Fix.** Gave the Recent Movement list its own localStorage cache, mirroring cardio's pattern exactly. New `vyve_movement_log_cache` key (distinct from the plan's `vyve_movement_cache`). `renderMovementLog(logs?)` now takes an optional pre-collected array: called WITH one it renders synchronously (cardio's `renderHistory(rows)` shape, used for the instant cold-load paint); called WITHOUT it does the Dexie collect, renders, and refreshes the cache. Render body split into `_mvRenderRows`. `paintCacheEarly` now paints the Recent list synchronously from `readMvLogCache()` first, then re-collects from Dexie once `criticalHydrate('workouts'+'cardio')` resolves. `logMovement`/`markDone` untouched — their bare `renderMovementLog()` calls re-collect + re-cache, which is correct.
+
+**Verified:** inline scripts `node --check` clean; three files byte-verified against `d6a96a3f`. sw.js key → `vyve-cache-v2026-05-17-pm170-movement-recent-cache-a`; index.html `vbb-marker` 27 → 28. Device-test pending Dean.
+
+**Closes the PM-169 line.** movement.html and cardio.html are now mirrors on both the logging path AND the cold-load history paint. New §23 rule added (§23.38).
+
 ## 2026-05-17 PM-169 — movement.html logging path converged to cardio.html
 
 **vyve-site `44f19732`.** A real rewrite of movement.html's quick-log core, not a patch. PM-166/167/168 each fixed a movement-logging bug whose root cause was the same: movement.html carried its own slightly-wrong copy of logging code that cardio.html already did correctly, so it kept drifting. This session makes movement.html's logger a structural mirror of cardio.html's proven `logCardio` shape — a fix to one is now a fix to both.
