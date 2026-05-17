@@ -847,6 +847,10 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 17 May 2026 PM-169 (movement.html logging path converged to cardio.html)
+
+**17 May 2026 — PM-169 (`44f19732`): movement.html quick-log rewritten as a structural mirror of cardio.html.** `logMovement` and `markDone` converted from blocking `await`-the-POST to cardio.html's optimistic-first shape (Dexie write → publish → flip button → repaint → un-awaited background POST; 4xx reverts the optimistic Dexie row, network error keeps it). Closes the drift behind PM-166/167/168 — movement and cardio loggers now share one proven shape. Two-table routing (walk→cardio `logged_via:'movement'`, rest→workouts `plan_name:'Movement'`) and the read-only movement-plan section kept divergent by design. No UI change. sw.js key + index.html marker (26→27) bumped in the same commit. Device-test pending.
+
 ## 19. Current status — 17 May 2026 PM-160→166b (Mind section completed: colour, header, icons, light/dark, topbar de-dup)
 
 **17 May 2026 — PM-160→166b: seven vyve-site commits finishing the Mind section after PM-159.** Full detail in changelog PM-160→165 and PM-166b. *(This block was clobbered once by a parallel-session collision and restored — see PM-166b changelog note.)*

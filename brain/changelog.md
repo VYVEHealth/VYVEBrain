@@ -1,3 +1,21 @@
+## 2026-05-17 PM-169 — movement.html logging path converged to cardio.html
+
+**vyve-site `44f19732`.** A real rewrite of movement.html's quick-log core, not a patch. PM-166/167/168 each fixed a movement-logging bug whose root cause was the same: movement.html carried its own slightly-wrong copy of logging code that cardio.html already did correctly, so it kept drifting. This session makes movement.html's logger a structural mirror of cardio.html's proven `logCardio` shape — a fix to one is now a fix to both.
+
+**Audit correction.** Going in, the belief was that movement.html had a movement-plan *upload* path mirroring workouts.html. It does not — `upload`/`file`/`import` are zero hits. The movement plan is a read-only viewer: `fetchPlan` reads `workout_plan_cache` filtered to `programme_json.category === 'movement'` + `is_active`, `renderPlan` paints the current week's session, `markDone` PATCHes the heartbeat. The plan is created elsewhere (onboarding EF / admin), never uploaded from the page. `workouts.html` does not read `workout_plan_cache` directly either — it delegates to `workouts-*.js`. So the movement plan section is genuinely divergent from cardio.html (cardio has no plan concept) but simpler than assumed.
+
+**`logMovement` — the drift.** cardio.html's `logCardio` is optimistic-first: Dexie write → bus publish → flip button + clear inputs → repaint → **un-awaited** background POST, 4xx reverts. `logMovement` still `await`ed the POST inside its try block — PM-168 bolted an early `renderMovementLog()` in front but left the await. Consequences fixed: (a) slow server stuck the button on 'Logging…'; (b) a 4xx threw to the outer catch and showed 'Log failed' but **never deleted the optimistic Dexie row** — a phantom row survived until the next hydrate; (c) a real network error (offline) was treated identically to a 4xx instead of keeping the row for reconciliation. Rewritten to the `logCardio` skeleton: optimistic-first ordering, un-awaited background POST IIFE, cardio's exact revert (`*:failed` publish → `VYVELocalDB.<store>.delete(clientId)` → repaint on 4xx; keep row + stay silent on network error).
+
+**`markDone` — same bug class, folded in.** The plan-completion path `await`ed its workouts POST the same way and, on 4xx, showed a blocking `alert('Could not save…')`. Converged to optimistic-first: button flips to 'Session Complete' immediately, POST runs un-awaited, a 4xx reverts the optimistic row + home patch and resets the button (no alert). The `workout_plan_cache` heartbeat PATCH stays a separate silent boundary write (PM-31 invariant).
+
+**Deliberate divergences kept.** Two-table routing — walks → `cardio` (`logged_via:'movement'`, PM-159), everything else → `workouts` (`plan_name:'Movement'`) — is load-bearing for activity-score/leaderboard/certificate crediting and is NOT undone. The movement activity set (Walk/Stretch/Yoga/Mobility/Pilates/Other). The movement plan section (`fetchPlan`/`renderPlan`/`markDone` heartbeat) — untouched. `renderMovementLog`/`_mvCollectLogs`/`_mvLogRowHTML` — left as-is; already device-verified at PM-168, touching them is regression risk for zero convergence value (the value is entirely in the logging path).
+
+**No UI change** — behind-the-glass control-flow rewrite only; logger card markup, inputs, button, Recent list all unchanged. No mockup needed.
+
+**Verified:** all inline scripts `node --check` clean; three files byte-verified against commit `44f19732` (full-content match). sw.js cache key → `vyve-cache-v2026-05-17-pm169-movement-cardio-converge-a`; index.html `vbb-marker` 26 → 27. Device-test of movement quick-log + Mark-as-Done pending Dean.
+
+**PM numbering:** took 169 — highest used was 168; the parallel Mind session had claimed 166b and 160–165. No collision this session — single vyve-site session, pre-ship SHA re-check confirmed HEAD unmoved at `9887b6df`.
+
 ## 2026-05-17 PM-166b — Mind sub-pages: strip duplicate in-page topbar
 
 **vyve-site `5da79531`.** Numbered 166b — "PM-166" was concurrently used by the movement/cardio-logging session (`5ab7a148`); this is unrelated Mind-section work.
