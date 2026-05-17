@@ -1,3 +1,35 @@
+## 2026-05-17 PM-160→165 — Mind section brought fully in line with the portal (colour, header, icons, light/dark)
+
+**Six vyve-site commits continuing the Mind-section work after PM-159.** One campaign: take the seven Mind pages from "functional but not native" to "indistinguishable from the rest of the app."
+
+**Note on PM numbering:** "PM-160" was used by two parallel sessions — this Mind-section theme.css fix, AND an "instant on-device achievements" design entry (see backlog top). PM numbers are being reused across concurrent sessions; the commit SHAs below are the unambiguous reference.
+
+### PM-160 — `301e4099` — Mind pages flat/uncoloured header + bottom nav
+nav.js consumes 15 CSS variables (`--nav-bg`, `--nav-bg-mob`, `--nav-border`, `--nav-text`, `--nav-active`, `--more-bg`, etc.) and **defines none** — they live in `/theme.css`. The Mind pages never linked theme.css, so every `--nav-*` resolved to nothing and nav.js's injected header + bottom nav fell through to transparent/flat-black. Fix: added `<link rel="stylesheet" href="/theme.css">` to all 7 pages, after the fonts link and before the inline `<style>`. theme.css is pure `:root` variable declarations — zero element selectors — so it cannot restyle page content.
+
+### PM-160b — `bf36166d` — sw.js Mind precache restore
+The parallel "PM-159 movement-history" commit (`c00458e4`) rebased sw.js off a pre-PM-159 snapshot and silently reverted PM-159's addition of the 7 Mind pages to `urlsToCache`; PM-160 then carried the regression forward. Re-added the block.
+
+### PM-161 — `dd51c93c` — strip mind.html page-header
+Removed the in-page header — "Pillar · Mental" eyebrow, "Mind" Playfair title, "Train your mind. Build the quiet." subtitle, and the dead-link (`href="#"`) settings cog + their CSS. Page opens straight into "Today's focus". nav.js mobile header still labels the page MIND; settings reachable via the More menu / avatar panel.
+
+### PM-162 — `56ec2950` — wire 6 tool-tile icons
+The six "Your tools" tiles had empty placeholder `.thumb-tool` blocks. Wired each to its icon image (`/mind-*.png`, repo root, uploaded manually by Dean — chat-sandbox→workbench binary transfer is not viable). New `.thumb-img` class + `.thumb.has-img::after` suppresses the hatch placeholder on image thumbs only. **The 6 icons are AI-generated raster placeholder art for the soft-launch trial — NOT a premium vector set.** Same placeholder category as PM-94. A proper vector set (Lucide-family, matching nav.js + exercise.html `ico-*` iconography) is on the post-trial backlog. Body hub (exercise.html) already has the correct vector icons — Body needs no equivalent work; the consistency fix is converting Mind UP to vector, never Body down to raster.
+
+### PM-163 — `1a3b7995` — light mode part 1: remove inline `:root`
+All 7 Mind pages carried a single inline `:root` (from the ChatGPT mockups) hardcoding dark values for `--bg`/`--text`/`--surface`/`--border` etc. The inline `<style>` loads after the linked theme.css, so that `:root` WON the cascade and shadowed theme.css — theme.js flipping `data-theme` had no effect. Every token was already in theme.css with full dark+light values; fix was to delete the inline `:root` entirely on all 7.
+
+### PM-164 — `2d89f96a` — light mode part 2: theme-broken colour literals
+The shared Mind `<style>` (identical across all 7 pages) had 6 component rules with hardcoded dark literals — `.hero-card`/`.thumb`/`.jr-prompt`/`.af-card`/`.vz-hero` gradients faded into `rgba(13,43,43,*)` (near-black, a dark smear in light mode), `.af-act` used an `rgba(0,0,0,0.22)` black inset. Fix: gradient bottom-stops → `var(--bg)` (keeps the teal-into-page-depth fade, correct both themes); `.af-act` → `var(--surface)`. Remaining literals are teal/gold brand accents (theme-safe) or a 2.5%-white hatch texture that fades harmlessly in light — `exercise.html` carries the identical hatch, so it is an app-wide pattern, not a Mind defect.
+
+### PM-165 — `5acb730f` — light mode part 3: theme-init parity
+PM-163/164 made the pages theme correctly, but the theme-INIT path still diverged from habits/exercise.html: `<html>` hardcoded `data-theme="dark"`, and theme.js was `defer`'d AND positioned after theme.css. A deferred theme.js runs post-parse — the hardcoded attr was masking a flash-of-wrong-theme for light-mode users on first paint. Fix, matching exercise.html exactly: `<html lang="en">` bare (theme.js owns the attr); theme.js moved first in `<head>` right after `<title>`, `defer` dropped so it runs synchronously before theme.css. auth.js stays deferred.
+
+**State after PM-165:** the Mind section is verified in line with the rest of the portal — links theme.css, loads theme.js synchronously-first, zero inline `:root`, zero dark-black literals, bare `<html>`. Light/dark flips identically to habits.html / exercise.html. Build banner Update 18→23 across the campaign (PM-161 first introduced the per-commit banner-bump discipline).
+
+**Still open (Mind section):** (a) the 6 tool icons are trial placeholders — proper vector set post-trial; (b) Meditation + Sleep tiles both link `mind-library.html` (no dedicated pages) — product decision pending (deep-link vs own pages); (c) breathwork is the next real feature build — first Mind page to get `mind_sessions` Dexie/Supabase wiring; (d) `mind_sessions` schema still deferred until breathwork's real fields exist.
+
+
 ## 2026-05-17 PM-159 — Mind section: strip leftover mockup nav from 7 pages, wire real chrome (+ PM-158 retro-doc)
 
 **vyve-site commit `59a3fff6` — 8 files (7 Mind pages + sw.js).** This entry also retro-documents PM-158 (last session), which never reached the brain.

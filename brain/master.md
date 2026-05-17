@@ -847,6 +847,24 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 17 May 2026 PM-160→165 (Mind section brought fully in line with the portal — colour, header, icons, light/dark)
+
+**17 May 2026 — PM-160→165: six vyve-site commits finishing the Mind-section work after PM-159.** Full detail in changelog PM-160→165.
+
+- **PM-160 (`301e4099`)** — Mind pages had flat/uncoloured header + bottom nav. nav.js consumes 15 `--nav-*`/theme CSS variables but defines none; they live in `/theme.css`, which the Mind pages never linked. Added the theme.css `<link>` to all 7.
+- **PM-160b (`bf36166d`)** — restored the 7 Mind pages to sw.js `urlsToCache` (a parallel movement-history commit had rebased sw.js off a stale snapshot and reverted PM-159's precache addition).
+- **PM-161 (`dd51c93c`)** — stripped mind.html's in-page header (eyebrow / "Mind" title / subtitle / dead settings cog). Page opens into "Today's focus". First commit of the per-commit build-banner-bump discipline.
+- **PM-162 (`56ec2950`)** — wired the 6 tool-tile icons (`/mind-*.png`). **Trial-phase raster placeholder art** — proper vector set (matching exercise.html `ico-*` + nav.js) is post-trial backlog. Body hub already has correct vector icons; needs no equivalent work.
+- **PM-163 (`1a3b7995`)** — light mode part 1: deleted the inline `:root` (from the mockups) that shadowed theme.css and broke the theme flip.
+- **PM-164 (`2d89f96a`)** — light mode part 2: fixed 6 component rules with hardcoded dark literals (gradient bottoms → `var(--bg)`, black inset → `var(--surface)`).
+- **PM-165 (`5acb730f`)** — light mode part 3: theme-init parity — bare `<html lang="en">`, theme.js synchronous and first in `<head>` (was deferred + after theme.css), matching exercise.html exactly.
+
+sw cache key now `vyve-cache-v2026-05-17-pm165-mind-theme-init-a`. Build banner Update 23. No EF or schema change. **Device verification pending Dean.** The Mind section is verified theme-consistent with habits.html / exercise.html — no FOUC, no hardcoded theme, light/dark flips identically.
+
+**PM-numbering note:** "PM-160" was used by two concurrent sessions (this Mind work + an achievements design entry). PM numbers are being reused across parallel sessions — commit SHAs are the unambiguous reference.
+
+**Open (Mind):** 6 tool icons are trial placeholders (vector set post-trial); Meditation+Sleep tiles both link `mind-library.html` (no dedicated pages — product decision pending); breathwork is next real build + gets `mind_sessions` wiring; `mind_sessions` schema deferred until breathwork's fields exist.
+
 ## 19. Current status — 17 May 2026 PM-159 (Mind section nav fix: 7 pages stripped of mockup nav, wired to real chrome; PM-158 retro-documented)
 
 **17 May 2026 — PM-159: Mind-section nav fix.** vyve-site commit `59a3fff6` — 8 files (7 Mind pages + sw.js). This block also retro-documents PM-158 (16 May), which shipped seven Mind pages + a nav.js Mind tab but never reached the brain. Full detail in changelog PM-159.
@@ -2601,6 +2619,20 @@ The PM-86.1 / PM-87 §23 base64-corruption rules guard the *encoding* of content
 **Rule part 3 — one writer per denormalised counter column.** `cert_sessions_count` was written by both `counter_sessions` and `update_cert_sessions_count`. Two triggers writing the same column will diverge. A denormalised aggregate column has exactly one writer.
 
 **Audit signal:** any BEFORE INSERT trigger that `RETURN NULL`s or redirects rows is suspect — grep for `RETURN NULL` in trigger functions and confirm each is genuine dedup, not a quota. Any integer literal appearing in more than one trigger function on related tables is a divergence risk.
+
+### §23.35 — Converting mockup HTML into a portal page: diff against a known-good portal page across the FULL checklist, not just the presenting symptom.
+
+**Earned PM-159→165.** The seven Mind pages were converted from ChatGPT mockups. PM-159 fixed the *visible* defect (a leftover hardcoded `<nav class="bnav">`) and wired scripts to make the page function — but did not audit the rest of the page against a reference. That left three more defects that surfaced one at a time over five follow-up commits: no `/theme.css` link (flat uncoloured nav — PM-160), an inline `:root` shadowing theme.css (broken light mode — PM-163), hardcoded dark colour literals (PM-164), and a deferred-and-late theme.js + hardcoded `data-theme="dark"` (theme-init divergence — PM-165). One job became six.
+
+**Rule:** when converting mockup/external HTML into a VYVE portal page, before declaring it done, diff it against a known-good portal page (e.g. `exercise.html` or `habits.html`) across the **full** checklist — do not stop at the symptom that prompted the work:
+- **Scripts:** theme.js (synchronous, first in `<head>`, before theme.css), auth.js, nav.js, sw.js registration, plus the local-first chain if the page is data-bound.
+- **Stylesheet:** links `/theme.css`. No inline `:root` (it shadows theme.css — the inline `<style>` loads later and wins the cascade). No hardcoded dark colour literals (`rgba(13,43,43,*)`, `rgba(0,0,0,*)`) in component rules — use `var(--bg)`/`var(--surface)`/tokens.
+- **`<html>` tag:** bare `<html lang="en">`. Never hardcode `data-theme` — theme.js owns it; a hardcoded value masks a flash-of-wrong-theme.
+- **Both themes:** actually verify light AND dark, not just the default.
+- **sw.js:** page added to `urlsToCache`.
+- **nav.js:** page recognised by `getActiveTab()` / has the right `subPageLabels` entry.
+
+The cost asymmetry is the point: a 5-minute parity diff at conversion time versus six separate commits, six cache-busts, six device-checks, and a visibly half-finished section in between.
 
 ## 24. Premium Feel Campaign — local-first migration (active)
 
