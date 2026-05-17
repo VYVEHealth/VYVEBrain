@@ -1,3 +1,31 @@
+## Added 17 May 2026 — PM-160 (instant on-device achievements: scoped + designed, ready to build)
+
+### Instant on-device achievement evaluation [DESIGNED — READY TO BUILD — next P0 in the achievements line]
+
+**Goal:** an achievement trophy pops at the moment of the write that earns it — one at a time, no Supabase round-trip, no batch dump. Log your 5th workout, the "5 Workouts" trophy pops instantly. Same for every count/streak/time/volume metric.
+
+**The bug being fixed.** Today `VYVEAchievements.evaluate()` is debounced 1500ms (every call resets the timer), so a workout session's 5–8 `exercise_logs` writes coalesce into ONE `log-activity` call whose server-side `evaluateInline` returns every tier crossed during the whole session as one array → 4–5 toasts fire back-to-back. Second batching source: `replayUnseen()` dumps `unseen[]` from the dashboard cache on every page load. Root cause: the debounce is the correct fix for the wrong architecture — server evaluation is expensive so calls were coalesced; coalescing produces the batch.
+
+**The fix — `achievements-local.js`.** New module in the local-first script chain on every trigger page. Catalogue (32 metrics × 327 tiers, ~30KB) reads from Dexie — zero network per evaluation. `evaluateLocal(email, metricSlugs)` runs synchronously after each Dexie write, scoped to the metrics that write touched: counts the member's Dexie rows with §23.31 caps applied, compares to tier thresholds, and for each newly-crossed tier writes the `member_achievements` Dexie row + enqueues to `_sync_queue` + fires the toast immediately (no network await before the toast, §23.27/§23.32). One write → 0 or 1 toast. A genuine two-earn from one write shows toast-1, **600ms gap (Dean's call)**, toast-2. The 1500ms debounce is removed.
+
+**De-risk found this session:** the three Dexie tables needed (`achievement_metrics`, `achievement_tiers`, `member_achievements`) ALREADY exist in db.js SCHEMA_V3 with correct indexes (incl. `[member_email+seen_at]`) and are already in the sync hydrate. No schema change — this is evaluator module + per-page wiring + grid read-swap only.
+
+**Scope:** 24 metrics instant (all `source='inline'` except the 2 charity metrics). 8 stay server-side: the 6 `source='sweep'` metrics (HK-lifetime ×4, member_days, full_five_weeks) + charity_tips/personal_charity_contribution (collective `get_charity_total()` logic — local approx risks divergence; marginal instant-win). Server `evaluateInline` + `achievements-sweep` stay as idempotency reconciler — `member_achievements` unique `(member_email,metric_slug,tier_index)` makes local+server double-eval a harmless no-op.
+
+**Also in scope:** `replayUnseen` becomes a graceful drain (3 shown @600ms, then one "+N more" summary toast linking to the grid) not a dump; engagement.html `#achievements` grid repointed to read from Dexie (instant paint, no `member-achievements` EF dependency, no cold-open skeleton).
+
+**Build sequence:** (1) `achievements-local.js` — catalogue read + `evaluateLocal` + §23.31-capped counters + streak logic; (2) `achievements.js` — remove debounce, 600ms sequencing, "+N more" replay cap; (3) per-page wiring (one scoped call per trigger page: habits/workouts/cardio/movement/sessions/wellbeing-checkin/monthly-checkin/log-food/nutrition/settings/welcome); (4) engagement.html grid → Dexie read; (5) device verify — single instant toast on a real workout, 600ms sequence on a two-tier crossing; (6) sw.js cache bump + atomic commit. Estimate: one focused session for 1–4.
+
+**Notes:** `volume_lifted_total` evaluator needs sanity caps (`reps_completed>100` OR `weight_kg>500` excluded) as a guard against future bad data — the brain's flagged "two corrupt rows on Dean's account (87616 reps)" were verified GONE from live Supabase this session, no pre-cleanup needed. The toast wrapper copy ("Achievement earned" eyebrow) is the only new member-facing string — Lewis sign-off item; tier titles/bodies are all already approved, toast surfaces them verbatim. Design doc + interactive behaviour mockup produced this session and approved by Dean.
+
+### Brain drift noted PM-160 (fix in next master/changelog touch)
+
+- master.md §8 says the Phase 3 Achievements UI is "design-locked but not yet built" — it IS built and live (engagement.html `#achievements` tab, 29 April). §11A is correct; §8 line is stale.
+- `VYVESync.criticalHydrate` is referenced throughout the brain and CALLED by engagement.html, but does NOT exist in live sync.js (which exposes `hydrate`, `hydrateTable`, `runDeltaPull`, `isEnabled`, `status`). engagement.html's background re-hydrate is a silent no-op behind a `typeof` guard — real regression, separate fix, tracked. Repoint to `hydrateTable`/`hydrate`.
+- §11A "two corrupt `exercise_logs` rows on Dean's account" — verified gone from live Supabase, no longer a landmine.
+
+---
+
 ## Added 16 May 2026 — PM-155 BUG (live breakage, fix first next session)
 
 ### Recent Movement log list shows empty — source-vocabulary mismatch [BUG — NOT FIXED — fix before commits 5–7]
