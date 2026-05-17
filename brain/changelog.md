@@ -1,3 +1,23 @@
+## 2026-05-17 PM-166/167/168 + DB — movement & cardio logging: data-loss, UUID and instant-paint fixes
+
+**Session focus.** A live-debug session on movement.html / cardio.html logging. The exercise.html audit "commits 5-7" were the nominal task; commit 5 shipped (PM-158 below), then a cascade of production logging bugs took over. Four vyve-site commits + one Supabase migration. Commits 6 and 7 (Past Sessions / Browse-library Dexie wiring) did NOT ship — still outstanding.
+
+**PM-158 (`a3b32065`) — workout-history.html + workouts.html view-all.** New uncapped day-grouped gym-workout history page, cloned from cardio-history.html, Dexie-first, reads the local `workouts` store filtered to `plan_name!=='Movement'` (movement-logged sessions share the workouts table — they belong to movement-history). "View all workout history" link added to the Past Sessions view. sw.js precache + key bump. NOTE: "PM-158" was also used by the parallel Mind session for the nav.js Mind-tab commit — number collision, SHAs are canonical.
+
+**DB migration `drop_before_insert_cap_triggers_cardio_workouts`.** Dropped `enforce_cap_cardio` and `enforce_cap_workouts` — `BEFORE INSERT` triggers that diverted any over-2/day insert to `activity_dedupe` and returned NULL, i.e. they **physically discarded logged activity**. Confirmed root cause of "log shows then disappears": cycling/swimming/extra walks were being binned. The cap is correctly a *credit* concept (certificates, charity, engagement) — the `AFTER INSERT` counter triggers (`counter_cardio`, `charity_count_cardio`, etc.) already credit-cap at 2/day by checking sibling rows, and they remain in place. Dean's directive: raw activity tables store EVERYTHING (100 sessions = 100 rows); the cap applies only when computing credits. The full conversion of the increment-counters to the stateless recompute pattern (cf. `update_cert_sessions_count` for sessions, which already does it right) is a separate P0 — see backlog.
+
+**PM-166 (`5ab7a148`) — cardio history excludes movement-page walks.** A walk logged on movement.html is a `cardio` row with `logged_via='movement'` (PM-159). cardio.html `fetchHistory` (Dexie filter + REST `&logged_via=is.null`) and cardio-history.html `collectLogs` now exclude those, so movement walks stay on the Movement page's history. Cardio-page logs leave `logged_via` null and are unaffected.
+
+**PM-167 (`304258cf`) — client_id UUID fix (logged-then-vanished, all activity).** ROOT CAUSE, confirmed in postgres logs (`invalid input syntax for type uuid: "c-1778978..."`). `client_id` is a `uuid` column. When `VYVEData.newClientId()` was unavailable the per-page fallbacks emitted invalid values: cardio.html / workouts-session.js used `'c-<ts>-<hex>'` (not a uuid -> Postgres rejected the POST -> optimistic row reverted), movement.html used `null` (row inserted but the optimistic Dexie upsert could not key a null-id row -> Recent Movement read back nothing). Fix: all three loggers fall back to `crypto.randomUUID()`. New §23 rule added.
+
+**PM-168 (`9887b6df`) — movement Recent list instant paint.** `renderMovementLog` only ran after the network POST; cold-load boot painted once before Dexie hydrated. Symptom: empty on open, and after a log it showed the PREVIOUS state (one step behind). Fix: render immediately after the optimistic Dexie upsert in both `logMovement` branches (before the fetch); cold-load boot re-renders once `criticalHydrate('workouts'+'cardio')` resolves. movement-history.html also gained `criticalHydrate('cardio')` so walks appear on first paint.
+
+**Build marker.** index.html `vbb-marker` bumped per commit (Update 24 -> 26) so Dean's `?debug=build` banner reflects device build state — new memory rule established this session.
+
+**Concurrency note.** This session ran concurrently with the Mind-section session. Multiple sw.js / index.html / nav.js collisions were caught via fresh-SHA-before-commit; no lost updates, but two sessions on vyve-site simultaneously is fragile — flagged to Dean.
+
+**Device-verified:** cardio logging confirmed perfect by Dean (PM-166 + PM-167). PM-168 movement instant-paint pending device check.
+
 ## 2026-05-17 PM-160→165 — Mind section brought fully in line with the portal (colour, header, icons, light/dark)
 
 **Six vyve-site commits continuing the Mind-section work after PM-159.** One campaign: take the seven Mind pages from "functional but not native" to "indistinguishable from the rest of the app."

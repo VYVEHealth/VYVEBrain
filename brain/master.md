@@ -847,23 +847,20 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
-## 19. Current status — 17 May 2026 PM-160→165 (Mind section brought fully in line with the portal — colour, header, icons, light/dark)
+## 19. Current status — 17 May 2026 PM-166/167/168 (movement & cardio logging fixed: data-loss, UUID, instant-paint)
 
-**17 May 2026 — PM-160→165: six vyve-site commits finishing the Mind-section work after PM-159.** Full detail in changelog PM-160→165.
+**17 May 2026 — movement/cardio logging debug session.** Four vyve-site commits + one Supabase migration. Full detail in changelog PM-166/167/168.
 
-- **PM-160 (`301e4099`)** — Mind pages had flat/uncoloured header + bottom nav. nav.js consumes 15 `--nav-*`/theme CSS variables but defines none; they live in `/theme.css`, which the Mind pages never linked. Added the theme.css `<link>` to all 7.
-- **PM-160b (`bf36166d`)** — restored the 7 Mind pages to sw.js `urlsToCache` (a parallel movement-history commit had rebased sw.js off a stale snapshot and reverted PM-159's precache addition).
-- **PM-161 (`dd51c93c`)** — stripped mind.html's in-page header (eyebrow / "Mind" title / subtitle / dead settings cog). Page opens into "Today's focus". First commit of the per-commit build-banner-bump discipline.
-- **PM-162 (`56ec2950`)** — wired the 6 tool-tile icons (`/mind-*.png`). **Trial-phase raster placeholder art** — proper vector set (matching exercise.html `ico-*` + nav.js) is post-trial backlog. Body hub already has correct vector icons; needs no equivalent work.
-- **PM-163 (`1a3b7995`)** — light mode part 1: deleted the inline `:root` (from the mockups) that shadowed theme.css and broke the theme flip.
-- **PM-164 (`2d89f96a`)** — light mode part 2: fixed 6 component rules with hardcoded dark literals (gradient bottoms → `var(--bg)`, black inset → `var(--surface)`).
-- **PM-165 (`5acb730f`)** — light mode part 3: theme-init parity — bare `<html lang="en">`, theme.js synchronous and first in `<head>` (was deferred + after theme.css), matching exercise.html exactly.
+- **PM-158 (`a3b32065`)** — workout-history.html (uncapped day-grouped gym log, Dexie-first, `plan_name!=='Movement'` filter) + workouts.html "View all" link. (PM-158 number also used by the parallel Mind session — SHAs canonical.)
+- **DB migration** — dropped `enforce_cap_cardio` / `enforce_cap_workouts`. These `BEFORE INSERT` triggers discarded any over-2/day insert to `activity_dedupe` — they were destroying logged activity. The cap is a *credit* concept only; the `AFTER INSERT` counter triggers already credit-cap at 2/day and remain. Raw tables now store everything.
+- **PM-166 (`5ab7a148`)** — cardio.html + cardio-history.html exclude `logged_via='movement'` rows so movement-page walks stay on the Movement page's history.
+- **PM-167 (`304258cf`)** — client_id UUID fix. `client_id` is a `uuid` column; broken fallbacks (`'c-...'` string in cardio.html/workouts-session.js, `null` in movement.html) caused logged-then-vanished. All three loggers now fall back to `crypto.randomUUID()`. Device-verified perfect on cardio.
+- **PM-168 (`9887b6df`)** — movement Recent list instant paint: render after the optimistic Dexie upsert (before the fetch) + cold-load re-render after hydrate.
 
-sw cache key now `vyve-cache-v2026-05-17-pm165-mind-theme-init-a`. Build banner Update 23. No EF or schema change. **Device verification pending Dean.** The Mind section is verified theme-consistent with habits.html / exercise.html — no FOUC, no hardcoded theme, light/dark flips identically.
+sw.js cache key now `vyve-cache-v2026-05-17-pm168-movement-instant-paint-a`; index.html build marker `Update 26`.
 
-**PM-numbering note:** "PM-160" was used by two concurrent sessions (this Mind work + an achievements design entry). PM numbers are being reused across parallel sessions — commit SHAs are the unambiguous reference.
+**Still outstanding:** exercise.html audit commits 6 (Past Sessions Dexie wiring) and 7 (Browse library prefetch) did NOT ship. The activity-cap credit-recompute conversion + monthly check-in credit gap is a P0 — see backlog.
 
-**Open (Mind):** 6 tool icons are trial placeholders (vector set post-trial); Meditation+Sleep tiles both link `mind-library.html` (no dedicated pages — product decision pending); breathwork is next real build + gets `mind_sessions` wiring; `mind_sessions` schema deferred until breathwork's fields exist.
 
 ## 19. Current status — 17 May 2026 PM-159 (Mind section nav fix: 7 pages stripped of mockup nav, wired to real chrome; PM-158 retro-documented)
 
@@ -2633,6 +2630,14 @@ The PM-86.1 / PM-87 §23 base64-corruption rules guard the *encoding* of content
 - **nav.js:** page recognised by `getActiveTab()` / has the right `subPageLabels` entry.
 
 The cost asymmetry is the point: a 5-minute parity diff at conversion time versus six separate commits, six cache-busts, six device-checks, and a visibly half-finished section in between.
+
+## §23.36 — client_id / row id must always be a valid UUID (PM-167, 17 May 2026)
+
+`client_id` (and the Dexie row `id`) on activity tables — `cardio`, `workouts`, etc. — are Postgres `uuid` columns. Any client-side generator MUST produce a valid UUID. The pattern `'c-' + Date.now() + '-' + Math.random()...` is **forbidden** — it is not a uuid and Postgres rejects the insert (`invalid input syntax for type uuid`), 4xx'ing the POST and reverting the optimistic row (logged-then-vanished). A `null` fallback is equally wrong — the row inserts but a null-keyed Dexie upsert cannot be read back. The required fallback when `VYVEData.newClientId()` is unavailable is `crypto.randomUUID()` (with a manual uuid v4 as last resort). Audit signal: ripgrep `'c-' +` and `: null` near `ClientId` across vyve-site.
+
+## §23.37 — the activity cap is a credit calculation, never a write gate (PM-166, 17 May 2026)
+
+The 2/day (and per-period) activity cap exists ONLY for credits — certificates, the charity mechanic, the engagement score. Raw activity tables (`cardio`, `workouts`, `daily_habits`, ...) MUST store every logged activity uncapped: 100 sessions in a day = 100 rows, all visible in history and weekly/monthly totals. `BEFORE INSERT` triggers that divert over-cap rows to `activity_dedupe` and return NULL are **forbidden** — they destroy member data. `enforce_cap_cardio` / `enforce_cap_workouts` were dropped 17 May for exactly this. The correct shape is the `update_cert_sessions_count` pattern: a stateless recompute that reads the raw table and applies `LEAST(daily_count, cap)` when computing the credit. The increment-style counters still need converting to this recompute pattern — P0, see backlog.
 
 ## 24. Premium Feel Campaign — local-first migration (active)
 

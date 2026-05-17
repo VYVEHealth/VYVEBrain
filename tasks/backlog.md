@@ -1,3 +1,20 @@
+## Added 17 May 2026 — P0: activity-cap credit recompute + monthly check-in credit gap [Lewis-gated, own session]
+
+The activity cap was wrongly implemented as `BEFORE INSERT` row-destroying triggers; `enforce_cap_cardio`/`enforce_cap_workouts` were dropped 17 May to stop data loss (see changelog PM-166 + §23.14). The remaining work, scoped as its own Lewis-gated session because it touches certificates and the charity mechanic:
+
+1. **Convert the increment-style counters to the recompute pattern.** `increment_cardio_counter`, `increment_workout_counter`, `increment_habit_counter`, `increment_checkin_counter` and the four `charity_count_*` functions are stateful `AFTER INSERT` increments — drift-prone (no recount on DELETE). Convert each to the stateless recompute used by `update_cert_sessions_count`: read the raw table, apply `LEAST(daily_count, cap)`, write the cert column. Self-healing, correct under deletes.
+2. **Monthly check-in credit gap.** `monthly_checkins` has NO counter trigger and NO charity trigger — a monthly check-in currently earns ZERO credit. Dean's rule: the check-in track counts weekly + monthly together (~4-5 weeklies + 1 monthly per month). The recompute for the check-in track must UNION `wellbeing_checkins` and `monthly_checkins`.
+3. **Backfill** the `cert_*_count` columns to correct values after conversion.
+4. **`activity_dedupe` replay** — months of historically-discarded activity sit in `activity_dedupe`. Decide whether to replay it back into the raw tables (carefully — the counter triggers would fire on replay). Dean's steer: fix-forward, treat replay as separate.
+
+Per-track cap numbers (cardio/workouts/sessions credit first 2/day; habits + check-ins credit first 1/period) are a product decision — confirm with Lewis, don't change unilaterally.
+
+## Added 17 May 2026 — exercise.html audit commits 6 & 7 still outstanding
+
+Commit 5 (workout-history.html, PM-158) shipped. Commits 6 and 7 did NOT — the session was consumed by the movement/cardio logging bugs.
+- **Commit 6 — Past Sessions Dexie wiring.** `openSessionsHistory` in workouts-notes-prs.js does 2 raw `fetch()` per tap (`workouts` + `exercise_logs`), no Dexie read, no persist. Wire Dexie-first with REST fallback. (My PRs is already Dexie-wired via `loadExerciseHistory` PF-7 — verify-only.) The tap-target CSS fix for the `#prs-view`/`#sessions-history-view` headers shipped separately within PM-166-era work — confirm it's in.
+- **Commit 7 — Browse library prefetch.** workouts-library.js not Dexie-wired; background-prefetch the exercise library so it's warm on tap.
+
 ## Added 17 May 2026 — PM-160 (instant on-device achievements: scoped + designed, ready to build)
 
 ### Instant on-device achievement evaluation [DESIGNED — READY TO BUILD — next P0 in the achievements line]
