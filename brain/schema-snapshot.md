@@ -2,13 +2,13 @@
 
 > Auto-generated from live Supabase project `ixjfklpckgxrwjlfsaaz`.
 > DO NOT EDIT — overwritten weekly by the `schema-snapshot-refresh` Edge Function.
-> Last refresh: 2026-05-10T03:00:21.443Z
+> Last refresh: 2026-05-17T03:00:26.719Z
 
-**Totals:** 85 tables (85 with RLS) · 1017 columns · 28 FKs · 195 triggers · 60 public functions · 87 RLS policies · 219 indexes · 20 cron jobs
+**Totals:** 87 tables (87 with RLS) · 1037 columns · 28 FKs · 190 triggers · 65 public functions · 88 RLS policies · 224 indexes · 21 cron jobs
 
 ---
 
-## Tables (85)
+## Tables (87)
 
 ### `achievement_metrics` · RLS
 
@@ -193,6 +193,7 @@
 | `logged_at` | timestamp with time zone | YES | now() |  |  |
 | `source` | text | NO | 'manual'::text |  |  |
 | `client_id` | uuid | YES |  |  |  |
+| `logged_via` | text | YES |  |  |  |
 
 **Check constraints:**
 - `cardio_time_of_day_check`: CHECK ((time_of_day = ANY (ARRAY['morning'::text, 'afternoon'::text, 'evening'::text, 'night'::text])))
@@ -204,10 +205,11 @@
 - `auto_time_fields_cardio` — BEFORE INSERT
 - `charity_count_cardio` — AFTER DELETE/INSERT
 - `counter_cardio` — AFTER INSERT
-- `enforce_cap_cardio` — BEFORE INSERT
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
-- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
+- `zzz_mark_home_state_dirty_del` — AFTER DELETE
+- `zzz_mark_home_state_dirty_ins` — AFTER INSERT
+- `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
 
 **RLS policies:**
 - `cardio_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
@@ -218,6 +220,38 @@
 - `idx_cardio_email_logged_at`
 - `idx_cardio_logged_at`
 - `idx_cardio_member_email`
+
+### `cc_calendar_events` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `title` | text | NO |  |  |  |
+| `description` | text | YES |  |  |  |
+| `start_at` | timestamp with time zone | NO |  |  |  |
+| `end_at` | timestamp with time zone | NO |  |  |  |
+| `all_day` | boolean | YES | false |  |  |
+| `location` | text | YES |  |  |  |
+| `meet_url` | text | YES |  |  |  |
+| `visibility` | text | YES | 'team'::text |  |  |
+| `attendees` | text | YES |  |  |  |
+| `owner_email` | text | NO | 'team@vyvehealth.co.uk'::text |  |  |
+| `source` | text | YES | 'hub'::text |  |  |
+| `gcal_event_id` | text | YES |  |  |  |
+| `color` | text | YES |  |  |  |
+| `created_at` | timestamp with time zone | YES | now() |  |  |
+| `updated_at` | timestamp with time zone | YES | now() |  |  |
+
+**Check constraints:**
+- `cc_calendar_events_visibility_check`: CHECK ((visibility = ANY (ARRAY['private'::text, 'team'::text, 'shared'::text])))
+
+**RLS policies:**
+- `cc_team_only` (ALL, roles: public) — (EXISTS ( SELECT 1 FROM admin_users WHERE ((admin_users.email = (auth.jwt() ->> 'email'::text)) AND (admin_users.active = true))))
+
+**Indexes:**
+- `cc_calendar_events_pkey`
+- `idx_cc_calendar_events_owner`
+- `idx_cc_calendar_events_start`
 
 ### `cc_clients` · RLS
 
@@ -768,7 +802,9 @@
 - `enforce_cap_daily_habits` — BEFORE INSERT
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
-- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
+- `zzz_mark_home_state_dirty_del` — AFTER DELETE
+- `zzz_mark_home_state_dirty_ins` — AFTER INSERT
+- `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
 
 **RLS policies:**
 - `daily_habits_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
@@ -1401,6 +1437,20 @@
 - `member_home_state_last_activity_at_idx`
 - `member_home_state_pkey`
 
+### `member_home_state_dirty` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `member_email` | text | NO |  | ✓ |  |
+| `marked_at` | timestamp with time zone | NO | now() |  |  |
+| `reason` | text | YES |  |  |  |
+
+**RLS policies:** _(none — service-role only)_
+
+**Indexes:**
+- `member_home_state_dirty_marked_idx`
+- `member_home_state_dirty_pkey`
+
 ### `member_notifications` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -1637,7 +1687,9 @@
 
 **Triggers:**
 - `zz_lc_email` — BEFORE INSERT/UPDATE
-- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
+- `zzz_mark_home_state_dirty_del` — AFTER DELETE
+- `zzz_mark_home_state_dirty_ins` — AFTER INSERT
+- `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
 
 **RLS policies:**
 - `members_own_data` (ALL, roles: public) — (email = ( SELECT auth.email() AS email)) / CHECK: (email = ( SELECT auth.email() AS email))
@@ -2077,11 +2129,12 @@
 **Triggers:**
 - `auto_time_fields_replay_views` — BEFORE INSERT
 - `charity_count_replay_views` — AFTER DELETE/INSERT
-- `enforce_cap_replay_views` — BEFORE INSERT
 - `replay_views_cert_count_trigger` — AFTER DELETE/INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
-- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
+- `zzz_mark_home_state_dirty_del` — AFTER DELETE
+- `zzz_mark_home_state_dirty_ins` — AFTER INSERT
+- `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
 
 **RLS policies:**
 - `replay_views_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
@@ -2220,12 +2273,12 @@
 **Triggers:**
 - `auto_time_fields_session_views` — BEFORE INSERT
 - `charity_count_session_views` — AFTER DELETE/INSERT
-- `counter_sessions` — AFTER INSERT
-- `enforce_cap_session_views` — BEFORE INSERT
 - `session_views_cert_count_trigger` — AFTER DELETE/INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
-- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
+- `zzz_mark_home_state_dirty_del` — AFTER DELETE
+- `zzz_mark_home_state_dirty_ins` — AFTER INSERT
+- `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
 
 **RLS policies:**
 - `session_views_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
@@ -2320,7 +2373,9 @@
 
 **Triggers:**
 - `zz_lc_email` — BEFORE INSERT/UPDATE
-- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
+- `zzz_mark_home_state_dirty_del` — AFTER DELETE
+- `zzz_mark_home_state_dirty_ins` — AFTER INSERT
+- `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
 
 **RLS policies:**
 - `weekly_goals_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
@@ -2348,7 +2403,9 @@
 
 **Triggers:**
 - `zz_lc_email` — BEFORE INSERT/UPDATE
-- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
+- `zzz_mark_home_state_dirty_del` — AFTER DELETE
+- `zzz_mark_home_state_dirty_ins` — AFTER INSERT
+- `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
 
 **RLS policies:**
 - `weekly_scores_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
@@ -2434,7 +2491,9 @@
 - `counter_checkins` — AFTER INSERT
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
-- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
+- `zzz_mark_home_state_dirty_del` — AFTER DELETE
+- `zzz_mark_home_state_dirty_ins` — AFTER INSERT
+- `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
 
 **RLS policies:**
 - `wellbeing_checkins_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
@@ -2544,11 +2603,12 @@
 - `auto_time_fields_workouts` — BEFORE INSERT
 - `charity_count_workouts` — AFTER DELETE/INSERT
 - `counter_workouts` — AFTER INSERT
-- `enforce_cap_workouts` — BEFORE INSERT
 - `queue_health_write_back_workouts` — AFTER INSERT
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zz_sync_activity_log` — AFTER DELETE/INSERT/UPDATE
-- `zzz_refresh_home_state` — AFTER DELETE/INSERT/UPDATE
+- `zzz_mark_home_state_dirty_del` — AFTER DELETE
+- `zzz_mark_home_state_dirty_ins` — AFTER INSERT
+- `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
 
 **RLS policies:**
 - `workouts_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
@@ -2562,7 +2622,7 @@
 
 ---
 
-## Public Functions (60)
+## Public Functions (65)
 
 - `_vyve_daily_streak(p_dates date[], p_today date)` — func
 - `_vyve_daily_streak_best(p_dates date[])` — func
@@ -2571,8 +2631,6 @@
 - `bump_member_activity(p_email text, p_type text, p_date date, p_at timestamp with time zone)` — func
 - `cap_cardio()` — func
 - `cap_daily_habits()` — func
-- `cap_replay_views()` — func
-- `cap_session_views()` — func
 - `cap_workouts()` — func
 - `charity_count_cardio()` — func
 - `charity_count_daily_habits()` — func
@@ -2584,6 +2642,7 @@
 - `charity_total_reconcile_and_heal()` — func
 - `compute_engagement_components(p_last_activity_at timestamp with time zone, p_active_days_30d integer, p_distinct_types_7d integer, p_latest_wellbeing integer)` — func
 - `compute_engagement_score(p_last_activity_at timestamp with time zone, p_active_days_30d integer, p_distinct_types_7d integer, p_latest_wellbeing integer)` — func
+- `drain_member_home_state_dirty(p_max_age_seconds integer)` — func
 - `exercise_logs_canonical_normalise()` — func
 - `exercise_name_canonical_normalise_generic()` — func
 - `gdpr_erase_purge_subject(subject_email text)` — func
@@ -2597,9 +2656,9 @@
 - `increment_cardio_counter()` — func
 - `increment_checkin_counter()` — func
 - `increment_habit_counter()` — func
-- `increment_session_counter()` — func
 - `increment_workout_counter()` — func
 - `member_age(birth_date date)` — func
+- `member_home_state_get_fresh(p_email text)` — func
 - `next_certificate_number()` — func
 - `normalise_exercise_names_in_jsonb(p_doc jsonb, p_member_email text)` — func
 - `normalise_exercise_names_jsonb_trigger()` — func
@@ -2611,8 +2670,14 @@
 - `recompute_member_stats(p_email text)` — func
 - `recompute_platform_metrics(p_date date)` — func
 - `refresh_member_home_state(p_email text)` — func
+- `refresh_member_home_state_if_dirty(p_email text)` — func
 - `set_activity_time_fields()` — func
 - `set_checkin_iso_week()` — func
+- `tg_mark_home_state_dirty_del()` — func
+- `tg_mark_home_state_dirty_ins()` — func
+- `tg_mark_home_state_dirty_members_del()` — func
+- `tg_mark_home_state_dirty_members_ins_upd()` — func
+- `tg_mark_home_state_dirty_upd()` — func
 - `tg_mrp_lc_email()` — func
 - `tg_mrp_touch_updated_at()` — func
 - `tg_refresh_home_state_from_members()` — func
@@ -2627,7 +2692,7 @@
 
 ---
 
-## Cron Jobs (20)
+## Cron Jobs (21)
 
 | Job | Schedule | Active | Command preview |
 |---|---|---|---|
@@ -2637,6 +2702,7 @@
 | `process-scheduled-pushes` | `*/5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `streak-reminder-daily` | `0 18 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve_charity_reconcile_daily` | `30 2 * * *` | ✓ | ` SELECT public.charity_total_reconcile_and_heal(); ` |
+| `vyve_drain_home_state_dirty` | `*/5 * * * *` | ✓ | ` SELECT public.drain_member_home_state_dirty(); ` |
 | `vyve_platform_metrics` | `15 2 * * *` | ✓ | `SELECT public.recompute_platform_metrics();` |
 | `vyve_rebuild_mad_incremental` | `*/30 * * * *` | ✓ | `SELECT public.rebuild_member_activity_daily_incremental();` |
 | `vyve_recompute_company_summary` | `0 2 * * *` | ✓ | `SELECT public.recompute_company_summary();` |
