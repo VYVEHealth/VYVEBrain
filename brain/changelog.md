@@ -1,3 +1,16 @@
+## 2026-05-17 PM-166b — Mind sub-pages: strip duplicate in-page topbar
+
+**vyve-site `5da79531`.** Numbered 166b — "PM-166" was concurrently used by the movement/cardio-logging session (`5ab7a148`); this is unrelated Mind-section work.
+
+Each Mind sub-page carried its own in-page `<div class="scr-topbar">` (back chevron + page title) baked in from the ChatGPT mockups. Since nav.js injects the real mobile header (back button + page label), every sub-page rendered the header **twice** — same duplication class as the PM-159 `bnav`, just the header instead of the nav.
+
+Removed the `scr-topbar` block + `.scr-*` CSS from mind-library, journal, affirmations, visualisation, mind-insights, and breathwork's picker view. `mind.html` had only the dead CSS (it's the hub — no in-page topbar). **breathwork's SECOND topbar is deliberately KEPT** — it is the session-view's functional close control (`onclick="closeSession()"`, returns picker→session state, NOT nav chrome; nav.js's `history.back()` is not equivalent). Its `.scr-*` CSS was re-added scoped to breathwork only.
+
+sw.js cache key → `vyve-cache-v2026-05-17-pm166-mind-topbar-strip-a`; index.html build banner 23 → 24.
+
+**Brain-collision note:** the §19 status block for PM-160→165 (written in brain commit `39a6759f`) was clobbered in master.md by a parallel session's PM-166/167/168 edit basing off a pre-`39a6759f` snapshot. This commit restores it (folded into a combined PM-160→166b §19 block). The PM-160→165 changelog entry was not affected.
+
+
 ## 2026-05-17 PM-166/167/168 + DB — movement & cardio logging: data-loss, UUID and instant-paint fixes
 
 **Session focus.** A live-debug session on movement.html / cardio.html logging. The exercise.html audit "commits 5-7" were the nominal task; commit 5 shipped (PM-158 below), then a cascade of production logging bugs took over. Four vyve-site commits + one Supabase migration. Commits 6 and 7 (Past Sessions / Browse-library Dexie wiring) did NOT ship — still outstanding.

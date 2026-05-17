@@ -847,6 +847,25 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 17 May 2026 PM-160→166b (Mind section completed: colour, header, icons, light/dark, topbar de-dup)
+
+**17 May 2026 — PM-160→166b: seven vyve-site commits finishing the Mind section after PM-159.** Full detail in changelog PM-160→165 and PM-166b. *(This block was clobbered once by a parallel-session collision and restored — see PM-166b changelog note.)*
+
+- **PM-160 (`301e4099`)** — added the `/theme.css` link to all 7 Mind pages. nav.js consumes 15 `--nav-*`/theme variables but defines none; without theme.css the injected header + bottom nav fell through to flat transparent black.
+- **PM-160b (`bf36166d`)** — restored the 7 Mind pages to sw.js `urlsToCache` (a parallel movement-history commit had reverted PM-159's precache addition).
+- **PM-161 (`dd51c93c`)** — stripped mind.html's in-page header (eyebrow/title/subtitle/dead settings cog). First commit of the per-commit build-banner-bump discipline.
+- **PM-162 (`56ec2950`)** — wired the 6 tool-tile icons (`/mind-*.png`). **Trial-phase raster placeholder art** — proper vector set is post-trial backlog. Body hub already has correct vector icons.
+- **PM-163 (`1a3b7995`)** — light mode 1/3: removed the inline `:root` shadowing theme.css.
+- **PM-164 (`2d89f96a`)** — light mode 2/3: fixed 6 component rules with hardcoded dark literals (gradient bottoms → `var(--bg)`, black inset → `var(--surface)`).
+- **PM-165 (`5acb730f`)** — light mode 3/3: theme-init parity — bare `<html lang="en">`, theme.js synchronous + first in `<head>`, matching exercise.html.
+- **PM-166b (`5da79531`)** — stripped the duplicate in-page `scr-topbar` from the 6 sub-pages (nav.js header made it redundant). breathwork's session-view close control kept (functional, not chrome).
+
+sw cache key now `vyve-cache-v2026-05-17-pm166-mind-topbar-strip-a`. Build banner Update 24. No EF or schema change. The Mind section is verified theme-consistent and chrome-consistent with habits.html / exercise.html. **Device verification pending Dean.**
+
+**PM-numbering note:** "PM-160" and "PM-166" were each used by two concurrent sessions. PM numbers are being reused across parallel sessions — commit SHAs are the unambiguous reference.
+
+**Open (Mind):** 6 tool icons are trial placeholders (vector set post-trial); Meditation+Sleep tiles both link `mind-library.html` (no dedicated pages — product decision pending); breathwork is the next real feature build + gets `mind_sessions` Dexie/Supabase wiring; `mind_sessions` schema deferred until breathwork's fields exist.
+
 ## 19. Current status — 17 May 2026 PM-166/167/168 (movement & cardio logging fixed: data-loss, UUID, instant-paint)
 
 **17 May 2026 — movement/cardio logging debug session.** Four vyve-site commits + one Supabase migration. Full detail in changelog PM-166/167/168.
