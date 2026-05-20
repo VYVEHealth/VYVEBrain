@@ -8,7 +8,19 @@ Mind section infrastructure landed PM-173 (`fbda5ac8`). Schema + Dexie + sync + 
   - **Animated SVG ring that breathes**: expands smoothly on inhale (ease-in-out), holds steady on hold phases, contracts on exhale. Not a tick — a breath. CSS transforms or SVG path animation driven by the phase timer. This is the core "feels designed" moment.
   - Phase label + countdown inside the ring ("Inhale · 4s").
   - Round indicator ("Round 3 of 15").
-  - **Adjustable rounds**: stepper +/- around `default_rounds`. Members who want 2-min sigh and members who want 8-min coherent are different humans.
+  - **Adjustable duration via preset chips** (DECIDED PM-173-followup-4): three chips per pattern — Quick / Standard / Deep — labelled in minutes, not rounds. Member-facing language is minutes; rounds calc'd behind the glass as `round(target_seconds / sum(phase.seconds))`. Standard preselected = pattern's `default_rounds` rounded to nearest minute. Three taps gets member from picker to breathing.
+
+  Per-pattern presets to seed:
+  - Box Breathing: 2 / 4 / 8 min
+  - Physiological Sigh: 1 / 2 / 4 min (cap short — fast stress-drop tool, not sustained practice)
+  - 4-7-8: 2 / 4 / 6 min (breath-hold makes longer uncomfortable)
+  - Coherent: 3 / 5 / 10 min (the one that genuinely scales)
+
+  Longest session ceiling = 10 min (Coherent Deep). Music-cycling implication: tracks loop seamlessly within session via HTML5 Audio `ended` event → fade out 1s → next track in shuffle → fade in. Member never hears mid-session silence even if individual tracks are shorter than session.
+
+  Schema add: `breathwork_patterns.presets jsonb` column — array `[{label:'Quick', seconds:120}, {label:'Standard', seconds:240}, {label:'Deep', seconds:480}]`. Migration `breathwork_patterns_presets_column` to land before breathwork.html session. `default_rounds` becomes vestigial — keep for now, deprecate post-launch.
+
+  Considered and rejected: free slider 1-10 minutes (Othership-style). More precise but taxes the 95% who don't care about exact duration to serve the 5% who do. Three chips reads as intentional design; slider reads as config panel. Wrong tone for the premium aesthetic.
   - **Pause / Restart / End controls** (already mocked, wire for real).
   - **Background music** (per Dean explicit ask): per-pattern `ambient_audio_url` from catalogue. Day-1 silent-default; when assets exist in Supabase Storage, page auto-loads + plays on session start, fades on end. Pause button pauses both ring + audio. Music dropdown/pill row + volume slider — choice persists in localStorage. Default = None on first ever session (no ambush).
   - **Phase tone cues** (optional, off by default): if `inhale_tone_url` / `exhale_tone_url` present in catalogue OR Web Audio API synthesised inline (recommended — zero asset weight, deterministic, no licence). Soft chime on phase transitions for eyes-closed members.
