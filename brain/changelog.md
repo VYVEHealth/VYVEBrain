@@ -1,3 +1,135 @@
+## 2026-05-20 PM-176 — affirmations.html real wiring (Mind v1 third user-visible commit)
+
+**Shipped.** vyve-site `dd900fb12a2ad4448fd95c08c1fe1f95606ce6b2` — five files in one
+atomic commit + one Supabase migration (`pm175_create_affirmation_favourites`).
+Affirmations is the third Mind v1 surface to land real wiring, following PM-174
+breathwork and PM-175 journal. The brain had this slated as PM-175 before journal
+landed in parallel at vyve-site `79cbcf1e` (20:46 UTC); this ship renumbered to
+PM-176 on the brain commit step.
+
+**Schema change — `affirmation_favourites` table created.** Per active.md PM-174
+session-handoff lock: separate join table beats `members.affirmation_favourites
+uuid[]` because saved_at ordering and atomic single-row insert/delete avoid
+read-modify-write on the members row. Columns: `id uuid PK`, `member_email
+text NOT NULL`, `affirmation_id uuid NOT NULL REFERENCES affirmations_library
+ON DELETE CASCADE`, `saved_at timestamptz NOT NULL DEFAULT now()`, `client_id
+uuid`. `UNIQUE(member_email, affirmation_id)` prevents double-favourite. Index
+on `(member_email, saved_at DESC)` for the favourites strip read. RLS enabled
+with three policies (SELECT/INSERT/DELETE — no UPDATE, favourites are immutable),
+all wrapping `auth.email()` in `(SELECT ...)` per §23 PM-8 hard rule. No
+`activity_date` column — favourites aren't activity rows, they're a join.
+
+**Dexie schema V6.** `SCHEMA_V6 = Object.assign({}, SCHEMA_V5, {
+  affirmation_favourites: '&id, member_email, affirmation_id, saved_at,
+  [member_email+affirmation_id]'})`. Compound index supports the
+`syncHeroActionState()` membership lookup (`favouritesById[todayId]`) and
+the per-row heart state on the browse-all list. `db.version(6).stores(...)`
+chained after v5. Accessor registered as a standard member-scoped
+`makeTable('affirmation_favourites')` next to mind_activities in the table
+factory block. `affirmations_library` catalogue accessor and `mind_activities`
+accessor were already present from PM-173, no changes there.
+
+**sync.js — member-scoped hydrate added.** New entry after the
+`mind_activities` block: scope `'member'`, path
+`/affirmation_favourites?member_email=eq.<e>&select=*&order=saved_at.desc`,
+persist via `replaceForMember`. No `activity_date` lookback — pulls the full
+favourites set per member, bounded by catalogue size (~30 row ceiling). The
+`affirmations_library` catalogue hydrate was already shipped at PM-173 line 364
+of sync.js; no duplicate added.
+
+**affirmations.html — 16.6KB placeholder → 44KB real wire.** Three sections
+top-to-bottom: hero "Today's affirmation" card, optional favourites strip
+(hidden when empty), browse-all list with category chip filter. Mirrors
+breathwork.html's helper layout verbatim (SUPA_URL / SUPA_KEY const, uuid()
+fallback per §23.36, todayStr() with timezone offset, dayOfWeek(), jwtHeaders()
+async resolver, haptic() wrapper for Capacitor Haptics).
+
+**Daily pick algorithm.** Deterministic via
+`djb2(memberEmail + '|' + todayStr()) % library.length`. Stable across a local
+day, rotates across the active catalogue, no server cron needed, no per-member
+state required. Override mechanism: tapping any non-today affirmation in
+favourites strip or browse-all list calls `setTodayOverride(id)` which writes
+`localStorage.vyve_affirmation_today_override = {date,id}` — overrides the
+seed for the rest of the local day, automatically clears on date roll-over
+because `pickTodayAffirmation()` ignores override entries with stale dates.
+
+**§23.39 optimistic-first log via `logToday()`.** Mirrors breathwork's
+`logSession()` verbatim. Sequence: (1) build dexieRow with `kind='affirmation'`,
+`ref_id=todayId`, `duration_seconds=0`; (2) Dexie `mind_activities.upsert`
+fire-and-forget; (3) flip `todayLogged=true`, sync hero button states, fire
+`.saved-anim` keyframe pulse, haptic light, show "Saved for today" toast;
+(4) `VYVEBus.publish('mind:logged', {kind:'affirmation', source:'affirmations_page',...})`
+optimistic; (5) un-awaited POST to `mind_activities` in an IIFE. 4xx response
+deletes the Dexie row, reverts `todayLogged=false`, repaints hero button
+states, shows "Couldn't save — try again" toast, publishes `mind:failed`.
+Network throw keeps the Dexie row, enqueues to `VYVEData.writeQueued` with
+`table:'mind_activities'`, `client_id:<uuid>`.
+
+**Favourites toggle — parallel optimistic skeleton.** `toggleFavourite(id)`
+branches add/remove. `addFavourite`: optimistic local push to
+`favouritesById` + `favouritesOrder`, Dexie upsert, un-awaited POST to
+`affirmation_favourites` with `Prefer: resolution=ignore-duplicates` so
+double-tap is idempotent. Failure path reverts local + drops Dexie. Network
+throw enqueues to writeQueued. `removeFavourite`: optimistic local delete,
+Dexie delete, un-awaited DELETE keyed
+`?member_email=eq.<e>&affirmation_id=eq.<id>` (uses the UNIQUE constraint
+columns rather than the row UUID — survives client/server id mismatches).
+Failure path reverts.
+
+**Share.** `navigator.share` with text `"<affirmation>" — via VYVE`.
+Fallback to `navigator.clipboard.writeText` with "Copied to clipboard" toast.
+No URL in the share payload — members share the affirmation line, not a
+recruitment link.
+
+**Streak chip + browse-all rendering.** Streak: distinct
+`mind_activities.activity_date` values where `kind='affirmation'`, consecutive
+day count ending today-or-yesterday (one-day grace at the top), 30-day
+ceiling. Also displays last-7-day session count when non-zero. Category
+chips: derived from distinct `category` values in the catalogue (currently
+5: focus, growth, resilience, self-care, self-worth — 30 rows total). "All"
+chip prepended. Browse list shows row text + small uppercase category label
++ heart toggle. `is-today` styling on the row matching `todayId` (teal-tinted
+fill-accent background).
+
+**Empty-state discipline.** Favourites section sets `display:none` when
+zero favourites — no empty-state card, just absent. Browse list shows the
+"Affirmations will appear here once they're loaded" line only when the
+catalogue is empty (network failure on first-time visitor with no Dexie
+cache yet).
+
+**Bus subscribers.** Listens for `mind:logged` events from other surfaces
+(only reacts to `kind:'affirmation'` from a non-self source) and re-runs
+`checkTodayLogged()` → repaints hero state. Catches the case where a save
+on another device lands via Realtime / delta-pull.
+
+**SW cache key + vbb-marker.** `pm175-journal-a` → `pm176-affirmations-a`
+on sw.js. `Update 35` → `Update 36` on index.html vbb-marker. Both required
+per §23 hard rule (sw.js cache-bump + vbb-marker increment, same commit).
+
+**Pre-flight + verify.** Node --check clean on both inline JS blocks in
+affirmations.html (1 large, 1 trivial SW register block). Node --check
+clean on db.js, sync.js, sw.js. All 9 inline scripts in index.html still
+parse after the marker swap. Post-commit byte-equal verify via Contents API
+at the commit SHA — all 5 files MD5-equal. Drift caught on initial SHA
+refresh: journal commit `79cbcf1e` had bumped sw.js + index.html between my
+first read and commit time. Patches rebuilt off the latest content (new
+cache key, new marker number) and re-verified before submission.
+
+**Copy disposition.** 30 affirmation rows still Claude-generated placeholders
+from the PM-173 seed (`COPY_LEWIS_REVIEW` flag on the table). Per Dean's
+PM-94 framing — knowingly shipped for the 15-20 person trial-launch window,
+not a launch blocker. Lewis sign-off post-trial. Same status as journal's
+PROMPT_TABLE and hydration.js COPY_TABLE.
+
+**Sessions still ahead in Mind v1.**
+- **mind.html hub real wiring** — currently hardcoded `3` streak and `2/5`
+  counter. Wire to Dexie `mind_activities` reads. Strip `placeholder-tag`.
+  P1, ~30 min.
+- **PM-175 follow-up — music wiring on breathwork.html.** Blocked on Lewis
+  sourcing 3+ ambient tracks. ~200 LOC added when ready.
+- **mind-insights.html** — P2, post-data.
+- **visualisation.html** — BLOCKED on ElevenLabs assets.
+
 ## 2026-05-20 PM-175 — journal.html real wiring (Mind v1 second user-visible commit)
 
 **Shipped.** vyve-site `79cbcf1e` — three files in one atomic commit. journal.html
