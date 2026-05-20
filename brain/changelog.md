@@ -1,3 +1,38 @@
+## 2026-05-20 PM-178 — programme_json shape bug diagnosed; hotfix branch ready; OTA push deferred
+
+**Triggered by Dean reporting "Shannon Asiamah has no workout."** Supabase scan found Shannon's `workout_plan_cache` row present, active, structurally healthy (8-week PPL, 4 sessions/week, identical shape to working members). Bug was render-side.
+
+**Root cause — single bug class, two render sites.** `programme_json.weeks[i]` is emitted by the onboarding generator as a raw array of session objects. Both `exercise.html` `renderHero()` (Body hub "Up Next" card) and `workouts-programme.js` `renderProgramme()` (Workouts → My Programme tab) assume `weeks[i] = {week, sessions:[...]}`. Effect: Body hub renders "— sessions per week" + "Next Session" placeholder; My Programme tab crashes on `weekData.sessions.length` and fails to render. Every onboarded member affected, not Shannon specifically.
+
+**Hotfix branch ready, NOT pushed via OTA.** vyve-site `hotfix/programme-render-shape` at HEAD `b791fd515b59f8adde181021ccae4ccc590887be`. Branched from `83874dd5` — the SHA bundled into iOS 1.3 (2) and Android 1.0.3 per PM-115/116. Three files patched (exercise.html normaliser, workouts-programme.js normaliser + defensive `{week, sessions:[]}` fallback, sw.js cache key `2026-05-20-hotfix-programme-shape-a`). `node --check` clean. Branch `ahead_by 1` vs production SHA — surgical.
+
+**Parallel-session collision noted.** This session was about to cut the same branch when GitHub returned "Reference already exists" — a parallel Claude session had cut it at 20:38 UTC with a near-identical patch. Re-verified rather than re-shipped per §23.14 + §23.41 (the latter codified earlier this evening in PM-177). The parallel session's `workouts-programme.js` patch is strictly more defensive than what this session would have written — theirs handles the case where `weekData` is an object but `.sessions` is malformed too. Theirs stands as authoritative.
+
+**Brain drift caught and corrected.** Three corrections forced by live-state checks:
+
+1. `members.created_at` (not `join_date` — brain memory wrong).
+2. iOS/Android state in active.md §2 had inherited "PF-14b on backlog, ships AFTER bottom-nav restructure" through PM-172/174/175/176 handoffs even though PM-115/116 shipped bundled-mode iOS 1.3 (2) + Android 1.0.3 (10) + Capawesome OTA on 15 May. PM-177 inherited and propagated the same stale copy. **Corrected in this commit.**
+3. The drift caused this session to give Dean three different answers about whether Shannon would see vyve-site main pushes — first wrong (told him she WOULDN'T, on a stale 1.1 remote-origin assumption), then wrong again (told him she WOULD, having flipped without reading PM-115/116), then right after Dean pushed back twice. Dean was correct both times; the brain led the session astray. New §23.42 codifies the underlying architectural fact so this doesn't recur.
+
+**Dean's call — OTA deferred.** Main has accumulated unsandboxed in-progress work; bundling `www/` from main right now would ship that work alongside the fix. Dean's plan: ship a full OTA in a couple of days once main is sweep-checked, and port the hotfix into that bundle rather than running two pushes.
+
+**Real-time §23.41 demonstration during this brain commit.** Prepared the four-file commit, refreshed SHAs immediately before write per §23 hard rule, found ALL FOUR files had moved since session start. A *third* parallel session had landed PM-174.1 (breathwork auth fix) and PM-177 (breathwork music engine + thumbnails) in the gap. Re-merged the patches against live content, renumbered this session PM-177 → PM-178, dropped this session's planned §23.41 (parallel-session pre-flight check) because the parallel session had codified the identical rule under that number. Net new content from this session is just §23.42 below. §23.41 worked as designed in real time — caught the drift before clobbering.
+
+**What needs to happen at full-OTA time** (logged to backlog):
+
+1. Port the hotfix-branch patch forward into main (use parallel session's `workouts-programme.js` shape — strictly more defensive than what this session would have written).
+2. Sweep main for unsandboxed in-progress work that isn't ship-ready, since the OTA bundles everything in `www/`.
+3. First-ever OTA push: `npx @capawesome/cli apps:bundles:create --app-id f9961f66-eb66-4102-b1c5-f9b2c7baeebf --channel 89e12796-aa41-4176-8d78-bc2ef6dfd5c2 --path www`. Consider `--rollout 0.1` for first-push safety; 100% is fine here (two defensive lines, every member broken without it).
+
+**Production impact while deferred.** Every member's Body hub hero renders broken; every member's Workouts → My Programme tab fails to render. Fix lands for everyone on the next OTA, not before.
+
+**Files in this brain commit:**
+
+- `brain/changelog.md` — prepend PM-178 (this entry)
+- `brain/active.md` — rewrite §2 with PM-178 status; correct PF-14b drift inherited from PM-172/174/175/176/177
+- `brain/master.md` — prepend §19 (Current Status — PM-178); add §23.42 only (§23.41 already taken by parallel session, covers the same ground)
+- `tasks/backlog.md` — prepend hotfix-port-to-main + full-OTA-push tasks
+
 ## 2026-05-20 PM-177 — breathwork.html music engine + picker thumbnails (Mind v1 follow-up)
 
 **Shipped.** vyve-site `f5ad43f9b2f20409e4469bb38369e299b3369f44` — five files in

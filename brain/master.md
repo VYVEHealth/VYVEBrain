@@ -855,6 +855,32 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 20 May 2026 PM-178 (programme_json shape bug diagnosed; hotfix branch ready; OTA push deferred)
+
+Dean reported "Shannon Asiamah has no workout." Supabase scan found Shannon's `workout_plan_cache` row present and structurally healthy. Bug was render-side: both `exercise.html` `renderHero()` and `workouts-programme.js` `renderProgramme()` assume `programme_json.weeks[i] = {week, sessions:[...]}` but the onboarding generator emits `weeks[i]` as a raw array of session objects. Every onboarded member sees the broken render — Shannon happened to be the one to report it. Effect: Body hub hero renders "— sessions per week" + "Next Session" placeholder; My Programme tab crashes on `weekData.sessions.length` and fails to render.
+
+Hotfix branch `hotfix/programme-render-shape` ready at vyve-site HEAD `b791fd515b59f8adde181021ccae4ccc590887be`. Branched from `83874dd5` (the SHA bundled into iOS 1.3 (2) and Android 1.0.3 per PM-115/116). Three files patched (exercise.html + workouts-programme.js + sw.js cache-key bump). `node --check` clean. The branch was created by a parallel Claude session at 20:38 UTC before this session's create attempt — §23.14 + §23.41 collision; this session re-verified rather than re-shipped per the new rules.
+
+**OTA push deferred per Dean.** Main has accumulated unsandboxed in-progress work; Dean's call is to roll the hotfix into a full OTA bundle in a couple of days once main is sweep-checked. First-ever OTA push to production stays unfired tonight.
+
+**Brain drift caught and corrected.** active.md §2 had inherited "PF-14b on backlog, still to ship" through PM-172/174/175/176/177 handoffs, despite PM-115/116 shipping PF-14b iOS 1.3 + Android 1.0.3 + Capawesome OTA on 15 May. The drift cost three wrong turns in tonight's conversation before Dean pushed back enough times to force the brain re-read. §2 corrected in this commit. New §23.42 codifies the architectural implication: post-bundled, a vyve-site main push no longer reaches production users until an OTA bundle is built and pushed via Capawesome. (§23.41 — parallel-session safety protocol — was already codified by the parallel PM-177 session under that number, so this commit doesn't duplicate it.)
+
+**State pointers:**
+- vyve-site `main` HEAD: significantly ahead of `83874dd5` — PM-174 + PM-174.1 + PM-175 + PM-176 + PM-177 all landed today (Mind v1 sprint + breathwork follow-ups). Verify by `GITHUB_LIST_COMMITS` if needed.
+- vyve-site `hotfix/programme-render-shape` HEAD: `b791fd51` (this session's tracked fix, unmerged).
+- iOS production: 1.3 (2) bundled-mode, vyve-site `83874dd5`, Capawesome SDK wired, listening on production channel.
+- Android production: 1.0.3 (10) bundled-mode, vyve-site `83874dd5`, Capawesome SDK wired, listening on production channel.
+- Capawesome production channel: `89e12796-aa41-4176-8d78-bc2ef6dfd5c2` (app `f9961f66-eb66-4102-b1c5-f9b2c7baeebf`). **Zero OTA bundles deployed to date.** The next OTA push will be the first one to production users.
+- Capawesome trial ends 28 May 2026, decision 27 May.
+
+**What needs to happen at next-OTA time:**
+1. Port the hotfix-branch patch forward into main (parallel session's `workouts-programme.js` shape is the better version — strictly more defensive).
+2. Sweep main for unsandboxed in-progress work that isn't ship-ready.
+3. Pull `www/` from vyve-site at the merged SHA into `~/Projects/vyve-capacitor/www/` (still via the §23.16 Composio-tarball pattern — vyve-capacitor is still not a git repo per PM-115/116 backlog).
+4. `npx @capawesome/cli apps:bundles:create --app-id f9961f66-eb66-4102-b1c5-f9b2c7baeebf --channel 89e12796-aa41-4176-8d78-bc2ef6dfd5c2 --path www`. Optional `--rollout 0.1` for first-push safety.
+
+---
+
 ## 19. Current status — 20 May 2026 PM-173 (Mind section infrastructure: schema + Dexie + sync + 4 patterns + 30 affirmations)
 
 **20 May 2026 — PM-173 (vyve-site `fbda5ac8`): Mind section foundation landed. No member-visible UI change — three more vyve-site commits to come.** Four Supabase migrations (`create_mind_activities_table`, `create_mind_catalogue_tables`, `seed_mind_catalogue_day1`, `breathwork_patterns_audio_columns`) + one atomic vyve-site commit. Three new tables: `mind_activities` (member-scoped, `kind` discriminator per PM-172 Path 2 lock, no daily cap, `set_activity_time_fields` trigger, RLS subquery-wrapped), `breathwork_patterns` (catalogue, 4 active rows: box-4444 / sigh / 478 / coherent-55, audio URL columns nullable for day-1-silent + post-launch ElevenLabs), `affirmations_library` (catalogue, 30 active rows — **Claude-generated placeholders, Lewis to edit live in Supabase**, 5 categories: focus/growth/resilience/self-worth/self-care).
@@ -2782,6 +2808,24 @@ expected payload; md5 mismatch was the only signal. For binaries, route
 via GitHub web UI direct-upload OR via Supabase Storage bucket (per
 §23.40), NOT via workbench inline base64.
 
+
+
+## §23.42 — Bundled-native changes the meaning of every vyve-site main push (PM-115/116/178, 20 May 2026)
+
+Through 27 April 2026, vyve-site `main` was the live source for every user — the Capacitor wrap pointed `server.url` at `https://online.vyvehealth.co.uk`, so every commit to main was instantly visible on every device. Mental model: "push to main = users see it."
+
+After PM-115/116 (15 May 2026), iOS 1.3 (2) and Android 1.0.3 (10) ship bundled-mode. Capacitor packages a frozen snapshot of vyve-site into the IPA/AAB and reads from `capacitor://localhost`. Production users see the bundled SHA (`83874dd5` as of PM-115/116), full stop. A vyve-site main push **does not reach them** until an OTA bundle is built from that SHA and pushed to the Capawesome production channel.
+
+**Implications future Claudes need to internalise:**
+
+1. "Push to main and Shannon sees it" is false for bundled users. It's still true for any remaining 1.1 remote-origin users, and true for Dean's dev iPhone if he's repointed `server.url` for testing — but those are exceptions, not the rule.
+2. A bug fix on main is **not shipped** until OTA. Verification on Dean's dev loop (server.url-pointed) doesn't verify production behaviour.
+3. A hotfix-branch-then-OTA flow is the surgical option when main has unship-ready work. Branch from the production SHA, cherry-pick the fix, bundle from the hotfix branch. Main never enters the bundle.
+4. A full-OTA flow bundles everything currently in `www/`. Any unshipped in-progress work on main goes out with it unless it's gated behind a feature flag or hidden from members. **Sweep main before bundling.**
+5. The Capawesome channel listens for bundles tagged for the matching native version range. Same channel can serve iOS and Android (PM-115/116 set them to share `89e12796-aa41-4176-8d78-bc2ef6dfd5c2`).
+6. First-ever push of a channel: consider `--rollout 0.1` for safety. Subsequent pushes can default to 100% once the workflow is proven.
+
+The brain still carries scattered language assuming the old remote-origin model ("members will see it on next refresh", "push to main"). When found, correct in-line, not at session close — drift compounds.
 
 ## 24. Premium Feel Campaign — local-first migration (active)
 

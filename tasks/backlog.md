@@ -1,3 +1,54 @@
+## Added 20 May 2026 — PM-178 hotfix port + full-OTA push (three tasks, all P0 for next-OTA session)
+
+Tonight's PM-178 session diagnosed the `programme_json.weeks` shape bug — every onboarded member's Body hub hero and Workouts → My Programme tab render broken. A parallel Claude session already committed the fix to vyve-site `hotfix/programme-render-shape` at `b791fd515b59f8adde181021ccae4ccc590887be` (branched from production SHA `83874dd5`). Patch verified clean. **OTA push deferred per Dean** — main has accumulated unsandboxed in-progress work, so the plan is to roll the hotfix into a full OTA bundle in a couple of days once main is sweep-checked.
+
+### Three tasks for the next-OTA session, in order:
+
+- [ ] **Port hotfix-branch patch forward into main.** Two files (`exercise.html` `renderHero()`, `workouts-programme.js` `renderProgramme()`) plus sw.js cache-key bump. Use the parallel session's `workouts-programme.js` shape verbatim — it's strictly more defensive than what PM-178 would have written (adds an extra `{week, sessions: []}` fallback for the case where `weekData` is an object but `.sessions` is malformed). Diff against `hotfix/programme-render-shape@b791fd51` for the canonical source. Atomic commit on main, brain entry as the new PM at that point.
+
+- [ ] **Sweep main for unship-ready in-progress work** before bundling. Dean's words: "I've been editing a lot of stuff in the repo and I haven't sandboxed this." Whatever is sitting on main that works on Dean's dev loop (server.url-pointed iPhone) but isn't tested for a bundled cold-start needs to be either finished or gated behind feature flags / hidden surfaces. The OTA bundles **everything** in `www/`. Specific areas to check: PM-174 breathwork (catalogue tables present, verify hydrate fallback handles fresh cold-start), PM-174.1 (auth shape fix + nav-back, ensure no regression on other multi-view pages), PM-175 journal, PM-176 affirmations, PM-177 breathwork music engine + thumbnails.
+
+- [ ] **First-ever OTA push to Capawesome production channel.** Commands codified in PM-178 changelog entry + §19/§23.42:
+
+  ```bash
+  cd ~/Projects/vyve-capacitor
+  mv www www.bak-pre-ota-$(date +%Y%m%d-%H%M%S)
+  mkdir www
+  curl -L -H "Authorization: token <PAT>" \
+    -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/VYVEHealth/vyve-site/tarball/<merged-SHA>" \
+    -o /tmp/vyve-site-ota.tar.gz
+  tar -xzf /tmp/vyve-site-ota.tar.gz -C www --strip-components=1
+
+  # Verify patch landed
+  grep -c "HOTFIX (programme-render-shape)" www/exercise.html www/workouts-programme.js
+
+  # Push
+  npx @capawesome/cli apps:bundles:create \
+    --app-id f9961f66-eb66-4102-b1c5-f9b2c7baeebf \
+    --channel 89e12796-aa41-4176-8d78-bc2ef6dfd5c2 \
+    --path www
+  ```
+
+  First-ever OTA: consider `--rollout 0.1` for safety. PM-178's read is 100% is fine because the patch is two defensive lines and every member's My Programme tab is currently broken. Dean's call at push time.
+
+### Status of items that depend on this OTA
+
+These are already wired/built on main but **invisible to production users until the OTA pushes**:
+- PM-174 breathwork.html real wiring (shipped 20 May).
+- PM-174.1 breathwork.html auth + view-aware nav-back fix.
+- PM-175 journal.html real wiring.
+- PM-176 affirmations.html real wiring.
+- PM-177 breathwork.html music engine + picker thumbnails.
+- PM-178 hotfix (this entry — only on the hotfix branch, not main yet).
+- Any other vyve-site main commits between `83874dd5` and the merged SHA at OTA time.
+
+### Why deferred rather than shipped tonight
+
+Bundling `www/` from main right now would ship Dean's in-progress unsandboxed work alongside the fix. Bundling from `hotfix/programme-render-shape` would have been safe but means a second OTA in a few days when main is ready — two pushes in a row on the first-ever production OTA workflow is more risk than one well-prepared push. The hotfix branch is preserved unmerged for the two-day window — if the breakage starts costing customer trust, the branch is a one-command bundle away.
+
+---
+
 ## Added 20 May 2026 — Mind section v1 (4 of 4 user-visible Mind v1 pages shipped: breathwork PM-174 + music PM-177, journal PM-175, affirmations PM-176; mind.html hub wiring still pending)
 
 Mind section infrastructure landed PM-173 (`fbda5ac8`). Schema + Dexie + sync + 4 patterns + 30 affirmations in place. **All four follow-up vyve-site commits shipped** — only mind.html hub wiring still pending.

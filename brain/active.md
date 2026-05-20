@@ -50,58 +50,36 @@ When the three disagree:
 
 ## 2. Live state snapshot (refreshed every session-end)
 
-**SESSION HANDOFF — 2026-05-20 (PM-177: breathwork.html music engine + picker thumbnails shipped).** Follow-up to PM-174's session engine and PM-174.1's auth+nav fixes. Four pattern thumbnails live at vyve-site repo root (Dean uploaded via GitHub web UI — JPEG transmission through workbench cells fails silently above ~4KB, see §23.41). Five source files committed via workbench: breathwork.html now has music UI (intro toggle + session mini-card + skip), startMusic/stopMusic call-sites wired, thumbMap markup swap replacing PM-174 text glyphs, localStorage prefs for on/vol/recent-FIFO, default OFF first session. db.js SCHEMA_V7 + .version(7) for breathwork_music catalogue, sync.js hydrate added, sw.js cache key bumped to pm177-music-thumbs-a (past PM-176-affirmations), index.html Update 37. **PM-176 (affirmations) and PM-175 (journal) preserved untouched** — parallel-session rebase done surgically against live HEAD, not against stale session-start snapshots. Mind v1 now has FOUR user-visible pages real (breathwork PM-174 + journal PM-175 + affirmations PM-176 + breathwork-music PM-177). Supabase: breathwork_music seeded 4 rows (Driftglass Halo / Hearth Under Ash / Teal Drift / Teal Horizon, sort 10/20/30/40, pattern_affinity tagged), Storage bucket breathwork-music public with 4 MP3s (Hearth filename has stray-space encoding %20_Under%20_Ash).
+**SESSION HANDOFF — 2026-05-20 (PM-178: programme_json shape bug diagnosed; hotfix branch ready; OTA push deferred).** Dean reported "Shannon has no workout" → Supabase scan found her row present and well-formed; bug was render-side. `programme_json.weeks[i]` is emitted by the generator as a raw array of session objects, but `exercise.html` `renderHero()` (Body hub) and `workouts-programme.js` `renderProgramme()` (Workouts → My Programme tab) both assume the wrapped shape `{week, sessions:[...]}`. Symptom: Body hub renders "— sessions per week" + "Next Session" placeholder, My Programme tab crashes silently and fails to render. Every onboarded member affected, not Shannon specifically.
 
-**New §23 hard rule: §23.41 — parallel-session safety protocol.** When other Claude sessions are actively committing to the same repo, fetching SHAs once at session start is NOT safe — content drifts off the rebase base within minutes, and committing on stale base will overwrite parallel work. Required: (a) fetch live HEAD immediately before any rebase; (b) diff live against staged at structural markers (SCHEMA versions, cache keys, vbb-markers) to detect parallel claims; (c) renumber PM tags and cache-key suffixes monotonically past parallel ships; (d) brain-commit at END of each session, not deferred.
+**Hotfix branch ready, NOT yet pushed via OTA.** vyve-site `hotfix/programme-render-shape` at HEAD `b791fd51` (committed by parallel Claude session at 20:38 UTC, re-verified rather than re-shipped per §23.14 + §23.41). Branched from `83874dd5` — the SHA bundled into iOS 1.3 (2) + Android 1.0.3 per PM-115/116. Three files patched. `node --check` clean. Branch `ahead_by 1` vs production — surgical.
 
----
+**Dean's call — OTA deferred.** Main has accumulated unsandboxed in-progress work over the past week; bundling `www/` from main isn't safe until that work is sweep-checked. Plan: ship a full OTA in a couple of days, port the hotfix forward into main as part of it, single OTA push not two.
 
+**Production impact while deferred.** Every member's Body hub renders broken, every member's My Programme tab fails to render. Fix lands for everyone on the next OTA push, not before.
 
-**SESSION HANDOFF — 2026-05-20 (PM-176: affirmations.html shipped real, fully wired).** Third user-visible commit of Mind v1, after PM-174 breathwork and PM-175 journal. The page reads catalogue + favourites + activity from Dexie first, picks today's affirmation deterministically via `djb2(memberEmail + 'YYYY-MM-DD') % active-count`, logs Save → mind_activities via the §23.39 skeleton, and toggles Favourite → new `affirmation_favourites` join table via a parallel optimistic skeleton. Browse-all has 5 category chips (focus/growth/resilience/self-care/self-worth) over 30 active rows. Three Mind v1 pages now real. Next: mind.html hub wiring (P1, ~30 min — strip placeholder-tag, wire hardcoded `3` streak + `2/5` counter to Dexie reads).
+**Brain drift corrected in this commit.** §2 had inherited "PF-14b on backlog, ships AFTER bottom-nav restructure" through PM-172/174/175/176/177 handoffs despite PM-115/116 shipping bundled-mode iOS 1.3 (2) + Android 1.0.3 (10) + Capawesome OTA on 15 May. New §23.42 codifies the architectural implication: post-bundled, a vyve-site main push no longer reaches production users until an OTA bundle is built and pushed via Capawesome.
 
-**This session shipped.**
-- **vyve-site `dd900fb1`**: 5 files in one atomic commit.
-  - `affirmations.html` 16.6KB placeholder → 44KB full rewrite. Three sections (hero today / favourites strip hidden-when-empty / browse-all with chips). Mirrors breathwork.html helper layout verbatim. Both inline JS blocks node-check clean. §23.39 logToday() + parallel optimistic favourite toggle (insert + delete via the UNIQUE constraint columns, not row UUID). Share via navigator.share with clipboard fallback. Toast + haptic + .saved-anim keyframe pulse on save. Tap-any-row-to-set-as-today via localStorage override that clears on date roll-over.
-  - `db.js` SCHEMA_V6 — adds `affirmation_favourites: '&id, member_email, affirmation_id, saved_at, [member_email+affirmation_id]'`. db.version(6) chained. Accessor registered as makeTable('affirmation_favourites') next to mind_activities. SCHEMA_V5 unchanged (breathwork_imagery stays at v5).
-  - `sync.js` — member-scoped hydrate entry for `affirmation_favourites` after mind_activities block. No activity_date lookback — pulls full per-member set (~30 row ceiling).
-  - `sw.js` cache-key bump `pm175-journal-a` → `pm176-affirmations-a`.
-  - `index.html` vbb-marker `Update 35` → `Update 36`.
-- **Supabase** (migration `pm175_create_affirmation_favourites` — name retains 175 because that was the migration slot, table name is canonical, no rename needed):
-  - `affirmation_favourites` table created. Columns: id uuid PK, member_email text NOT NULL, affirmation_id uuid NOT NULL REFERENCES affirmations_library ON DELETE CASCADE, saved_at timestamptz NOT NULL DEFAULT now(), client_id uuid.
-  - UNIQUE(member_email, affirmation_id) — double-favourite prevented at DB.
-  - Index on (member_email, saved_at DESC) for the favourites strip.
-  - RLS enabled with three policies (SELECT/INSERT/DELETE — no UPDATE, favourites are immutable). All wrap auth.email() in (SELECT ...) per §23 PM-8 hard rule.
+**Real-time §23.41 demonstration.** This session's brain commit was prepared, refreshed SHAs immediately before write per §23 hard rule, found all four files had drifted between session start and commit attempt — a third parallel session had landed PM-174.1 + PM-177 in the gap. Re-merged patches against live content, renumbered PM-177 → PM-178, dropped this session's planned §23.41 because the parallel session had already codified the identical rule under that number. Net new content from this session is just §23.42. §23.41 caught the drift before clobbering — working as designed.
 
-**PM-175 / PM-176 numbering note.** Brain entered this session with affirmations slated as PM-175 (per PM-174 handoff's "WHAT'S READY FOR NEXT SESSION"). Journal shipped in a parallel session at vyve-site `79cbcf1e` (20:46 UTC) and took the PM-175 number. Drift caught on initial SHA refresh — sw.js + index.html had moved between read and commit. Rebuilt patches off latest and renumbered to PM-176. **Future rule** (logging as a soft §23 hard rule candidate, not yet codified): when a parallel session is suspected, fetch `GITHUB_LIST_COMMITS` early to confirm session number isn't taken. Cheap check, prevents the rebuild round-trip.
+**LAUNCH SEQUENCING — CORRECTED.** PF-14b is **SHIPPED**, not pending:
+- iOS 1.3 (2) bundled-mode + Capawesome live-updates: submitted 15 May (PM-115). Status check in production channel + App Store Connect is a post-PM-178 follow-up.
+- Android 1.0.3 (versionCode 10) bundled-mode + Capawesome: submitted to Google Play Production 15 May (PM-116).
+- Capawesome 14-day trial expires 28 May 2026 — decision 27 May, default keep at £15/mo USD Starter.
+- Bottom-nav restructure (PF-21) remains pending. **It now ships as an OTA bundle update**, not a native binary release. Same for all Mind v1 work (PM-174/174.1/175/176/177) and any other commits past `83874dd5` — wired on main, won't reach members until the next OTA bundle is pushed.
 
-**LAUNCH SEQUENCING — UNCHANGED.** PF-14b (bundled mode + Capgo + iOS 1.2 + Android 1.0.3) still ships AFTER bottom-nav restructure. Mind v1 pages still landing BEFORE the restructure. Three of four user-facing Mind pages now real (breathwork PM-174, journal PM-175, affirmations PM-176). mind.html hub still hardcoded.
+**What's ready for next session.**
+- **Hotfix-port-to-main + first-ever full OTA push.** Dean's deferred work. Port the hotfix branch's two-file patch forward into main (the parallel session's `workouts-programme.js` shape is the better version — strictly more defensive than what PM-178 would have written). Sweep main for any in-progress work that isn't ship-ready. Then: `npx @capawesome/cli apps:bundles:create --app-id f9961f66-eb66-4102-b1c5-f9b2c7baeebf --channel 89e12796-aa41-4176-8d78-bc2ef6dfd5c2 --path www`. Consider `--rollout 0.1` for first-push safety.
+- **mind.html hub wiring** (P1, ~30 min — was pending from PM-176 handoff, may have been picked up by PM-177's parallel session — verify before duplicating). Wire hardcoded `3` streak + `2/5` counter to Dexie reads. Won't reach members until the next OTA.
+- **affirmations / journal / breathwork copy review** — Lewis-side. Multiple `COPY_LEWIS_REVIEW`-flagged seeds from PM-173/174/175/176 still pending.
+- **visualisation.html** — BLOCKED on ElevenLabs assets.
 
-**WHAT'S READY FOR NEXT SESSION (mind.html hub wiring — P1, lightest of the remaining).**
-- `mind.html` currently has `3` streak and `2/5` counter as static strings, plus a visible `placeholder-tag`.
-- Wire `3` to: distinct activity_dates in last 30 days where `kind IN ('breathwork','journal','affirmation','visualisation')` consecutive-day count.
-- Wire `2/5` to: count of distinct kinds the member has touched today (cap at 5 once visualisation lands).
-- Strip the `placeholder-tag` element from the markup.
-- ~30 min Claude time, no schema or sync changes, no Lewis copy gate.
-
-**WHAT'S READY POST-PM-176 (Lewis-side, no engineering needed).**
-- Lewis can edit affirmation copy any time via Supabase Studio. `is_active` toggle takes effect on next hydrate. 30 rows currently `COPY_LEWIS_REVIEW`-flagged from PM-173 seed.
-- Lewis can add new affirmations any time: INSERT into `affirmations_library` with `text`, `category`, `sort_order`. Page picks up on next session reload via Dexie hydrate.
-- Same applies to the 5 category set — adding a new category to a row will surface a new chip on the page automatically.
-
-**Open product calls (resolved this session, document for posterity).**
-- "Save" vs "Favourite" split: Save = mind_activities log (kind=affirmation, daily counter). Favourite = persistent collection. Two distinct buttons, both on hero card. DECIDED.
-- Share copy format: `"<affirmation>" — via VYVE`, no URL. Members share the line, not a recruitment link. DECIDED.
-- Daily pick: djb2(email+date) mod active-count. Stable per local day, no server cron. DECIDED.
-- Favourites DELETE keying: `?member_email=eq.X&affirmation_id=eq.Y` (UNIQUE constraint columns), not row UUID — survives client/server id mismatches and double-tap races. DECIDED.
-- Placeholder "All affirmation copy — Lewis sign-off before live" banner: DROPPED from the real page. Trial-safe per Dean's PM-94 framing, same disposition as journal's PROMPT_TABLE.
-
-**Sessions still ahead.**
-- **mind.html hub wiring.** P1, ~30 min. Above.
-- **PM-175 follow-up — music wiring on breathwork.html.** BLOCKED on Lewis sourcing 3+ ambient tracks.
-- **mind-insights.html.** P2, post-data.
-- **visualisation.html.** BLOCKED on ElevenLabs assets.
-- **PF-14b — bundled mode + Capgo + iOS 1.2 + Android 1.0.3.** LAUNCH BLOCKER, separate workstream.
-
+**Sessions still ahead (post next-OTA).**
+- Apple Health page full redesign (replacing debug-surface layout).
+- `auth_blocked` banner in member UI.
+- B2B volume tier definition before first enterprise contract.
+- Achievements system major overhaul (post-trial).
+- In-App Tour build (PF-23 — V2 target, blocked on Lewis copy).
 
 
 ## 3. The active campaign — Premium Feel Migration (local-first via Dexie)
