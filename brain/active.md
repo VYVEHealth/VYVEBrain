@@ -50,55 +50,49 @@ When the three disagree:
 
 ## 2. Live state snapshot (refreshed every session-end)
 
-**SESSION HANDOFF — 2026-05-20 (PM-174: breathwork.html shipped real, fully wired).** First user-visible commit of Mind v1. The page now reads catalogue from Dexie, runs an animated SVG ring engine with phase tones via Web Audio, rotates background imagery with Ken Burns crossfade, and logs to mind_activities via the §23.39 optimistic-first skeleton. 10 imagery rows live in Supabase Storage. Music UI deferred — catalogue table exists but empty; page hides music controls when zero tracks. Next session: affirmations.html, or PM-175 music wiring when Lewis has tracks.
+**SESSION HANDOFF — 2026-05-20 (PM-175: journal.html shipped real, fully wired).** Second user-visible commit of Mind v1. The page now reads/writes journal entries to Dexie first via the §23.39 skeleton, rotates a daily prompt deterministically (40-entry inline table, day-of-year mod length), renders a month-grid calendar with per-day dot density, and supports edit/delete on existing entries. mind_activities and §23.39 were already live from PM-173/PM-174 — this commit is pure page-side wire. Next session: affirmations.html (P0), or mind.html hub wiring (P1).
 
 **This session shipped.**
-- **vyve-site `0e59c180`**: 5 files in one atomic commit.
-  - `breathwork.html` 19KB → 72KB full rewrite from PM-173 static mockup.
-  - `db.js` SCHEMA_V5 (+ `breathwork_imagery` accessor, db.version(5)).
-  - `sync.js` `breathwork_imagery` catalogue hydrate entry (catalogue scope, public read, mirrors `breathwork_patterns`).
-  - `sw.js` cache-key bump `pm173-mind-infrastructure-a` → `pm174-breathwork-a`.
-  - `index.html` vbb-marker `Update 31` → `Update 32`.
-  - `node --check` clean on all inline JS pre-commit; bug caught and fixed: `.replace(/\n/g, '<br>')` regex was broken by Python string interpolation (real newline between slashes); also nested-quote escape bug in renderPatterns onclick template, fixed by switching to `data-pid` attribute lookup pattern.
-- **Supabase** (separate from the vyve-site commit, all earlier in the same session):
-  - `create_breathwork_music_table` migration applied. Empty.
-  - `create_breathwork_imagery_table` migration applied.
-  - `seed_breathwork_imagery_day1` migration applied — 10 rows: 4 dawn, 2 water, 1 pines, 1 dusk, 1 dunes, 1 sky. All `pattern_affinity` tagged toward 2 best-fit patterns.
-  - Supabase Storage bucket `breathwork-imagery` created public-read, 10 JPEGs uploaded (150-335KB each).
+- **vyve-site `79cbcf1e`**: 3 files in one atomic commit.
+  - `journal.html` 16KB → 57KB full rewrite from PM-158 static mockup.
+  - `sw.js` cache-key bump `pm174-breathwork-c` → `pm175-journal-a`.
+  - `index.html` vbb-marker `Update 34` → `Update 35`.
+  - `node --check` clean on both inline JS blocks before commit.
+  - Post-commit MD5-equal verify on all three files at commit SHA `79cbcf1e`.
+- No schema changes. `mind_activities` table + Dexie store + sync.js hydrate entry all live since PM-173.
 
-**LAUNCH SEQUENCING — UNCHANGED.** PF-14b (bundled mode + Capgo + iOS 1.2 + Android 1.0.3) still ships AFTER the bottom-nav restructure. Mind section UI lands BEFORE the restructure. PM-174 is the first user-visible Mind v1 commit. Affirmations, journal, mind hub still ahead.
+**LAUNCH SEQUENCING — UNCHANGED.** PF-14b (bundled mode + Capgo + iOS 1.2 + Android 1.0.3) still ships AFTER the bottom-nav restructure. Mind section UI lands BEFORE the restructure. PM-174 + PM-175 are the first two user-visible Mind v1 commits. Affirmations + mind hub still ahead.
 
 **WHAT'S READY FOR NEXT SESSION (affirmations.html wiring — Mind v1 P0).**
-- `affirmations_library` table has 30 active rows (PM-173 seed), still all Claude-generated placeholders flagged for Lewis review.
-- `mind_activities` table ready, kind discriminator includes `'affirmation'`.
-- Dexie store registered.
-- §23.39 skeleton documented and demonstrated in breathwork.html — affirmations.html copies the same shape verbatim. The ref_id is the affirmation id; duration_seconds can be NULL or 0 (it's not a timed activity).
+- `affirmations_library` table has 30 active rows (PM-173 seed), all Claude-generated placeholders flagged `COPY_LEWIS_REVIEW`.
+- `mind_activities` kind discriminator already includes `'affirmation'`.
+- Dexie store + sync.js hydrate already cover the data path.
+- §23.39 skeleton now demonstrated TWICE (breathwork PM-174, journal PM-175) — affirmations.html copies the shape verbatim. The ref_id is the affirmation uuid; duration_seconds NULL.
+- Open decision still: `affirmation_favourites` join table vs `members.affirmation_favourites uuid[]`. Recommend join table for ordering by saved_at; mirror shape of any other join we ship.
 
-**WHAT'S READY POST-PM-174 (Lewis-side, no engineering needed).**
-- Lewis can upload more imagery any time. Path: drop JPEG into `breathwork-imagery` bucket, INSERT row into `breathwork_imagery` with image_url + mood + sort_order. Page picks it up on next session reload via Dexie hydrate.
-- Lewis can edit affirmation copy any time via Supabase Studio. `is_active` toggle takes effect on next hydrate.
-- Music: when Lewis has 3+ tracks, INSERT into `breathwork_music` (empty today). PM-175 ships the music UI in a follow-up commit. Catalogue-table approach validated end-to-end via PM-174.
+**WHAT'S READY POST-PM-175 (Lewis-side, no engineering needed).**
+- Lewis can edit any of the 40 journal prompt entries in journal.html `PROMPT_TABLE` directly (search `COPY_LEWIS_REVIEW`). ids `p001..p040` are stable and stored as `ref_id` on saved entries — editing copy doesn't break history; deleting a row just hides the "Prompt:" strap on entries that referenced it (entry body intact).
+- Future "live-editable prompts" (no deploy needed) → promote `PROMPT_TABLE` to a `journal_prompts` catalogue table identical to `breathwork_patterns`. Not needed for launch.
 
 **Dean's directives this session.**
-- "As in-depth as possible — best breathwork in any UK wellbeing app". Hit: animated ring, knob orbit peripheral cue, phase tones, imagery rotation with pattern affinity, resume window, undo, optimistic-first log, tutorial overlay, streak chip + history strip.
-- "Bundle vs Supabase Storage for imagery" — landed on Supabase Storage for now because Dean is testing via live-update dev loop (server.url). Bundled migration is a post-PF-14b refinement. §23 rule logged.
-- Music deferred until Lewis sources tracks. Page handles empty-catalogue state.
+- "Journal prompt with a different question day-to-day" → deterministic daily pick via day-of-year mod table length. No AI, no async, no DB table.
+- "Write to dexie immediately so it instantly loads on the phone and saves there" → mapped to §23.39's Dexie-synchronous-first step.
+- "Then should backup to supabase" → un-awaited POST + outbox fallback per §23.39 step 4.
+- "Show a calendar with all entries and they should be able to click the calendar to see previous entries" → built as the second view with per-day dot density and tap-to-open Entry view.
 
 **Open product calls (resolved this session, document for posterity).**
-- Phase tones: Web Audio API synthesised inline (220Hz inhale, 165Hz exhale). DECIDED.
-- Round count UI: stepper with `default_rounds` preselected, min 1 max 30. DECIDED.
-- Tutorial overlay: inline collapsed card, expanded by default first-session-per-pattern, marked seen on Begin tap. DECIDED.
-- End-screen orb: soft glow (no figurative tick). DECIDED.
-- "Another round" + "Different pattern" ghosts on end screen: KEPT both — three-tap journey to next pattern was unnecessary friction.
+- Prompt rotation: deterministic daily, 40 prompts inline, Lewis owns copy. DECIDED.
+- Edit/delete in v1: YES — journal entries are the one Mind kind a member would realistically revise. DECIDED.
+- Confirm on delete: window.confirm gate. Not the breathwork 5s undo (this is intentional delete, not undo). DECIDED.
+- beforeunload guard if textarea non-empty: YES, prevents accidental loss before save. DECIDED.
+- Autosave drafts: NO in v1 — PF-28 territory, defer. DECIDED.
 
 **Sessions still ahead.**
-- **PM-175 — music wiring.** Blocked on Lewis sourcing 3+ ambient tracks. Implementation shape: intro-screen music row (like tones row), session-screen mini-track card, cycle on session start with FIFO last-3 exclusion identical to imagery, volume in localStorage, Off as first-ever default. ~200 lines added to breathwork.html.
-- **affirmations.html real wiring.** P0. Deterministic daily pick (date-based seed), Save → log to `mind_activities` kind='affirmation' ref_id=affirmation_uuid via §23.39 skeleton. Favourites view. Storage decision: `affirmation_favourites` join table (cleaner than `members.affirmation_favourites uuid[]` because it allows ordering by saved_at).
-- **journal.html real wiring.** P1. Textarea + history list, kind='journal'. Decide prompt rotation shape (static daily prompt? AI-generated? Just "what's on your mind"?).
-- **mind.html hub wiring.** P1. Wire hardcoded `3` streak and `2/5` counter to Dexie `mind_activities` reads. Strip `placeholder-tag`.
-- **mind-insights.html.** P2, post-data.
-- **visualisation.html.** BLOCKED on ElevenLabs assets.
-
+- **affirmations.html real wiring (P0).** Deterministic daily pick (date-based seed), Save → log via §23.39, favourites view via join table.
+- **mind.html hub wiring (P1).** Wire hardcoded `3` streak and `2/5` counter to Dexie `mind_activities` reads. Strip `placeholder-tag`.
+- **mind-insights.html (P2).** Needs ~2 weeks of post-launch data.
+- **visualisation.html.** BLOCKED on ElevenLabs assets (Lewis).
+- **PM-175 music wiring** (carry-over from PM-174 ahead-list). Blocked on Lewis sourcing 3+ ambient tracks for breathwork.
 
 ## 3. The active campaign — Premium Feel Migration (local-first via Dexie)
 
@@ -315,7 +309,7 @@ For full credentials, EF inventory, table inventory: fetch `master.md` §24 (ren
 
 ## 8. Editorial notes
 
-- **Last full rebuild:** 13 May 2026 PM-77. Latest patches: PM-78 (PF-1/2/3 + spike-gate rule), PM-79 (PF-4/5 + delta-pull cursor semantics), PM-79.1 (PF-23..PF-27 added — interactive tutorial + 4 polish tasks), PM-79.2 (PF-28 added — in-progress session + form draft persistence), PM-79.3 (PF-6 + PF-7 SHIPPED — habits + workouts Dexie-first reads, including PM-77.3 thumbnail prefetch on workouts), PM-79.4 (PF-29 added — Android Health Connect autotick wiring; PF-14 scope expanded with Android two-device verification, Capacitor scheme check, Dexie source indicator), PM-82.5 (brain restore — PM-80/81/82 ship narratives spliced into changelog; §2/§3/§5 advanced to PF-8 SHIPPED state; PF-4b surfaced into §3; orphan-commit drift documented in changelog as a §23 hard-rule candidate). PM-83 (PF-13 scope expanded — persona-led welcome + safe goal echo from onboarding questionnaire; Dean owns copy directly, removed from Lewis blocker list; HAVEN-never-personalised hard rule documented). PM-87 (PF-10), PM-88 (PF-11a + PF-11 split), PM-89 (PF-11b — index.html Dexie-derived home-state computation via home-state-local.js). PM-90 (PF-30 SHIPPED — perf.js v3 telemetry redirect + PostHog session replay + new dexie/perf events; PostHog identity confirmed already wired in auth.js, memory note on "pending" was stale; Sentry deferred to PF-30b pending DSN). PM-91 (PF-12 SHIPPED — settings.html Dexie-first + 6 optimistic upsert sites; certificates/engagement carved out to PF-12b). PM-92 (PF-13 scaffolding SHIPPED — `/hydration.js` persona-led welcome overlay with HAVEN never-echo + SAFE_ECHO_GOALS whitelist + 1500ms min display; copy gate open, Dean to finalise 13 distinct COPY_TABLE entries). **PM-93 (verification-mode audit repair — brain drift caught: spike HEAD `707aa3af`→`11abad83`, SW cache key `pm90-pf30-telem-a`→`pm92-pf13-hydration-a`, two missing changelog entries (PM-91 + PM-92) re-spliced from live commit messages, playbook PF-12 + PF-13 statuses flipped SHIPPED, playbook PF-30 stale 'identity pending' language stripped, new §4 hard rule on plain-UTF-8 in upserts content codified)**. PM-94 (trial-phase placeholders consciously deferred — hydration COPY_TABLE finalisation + Achievements system overhaul both logged to backlog as P1 post-launch with Dean's explicit framing; memory entry #17 captures the trial-safe operating mode for both items). PM-106 (2026-05-14) — campaign reshape: Habits "undefined" canary on test1@test.com surfaced join-column hydrate gap; §3 contract strengthened; §23.11/12/13 added; PF-40 consolidation campaign scoped end-to-end (12 sub-items). PM-107 (2026-05-14) — PF-40.1 audit shipped; new artefacts `audit/pf-40-1-callsites.json` + `playbooks/pf-40-local-first-consolidation.md`; §2 + §5 + §8 patched.
+- **Last full rebuild:** 13 May 2026 PM-77. Latest patches: PM-78 (PF-1/2/3 + spike-gate rule), PM-79 (PF-4/5 + delta-pull cursor semantics), PM-79.1 (PF-23..PF-27 added — interactive tutorial + 4 polish tasks), PM-79.2 (PF-28 added — in-progress session + form draft persistence), PM-79.3 (PF-6 + PF-7 SHIPPED — habits + workouts Dexie-first reads, including PM-77.3 thumbnail prefetch on workouts), PM-79.4 (PF-29 added — Android Health Connect autotick wiring; PF-14 scope expanded with Android two-device verification, Capacitor scheme check, Dexie source indicator), PM-82.5 (brain restore — PM-80/81/82 ship narratives spliced into changelog; §2/§3/§5 advanced to PF-8 SHIPPED state; PF-4b surfaced into §3; orphan-commit drift documented in changelog as a §23 hard-rule candidate). PM-83 (PF-13 scope expanded — persona-led welcome + safe goal echo from onboarding questionnaire; Dean owns copy directly, removed from Lewis blocker list; HAVEN-never-personalised hard rule documented). PM-87 (PF-10), PM-88 (PF-11a + PF-11 split), PM-89 (PF-11b — index.html Dexie-derived home-state computation via home-state-local.js). PM-90 (PF-30 SHIPPED — perf.js v3 telemetry redirect + PostHog session replay + new dexie/perf events; PostHog identity confirmed already wired in auth.js, memory note on "pending" was stale; Sentry deferred to PF-30b pending DSN). PM-91 (PF-12 SHIPPED — settings.html Dexie-first + 6 optimistic upsert sites; certificates/engagement carved out to PF-12b). PM-92 (PF-13 scaffolding SHIPPED — `/hydration.js` persona-led welcome overlay with HAVEN never-echo + SAFE_ECHO_GOALS whitelist + 1500ms min display; copy gate open, Dean to finalise 13 distinct COPY_TABLE entries). **PM-93 (verification-mode audit repair — brain drift caught: spike HEAD `707aa3af`→`11abad83`, SW cache key `pm90-pf30-telem-a`→`pm92-pf13-hydration-a`, two missing changelog entries (PM-91 + PM-92) re-spliced from live commit messages, playbook PF-12 + PF-13 statuses flipped SHIPPED, playbook PF-30 stale 'identity pending' language stripped, new §4 hard rule on plain-UTF-8 in upserts content codified)**. PM-94 (trial-phase placeholders consciously deferred — hydration COPY_TABLE finalisation + Achievements system overhaul both logged to backlog as P1 post-launch with Dean's explicit framing; memory entry #17 captures the trial-safe operating mode for both items). PM-106 (2026-05-14) — campaign reshape: Habits "undefined" canary on test1@test.com surfaced join-column hydrate gap; §3 contract strengthened; §23.11/12/13 added; PF-40 consolidation campaign scoped end-to-end (12 sub-items). PM-107 (2026-05-14) — PF-40.1 audit shipped; new artefacts `audit/pf-40-1-callsites.json` + `playbooks/pf-40-local-first-consolidation.md`; §2 + §5 + §8 patched. PM-174 (2026-05-20) — Mind v1 first user-visible: breathwork.html real wiring (vyve-site `0e59c180`); imagery via Supabase Storage (§23.40 codified). PM-175 (2026-05-20) — Mind v1 second user-visible: journal.html real wiring (vyve-site `79cbcf1e`); deterministic daily prompt rotation + calendar + edit/delete; no new §23 rule (textbook §23.39 application).
 - **Next rebuild trigger:** campaign close (Premium Feel migration ship), OR 3+ patches accumulated to this file, OR drift detected (live state disagrees with §2).
 - **Commit discipline for active.md edits:** §2 SHA bumps are atomic with the session's main brain commit. §3 status flips when a campaign task ships. §4 only gains new rules when a rule earns working-set residency. §5 reorders on backlog grooming.
 - **What does NOT belong here:** anything from §7's fetch-on-demand list. If a question keeps surfacing that requires fetching the same canonical section session after session, that's the rebuild signal — promote it into active.md on the next rebuild.

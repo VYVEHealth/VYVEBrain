@@ -1,3 +1,137 @@
+## 2026-05-20 PM-175 — journal.html real wiring (Mind v1 second user-visible commit)
+
+**Shipped.** vyve-site `79cbcf1e` — three files in one atomic commit. journal.html
+rebuilt from PM-158 static mockup into a fully wired three-view experience.
+mind_activities (PM-173) and the §23.39 optimistic-first skeleton (also PM-173)
+were already live — this commit is pure page-side wire, zero schema or sync
+changes.
+
+**The page now does, end to end:**
+
+A view-picker segmented control at the top toggles between Write (default) and
+Calendar. Selecting a date with entries from the calendar opens a third view
+(Entry detail) and hides the view-picker; an explicit back button returns to
+the calendar.
+
+**Write view.** Streak chip + total-entry count strip if any entries exist.
+Today's prompt card — title + body — pulled deterministically from a
+40-entry inline `PROMPT_TABLE` via `dayOfYear(today) % PROMPT_TABLE.length`.
+Two CTAs under the prompt: gold "Use this prompt" (sets activePromptId and
+focuses the textarea, surfaces a small italic "Prompt: ..." strap above the
+textarea) and ghost "Free write" (clears the strap and focuses). Textarea
+maxlength 5000, live char counter, Save button disabled when trimmed-empty.
+Save flow follows §23.39 verbatim from the breathwork.html canonical: Dexie
+synchronous upsert, `mind:logged` bus publish with kind='journal' and source
+'journal_page', optimistic UI flip (clear text, clear prompt strap, flash
+"Saved" pill, unshift onto allEntries, repaint streak chip + history + calendar
+if mounted), then un-awaited background POST in an IIFE. 4xx response publishes
+`mind:failed`, deletes the Dexie row, removes from allEntries, and flashes a
+red "Save failed — please retry" pill. Network throw enqueues to
+`VYVEData.writeQueued` keyed `table:'mind_activities'`,`client_id:<uuid>` —
+the existing outbox drainer reconciles. Recent entries section shows the most
+recent 5 with relative-date labels (TODAY / YESTERDAY / "13 MAY 2026"), tapping
+opens the entry view scoped to that date.
+
+**Calendar view.** Month grid (Mon-start week, 7-col), prev/next nav buttons.
+Days with one or more entries get a teal-bordered tinted-teal background
+plus a teal dot underneath the day number (single-ring dot for one entry,
+ringed-dot variant for multi-entry days). Today gets an inset 2px teal-light
+ring. Future days dim to 0.32 opacity and lose pointer events. Empty months
+within a member with entries elsewhere still render — the empty-state card
+only shows when allEntries is globally empty. Counts per day computed from
+`activity_date` prefix-matching against the rendered month; tap any
+past-and-non-empty day to open Entry view.
+
+**Entry view.** Heading shows "Today" / "Yesterday" / full long date, with
+the full long date as a small grey subtitle when the heading isn't already
+the full date. Multiple entries per day stack chronologically (oldest first
+within a day). Each card shows logged time (12h am/pm), Edit + Delete actions
+in the meta row, optional "Prompt: <title>" italic strap if `ref_id` matches
+a `PROMPT_TABLE` row, and the body with `\n` → `<br>` rendering. Edit:
+in-place reveal of a `<textarea>` pre-filled with current content; Save
+upserts the Dexie row with the same `client_id`, re-emits `mind:logged`,
+flashes "Updated" pill, then runs an un-awaited PATCH
+`?client_id=eq.<id>` with `{content}` — failure path publishes
+`mind:failed` with `reason:'patch_failed'`; network throw queues a PATCH
+through writeQueued. Delete: window.confirm gate (real intentional delete,
+not the breathwork 5s undo), Dexie delete + allEntries filter + `mind:unlogged`
+publish + flash "Deleted" pill, then un-awaited DELETE with writeQueued
+fallback on network throw.
+
+**Cross-page bus subscribers.** `mind:logged`, `mind:failed`, `mind:unlogged`
+all trigger `refreshAllFromDexie()` which re-pulls the journal subset from
+Dexie and repaints streak / history / calendar / entry view as relevant.
+Means a save on another device that lands via Realtime / delta-pull will
+repaint the calendar without a full reload.
+
+**Boot.** Canonical `withEmail()` pattern lifted from breathwork.html
+(check `window.vyveCurrentUser.email` synchronously, else `vyveAuthReady`
+event once). On email resolved, `refreshAllFromDexie()` populates from the
+Dexie `mind_activities` store (sync.js already hydrates this member-scoped
+with lookback per PM-173). No REST fallback on the page — journal history
+is always Dexie-first per §3 / §23.11. If member has zero entries, history
+shows a friendly placeholder card and calendar shows the empty-state strap.
+
+**Prompt copy.** 40 entries inline in `PROMPT_TABLE`, tagged
+`COPY_LEWIS_REVIEW` in the file header comment. ids are stable strings
+`p001..p040` and become the `ref_id` value on saved entries — copy can be
+edited freely without breaking history backlinks. Lewis can edit copy in
+the file directly any time; if a member's saved `ref_id` no longer matches
+a row (e.g. a future deletion), `findPromptById` returns null and the prompt
+strap on the entry card just hides — entry body stays intact.
+
+**Pre-flight checks.**
+- `node --check` clean on both inline JS blocks (32KB main + 81B SW reg).
+- mind_activities live schema verified pre-write: `content text NULL`,
+  `ref_id text NULL`, `client_id uuid NULL`, `duration_seconds int NULL`,
+  no daily cap (matches design — multiple journal entries per day are
+  fine). No migration required.
+- Live SHAs refreshed immediately before commit per §4.
+
+**Post-commit verification.** Contents API at commit SHA `79cbcf1e` —
+three files MD5-equal to staged content, UTF-8 byte lengths match exactly.
+Branch raw skipped per §4 (CDN cache hazard).
+
+**State changes.**
+- vyve-site HEAD: `0e59c180` → `79cbcf1e`.
+- sw cache key: `pm174-breathwork-c` → `pm175-journal-a`.
+- vbb-marker: Update 34 → Update 35.
+
+**Notable Dean directives this session.**
+- Wanted a different prompt question day-to-day. Implemented as deterministic
+  daily pick via day-of-year; no AI generation, no async fetch, no DB table.
+  Lewis owns the copy in-file.
+- Wanted writes to "save to dexie immediately so that it instantly loads on
+  the phone." Mapped directly to §23.39 — Dexie synchronous before any
+  network call.
+- Wanted "backup to supabase" — covered by the un-awaited POST + outbox
+  fallback.
+- Wanted a calendar with clickable past entries. Built as the second view
+  with per-day dot density (single vs multi) and tap-to-open.
+
+**No new §23 rule earned.** PM-175 was a textbook application of §23.39
+(Mind activities optimistic-first skeleton) and §23.11/12 (Dexie-first on
+local-first surfaces, no page-level REST fallback). Reused boot/auth helpers
+verbatim from breathwork.html. The edit/delete pattern is the same shape but
+with PATCH + DELETE in place of POST — that's an extension of §23.39's
+existing surface area, not a new rule. If a future Mind kind needs a different
+edit shape, that's when we'd codify a sibling rule.
+
+**What's ahead.**
+- **affirmations.html real wiring (P0)** — deterministic daily pick from
+  `affirmations_library` (30 active rows seeded PM-173), Save → log to
+  `mind_activities` kind='affirmation' ref_id=affirmation_uuid via §23.39.
+  Open decision still: `affirmation_favourites` join table vs
+  `members.affirmation_favourites uuid[]` — recommend the join table for
+  ordering by saved_at.
+- **mind.html hub wiring (P1)** — wire hardcoded `3` streak and `2/5`
+  counter to live Dexie reads of `mind_activities`, strip placeholder-tag.
+- **mind-insights.html (P2)** — needs data first, ~2 weeks post-launch.
+- **visualisation.html** — blocked on ElevenLabs assets (Lewis).
+- **PM-175 itself**: post-launch, if Lewis wants live-editable prompt copy
+  without a deploy, promote `PROMPT_TABLE` to a `journal_prompts` catalogue
+  table identical to `breathwork_patterns`. Not needed for launch.
+
 ## 2026-05-20 PM-174 — breathwork.html real wiring (Mind v1 first user-visible commit)
 
 **Shipped.** vyve-site `0e59c180` — five files in one atomic commit. breathwork.html
