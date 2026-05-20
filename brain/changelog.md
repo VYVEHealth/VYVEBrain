@@ -1,3 +1,72 @@
+## 2026-05-21 PM-183.1 — mind.html hub data-read hotfix
+
+**Shipped.** vyve-site `3925c582a8017b57151fff66b87fa136a9fae7ad` — three files atomic. Same-day fix following PM-183.
+
+**Symptom Dean reported.** Hub's "Today's progress 0/2" wasn't incrementing after he completed a journal entry + a breathwork session + a focus-video watch. Streak chip also stayed at 0.
+
+**Diagnosis.** Supabase `mind_activities` scan confirmed `test1@test.com` had the journal (23:06 UTC) + breathwork (23:07 UTC) rows landing successfully via §23.39 from their respective pages. Server had them; hub wasn't reading them. So the bug was on the hub READ path, not the write path.
+
+**Root cause.** `readMindActivities()` was Dexie-first with REST-fallback-on-Dexie-error:
+
+```js
+if (dexie && memberEmail && typeof dexie.allFor === 'function') {
+  dexie.allFor(memberEmail).then(function (rows) {
+    resolve(rows || []);                    // ← returns [] without falling to REST
+  }).catch(function () { restMindActivities().then(resolve); });
+}
+```
+
+Dexie returning EMPTY counts as "success" — the catch never fires. On a fresh page boot, `sync.js` runs `plan()` on auth-ready, but the parallel fan-out of 17 member-scoped + 7 catalogue tables takes hundreds of ms to land mind_activities into Dexie. The hub's `boot() → withEmail → repaint()` chain fires synchronously off `vyveCurrentUser` (fast-path), beating the hydrate. Result: `allFor()` resolves with `[]`, hub paints `0/2`, never refreshes until a manual user action.
+
+This bites the hub specifically because the hub is a pure *aggregator* — it reads writes that were made on sibling pages (breathwork/journal/affirmations/audio). Affirmations.html doesn't see this because its Dexie reads are paired with a catalogue (instant-populated) and its same-day badge updates synchronously on tap-save anyway.
+
+**Fix in mind.html.**
+
+1. **Parallel Dexie + REST, take whichever has more rows.** REST carries the 30-day server snapshot, Dexie carries optimistic local writes that may be ahead of any in-flight POST. Both should converge on subsequent paints; on first paint REST is the reliable source.
+
+```js
+function readMindActivities(){
+  var dexie = window.VYVELocalDB && window.VYVELocalDB.mind_activities;
+  var dexieP = (dexie && memberEmail && typeof dexie.allFor === 'function')
+    ? dexie.allFor(memberEmail).catch(function(){ return []; })
+    : Promise.resolve([]);
+  var restP = restMindActivities().catch(function(){ return []; });
+  return Promise.all([dexieP, restP]).then(function (arr) {
+    var dexieRows = arr[0] || [], restRows = arr[1] || [];
+    return restRows.length >= dexieRows.length ? restRows : dexieRows;
+  });
+}
+```
+
+2. **Bus subscribers always repaint.** Dropped the own-source skip optimisation from PM-183 (`if payload.source === 'mind_hub_focus' return`). It wasn't safe across the Dexie-write-vs-bus-publish race, and repaint is idempotent + cheap. Added `mind:unlogged` subscriber too — breathwork.html publishes this on cancel, was previously unhandled.
+
+3. **`visibilitychange` + `pageshow` listeners.** Re-pulls when Dean tabs back to the hub after logging a session elsewhere. Matches `sync.js` visibilitychange behaviour, belt-and-braces with the bus subscribers.
+
+4. **Delayed boot repaints.** `setTimeout(repaintDebounced, 800)` and `setTimeout(repaintDebounced, 2500)` after the synchronous `repaint()`. Catches sync.js hydrate completion deterministically without sync-coordination complexity.
+
+**Files changed.**
+
+```
+mind.html      38181 → 40161  bytes (+1980)  md5 1e5e4cce
+sw.js          10203 → 10204  bytes    (+1)  md5 5d573681
+index.html    120748 → 120748 bytes    (+0)  md5 b981654a
+```
+
+**Verification.**
+
+- §23.41 pre-commit SHA refresh: all three stable.
+- `node --check` clean on the two inline JS blocks in mind.html.
+- Post-commit byte-equal via Contents API at commit SHA `3925c582`.
+- Dean force-quit + reopened per §23.29; confirmed working — focus card daily rotation rendering, journal + breathwork rows surfaced, streak chip non-zero.
+
+**sw.js cache key.** `pm183-mind-hub-wire-a` → `pm183-1-mind-hub-fix-a`. **index.html vbb-marker.** `Update 44` → `Update 45`.
+
+**No new §23 rule earned.** The general pattern is: never trust Dexie-empty as authoritative when painting a hub that aggregates writes from sibling pages. The page's own writes are Dexie-authoritative (synchronous, page owns the write); aggregator pages need a parallel REST read to handle the hydrate-in-flight race. This is implicit in §23.7 (Dexie hydrate) + §23.39 (optimistic-first writes) — those rules govern *initiator* surfaces. The gap is *aggregator* surfaces. If this bites again in the upcoming Body or Connect hubs (Phase 1 / Phase 2 of the Bundle-Ready campaign per PM-184), codify as a hard §23 rule then.
+
+**Focus-video write path.** A separate observation Dean made during retest: the focus-video tap during the bug period didn't appear to log a `mind_activities` row (`SELECT kind IN ('meditation','sleep','visualisation') FROM mind_activities WHERE member_email = 'test1@test.com'` returned empty). Either he closed under the 30s threshold (no write fires by design) or there's a separate hub-side player write-path bug. Will surface in next test cycle if real — not fixed here.
+
+---
+
 ## 2026-05-21 PM-184 — Brain audit + Bundle-Ready campaign reframe (six phases, offline-correctness gate, formal PF-40 closure)
 
 **Triggered by Dean opening a strategy chat in parallel with the still-running PM-183 build session, observing that "what started off as a few things to do to get the app to feel premium has quickly changed" and asking for a full audit of brain + changelog + backlog before settling on what comes next.**
