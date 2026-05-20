@@ -50,37 +50,58 @@ When the three disagree:
 
 ## 2. Live state snapshot (refreshed every session-end)
 
-**SESSION HANDOFF — 2026-05-20 (PM-171.1 + PM-171.5 — bus rerender + outbox-driven failure events).** Two commits this session, addressing the same root problem from opposite ends:
+**SESSION HANDOFF — 2026-05-20 (PM-171.1 + PM-171.5 shipped, restructure design locked, PARKED).** Two code commits today, then a design session locking the bottom-nav restructure shape and the launch sequencing.
 
-**PM-171.1 `4c7086bb`** — fixed home dashboard never reflecting local activity. `optimisticPatch` had been writing to flat `home_state` column names since the EF v40 refactor flattened the response shape — phantom writes. `_markHomeStale` subscribers fast-pathed out on canonical envelopes and did nothing. Replaced with `_rerenderHome` that calls `buildHomeFromDexie(email)` → `renderDashboardData(result)` on every bus event. 22 subscribers re-routed. Build `Update 28` → `Update 29`, SW `pm170-movement-recent-cache-a` → `pm171-1-bus-rerender-a`.
+**Today's shipped commits.**
+- **PM-171.1 `4c7086bb`** — home dashboard rerenders from Dexie on every bus event (replaces `_markHomeStale` no-op fast-paths). Sidesteps the `optimisticPatch`-writes-to-phantom-keys structural bug that existed since the EF v40 refactor. 22 subscribers re-routed to `_rerenderHome`. Build `Update 28` → `29`.
+- **PM-171.5 `f55d1d67`** — outbox-driven failure events in vyve-offline.js + cardio.html network-throw enqueue. Fixes the stranded-Dexie-row pattern that produced Dean's Tuesday-missing-in-Supabase screenshot. Build `Update 29` → `30`. SW `pm171-5-outbox-failures-a`.
 
-**PM-171.5 `f55d1d67`** — fixed the stranded-Dexie-row symptom Dean's screenshots showed (Tuesday habits in Dexie, not in Supabase). Two gaps:
-- Page-local `_*Inflight` failure trackers strand rows when the page closes mid-retry → hoisted the dead-letter handler into vyve-offline.js. `vyve-outbox-dead` listener publishes the right `<table>:failed` bus event and deletes the optimistic Dexie row by `client_id`. FAILURE_TABLE_MAP covers 7 tables. Works regardless of which page is open.
-- Cardio.html network-throw catch silently kept the row with a wishful "reconciler will sync" comment — but no reconciler for direct-fetch surfaces. → catch now enqueues to `VYVEData.writeQueued` so the drainer + PM-171.5 layer handle the outcome.
+Both commits byte-equal verified at commit SHA; `node --check` clean.
 
-Build `Update 29` → `Update 30`, SW `pm171-1-bus-rerender-a` → `pm171-5-outbox-failures-a`. 4 files in commit (index marker bump, sw cache bump, cardio.html network fix, vyve-offline.js new listener). All byte-equal verified at commit SHA. `node --check` clean.
+**LAUNCH SEQUENCING — DEAN LOCKED THIS SESSION, DO NOT PIVOT.**
 
-**What launch can now trust:**
-- Local tap → home reflects in ~16ms (PM-171.1).
-- Cross-tab tap → home reflects via localStorage transport (PM-171.1).
-- Cross-device tap → home reflects via Realtime bridge (PM-171.1).
-- Local tap + page closes + retries exhaust → row reverts + home rerenders correctly (PM-171.5).
-- Cardio offline write → enqueues, retries, eventually either succeeds or reverts cleanly (PM-171.5).
+Dean's decision: PF-14b (bundled mode + Capgo + iOS 1.2 + Android 1.0.3) ships AFTER the bottom-nav restructure, not before. Members continue on the current online-origin build during the restructure window — writes persist, just paint-slow because every render waits on the EF. Once restructure is in, ALL the offline/local-first transition lands as one architectural step (PF-14b + workouts hardening + cleanup), not as three risky in-flight changes.
 
-**What still needs work before launch:**
-- **PM-171.5-followup-workouts** (P0 before launch) — workouts-session.js has mixed write paths (3 `writeQueued` + 8 direct `fetch`). The cardio shape needs porting to those 8 sites or they'll strand workout/set rows on offline. ~1-2 hours.
-- **PM-171.4** — remove `vyve-home-state.js` call sites across 11 surfaces (now silent no-ops). Cleanup, not launch-blocking.
+**Future Claudes:** do not propose PF-14b-first or "let's bundle Mind/Connect onto bundled-mode" unless Dean explicitly reverses. He has reasons. The reasoning is in PM-172 changelog entry.
 
-**Carried forward (unchanged this session):**
+**THE RESTRUCTURE — DESIGN LOCKED, CODE PARKED, AWAITING DEAN'S "READY" SIGNAL.**
+
+Dean is building Mind and Connect content surfaces over the next 3-4 days. When he signals ready, the restructure ships as one coordinated commit. Locked decisions:
+
+- **Five Progress Tracks: Habits / Body / Mind / Connect / Check-in.** Names verbally Dean-locked; Lewis copy gate still open at restructure-ship time.
+- **Body** = workouts + cardio + movement combined (3 sources, 1 counter).
+- **Mind** = NEW `mind_activities` table with `kind` discriminator. Kinds: breathwork, journal, affirmation, visualisation. Path 2 (unified table + kind column) chosen over Path 1 (per-kind tables).
+- **Connect** = NEW `connect_activities` table with `kind` discriminator. Kinds: live (session_views), replay (replay_views), qotd, future-extensible.
+- **Check-in** = wellbeing_checkins + monthly_checkins combined. Single counter, OR-semantics for the weekly goal (either type ticks the week).
+- **Weekly Goals (5 lines):** Habits 3 days, Body 3, Mind 3, Connect 2, Check-in 1. Home tile becomes "X of 5 complete."
+- **Habits counter is days-complete, NOT row-count.** Daily-cap trigger enforces 1 row/day, but the counter is `count distinct activity_date`. *Future Claudes: do not conflate. I (current Claude) misread this three times before Dean corrected.*
+
+**Schema additions specified** (mind_activities, connect_activities, 8 new columns on member_home_state). Bus events: `mind:logged`, `mind:failed`, `connect:logged`, `connect:failed`. FAILURE_TABLE_MAP gains two entries at restructure time. See PM-172 changelog entry for full SQL + integration notes.
+
+**Open at restructure time (resolve before ship):**
+1. Progression engine for goal targets ("3 days to begin with, can increase as they progress" — Dean). Ship static targets restructure-1, progression engine is follow-up. Three candidate shapes flagged in PM-172.
+2. Lewis copy approval for track names + Mind / Connect kind labels + microcopy.
+3. Movement table shape — verify what movement.html writes to (own table / rolls into workouts / rolls into cardio). PM-167/168 mention convergence; I (Claude) didn't pull the live code this session to confirm.
+4. HAVEN persona × Mind activities (especially journal). First pass: generic logged events, no clinical interpretation. Phil sign-off needed before journal flow does anything therapy-shaped.
+
+**What's parked until Dean signals ready (do not touch):**
+- PM-171.5-followup-workouts (port cardio's network-throw enqueue to workouts-session.js's 8 direct-fetch sites).
+- PM-171.4 (remove vyve-home-state.js call sites — now silent no-ops).
+- PF-14b (bundled-mode migration).
+
+All three intentionally deferred. They touch surfaces that the restructure will reshape; doing them now means redoing them after.
+
+**Carried forward (unchanged):**
 - Locked / mandatory habits model (`removable`/`locked` boolean on `member_habits`, post-trial).
 - `member_habits` re-add duplicate (no unique constraint on `(member_email, habit_id)`).
-- `page_visits` analytics; `session_schedule` table + live-session minute-windowing; tracking.js outbox wiring (§23.10 hardening candidate).
-- §23.8 timezone audit (codebase BST-locked via `bstToday()` across ~8 files; new code uses device-local).
-- Bottom-nav restructure (Habits / Body / Mind / Connect / Weekly Check-in) — held until Mind + Connect sections are content-ready. Bus architecture (post-PM-171.1) inherits cleanly when new tracks land — subscribe to `_rerenderHome` and they're instant.
+- `page_visits` analytics; `session_schedule` table + live-session minute-windowing.
+- §23.8 timezone audit (codebase BST-locked via `bstToday()`; new code uses device-local).
+- §23.7.10 candidate post-launch: failure handlers belong in the outbox layer, not the publishing page.
 
-**§23 candidate (post-launch codify):**
-
-§23.7.10 — *Failure handlers belong in the outbox layer, not the publishing page.* Page-local `_*Inflight` trackers are an anti-pattern post-PM-171.5; they strand rows when the page closes mid-retry. Bus publish + Dexie revert originates from a module that runs regardless of which page is open.
+**Session-start guidance for the next Claude:**
+1. Load `brain/active.md` (this file) + grep last 5 changelog entries.
+2. If Dean opens with "ready for the restructure" — confirm the five locked decisions above with him, pull movement.html / movement table shape, verify Lewis copy gate, then scope the migration + EF + JS port + bus wiring + page restructure as one commit. Use Path 2 (unified mind_activities / connect_activities tables).
+3. If Dean opens with anything else — work the thing he asks for. Do NOT propose PF-14b-first or restructure-now unless he explicitly invites either.
 
 
 ## 3. The active campaign — Premium Feel Migration (local-first via Dexie)

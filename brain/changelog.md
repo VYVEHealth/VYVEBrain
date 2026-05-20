@@ -1,3 +1,106 @@
+## 2026-05-20 PM-172 — Session close: bottom-nav restructure design locked + launch sequencing reset
+
+No code commits this entry — pure decision-capture. Dean is taking the Body / Mind / Connect surfaces forward over the next 3-4 days and will signal when ready for the restructure ship. PF-14b and all remaining local-first hardening parked until restructure lands. This entry codifies the design decisions so the next session (mine or another Claude's) doesn't relitigate.
+
+**Launch sequencing decision (Dean-locked, do not pivot).** Bundled-mode + Capgo + iOS 1.2 + Android 1.0.3 (PF-14b) ships AFTER the bottom-nav restructure, NOT before. Reasoning Dean stated: members are using the current online-origin build, it works in steady-state (writes persist, just paint-slow because every render waits on the EF), and switching them to bundled mode mid-restructure doubles the risk surface. The premium-feel promise is honoured at launch via PF-14b in one transition — current build + restructure + PF-14b ship as one architectural step, not three. **Future Claudes: do not propose PF-14b first unless Dean explicitly reverses this.**
+
+**The five Progress Tracks taxonomy (Dean-locked, Lewis copy gate open).**
+
+- **Habits** — daily_habits, days-complete semantic (capped 1/day, max 7/week, max ~30/month). Streak math counts distinct dates with ≥1 row, NOT row count. *Note for future sessions: I (Claude) misread habits as a row count three times this session before Dean corrected me. The daily_habits BEFORE INSERT trigger enforces 1-per-day already; the counter on the home dashboard is the count of distinct activity_date values, not COUNT(*).*
+- **Body** — workouts + cardio + movement combined. Three sources, one counter. Each individual session = 1 (no daily cap).
+- **Mind** — `mind_activities` table (NEW, see schema below), kinds: breathwork, journal, affirmation, visualisation. Each completion = 1. No daily cap.
+- **Connect** — `connect_activities` table (NEW), kinds: live (session_views), replay (replay_views), qotd (question-of-the-day), other connect features TBD. Each completion = 1.
+- **Check-in** — wellbeing_checkins + monthly_checkins combined. Single counter, single track. Weekly OR monthly check-in counts toward the same week's goal target.
+
+**Path 2 chosen for Mind / Connect** (Dean-locked). Two new tables, each with a `kind` discriminator column, NOT separate per-kind tables. Rationale logged earlier this session: Path 1 would have meant 5-7 new tables × full integration cost each (TYPE_TO_HS_COLS, FAILURE_TABLE_MAP, Realtime bridges, RLS, Dexie stores, optimisticPatch wiring). Path 2 means 2 new tables, kinds extensible without schema churn. Adding "gratitude journal" later = new `kind` value, no migration. Day-1 kinds known above; "other connect stuff" Dean flagged is the explicit forward extension point Path 2 was chosen to support.
+
+**Weekly Goals shape (Dean-locked).** Five goal lines mirroring the five Progress Tracks 1:1.
+
+- Habits: target 3 days/week (Dean's call: "to begin with, and this can increase as they progress" — see open question below)
+- Body: target 3 activities/week
+- Mind: target 3 activities/week
+- Connect: target 2 activities/week
+- Check-in: target 1/week (satisfied by either a weekly OR monthly check-in landing within the week — OR semantics, not AND)
+
+Home dashboard tile updates from "X of 4 complete" to "X of 5 complete."
+
+**Open question — progression engine for goal targets.** Dean said the habits target should increase as members progress. The current `weekly_goals.habits_target` is hardcoded 3 in the EF default unless overridden per-member. Progression mechanism not specified yet. Three candidate shapes flagged but not chosen:
+
+- Tier-based: 30 days member → 4, 60 → 5, 90 → 6, 120 → 7. Mirrors existing 30-activity certificate tier shape.
+- Streak-based: hit target two weeks running → +1.
+- Persona-modulated: NOVA gets higher targets, RIVER/HAVEN gentler.
+
+Decision deferred: restructure-1 ships static targets, progression engine is a follow-up. Future session needs to revisit before promising progression to members in copy.
+
+**Schema additions required (NEW tables for restructure).**
+
+```sql
+CREATE TABLE mind_activities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_email text NOT NULL,
+  activity_date date NOT NULL,
+  day_of_week text,
+  time_of_day text,
+  logged_at timestamptz NOT NULL DEFAULT now(),
+  kind text NOT NULL,  -- 'breathwork' | 'journal' | 'affirmation' | 'visualisation' | future-extensible
+  duration_minutes int,  -- nullable; affirmations have no duration, breathwork does
+  content text,  -- journal entries store text here; nullable for kinds without content
+  client_id uuid
+);
+CREATE INDEX mind_activities_member_date ON mind_activities (member_email, activity_date);
+
+CREATE TABLE connect_activities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_email text NOT NULL,
+  activity_date date NOT NULL,
+  day_of_week text,
+  time_of_day text,
+  logged_at timestamptz NOT NULL DEFAULT now(),
+  kind text NOT NULL,  -- 'live' | 'replay' | 'qotd' | future-extensible
+  ref_id text,  -- e.g. session_id for live/replay, qotd_date for qotd
+  content text,  -- qotd answer text; nullable for kinds without content
+  client_id uuid
+);
+CREATE INDEX connect_activities_member_date ON connect_activities (member_email, activity_date);
+```
+
+RLS: `member_email = (SELECT auth.email())` for SELECT/INSERT/UPDATE/DELETE on both tables (wrapped in subquery per §23 hard rule PM-8).
+
+`member_home_state` row gets four new columns each (matching the existing per-table pattern):
+- `mind_total`, `mind_this_week`, `mind_this_month`, `last_mind_at`
+- `connect_total`, `connect_this_week`, `connect_this_month`, `last_connect_at`
+
+`refresh_member_home_state` SQL function + JS port `home-state-local.js` both need updating to populate these columns. EF `member-dashboard` projects them into `data.progress.mind`, `data.progress.connect`, `data.engagement.streak_by_type.mind`, etc.
+
+**Bus events for the restructure.**
+
+- `mind:logged` (canonical) with payload `{ kind, mind_id, logged_at, ... }`
+- `connect:logged` (canonical) with payload `{ kind, connect_id, logged_at, ref_id?, ... }`
+- `mind:failed` and `connect:failed` for the outbox-dead path.
+
+`session_views` and `replay_views` already publish `session:viewed` — under Connect they'll dual-publish or the Connect counter subscribes to both `session:viewed` AND `connect:logged`. To be decided at restructure time. My instinct: keep `session:viewed` as-is for backward compat, have the Connect aggregator on the home dashboard subscribe to BOTH events and read from BOTH tables. No event-renaming needed.
+
+FAILURE_TABLE_MAP gains two entries: `mind_activities → mind:failed`, `connect_activities → connect:failed`. _rerenderHome subscribes to both new `*:logged` and `*:failed` events.
+
+**Workflow for the next 3-4 days.**
+
+- Dean: build Mind and Connect content surfaces in parallel with the existing online-origin build. Movement.html already exists (PM-167/168 era).
+- Claude: parked on restructure work until Dean signals ready. No PM-171.5-followup-workouts, no PM-171.4 cleanup, no PF-14b during this window — those would all touch surfaces about to be restructured.
+- Shipped today and stays in production: PM-171.1 (bus rerender) + PM-171.5 (outbox-driven failure events). Both pure wins, no conflict with restructure.
+
+**Decisions still pending Dean / Lewis at restructure time:**
+
+1. Progression engine for weekly goal targets (static at restructure-1 with follow-up TBD).
+2. Lewis copy approval for the five track names + Mind / Connect kind labels + microcopy. Track names "Habits / Body / Mind / Connect / Check-in" verbally locked by Dean this session, but Lewis approval gate per `copy_status='approved'` is still open.
+3. Movement table shape — confirm whether movement.html currently writes to its own table, rolls into workouts, or rolls into cardio. PM-167/168 changelog entries describe convergence but I (Claude) didn't pull the current code to verify. Verify at restructure time.
+4. HAVEN persona interaction with Mind activities (especially journal). Phil clinical sign-off potentially needed before journal flow does anything resembling therapy. First pass: treat all mind activities as generic logged events with no clinical interpretation.
+5. `wellbeing-checkin` + `monthly-checkin` combined Check-in counter — needs the SQL aggregation defined. Both tables have `iso_week`/`iso_year` columns; the home dashboard query becomes `SELECT count(*) FROM (SELECT iso_week, iso_year FROM wellbeing_checkins WHERE member = me UNION SELECT iso_week, iso_year FROM monthly_checkins WHERE member = me)`. Streak math: a week is "checked in" if EITHER table has a row in that iso_week/year.
+
+**Brain-discipline reminder for future Claudes.** Three things I (current Claude) got wrong this session before Dean corrected:
+- Misread Habits counter as row-count not days-complete. Look at the trigger + the streak math in home-state-local.js before assuming.
+- Assumed "increase the targets" meant I should pick higher numbers. Dean's numbers (1/3/3/2/1, then he revised Habits to 3) are what ship. Don't substitute.
+- Pushed PF-14b-first ordering before hearing Dean's reasoning. He has reasons. Listen before scoping.
+
 ## 2026-05-20 PM-171.5 — outbox-driven failure events + cardio network-throw enqueue (vyve-site `f55d1d67`)
 
 Fixes the Tuesday-stranded-Dexie-row pattern Dean reported (Tuesday's habit ticks lived in Dexie but never reached Supabase; PM-171.1 made the home dashboard *honestly* mirror that drift but didn't fix the drift itself).

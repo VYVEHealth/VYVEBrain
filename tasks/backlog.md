@@ -1,3 +1,96 @@
+## Added 20 May 2026 — Bottom-nav restructure (Habits / Body / Mind / Connect / Check-in)
+
+**Status:** Design locked, code parked. Dean building Mind + Connect content surfaces over 3-4 days. Restructure ships as one coordinated commit when Dean signals ready. See `brain/changelog.md` PM-172 for the full design log.
+
+### PM-RESTRUCTURE.1 — Schema: mind_activities + connect_activities tables (P0 at restructure-time)
+
+NEW tables, both with `kind` discriminator (Path 2 chosen — unified per category, NOT per-kind tables).
+
+```sql
+CREATE TABLE mind_activities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_email text NOT NULL,
+  activity_date date NOT NULL,
+  day_of_week text,
+  time_of_day text,
+  logged_at timestamptz NOT NULL DEFAULT now(),
+  kind text NOT NULL,  -- 'breathwork' | 'journal' | 'affirmation' | 'visualisation' | future-extensible
+  duration_minutes int,
+  content text,
+  client_id uuid
+);
+CREATE INDEX mind_activities_member_date ON mind_activities (member_email, activity_date);
+
+CREATE TABLE connect_activities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_email text NOT NULL,
+  activity_date date NOT NULL,
+  day_of_week text,
+  time_of_day text,
+  logged_at timestamptz NOT NULL DEFAULT now(),
+  kind text NOT NULL,  -- 'live' | 'replay' | 'qotd' | future-extensible
+  ref_id text,
+  content text,
+  client_id uuid
+);
+CREATE INDEX connect_activities_member_date ON connect_activities (member_email, activity_date);
+```
+
+RLS: `member_email = (SELECT auth.email())` for all CRUD on both tables (subquery-wrapped per §23 hard rule PM-8).
+
+### PM-RESTRUCTURE.2 — member_home_state extension (P0 at restructure-time)
+
+Add 8 new columns mirroring the existing per-table pattern:
+- `mind_total`, `mind_this_week`, `mind_this_month`, `last_mind_at`
+- `connect_total`, `connect_this_week`, `connect_this_month`, `last_connect_at`
+
+Update `refresh_member_home_state` SQL function to populate them. Update JS port `home-state-local.js` byte-for-byte. EF `member-dashboard` projects into `data.progress.mind`, `data.progress.connect`, `data.engagement.streak_by_type.mind`, etc.
+
+### PM-RESTRUCTURE.3 — Bus + outbox wiring (P0 at restructure-time)
+
+- New bus events: `mind:logged`, `mind:failed`, `connect:logged`, `connect:failed`.
+- FAILURE_TABLE_MAP in vyve-offline.js gains 2 entries: `mind_activities → mind:failed`, `connect_activities → connect:failed`.
+- index.html `_rerenderHome` subscribes to all 4 new events.
+- session_views / replay_views keep publishing `session:viewed` for backward compat — the Connect aggregator subscribes to BOTH `session:viewed` AND `connect:logged` and reads from BOTH tables.
+
+### PM-RESTRUCTURE.4 — Five Progress Tracks UI (P0 at restructure-time)
+
+Home dashboard tile becomes 5 tracks instead of 4: Habits / Body / Mind / Connect / Check-in.
+- Body counter = `workouts_total + cardio_total + movement_total` (movement table shape TBD — see open items).
+- Check-in counter = `wellbeing_checkins + monthly_checkins` combined (OR-semantics for weekly tick).
+- Habits is days-complete (count distinct activity_date), NOT row count.
+
+### PM-RESTRUCTURE.5 — Weekly Goals re-shape (P0 at restructure-time)
+
+5 goal lines mirroring the 5 tracks 1:1:
+- Log habits 3 days (default — see progression engine note)
+- Complete 3 Body activities
+- Complete 3 Mind activities
+- Complete 2 Connect activities
+- Complete your check-in (weekly OR monthly)
+
+Home tile changes "X of 4 complete" → "X of 5 complete."
+
+### PM-RESTRUCTURE.6 — Bottom nav + tab routes (P0 at restructure-time)
+
+Bottom nav: Home / Body / Mind / Connect / More. Body absorbs current Workouts + Cardio + Movement routes. Mind is net-new tab. Connect is net-new tab. `nav.js` updated. Per-tab landing pages built by Dean.
+
+### Restructure open items — resolve before ship:
+
+1. **Progression engine for goal targets** ("3 days to begin with, can increase as they progress" — Dean). Restructure-1 ships static targets. Progression engine deferred. Three shapes flagged for future decision: tier-based (30/60/90/120 days), streak-based (+1 on 2 weeks running), persona-modulated.
+2. **Lewis copy approval** for track names + Mind/Connect kind labels + microcopy. `copy_status='approved'` gate must clear before ship.
+3. **Movement table shape** — verify what `movement.html` writes to (own table / rolls into workouts / rolls into cardio). PM-167/168 changelog mentions convergence; not yet code-verified.
+4. **HAVEN × Mind activities** — first pass treats all mind activities as generic logged events with no clinical interpretation. Phil sign-off needed before journal flow does anything therapy-shaped.
+5. **Check-in aggregation SQL** — both wellbeing_checkins and monthly_checkins have iso_week/iso_year columns. Aggregate query: `SELECT count(*) FROM (... UNION ...)`. Streak math: a week counts as "checked in" if EITHER table has a row for that iso_week/iso_year.
+
+### Restructure does NOT include (parked for after-restructure window):
+
+- **PF-14b** — bundled-mode + Capgo + iOS 1.2 + Android 1.0.3. Dean-locked: ships AFTER restructure, not before.
+- **PM-171.5-followup-workouts** — port cardio's network-throw enqueue to workouts-session.js's 8 direct-fetch sites. Touches surfaces the restructure will reshape; do after.
+- **PM-171.4** — remove vyve-home-state.js call sites (silent no-ops post-PM-171.1). Cleanup, do after restructure.
+
+---
+
 ## Added 17 May 2026 — P0: activity-cap credit recompute + monthly check-in credit gap [Lewis-gated, own session]
 
 The activity cap was wrongly implemented as `BEFORE INSERT` row-destroying triggers; `enforce_cap_cardio`/`enforce_cap_workouts` were dropped 17 May to stop data loss (see changelog PM-166 + §23.14). The remaining work, scoped as its own Lewis-gated session because it touches certificates and the charity mechanic:
