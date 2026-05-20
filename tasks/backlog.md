@@ -19,7 +19,22 @@ Mind section infrastructure landed PM-173 (`fbda5ac8`). Schema + Dexie + sync + 
   - **Streak/count chip on landing**: "5 sessions this week" / "current streak: 3 days". Reads `mind_activities` where `kind='breathwork'`.
   - **First-session-of-each-pattern tutorial overlay**: inline collapsed "First time? Tap to learn" card above the ring, expanded by default first time, collapsed thereafter. localStorage tracks per-pattern seen state.
 
-  Audio sourcing decision still open before session: Pixabay/Freesound (free, risk: pops up elsewhere), Artlist/Epidemic (£20-30/mo, polish, safer), or AI-generated ambient via Stable Audio/Suno (loopable, on-brand "deep teals/warm highlights" atmosphere, free or cheap — RECOMMENDED day-1, replaceable later).
+  **Music sourcing — DECIDED (20 May 2026 PM-173-followup-2).**
+  Library approach, not single-track-per-pattern. New catalogue table `breathwork_music` (uuid PK, title, artist, audio_url to Supabase Storage, duration_seconds, mood, bpm, sort_order, is_active). Public-read RLS. ~20 ambient tracks at launch, expandable forever via INSERT.
+
+  Cycling pattern: each session-start picks a random active track, weighted to exclude the last 2-3 played (tracked in localStorage `vyve_breathwork_recent_music` array of UUIDs, FIFO max 3). Optional per-session lock via dropdown if member wants the same track twice. Default = shuffle.
+
+  `breathwork_patterns.ambient_audio_url` becomes optional "this pattern always plays this track" override; day-1 ships with library only, no overrides. Per-pattern overrides are post-launch refinement Lewis can configure in Supabase.
+
+  Sourcing: **Suno or Udio AI-generated** (£8-10/month, commercial-use licence, loopable output, on-brand for VYVE's deep-teal/warm-highlight palette). One evening generates 30-40 tracks, keep best 20. Lewis owns the library going forward — he can regenerate any track that goes stale, expand the library any time, without dev involvement. This is the only sourcing path that gives VYVE a music library nobody else has.
+
+  Fallback while waiting on Suno output: seed 5-10 tracks from Pixabay Music (free, commercial use, no attribution — pixabay.com/music) so day-1 has audio playing. Suno tracks replace them as Lewis produces. Backup paid option if AI-generated proves insufficient: Artlist (£18/month annual, fully licensed) or Epidemic Sound (£15-50/month).
+
+  Avoid: Free Music Archive (mixed licensing, requires per-track licence check), YouTube Audio Library (account-gating annoyance), Musicbed (too cinematic, wrong vibe).
+
+  Day-1 default behaviour: None (no audio ambush). Member toggles audio on via the session screen control; choice persists in localStorage. Volume slider visible when audio enabled.
+
+  Migration name when shipped: `create_breathwork_music_table` (P0, must land before breathwork.html session can wire audio).
 
   New §23 hard rule from this session: any breathwork session UI MUST publish `mind:logged` on completion using `client_id: crypto.randomUUID()` via cardio.html-style optimistic-first / un-awaited POST / 4xx-revert skeleton. No awaited POST in the foreground — PM-167 / PM-169 learning applies.
 - [ ] **affirmations.html real wiring** (P0). Deterministic daily pick, Save → log to mind_activities kind=affirmation ref_id=<uuid>. Favourites view. Decide storage: `members.affirmation_favourites uuid[]` vs `affirmation_favourites` join table.
