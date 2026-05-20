@@ -2694,6 +2694,41 @@ A list surface that paints on page open MUST have a `localStorage` snapshot to p
 
 Every Mind kind (breathwork, journal, affirmation, visualisation) MUST log to `mind_activities` via the cardio.html skeleton — never an awaited foreground POST. Sequence: write to Dexie synchronously; publish `mind:logged` with `client_id` and `kind`; flip UI / clear inputs / repaint; THEN un-awaited background POST in IIFE; on 4xx publish `mind:failed` and `VYVELocalDB.mind_activities.delete(client_id)`; on network error keep the Dexie row for the outbox drainer to reconcile. `client_id` is `crypto.randomUUID()` per §23.37. The outbox dead-item path already publishes a `mind:failed` envelope when an item hits max-attempts or 4xx (PM-173 FAILURE_TABLE_MAP entry) — page-local listeners and home rerender subscribers (PM-171.1) work unchanged. **Forbidden:** `await fetch(...)` blocking the UI flip; mock-only or page-internal logging that doesn't go through Dexie + sync; per-kind divergence (a journal save must not skip the bus event because "it's just text"). Audit signal: a `mind_activities` write inside a page without a corresponding `VYVEBus.publish('mind:logged', ...)` line above it.
 
+## §23.40 — Breathwork imagery sources: Storage now, bundle later (PM-174, 20 May 2026)
+
+Mind imagery (breathwork session backgrounds and any future visualisation
+stills) is sourced from **Supabase Storage public buckets** for now, NOT
+bundled into `vyve-site/assets/`. The decision: Dean is testing PM-174 and
+beyond via the live-update dev loop (Capacitor `server.url` pointed at
+online.vyvehealth.co.uk), so a vyve-site commit that drops assets at
+`assets/breathwork-imagery/` only renders after the next Capacitor binary
+build — wrong loop for evening iteration. Supabase Storage URLs work
+identically in the dev loop and in production.
+
+**Tradeoff acknowledged:** Lewis can edit live (matches the Mind v1 catalogue
+doctrine), but offline cold-boot on cellular = empty background until network
+returns (acceptable at trial scale, single-device LWW). When PF-14b ships
+bundled mode and `server.url` is no longer used for iteration, imagery is a
+candidate for `assets/breathwork-imagery/` bundling with a `sw.js` urlsToCache
+entry per image — at which point the merge pattern is: bundled list + Dexie
+catalogue rows, page treats them identically, `is_bundled: true` flag for
+debug telemetry. Until then: Storage only.
+
+**Audit signal:** anyone proposing to bundle imagery before PF-14b ships
+needs to confirm Dean is no longer using `server.url` live-loop, otherwise
+the bundle never reaches the device in the dev cycle. Music is a separate
+asset class — Storage permanently (track files are too big to bundle at
+20-track scale).
+
+**Rule:** Mind-section decorative assets (imagery, future visualisation
+stills) MUST live in Supabase Storage public buckets with catalogue-table
+rows pointing at the URLs while `server.url` is the active iteration mode.
+Catalogue tables (`breathwork_imagery`, future `visualisation_imagery`) are
+the extension point — INSERT rows, no engineering required. Bundling is a
+post-PF-14b optimisation, not a launch shape.
+
+
+
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.

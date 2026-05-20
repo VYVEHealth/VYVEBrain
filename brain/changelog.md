@@ -1,3 +1,186 @@
+## 2026-05-20 PM-174 — breathwork.html real wiring (Mind v1 first user-visible commit)
+
+**Shipped.** vyve-site `0e59c180` — five files in one atomic commit. breathwork.html
+rebuilt from the PM-173 static mockup into a fully wired session experience.
+
+**The page now does, end to end:**
+
+Pattern picker reads `breathwork_patterns` from Dexie with REST fallback per
+PM-96 §23.7.1. Four patterns render with glyph + name + subtitle + "~N min"
+total session time. Tap → intro screen.
+
+Intro screen: page title in italic teal, about_text from the catalogue,
+pattern badge (glyph + cadence summary), stat grid (rounds / per-cycle / total
+duration — recomputes live as the stepper moves), rounds stepper (1-30, default
+from `breathwork_patterns.default_rounds`), phase-tones toggle (on by default
+unless localStorage `vyve_breathwork_tones_on='0'`), tutorial card (gold-bordered
+collapsible card, expanded by default first-session-per-pattern, collapsed
+thereafter via `vyve_breathwork_tutorial_seen` JSON array of pattern ids in
+localStorage; tapping Begin marks the pattern seen).
+
+Session screen: animated SVG ring engine. `easeInOutSine` curve drives the
+`<circle r=>` between 60-105 on inhale (grows) and exhale (shrinks); holds
+hold the radius at whichever endpoint the previous phase ended on. A second
+`<circle>` knob orbits the outer track at radius 120, completing one full
+revolution per phase — peripheral motion cue for eyes-half-closed members.
+Phase label + countdown sit in the centre, layered above the ring via a
+flex-centred overlay div (text-shadow protects readability when imagery sits
+behind). Phase dots row below the ring shows which phase of the cycle is
+active (filled teal, scaled 1.3×, glow shadow), past phases done-state, future
+phases muted. Round counter sits below the dots ("Round 3 of 6").
+
+Background imagery layer: two stacked `<div class="bg-img">` elements behind
+the ring, each carrying a Ken Burns scale 1.0 → 1.08 + slight translate over
+18s alternate animation. Crossfade swaps every 15s with 3s opacity transition.
+Pick uses last-3 FIFO exclusion via `localStorage.vyve_breathwork_recent_imagery`
+and `pattern_affinity` soft weighting (+50% chance via random gate, never a
+hard filter). Library hydrated from `breathwork_imagery` Dexie store, populated
+via PM-174's new sync.js catalogue entry. Darken + soft-blur gradient overlay
+between imagery and ring keeps the ring legible in both themes; light-mode
+override in CSS prevents the dark-tinted overlay from breaking light theme
+(§23.7-style PM-163 discipline).
+
+Phase tones: Web Audio API synthesised inline — 220Hz sine on every inhale
+phase start (transition into inhale), 165Hz on every exhale start. 30ms attack,
+exponential decay to 0.0001 over 300ms, peak gain 0.045. Zero asset bytes,
+deterministic across iOS/Android, no licence. Audio context lazy-instantiated
+on the first user gesture (tones toggle or Begin tap) per browser autoplay
+policies. Holds intentionally silent — the count is the hold cue.
+
+Haptic feedback: Capacitor `@capacitor/haptics` `impact({style:'light'})` fires
+on every phase transition. PWA fallback is a no-op via try/catch.
+
+Pause / Restart / End controls. Pause flips the icon + label, snapshots
+`performance.now()` into `ringPausedAt`, and on resume advances
+`ringPhaseStartedAt` by the pause duration so the elapsed-in-phase calculation
+stays correct. Restart cancels the RAF, stops imagery, calls startSession()
+fresh. End calls `confirmEnd()` which logs only if `ringRoundIdx >= 1` —
+abandoning mid-round-one returns silently to the picker, no `mind_activities`
+row created.
+
+End-of-session screen: soft glowing orb (radial-gradient, no figurative
+checkmark), session title in Playfair italic teal, sub-line stating
+duration ("That's 1:36 of slower breathing, logged to your Mind track"),
+stats trio (Rounds / Minutes / Breaths — where breaths = rounds ×
+inhale-phases-per-cycle). Streak card appears when streak ≥ 2 days. Done
+returns to picker. "Another round" returns to intro for the same pattern.
+"Different pattern" returns to picker.
+
+Optimistic-first logging via §23.39 skeleton — exact cardio.html-style shape:
+
+1. `VYVELocalDB.mind_activities.upsert({client_id, kind:'breathwork', ref_id:
+   pattern.id, duration_seconds, activity_date, day_of_week, member_email,
+   logged_at})` — synchronous, fire-and-forget, error caught with console.warn.
+2. `VYVEBus.publish('mind:logged', {kind:'breathwork', client_id, ref_id,
+   activity_date, duration_seconds, logged_at, source:'breathwork_page'})` —
+   optimistic, lets other surfaces (landing page streak chip, future
+   mind.html hub) re-render without waiting for network.
+3. UI flips to end screen immediately. Undo countdown starts. Network POST
+   fires in an un-awaited IIFE.
+4. On 4xx: `VYVEBus.publish('mind:failed', ...)`, `VYVELocalDB.mind_activities.
+   delete(client_id)` per §23.39 revert path.
+5. On network throw: keep the Dexie row, enqueue to outbox via
+   `VYVEData.writeQueued` per §23.39 reconciler path.
+
+`client_id` always `crypto.randomUUID()` (with v4 manual fallback) per §23.36.
+`Prefer: return=minimal,resolution=ignore-duplicates` on the insert header so
+outbox retries are safe.
+
+Undo affordance: 5-second countdown on the end screen. Tap "Undo this log"
+within 5s → `VYVELocalDB.mind_activities.delete(client_id)` +
+`VYVEBus.publish('mind:unlogged')`. After the network POST has succeeded we
+do NOT issue a DELETE to Supabase — v1 single-device LWW means the next sync
+either reconciles or doesn't matter at trial scale; documenting the choice
+rather than papering over it with a DELETE round-trip.
+
+Resume-mid-session: `document.visibilitychange` hidden handler snapshots
+`{patternId, rounds, roundIdx, phaseIdx, phaseElapsed, ts}` into
+`sessionStorage.vyve_breathwork_resume`. On landing page boot, if a snapshot
+exists and `now - ts < 60s`, a resume card appears above the pattern list
+with a "Resume" button that picks up at `roundIdx + phaseIdx` (one phase of
+slip — `phaseElapsed` deliberately discarded; full reconstruction is
+post-launch refinement). Older snapshots are cleared on read.
+
+Landing-page history strip: last 5 breathwork-kind rows from `mind_activities`
+Dexie store, rendered as pills with friendly date ("Today" / "Yesterday" / "Nd
+ago" / DD MMM) and duration. Catalogue join via pattern_id → patterns lookup
+table for the human name. Hidden when no history exists (true day-1 state).
+
+Landing-page streak chip: gold-bordered pill above the pattern list. Shows
+N-day streak + N sessions this week. Streak calculation walks back from today
+allowing a one-day grace if today missing but yesterday present, up to 30
+days. Hidden when streak < 1 and weekly count = 0.
+
+PM-171.1 compliance: `VYVEBus.subscribe('mind:logged')` and `mind:failed`
+handlers on the landing view re-pull `mind_activities` + re-render history +
+streak. This means a remote-origin event (different device, future) triggers
+the same render path as a local-origin event.
+
+**File-by-file changes:**
+
+- `breathwork.html` 19KB → 72KB (full rewrite, existing CSS block preserved
+  + new component styles appended: imagery layer, stat grid, stepper, tones
+  row, tutorial card, primary CTA, session ring + phase dots, end orb, undo
+  affordance, resume card, streak chip, history pills).
+
+- `db.js` SCHEMA_V5 = SCHEMA_V4 + `breathwork_imagery: '&id, is_active,
+  sort_order'`. `db.version(5).stores(SCHEMA_V5)` migration call.
+  `breathwork_imagery: makeCatalogueTable('breathwork_imagery')` accessor —
+  same shape as `breathwork_patterns` and `affirmations_library`.
+
+- `sync.js` adds the `breathwork_imagery` catalogue hydrate entry after
+  `affirmations_library`. Path `/breathwork_imagery?is_active=eq.true&select=*
+  &order=sort_order.asc`, persist via `replaceForMember(null, rows)` (catalogue
+  scope, no member filter).
+
+- `sw.js` cache key bump `vyve-cache-v2026-05-20-pm173-mind-infrastructure-a`
+  → `vyve-cache-v2026-05-20-pm174-breathwork-a`.
+
+- `index.html` `vbb-marker` "Update 31" → "Update 32".
+
+**Bug caught during `node --check` pre-flight (would-have-shipped class):**
+two `'<br>'` regex sites in renderPatterns inner-text had real newlines
+between the slashes in the source string (Python interpolation artefact),
+which produced an unparseable JS regex. node --check caught it before commit.
+Same audit also caught a nested-single-quote escape bug in the renderPatterns
+onclick template — fixed by switching to a `data-pid` attribute pattern read
+back via `this.getAttribute('data-pid')` in the click handler. Both files
+re-ran clean before the atomic commit.
+
+**Supabase state (separate from the vyve-site commit):**
+- `breathwork_music` table created earlier this session via PM-174 prep
+  migration — empty, awaiting Lewis's Pixabay/Suno track sourcing.
+- `breathwork_imagery` table created — 10 rows seeded covering 4 dawn, 2
+  water, 1 pines, 1 dusk, 1 dunes, 1 sky. All `pattern_affinity` tagged.
+  Live URLs at `breathwork-imagery` public bucket.
+- All 10 imagery files in Supabase Storage `breathwork-imagery/` bucket
+  (public read), JPEG, 150-335KB each.
+
+**What's NOT in this commit (deferred deliberately):**
+- Music UI. The catalogue table exists but is empty and the page's music
+  controls are entirely hidden when zero rows. When Lewis sources 3+ tracks,
+  the music wiring is a separate one-off commit (intro-screen music row,
+  session-screen mini-track card, cycle on session start, FIFO last-3
+  exclusion identical to imagery, volume in localStorage, Off as first-ever
+  default). Documented as PM-175 in the backlog.
+- The `breathwork_patterns.ambient_audio_url` per-pattern override remains
+  untouched and unused — that path is a post-launch refinement.
+
+**Worked time:** ~3 Claude-assisted hours from "let's build it out" through
+to verified commit. Includes the imagery sourcing detour (Gemini prompts,
+JPEG-vs-WebP decision, Supabase Storage bucket creation, mood + affinity
+tagging) and the bundled-vs-Storage architecture conversation that landed
+on Storage-for-now-bundled-later because Dean's testing via the live-update
+dev loop.
+
+**Next session candidates** (Dean's call):
+- PM-175: music wiring when tracks are available.
+- affirmations.html real wiring (Mind v1 next P0).
+- mind.html hub real wiring (Mind v1 P1).
+- journal.html real wiring (Mind v1 P1).
+
+
+
 ## 2026-05-20 PM-173-followup — Mind section depth-of-breathwork plan (concurrent-session retro)
 
 **Concurrent-session collision retrospective.** This session opened with "load the brain, continue with body section" → corrected to "mind area" → "build breathwork sessions they can do instantly: box breathing, physiological sigh, calm mind breath, affirmations, visualizations, journalling". Plan was: ship `mind_activities` + `breathwork_patterns` + `affirmations_library` migrations, then a vyve-site infrastructure commit, then session-close. Two-thirds through, freshly pulling SHAs before the vyve-site commit, discovered another Claude session had landed identical work at 18:27 UTC under the same PM-173 number. Concurrent sessions are real and PM-166 / PM-167's warning continues to apply.

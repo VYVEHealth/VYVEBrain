@@ -2,7 +2,7 @@
 
 Mind section infrastructure landed PM-173 (`fbda5ac8`). Schema + Dexie + sync + 4 patterns + 30 affirmations in place. Three more vyve-site commits to complete Mind v1:
 
-- [ ] **breathwork.html real wiring** (P0, next session). Dean directive: "as in-depth as possible — make this the best breathwork in any UK wellbeing app." Full target shape:
+- [x] **breathwork.html real wiring** (P0) — SHIPPED PM-174 / vyve-site `0e59c180` 20 May 2026. Dean directive: "as in-depth as possible — make this the best breathwork in any UK wellbeing app." Full target shape:
   - Pattern picker from Dexie `breathwork_patterns` (with REST fallback per PM-96 PF-15).
   - Pre-session intro screen: pattern name, `about_text`, "Begin" CTA. Stops cold-starting into a ring members don't understand.
   - **Animated SVG ring that breathes**: expands smoothly on inhale (ease-in-out), holds steady on hold phases, contracts on exhale. Not a tick — a breath. CSS transforms or SVG path animation driven by the phase timer. This is the core "feels designed" moment.
@@ -56,6 +56,8 @@ Mind section infrastructure landed PM-173 (`fbda5ac8`). Schema + Dexie + sync + 
   Migration name when shipped: `create_breathwork_music_table` (P0, must land before breathwork.html session can wire audio).
 
   New §23 hard rule from this session: any breathwork session UI MUST publish `mind:logged` on completion using `client_id: crypto.randomUUID()` via cardio.html-style optimistic-first / un-awaited POST / 4xx-revert skeleton. No awaited POST in the foreground — PM-167 / PM-169 learning applies.
+- [ ] **PM-175 — breathwork music wiring** (P1, blocked on Lewis sourcing tracks). `breathwork_music` catalogue table exists and is empty. Implementation shape: intro-screen music row (like the tones row PM-174 shipped), session-screen mini-track card showing currently-cycling title, cycle on session start with FIFO last-3 exclusion via `localStorage.vyve_breathwork_recent_music`, volume slider persisting to `localStorage.vyve_breathwork_music_volume`, off as first-ever default (no audio ambush per PM-173 spec). `pattern_affinity` text[] column lives on `breathwork_music` already — soft weight, not hard filter, same shape as imagery. Estimated ~200 lines added to breathwork.html. Catalogue hydrates via the same sync.js pattern PM-174 used for imagery — just add the entry after the imagery one.
+
 - [ ] **affirmations.html real wiring** (P0). Deterministic daily pick, Save → log to mind_activities kind=affirmation ref_id=<uuid>. Favourites view. Decide storage: `members.affirmation_favourites uuid[]` vs `affirmation_favourites` join table.
 - [ ] **journal.html real wiring** (P1). Textarea + save + history list, kind=journal. Decide prompt rotation shape (static daily / AI-generated / freeform).
 - [ ] **mind.html hub wiring** (P1). Wire hardcoded `3` streak and `2/5` counter to Dexie reads of mind_activities. Strip placeholder-tag.
