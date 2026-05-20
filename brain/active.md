@@ -50,25 +50,30 @@ When the three disagree:
 
 ## 2. Live state snapshot (refreshed every session-end)
 
-**SESSION HANDOFF — 2026-05-16 (PM-151/152/153 — habits.html paint audit).** Page-by-page paint audit, page 2 (habits.html, after index.html/PM-150). Three vyve-site commits shipped and device-verified by Dean:
+**SESSION HANDOFF — 2026-05-20 (PM-171.1 — bus subscribers rerender home from Dexie).** Major architecture fix landed: `_markHomeStale` subscriber pattern replaced with `_rerenderHome` that calls `buildHomeFromDexie(email)` → `renderDashboardData(result)` on every bus event. Sidesteps the long-standing `optimisticPatch` shape mismatch (it writes flat `member_home_state` column names; the post-EF-v40 cache shape is nested `engagement.*` / `progress.*`).
 
-- **PM-151 `03d2b247`** — settings.html `saveHabits`/`savePersona`/`saveGoal` rewritten to §23.7.6 critical-path order: Dexie write + bus publish + local UI first, Supabase writes fire-and-forget after. Pre-PM-151 the network was awaited sequentially on the critical path. New `habits:set-changed` bus event + habits.html `reloadHabitSet()` subscriber. Client-side `crypto.randomUUID()` on added rows. `saveGoal` gained `specific_goal:changed` publish.
-- **PM-152 `4baa445c`** — habits.html card redesign (Dean's request). Difficulty pill removed; `habit_description` + `habit_prompt` collapse into a tap-to-expand dropdown (Option A — resting card = title + chevron + assignment eyebrow only). Collapsed by default; title row is the tap target.
-- **PM-153 `deec34f8`** — fixed a PM-151 regression. PM-151 wrote THIN `member_habits` rows to Dexie (no denormalised join cols); habits.html's `habit_title` undefined-card filter silently dropped them, and `saveHabits` never busted `vyve_settings_cache`. Fix: `saveHabits` writes FAT Dexie rows (`_dexieAddRows`) while the POST stays thin (`_supaAddRows`); `habit_prompt` added to both `_habitLibrary` source queries; settings cache now busted on save. New rule §23.7.9.
+**Root cause Dean reported:** screenshots showed habits.html dot strip filled Mon/Tue/Wed but index.html only Wed. Walked through the boot sequence + every subscriber + the `optimisticPatch` math and found that `vyve-home-state.js` writes to top-level cache keys (`habits_total`, `habits_this_week`, `last_habit_at`) that the renderer doesn't read (renderer reads `progress.habits.count`). Every patch since the EF v40 refactor has been a no-op. Combined with `_markHomeStale` fast-pathing out on `kind:'canonical'` envelopes, the net effect was zero visible home updates from any local activity since the refactor.
 
-**Current build state:** build banner **Update 18**; sw cache key **`vyve-cache-v2026-05-16-pm153-habit-fatrow-a`**. No EF or schema change across PM-151/152/153. `member-dashboard` EF live at **v69**. habits.html cache key **`vyve_habits_cache_v3`**.
+**vyve-site commit `4c7086bb`** — `index.html` (-10787 chars, the 14 PM-30..PM-66 verbose comment blocks removed), `sw.js` (cache bump). Build `Update 28` → `Update 29`. SW cache `pm170-movement-recent-cache-a` → `pm171-1-bus-rerender-a`. All 9 inline scripts pass `node --check`; post-commit byte-equal verified at commit SHA. 22 subscribers re-routed identically.
 
-**Audit progress:** index.html ✅ (PM-150) · habits.html ✅ (PM-151/152/153). **Next audit page in nav order: `exercise.html`** (Exercise Hub — hero card + stream cards linking Movement / Workouts / Cardio / Classes).
+**What's fixed immediately:** habit/workout/cardio taps on their pages → home dashboard updates within ~16ms after Dexie write. Cross-tab same. Cross-device via Realtime same. Engagement ring + streak + counter tiles + dot strip + weekly goals all driven by `buildHomeFromDexie` which calls `VYVEHomeStateLocal.computeHomeStateFromDexie` (already shipped PF-11b PM-89, ~25KB JS port of `refresh_member_home_state` SQL).
 
-**Device-side caveat (Dean's test account only, not a code issue):** `test1@test.com` Dexie holds one thin `member_habits` row (Morning light exposure) written by the broken PM-151 code before PM-153. The PM-153 fix is correct for all future saves but does not retroactively fatten that row — an in-app cache reset (settings long-press footer, PM-104 gesture) re-hydrates it. Fresh members never hit this.
+**What's NOT fixed yet — PM-171.5 is now P0:** The Tuesday-stranded-rows symptom in Dean's screenshot is a **separate bug** that PM-171.1 does not address. Habits.html publishes `habit:failed` from page-local code (`_habitInflight` tracker + outbox-dead listener at L1880-1920). When the page closes before the outbox retry budget exhausts, the failure event never fires. Dexie keeps a phantom row, Supabase doesn't have it. PM-171.1 makes home consistent with Dexie (Tuesday fills on home too now); it does NOT make Dexie consistent with Supabase. Fix shape: hoist `_*Inflight` trackers to localStorage and have the outbox itself emit `<table>:failed` directly without needing the publishing page. ~1 session.
 
-**Open / parked from this session (logged in backlog PM-153 section):**
-- **Locked / mandatory habits model** — Dean's product decision: VYVE-given habits (theme, autotick) should be un-removable; self-added habits removable. NOT built — current "un-removable" on the 4 `autotick-7b` habits is an accident of a `created_by` mistag, not the intended model. Real implementation = a `removable`/`locked` boolean on `member_habits`. Post-trial, Lewis copy gate on the label. The `autotick-7b` `created_by` mistag should be nulled as part of that work.
-- **`member_habits` re-add duplicate** — no unique constraint on `(member_email, habit_id)`; remove-then-re-add creates a second row. Rides with the locked-habits feature. Recommendation: unique constraint + revive-on-readd.
+**Other follow-ups (lower priority):**
+- **PM-171.4** — `vyve-home-state.js` `optimisticPatch`/`revertPatch` are now silent no-ops in the home-render flow. File still referenced by 11 surfaces; safe-no-op behaviour means no rush. Audit + remove in cleanup pass.
+- **PM-171.2 / 171.3** — Original plan had these as separate commits for shape projection and dot-strip recompute. Both subsumed into 171.1 because `buildHomeFromDexie` already does the full projection.
+- **Habits.html dot strip** still uses its own Dexie read (`VYVELocalDB.daily_habits.allDatesFor`) — not changed in 171.1. Renders the same Mon/Tue/Wed it always did. Consistent with home post-171.1.
 
-**Carried from PM-150 (still open, not touched this session):** `page_visits` owned visit/dwell analytics feature; `session_schedule` table + live-session minute-windowing feature; cross-visit dwell accumulation (tracking.js v9 resets on unload); tracking.js outbox wiring (§23.10 hardening candidate). All post-launch, none trial-blocking — see backlog PM-150 section.
+**Audit progress for Dean's portal-restructure goal** (Habits / Body / Mind / Connect / Weekly Check-in tracks): held until Mind + Connect sections are content-ready. Current Progress Tracks (Habits / Exercise / Cardio / Sessions / Check-in) stay as-is. PM-171.1 is bus-architecture work that the restructure will inherit cleanly — when new tracks land, they subscribe to `_rerenderHome` like everything else.
 
-**§23.8 timezone audit** still pending (codebase BST-locked via `bstToday()` across ~8 files including habits.html — new code must use device-local, do not extend the `bstToday` surface).
+**Carried from PM-153 (unchanged this session):**
+- Locked / mandatory habits model (Dean's product decision; needs `removable`/`locked` boolean on `member_habits`, post-trial).
+- `member_habits` re-add duplicate (no unique constraint on `(member_email, habit_id)`).
+- `page_visits` owned visit/dwell analytics; `session_schedule` table + live-session minute-windowing; cross-visit dwell accumulation (tracking.js v9 resets on unload); tracking.js outbox wiring (§23.10 hardening candidate).
+
+**§23.8 timezone audit** still pending (codebase BST-locked via `bstToday()` across ~8 files; new code must use device-local).
+
 
 ## 3. The active campaign — Premium Feel Migration (local-first via Dexie)
 

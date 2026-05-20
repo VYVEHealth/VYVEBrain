@@ -1,3 +1,51 @@
+## 2026-05-20 PM-171.1 — bus subscribers rerender home from Dexie (replaces _markHomeStale; fixes silent home-paint bug)
+
+vyve-site commit `4c7086bb4e68a8afb3ecf8cb7e4f1ee579b42516`, retry_count 0, both files byte-equal verified post-commit at the commit SHA. Build banner `Update 28` → `Update 29`. SW cache `pm170-movement-recent-cache-a` → `pm171-1-bus-rerender-a`.
+
+**The bug.** Dean reported the home dashboard not reflecting habits ticked on habits.html — Tuesday filled on habits, only Wednesday on home. Deep analysis of the boot sequence, subscriber wiring, and `optimisticPatch` behaviour exposed a structural mismatch that predates the current campaign.
+
+`VYVEHomeState.optimisticPatch` (from `vyve-home-state.js`, shipped PM-58 Layer 4) writes to top-level cache keys named `habits_total`, `habits_this_week`, `last_habit_at`, etc. — the column names of the `member_home_state` SQL row. At PM-58 the EF response shape was either the home_state row directly, or nested under `cache.home_state`. Some later EF refactor (around v40 per L984 comment in index.html — `data.engagement && !data.score`) flattened the response into `data.engagement.*`, `data.progress.*`, `data.activity_log`, etc. **`vyve-home-state.js` was never updated to follow.** Result: every `optimisticPatch` call since the v40 refactor has been writing to top-level cache keys that no renderer reads. The renderer reads `data.progress.habits.count`, `data.engagement.score`, `data.engagement.streak_by_type.habits.current` — none of which `optimisticPatch` touches.
+
+Compounding that: every bus subscriber on index.html called `_markHomeStale`, which hit a fast-path-out on `envelope.kind === 'canonical'`. The intention was "publisher already patched the cache, don't wipe it". Reality: the publisher's patch went to a phantom location AND the subscriber did nothing. Net: zero visible change on the home dashboard from any local activity, ever, since the EF refactor. Only the slow EF refresh (7-17s cold per §23.5.1) ever moved the visible state.
+
+**The fix.** Sidestep the shape mismatch by rebuilding the EF response payload from Dexie on every bus event. `buildHomeFromDexie(email)` (already present in index.html since PF-11b, used on cold-cache paint) calls `VYVEHomeStateLocal.computeHomeStateFromDexie` (a JS port of the SQL function), then projects the result into the nested EF response shape. New shared handler `_rerenderHome` reads the envelope's email, calls `buildHomeFromDexie`, overwrites `vyve_home_v3_<email>`, calls `renderDashboardData(result)`. All 22 bus subscribers route through it: the 13 canonical write events (habit/workout/set/cardio/food×2/weight/wellbeing/monthly/shared/imported/session/cert), the 7 failure events (habit/cardio/workout/food/session-view/wellbeing/monthly), persona:switched, and the existing `_markMembersCacheStale` carry-over (kept as a second subscriber on persona:switched because it busts a different cache).
+
+Dexie is the source of truth (already written synchronously by the publishing surface BEFORE bus.publish per the §23.7.5 contract), so the rebuilt payload reflects post-write state immediately. ~5-20ms of compute per rerender — fine for a tap-response budget.
+
+**What this fixes immediately:**
+- Habit tick on habits.html → home dot strip + habits counter tile + engagement ring + streak all update within ~16ms after the bus event arrives.
+- Workout completed on workouts-session → home workouts counter tile updates instantly.
+- Cardio logged → cardio counter tile updates instantly.
+- Cross-device: another device's habit tick arrives via Realtime → home dashboard reflects within Realtime delivery time + 16ms.
+- Cross-tab: same as cross-device via localStorage 'vyve_bus' transport.
+- Failed writes: page-side revert (e.g. habits.html outbox-dead handler at L1880+) reverts Dexie, then `habit:failed` fires, then home re-renders correctly.
+
+**What this does NOT fix (sequenced for follow-ups):**
+- **PM-171.5 (highest priority)** — Outbox-driven `*:failed` events. The current failure path depends on the publishing page still being open when the outbox retry budget exhausts. If habits.html navigates away before the outbox declares a write dead, `habit:failed` never fires and the stranded Dexie row persists. Today's screenshot bug (Tuesday rows in Dexie but not Supabase) is this exact pattern. Fix: hoist `_*Inflight` trackers to localStorage and have the outbox itself emit `<table>:failed` directly. ~1 session.
+- **PM-171.4** — `vyve-home-state.js` is now redundant — its `optimisticPatch` and `revertPatch` are silently no-ops because the Dexie rebuild supersedes them. Other pages still call them; safe because they no-op cleanly. Audit + remove in a cleanup pass once all pages are migrated to bus-rerender semantics.
+- **PM-171.2 / 171.3** — Subsumed into 171.1. The shape projection (171.2) and the dot-strip/streak recompute (171.3) both happen automatically inside `buildHomeFromDexie`, which already does the full projection. Original three-step plan collapsed into one commit.
+
+**Why `_rerenderHome` is the right primitive.**
+- Dexie has been the §3 source of truth since PF-1; the rebuild reads the authoritative state.
+- One handler, one rebuild path, one re-render — no per-event special-casing.
+- Origin-agnostic: local, remote (cross-tab), realtime (cross-device) all flow through the same code.
+- Failure path: publishing surface reverts Dexie → fires `<table>:failed` → handler rebuilds from post-revert state → home returns to correct view.
+- Forward-compatible: when we add new events (e.g. Mind / Body / Connect track restructure post-launch), the new event subscribes to `_rerenderHome`, done. The handler doesn't grow when surfaces grow.
+
+**Audit numbers (pre/post).**
+- Subscribers on index.html: 22 → 22 (identity preserved, all routed to new handler).
+- `_markHomeStale` references in idx: 14 → 0 (function deleted, sole remaining mention is in the new block's explanatory comment).
+- `VYVEData.invalidateHomeCache` call sites: 8 → 0 in idx (function still exported by vyve-offline.js; other callers elsewhere unchanged this commit).
+- `optimisticPatch` writers across the codebase: 11 surfaces unchanged. They continue to write to phantom keys harmlessly; the rebuild on the bus event makes those writes irrelevant for the home dashboard. To be cleaned up in PM-171.4.
+
+**Files in commit:**
+- `index.html` (-10787 chars net, mostly the deletion of 14 verbose per-event PM-30..PM-66 comment blocks). vbb-marker `Update 28` → `Update 29`.
+- `sw.js` (cache key bump only).
+
+**Pre-flight + post-commit discipline:** SHAs refreshed immediately before commit; `node --check` on all 9 inline script blocks passed; post-commit Contents API verification at commit SHA `4c7086bb` confirmed byte-equal for both files.
+
+**Followups locked into backlog:** PM-171.5 (outbox-driven failure events) tagged P0 — it's the actual fix for the Tuesday-stranded-rows symptom. Without it, Dexie will still drift from Supabase silently on any network failure that exhausts retries while the page is closed.
+
 ## 2026-05-17 PM-170 — movement.html Recent list: localStorage cache for cold-load paint
 
 **vyve-site `d6a96a3f`.** Follow-up to PM-169. Dean device-tested PM-169 and found the Recent Movement list blank on a cold open — it only populated after logging an activity, and went blank again on app-close/reopen. cardio.html does not behave this way. PM-169 converged the *logging* path but missed the *cold-load history paint*.
