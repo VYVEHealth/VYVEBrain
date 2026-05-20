@@ -1,3 +1,63 @@
+## 2026-05-20 PM-183 — mind.html hub real wiring + 30s engagement gate on Mind audio pages (Mind v1 user-visible COMPLETE)
+
+**Shipped.** vyve-site `f44c7104558540a721c6b8fbea66a82e79b827ed` — six files in one atomic commit. Closes out Mind v1 user-visible scope: all six pages (breathwork, journal, affirmations, meditation, sleep, visualisation) plus the hub itself now real-wired against the production data layer. Production reach gated on next OTA per §23.42.
+
+**Scope.**
+
+- **mind.html (17KB → 38KB).** Three hardcoded placeholders replaced with real wiring:
+  - **Today's focus card** — daily rotation via `djb2(memberEmail + '|' + todayStr()) % 10` across a curated 10-video pool (5 meditation + 2 sleep + 3 visualisation). Deterministic per member per local day, refreshes at midnight, same video all day for one member, different members get different picks. Identical algorithm shape to journal's prompt-of-the-day (PM-175) and affirmations' daily pick (PM-176). Card renders YouTube `mqdefault` thumbnail (with `hqdefault` → hide fallback chain per PM-182), title, subtitle, kind badge. Tap opens the inline modal player.
+  - **Day streak (left progress card)** — distinct `mind_activities.activity_date` values across all kinds, consecutive day count ending today (or yesterday with one-day grace), 30-day ceiling. Algorithm copied verbatim from affirmations.html `renderStreakChip()`. Empty → 0 with "Start your first Mind session" sub. Streak 1 → "Day one — keep it going". Streak 2+ → "Keep it going".
+  - **Today's progress (right progress card)** — count of today's `mind_activities` rows, displayed as `min(count, 2) / 2`. Underlying count is uncapped (members can complete more); display clamps to target. Foreshadows the engagement-score architectural pivot — eventually Mind sessions cap at 2/day for the Variety component reframe around Body / Mind / Connect pillars, but that's a separate post-launch session. Matching the 2/day cap here keeps the eventual transition consistent.
+
+- **Pool composition (10 videos).** Meditation: Calm Your Mind `cvmFC3IAbOg`, Morning Meditation `qQ4vD5FdOKM`, Quiet an Anxious Mind `4vpQNYthrIc`, Meditation for Abundance `8bBPJ1EEUCc`, Meditation for Sleep `aEqlQvczMJQ`. Sleep: Sleep Meditation 20min `g0jfhRcXtLQ`, Non-Sleep Deep Rest 8min `Z7ARtnSglyg`. Visualisation: The Beach `_ZeEPo8w-n8`, Manifestation `Z_u-P2hqL8M`, Reprogramming Your Mind `tqhxMUm7XXU`. Excluded ambient: Rain Sounds `eTeD8DAta4c`, Ocean Waves `bn9F19Hi1Lk` — they're sleep tools, not curated guided sessions.
+
+- **Inline player modal on mind.html.** Copied verbatim from meditation.html's PM-180 IIFE — youtube-nocookie iframe with `?rel=0&modestbranding=1&playsinline=1&autoplay=1`, `history.pushState` on open so phone back closes player without leaving page, `frameWrap.innerHTML=''` hard-stops audio on close. Deliberately NOT extracted into a shared `mind-player.js` per Dean's call — Mind v1 closes out fast; consolidation lands when Connect + Body are also content-complete and we do the full Dexie/bus/wiring rework.
+
+- **30s engagement gate (meditation.html + sleep.html + visualisation.html + mind.html).** Each player IIFE now arms a `setTimeout(..., 30000)` on `openPlayer` against a per-modal `client_id`. `closePlayer` clears the timer — closing under 30s discards the write. Re-opening within the same page session = fresh timer + fresh `client_id`, no double-fire. At 30s wall-clock, the §23.39 optimistic-first skeleton fires:
+  1. Build `dexieRow` with `kind=<page-kind>`, `ref_id=video_id`, `duration_seconds=30`.
+  2. `VYVELocalDB.mind_activities.upsert` sync.
+  3. `VYVEBus.publish('mind:logged', {kind, client_id, ref_id, source:'<kind>_page' | 'mind_hub_focus'})`.
+  4. Un-awaited POST to `/rest/v1/mind_activities` via `_jwtHeaders()` + `Prefer: return=minimal,resolution=ignore-duplicates`.
+  5. 4xx: `VYVEBus.publish('mind:failed', ...)`, drop Dexie row, repaint.
+  6. Network throw: keep Dexie row, enqueue to `VYVEData.writeQueued` with `table:'mind_activities'`, `client_id`.
+
+  `duration_seconds=30` represents the engagement threshold met, not measured play time. The iframe is `autoplay=1` and not API-bridged, so we can't measure real play. On iOS WKWebView the JS event loop pauses on background, so the wall-clock setTimeout approximates foreground watch — closer to "real engagement" than wall-clock alone. Chose this over loading the YouTube IFrame Player API: ~10 lines vs ~80, and the bridge gets ripped out when ElevenLabs/Calum scripted audio lands (an `<audio>` swap, per PM-180's deferred plan).
+
+- **Bus subscribe on mind.html.** `VYVEBus.subscribe('mind:logged', repaintDebounced)` + `mind:failed` repaint. 150ms debounce coalesces bursts. Excludes own optimistic publish (`source === 'mind_hub_focus'`) — that already triggered a synchronous local repaint via `repaintDebounced()` inside `logMindWatch`. So completing breathwork / journal / affirmations / a video → returning to the hub via back button → streak + today counters reflect the new write without any page reload, with no double-paint from self-fired events.
+
+- **Member email resolution.** Each audio page added a `_resolveEmail()` helper called inside `DOMContentLoaded` — reads `window.vyveCurrentUser.email` if available, else waits on the `vyveAuthReady` event once. Mirrors affirmations.html's boot pattern. Without member email, the 30s logger short-circuits silently — better than logging anonymous rows.
+
+- **Affirmation tick verified — no patch needed.** PM-176 affirmations.html `logToday()` already writes `mind_activities` kind='affirmation' via §23.39, with the full optimistic-first skeleton. Breathwork (PM-174) and journal (PM-175) the same. mind.html hub *reads only* — it doesn't write, only the source pages write.
+
+- **`placeholder-tag` stripped.** The "Mockup · content & thumbnails placeholder" gold chip at the bottom of the wrap is gone — content is real now.
+
+**Files changed.**
+
+```
+mind.html             17479 →  38181  bytes (+20702)  md5 e2deb2d4
+meditation.html       23601 →  30536  bytes  (+6935)  md5 836d87ac
+sleep.html            22905 →  29810  bytes  (+6905)  md5 38390875
+visualisation.html    22336 →  29289  bytes  (+6953)  md5 ad457cbe
+sw.js                 10201 →  10203  bytes     (+2)  md5 9082a936
+index.html           120748 → 120748  bytes     (+0)  md5 5a21b3c6
+```
+
+**Pre-flight + verification.**
+
+- §23.41 pre-commit SHA refresh on all six files. All stable — no drift this commit. First clean refresh today; the parallel-session storm has finally settled.
+- `node --check` clean on all twelve inline JS blocks across the four HTML files (mind.html has 2, the three audio pages have 3 each).
+- Post-commit byte-equal verification via `GITHUB_GET_REPOSITORY_CONTENT` at commit SHA `f44c7104` — all six MD5s and byte sizes match local. CDN-cached raw URL deliberately not used per §23.41.
+
+**sw.js cache key.** `pm182-mind-thumbs-a` → `pm183-mind-hub-wire-a`. **index.html vbb-marker.** `Update 43` → `Update 44`. Both same commit per §23 portal-deploy rule.
+
+**No new §23 rule earned.** Textbook §23.39 application × 4 (one new initiator surface on mind.html, three identical instrumentations on the audio pages). The deliberate IIFE duplication across mind.html + meditation/sleep/visualisation is a conscious trade-off — flagged in the commit message + this entry — not an oversight. Consolidation deferred to the Dexie/bus rework once Connect + Body are also content-complete.
+
+**Production reach.** Per §23.42, none of this reaches members until the next Capawesome OTA bundle push. vyve-site main now contains the full Mind v1 user-visible set (PM-174 + 174.1 + 175 + 176 + 177 + 178 + 178b + 179 + 180 + 181 + 182 + 183) plus the deferred `hotfix/programme-render-shape`. Dean's deferred OTA push covers all of it in one bundle.
+
+**Mind v1 user-visible SHIPPED.** All six pages plus the hub real-wired. Backlog item closed. Next campaigns: Body content-complete + Connect content-complete (in that order, per Dean), then the Dexie/tables/wiring/bus rework consolidation pass (will fold the four duplicated player IIFEs into a shared module + extend the engagement-score Variety component to use Body/Mind/Connect pillars per the foreshadowed 2/day Mind cap).
+
+---
+
 ## 2026-05-20 PM-182 — Mind v1 thumbnails (YouTube CDN images on meditation, sleep, visualisation)
 
 **Triggered by Dean noting the three Mind v1 audio-content pages from PM-180 had empty placeholder thumbnails on every card and hero.** All twelve `.stream-card` rows + three `.vz-hero` panels were rendering the diagonal-stripe neutral block — visually identical, no content cue for which video is which.
