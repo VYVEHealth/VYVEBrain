@@ -1,3 +1,52 @@
+## 2026-05-20 PM-182 — Mind v1 thumbnails (YouTube CDN images on meditation, sleep, visualisation)
+
+**Triggered by Dean noting the three Mind v1 audio-content pages from PM-180 had empty placeholder thumbnails on every card and hero.** All twelve `.stream-card` rows + three `.vz-hero` panels were rendering the diagonal-stripe neutral block — visually identical, no content cue for which video is which.
+
+**Chosen approach: YouTube's own CDN thumbnails (Option A from the three options I weighed).** Rationale: PM-180 is an explicit one-week bridge while real audio (ElevenLabs/Calum) is prepared. Brand-quality custom Gemini renders (~30-45min) would be done twice — once for the bridge, once for the real pages — so doing them now is wasted work. The YouTube CDN gives twelve unique images on the CDN, hot-served from `i.ytimg.com`, zero Supabase storage cost, ships in 5min. Inconsistent visual language across thumbnails (some channels use text overlays, some don't) reads as "content variety" on a populated list rather than "lazy template."
+
+**Scope shipped.** Five files committed atomic to vyve-site main at `7be4eadd`:
+
+- **meditation.html, sleep.html, visualisation.html** — 12 card thumbnails (5+4+3) + 3 heroes patched.
+- **sw.js** — cache key bump pm181-bw-countdown-a → pm182-mind-thumbs-a.
+- **index.html** — vbb-marker Update 42 → 43.
+
+**Implementation shape.**
+
+Cards use `<img>` with a three-stage fallback: `mqdefault.jpg` (320×180) loads first; `onerror` swaps to `hqdefault.jpg`; second failure hides the img and removes `.has-img`, letting the original CSS placeholder stripe return as a degraded but-not-broken state. `referrerpolicy="no-referrer"` matches the privacy posture of the PM-180 nocookie iframe — same hygiene applied to thumbnails. `loading="lazy"` because rows below the fold don't need to load on first paint.
+
+Heroes use CSS `background-image` with `maxresdefault.jpg` (1280×720), letting the existing `.vz-hero` gradient overlay sit on top. The `.has-img::before` adds a teal-tinted darkening gradient so the hero title text remains legible regardless of what's in the thumbnail. A tiny inline preloader script probes the image: YouTube returns a 120×90 grey placeholder for videos lacking HD thumbs (HTTP 200, not 404), so the script swaps to `hqdefault` whenever `probe.naturalWidth <= 120`. Pre-build verification showed all twelve videos have real HD thumbs (smallest maxres was 32KB), so the fallback is defensive — but it's there because a future swap to a different track might lack the HD thumb.
+
+**Why card thumbnails are `<img>` but heroes are CSS background.** The card thumb is a plain image — no overlay, no chrome — so `<img>` gives cleaner onerror semantics. The hero needs the existing gradient + text rendered above the image, which is `background-image` territory; switching it to `<img>` would mean nested positioning. Different layers, different best-fit techniques.
+
+**CSS additions** (appended to each page's existing `<style>` block):
+
+```css
+.thumb-md.has-img::after{display:none;}
+.thumb-md .thumb-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;}
+.vz-hero{background-size:cover;background-position:center;background-repeat:no-repeat;}
+.vz-hero.has-img::before{content:'';position:absolute;inset:0;
+  background:linear-gradient(160deg,rgba(6,32,31,0.55),rgba(6,32,31,0.78));z-index:0;}
+.vz-hero.has-img .vz-hero-t,.vz-hero.has-img .vz-hero-s{position:relative;z-index:1;}
+```
+
+`.thumb-md.has-img::after{display:none;}` is the key line — it hides the diagonal-stripe placeholder pattern only when the image variant is present. If the image fails and the JS removes `has-img`, the stripe returns. Belt-and-braces.
+
+**Sequencing past parallel session PM-181.** When I went to fetch sw.js for the cache bump, the current key was `pm181-bw-countdown-a` (not pm180 — parallel session had landed PM-181 breathwork countdown in the gap). vbb-marker was already Update 42, not 41. I advanced both: cache → pm182-mind-thumbs-a, marker → Update 43. Mind pages themselves had not drifted — patches applied cleanly to PM-180 content. Second §23.41 demonstration today after PM-180's catch.
+
+**§23 commit discipline applied.**
+- Pre-commit SHA refresh on all five existing files. All clean.
+- `GITHUB_COMMIT_MULTIPLE_FILES` via Composio workbench. Plain UTF-8 in upserts, `upserts`/`message` fields per the multi-file rule.
+- Post-commit byte-equal MD5 verification at commit SHA `7be4eadd`. All five clean.
+  - `meditation.html`: md5 2ef1323e9148, 23601 chars
+  - `sleep.html`: md5 b26cbb6fcfa0, 22905 chars
+  - `visualisation.html`: md5 25d5dcac2134, 22336 chars
+  - `sw.js`: md5 b7e29e33157d, 10201 chars
+  - `index.html`: md5 a255e764f004, 120748 chars
+
+**No new §23 rule.** Standard `<img>`/background-image fallback patterns; nothing VYVE-specific worth a hard rule.
+
+**Reach.** Ships to members on the next OTA bundle along with PM-115/116 → today's accumulated main work. Dean's iPhone via `server.url` dev-loop sees it immediately on next page load (subject to §23.29 WKWebView cache 2-15min).
+
 ## 2026-05-20 PM-181 — breathwork.html 3-2-1 countdown before session start
 
 **Shipped.** vyve-site `00128001f2c23cc4493b8e363e8c20a96bc59345` — three files in
