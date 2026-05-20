@@ -26,11 +26,18 @@ Mind section infrastructure landed PM-173 (`fbda5ac8`). Schema + Dexie + sync + 
 
   `breathwork_patterns.ambient_audio_url` becomes optional "this pattern always plays this track" override; day-1 ships with library only, no overrides. Per-pattern overrides are post-launch refinement Lewis can configure in Supabase.
 
-  Sourcing: **Suno or Udio AI-generated** (£8-10/month, commercial-use licence, loopable output, on-brand for VYVE's deep-teal/warm-highlight palette). One evening generates 30-40 tracks, keep best 20. Lewis owns the library going forward — he can regenerate any track that goes stale, expand the library any time, without dev involvement. This is the only sourcing path that gives VYVE a music library nobody else has.
+  Sourcing — DAY-1 IS FREE. Path: **Pixabay Music** (pixabay.com/music) — free forever, commercial-use built in, no attribution required, no account needed. Lewis browses for an evening, downloads 20 ambient/meditation tracks that fit the brand, uploads to Supabase Storage. Cost: zero. Time: 1-2 hours.
 
-  Fallback while waiting on Suno output: seed 5-10 tracks from Pixabay Music (free, commercial use, no attribution — pixabay.com/music) so day-1 has audio playing. Suno tracks replace them as Lewis produces. Backup paid option if AI-generated proves insufficient: Artlist (£18/month annual, fully licensed) or Epidemic Sound (£15-50/month).
+  **Stable Audio free tier** is the strong runner-up (stableaudio.com) — 20 AI-generated tracks/month included with commercial-use licence on the free tier, 90-second loopable clips. Worth grabbing 5-10 here as well so the library has unique-to-VYVE tracks alongside the Pixabay ones.
 
-  Avoid: Free Music Archive (mixed licensing, requires per-track licence check), YouTube Audio Library (account-gating annoyance), Musicbed (too cinematic, wrong vibe).
+  **Upgrade path post-revenue** (not day-1): Suno or Udio paid (£8-10/month) for unlimited AI-generated commercial tracks; Artlist (£18/month annual) for premium curated library. Both upgrade paths preserve the library schema — new tracks INSERT into `breathwork_music`, old ones stay or get deactivated.
+
+  Free-tier options to try and skip if quality insufficient:
+  - YouTube Audio Library — free, commercial use, but needs YouTube account (annoyance). Smaller catalogue than Pixabay.
+  - Free Music Archive — free but licensing is per-track; many require attribution or are non-commercial only. Workable but requires reading each track's licence.
+  - Suno/Udio free tier — generate freely, but output is non-commercial under free tier; need £8-10/mo paid plan for commercial-use licence.
+
+  Avoid entirely: Artlist (paid), Epidemic Sound (paid), Uppbeat (paid for commercial), Musicbed (too cinematic, wrong vibe).
 
   Day-1 default behaviour: None (no audio ambush). Member toggles audio on via the session screen control; choice persists in localStorage. Volume slider visible when audio enabled.
 
