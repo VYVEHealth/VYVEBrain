@@ -1,3 +1,47 @@
+## 2026-05-21 PM-183.2 — mind.html hub skeleton paint (no zero-flash on boot)
+
+**Shipped.** vyve-site `311f29d35a72768b0b663671c22641326e5f1bb1` — three files atomic. Same-day follow-up to PM-183.1.
+
+**Symptom.** Dean cold-loaded mind.html: hub showed "0 day streak" + "0 / 2 Today's Mind sessions" for ~5 seconds, then flipped to "2 day streak" + "2 / 2". The PM-183.1 parallel Dexie+REST race resolves fast — usually well under 500ms — but on his device the first paint took longer, and the **initial HTML markup** had literal "0" / "0 / 2" values hardcoded. So during the window before `renderProgress` ran, the page rendered as "you have nothing logged" instead of "loading". This read as a regression even though the data was correct.
+
+**Root cause.** This is a paint problem, not a data problem. PM-183 (original) hardcoded `<span id="streak-val">0</span>` and `<div class="progress-big" id="today-progress">0 / 2</div>` in the initial markup so the page wouldn't be blank pre-JS. But "0" is a meaningful value in this context — it asserts "no Mind sessions logged" — and showing it before the read completes is misleading.
+
+PM-183.1 made this worse: it added two delayed repaints (800ms + 2500ms) as belt-and-braces for sync.js hydrate completion. So on a slow boot, you see the zero-state for longer.
+
+**Fix.**
+
+1. **Initial markup uses a neutral middle-dot.** Streak ring shows `·`, today card shows `· / 2`, streak sub-line is `&nbsp;` (preserves height, says nothing). No zero anywhere until `renderProgress` runs.
+
+2. **Skeleton CSS class.** `.progress-row.is-loading .progress-big` and `.progress-row.is-loading .ring span` get `opacity: 0.45`. Tells the eye "not yet real" without being a spinner.
+
+3. **First-paint swap.** `renderProgress` checks if the row has `.has-loaded`; if not, removes `.is-loading` and adds `.has-loaded` with a 0.3s opacity transition. Idempotent on subsequent repaints (no flash on bus-driven updates).
+
+4. **Boot tags the row.** `boot()` adds `.is-loading` to `#progress-row` immediately, before any read. If the parallel Dexie+REST race resolves synchronously fast (unusual but possible if both layers already have rows cached), `renderProgress` strips the class before paint and the user sees the real number directly with no perceptible skeleton — clean degradation.
+
+**Files changed.**
+
+```
+mind.html      40161 → 40833  bytes (+672)   md5 cdc59039
+sw.js          10204 → 10196  bytes   (-8)   md5 15836f28
+index.html    120748 → 120748 bytes   (+0)   md5 9044e476
+```
+
+(sw.js shrank 8 bytes because the new cache key `pm183-2-skel-a` is shorter than `pm183-1-mind-hub-fix-a`.)
+
+**Verification.**
+
+- §23.41 pre-commit SHA refresh on all three files — stable.
+- `node --check` clean on both inline JS blocks.
+- Post-commit byte-equal at commit SHA `311f29d3`.
+
+**sw.js cache key.** `pm183-1-mind-hub-fix-a` → `pm183-2-skel-a`. **index.html vbb-marker.** `Update 45` → `Update 46`.
+
+**No new §23 rule earned this commit.** But there's a pattern to codify when Body/Connect hubs land in Bundle-Ready Phase 1/2: **hardcoded zero values in initial HTML markup of any aggregator hub create a false-empty signal during the hydrate-race window.** Use skeleton characters (`·`, `—`, nbsp) in the markup from the start; flip to real values on first successful read; never paint "0" until you have data saying it's actually zero. The fix is small and the affordance matters disproportionately — a 200ms "0 / 2" flash on a hub that should show "2 / 2" reads as a bug even when everything underneath is working correctly.
+
+If this same pattern bites in Body or Connect (PM-184 Phase 1/2), promote to §23 hard rule then. For now: noted in PM-183.2 handoff in active.md §2 as a build-pattern for those phases.
+
+---
+
 ## 2026-05-21 PM-183.1 — mind.html hub data-read hotfix
 
 **Shipped.** vyve-site `3925c582a8017b57151fff66b87fa136a9fae7ad` — three files atomic. Same-day fix following PM-183.
