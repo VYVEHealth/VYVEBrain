@@ -1,3 +1,91 @@
+## 2026-05-20 PM-180 — Mind v1 audio-content pages shipped (meditation, sleep, visualisation) via YouTube embed bridge
+
+**Triggered by Dean asking, mid-Mind-section build, how to handle meditation/sleep/visualisation while real audio content is still in production.** Original framing: "should I just link YouTube videos for now?"
+
+**Initial recommendation (rejected on reflection):** I first pushed back on YouTube embeds, citing brand-control concerns and pointing toward a Pixabay/Freesound CC0 catalogue with Supabase Storage hosting. Dean clarified the actual intent was in-app YouTube iframes (not kicking out to youtube.com), explicitly time-boxed as a week-long bridge, with the explicit goal of closing out the Mind section in this session. That changes the calculus entirely — in-app iframes keep the player on our surface, the back button stays ours, members never leave VYVE, and a week-long bridge is the lowest-cost path to a fully-populated Mind section ready for the next OTA.
+
+**Scope shipped.** Six files committed atomic to vyve-site main at `326b5606`:
+
+- **`meditation.html`** (NEW, 20499 chars). 5 tracks: Calm Your Mind (hero, 9 min · cvmFC3IAbOg), Morning Meditation (10 min · qQ4vD5FdOKM), Quiet an Anxious Mind (10 min · 4vpQNYthrIc), Meditation for Abundance (5 min · 8bBPJ1EEUCc), Meditation for Sleep (10 min · aEqlQvczMJQ).
+- **`sleep.html`** (NEW, 20127 chars). 4 tracks: Sleep Meditation (hero, 20 min · g0jfhRcXtLQ), Non-Sleep Deep Rest (8 min yoga nidra · Z7ARtnSglyg), Rain Sounds (ambient · eTeD8DAta4c), Ocean Waves (11hr loop · bn9F19Hi1Lk).
+- **`visualisation.html`** (REWRITE from wireframe, 19882 chars). 3 tracks: The Beach (hero · _ZeEPo8w-n8), Manifestation (Z_u-P2hqL8M), Reprogramming Your Mind (tqhxMUm7XXU). Replaces inert "pending real audio" wireframe.
+- **`mind.html`** (PATCH). Meditation tile re-routed from `mind-library.html` → `meditation.html`. Sleep tile re-routed from `mind-library.html` → `sleep.html`. Visualisation tile already pointed correctly. One reference to `mind-library.html` remains intentionally (the Today's focus hero card CTA — library page exists, not removed).
+- **`sw.js`** (CACHE BUMP). `vyve-cache-v2026-05-20-pm179-journal-history-a` → `vyve-cache-v2026-05-20-pm180-mind-audio-a`.
+- **`index.html`** (VBB MARKER BUMP). `Update 40` → `Update 41` per §23 portal-deploy discipline.
+
+**All three pages share the visualisation.html DOM shape.** `.vz-hero` tappable card on top (launches hero video) + `.section-hdr` divider + `.streams` list of `.stream-card` rows. Differences between pages are purely catalogue content. Catalogue per page is a hardcoded JS const inside each file — not yet driven from Supabase. Rationale: launch is 11 days out, members rebuild Dexie on launch day per §3 contract, no live members write against the catalogue. Trivial to migrate to a Supabase `mind_audio_library` table when ElevenLabs/Calum scripted audio lands — same `.stream-card` template, just bind the array source.
+
+**Player shape.** Inline fixed modal containing a YouTube nocookie iframe. URL pattern: `https://www.youtube-nocookie.com/embed/<id>?rel=0&modestbranding=1&playsinline=1&autoplay=1`. Each parameter is load-bearing:
+- `youtube-nocookie.com` instead of `youtube.com`: cleaner privacy posture, one less GDPR conversation if anyone asks. Identical functional behaviour.
+- `rel=0`: suppresses related-video grid at end-of-video, preventing non-VYVE content from surfacing inside the brand surface.
+- `modestbranding=1`: suppresses the YouTube logo on the control bar. Combined with rel=0, the player reads as a generic media surface rather than a YouTube embed.
+- `playsinline=1`: **iOS-load-bearing.** Without this, iOS WKWebView hijacks the player on tap and forces full-screen takeover with native iOS player chrome — the close button is then a different X, the back gesture behaves differently, and the experience reads as "exited VYVE into the YouTube app." With it, the iframe stays in our modal and our close button stays the way out.
+- `autoplay=1`: starts playback immediately on modal open, matching expected behaviour after explicit user tap.
+
+**Back-button discipline.** `history.pushState({vyvePlayer:1}, '')` on open. `popstate` listener closes the modal. Result: phone back gesture (Android) and swipe-back-from-edge (iOS Capacitor) both close the player and stay on the page, instead of navigating away from the Mind tool entirely. Without this hook, Capacitor's hardware-back / iOS gesture would pop the page off the WebView stack and members would lose their place. Phone-back is the most-pressed control in Mind tools after Play — getting it right is the entire premium-feel difference.
+
+**Audio hard-stop on close.** `frameWrap.innerHTML = ''` after close. CSS `display:none` alone is not enough — the iframe continues to play audio in the background until garbage-collected. Wiping the iframe DOM-side guarantees immediate silence. Pattern is reusable for any future inline-player surface.
+
+**No Capacitor plugin needed.** Standard `<iframe>` works in Capacitor WKWebView on iOS and Android Chrome WebView without any additional permissions or plugins. Confirmed-good pattern across the Capacitor ecosystem.
+
+**Video selection discipline.**
+- All 10 videos verified embeddable pre-build via YouTube oEmbed API call + embed-page HEAD fetch. Zero blocked-embedding traps.
+- Goodful's "10-Minute Meditation For Sleep" was filed under meditation (Dean's original tagging) despite being sleep-themed — left where Dean placed it because the technique is meditation, just sleep-oriented; it works as the evening-wind-down entry in the meditation catalogue.
+- All titles displayed on cards are emoji-stripped and tightened (Lewis dislikes emojis everywhere in the product — memory rule). YouTube source titles untouched.
+- No channel attribution shown on cards — the iframe player itself surfaces the channel name when video plays, which is sufficient.
+
+**Production reach.** Per §23.42, this commit does NOT reach members until the next Capawesome OTA bundle push. Sits in vyve-site main alongside the unswept PM-174/175/176/177/179 Mind v1 work + the deferred `hotfix/programme-render-shape` port. Dean's deferred OTA push covers this commit along with everything else. No additional OTA needed for Mind audio specifically.
+
+**Why YouTube embeds instead of original audio for the bridge.**
+The week-long-bridge framing is the right call given the launch constraint:
+1. Real audio (Calum's voice through ElevenLabs, or Calum recording directly) is not ready and won't be by 31 May.
+2. CC0 ambient music from Pixabay/Freesound is an option but requires Lewis 1-2 hours of curation, Supabase Storage upload, brand QA — Lewis is busy on commercial side.
+3. YouTube embeds are sourced by Dean in 5 minutes, verified by Claude in seconds, and ship as a complete experience tonight.
+4. Brand-control concerns from the original recommendation against YouTube embeds were predicated on kicking-out-to-platform, not in-app iframes. The in-app case is materially different.
+5. Member-experience difference between "tap → 1 second pause → in-app player opens → guided meditation plays" and "tap → 1 second pause → in-app player opens → ambient track plays" is small. Member-experience difference between either of those and "tap → nothing happens, page says 'pending'" is enormous.
+
+**Swap-out path when real audio lands.** Catalogue is a JS const at the top of each file:
+
+```js
+const CATALOGUE = [
+  { videoId: '...', title: '...', sub: '...' },
+  ...
+];
+```
+
+When Calum/ElevenLabs assets exist:
+1. Upload to Supabase Storage under a new `mind-audio/` bucket prefix.
+2. Create `mind_audio_library` Supabase table (per-page catalogue, public-read RLS).
+3. Replace the const with a Dexie/Supabase hydrate (existing sync.js pattern).
+4. Replace the iframe player with an `<audio>` element + the same modal chrome.
+5. Same .stream-card template, same back-button hook, same hard-stop-on-close pattern.
+
+No page rewrite, no shape change. The bridge is designed to be removed cleanly.
+
+**§23 commit discipline applied.**
+- Pre-commit SHA refresh on all 4 existing files (visualisation.html, mind.html, sw.js, index.html). All clean — no drift detected. Two new files (meditation.html, sleep.html) committed without sha field per the `upserts` rule.
+- `GITHUB_COMMIT_MULTIPLE_FILES` via Composio workbench (`run_composio_tool`) per the 50KB+ routing rule. `upserts` field, plain UTF-8 in content, `message` field.
+- Post-commit byte-equal MD5 verification on all six files via Contents API at commit SHA `326b5606`. All six clean — md5 match against staged content. Recorded in this entry for audit trail:
+  - `meditation.html`: md5 d910e0da2d6a, 20499 chars
+  - `sleep.html`: md5 11ae811fa1ea, 20127 chars
+  - `visualisation.html`: md5 4e4e8f413e60, 19882 chars
+  - `mind.html`: md5 ed679c961a7e, 17479 chars
+  - `sw.js`: md5 68b88b1fd6d2, 10200 chars
+  - `index.html`: md5 9820c698d502, 120748 chars
+
+**§23.41 brain-drift protocol applied (third demonstration this day).** Brain commit was prepared in this session against in-context active.md (loaded at session start). Pre-commit SHA refresh on `brain/active.md` detected drift — live SHA had moved from session-start to commit-prep (`f1f83994` was new, in-context md5 disagreed with live md5). Diff analysis showed a single new appended line in the changelog footer summary: PM-179 (journal in-page history) had landed mid-session via a parallel Claude session. No content overlap with PM-180's planned patches. Re-staged all patches against live content (not in-context), preserving PM-179's entry. Working as designed.
+
+**No new §23 rule.** The inline-player modal + history.pushState pattern generalises to any future media surface (live sessions, podcast playback, scripted audio when it arrives) but it's not specific enough to vyve-site architecture to warrant a hard rule. It's a standard inline-player pattern with iOS-specific tweaks documented inline in the page.
+
+**What's still pending for full Mind v1.**
+- `mind.html` hub wiring (P1, ~30 min) — hardcoded `3` streak + `2/5` counter to Dexie reads. Independent of audio content.
+- `mind-insights.html` v1 (P2) — needs members logging for several weeks first.
+- `affirmations` / `journal` / `breathwork` COPY_LEWIS_REVIEW seeds — multiple still pending Lewis-side.
+
+**What's next session.**
+- Hotfix-port-to-main + first-ever full OTA push (Dean's deferred work; the PM-178 hotfix branch ports forward into main alongside this commit + all other unshipped main work).
+- mind.html hub Dexie wiring if not already picked up by a parallel session.
+
 ## 2026-05-20 PM-178 — programme_json shape bug diagnosed; hotfix branch ready; OTA push deferred
 
 **Triggered by Dean reporting "Shannon Asiamah has no workout."** Supabase scan found Shannon's `workout_plan_cache` row present, active, structurally healthy (8-week PPL, 4 sessions/week, identical shape to working members). Bug was render-side.

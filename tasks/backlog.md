@@ -49,9 +49,9 @@ Bundling `www/` from main right now would ship Dean's in-progress unsandboxed wo
 
 ---
 
-## Added 20 May 2026 — Mind section v1 (4 of 4 user-visible Mind v1 pages shipped: breathwork PM-174 + music PM-177, journal PM-175, affirmations PM-176; mind.html hub wiring still pending)
+## Added 20 May 2026 — Mind section v1 (6 of 6 user-visible Mind v1 pages shipped: breathwork PM-174 + music PM-177, journal PM-175, affirmations PM-176, meditation + sleep + visualisation PM-180 via YouTube embed bridge; mind.html hub wiring still pending)
 
-Mind section infrastructure landed PM-173 (`fbda5ac8`). Schema + Dexie + sync + 4 patterns + 30 affirmations in place. **All four follow-up vyve-site commits shipped** — only mind.html hub wiring still pending.
+Mind section infrastructure landed PM-173 (`fbda5ac8`). Schema + Dexie + sync + 4 patterns + 30 affirmations in place. **All six user-visible Mind v1 pages shipped** (breathwork, journal, affirmations, meditation, sleep, visualisation). Meditation + sleep + visualisation use a YouTube embed bridge as a week-long deliverable while ElevenLabs/Calum scripted audio is prepared. Only mind.html hub wiring (streak/counter to Dexie) still pending.
 
 Mind section infrastructure landed PM-173 (`fbda5ac8`). Schema + Dexie + sync + 4 patterns + 30 affirmations in place. Three more vyve-site commits to complete Mind v1:
 
@@ -115,7 +115,9 @@ Mind section infrastructure landed PM-173 (`fbda5ac8`). Schema + Dexie + sync + 
 - [x] **journal.html real wiring** (P1). SHIPPED PM-175 (vyve-site `79cbcf1e`). Three views: compose / calendar / entry. §23.39 skeleton. 40-prompt inline `PROMPT_TABLE`, deterministic daily pick (day-of-year mod). Edit + delete with confirm. ref_id stores prompt id, content stores entry text. mind_activities (PM-173) reused with no schema change.
 - [ ] **mind.html hub wiring** (P1). Wire hardcoded `3` streak and `2/5` counter to Dexie reads of mind_activities. Strip placeholder-tag.
 - [ ] **mind-insights.html v1** (P2, post-data). Trends over time. Needs members logging for a few weeks first.
-- [ ] **visualisation.html real wiring** (BLOCKED on ElevenLabs audio assets). Decide post-launch.
+- [x] **visualisation.html real wiring** SHIPPED PM-180 (vyve-site `326b5606`) via YouTube embed bridge. 3 tracks (The Beach hero + Manifestation + Reprogramming). Same inline-modal player as meditation.html + sleep.html. Catalogue is a hardcoded JS const — swap iframe → `<audio>` when ElevenLabs/Calum audio lands, no page rewrite needed.
+- [x] **meditation.html real wiring** SHIPPED PM-180 (vyve-site `326b5606`) via YouTube embed bridge. 5 tracks (Calm Your Mind hero + Morning + Anxiety + Abundance + Sleep meditation). mind.html hub Meditation tile re-routed from mind-library.html.
+- [x] **sleep.html real wiring** SHIPPED PM-180 (vyve-site `326b5606`) via YouTube embed bridge. 4 tracks (20min Sleep Meditation hero + NSDR + rain + ocean waves). mind.html hub Sleep tile re-routed from mind-library.html.
 
 **Open product calls (for breathwork session):**
 - Default ambient audio asset (Pixabay/Freesound; ~200KB soft pad or rain).
@@ -131,7 +133,7 @@ Mind section infrastructure landed PM-173 (`fbda5ac8`). Schema + Dexie + sync + 
 **Post-launch Mind extensions:**
 - Member-recorded voice affirmations (Selfpause/ThinkUp model — research-backed self-voiced playback).
 - ElevenLabs narrator voiceover for breathwork sessions.
-- Visualisation sessions (text + audio).
+- Visualisation sessions with VYVE-original scripted audio (replace PM-180 YouTube embed bridge).
 - Mind-library deep-link vs own pages decision (PM-165 carryover).
 
 ## Added 20 May 2026 — Bottom-nav restructure (Habits / Body / Mind / Connect / Check-in)
