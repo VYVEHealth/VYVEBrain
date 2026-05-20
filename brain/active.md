@@ -50,58 +50,39 @@ When the three disagree:
 
 ## 2. Live state snapshot (refreshed every session-end)
 
-**SESSION HANDOFF — 2026-05-20 (PM-171.1 + PM-171.5 shipped, restructure design locked, PARKED).** Two code commits today, then a design session locking the bottom-nav restructure shape and the launch sequencing.
+**SESSION HANDOFF — 2026-05-20 (PM-173: Mind infrastructure landed; breathwork.html wiring is the next session).** Schema + Dexie + sync + 4 patterns + 30 affirmations shipped. No member-visible UI change. Two more vyve-site commits needed to complete Mind v1.
 
-**Today's shipped commits.**
-- **PM-171.1 `4c7086bb`** — home dashboard rerenders from Dexie on every bus event (replaces `_markHomeStale` no-op fast-paths). Sidesteps the `optimisticPatch`-writes-to-phantom-keys structural bug that existed since the EF v40 refactor. 22 subscribers re-routed to `_rerenderHome`. Build `Update 28` → `29`.
-- **PM-171.5 `f55d1d67`** — outbox-driven failure events in vyve-offline.js + cardio.html network-throw enqueue. Fixes the stranded-Dexie-row pattern that produced Dean's Tuesday-missing-in-Supabase screenshot. Build `Update 29` → `30`. SW `pm171-5-outbox-failures-a`.
+**This session shipped.**
+- **Supabase**: 4 migrations — `create_mind_activities_table` (member-scoped, kind discriminator, RLS, set_activity_time_fields trigger), `create_mind_catalogue_tables` (`breathwork_patterns` + `affirmations_library`, public-read RLS, `set_updated_at` trigger function), `seed_mind_catalogue_day1` (4 patterns + 30 affirmations), `breathwork_patterns_audio_columns` (4 nullable audio URL columns for day-1-silent-default + post-launch ElevenLabs).
+- **vyve-site `fbda5ac8`**: db.js (SCHEMA_V4 + 3 table accessors), vyve-offline.js (FAILURE_TABLE_MAP gains `mind_activities`), sync.js (3 new sync entries), sw.js (key bump pm173-mind-infrastructure-a), index.html (vbb-marker 30→31). `node --check` clean on all 4 JS; 5 files verified at commit SHA.
 
-Both commits byte-equal verified at commit SHA; `node --check` clean.
+**LAUNCH SEQUENCING — UNCHANGED FROM PM-172.** PF-14b (bundled mode + Capgo + iOS 1.2 + Android 1.0.3) still ships AFTER the bottom-nav restructure. Mind section UI completion (breathwork.html / affirmations.html / journal.html / mind.html wiring) lands BEFORE the restructure ships — Dean's directive this session: "I want these to be as in-depth as possible". Treat each Mind page wiring as its own commit with its own device-verify pause.
 
-**LAUNCH SEQUENCING — DEAN LOCKED THIS SESSION, DO NOT PIVOT.**
+**WHAT'S READY FOR NEXT SESSION (breathwork.html wiring).**
+- `breathwork_patterns` table has 4 active rows: `box-4444`, `sigh`, `478`, `coherent-55`. Each has `phases` jsonb (array of `{phase, seconds}`), `default_rounds`, `total_seconds`, `about_text`, `glyph`, `subtitle`, `short_description`. Audio columns all nullable.
+- `mind_activities` table ready. Trigger fills `activity_date` / `day_of_week` / `time_of_day` automatically; the page just sends `member_email`, `kind: 'breathwork'`, `duration_seconds` (actual session length), `ref_id: <pattern_id>`, `client_id: crypto.randomUUID()`.
+- Dexie store registered. Pages read via `window.VYVELocalDB.breathwork_patterns.allFor()` (catalogue style) and write via `window.VYVELocalDB.mind_activities.upsert(row)`.
+- Failure path wired. Outbox 4xx publishes `mind:failed` envelope with `{table, client_id, http_status, reason}`.
 
-Dean's decision: PF-14b (bundled mode + Capgo + iOS 1.2 + Android 1.0.3) ships AFTER the bottom-nav restructure, not before. Members continue on the current online-origin build during the restructure window — writes persist, just paint-slow because every render waits on the EF. Once restructure is in, ALL the offline/local-first transition lands as one architectural step (PF-14b + workouts hardening + cleanup), not as three risky in-flight changes.
+**Dean's directives this session.**
+- Affirmations: ship the 30 placeholders; flag in §19 so Lewis knows they're Claude-generated; Lewis edits live in Supabase any time.
+- Breathwork: hold to 4 patterns. Make the existing 4 deep, don't pad with extras.
+- Background music during breathwork: yes — landscape research confirms every comparable app uses it. Schema slots ready; assets to be chosen in the breathwork wiring session.
+- Catalogue-table approach validated: new affirmations / patterns / visualisations are INSERTs in Supabase, no App Store update needed.
 
-**Future Claudes:** do not propose PF-14b-first or "let's bundle Mind/Connect onto bundled-mode" unless Dean explicitly reverses. He has reasons. The reasoning is in PM-172 changelog entry.
+**Next-session opens (resolve before or during breathwork wiring).**
+1. Default ambient audio asset for day-1 (Pixabay/Freesound licence-clean, ~200KB, soft pad or rain).
+2. Inhale/exhale tone cues: bundle audio files OR Web Audio API synthesised inline (recommended: synthesised — zero asset weight, deterministic, no licence concerns).
+3. Round count UI: stepper with `default_rounds` preselected (recommended), or dropdown / slider. Dean to confirm.
+4. First-session-of-each-pattern tutorial overlay shape — modal? Inline collapsed card? (Recommended: inline collapsed "First time? Tap to learn" card above the ring, expanded by default for first session per pattern, collapsed thereafter.)
 
-**THE RESTRUCTURE — DESIGN LOCKED, CODE PARKED, AWAITING DEAN'S "READY" SIGNAL.**
-
-Dean is building Mind and Connect content surfaces over the next 3-4 days. When he signals ready, the restructure ships as one coordinated commit. Locked decisions:
-
-- **Five Progress Tracks: Habits / Body / Mind / Connect / Check-in.** Names verbally Dean-locked; Lewis copy gate still open at restructure-ship time.
-- **Body** = workouts + cardio + movement combined (3 sources, 1 counter).
-- **Mind** = NEW `mind_activities` table with `kind` discriminator. Kinds: breathwork, journal, affirmation, visualisation. Path 2 (unified table + kind column) chosen over Path 1 (per-kind tables).
-- **Connect** = NEW `connect_activities` table with `kind` discriminator. Kinds: live (session_views), replay (replay_views), qotd, future-extensible.
-- **Check-in** = wellbeing_checkins + monthly_checkins combined. Single counter, OR-semantics for the weekly goal (either type ticks the week).
-- **Weekly Goals (5 lines):** Habits 3 days, Body 3, Mind 3, Connect 2, Check-in 1. Home tile becomes "X of 5 complete."
-- **Habits counter is days-complete, NOT row-count.** Daily-cap trigger enforces 1 row/day, but the counter is `count distinct activity_date`. *Future Claudes: do not conflate. I (current Claude) misread this three times before Dean corrected.*
-
-**Schema additions specified** (mind_activities, connect_activities, 8 new columns on member_home_state). Bus events: `mind:logged`, `mind:failed`, `connect:logged`, `connect:failed`. FAILURE_TABLE_MAP gains two entries at restructure time. See PM-172 changelog entry for full SQL + integration notes.
-
-**Open at restructure time (resolve before ship):**
-1. Progression engine for goal targets ("3 days to begin with, can increase as they progress" — Dean). Ship static targets restructure-1, progression engine is follow-up. Three candidate shapes flagged in PM-172.
-2. Lewis copy approval for track names + Mind / Connect kind labels + microcopy.
-3. Movement table shape — verify what movement.html writes to (own table / rolls into workouts / rolls into cardio). PM-167/168 mention convergence; I (Claude) didn't pull the live code this session to confirm.
-4. HAVEN persona × Mind activities (especially journal). First pass: generic logged events, no clinical interpretation. Phil sign-off needed before journal flow does anything therapy-shaped.
-
-**What's parked until Dean signals ready (do not touch):**
-- PM-171.5-followup-workouts (port cardio's network-throw enqueue to workouts-session.js's 8 direct-fetch sites).
-- PM-171.4 (remove vyve-home-state.js call sites — now silent no-ops).
-- PF-14b (bundled-mode migration).
-
-All three intentionally deferred. They touch surfaces that the restructure will reshape; doing them now means redoing them after.
-
-**Carried forward (unchanged):**
-- Locked / mandatory habits model (`removable`/`locked` boolean on `member_habits`, post-trial).
-- `member_habits` re-add duplicate (no unique constraint on `(member_email, habit_id)`).
-- `page_visits` analytics; `session_schedule` table + live-session minute-windowing.
-- §23.8 timezone audit (codebase BST-locked via `bstToday()`; new code uses device-local).
-- §23.7.10 candidate post-launch: failure handlers belong in the outbox layer, not the publishing page.
-
-**Session-start guidance for the next Claude:**
-1. Load `brain/active.md` (this file) + grep last 5 changelog entries.
-2. If Dean opens with "ready for the restructure" — confirm the five locked decisions above with him, pull movement.html / movement table shape, verify Lewis copy gate, then scope the migration + EF + JS port + bus wiring + page restructure as one commit. Use Path 2 (unified mind_activities / connect_activities tables).
-3. If Dean opens with anything else — work the thing he asks for. Do NOT propose PF-14b-first or restructure-now unless he explicitly invites either.
+**Sessions still ahead after breathwork.html.**
+- affirmations.html: deterministic daily pick, Save → log, favourites view. Needs: `affirmation_favourites` storage decision (members column vs join table).
+- journal.html: textarea + history list, kind='journal'. Needs: prompt rotation shape (static daily prompt? AI-generated? Just "what's on your mind"?).
+- mind.html hub: wire hardcoded `3` streak and `2/5` counter to real Dexie reads. Strip `placeholder-tag`.
+- mind-library.html: still untouched — used for both Meditation and Sleep tiles (PM-165 open question — deep-link vs own pages still pending product call).
+- mind-insights.html: v1 trends post-data. Probably later than launch.
+- visualisation.html: blocked on ElevenLabs audio. Ship hub + journal + affirmations first.
 
 
 ## 3. The active campaign — Premium Feel Migration (local-first via Dexie)

@@ -1,3 +1,31 @@
+## Added 20 May 2026 — Mind section v1 (PM-173 infrastructure shipped, UI wiring sessions ahead)
+
+Mind section infrastructure landed PM-173 (`fbda5ac8`). Schema + Dexie + sync + 4 patterns + 30 affirmations in place. Three more vyve-site commits to complete Mind v1:
+
+- [ ] **breathwork.html real wiring** (P0, next session). Pattern picker from Dexie catalogue, animated SVG phase ring, per-pattern round count selector, optimistic-first log to `mind_activities`. Tutorial overlay for first session of each pattern. Pause/restart/end controls. Audio playback when catalogue row has URLs (silent default day-1). Dean directive: "as in-depth as possible".
+- [ ] **affirmations.html real wiring** (P0). Deterministic daily pick, Save → log to mind_activities kind=affirmation ref_id=<uuid>. Favourites view. Decide storage: `members.affirmation_favourites uuid[]` vs `affirmation_favourites` join table.
+- [ ] **journal.html real wiring** (P1). Textarea + save + history list, kind=journal. Decide prompt rotation shape (static daily / AI-generated / freeform).
+- [ ] **mind.html hub wiring** (P1). Wire hardcoded `3` streak and `2/5` counter to Dexie reads of mind_activities. Strip placeholder-tag.
+- [ ] **mind-insights.html v1** (P2, post-data). Trends over time. Needs members logging for a few weeks first.
+- [ ] **visualisation.html real wiring** (BLOCKED on ElevenLabs audio assets). Decide post-launch.
+
+**Open product calls (for breathwork session):**
+- Default ambient audio asset (Pixabay/Freesound; ~200KB soft pad or rain).
+- Inhale/exhale tone cues: audio file OR Web Audio API synthesised inline.
+- Round count UI: stepper / dropdown / slider.
+- First-session tutorial overlay shape.
+
+**Catalogue content management (Lewis):**
+- 30 affirmations seeded by Claude as placeholders. Lewis to edit live in Supabase `affirmations_library` table. Schema documented in §19.
+- 4 breathwork patterns seeded. Add a 5th by INSERT (no app update needed).
+- Wim Hof-style breathing parked for post-launch (contraindications require Phil clinical sign-off).
+
+**Post-launch Mind extensions:**
+- Member-recorded voice affirmations (Selfpause/ThinkUp model — research-backed self-voiced playback).
+- ElevenLabs narrator voiceover for breathwork sessions.
+- Visualisation sessions (text + audio).
+- Mind-library deep-link vs own pages decision (PM-165 carryover).
+
 ## Added 20 May 2026 — Bottom-nav restructure (Habits / Body / Mind / Connect / Check-in)
 
 **Status:** Design locked, code parked. Dean building Mind + Connect content surfaces over 3-4 days. Restructure ships as one coordinated commit when Dean signals ready. See `brain/changelog.md` PM-172 for the full design log.

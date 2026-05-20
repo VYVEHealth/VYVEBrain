@@ -133,7 +133,7 @@ Pre-call briefs via Sales Intelligence skill (8-step deep dive, ROI calculator, 
 
 ---
 
-## 6. Supabase architecture — 85 tables
+## 6. Supabase architecture — 88 tables
 
 Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All public tables have RLS enabled (April 2026 audit). Live row counts not tracked in brain — query Supabase directly or read the auto-refreshed `brain/schema-snapshot.md` (regenerated weekly Sunday 03:00 UTC by the `schema-snapshot-refresh` cron).
 
@@ -201,6 +201,14 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). All public tables ha
 | `personas` | 5 AI coach personas (NOVA, RIVER, SPARK, SAGE, HAVEN) with full system prompts. |
 | `persona_switches` | Member persona change requests. |
 | `knowledge_base` | Knowledge rows. |
+
+### Mind section (NEW — PM-173 shipped 20 May 2026)
+
+| Table | Purpose |
+|---|---|
+| `mind_activities` | Member-scoped Mind activity log. Single table, `kind` discriminator (breathwork / journal / affirmation / visualisation). No daily cap — raw log. RLS subquery-wrapped per §23 PM-8. Trigger reuses `set_activity_time_fields`. Path 2 from PM-172 design lock. |
+| `breathwork_patterns` | Catalogue of breathwork patterns. Public-read RLS. 4 active rows at launch (`box-4444`, `sigh`, `478`, `coherent-55`). `phases jsonb`, `default_rounds`, audio URL columns (4, all nullable, day-1-silent-default). Add new patterns by Supabase INSERT — no app update. |
+| `affirmations_library` | Catalogue of affirmations. Public-read RLS. 30 active rows at launch (**Claude-generated placeholders — Lewis to edit live in Supabase any time**). 5 categories: focus / growth / resilience / self-worth / self-care. Add or replace by Supabase INSERT/UPDATE. |
 
 ### HealthKit pipeline
 
@@ -846,6 +854,18 @@ Rebrand *The Everyman* → *The VYVE Podcast* in progress. Guest expression-of-i
 Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The portal pages at `online.vyvehealth.co.uk` are bundled inside the iOS + Android Capacitor binaries; the web URL itself is a browser-accessible account-management fallback (still service-worker-cached for offline resilience).
 
 ---
+
+## 19. Current status — 20 May 2026 PM-173 (Mind section infrastructure: schema + Dexie + sync + 4 patterns + 30 affirmations)
+
+**20 May 2026 — PM-173 (vyve-site `fbda5ac8`): Mind section foundation landed. No member-visible UI change — three more vyve-site commits to come.** Four Supabase migrations (`create_mind_activities_table`, `create_mind_catalogue_tables`, `seed_mind_catalogue_day1`, `breathwork_patterns_audio_columns`) + one atomic vyve-site commit. Three new tables: `mind_activities` (member-scoped, `kind` discriminator per PM-172 Path 2 lock, no daily cap, `set_activity_time_fields` trigger, RLS subquery-wrapped), `breathwork_patterns` (catalogue, 4 active rows: box-4444 / sigh / 478 / coherent-55, audio URL columns nullable for day-1-silent + post-launch ElevenLabs), `affirmations_library` (catalogue, 30 active rows — **Claude-generated placeholders, Lewis to edit live in Supabase**, 5 categories: focus/growth/resilience/self-worth/self-care).
+
+**vyve-site `fbda5ac8` patches.** `db.js` adds SCHEMA_V4 (Dexie additive v3→v4) registering the 3 stores, plus 3 table accessors via the existing `makeTable`/`makeCatalogueTable` factories. `vyve-offline.js` adds `mind_activities → 'mind:failed'` to `FAILURE_TABLE_MAP` so outbox dead items publish identical-shape failure envelopes as cardio:failed. `sync.js` registers all 3 new tables in `plan()` — `mind_activities` member-scoped 30-day lookback, two catalogues full-active set. `sw.js` cache key bump `pm173-mind-infrastructure-a`. `index.html` vbb-marker 30 → 31. `node --check` clean on all 4 JS; 5 files verified at commit SHA via `GITHUB_GET_REPOSITORY_CONTENT`.
+
+**Catalogue-table architecture validated.** Dean explicitly raised the bundled-app content-update question this session. Answer: bundle the shell (HTML/JS/CSS), not the content. Affirmations / breathwork patterns / visualisation scripts live in Supabase, fetched via delta-pull. New content = SQL INSERT, available next sync, no App Store resubmission. Mirrors the §3 tier pattern (Tier 1 bundled shell, Tier 3 content fetched on demand). Path 2 (single `mind_activities` table with `kind`) compounds this: a 12th breathwork pattern is one row of data, never a code change.
+
+**Hard rule added §23.39** — Mind activities log via the optimistic-first / outbox / failure-bus skeleton. No awaited POSTs blocking the UI, every kind goes through the bus, `client_id: crypto.randomUUID()`.
+
+**Next session (P0): breathwork.html real wiring.** Pattern picker rendered from Dexie's local `breathwork_patterns`, animated SVG phase-ring with seconds-per-phase timing, per-pattern round count selector, optimistic-first log to `mind_activities`. Dean directive: "as in-depth as possible". Audio playback prep already in schema — when `ambient_audio_url` / `inhale_tone_url` / `exhale_tone_url` are set on the catalogue row, the session auto-plays. Day-1 ships silent-default; assets to be chosen in that session.
 
 ## 19. Current status — 17 May 2026 PM-170 (movement.html Recent list cold-load cache)
 
@@ -2670,6 +2690,10 @@ The 2/day (and per-period) activity cap exists ONLY for credits — certificates
 ## §23.38 — a cold-load list paint must read from a persistent (localStorage) cache, not Dexie alone (PM-170, 17 May 2026)
 
 A list surface that paints on page open MUST have a `localStorage` snapshot to paint from synchronously — Dexie alone is not enough. Dexie is empty on a cold boot until `criticalHydrate` (a network pull) resolves, so a Dexie-only first paint shows a false empty state until hydration completes or the member writes a row. cardio.html does this right: `readCache`/`writeCache` persist the rendered history to localStorage and `onAuthReady` paints from it synchronously before any hydrate. movement.html's Recent list shipped Dexie-only (PM-168/169) and painted blank on every cold open — fixed PM-170 by adding a localStorage cache (`vyve_movement_log_cache`) and a sync-paint path. **Rule:** when a page renders a member-data list at boot, give it a localStorage cache written on every render and read synchronously on cold load; the Dexie/hydrate read is the *refresh*, never the *first paint*. Audit signal: a render function whose only data source is a `VYVELocalDB.<table>.allFor()` call, reached on the boot path.
+## §23.39 — Mind activities log via the optimistic-first / outbox / failure-bus skeleton (PM-173, 20 May 2026)
+
+Every Mind kind (breathwork, journal, affirmation, visualisation) MUST log to `mind_activities` via the cardio.html skeleton — never an awaited foreground POST. Sequence: write to Dexie synchronously; publish `mind:logged` with `client_id` and `kind`; flip UI / clear inputs / repaint; THEN un-awaited background POST in IIFE; on 4xx publish `mind:failed` and `VYVELocalDB.mind_activities.delete(client_id)`; on network error keep the Dexie row for the outbox drainer to reconcile. `client_id` is `crypto.randomUUID()` per §23.37. The outbox dead-item path already publishes a `mind:failed` envelope when an item hits max-attempts or 4xx (PM-173 FAILURE_TABLE_MAP entry) — page-local listeners and home rerender subscribers (PM-171.1) work unchanged. **Forbidden:** `await fetch(...)` blocking the UI flip; mock-only or page-internal logging that doesn't go through Dexie + sync; per-kind divergence (a journal save must not skip the bus event because "it's just text"). Audit signal: a `mind_activities` write inside a page without a corresponding `VYVEBus.publish('mind:logged', ...)` line above it.
+
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.

@@ -1,3 +1,89 @@
+## 2026-05-20 PM-173 — Mind section infrastructure landed: schema + Dexie + sync wiring + 4 patterns + 30 affirmations
+
+**Scope of this session.** Dean requested the Mind section be built for real — actual breathwork members can do in-app, affirmations, journalling, eventually visualisations. PM-172 had the design locked (Path 2: `mind_activities` with `kind` discriminator) but nothing built. This session ships the foundation: three Supabase migrations + one schema-extension migration + one vyve-site commit. No member-visible UI change yet — the breathwork.html and affirmations.html wiring sessions follow.
+
+**Approach.** Dean explicitly asked for catalogue-table content management (so new affirmations / breathwork patterns / visualisation scripts can be added by INSERT in Supabase without an App Store update). Mirrors the existing tier pattern from active.md §3 (Tier 1 = bundled app shell, Tier 3 = content fetched on demand). Two new catalogue tables — `breathwork_patterns`, `affirmations_library` — plus one new member-scoped table — `mind_activities`.
+
+**Why Path 2 (single mind_activities + kind discriminator) was load-bearing here.** Day-1 ships breathwork + affirmations. Journal and visualisation are upcoming. Each new kind is a `kind` value + a new page using the same logging skeleton, not a new table + new TYPE_TO_HS_COLS entries + new FAILURE_TABLE_MAP entries + new Dexie stores + new sync entries. The cost difference is 5× and the schema-churn cost only shows up later — Path 2 paid for itself within one session of work.
+
+**Affirmation pool.** 30 affirmations seeded as **Claude-generated placeholders**. Dean's call: ship them, flag them as placeholder in the brain so Lewis knows they're swap-out-ready, let him rewrite live in Supabase any time. Emoji-free per Lewis-voice rule, present-tense, no spiritual/woo-woo language, leaning practical. Spread across 5 categories (focus, growth, resilience, self-worth, self-care) so the daily deterministic pick has variety.
+
+**Breathwork patterns — the canonical four.** Box (4-4-4-4), Physiological Sigh, 4-7-8, Coherent Breathing (5-5). Held the line at 4 against expanding the set: each has clean evidence behind it and covers a distinct use case (focus / real-time stress drop / pre-sleep / HRV-balance). Wim Hof considered as a 5th but parked — has contraindications (no driving, no swimming, hypertension risk) so requires Phil clinical sign-off, deferred to post-launch. Catalogue table makes a 5th-pattern-later a one-row INSERT.
+
+**Audio prep landed in schema.** Dean specifically asked about background music during breathwork — strong yes from the landscape research (every comparable app — Calm/Headspace/Selfpause — uses ambient audio during sessions). Added 4 nullable columns to `breathwork_patterns`: `ambient_audio_url`, `inhale_tone_url`, `exhale_tone_url`, `narrator_audio_url`. Day-1 ships silent-default; when assets land in Supabase Storage we just INSERT the URL into the catalogue row and breathwork.html picks them up. ElevenLabs narrator (`narrator_audio_url`) is post-launch but the slot is there.
+
+**Migrations shipped (4):**
+
+```sql
+-- create_mind_activities_table
+CREATE TABLE public.mind_activities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_email text NOT NULL,
+  activity_date date NOT NULL,
+  day_of_week text,
+  time_of_day text,
+  logged_at timestamptz NOT NULL DEFAULT now(),
+  kind text NOT NULL CHECK (kind IN ('breathwork','journal','affirmation','visualisation')),
+  duration_minutes int,
+  duration_seconds int,
+  content text,
+  ref_id text,
+  client_id uuid
+);
+CREATE INDEX mind_activities_member_date_idx ON mind_activities (member_email, activity_date);
+CREATE INDEX mind_activities_member_kind_idx ON mind_activities (member_email, kind, activity_date);
+-- BEFORE INSERT trigger reuses set_activity_time_fields (BST-aware,
+-- populates logged_at/activity_date/day_of_week/time_of_day automatically).
+-- RLS: ALL with subquery-wrapped auth.email() per §23 PM-8.
+```
+
+`mind_activities.ref_id` was added to PM-172's published spec — needed for "which pattern did they breathe" / "which affirmation did they save". Cheap now, painful to retrofit. `duration_seconds` separated from `duration_minutes` because breathwork sessions are 2-5 minutes — minute-resolution is too coarse for the "first 30-second session" credit case.
+
+```sql
+-- create_mind_catalogue_tables
+CREATE TABLE breathwork_patterns (
+  id text PRIMARY KEY,  -- string id (e.g. 'box-4444'), not uuid — stable across DBs
+  name, subtitle, glyph, short_description, about_text,
+  phases jsonb NOT NULL,  -- [{phase:"Inhale",seconds:4},...]
+  default_rounds int, total_seconds int,
+  sort_order int, is_active boolean,
+  updated_at timestamptz, created_at timestamptz
+);
+CREATE TABLE affirmations_library (
+  id uuid PRIMARY KEY, text, category, sort_order, is_active, updated_at, created_at
+);
+-- Both: public-read RLS (qual=true SELECT only). Service-role writes.
+-- updated_at trigger via new public.set_updated_at() function (idempotent).
+
+-- breathwork_patterns_audio_columns (later)
+ALTER TABLE breathwork_patterns ADD COLUMN ambient_audio_url text,
+  ADD COLUMN inhale_tone_url text, ADD COLUMN exhale_tone_url text, ADD COLUMN narrator_audio_url text;
+```
+
+```sql
+-- seed_mind_catalogue_day1: 4 patterns + 30 affirmations
+```
+
+**vyve-site commit `fbda5ac8` — infrastructure JS only, no UI change:**
+
+- **db.js** — `SCHEMA_V4 = Object.assign({}, SCHEMA_V3, { mind_activities: '...', breathwork_patterns: '...', affirmations_library: '...' })`. Dexie `version(4).stores(SCHEMA_V4)` appended to the v1->v2->v3 chain (additive migration, no row loss). `api.mind_activities = makeTable('mind_activities')`. `api.breathwork_patterns = makeCatalogueTable('breathwork_patterns')`. `api.affirmations_library = makeCatalogueTable('affirmations_library')`.
+- **vyve-offline.js** — `FAILURE_TABLE_MAP.mind_activities = { event: 'mind:failed', store: 'mind_activities' }`. The outbox dead-item path now publishes a `mind:failed` envelope for any Mind activity that 4xx's or hits max-retries, identical shape to `cardio:failed` (PM-171.5).
+- **sync.js** — Three new entries in `plan()`. `mind_activities` is member-scoped with 30-day lookback (matches cardio/workouts). `breathwork_patterns` and `affirmations_library` are catalogue (`scope: 'catalogue'`, no lookback, `is_active=eq.true&order=sort_order.asc`).
+- **sw.js** — cache key bumped `pm171-5-outbox-failures-a` → `pm173-mind-infrastructure-a`.
+- **index.html** — `vbb-marker` 30 → 31.
+
+`node --check` clean on all four JS files before commit. Five files verified post-commit via `GITHUB_GET_REPOSITORY_CONTENT` at SHA `fbda5ac8` — all expected markers present.
+
+**Next sessions (handoff).** Three more sessions to complete Mind v1, in order:
+1. **breathwork.html real wiring** — pattern picker rendered from Dexie's local `breathwork_patterns` (with REST fallback per PM-96 PF-15 pattern), animated SVG ring with phase-by-phase timing, per-pattern round-count selector (e.g. 4 / 8 / 15 / 30 rounds), session log on completion via the cardio.html optimistic-first / un-awaited POST / 4xx-revert skeleton. Dean wants this "as in-depth as possible" — first session of each pattern gets a tutorial overlay; pattern-specific guidance (e.g. "exhale through pursed lips" for 4-7-8) shown during session; pause/restart/end controls (already mocked); placeholder audio toggle (silent until assets exist) wired so when `ambient_audio_url` is set on the catalogue row, the session auto-plays. New hard rule for §23: any breathwork session UI MUST publish `mind:logged` on completion using `client_id: crypto.randomUUID()` and route via the optimistic-first skeleton (no awaited POST in the foreground).
+2. **affirmations.html real wiring** — deterministic daily pick (`(member_email_hash + iso_date) % count(active)`), Save → log to `mind_activities` with `kind: 'affirmation'`, `ref_id: <affirmation_uuid>`. "All affirmations" list reads Dexie catalogue. "Saved" view — favourites stored as a `members.affirmation_favourites uuid[]` column or a small `affirmation_favourites` join table (decide in that session).
+3. **journal.html real wiring** + **visualisation.html** (the latter blocked on ElevenLabs audio assets — ship text-script-only v1 if needed; or skip until audio's ready and ship hub-wiring + mind-insights v1 instead). The mind.html hub wiring is part of this session — wire the hardcoded `3` streak and `2/5` counter to real Dexie reads of `mind_activities`.
+
+**Carried forward — open product calls before the breathwork session:**
+- Default ambient audio asset for day-1 (pick something licence-clean from Pixabay/Freesound; ~200KB; soft pad or rain).
+- Whether to ship the inhale/exhale tone files day-1 or rely on Web Audio API to synthesise them inline.
+- Round count UI: dropdown? +/- stepper? Default to the pattern's `default_rounds` and let member adjust? (Recommended: stepper with `default_rounds` preselected.)
+
 ## 2026-05-20 PM-172 — Session close: bottom-nav restructure design locked + launch sequencing reset
 
 No code commits this entry — pure decision-capture. Dean is taking the Body / Mind / Connect surfaces forward over the next 3-4 days and will signal when ready for the restructure ship. PF-14b and all remaining local-first hardening parked until restructure lands. This entry codifies the design decisions so the next session (mine or another Claude's) doesn't relitigate.
