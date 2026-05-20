@@ -2729,69 +2729,59 @@ post-PF-14b optimisation, not a launch shape.
 
 
 
-## §23.41 — Parallel session discipline: rebase onto live HEAD immediately before every commit (PM-thumbnails-upload, 20 May 2026)
 
-When multiple Claude sessions are running against vyve-site main concurrently
-(Mind v1 build mode: breathwork, journal, affirmations, music+thumbs all in
-separate windows), brain narrative becomes unreliable as a state read.
-`active.md` and `changelog.md` can be tens of minutes behind live HEAD.
-Every session must treat `GITHUB_LIST_COMMITS` + `GITHUB_GET_REPOSITORY_CONTENT`
-on the relevant paths as canonical state at the commit step, not the brain.
+### §23.41 — Parallel-session safety protocol (PM-177, 20 May 2026)
 
-**Discipline:**
+When multiple Claude sessions are active simultaneously and committing to the
+same repo (Dean's confirmed pattern when racing to ship a feature campaign —
+PM-175 journal + PM-176 affirmations + PM-177 music all in flight together
+during the Mind v1 launch sprint), fetching SHAs once at session start is NOT
+safe. Live HEAD drifts off the rebase base within minutes as parallel sessions
+commit, and committing on a stale base will silently overwrite the parallel
+session's work.
 
-1. **At session start**, load brain + run `GITHUB_LIST_COMMITS` on vyve-site
-   main, last ~15 commits, to detect any post-brain-commit-snapshot drift.
-   If recent commits exist that the brain doesn't mention, the brain is
-   stale; identify what shipped before staging any diffs.
+**Required discipline when parallel sessions are confirmed active:**
 
-2. **Immediately before commit**, refresh SHAs for every file in the commit
-   AND fetch live content for files in the commit. If live content has
-   drifted from the staged base, STOP. Do not blast staged versions over
-   the top — that overwrites work from parallel sessions. Either rebase
-   the staged diffs onto live HEAD (surgical re-application of the intended
-   delta) or abandon the commit if the parallel session has already shipped
-   the same scope.
+1. **Fetch live HEAD immediately before any rebase**, not at session start.
+   `GITHUB_GET_REPOSITORY_CONTENT` at `ref=main` is the canonical source.
+   Re-fetch within 60 seconds of the commit call if any other tool call has
+   elapsed since the last fetch.
 
-3. **Cache-key collision avoidance.** sw.js cache keys must be strictly
-   monotonic. Before staging a new cache key, fetch live sw.js and confirm
-   the staged key sorts after the live key. If a parallel session has
-   advanced the cache key past your staged key, your commit would regress
-   the SW version on every device and force a manual refresh. The fix is
-   to bump your staged key past the live key, then commit. Example from
-   this session: staged `pm175-music-thumbs-a` would have regressed past
-   live `pm176-affirmations-a` — caught only by the pre-commit live fetch.
+2. **Diff live against staged at structural-marker level** — SCHEMA version
+   numbers (`SCHEMA_V6` vs `SCHEMA_V7`), `.version(N).stores(SCHEMA_VN)`
+   chains, sw.js cache key suffixes (`pm176-affirmations-a` vs `pm177-...`),
+   `vbb-marker` Update integers, PM-tags in code comments. Any structural
+   marker that's been claimed by a parallel session needs renumbering on the
+   in-flight commit BEFORE writing.
 
-4. **vbb-marker discipline same as cache key.** Update marker must be
-   strictly higher than live; check before staging.
+3. **Renumber monotonically past parallel ships.** Take the highest PM number
+   visible across all structural markers in live HEAD, then claim the next
+   integer above that. Don't reuse the PM number from session staging if
+   parallel work already used it (PM-175 was originally this session's tag;
+   journal claimed it; this commit took PM-177, skipping PM-176 which
+   affirmations had taken).
 
-5. **PM numbering is not reservable.** A session staging "PM-N work" cannot
-   assume PM-N is still its slot. Parallel sessions may ship under PM-N
-   first, in which case the second session must renumber on the commit
-   step. Brain narratives describing in-flight PM-N work are
-   aspirational, not authoritative.
+4. **Brain-commit at the END of every session that ships**, never deferred.
+   Parallel sessions can't see ungenerated brain state — if you ship code
+   without a brain commit, other sessions are working from a stale picture
+   and will produce avoidable collisions.
 
-6. **Brain commits happen at session end, not deferred.** Other sessions
-   cannot see what shipped if the brain isn't updated. A session that
-   ships vyve-site but defers the brain commit blocks parallel sessions
-   from reading current state. If brain commit is impossible at session
-   end (e.g. context exhaustion), at minimum prepend a one-line changelog
-   stub so subsequent sessions see the SHA + scope.
+**Page-injected nav buttons + in-page view stacks (subordinate rule from
+PM-174.1).** When a page has its own multi-view structure (breathwork.html
+picker → intro → session → end), the global nav.js back button on
+`.mph-back-btn` needs a view-aware override per-page, otherwise it fires
+the default `history.back()` and exits the page entirely. Don't ship a
+multi-view page without installing the override AND removing any redundant
+in-page back chevrons that would duplicate it visually.
 
-**Recovery shape when collision detected at the commit step:**
-- Diff live vs staged via first-divergence position
-- If staged ⊆ live content (intended work already shipped): skip commit,
-  document in brain that this session's contribution is null on vyve-site,
-  ship binary uploads / Supabase changes only if those are the remaining
-  unique work
-- If staged ⊄ live content (intended work has unique pieces): rebase
-  surgically — load live as new base, re-apply the unique-to-this-session
-  changes by find-and-replace, re-run `node --check` on every inline JS
-  block, re-stage with updated cache key + vbb-marker
+**Binary file transmission through workbench cells fails silently.** Inline
+base64 in `run_composio_tool` `code_to_execute` payloads can truncate to a
+coherent partial that still decodes without erroring — observed during
+PM-177 trying to push JPEG thumbnails. Decoded 2877B from a 14021B
+expected payload; md5 mismatch was the only signal. For binaries, route
+via GitHub web UI direct-upload OR via Supabase Storage bucket (per
+§23.40), NOT via workbench inline base64.
 
-This rule does NOT replace §23 commit discipline (pre-commit SHA refresh,
-post-commit Contents-API verify, plain-UTF-8 in `upserts[].content`, etc).
-It layers on top.
 
 ## 24. Premium Feel Campaign — local-first migration (active)
 

@@ -1,67 +1,135 @@
-## 2026-05-20 PM-thumbnails-upload — four breathwork picker JPEGs landed via GitHub web UI
+## 2026-05-20 PM-177 — breathwork.html music engine + picker thumbnails (Mind v1 follow-up)
 
-**Shipped.** vyve-site `7ad2c14b34d0` (20:59 UTC) — four binary JPEGs at repo
-root: `breathwork-box.jpg` (12017B, md5 c1d213795ec9523e46c03aa3ee93e52f),
-`breathwork-sigh.jpg` (23474B, md5 0274a3780909690fee4bbe2f2cf00611),
-`breathwork-478.jpg` (19861B, md5 bbcdecf7f86b4237e1d363516dba3f89),
-`breathwork-coherent.jpg` (14021B, md5 b64e4624c20a51e22bdad0f2cc527303).
-600×600 RGB JPEG, quality 82 progressive. Crops: centre for box/coherent,
-fx≈0.72 for sigh (golden swirl sits right of centre), fx≈0.55 for 478 (dusk
-pines warm horizon). Uploaded via GitHub web UI's "Add file → Upload files"
-flow because two prior in-session base64-via-`code_to_execute` transfer
-attempts truncated mid-payload (coherent.jpg's 18696-char base64 arrived as
-3836 chars, decoded to a structurally-valid but truncated JPEG). Diagnostic
-showed 20K of single-character-repeated strings transmit fine; truncation was
-content-correlated and not reproducible across cells. Web-UI upload bypassed
-the workbench transmission path entirely. Post-upload Contents-API base64
-verification confirmed byte-perfect md5 match on all four against the source
-artefacts in `/mnt/user-data/uploads/`.
+**Shipped.** vyve-site `f5ad43f9b2f20409e4469bb38369e299b3369f44` — five files in
+one atomic commit, plus four binary thumbnails uploaded via GitHub web UI
+immediately prior (Dean upload, separate commit). PM-177 is breathwork.html's
+music wiring follow-up to PM-174's session engine, plus the picker thumbnail swap
+from text glyphs to real imagery. Originally staged as PM-175 in a prior session
+that ran out of room mid-build; renumbered to PM-177 on rebase because parallel
+sessions had already claimed PM-175 (journal) and PM-176 (affirmations).
 
-**Counterpart source-file commit not landed by this session.** The session
-opened intending to ship a 9-file atomic PM-175 commit (4 binaries + 5 source
-files: breathwork.html, db.js, sync.js, sw.js, index.html with the music
-engine + thumbMap wiring + Update 35 marker + sw.js cache key
-`pm175-music-thumbs-a`). A parallel session running concurrently shipped the
-same work as PM-177 at 21:13 UTC (vyve-site `f5ad43f9b2f2`), having rebased
-onto PM-176 affirmations base. Live HEAD's breathwork.html (86615B) matched
-this session's staged version byte-for-byte; db.js / sync.js / sw.js /
-index.html diverged because the parallel session combined music+thumbs wiring
-with affirmations table accessors (`affirmation_favourites`,
-`affirmations_library` hydrate). Live cache key is `pm177-music-thumbs-a`,
-live vbb-marker is `Update 37`. Brain numbering of this session's intended
-PM-175 is now retired — journal took PM-175 (vyve-site `79cbcf1e540b`,
-20:46), affirmations took PM-176 (`dd900fb12a2a`, 20:52), music+thumbs took
-PM-177 (`f5ad43f9b2f2`, 21:13).
+**Two-stage ship — binary upload + source rebase.** Initial plan was a single
+atomic 9-file commit, but inline base64 transmission of binary JPEGs through
+`run_composio_tool` cells failed silently (workbench cell received ~3.8KB of a
+19KB payload — truncated to a coherent partial-JPEG that decoded without
+erroring). Pivoted to: (a) Dean uploads the 4 thumbnails via GitHub web UI
+directly to repo root (mirrors PM-162's `mind-meditation.png` etc. pattern at
+mind.html); (b) Claude commits 5 source files via workbench
+`GITHUB_COMMIT_MULTIPLE_FILES`. The two-commit pair is not strictly atomic but
+is order-safe — binaries land first so sw.js precache and breathwork.html
+thumbMap references resolve immediately on first page load.
 
-**PM-174 sub-commits documented post-hoc.** Two follow-up commits from the
-prior session not yet captured in the brain: `bb1c1d7d8cc8` (19:53 UTC,
-PM-174.1 auth fix-up — replaced `VYVEAuth.getEmail`/`getAccessToken` calls
-that don't exist on this codebase with the canonical
-`window.vyveCurrentUser` + `window.vyveSupabase.auth.getSession()` shape from
-cardio.html) and `f9460915008d` (19:58 UTC, PM-174.1 single-back-button
-view-aware override — removed three in-page back chevrons from breathwork.html
-and installed a view-aware override on `nav.js .mph-back-btn` so the global
-nav back walks the in-page view stack: picker exits to mind.html, intro goes
-back to picker, session triggers confirmEnd, end returns to picker). Cache
-key advanced `pm174-breathwork-a → -c` across the two fix commits, no SW
-behaviour change beyond cache version. These commits ran in the gap between
-the prior session's brain commit and this session's brain load, so the
-prior-session `active.md` §2 had no record of them.
+**Binary upload (Dean via web UI, separate commit).** Four JPEGs at repo root,
+600×600 RGB JPEG quality 82 progressive:
+- `breathwork-box.jpg` 12017B md5 c1d213795ec9523e46c03aa3ee93e52f — deep teal field for box-4444 breathing
+- `breathwork-sigh.jpg` 23474B md5 0274a3780909690fee4bbe2f2cf00611 — golden spiral over water for physiological sigh
+- `breathwork-478.jpg` 19861B md5 bbcdecf7f86b4237e1d363516dba3f89 — dusk pine ridges for 4-7-8 sleep
+- `breathwork-coherent.jpg` 14021B md5 b64e4624c20a51e22bdad0f2cc527303 — gold ripple in teal for coherent-55
 
-**Lesson — parallel session discipline (codified as §23.41).** Multiple
-Claude sessions running in parallel against vyve-site main is now a normal
-operating mode (Dean: "I'm running multiple chats to get the full mind up
-and running asap"). Every session staging diffs must rebase onto live HEAD
-immediately before the commit step, not just at session start. Brain
-narrative is unreliable as a state read for fast-moving in-flight campaigns;
-live vyve-site `GITHUB_LIST_COMMITS` is the only canonical view. Cache keys
-must include both the PM number and a clean alphabetical suffix and must be
-strictly monotonic against live sw.js (this session's intended
-`pm175-music-thumbs-a` would have regressed past the parallel session's
-already-live `pm176-affirmations-a` cache key, forcing a manual SW refresh
-on every device — caught only by the pre-commit rebase check).
+Md5-verified live via Contents API base64-decode at commit SHA before staging
+the source-file commit.
 
----
+**Source files (vyve-site `f5ad43f9`).**
+
+`breathwork.html` 74809B → 88974B (+14KB) — music engine on top of PM-174.1
+base. Built on a snapshot that includes both PM-174.1 fixes (auth shape using
+`window.vyveCurrentUser` + `vyveSupabase.auth.getSession`, removed
+`VYVEAuth.getEmail/getAccessToken` calls that don't exist on this codebase)
+AND the `.mph-back-btn` view-aware override from the nav-back fix. 4
+`startMusic` call sites (intro toggle, session start path × 2, mini-card
+cycle); 7 `stopMusic` call sites (session end, abort, undo, visibility-hidden,
+unload, etc); HTMLAudioElement with fade-in / fade-out. Intro-screen music-row
+toggle (default OFF — no autoplay ambush on first session) with volume slider.
+Session-screen `bw-music` mini-card with skip-track. localStorage prefs:
+`vyve_breathwork_music_on`, `vyve_breathwork_music_vol` (default 0.6),
+`vyve_breathwork_recent_music` (FIFO last-3 exclusion). Pattern affinity = soft
++50% weight via random gate (not hard filter). `loadCatalogue('breathwork_music')`
+hook in both signed-in and 1.5s anon-fallback paths. `thumbMap` markup swap in
+`renderPatterns` for the four pattern thumbnails replacing PM-174 text glyphs.
+
+`db.js` 30863 → 31237 (+374) — `SCHEMA_V7 = Object.assign({}, SCHEMA_V6, {
+breathwork_music: '&id, is_active, sort_order' })` added after the PM-176
+SCHEMA_V6 (`affirmation_favourites`). `.version(7).stores(SCHEMA_V7)` chained
+after `.version(6).stores(SCHEMA_V6)`. Accessor `breathwork_music:
+makeCatalogueTable('breathwork_music')` added after `breathwork_imagery` in the
+table-factory block. Parallel session's PM-176 affirmation_favourites schema +
+version chain + accessor preserved untouched.
+
+`sync.js` 44777 → 45291 (+514) — breathwork_music catalogue hydrate entry
+inserted after `breathwork_imagery` entry. PostgREST shape
+`/breathwork_music?is_active=eq.true&select=*&order=sort_order.asc`. Public-read,
+no auth header needed. Empty table is graceful — page hides music controls
+when zero rows.
+
+`sw.js` 9939 → 10202 (+263) — cache key bumped `pm176-affirmations-a` →
+`pm177-music-thumbs-a` (strictly past PM-176 to ensure monotonic ordering
+across parallel sessions). Four thumbnail precache entries added after the
+six PM-162 mind-tool icons: `/breathwork-box.jpg`, `/breathwork-sigh.jpg`,
+`/breathwork-478.jpg`, `/breathwork-coherent.jpg`.
+
+`index.html` — vbb-marker `Update 36` → `Update 37` (char count unchanged).
+
+**Supabase data (in place from earlier session work, not part of this commit).**
+`breathwork_music` table seeded with 4 rows (Driftglass Halo, Hearth Under
+Ash, Teal Drift, Teal Horizon — sort_orders 10/20/30/40, pattern_affinity
+tagged by feel-of-name, all `is_active=true`). Storage bucket `breathwork-music`
+public, 4 MP3s uploaded. Hearth filename has stray spaces so its catalogue URL
+is `Hearth%20_Under%20_Ash.mp3` — the other three are clean underscored names.
+
+**Pre-commit gates passed.** `node --check` clean on all inline JS blocks (2 in
+breathwork.html, 9 in index.html) and all standalone JS (db.js, sync.js, sw.js).
+SHAs refreshed twice — once after Dean's binary upload, once immediately before
+source-file commit. Both `GITHUB_GET_REPOSITORY_CONTENT` reads (Contents API,
+not raw CDN per §23). Five files byte-perfect on post-commit verification at
+commit SHA `f5ad43f9`. Feature-level checks all green: cache key
+`pm177-music-thumbs-a`, Update 37 marker, SCHEMA_V7 + `.version(7)` present,
+PM-176 affirmation_favourites preserved, four thumbnail precache paths present.
+
+**Session lesson — parallel-session safety.** Codified as new §23.41 hard
+rule. When other Claude sessions are actively committing to the same repo
+(Dean confirmed PM-176 + journal both in flight during this session), fetching
+SHAs once at the start of work is NOT safe — staged file content drifts off
+the rebase base within minutes, and committing on stale base will overwrite
+the parallel session's work. Required discipline: (a) fetch live HEAD
+immediately before any rebase, never trust SHAs from earlier in the same
+session; (b) diff live against staged at the structural-marker level (SCHEMA
+versions, cache keys, vbb-markers) to detect parallel claims on the same
+namespace; (c) renumber PM tags and cache-key suffixes monotonically past
+whatever parallel sessions have already shipped; (d) brain-commit at the END
+of each session that ships, not deferred — parallel sessions can't see
+ungenerated brain state.
+
+**Next.** Session-end gate met. Brain commit closes. Next P0 depends on
+what other parallel sessions land — Mind v1 hub polish, visualisation,
+mind-insights, or PF-40.2 `firstPaintHydrate.js` per active.md §5.
+
+
+## 2026-05-20 PM-174.1 — breathwork.html auth shape fix + view-aware nav-back
+
+**Shipped (two commits, both vyve-site main).** Follow-ups to PM-174's session-
+engine ship that did not require their own brain commits at the time.
+
+**`bb1c1d7d` — auth shape fix.** PM-174 originally called `VYVEAuth.getEmail()`
+and `VYVEAuth.getAccessToken()` for the signed-in branch of `loadCatalogue`.
+Those methods don't exist on this codebase — auth state is exposed via the
+`window.vyveCurrentUser` global (set by `auth.js` v2.2 on `SIGNED_IN`) and
+the access token comes from `window.vyveSupabase.auth.getSession()` per the
+cardio.html / habits.html / wellbeing-checkin.html pattern. Patched
+breathwork.html to match, eliminating a silent runtime error that had been
+forcing the page to the 1.5s anon-fallback path even for signed-in members.
+
+**`f9460915` — `.mph-back-btn` view-aware nav-back.** breathwork.html has its
+own in-page view stack (picker → intro → session → end). PM-174 shipped with
+three in-page back chevrons inside the page chrome, but the global nav.js
+back button on `.mph-back-btn` was still firing the default `history.back()`
+which exited the page entirely. Removed the three in-page chevrons and
+installed a view-aware override on `.mph-back-btn` in nav.js that walks the
+in-page view stack: picker exits to mind.html, intro returns to picker,
+session triggers `confirmEnd`, end returns to picker. Generalises to any
+future page that has its own multi-view structure — codified as part of the
+§23.41 parallel-session safety rule (the broader "page-injected nav buttons
+coexisting with in-page view stacks" lesson).
+
 
 ## 2026-05-20 PM-176 — affirmations.html real wiring (Mind v1 third user-visible commit)
 
