@@ -2,7 +2,26 @@
 
 Mind section infrastructure landed PM-173 (`fbda5ac8`). Schema + Dexie + sync + 4 patterns + 30 affirmations in place. Three more vyve-site commits to complete Mind v1:
 
-- [ ] **breathwork.html real wiring** (P0, next session). Pattern picker from Dexie catalogue, animated SVG phase ring, per-pattern round count selector, optimistic-first log to `mind_activities`. Tutorial overlay for first session of each pattern. Pause/restart/end controls. Audio playback when catalogue row has URLs (silent default day-1). Dean directive: "as in-depth as possible".
+- [ ] **breathwork.html real wiring** (P0, next session). Dean directive: "as in-depth as possible — make this the best breathwork in any UK wellbeing app." Full target shape:
+  - Pattern picker from Dexie `breathwork_patterns` (with REST fallback per PM-96 PF-15).
+  - Pre-session intro screen: pattern name, `about_text`, "Begin" CTA. Stops cold-starting into a ring members don't understand.
+  - **Animated SVG ring that breathes**: expands smoothly on inhale (ease-in-out), holds steady on hold phases, contracts on exhale. Not a tick — a breath. CSS transforms or SVG path animation driven by the phase timer. This is the core "feels designed" moment.
+  - Phase label + countdown inside the ring ("Inhale · 4s").
+  - Round indicator ("Round 3 of 15").
+  - **Adjustable rounds**: stepper +/- around `default_rounds`. Members who want 2-min sigh and members who want 8-min coherent are different humans.
+  - **Pause / Restart / End controls** (already mocked, wire for real).
+  - **Background music** (per Dean explicit ask): per-pattern `ambient_audio_url` from catalogue. Day-1 silent-default; when assets exist in Supabase Storage, page auto-loads + plays on session start, fades on end. Pause button pauses both ring + audio. Music dropdown/pill row + volume slider — choice persists in localStorage. Default = None on first ever session (no ambush).
+  - **Phase tone cues** (optional, off by default): if `inhale_tone_url` / `exhale_tone_url` present in catalogue OR Web Audio API synthesised inline (recommended — zero asset weight, deterministic, no licence). Soft chime on phase transitions for eyes-closed members.
+  - **Haptic feedback** on phase transitions via Capacitor `@capacitor/haptics`. PWA fallback no-op. Free in native build, big eyes-closed UX.
+  - **End-of-session screen**: "You completed N rounds of [pattern] — M minutes." Auto-logs to `mind_activities` with `kind='breathwork'`, `ref_id=<pattern_id>`, `duration_seconds=<actual elapsed>`, `client_id=crypto.randomUUID()` via cardio.html optimistic-first skeleton. 5-second undo affordance.
+  - **Resume-mid-session**: backgrounded <60s = ring resumes where it was. >60s = clean reset. The premium-app detail free apps don't ship.
+  - **History strip on the landing screen**: last 5 breathwork sessions (pattern + date + duration), Dexie read filtered to `kind='breathwork'`. Builds habit loop without needing hub wired yet.
+  - **Streak/count chip on landing**: "5 sessions this week" / "current streak: 3 days". Reads `mind_activities` where `kind='breathwork'`.
+  - **First-session-of-each-pattern tutorial overlay**: inline collapsed "First time? Tap to learn" card above the ring, expanded by default first time, collapsed thereafter. localStorage tracks per-pattern seen state.
+
+  Audio sourcing decision still open before session: Pixabay/Freesound (free, risk: pops up elsewhere), Artlist/Epidemic (£20-30/mo, polish, safer), or AI-generated ambient via Stable Audio/Suno (loopable, on-brand "deep teals/warm highlights" atmosphere, free or cheap — RECOMMENDED day-1, replaceable later).
+
+  New §23 hard rule from this session: any breathwork session UI MUST publish `mind:logged` on completion using `client_id: crypto.randomUUID()` via cardio.html-style optimistic-first / un-awaited POST / 4xx-revert skeleton. No awaited POST in the foreground — PM-167 / PM-169 learning applies.
 - [ ] **affirmations.html real wiring** (P0). Deterministic daily pick, Save → log to mind_activities kind=affirmation ref_id=<uuid>. Favourites view. Decide storage: `members.affirmation_favourites uuid[]` vs `affirmation_favourites` join table.
 - [ ] **journal.html real wiring** (P1). Textarea + save + history list, kind=journal. Decide prompt rotation shape (static daily / AI-generated / freeform).
 - [ ] **mind.html hub wiring** (P1). Wire hardcoded `3` streak and `2/5` counter to Dexie reads of mind_activities. Strip placeholder-tag.
