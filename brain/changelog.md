@@ -1,3 +1,68 @@
+## 2026-05-20 PM-thumbnails-upload — four breathwork picker JPEGs landed via GitHub web UI
+
+**Shipped.** vyve-site `7ad2c14b34d0` (20:59 UTC) — four binary JPEGs at repo
+root: `breathwork-box.jpg` (12017B, md5 c1d213795ec9523e46c03aa3ee93e52f),
+`breathwork-sigh.jpg` (23474B, md5 0274a3780909690fee4bbe2f2cf00611),
+`breathwork-478.jpg` (19861B, md5 bbcdecf7f86b4237e1d363516dba3f89),
+`breathwork-coherent.jpg` (14021B, md5 b64e4624c20a51e22bdad0f2cc527303).
+600×600 RGB JPEG, quality 82 progressive. Crops: centre for box/coherent,
+fx≈0.72 for sigh (golden swirl sits right of centre), fx≈0.55 for 478 (dusk
+pines warm horizon). Uploaded via GitHub web UI's "Add file → Upload files"
+flow because two prior in-session base64-via-`code_to_execute` transfer
+attempts truncated mid-payload (coherent.jpg's 18696-char base64 arrived as
+3836 chars, decoded to a structurally-valid but truncated JPEG). Diagnostic
+showed 20K of single-character-repeated strings transmit fine; truncation was
+content-correlated and not reproducible across cells. Web-UI upload bypassed
+the workbench transmission path entirely. Post-upload Contents-API base64
+verification confirmed byte-perfect md5 match on all four against the source
+artefacts in `/mnt/user-data/uploads/`.
+
+**Counterpart source-file commit not landed by this session.** The session
+opened intending to ship a 9-file atomic PM-175 commit (4 binaries + 5 source
+files: breathwork.html, db.js, sync.js, sw.js, index.html with the music
+engine + thumbMap wiring + Update 35 marker + sw.js cache key
+`pm175-music-thumbs-a`). A parallel session running concurrently shipped the
+same work as PM-177 at 21:13 UTC (vyve-site `f5ad43f9b2f2`), having rebased
+onto PM-176 affirmations base. Live HEAD's breathwork.html (86615B) matched
+this session's staged version byte-for-byte; db.js / sync.js / sw.js /
+index.html diverged because the parallel session combined music+thumbs wiring
+with affirmations table accessors (`affirmation_favourites`,
+`affirmations_library` hydrate). Live cache key is `pm177-music-thumbs-a`,
+live vbb-marker is `Update 37`. Brain numbering of this session's intended
+PM-175 is now retired — journal took PM-175 (vyve-site `79cbcf1e540b`,
+20:46), affirmations took PM-176 (`dd900fb12a2a`, 20:52), music+thumbs took
+PM-177 (`f5ad43f9b2f2`, 21:13).
+
+**PM-174 sub-commits documented post-hoc.** Two follow-up commits from the
+prior session not yet captured in the brain: `bb1c1d7d8cc8` (19:53 UTC,
+PM-174.1 auth fix-up — replaced `VYVEAuth.getEmail`/`getAccessToken` calls
+that don't exist on this codebase with the canonical
+`window.vyveCurrentUser` + `window.vyveSupabase.auth.getSession()` shape from
+cardio.html) and `f9460915008d` (19:58 UTC, PM-174.1 single-back-button
+view-aware override — removed three in-page back chevrons from breathwork.html
+and installed a view-aware override on `nav.js .mph-back-btn` so the global
+nav back walks the in-page view stack: picker exits to mind.html, intro goes
+back to picker, session triggers confirmEnd, end returns to picker). Cache
+key advanced `pm174-breathwork-a → -c` across the two fix commits, no SW
+behaviour change beyond cache version. These commits ran in the gap between
+the prior session's brain commit and this session's brain load, so the
+prior-session `active.md` §2 had no record of them.
+
+**Lesson — parallel session discipline (codified as §23.41).** Multiple
+Claude sessions running in parallel against vyve-site main is now a normal
+operating mode (Dean: "I'm running multiple chats to get the full mind up
+and running asap"). Every session staging diffs must rebase onto live HEAD
+immediately before the commit step, not just at session start. Brain
+narrative is unreliable as a state read for fast-moving in-flight campaigns;
+live vyve-site `GITHUB_LIST_COMMITS` is the only canonical view. Cache keys
+must include both the PM number and a clean alphabetical suffix and must be
+strictly monotonic against live sw.js (this session's intended
+`pm175-music-thumbs-a` would have regressed past the parallel session's
+already-live `pm176-affirmations-a` cache key, forcing a manual SW refresh
+on every device — caught only by the pre-commit rebase check).
+
+---
+
 ## 2026-05-20 PM-176 — affirmations.html real wiring (Mind v1 third user-visible commit)
 
 **Shipped.** vyve-site `dd900fb12a2ad4448fd95c08c1fe1f95606ce6b2` — five files in one

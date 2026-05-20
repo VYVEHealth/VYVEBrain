@@ -2729,6 +2729,70 @@ post-PF-14b optimisation, not a launch shape.
 
 
 
+## §23.41 — Parallel session discipline: rebase onto live HEAD immediately before every commit (PM-thumbnails-upload, 20 May 2026)
+
+When multiple Claude sessions are running against vyve-site main concurrently
+(Mind v1 build mode: breathwork, journal, affirmations, music+thumbs all in
+separate windows), brain narrative becomes unreliable as a state read.
+`active.md` and `changelog.md` can be tens of minutes behind live HEAD.
+Every session must treat `GITHUB_LIST_COMMITS` + `GITHUB_GET_REPOSITORY_CONTENT`
+on the relevant paths as canonical state at the commit step, not the brain.
+
+**Discipline:**
+
+1. **At session start**, load brain + run `GITHUB_LIST_COMMITS` on vyve-site
+   main, last ~15 commits, to detect any post-brain-commit-snapshot drift.
+   If recent commits exist that the brain doesn't mention, the brain is
+   stale; identify what shipped before staging any diffs.
+
+2. **Immediately before commit**, refresh SHAs for every file in the commit
+   AND fetch live content for files in the commit. If live content has
+   drifted from the staged base, STOP. Do not blast staged versions over
+   the top — that overwrites work from parallel sessions. Either rebase
+   the staged diffs onto live HEAD (surgical re-application of the intended
+   delta) or abandon the commit if the parallel session has already shipped
+   the same scope.
+
+3. **Cache-key collision avoidance.** sw.js cache keys must be strictly
+   monotonic. Before staging a new cache key, fetch live sw.js and confirm
+   the staged key sorts after the live key. If a parallel session has
+   advanced the cache key past your staged key, your commit would regress
+   the SW version on every device and force a manual refresh. The fix is
+   to bump your staged key past the live key, then commit. Example from
+   this session: staged `pm175-music-thumbs-a` would have regressed past
+   live `pm176-affirmations-a` — caught only by the pre-commit live fetch.
+
+4. **vbb-marker discipline same as cache key.** Update marker must be
+   strictly higher than live; check before staging.
+
+5. **PM numbering is not reservable.** A session staging "PM-N work" cannot
+   assume PM-N is still its slot. Parallel sessions may ship under PM-N
+   first, in which case the second session must renumber on the commit
+   step. Brain narratives describing in-flight PM-N work are
+   aspirational, not authoritative.
+
+6. **Brain commits happen at session end, not deferred.** Other sessions
+   cannot see what shipped if the brain isn't updated. A session that
+   ships vyve-site but defers the brain commit blocks parallel sessions
+   from reading current state. If brain commit is impossible at session
+   end (e.g. context exhaustion), at minimum prepend a one-line changelog
+   stub so subsequent sessions see the SHA + scope.
+
+**Recovery shape when collision detected at the commit step:**
+- Diff live vs staged via first-divergence position
+- If staged ⊆ live content (intended work already shipped): skip commit,
+  document in brain that this session's contribution is null on vyve-site,
+  ship binary uploads / Supabase changes only if those are the remaining
+  unique work
+- If staged ⊄ live content (intended work has unique pieces): rebase
+  surgically — load live as new base, re-apply the unique-to-this-session
+  changes by find-and-replace, re-run `node --check` on every inline JS
+  block, re-stage with updated cache key + vbb-marker
+
+This rule does NOT replace §23 commit discipline (pre-commit SHA refresh,
+post-commit Contents-API verify, plain-UTF-8 in `upserts[].content`, etc).
+It layers on top.
+
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.
