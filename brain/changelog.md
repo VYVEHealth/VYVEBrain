@@ -1,3 +1,111 @@
+## 2026-05-20 PM-181 — breathwork.html 3-2-1 countdown before session start
+
+**Shipped.** vyve-site `00128001f2c23cc4493b8e363e8c20a96bc59345` — three files in
+one atomic commit. Small enhancement to the breathwork session-start UX. Dean
+reported: tapping Begin from the intro screen launched the session instantly
+with no time to put the phone down or get comfortable. Now an animated 3 → 2
+→ 1 → Start countdown overlays the session screen for 3.4s before the first
+inhale tone fires.
+
+**The shape, exactly as Dean specified.**
+
+Countdown lives on the session screen, not on the intro. Tap Begin transitions
+to `view-session` as before (so imagery loads and the ring is visible behind),
+but the ring stays paused and a centred overlay holds the countdown. Sequence:
+3 (800ms) → 2 (800ms) → 1 (800ms) → Start (800ms + 200ms hold) → fade out → ring
+runs. Total 3.4s. First inhale tone fires inside `tick()` on the very next
+animation frame after the overlay hides.
+
+Numerals are Playfair Display (matches the rest of the page), 7.5rem, soft
+teal glow via text-shadow. The Start word is sized down to 4.2rem with positive
+letter-spacing so it doesn't feel cramped vs the giant numerals. Reduced-motion
+collapses the pop animation to ~200ms. Two keyframes — `bw-countdown-pop` for
+digits, `bw-countdown-pop-hold` for the longer Start word.
+
+**Music interaction.** If `vyve_breathwork_music_on === '1'`, `startMusic()`
+fires at countdown start with a 3400ms fade duration override, so the track
+ramps from silence to target volume across the full countdown and hits
+target as Start fades out. If music is off, countdown is dry. The
+`startMusic()` function signature now accepts an optional `fadeMs` argument
+(default falls back to `MUSIC_FADE_MS = 800`) — all existing call sites
+(mini-card cycle, restart, intro-toggle resume) keep their original behaviour
+because they pass nothing.
+
+**Skip.** Tap-anywhere on the overlay jumps straight to ring start via
+`window.skipCountdown()` — clears pending `setTimeout`s, hides overlay,
+kicks `ringRunning = true; ringRAF = requestAnimationFrame(tick)`. The
+whole overlay is the tap target (no skip button, no chrome). If music was
+mid-fade-in when skip fires, the existing 3400ms fade interval keeps
+ramping at its current rate; no restart, no clip. Felt cleaner than
+re-snapping to target volume mid-tap.
+
+**Restart path preserves prior behaviour.** `restartSession()` is the
+in-session Restart control. Member is already mid-session and hands-on,
+making them wait 3.4s again would be irritating. Solution: `startSession`
+now accepts an optional `opts` arg; `restartSession` calls
+`startSession({ skipCountdown: true })` and the countdown branch is skipped.
+Behaviour is byte-identical to PM-177 on that path.
+
+**Abandon-during-countdown is clean.** `confirmEnd()` (also reachable via
+`mph-back-btn` during session per PM-174.1) now calls
+`clearCountdownTimers()` and hides the overlay before the abandon-silently
+branch fires — no dangling timeouts after the user bails to the picker.
+
+**Files.**
+
+`breathwork.html` 86615 → 91077 bytes (live blob will be 93446 UTF-8 bytes
+post-commit). Patches: CSS keyframes + overlay rules inserted after
+`@keyframes pulse`; overlay markup inserted as first child of `#view-session`
+before `.bg-imagery`; `window.startSession` rewritten to accept `opts` and
+branch on `skipCountdown`; new `runCountdownThenStart()`, `beginRingAfterCountdown()`,
+`clearCountdownTimers()`, `window.skipCountdown()` helpers; `startMusic`
+signature gains `fadeMs` arg, fade interval uses local `fadeDur` var;
+`restartSession` and `confirmEnd` updated for clean countdown teardown.
+
+`sw.js` cache key `pm180-mind-audio-a` → `pm181-bw-countdown-a` (the
+PM-180 parallel session bumped from `pm179` → `pm180-mind-audio-a` at
+22:05 UTC; PM-181 takes the next integer monotonically per §23.41).
+
+`index.html` vbb-marker `Update 41` → `Update 42` (PM-180 already
+moved 40 → 41).
+
+**Gates passed.**
+
+- `node --check` clean on both inline JS blocks in breathwork.html (2 blocks,
+  51302 + 81 chars) and all 9 inline scripts in index.html. sw.js parses clean.
+- Live HEAD verified at PM-180 `326b5606` immediately before commit per
+  §23.41 rule 1. All three file SHAs (`b901dcdf`, `0f7bfbf9`, `f6999201`)
+  unchanged between session-start fetch and commit-time refresh.
+- Post-commit byte-equal verification via Contents API at commit SHA
+  `00128001`. All three files MD5-equal (`885073f6...` breathwork,
+  `d8be06aa...` sw, `8dd72f36...` index).
+
+**§23.41 worked silently this session.** When I refetched HEAD at session
+start, it had moved from PM-177 (Dean's intro reference, `f5ad43f9`) all
+the way through PM-178 (affirmations v2, `e2f75a63`), PM-178b
+(affirmations imagery startup fix, `77d54bac`), PM-179 (journal in-page
+history, `139acbc2`), to PM-180 (Mind v1 audio bridge, `326b5606`). Four
+commits and one parallel-session PM-178 collision with the brain's own
+PM-178 (Dean's programme_json hotfix). Rule 2 (diff structural markers)
+caught the live cache key as `pm180-mind-audio-a` not `pm177-music-thumbs-a`;
+rule 3 (renumber monotonically) gave PM-181 + `pm181-bw-countdown-a` +
+Update 42; rule 4 (brain-commit at session end, not deferred) is this
+file. No new §23 rule earned this session — pure application of the
+existing rule.
+
+**Production reach.** Per §23.42, this lands on `main` HEAD but does NOT
+reach members until the next OTA bundle push. Dean has the OTA push
+deferred a couple of days pending the main-sweep work. Dev-iPhone with
+`server.url` pointed at online.vyvehealth.co.uk sees the change on next
+refresh. When the deferred full-OTA push happens, PM-181 ships alongside
+the programme_json hotfix port-to-main and everything else on main since
+`83874dd5`.
+
+**No new task to backlog.** Single-session enhancement, ships cleanly.
+No follow-up. mind.html hub wiring + visualisation ElevenLabs + Lewis
+copy reviews remain the open items from prior sessions.
+
+
 ## 2026-05-20 PM-180 — Mind v1 audio-content pages shipped (meditation, sleep, visualisation) via YouTube embed bridge
 
 **Triggered by Dean asking, mid-Mind-section build, how to handle meditation/sleep/visualisation while real audio content is still in production.** Original framing: "should I just link YouTube videos for now?"

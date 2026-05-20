@@ -855,6 +855,33 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 20 May 2026 PM-181 (breathwork.html 3-2-1 countdown before session start)
+
+**20 May 2026 — PM-181 (vyve-site `00128001f2c23cc4493b8e363e8c20a96bc59345`): three-file atomic commit adding a 3 → 2 → 1 → Start countdown overlay to breathwork session start.** Dean flagged that tapping Begin from the intro card launched the breathing engine instantly, with no time to put the phone down or settle. The fix: a centred overlay on the session screen runs 3 → 2 → 1 → Start across 3.4s (800ms per element, 200ms hold on Start) before the ring starts and the first inhale tone fires.
+
+The view transition stays as before — Begin → `swapView('view-session')` → imagery starts — but `ringRunning` is held off and the overlay covers the ring stage. After the sequence completes, overlay hides, ring starts on the next animation frame, first tone fires from inside `tick()` exactly as today. Numerals are Playfair Display 7.5rem with teal text-shadow glow matching the page's existing visual language; the Start word is sized down to 4.2rem with positive letter-spacing. Two keyframes (`bw-countdown-pop` for digits, `bw-countdown-pop-hold` for the Start word) handle the in/out + scale. `prefers-reduced-motion: reduce` collapses the animation to ~200ms.
+
+**Music timing.** When `vyve_breathwork_music_on === '1'`, `startMusic()` is called at countdown start with a new optional `fadeMs` arg of 3400 — so the track ramps from 0 to target volume across the full countdown and hits target as Start fades out. The existing `MUSIC_FADE_MS = 800` constant stays unchanged; the fade interval now uses a local `fadeDur` var that falls back to `MUSIC_FADE_MS` when no arg is passed. All other `startMusic()` call sites (mini-card cycle, intro-toggle, etc.) keep their original 800ms ramp.
+
+**Tap-anywhere skip.** The entire overlay is the click target (`onclick="skipCountdown()"`). Skip clears pending `setTimeout`s and kicks ring start immediately. Music keeps fading at its current ramp — no restart, no clip; chose this over snapping to target volume because the snap felt jarring during quick-tap testing.
+
+**Restart preserves prior behaviour.** `restartSession()` is the in-session Restart control — member already mid-session, hands-on. Making them watch a 3.4s countdown to resume would be annoying. `window.startSession` now accepts an optional `opts` arg; `restartSession` passes `{skipCountdown: true}` and the countdown branch is bypassed. Behaviour on that path is byte-identical to PM-177.
+
+**Abandon-during-countdown is clean.** `confirmEnd()` (also the target of the global `mph-back-btn` on session view per PM-174.1) clears countdown timers and hides the overlay before the abandon-silently branch fires.
+
+**Files in the commit.** `breathwork.html` 86615 → 91077 (live blob 93446 UTF-8); `sw.js` cache key `pm180-mind-audio-a` → `pm181-bw-countdown-a`; `index.html` vbb-marker `Update 41` → `Update 42`. node --check clean on both inline JS blocks in breathwork.html (51302 + 81 chars) and all 9 inline scripts in index.html.
+
+**§23.41 in action — silent application this session.** Dean's intro pointed at PM-177 `f5ad43f9` + Update 37. Live HEAD at session-start fetch was already PM-180 `326b5606` + Update 41 + cache key `pm180-mind-audio-a`. Four parallel-session commits (PM-178 affirmations v2, PM-178b imagery startup fix, PM-179 journal in-page history, PM-180 audio pages) had landed between Dean's session-start framing and my first read. §23.41 rule 1 (re-fetch HEAD immediately, not at session start) caught it; rule 2 (diff structural markers) confirmed the live cache key + marker; rule 3 (renumber monotonically past parallel ships) gave PM-181 + `pm181-bw-countdown-a` + Update 42; rule 4 (brain-commit at session-end, never deferred) is the closing artefact this commit. No new §23 rule earned — pure application of the existing one.
+
+**Production reach gated on next OTA per §23.42.** Lands on `main` HEAD but doesn't reach members until Dean's deferred full-OTA push (a couple of days out, pending main-sweep). Dev iPhone with `server.url` will see it on next refresh.
+
+**Files in this brain commit:**
+- `brain/changelog.md` — prepend PM-181 entry (~6KB).
+- `brain/active.md` — prepend PM-181 handoff to §2; append PM-181 to §8 editorial notes.
+- `brain/master.md` — prepend §19 (this entry).
+- `tasks/backlog.md` — no change. Single-session enhancement, no follow-up tracked.
+
+
 ## 19. Current status — 20 May 2026 PM-178 (programme_json shape bug diagnosed; hotfix branch ready; OTA push deferred)
 
 Dean reported "Shannon Asiamah has no workout." Supabase scan found Shannon's `workout_plan_cache` row present and structurally healthy. Bug was render-side: both `exercise.html` `renderHero()` and `workouts-programme.js` `renderProgramme()` assume `programme_json.weeks[i] = {week, sessions:[...]}` but the onboarding generator emits `weeks[i]` as a raw array of session objects. Every onboarded member sees the broken render — Shannon happened to be the one to report it. Effect: Body hub hero renders "— sessions per week" + "Next Session" placeholder; My Programme tab crashes on `weekData.sessions.length` and fails to render.
