@@ -1,3 +1,63 @@
+## 2026-05-20 PM-171.5 — outbox-driven failure events + cardio network-throw enqueue (vyve-site `f55d1d67`)
+
+Fixes the Tuesday-stranded-Dexie-row pattern Dean reported (Tuesday's habit ticks lived in Dexie but never reached Supabase; PM-171.1 made the home dashboard *honestly* mirror that drift but didn't fix the drift itself).
+
+**vyve-site commit `f55d1d675a141a747ce2d079e3b62f4ebb1fc40c`, retry_count 0, all 4 files byte-equal verified post-commit at the commit SHA.** Build banner `Update 29` → `Update 30`. SW cache `pm171-1-bus-rerender-a` → `pm171-5-outbox-failures-a`.
+
+**Two failure-handling gaps fixed.**
+
+**Gap A — page-local `_*Inflight` trackers strand rows when the page closes.** Habits.html (and the matching pattern in other `writeQueued` surfaces) listened for `vyve-outbox-dead` from a page-local handler that tracked individual writes in a per-page `_habitInflight` object. When the outbox declared a row dead, the handler fired `habit:failed` and reverted Dexie. But the listener only ran while habits.html was open. If the member tapped a habit and immediately navigated away (or backgrounded the app), and the outbox subsequently retried 3 times and dead-lettered the row, the failure event never fired and the optimistic Dexie row sat there forever — drifting from Supabase silently.
+
+Fix: vyve-offline.js (the module that owns the outbox + drainer) now hosts its own `vyve-outbox-dead` listener that runs regardless of which page is open. For each dead item, the new `_pm171_handleDeadItem` function:
+
+1. Looks up the table in `FAILURE_TABLE_MAP` to get the bus event name (`daily_habits→habit:failed`, `cardio→cardio:failed`, `workouts→workout:failed`, `nutrition_logs→food:failed`, `weight_logs→weight:failed`, `session_views→session:viewed:failed`, `replay_views→session:viewed:failed`).
+2. Parses the item body to extract `client_id`, `habit_id`, `activity_date` for the envelope.
+3. Publishes the bus failure event with envelope `{ table, client_id, http_status, reason, method, source:'outbox_dead', habit_id?, activity_date? }`.
+4. Deletes the optimistic Dexie row by `client_id` via `VYVELocalDB[map.store].delete(clientId)` — skipped for DELETE methods (nothing to revert; the deletion already happened locally).
+
+Page-local listeners are left in place. They're now redundant but harmless — `bus.publish` is idempotent in effect (subscribers fire twice, wasted CPU but not incorrect), and `Dexie.delete` on a missing row is a no-op. They become dead code in a future cleanup pass.
+
+Idempotency guard: `window.__pm171_5_outbox_failure_wired` flag prevents double-wiring if the script loads twice.
+
+**Gap B — cardio.html's network-throw catch silently stranded rows.** Cardio uses a direct `fetch()` (not `writeQueued`) to POST to `/rest/v1/cardio`. The catch at L932-935 had the comment *"Network error (offline) — keep the Dexie row; next hydrate/drainer reconciles"* — but there is no reconciler for direct-fetch surfaces. The PF-4 shadow drainer only mirrors `VYVEData.writeQueued` calls, so direct fetches it never sees. Result: every offline cardio log silently created a Dexie row that never made it to Supabase. Pure analogue of the habits Tuesday pattern, different surface.
+
+Fix: the network-throw catch now enqueues to `VYVEData.writeQueued` with the same URL/method/headers/body. The outbox drainer retries up to `MAX_SERVER_ATTEMPTS=3`; on permanent failure the PM-171.5 Gap-A handler converts the dead-letter to `cardio:failed` + Dexie row delete. Until then the optimistic row stays — correct behaviour for an offline write that will eventually sync.
+
+The 4xx path is unchanged (terminal: revert Dexie immediately, publish `cardio:failed`).
+
+**Surfaces audited but NOT touched this commit:**
+
+- **wellbeing-checkin.html** — already has a proper network-throw catch at L756-770 that publishes `wellbeing:failed` with `reason:'network'`. No bug. The earlier audit's `optimisticPatch: 3, revertPatch: 0` count was misleading: wellbeing deliberately doesn't patch (wellbeing_checkins is not in `TYPE_TO_HS_COLS`); the patches counted were from the flush-outbox path, not the submit path.
+- **workouts-session.js** — mixed write pattern (3 `writeQueued` + 8 direct `fetch` + 8 `_inflight` tracker refs). The cardio shape doesn't port cleanly. Deferred to a separate session — PM-171.5-followup-workouts.
+- **settings.html** — `persona:switched` publish without any optimistic Dexie write or revert. The data write path uses a helper (likely supaFetch). No stranded-row risk because persona isn't in Dexie. Not in scope.
+- **tracking.js** — has 2 `optimisticPatch` + 3 `revertPatch`. Best-shaped surface in the codebase already.
+- **log-food.html** — 6 `writeQueued` + 14 `_inflight` refs. Same habits-style page-local tracker. PM-171.5 Gap-A handler covers it automatically; if the food page is open and fires the page-local handler, that path still works too.
+
+**Net effect for Dean's launch readiness:**
+
+- Habits tapped + page closed + network drops → row reverts when outbox dead-letters. Dexie and Supabase stay consistent.
+- Cardio logged offline → row enqueued + reconciles when network returns. If it permanently fails, Dexie reverts via Gap-A.
+- Cross-page propagation (PM-171.1) + cross-failure-correctness (PM-171.5) both in place. Home dashboard now both *reflects* truth instantly AND stays correct over time.
+
+**Files in commit:**
+- `index.html`: vbb-marker `Update 29` → `Update 30` only (no code changes).
+- `sw.js`: cache key `pm171-1-bus-rerender-a` → `pm171-5-outbox-failures-a` only.
+- `cardio.html`: +1251 chars net (new network-throw enqueue path).
+- `vyve-offline.js`: +5100 chars net (new dead-letter listener + handler + table map).
+
+**Pre-flight + post-commit discipline:**
+- SHAs refreshed immediately before commit (pre-PM-171.1 cardio SHA `b97532f4`, vyve-offline SHA `336ae945`, fresh idx `7d194466`, fresh sw `42097f6c`).
+- `node --check` on all 3 cardio.html inline scripts + the full vyve-offline.js: all passed.
+- Post-commit Contents API verification at commit SHA `f55d1d67`: all 4 files byte-equal.
+
+**§23 candidate (post-launch codify):**
+
+§23.7.10 — *Failure handlers belong in the outbox layer, not the publishing page.* Pages may layer page-specific UX (button revert, error toast) on top of the bus failure event, but the bus publish + Dexie revert must originate from a module that runs regardless of which page is open. Page-local `_*Inflight` trackers are an anti-pattern post-PM-171.5 — stranded rows are guaranteed when the page closes mid-retry.
+
+**Followups locked into backlog:**
+- **PM-171.5-followup-workouts** — port the cardio fix to workouts-session.js where the direct-fetch sites would otherwise strand workout/set rows. Estimated 1-2 hours, needs a careful read of the 8 fetch sites.
+- **PM-171.4** — remove `vyve-home-state.js` call sites across 11 surfaces (`optimisticPatch`/`revertPatch` now silent no-ops post-PM-171.1). Pure cleanup, no functional change.
+
 ## 2026-05-20 PM-171.1 — bus subscribers rerender home from Dexie (replaces _markHomeStale; fixes silent home-paint bug)
 
 vyve-site commit `4c7086bb4e68a8afb3ecf8cb7e4f1ee579b42516`, retry_count 0, both files byte-equal verified post-commit at the commit SHA. Build banner `Update 28` → `Update 29`. SW cache `pm170-movement-recent-cache-a` → `pm171-1-bus-rerender-a`.

@@ -50,29 +50,37 @@ When the three disagree:
 
 ## 2. Live state snapshot (refreshed every session-end)
 
-**SESSION HANDOFF — 2026-05-20 (PM-171.1 — bus subscribers rerender home from Dexie).** Major architecture fix landed: `_markHomeStale` subscriber pattern replaced with `_rerenderHome` that calls `buildHomeFromDexie(email)` → `renderDashboardData(result)` on every bus event. Sidesteps the long-standing `optimisticPatch` shape mismatch (it writes flat `member_home_state` column names; the post-EF-v40 cache shape is nested `engagement.*` / `progress.*`).
+**SESSION HANDOFF — 2026-05-20 (PM-171.1 + PM-171.5 — bus rerender + outbox-driven failure events).** Two commits this session, addressing the same root problem from opposite ends:
 
-**Root cause Dean reported:** screenshots showed habits.html dot strip filled Mon/Tue/Wed but index.html only Wed. Walked through the boot sequence + every subscriber + the `optimisticPatch` math and found that `vyve-home-state.js` writes to top-level cache keys (`habits_total`, `habits_this_week`, `last_habit_at`) that the renderer doesn't read (renderer reads `progress.habits.count`). Every patch since the EF v40 refactor has been a no-op. Combined with `_markHomeStale` fast-pathing out on `kind:'canonical'` envelopes, the net effect was zero visible home updates from any local activity since the refactor.
+**PM-171.1 `4c7086bb`** — fixed home dashboard never reflecting local activity. `optimisticPatch` had been writing to flat `home_state` column names since the EF v40 refactor flattened the response shape — phantom writes. `_markHomeStale` subscribers fast-pathed out on canonical envelopes and did nothing. Replaced with `_rerenderHome` that calls `buildHomeFromDexie(email)` → `renderDashboardData(result)` on every bus event. 22 subscribers re-routed. Build `Update 28` → `Update 29`, SW `pm170-movement-recent-cache-a` → `pm171-1-bus-rerender-a`.
 
-**vyve-site commit `4c7086bb`** — `index.html` (-10787 chars, the 14 PM-30..PM-66 verbose comment blocks removed), `sw.js` (cache bump). Build `Update 28` → `Update 29`. SW cache `pm170-movement-recent-cache-a` → `pm171-1-bus-rerender-a`. All 9 inline scripts pass `node --check`; post-commit byte-equal verified at commit SHA. 22 subscribers re-routed identically.
+**PM-171.5 `f55d1d67`** — fixed the stranded-Dexie-row symptom Dean's screenshots showed (Tuesday habits in Dexie, not in Supabase). Two gaps:
+- Page-local `_*Inflight` failure trackers strand rows when the page closes mid-retry → hoisted the dead-letter handler into vyve-offline.js. `vyve-outbox-dead` listener publishes the right `<table>:failed` bus event and deletes the optimistic Dexie row by `client_id`. FAILURE_TABLE_MAP covers 7 tables. Works regardless of which page is open.
+- Cardio.html network-throw catch silently kept the row with a wishful "reconciler will sync" comment — but no reconciler for direct-fetch surfaces. → catch now enqueues to `VYVEData.writeQueued` so the drainer + PM-171.5 layer handle the outcome.
 
-**What's fixed immediately:** habit/workout/cardio taps on their pages → home dashboard updates within ~16ms after Dexie write. Cross-tab same. Cross-device via Realtime same. Engagement ring + streak + counter tiles + dot strip + weekly goals all driven by `buildHomeFromDexie` which calls `VYVEHomeStateLocal.computeHomeStateFromDexie` (already shipped PF-11b PM-89, ~25KB JS port of `refresh_member_home_state` SQL).
+Build `Update 29` → `Update 30`, SW `pm171-1-bus-rerender-a` → `pm171-5-outbox-failures-a`. 4 files in commit (index marker bump, sw cache bump, cardio.html network fix, vyve-offline.js new listener). All byte-equal verified at commit SHA. `node --check` clean.
 
-**What's NOT fixed yet — PM-171.5 is now P0:** The Tuesday-stranded-rows symptom in Dean's screenshot is a **separate bug** that PM-171.1 does not address. Habits.html publishes `habit:failed` from page-local code (`_habitInflight` tracker + outbox-dead listener at L1880-1920). When the page closes before the outbox retry budget exhausts, the failure event never fires. Dexie keeps a phantom row, Supabase doesn't have it. PM-171.1 makes home consistent with Dexie (Tuesday fills on home too now); it does NOT make Dexie consistent with Supabase. Fix shape: hoist `_*Inflight` trackers to localStorage and have the outbox itself emit `<table>:failed` directly without needing the publishing page. ~1 session.
+**What launch can now trust:**
+- Local tap → home reflects in ~16ms (PM-171.1).
+- Cross-tab tap → home reflects via localStorage transport (PM-171.1).
+- Cross-device tap → home reflects via Realtime bridge (PM-171.1).
+- Local tap + page closes + retries exhaust → row reverts + home rerenders correctly (PM-171.5).
+- Cardio offline write → enqueues, retries, eventually either succeeds or reverts cleanly (PM-171.5).
 
-**Other follow-ups (lower priority):**
-- **PM-171.4** — `vyve-home-state.js` `optimisticPatch`/`revertPatch` are now silent no-ops in the home-render flow. File still referenced by 11 surfaces; safe-no-op behaviour means no rush. Audit + remove in cleanup pass.
-- **PM-171.2 / 171.3** — Original plan had these as separate commits for shape projection and dot-strip recompute. Both subsumed into 171.1 because `buildHomeFromDexie` already does the full projection.
-- **Habits.html dot strip** still uses its own Dexie read (`VYVELocalDB.daily_habits.allDatesFor`) — not changed in 171.1. Renders the same Mon/Tue/Wed it always did. Consistent with home post-171.1.
+**What still needs work before launch:**
+- **PM-171.5-followup-workouts** (P0 before launch) — workouts-session.js has mixed write paths (3 `writeQueued` + 8 direct `fetch`). The cardio shape needs porting to those 8 sites or they'll strand workout/set rows on offline. ~1-2 hours.
+- **PM-171.4** — remove `vyve-home-state.js` call sites across 11 surfaces (now silent no-ops). Cleanup, not launch-blocking.
 
-**Audit progress for Dean's portal-restructure goal** (Habits / Body / Mind / Connect / Weekly Check-in tracks): held until Mind + Connect sections are content-ready. Current Progress Tracks (Habits / Exercise / Cardio / Sessions / Check-in) stay as-is. PM-171.1 is bus-architecture work that the restructure will inherit cleanly — when new tracks land, they subscribe to `_rerenderHome` like everything else.
-
-**Carried from PM-153 (unchanged this session):**
-- Locked / mandatory habits model (Dean's product decision; needs `removable`/`locked` boolean on `member_habits`, post-trial).
+**Carried forward (unchanged this session):**
+- Locked / mandatory habits model (`removable`/`locked` boolean on `member_habits`, post-trial).
 - `member_habits` re-add duplicate (no unique constraint on `(member_email, habit_id)`).
-- `page_visits` owned visit/dwell analytics; `session_schedule` table + live-session minute-windowing; cross-visit dwell accumulation (tracking.js v9 resets on unload); tracking.js outbox wiring (§23.10 hardening candidate).
+- `page_visits` analytics; `session_schedule` table + live-session minute-windowing; tracking.js outbox wiring (§23.10 hardening candidate).
+- §23.8 timezone audit (codebase BST-locked via `bstToday()` across ~8 files; new code uses device-local).
+- Bottom-nav restructure (Habits / Body / Mind / Connect / Weekly Check-in) — held until Mind + Connect sections are content-ready. Bus architecture (post-PM-171.1) inherits cleanly when new tracks land — subscribe to `_rerenderHome` and they're instant.
 
-**§23.8 timezone audit** still pending (codebase BST-locked via `bstToday()` across ~8 files; new code must use device-local).
+**§23 candidate (post-launch codify):**
+
+§23.7.10 — *Failure handlers belong in the outbox layer, not the publishing page.* Page-local `_*Inflight` trackers are an anti-pattern post-PM-171.5; they strand rows when the page closes mid-retry. Bus publish + Dexie revert originates from a module that runs regardless of which page is open.
 
 
 ## 3. The active campaign — Premium Feel Migration (local-first via Dexie)
