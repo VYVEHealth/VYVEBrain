@@ -1,3 +1,117 @@
+## Added 21 May 2026 — PM-184: BUNDLE-READY CAMPAIGN (six phases, locked) + formal PF-40 closure
+
+**This is the active campaign.** All other backlog items below either fold into the phases here, defer post-launch, or close as superseded. Full campaign reference: `playbooks/bundle-ready-campaign.md`. Pre-bundle audit framework: `playbooks/offline-correctness-audit.md`.
+
+### Goal
+Ship a bundled iOS + Android app that members can use offline on the tube, on a flight, in a hospital basement. Bundled shell + Dexie data + Capawesome OTA = a wedge no UK workplace wellbeing competitor has.
+
+**Target ship:** 31 May 2026, or honest slip.
+
+### Phase 0 — Mind section v1 user-visible
+**SHIPPED 20 May 2026 (PM-173 → PM-183).** All six pages + hub real-wired. Outstanding (post-launch): ElevenLabs/Calum real audio swap, Lewis copy review of affirmations/journal/breathwork seeds.
+
+### Phase 1 — Body section consolidation [NEXT — 2-3 sessions]
+
+- [ ] **Decide `body_activities` table shape.** Default: table mirroring mind_activities (`kind` discriminator across workouts/cardio/movement, `ref_id`, `activity_date`, `client_id`, `duration_seconds`). Alternative: view-over-existing-tables. Decide in next session, take whichever is cleaner.
+- [ ] **Migration:** `body_activities` table + RLS + indexes + BEFORE INSERT/UPDATE triggers + `client_id` UNIQUE constraint.
+- [ ] **body.html hub build.** Today's focus (djb2 daily rotation across programme exercises or curated pool) + Day streak (distinct activity_date consecutive days, one-day grace) + Today's progress (today's count, display capped). Mirror mind.html shape precisely.
+- [ ] **Sub-page audit.** workouts.html / cardio.html / movement.html / exercise.html. Verify Dexie-first reads (shipped via PF-7/PF-9/PM-154-170). Verify §23.39 writes. Gap-fill where surfaced.
+
+### Phase 2 — Connect section build [2-3 sessions]
+
+- [ ] **connect.html hub build (NEW).** Charity impact hero + today's session card + leaderboard preview + Day streak. Lifted from mind.html / body.html shape.
+- [ ] **Sub-page audit.** sessions.html (schedule = catalogue hydrate; chat = Realtime carve-out). leaderboard.html (§23.10 carve-out — designed offline state showing last-cached ranking with "last updated X ago").
+- [ ] **Charity impact data wire-up.** Currently computed via `get_charity_total()` SQL function. Verify Dexie-cached version is correct.
+
+### Phase 3 — Pillar realignment [3-4 sessions, heaviest phase]
+
+- [ ] **Home page rewrite (index.html).** Pillar tiles replace certificate-track cards. Activity Score Ring retained but Variety component reframes (next bullet). PM-73 home redesign mockup is a starting reference; pillar reframe likely changes the shape.
+- [ ] **Engagement page rewrite (engagement.html).** Variety component reframes from per-activity-type to per-pillar coverage (Mind / Body / Connect). Each pillar contributes up to 4.17 points (12.5 / 3) to Variety. Scoring methodology section updated. Activity Breakdown table reorganises around pillars.
+- [ ] **Weekly check-in rewrite (wellbeing-checkin.html + EF v29).** Activity summary rolls up Mind + Body + Connect activities. AI prompt to Anthropic includes pillar-coverage data. Slider questions updated (resolves the §22 "Weekly check-in slider questions" open decision).
+- [ ] **Monthly check-in rewrite (monthly-checkin.html + EF v18).** Same as weekly.
+- [ ] **Certificates re-pillaring.** Three pillar certificates (Mind / Body / Connect) replace five activity certificates. `pillar` column added to `certificates` table. Old earned certs grandfather as `pillar='legacy'`. Lewis sign-off on three new pillar titles + tier copy. (Pulled in from deferred-post-launch in §22 per PM-184 — ship a consistent surface or don't ship.)
+
+### Phase 4 — Offline-correctness sweep [PRE-BUNDLE GATE — 2-3 sessions]
+
+Framework: `playbooks/offline-correctness-audit.md`.
+
+- [ ] **Schema audit.** Every member-data Supabase table has `updated_at TIMESTAMPTZ` + `BEFORE UPDATE` trigger. Catalogue tables too (delta-pull depends on it). Add where missing in one-shot migration.
+- [ ] **Idempotency audit.** Every write surface generates `client_id` UUID client-side at write time. Server respects as dedupe key. Mind activities = gold standard. Verify workouts / cardio / daily_habits / exercise_logs / custom_workouts / exercise_swaps / weight_logs / nutrition_logs / weekly_scores / wellbeing_checkins / monthly_checkins / session_views / replay_views.
+- [ ] **Airplane-mode device walk.** Dean's iPhone with `server.url` and network killed at OS level. Open every page in order. Record render behaviour (renders / spinner / empty / broken / honest offline). Anything broken or empty (when data exists in Dexie) = P0 fix.
+- [ ] **Cold-start-no-network UX.** Login screen detects no-connection state, shows honest message ("VYVE needs internet for first sign-in. After that, the app works offline.").
+- [ ] **Fan-out-on-focus pattern.** Capacitor `App.addListener('appStateChange')` triggers incremental delta-pull when app returns to foreground. Per-table `last_sync_timestamp` stored in Dexie `_sync_meta`. `where updated_at > [last_sync_timestamp]`.
+- [ ] **`_sync_queue` drain hardening.** Drainer wakes on app launch, drains pending writes before letting user create new ones, handles ordering, resilient to individual row failures. Test against a simulated 2-week-offline queue.
+
+### Phase 5 — Bundle and OTA [1 session]
+
+(The three tasks below were already queued from PM-178; reframed here as Phase 5.)
+
+- [ ] **Port PM-178 hotfix to main.** Two files (`exercise.html` `renderHero()` + `workouts-programme.js` `renderProgramme()`) plus sw.js cache-key bump. Use parallel session's `workouts-programme.js` shape verbatim (strictly more defensive — adds extra `{week, sessions: []}` fallback). Diff against `hotfix/programme-render-shape@b791fd51` for canonical source. Atomic commit on main.
+- [ ] **Sweep main for unship-ready in-progress work** before bundling. Phase 1-4 work should account for most of this; this is the final gate.
+- [ ] **First-ever OTA push to Capawesome production channel.**
+  ```bash
+  cd ~/Projects/vyve-capacitor
+  mv www www.bak-pre-ota-$(date +%Y%m%d-%H%M%S)
+  mkdir www
+  curl -L -H "Authorization: token <PAT>" \
+    -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/VYVEHealth/vyve-site/tarball/<merged-SHA>" \
+    -o /tmp/vyve-site-ota.tar.gz
+  tar -xzf /tmp/vyve-site-ota.tar.gz -C www --strip-components=1
+  grep -c "HOTFIX (programme-render-shape)" www/exercise.html www/workouts-programme.js
+  npx @capawesome/cli apps:bundles:create \
+    --app-id f9961f66-eb66-4102-b1c5-f9b2c7baeebf \
+    --channel 89e12796-aa41-4176-8d78-bc2ef6dfd5c2 \
+    --path www
+  ```
+  Consider `--rollout 0.1` for first-push safety. Roll to 100% after 24h clean telemetry.
+
+### Phase 6 — External-blocker items (off the critical path)
+
+These are tracked but not gating. Own owners, own timelines.
+
+- [ ] HAVEN clinical sign-off (Phil). Conor Warren on HAVEN since 15 April — Phil to review interactions.
+- [ ] Weekly check-in nudge copy split (Phil + Lewis). First-time activation vs continuity. Mental-health-adjacent.
+- [ ] PF-13 hydration COPY_TABLE finalisation. 23 entries tagged `COPY_DEAN_FINAL` in `/hydration.js`. ~30-45 min Dean writing time.
+- [ ] Brevo logo removal (~$12/month). Lewis — before any enterprise demo.
+- [ ] **Facebook Make connection refresh — expires 22 May 2026 — URGENT.** Lewis.
+- [ ] Public launch comms draft (Lewis).
+- [ ] B2B volume tier definition (Lewis + Dean). Pre-first-enterprise-contract.
+- [ ] Mind v1 Lewis copy review — affirmations / journal / breathwork seed content. `COPY_LEWIS_REVIEW` tags throughout.
+
+### What drops off entirely (confirmed PM-184)
+
+- ~~Layer 6 SPA shell~~ — dropped.
+- ~~PM-71 / PM-71b dashboard payload trim~~ — obsolete post-bundle.
+- ~~PM-72 materialise achievement_progress~~ — obsolete post-bundle.
+- ~~§23.5.1 backend EF perf campaign~~ for home payload — obsolete post-bundle. Dexie-first paint renders <200ms regardless of EF latency.
+- ~~PWA install prompt~~ code in index.html — slated for Phase 1 removal.
+- ~~In-App Tour PF-23~~ — V2, blocked on Lewis copy, post-launch.
+- ~~Achievements system major overhaul~~ — post-trial, post-launch.
+
+### Formal PF-40 closure (logged PM-184)
+
+PF-40's original 12-sub-item scope (PM-106, fat-row hydrate + write API + catalogue residency + offline UX + cleanup) was the wrong scaffolding for the actual problem. PM-111 device walk on `test1@test.com` diagnosed real bug as cache-writer/template shape mismatch (Habits "undefined" canary), not structural Dexie issue. Post-launch sub-items PF-40.3 through PF-40.12 were already deferred. Mind section v1 (PM-173–183) demonstrated the §23.39 optimistic-first skeleton organically replacing PF-40.4 (write API).
+
+PF-40 sub-items mapping into Bundle-Ready phases:
+- PF-40.1 (call-site audit) — SHIPPED PM-107. Artefacts retained as reference: `audit/pf-40-1-callsites.json`, `playbooks/pf-40-local-first-consolidation.md`.
+- PF-40.2 Part A (debug probe) — SHIPPED PM-110.
+- PF-40.2 Part B (structural fat-row fix) — DROPPED PM-111 as misdiagnosis.
+- PF-40.3 (catalogue residency) — re-absorbed into Phase 4 schema audit + delta-pull.
+- PF-40.4 (write API) — superseded by §23.39 organic emergence in Mind v1.
+- PF-40.5 (read API) — superseded by per-page Dexie-first reads already shipped via PF-6/7/8/9/10/12.
+- PF-40.6 (Tier 1 bundled assets) — SHIPPED via PF-14b bundled-mode migration PM-115.
+- PF-40.7 (Tier 2 pre-fetch) — done in PF-7 thumbnail prefetch.
+- PF-40.8 (Tier 3 CDN-on-view) — pattern already in use for YouTube thumbnails (PM-180/182) + workout exercise images.
+- PF-40.9 (boot chain offline-equivalence) — re-absorbed into Phase 4.
+- PF-40.10 (catalogue delta-pull) — re-absorbed into Phase 4 + Phase 4 fan-out-on-focus.
+- PF-40.11 (offline UX) — re-absorbed into Phase 4 + Phase 3 pillar pages.
+- PF-40.12 (spike-flag removal) — closed N/A (spike was merged to main in PM-95).
+
+Net: PF-40 closed, all live work re-homed into the Bundle-Ready phases above.
+
+---
+
 ## Added 20 May 2026 — PM-178 hotfix port + full-OTA push (three tasks, all P0 for next-OTA session)
 
 Tonight's PM-178 session diagnosed the `programme_json.weeks` shape bug — every onboarded member's Body hub hero and Workouts → My Programme tab render broken. A parallel Claude session already committed the fix to vyve-site `hotfix/programme-render-shape` at `b791fd515b59f8adde181021ccae4ccc590887be` (branched from production SHA `83874dd5`). Patch verified clean. **OTA push deferred per Dean** — main has accumulated unsandboxed in-progress work, so the plan is to roll the hotfix into a full OTA bundle in a couple of days once main is sweep-checked.

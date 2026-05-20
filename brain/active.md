@@ -50,6 +50,24 @@ When the three disagree:
 
 ## 2. Live state snapshot (refreshed every session-end)
 
+**SESSION HANDOFF — 2026-05-21 (PM-184: brain audit + Bundle-Ready campaign reframe).** Strategy-mode session in parallel with PM-183 build session. Dean opened the chat with "what started off as a few things to do to get the app to feel premium has quickly changed" — audit triggered.
+
+Six files committed atomic to VYVEBrain main: master.md (§19 collapsed, §21 rewritten), active.md (§2 prepend / §3 reframe / §5 reorder — this file), changelog.md (PM-184 entry), backlog.md (Bundle-Ready six-phase reorder), playbooks/bundle-ready-campaign.md (NEW ~16KB), playbooks/offline-correctness-audit.md (NEW ~8KB).
+
+**The Bundle-Ready Campaign — locked PM-184.** Six phases serving one goal: ship a bundled iOS + Android app that members can use offline. Phase 0 (Mind v1) SHIPPED. Phase 1 (Body section consolidation) next. Phase 2 (Connect section build), Phase 3 (Pillar realignment — home, engagement, weekly check-in, monthly check-in, certificates all reframe around Mind/Body/Connect), Phase 4 (offline-correctness sweep — PRE-BUNDLE GATE), Phase 5 (Bundle + OTA), Phase 6 (external-blocker items off the critical path). Full reference: `playbooks/bundle-ready-campaign.md`.
+
+**Formal PF-40 closure.** Original 12-sub-item scope was the wrong scaffolding (PM-111 device walk diagnosed real bug as cache-writer/template shape mismatch, not structural Dexie issue). Mind section v1 (PM-173–183) demonstrated the §23.39 optimistic-first skeleton organically replacing what PF-40.4 (write API) would have been. Post-launch sub-items PF-40.3 through PF-40.12 closed as superseded; functionality re-absorbed into the Bundle-Ready phases above.
+
+**§19 in master.md collapsed.** Had 23 stacked "current status" entries — that section is supposed to be current, singular. This file (§2) is the actual handoff document and works correctly. §19 in master.md now carries a single fresh PM-184 entry; historical session-by-session content remains in changelog.md.
+
+**Architectural commitment unchanged.** §3 of this file restates the immutable PM-77/PM-106 commitment — Dexie source of truth, Capacitor wrapped native, single-device-per-user, Supabase as sync target. The Bundle-Ready campaign IS the Premium Feel campaign in its mature form; commitment isn't new, just the framing.
+
+**§23.41 caught drift this session.** Initial audit load at 22:00 BST; SHA refresh at 22:30 BST showed all four brain files had drifted — PM-183 parallel session had landed in the gap. Re-fetched via git-blob-API at refreshed SHAs, confirmed parallel commit was downstream-of-audit (findings remained valid), no merge work needed. Worked as designed.
+
+**Production state of vyve-site at this commit.** Production iOS 1.3 (2) + Android 1.0.3 (10) bundled-mode at SHA `83874dd5` (frozen since 15 May per PM-115/116). Main HEAD `f44c7104` (PM-183 mind.html hub) — does not reach members until next OTA bundle via Capawesome. Dean's dev iPhone via `server.url` sees main HEAD immediately.
+
+**Next session pickup: Phase 1 — Body section consolidation.** Decide `body_activities` table shape (table vs view — default table per recent pattern), ship migration + body.html + sub-page audit. Estimated 2-3 sessions.
+
 **SESSION HANDOFF — 2026-05-20 (PM-183: mind.html hub real wiring + 30s engagement gate; Mind v1 user-visible COMPLETE).** Six files atomic to vyve-site main (`f44c7104`). mind.html: hardcoded `3` streak + `2/5` counter + "Calm Your Mind" placeholder hero replaced with real wiring. Today's focus = `djb2(memberEmail|todayStr) % 10` daily rotation across 5 meditation + 2 sleep + 3 visualisation tracks (ambient Rain + Ocean excluded). Day streak = distinct `mind_activities.activity_date` consecutive days with one-day grace (affirmations.html algorithm verbatim). Today's progress = today's row count, display capped 2/2 (foreshadows engagement-score Variety reframe around Body/Mind/Connect). PM-180 player IIFE copied into mind.html — deliberately not extracted to a shared module yet per Dean's call; Dexie/bus consolidation lands post Body+Connect content-complete. 30s engagement gate added to all four player IIFEs (mind.html + meditation + sleep + visualisation): setTimeout against per-modal client_id, cleared on close < 30s = no write, fresh timer on reopen = no double-fire, at 30s wall-clock fires the full §23.39 optimistic-first skeleton (Dexie sync + bus publish + un-awaited POST + 4xx revert + outbox enqueue on network throw). `duration_seconds=30` represents threshold-met, not measured play (iframe is autoplay=1, no API bridge — too heavy for a bridge that gets ripped out at ElevenLabs/Calum swap). `mind:logged`/`mind:failed` bus subscribers debounce-repaint at 150ms; own publish skipped via `source === 'mind_hub_focus'` guard. node --check clean on 12 inline JS blocks. sw.js `pm182-mind-thumbs-a` → `pm183-mind-hub-wire-a`. index.html vbb-marker Update 43 → Update 44. §23.41 pre-commit SHA refresh: all six stable (first clean refresh today — parallel-session storm has settled). Post-commit byte-equal verified via Contents API at commit SHA. No new §23 rule — textbook §23.39 application × 4. **Production reach gated on next OTA per §23.42.**
 
 **SESSION HANDOFF — 2026-05-20 (PM-182: Mind v1 thumbnails — YouTube CDN images on meditation, sleep, visualisation pages).** Closed the visual gap from PM-180. Five files committed atomic to vyve-site main (`7be4eadd`): meditation.html, sleep.html, visualisation.html (12 card thumbnails 5+4+3 + 3 heroes), sw.js (`pm181-bw-countdown-a` → `pm182-mind-thumbs-a`), index.html (vbb-marker Update 42 → 43). Cards use `<img>` with mqdefault → hqdefault → hide fallback chain. Heroes use CSS background-image with maxresdefault + inline preloader probe that swaps to hqdefault if YouTube serves its 120×90 grey placeholder. Pre-build verification: all 12 videos have real HD thumbs (smallest 32KB). `.thumb-md.has-img::after{display:none}` hides the diagonal-stripe placeholder when image is present, returns on failure. referrerpolicy=no-referrer matches PM-180 nocookie posture. Second §23.41 catch today: parallel session had landed PM-181 between PM-180's commit and this session's start — cache key advanced through pm181 already, marker through Update 42, so PM-182 advanced past both. **Production reach gated on next OTA per §23.42.**
@@ -87,56 +105,60 @@ When the three disagree:
 - In-App Tour build (PF-23 — V2 target, blocked on Lewis copy).
 
 
-## 3. The active campaign — Premium Feel Migration (local-first via Dexie)
+## 3. The active campaign — Bundle-Ready (Mind / Body / Connect → offline-correctness sweep → ship)
 
-**Goal:** Make VYVE feel like a native app where every tap is instant. Members should never wait on a server round-trip during normal use.
+**Goal:** Ship a bundled iOS + Android app that members can use offline on the tube, on a flight, in a hospital basement. Bundled shell + Dexie data + Capawesome OTA = a wedge no UK workplace wellbeing competitor has.
 
-**Architectural commitment (IMMUTABLE — locked PM-77, strengthened PM-106):**
+**Target ship:** 31 May 2026, OR honest slip.
+
+**Reference:** `playbooks/bundle-ready-campaign.md` (full phase breakdown + sub-tasks + exit criteria).
+
+### Architectural commitment (IMMUTABLE — inherited from PM-77 / PM-106)
 
 VYVE is a Capacitor-wrapped native iOS+Android app with web fallback at online.vyvehealth.co.uk.
 
-**Dexie is the source of truth for everything the app reads.** Network is for sync, for honestly-network-bound surfaces (§23.10), and for non-current-programme assets fetched on view.
+- **Dexie is the source of truth for everything the app reads.** Network is for sync, for honestly-network-bound surfaces (§23.10), and for non-current-programme assets fetched on view.
+- **First-login is the long load**, masked by the consent gate and persona-led walkthrough. Subsequent opens are instant from Dexie.
+- **Writes go Dexie-first** via the §23.39 optimistic-first skeleton: Dexie upsert sync, bus publish, un-awaited POST, 4xx revert, network-throw enqueue to `_sync_queue`.
+- **Single-device-per-user is the working assumption.** Last-write-wins for any conflicts. Multi-device cross-sync is post-launch.
+- **Supabase remains** the sync target, cross-device propagation layer via Realtime, server-side compute for AI/cron/leaderboards/employer aggregates. **Not the rendering source.**
 
-**First-login is the long load**, masked by the consent gate and persona-led walkthrough. Pulls all member-scoped data with denormalised join columns, all catalogue tables as metadata (workout_plans, habit_library, nutrition_common_foods, personas, service_catalogue, knowledge_base, exercises), and pre-fetches thumbnails for the member's current programme only. Total: ~5MB JSON + ~5MB images. Subsequent opens are instant from Dexie.
+This commitment may not be revised without producing a specific measured problem this architecture can't solve.
 
-**Asset strategy is tiered (§23.13):**
-- Tier 1 (brand chrome, persona portraits) — bundles in IPA via PF-14b. ~2-3MB.
-- Tier 2 (current programme thumbnails + assigned habit images) — pre-fetches on first-login or plan switch. ~3-4MB.
-- Tier 3 (non-current-programme assets) — fetches CDN-on-view, HTTP-cached per session, no local persistence. Library-browse surfaces show placeholder + exercise name when offline; honest §23.10 affordance.
+### The six phases (status at PM-184)
 
-**Network is invisible to the UI on Tier 1+2 surfaces.** Writes mutate Dexie synchronously, return control immediately, queue to `_sync_queue`. The drainer is the only code that knows HTTP. Reads come from Dexie unconditionally on Tier 1+2 surfaces. **No page-level fallback fetches** (§23.12).
+- **Phase 0 — Mind section v1 user-visible.** SHIPPED 20 May 2026 (PM-173 → PM-183). All six pages (breathwork, journal, affirmations, meditation, sleep, visualisation) plus mind.html hub real-wired against §23.39. Outstanding: ElevenLabs/Calum real audio swap (post-launch); Lewis copy review pass.
 
-**Honest network-bound carve-outs (§23.10):** live sessions schedule, live session chat (Realtime), AI moments (Anthropic round-trip), leaderboard (cross-member aggregate), cron-driven content (newly-earned certs after server cron). These show designed offline UX states, not graceful-degradation-to-blank.
+- **Phase 1 — Body section consolidation.** NOT STARTED. body.html proper hub mirroring mind.html shape (Today's focus + Day streak + Today's progress for Workouts/Cardio/Movement). Probable new `body_activities` table. Sub-pages already Dexie-first — this phase is consolidation. **NEXT.**
 
-**Catalogue updates arrive on next online connection** via delta-pull respecting `updated_at`. Emergency catalogue retractions (clinical safety) have a force-refresh-on-launch lever.
+- **Phase 2 — Connect section build.** NOT STARTED. connect.html (NEW) unifying leaderboard + sessions + charity impact + (optionally) social feed.
 
-**Single-device-per-user is the working assumption through 31 May launch.** Multi-device works but with last-write-wins semantics. Proper conflict resolution is post-launch work.
+- **Phase 3 — Pillar realignment.** NOT STARTED. Home / Engagement / Weekly check-in / Monthly check-in / Certificates all reframe around Mind / Body / Connect. Variety component reframes per-pillar (foreshadowed PM-183). Certificates re-pillar (was deferred-post-launch in §22 — pulled into this campaign per Dean's call: ship consistent or don't ship). Heaviest phase.
 
-**Supabase remains** the sync target, the cross-device propagation layer via Realtime, the server-side compute layer for AI generation + cron-driven achievements/certificates + leaderboards + employer aggregate reporting. **It is not the rendering source.**
+- **Phase 4 — Offline-correctness sweep.** NOT STARTED. **PRE-BUNDLE GATE.** Static schema/idempotency audit + dynamic airplane-mode device walk. New playbook `playbooks/offline-correctness-audit.md` (PM-184). Anything broken offline = P0 fix before bundling.
 
-**This commitment may not be revised** without producing a specific measured problem this architecture can't solve. Any future Claude that proposes "let's try a different pattern" must justify against this paragraph in the changelog and get Dean's explicit approval. The Layers 1-4 era of pivoting between architectures is closed.
+- **Phase 5 — Bundle and OTA.** NOT STARTED. Three tasks queued from PM-178 (port hotfix to main, sweep main, first-ever Capawesome OTA push). Consider `--rollout 0.1` for first push.
 
-**Why this campaign exists:** Layers 1-4 built optimistic UI + cross-device sync + reconcile-and-revert, but the rendering source is still server-fetched member-dashboard EF data. That EF runs 17s cold / 7s warm, so the app does not feel instant despite the architectural plumbing. Local-first removes the server-fetch hot path entirely. The 4-5 sessions spent on Layers 1-4 are not wasted — the event bus, optimistic patterns, and Realtime bridges remain useful in the new architecture — but they were the wrong priority ordering. This campaign corrects that.
+- **Phase 6 — External-blocker items.** OPEN. HAVEN sign-off (Phil), weekly check-in nudge copy (Phil + Lewis), PF-13 hydration COPY_TABLE finalisation (Dean), Brevo logo removal (Lewis), Facebook Make connection refresh (Lewis — URGENT, expires 22 May), public launch comms (Lewis), B2B volume tiers (Lewis + Dean), Mind v1 Lewis copy review.
 
-**Why Dexie specifically:** Mature (10+ years), free (MIT license, no premium tier needed), works inside Capacitor's WKWebView, no new backend service required, full control over the sync layer. RxDB was considered but its Supabase replication plugin is paid (€480/year) and over-engineered for our single-device-per-user assumption. PowerSync was considered but adds a separate backend service. Dexie + a custom sync layer using existing Supabase calls is the right shape.
+### What drops off the radar entirely
 
-**Campaign tasks:** see `playbooks/premium-feel-campaign.md` for the full PF-1 through PF-N backlog.
+Confirmed deferred / dropped:
+- Layer 6 SPA shell (dropped).
+- PM-71 / PM-71b dashboard payload trim (obsolete post-bundle).
+- PM-72 materialise achievement_progress (obsolete post-bundle).
+- Backend EF perf work for home payload / §23.5.1 campaign (obsolete post-bundle — Dexie-first paint renders <200ms regardless of EF latency).
+- PWA install prompt code in index.html (Phase 1 removal).
+- In-App Tour PF-23 (V2, blocked on Lewis copy, post-launch).
+- Achievements system major overhaul (post-trial, post-launch).
 
-**Status at PM-95 commit:** PF-1 through PF-13 scaffolding + PF-30 + PF-14 parts 1-4 SHIPPED and MERGED TO MAIN (HEAD `a3c74734`). Spike branch redundant. **PF-14 device verification PARTIAL** — Dean's iPhone walk validated Dexie alive on iOS WKWebView, paint-grace indicator semantics correct, Habits/Home/Nutrition/Log-Food paint from Dexie (`Paint: dexie`). Five surfaces show `Paint: supabase` despite spike on (Cardio, Workouts session, Wellbeing Check-in, Monthly Check-in, Settings) — diagnosed as Dexie hydration coverage gap, queued as P0 for PF-15. **PF-14b promoted to launch blocker** — Dean's `capacitor.config.json` confirmed remote-origin (`server.url: https://online.vyvehealth.co.uk`), subject to Apple ITP 7-day storage purge which directly breaks the campaign's instant-always promise. PF-14b: migrate to bundled-mode + Capgo or Capawesome live-updates service (~£10/mo at our scale), submit iOS 1.2 / Android 1.0.3, review ~24-72hr. Sequence: this weekend session → submit Sun/Mon → review through ~20 May → 31 May launch on ITP-exempt build.
+### Operating mode (unchanged from PM-77 / PM-106)
 
-**Status at PM-92 commit:** PF-1 through PF-13 scaffolding COMPLETE on `local-first-spike` branch (`11abad83`), 15 commits ahead of main, awaiting Dean's verification + merge. Spike covers Dexie schema (~27 tables), hydrate-on-login, shadow outbound queue (mirrors `writeQueued` into Dexie `_sync_queue` and runs parallel drainer), proper since-cursor delta-pull on visibilitychange, habits.html Dexie-first reads (3 sites flipped), workouts surfaces Dexie-first reads with PM-77.3 thumbnail prefetch (4+1 sites), nutrition surfaces Dexie-first reads (4 sites), cardio.html Dexie-first reads (3 sites + per-page optimistic `VYVELocalDB.cardio.upsert` at POST-success), wellbeing-checkin + monthly-checkin Dexie-first reads (11 sites total + optimistic wellbeing_checkins.upsert at submit), index.html cold-start Dexie-derived paint (PF-11a), **PF-11b — index.html client-side member_home_state computation** via new `home-state-local.js` module porting `refresh_member_home_state` + `compute_engagement_components` SQL functions to JS over Dexie data, **PF-30 — local-first telemetry redirect** via perf.js v3 (POST target moved from dead `/functions/v1/log-perf` to PostHog capture; new events `perf_first_paint`, `perf_cross_nav`, `perf_auth_ready`, `perf_paint_done`, `perf_navigation_timings`, `perf_sync_queue_high`, `dexie_hydrate_completed`), index.html telemetry hooks for `dexie_cold_paint`/`dexie_full_paint`/`dexie_engagement_drift`, db.js `dexie_idb_lost`/`dexie_open_failed` on §3.1 mitigation A WKWebView crash, PostHog session replay at 100% for soft-launch week (auth.js `posthog.init` config), **PF-12 — settings.html Dexie-first reads + 6 optimistic upsert sites** (cert/eng deferred to PF-12b), and **PF-13 scaffolding — first-login persona-led welcome overlay** (`/hydration.js` 19KB new file with 5-persona × goal-echo COPY_TABLE, HAVEN never-echo hard rule codified three layers deep, SAFE_ECHO_GOALS whitelist, 1500ms minimum display, once-per-device via localStorage.vyve_hydration_shown). Engagement score, all 4 components, all 6 streaks (overall + 5 types), recent_30d counts, weekly goal progress — all now Dexie-derived on cold-start. `members` reads still on Supabase across all pages per PF-8 PF-4b Part 1 carve-out. `weekly_scores` not in Dexie schema (PF-30 companion candidate, deferred — tagged via `known_divergence_sources` on engagement-drift events). AI-moment EF submits stay on the wire. `member-dashboard` EF still always fires post-Dexie-paint to upgrade `charity_total` (cross-member), `achievements`, `certificates`, and HK connection state — these stay server-only. A TTL-cache that skips the EF call when local data is fresh enough is the natural post-launch iteration. Realtime cross-device merge (PF-5b) deferred until post-launch. Sentry deferred to PF-30b — needs DSN from Dean (free-tier Sentry project, ~3 min). **PF-13 copy gate open:** 23 entries in `hydration.js` COPY_TABLE tagged `COPY_DEAN_FINAL` — draft lines are live-displayable but pre-launch Dean must finalise. ~30-45 min of Dean writing time. Next: PF-12b (certificates + engagement Dexie-first, ~1-2 hours), PF-14 (Capacitor device verification), PF-15 (hardening).
-
-
-**PF-4b — Optimistic-write-to-Dexie hazard (surfaced PM-82, expanded PM-86 into two parts).**
-
-*Part 1 — shadow drainer data-table gap.* PF-4's shadow drainer mirrors `writeQueued` calls into the Dexie `_sync_queue` outbound log but does NOT update the actual Dexie data tables. Pages that read-after-write the same record on the same page surface this gap. First instance: PF-8 `members` PATCH on TDEE recalc.
-
-*Part 2 — direct-fetch bypass (added PM-86, surfaced by PF-9).* Not every write call site goes through `VYVEData.writeQueued`. Cardio's POST is a direct `fetch()` to the Supabase REST endpoint, so the shadow drainer never sees it at all. Read-after-write hazard is the same shape (logged session won't appear in Dexie history until next delta-pull) but the root cause is different: bypass, not gap. Likely other direct-fetch writes exist across the portal — PF-10/11/12 should scan for both shapes.
-
-*Architectural fix options (all deferred to PF-15 hardening pass):* (1) codify shadow drainer to apply optimistic Dexie writes alongside `_sync_queue` enqueue (fixes Part 1 only); (2) audit all write call sites and route direct-fetch writes through `VYVEData.writeQueued` (fixes Part 2 only); (3) both — likely PF-15's choice.
-
-*Page-level workaround pattern until PF-15:* When a refactor would create a read-after-write hazard, either (a) keep that specific read on Supabase and document the carve-out in the page's commit (PF-8 `members` pattern), or (b) add a per-page optimistic Dexie upsert at the write call site (PF-1 `daily_habits` pattern, now also PF-9 `cardio.upsert` at POST-success). Choose (b) when the write call site is reachable and the table is in the Dexie schema; choose (a) when it isn't, or when the table is deliberately not local-first (e.g., `members` row containing TDEE targets that change rarely).
----
+- **Claude leads, Dean drives.** Default for technical decisions: Claude decides and moves forward, Dean retains veto.
+- **Single atomic commit per session** to VYVEBrain (master / active / changelog / backlog / playbooks move together).
+- **§23.41 pre-commit SHA refresh** is mandatory.
+- **§23.42 production reach** — main HEAD does not reach members until next OTA bundle via Capawesome.
+- **§23.39 optimistic-first** is the canonical write pattern for all new feature work.
 
 ### 3.1 iOS-specific mitigations (from PM-77.1 research dive)
 
@@ -205,62 +227,65 @@ Full §23 lives in `master.md` (50+ rules). These are the ones that fire on most
 
 ## 5. Backlog top working set (P0/P1 only)
 
-**P0 — must ship before 31 May launch:**
+**P0 — must ship before 31 May launch (sequenced by Bundle-Ready phase):**
 
-0. **PF-40 — LOCAL-FIRST CONSOLIDATION CAMPAIGN (REFRAMED PM-111).** Original scope (12 sub-items, ~13-16 sessions, fat-row hydrate + write API + catalogue residency + offline UX) was the wrong scaffolding for the actual problem. PM-111 device walk on `test1@test.com` exposed that the real bug is "first paint slow + cards paint undefined during 5-10s cold-load window" — not a structural Dexie issue. Reframed scope: thin first-paint hydrate replacing the 23-table mass-hydrate as the critical path. **PF-40.1 audit SHIPPED PM-107** (`audit/pf-40-1-callsites.json` + `playbooks/pf-40-local-first-consolidation.md` retained as reference but most call sites are not on the critical path). **PF-40.2 Part A SHIPPED PM-110** (`3d9abe44` `?debug=hydrate` probe). **PM-110 followup SHIPPED** (`83521f27` spike-on by default + habit_title undefined guards in habits.html). **PF-40.2 Part B (structural fat-row fix) DROPPED PM-111** — canary explained as cache-writer/template shape mismatch, no structural fix needed at the hydrate layer. **Next ship is `firstPaintHydrate.js`** — new module exporting `criticalHydrate(pageName)` that pulls 4-5 critical tables per page in parallel with 5s per-request timeout, returns when minimum-viable subset is in Dexie. Each page (index/habits/workouts/nutrition/cardio) calls `await criticalHydrate('home')` etc before render. Existing 23-table mass-hydrate in sync.js stays as lazy background path; firstPaintHydrate is the critical path. Also patches the 4 broken pulls in sync.js plan() (`achievement_metrics.active`, `monthly_checkins.activity_date`, `member_achievements` key path, `achievement_tiers` key path). Target: every page renders real member data in <2s from cold app open. Estimated 1 session for module + page wires + sync.js fixes. Sub-items beyond first-paint hydrate (PF-40.3 catalogue residency, PF-40.4 write API, PF-40.5 read-API standardisation, PF-40.6 bundled assets, PF-40.9 boot chain, PF-40.10 catalogue delta-pull, PF-40.11 offline UX, PF-40.12 cleanup) all defer to post-launch unless a member-facing bug demands them. — 10 decisions locked PM-108 (`playbooks/pf-40-local-first-consolidation.md` §4.6 DEAN_DECISIONS_LOCKED) so scope is fixed. Fixes the Habits "undefined" canary at the root. PF-14d, PF-14e, PF-15.write-optimistic, PF-31, PF-32, PF-33, PF-34 partial, PF-34b, PF-35, PF-36 all fold into PF-40 as symptoms. PF-14b stays separate. See `tasks/backlog.md` PF-40 section for full sub-item list + dependency graph + device-requirement table.
+### Phase 1 — Body section consolidation (NEXT)
+1. **Decide `body_activities` table shape.** Mirror of mind_activities (`kind` discriminator across workouts/cardio/movement, `ref_id`, `activity_date`, `client_id`, `duration_seconds`) vs view-over-existing-tables. Default = table (per recent pattern preference). Decision in next session.
+2. **Migration:** `body_activities` table + RLS + indexes + `BEFORE INSERT/UPDATE` triggers.
+3. **body.html hub build.** Today's focus + Day streak + Today's progress. djb2 daily rotation. Mirror mind.html shape.
+4. **Sub-page audit pass.** Verify Dexie-first reads + §23.39 writes on workouts.html / cardio.html / movement.html / exercise.html. Earlier work (PF-7, PF-9, PM-154-170) shipped Dexie-first; this is verification + any gap-fills.
 
-1. **PF-1 — Dexie spike** SHIPPED to `local-first-spike` (PM-78, commit `8d07d26b`). Awaiting Dean merge + verification.
-2. **PF-2 — Full Dexie schema** SHIPPED to `local-first-spike` (PM-78, commit `e8f02742`).
-2.5. **PF-3 — Sync engine pull-on-login** SHIPPED to `local-first-spike` (PM-78, commit `e8f02742`).
-2.6. **PF-4 — Shadow outbound queue** SHIPPED to `local-first-spike` (PM-79, commit `903127d6`). Mirror + parallel drainer behind spike-gate; legacy localStorage outbox still canonical.
-2.7. **PF-5 — Delta-pull cursor + foreground belt-and-braces** SHIPPED to `local-first-spike` (PM-79, commit `fa116ef2`). Realtime cross-device merge deferred to PF-5b / post-launch.
-2.8. **PF-6 — habits.html Dexie-first reads** SHIPPED to `local-first-spike` (PM-79.3 / commit `48c4d17e`). Three Supabase reads replaced with Dexie. Spike-off path unchanged.
-2.9. **PF-7 — workouts surfaces Dexie-first reads + thumbnail prefetch** SHIPPED to `local-first-spike` (PM-79.3 / commit `97863198`). Four reads in workouts-programme.js + one in workouts-session.js. PM-77.3 thumbnail prefetch included. Three-way branch (Dexie-when-non-empty / Supabase fallthrough). Writes already covered by PF-4 shadow drainer; no write-path changes.
-2.10. **PF-8 — nutrition surfaces Dexie-first reads** SHIPPED to `local-first-spike` (PM-82 narrative / commit `d2fc1e89`). Four reads flipped: `weight_logs` in nutrition.html; `nutrition_logs` today + recent-foods history + `nutrition_my_foods` in log-food.html. `members` reads kept on Supabase due to PF-4b read-after-write hazard. `off-proxy` (Open Food Facts external API) stays on the wire. Writes already covered by PF-4 shadow drainer.
-2.11. **PF-9 — cardio.html Dexie-first reads** SHIPPED to `local-first-spike` (PM-86 narrative / commit `197a0d89`). Three reads flipped: `weekly_goals` cardio-week count + workouts week count in `fetchWeek`; `cardio` history slice 10 in `fetchHistory`. PF-4b Part 2 surfaced: cardio's POST is a direct `fetch()`, not `writeQueued`, so PF-4 drainer doesn't see it — per-page optimistic `VYVELocalDB.cardio.upsert` added at POST-success (matches PF-1 `daily_habits` pattern). SW cache key bumped to `pm78-pf9-cardio-a`.
-2.11a. **PF-10 — wellbeing-checkin + monthly-checkin Dexie-first reads** SHIPPED to `local-first-spike` (PM-87 narrative / commit `9813e800`). Eleven reads flipped total across both pages. AI-moment EF submits (wellbeing-checkin EF v29, monthly-checkin EF v18) stay on the wire as deliberate server-compute carve-outs. `weekly_scores` (not in Dexie schema) and `members` (PF-8 carve-out) stay on Supabase. Optimistic `wellbeing_checkins.upsert` at submit covers PF-4b Part 2; monthly skipped (no on-page read-after-write hazard). SW cache key bumped to `pm78-pf10-checkins-a`.
-2.11b. **PF-11a — index.html cold-start Dexie-derived paint** SHIPPED to `local-first-spike` (PM-88 narrative / commit `8b79c54d`). New `buildHomeFromDexie()` synthesises partial member-dashboard payload from Dexie when localStorage `vyve_home_v3_<email>` cache is empty. Bootstrap flow: cache → render+EF | Dexie → render+EF | empty → skeleton+EF. EF always upgrades engagement.score + streaks + charity_total + achievements. SW cache key bumped to `pm78-pf11a-home-a`.
-2.11c. **PF-11b — index.html client-side member_home_state computation** SHIPPED to `local-first-spike` (PM-89 narrative / commit `a248bfef`). New `home-state-local.js` module (~25KB, 700 LOC) ports `refresh_member_home_state` + `compute_engagement_components` SQL functions to JS. `buildHomeFromDexie` now returns full EF response shape with real engagement score + real streaks + real progress. EF still fires to upgrade `charity_total` + `achievements` + `certificates` + HK state. TTL-cache skip-EF-when-fresh is the natural post-launch iteration. SW cache key bumped to `pm78-pf11b-home-b`.
-2.11d. **PF-12 — settings.html Dexie-first reads + optimistic upserts** SHIPPED to `local-first-spike` (PM-91 narrative / commit `302087de`). 2 reads flipped (`habit_library` catalogue + member habits assignment hydrate 2-up). 6 optimistic upsert sites added on write paths (profile, persona switch, theme, notification prefs, goal focus, privacy toggle). `certificates.html` + `engagement.html` Dexie-first reads carved out to PF-12b (~1-2 hours) — both are read-mostly EF-backed pages and lower-priority than PF-13 scaffolding. SW cache key bumped to `pm78-pf12-settings-a`.
-2.11e. **PF-13 scaffolding — first-login persona-led welcome overlay** SHIPPED to `local-first-spike` (PM-92 narrative / commit `11abad83`). New `/hydration.js` (19KB, 444 LOC). COPY_TABLE with 5 personas × generic + goal-echo variants (23 lines total, all tagged `// COPY: DEAN TO FINALISE`). HAVEN never-echo hard rule codified three layers deep (header comment, COPY_TABLE comment, runtime short-circuit before goal lookup, `goal = null` for HAVEN in showHydration). `SAFE_ECHO_GOALS` whitelist hardcoded (7 entries: build strength, improve performance, find calm, better sleep, build a habit, understand my body, build a routine — expandable). 1500ms minimum display via `Promise.all([hydrateWait, minWait])`. Once-per-device via `localStorage.vyve_hydration_shown`. 5 persona-matched animations as inline CSS (reusable by PF-27). Telemetry: `welcome_hydration_shown` + `welcome_hydration_skipped` to PostHog. SW cache key bumped to `pm92-pf13-hydration-a`. **COPY GATE OPEN — Dean to finalise 23 entries** in COPY_TABLE before launch (~30-45 min). Search for `COPY_DEAN_FINAL` tag to locate. Onboarding-side stash of `vyve_persona` + `vyve_primary_goal` to localStorage is a separate follow-up — `onboarding_v8.html` patch + onboarding EF response handler — without it the fresh-device-on-returning-member path uses the 50-100ms Dexie-fallback (acceptable, below human perceptual threshold).
-2.11f. **PF-14** — Device verification COMPLETE (PM-96, 13 May 2026 late). Dexie indicator + settings toggle shipped (`82524093`, `fa3bd6e6`); spike merged to main (`c469e504`); paint-grace indicator semantics shipped (`244d96fc`); stale habits-cache fix shipped (`a3c74734`); hydrate-await on 4 pages shipped (`67711c4e`). Architecture validated on Dean's iPhone 17. Eight findings logged for PF-15; PF-15 P0-1 (Dexie hydration coverage gap) diagnosed and partially fixed in PM-96 (see 2.11g). Cross-sync test (iPhone+Android) still QUEUED; will fold into PF-15 re-walk after remaining unwired pages are Dexie-wired.
-2.11f-b. **PF-14b — Bundled-mode migration + live-updates service** [LAUNCH BLOCKER]. Edit `capacitor.config.json` to remove `server.url`, copy spike-branch site files into `www/`, integrate Capgo (~£10/mo) or Capawesome (~£8/mo) SDK for over-the-air updates, lock scheme to `capacitor://localhost`, submit iOS 1.2 + Android 1.0.3. Apple ITP 7-day storage purge does not apply to bundled-mode (first-party content). Sequence: this weekend → submit Sun/Mon → review through ~20 May. ~2-3h Claude + Dean Xcode time + 24-72h Apple review. **Hard launch dependency for Premium Feel Campaign promise** — without this, members who go 7 days without opening lose their Dexie store and hit a 5-30s re-hydrate screen on next open.
-2.11g. **PF-15 — Hardening (in progress)**. Part 1 (PM-96): diagnostic IIFE added to dexie-source-indicator.js → device walk → root cause confirmed = page-side Dexie wiring gap (NOT hydrate timing). Part 2 (PM-96): `exercise.html` Dexie-wired (`433d0650`). Part 3 (PM-97, 13 May 2026 late): partial-upsert merge override on `member_habits` + `members` + long-press recovery gesture (`ddc13271`). Codified as §23.7.5. Remaining P0 items: (a) **§23.5.1 backend EF latency campaign** — three-week-old finding still unfixed, dominant cause of every "data pulls slow" symptom; tonight confirmed live in habits page header dashes never resolving + 20s write-UI lag. This is the next session's P0, not the PF-15 sweep. (b) PF-15.x sweep: wire `movement.html` / `sessions.html` / `leaderboard.html` / `running-plan.html` / `certificates.html` / `engagement.html` where they paint member data (per-page audit needed; some may be legit REST-pass-through). (c) PF-15.write-optimistic: flip the await/optimisticPatch order in habits.html + cardio.html + wellbeing-checkin.html so UI updates instantly while writeQueued fires in background. The Dexie write should happen first, optimisticPatch + publish second, writeQueued third without await — failure path is the existing `habit:failed` revert subscriber. (d) localStorage shape-cache audit. Plus original scope: PM-77.1 mitigations A/B/C codification, force-resync escape hatch, queue drain batching, storage quota handling.
-2.11h. **PF-16 through PF-20** — nav restructure + merge to main (merge already done in PM-95, so PF-20 collapses) + remaining hardening + spike-branch cleanup. Sequenced in playbook.
-2.12. **PF-29 — Android Health Connect autotick wiring** pre-launch. Capacitor side already configured (plugin + manifest permissions in 1.0.2 Play Store build). Web-side evaluator routes Android requests to Health Connect plugin + Android-specific permissions UX (Lewis copy gate). No Play Store re-review needed since permissions are already declared. ~3-4 hours.
-2a. **PF-21 — bottom nav restructure** to Mind / Body / Connect. Pencilled in post-PF-19. ~2-4 hours.
-2b. **PF-22 — hub landing pages** for each tab. Scope-flexible: build pre-launch if bandwidth allows, defer to V2 otherwise. ~4-8 hours per hub.
-2c. **PF-23 — Interactive guided tutorial** (5 micro-actions × achievement-per-step, persona-voiced). V2 target. Hard sequencing: post-PF-21. Hard blocker: Lewis copy for 5 personas. ~20-25 hours. Stands on its own as a feature — NOT a hydration time-killer (PF-13 handles that).
-2d. **PF-24 — Page transitions.** Slide for sub-pages, crossfade for tab switches. Reduced-motion variant. Pre-launch if bandwidth. ~3-4 hours.
-2e. **PF-25 — Typography pass.** Tabular numerals on counters, line-height audit, FOUT check, letter-spacing on caps, overflow handling. Pre-launch. ~2-3 hours.
-2f. **PF-26 — Pull-to-refresh wiring.** Triggers `runDeltaPull()` per page. Pre-launch. Cheap + high-leverage. ~1-2 hours.
-2g. **PF-27 — Loading-to-success animation on AI moments.** Persona-matched animation + staged messaging on weekly/monthly check-in submit. Lewis copy gate. Pre-launch if bandwidth. ~3-4 hours.
-2h. **PF-28 — In-progress session + form draft persistence.** Persists workout/cardio session orchestration state + form drafts to local-only Dexie tables so mid-workout app-close resumes exactly where left off (Strong/Strava parity). Pre-launch. ~3-4 hours.
-3. **HAVEN clinical sign-off** (Phil). Currently auto-assignment is gated. Phil must review before HAVEN persona ships in production.
-4. **Weekly check-in nudge copy** (Phil + Lewis). Currently uses placeholder.
-5. **Brevo logo removal** ($12/month addon). Lewis to action before any enterprise demo.
-6. **Facebook Make connection refresh** — expires 22 May 2026. Lewis to action.
-7. **Public launch comms draft** (Lewis).
-8. **B2B volume tier definition** (Lewis + Dean) — define formally before first enterprise contract.
-2.13. **PF-30 — Local-first telemetry redirect** SHIPPED to `local-first-spike` (PM-90 narrative / commit `707aa3af`). perf.js v3 strips dead metrics, redirects POST target from `/functions/v1/log-perf` (dead post-PF-11) to PostHog capture. New events: `perf_first_paint`, `perf_cross_nav` (sessionStorage handoff for tap→next-screen timing), `perf_auth_ready`, `perf_paint_done`, `perf_navigation_timings` (pagehide rollup), `perf_sync_queue_high` (fires when `_sync_queue` depth > 5 on pagehide), `dexie_hydrate_completed` (listens for `vyve-localdb-hydrated`). index.html telemetry hooks: `dexie_cold_paint` (PF-11a path), `dexie_full_paint` (PF-11b path), `dexie_engagement_drift` (EF upgrade diff with `known_divergence_sources: ['weekly_scores_v_wellbeing_checkins']` tag — see §3.1 below). db.js wraps the open-failed catch with PostHog `dexie_idb_lost` (WKWebView mitigation A telemetry) + `dexie_open_failed` (other open errors). auth.js `posthog.init` config gains `session_recording` at 100% for soft-launch week (drop to 10% +1 week after hard-launch). PostHog identity wiring was already done — `posthog.identify(email)` fires in `vyveCapturePageView` from `vyveSignalAuthReady`. Memory entry on "PostHog identity wiring pending" was stale; PF-30 leaves identity untouched. Sentry deferred to PF-30b — needs DSN from Dean. SW cache key bumped `pm78-pf11b-home-b` → `pm90-pf30-telem-a`. Files: perf.js (v2→v3), auth.js (init config), db.js (crash recovery), sw.js (cache key), index.html (paint+drift hooks). node --check passed on all JS + all 8 inline scripts in index.html.
+### Phase 2 — Connect section build
+5. **connect.html hub build (NEW).** Charity impact hero + today's session + leaderboard preview + Day streak. Lifted from mind.html / body.html shape.
+6. **Sub-page audit pass.** sessions.html (schedule = catalogue hydrate; chat = Realtime carve-out), leaderboard.html (§23.10 carve-out with designed offline state).
+
+### Phase 3 — Pillar realignment
+7. **Home page rewrite (index.html).** Pillar tiles replace certificate-track cards. Activity Score Ring retained but Variety reframes per-pillar.
+8. **Engagement page rewrite (engagement.html).** Variety component reframes per-pillar (each pillar contributes up to 4.17 of 12.5 points). Activity Breakdown reorganises around pillars.
+9. **Weekly check-in rewrite (wellbeing-checkin.html + EF v29).** Activity summary rolls up Mind + Body + Connect. AI prompt updated. Lewis-signoff on slider questions (open decision from §22 resolved here).
+10. **Monthly check-in rewrite (monthly-checkin.html + EF v18).** Same as weekly.
+11. **Certificates re-pillaring.** Three pillar certificates (Mind / Body / Connect) replace five activity certificates. `pillar` column added to `certificates` table. Old certs grandfather as `pillar='legacy'`. Lewis sign-off on three new pillar titles + tier copy.
+
+### Phase 4 — Offline-correctness sweep (PRE-BUNDLE GATE)
+12. **Schema audit:** every member-data Supabase table has `updated_at` + `BEFORE UPDATE` trigger. Catalogue tables too (delta-pull depends on it). SQL in `playbooks/offline-correctness-audit.md`.
+13. **Idempotency audit:** every write surface has `client_id` UUID + server-side dedupe constraint.
+14. **Airplane-mode device walk:** Dean's iPhone with `server.url` + network killed. Every page walked, write surfaces tested. Anything broken = P0 fix.
+15. **Cold-start-no-network UX:** login screen detects no-connection, shows honest message.
+16. **Fan-out-on-focus pattern:** Capacitor `App.addListener('appStateChange')` triggers incremental delta-pull. Per-table `last_sync_timestamp` in Dexie `_sync_meta`.
+17. **`_sync_queue` drain hardening:** wakes on app launch, drains before new writes allowed, handles 2-week-offline queue cleanly.
+
+### Phase 5 — Bundle and OTA
+18. **Port PM-178 hotfix to main.** Two-file patch (exercise.html renderHero + workouts-programme.js renderProgramme) + sw.js cache bump. Use the parallel session's `workouts-programme.js` shape (strictly more defensive).
+19. **Sweep main for unship-ready in-progress work.** Phase 1–4 work should have covered most of this; final gate.
+20. **First-ever OTA push.** `npx @capawesome/cli apps:bundles:create --app-id f9961f66... --channel 89e12796... --path www`. Consider `--rollout 0.1` for safety; roll to 100% after 24h clean telemetry.
+
+### Phase 6 — External-blocker items (off the critical path, tracked separately)
+21. **HAVEN clinical sign-off** (Phil). Conor Warren on HAVEN since 15 April — Phil to review interactions.
+22. **Weekly check-in nudge copy split** (Phil + Lewis). First-time activation vs continuity. Mental-health-adjacent.
+23. **PF-13 hydration COPY_TABLE finalisation** (Dean writes, Lewis spot-check). 23 entries tagged `COPY_DEAN_FINAL`.
+24. **Brevo logo removal** (~$12/month addon). Lewis — before any enterprise demo.
+25. **Facebook Make connection refresh** — expires 22 May 2026. **URGENT — today/tomorrow.** Lewis.
+26. **Public launch comms draft** (Lewis).
+27. **B2B volume tier definition** (Lewis + Dean). Pre-first-enterprise-contract.
+28. **Mind v1 Lewis copy review** — affirmations / journal / breathwork seed content. `COPY_LEWIS_REVIEW` tags throughout.
 
 **P1 — desired before launch, acceptable to slip:**
 
-9. **Skeleton screens and empty states pass** (post-migration polish). Habits.html "unidentified habits" state needs replacement.
-10. **Haptic feedback wiring** via Capacitor Haptics plugin on writing surfaces.
-11. **Error handling polish** — warm/helpful error states instead of red alert boxes.
-12. **iPhone real-device verification of perf-v2** — confirm cache_first axis fires from iOS Safari/Capacitor.
+- Skeleton screens and empty states pass (post-pillar-realignment polish).
+- Haptic feedback wiring via Capacitor Haptics on writing surfaces.
+- Error handling polish — warm/helpful error states.
+- ElevenLabs/Calum real audio swap for Mind audio pages (replaces YouTube embed bridge).
 
 **P1 — post-launch (do not work on before 31 May):**
 
-13. **Achievements system overhaul** (PM-94 placeholder) — current 32 metrics × 327 tiers + inline evaluator is functionally correct and trial-safe, but Dean's framing: "just a placeholder, needs a massive overhaul and huge improvement." Post-trial scope TBD pending engagement data from 15-20 trial members. Tier thresholds, metric mix, copy on tier titles, celebration moments on unlock, nav surfacing all in scope. Lewis copy approval gate (`copy_status='approved'`). Likely 2-3 sessions as a campaign in its own right. See `tasks/backlog.md` PM-94.
-14. **PF-13 hydration.js COPY_TABLE finalisation** (PM-94 placeholder) — 11 distinct persona welcome lines + 2 fallbacks tagged `COPY_DEAN_FINAL` in `/hydration.js`. Drafts are member-displayable real sentences (trial-safe). Dean owns. ~30-45 min writing time. Light Lewis spot-check on tone. Post-trial: rewrite informed by what trial members actually responded to.
-15. PM-71/PM-71b dashboard payload trim (becomes mostly obsolete after local-first migration — dashboard EF gets called rarely).
-16. PM-72 materialise achievement_progress (same — obsolete-ish after migration).
-17. PM-73 home redesign (deferred to after launch + after data on what the simplified payload actually contains).
-18. Layer 6 SPA shell decision — likely dropped permanently. Local-first delivers most of what Layer 6 would have.
-
----
+- Achievements system major overhaul (PM-94). Post-trial — 2-3 sessions as own campaign.
+- In-App Tour PF-23. V2 target, blocked on Lewis 5-persona copy.
+- PM-71/72/73 — obsolete-ish post-bundle; revisit if data shows EF still hot.
+- Realtime cross-device sync (PF-5b deferred). Pattern 3 from PM-184 strategy discussion.
+- Apple Health page redesign.
+- `auth_blocked` banner in member UI.
+- HealthKit background sync (Capgo 8.4.7 has no primitives — needs Swift plugin ~400 LOC + 4-5 sessions + 1 week soak).
+- Health Connect (Android) — parked until Dean has Pixel/Galaxy device.
 
 ## 6. Credentials, URLs & references (working-set only)
 

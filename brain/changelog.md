@@ -1,3 +1,59 @@
+## 2026-05-21 PM-184 — Brain audit + Bundle-Ready campaign reframe (six phases, offline-correctness gate, formal PF-40 closure)
+
+**Triggered by Dean opening a strategy chat in parallel with the still-running PM-183 build session, observing that "what started off as a few things to do to get the app to feel premium has quickly changed" and asking for a full audit of brain + changelog + backlog before settling on what comes next.**
+
+**Audit findings.**
+
+Three drifts identified in the brain:
+
+1. **PF-40 was reframed twice and is essentially dead in its original form.** Per active.md §5 #0, PM-111 device walk on `test1@test.com` exposed the real bug as cache-writer/template shape mismatch (Habits "undefined" canary), not a structural Dexie issue. Post-launch sub-items PF-40.3 through PF-40.12 were already deferred. Meanwhile the Mind section (PM-173–183) shipped six user-visible pages on the §23.39 optimistic-first skeleton, effectively demonstrating the PF-40.4 write-API pattern emerging organically. **Formal PF-40 closure earned this commit.**
+
+2. **§19 in master.md has 23 stacked "current status" entries.** That section is supposed to be current, singular. It became a session log. Active.md §2 is the actual handoff document and works correctly. §19 collapses this commit to a single fresh entry; historical entries pruned to prose form.
+
+3. **Master.md §21 outstanding-build list and active.md §5 backlog don't agree.** §21 still lists "Polish + Achievements Phase 3 + In-App Tour" as top priority — that framing predates Mind section. Active.md §5 is the real source. §21 rewritten this commit to mirror.
+
+**The Bundle-Ready Campaign — locked.**
+
+Six phases, all serving one goal: ship a bundled iOS + Android app that members can use offline on the tube, on a flight, in a hospital basement.
+
+- **Phase 0 — Mind section v1.** SHIPPED 20 May 2026 (PM-173 → PM-183).
+- **Phase 1 — Body section consolidation.** body.html proper hub mirroring mind.html shape. Today's focus + Day streak + Today's progress for Workouts / Cardio / Movement. Probable new `body_activities` table (mirror of mind_activities shape, `kind` discriminator). Sub-pages already Dexie-first per PF-7/PF-9/PM-154-170 — this phase is consolidation, not rebuild. 2–3 sessions estimated.
+- **Phase 2 — Connect section build.** connect.html (NEW). Charity impact hero + today's session + leaderboard preview. Unifies the currently-standalone leaderboard / sessions / charity surfaces. 2–3 sessions estimated.
+- **Phase 3 — Pillar realignment.** Home / Engagement / Weekly check-in / Monthly check-in / Certificates all reflect Mind / Body / Connect. Heaviest phase: Variety component reframes per-pillar (foreshadowed in PM-183), certificates re-pillar (deferred-post-launch in §22 — pulled into this campaign per Dean's call: ship a consistent surface or don't ship at all). 3–4 sessions estimated.
+- **Phase 4 — Offline-correctness sweep (PRE-BUNDLE GATE).** New playbook `playbooks/offline-correctness-audit.md` (this commit). Static schema/idempotency audit + dynamic airplane-mode device walk. Anything broken when offline is a P0 fix before bundling. 2–3 sessions estimated.
+- **Phase 5 — Bundle and OTA.** The three tasks already queued in backlog from PM-178 (port hotfix, sweep main, first-ever Capawesome OTA). 1 session.
+- **Phase 6 — External-blocker items.** HAVEN clinical sign-off (Phil), weekly check-in nudge copy (Phil + Lewis), PF-13 hydration COPY_TABLE finalisation (Dean), Brevo logo removal (Lewis), Facebook Make connection refresh (Lewis, expires tomorrow 22 May — urgent), public launch comms draft (Lewis), B2B volume tier definition (Lewis + Dean), Lewis copy review on Mind v1 seed content.
+
+**What drops off the radar entirely.** Layer 6 SPA shell (already dropped, confirmed). PM-71/71b/72 dashboard payload trim (obsolete post-bundle). PM-73 home redesign (folded into Phase 3). §23.5.1 backend EF perf work for home payload (obsolete post-bundle — Dexie-first paint renders <200ms regardless of EF latency). PWA install prompt code in index.html (slated for Phase 1 removal). In-App Tour PF-23 + Achievements major overhaul (both post-trial, do not work on before launch).
+
+**Files in this brain commit.**
+
+- `brain/master.md` — §19 collapses to single fresh PM-184 entry, §21 rewritten to mirror active.md §5.
+- `brain/active.md` — §2 prepended with PM-184 audit handoff. §3 reframed from Premium Feel Campaign to Bundle-Ready Campaign. §5 reordered around six phases.
+- `brain/changelog.md` — this entry prepended.
+- `tasks/backlog.md` — top of file: PF-40 marked formally closed, Bundle-Ready six-phase structure replaces the post-PM-178 ordering.
+- `playbooks/bundle-ready-campaign.md` — NEW (~16KB). Full campaign reference with phase exit criteria, sub-tasks, estimated session counts, operating mode.
+- `playbooks/offline-correctness-audit.md` — NEW (~8KB). Per-page audit table + schema audit SQL + idempotency audit table + airplane-mode walk procedure + critical paths.
+
+Six files total. Atomic commit via Composio workbench `GITHUB_COMMIT_MULTIPLE_FILES`, plain UTF-8 in `upserts`, post-commit byte-equal verification via Contents API.
+
+**No new §23 hard rule earned this commit.** The campaign reframe is a planning artefact, not new architectural doctrine. Doctrine remains §23.39 (optimistic-first), §23.41 (parallel-session safety), §23.42 (bundled-native production-reach), and the §23.7.x cluster (Dexie wiring).
+
+**§23.41 application this session.** SHA refresh at 22:30 BST showed master.md / active.md / changelog.md / backlog.md had all drifted between initial audit load (22:00 BST) and write-prep (22:30 BST). The parallel PM-183 build session had landed its commit during the audit work. Refreshed all four files via git-blob-API fetch at refreshed SHAs, confirmed parallel commit was downstream-of-audit (the audit findings remained valid), no merge work required. Worked as designed — caught the drift before write.
+
+**§23.42 production reach.** This is a brain-only commit. No member-facing impact. Reaches future Claude sessions immediately via `brain/active.md` load. Reaches production via whatever ships out of Phases 1–5.
+
+**Production state of vyve-site at this commit.**
+
+- Production iOS 1.3 (2) bundled-mode at vyve-site SHA `83874dd5` (frozen since 15 May per PM-115).
+- Production Android 1.0.3 (10) bundled-mode at the same SHA.
+- Main HEAD at vyve-site is `f44c7104` (PM-183 mind.html hub wiring) — does not reach production members until the next OTA bundle.
+- Capawesome production channel `89e12796-aa41-4176-8d78-bc2ef6dfd5c2` is configured and ready.
+- Dean's dev iPhone via `server.url` dev-loop sees main HEAD immediately (subject to §23.29 WKWebView 2-15min cache).
+
+**Next session pickup:** Phase 1 — Body section consolidation. Decide `body_activities` table shape (table vs view — default table per recent pattern), ship migration + body.html + audit pass on Body sub-pages. Estimated 2-3 sessions.
+
+
 ## 2026-05-20 PM-183 — mind.html hub real wiring + 30s engagement gate on Mind audio pages (Mind v1 user-visible COMPLETE)
 
 **Shipped.** vyve-site `f44c7104558540a721c6b8fbea66a82e79b827ed` — six files in one atomic commit. Closes out Mind v1 user-visible scope: all six pages (breathwork, journal, affirmations, meditation, sleep, visualisation) plus the hub itself now real-wired against the production data layer. Production reach gated on next OTA per §23.42.
