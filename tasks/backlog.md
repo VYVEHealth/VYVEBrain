@@ -1,3 +1,58 @@
+## Added 21 May 2026 — PM-186: Connect Phase 2 spec lock + 5 tables migrated + counters-render-truth (§23.46)
+
+**Spec locked. Build-ready.** See `playbooks/connect-spec.md` for full design (~23KB). Five Supabase tables live as of this commit; 30 daily prompts seeded. A fresh session on "Load VYVE brain and run build" can ship Connect with no further design questions.
+
+### P0 — Connect build queue (Phase 2)
+
+1. **connect.html (hub).** ~600-800 LOC equiv to mind.html. Default counter values = 0 per §23.46. Bus subscriptions for cross-page repaint. djb2 daily prompt rotation read from `daily_checkin_prompts`. Elite progress: client-side union across 4 pillar tables. Page is read-only; no writes.
+
+2. **connect-checkin.html.** Single write surface. Textarea max 60 chars, 5 focus chips, post button gated ≥3 chars. §23.39 optimistic-first write to `connect_checkins`. Already-posted-today guard redirects to read-only view. Body label note: stays at "Your check-in will be visible to your community."
+
+3. **connect-feed.html.** Tabs: Workplace (label switches to employer name OR "VYVE Community") | Elite (🔒 until 30-of-any-activity / 30 days) | Following (coming-soon pill v1). Reactions only (♥💪🔥🙌⭐👏). §23.39 toggle pattern for `checkin_reactions`. Day boundaries explicit. End-of-feed footer "Come back tomorrow" (anti-doomscroll).
+
+4. **connect-challenge.html.** Read-only. Community ring + personal 7-day strip + body_md + workplace leaderboard tab. Auto-joins on first qualifying activity.
+
+5. **EF `connect-challenge-summary` v1.** Computes community + personal counts for active challenge, updates `weekly_challenge_participation.personal_count`. `verify_jwt: true`. Client cache 60s in `_kv`.
+
+6. **EF `connect-feed-counts` v1.** Computes "X members checked in today" workplace + elite scopes. `verify_jwt: true`. Client cache 60s.
+
+7. **Sub-page audit pass.** sessions.html (Live This Week deep-link target — schedule = catalogue hydrate, chat = Realtime carve-out), leaderboard.html (§23.10 carve-out with designed offline state).
+
+### Tables migrated PM-186 (no further migration work)
+
+- `connect_checkins` — daily check-ins, unique(member, date), 60-char body cap, RLS read-all + write-own.
+- `checkin_reactions` — one per member per check-in, swap-or-remove.
+- `weekly_challenges` — author-curated, service-role-write.
+- `weekly_challenge_participation` — denormalised personal_count.
+- `daily_checkin_prompts` — 30 seeded across 11 tags.
+
+### sync.js wiring needed before first build
+
+The five tables need `makeTable` entries in db.js + sync.js hydrate fan-out paths. Mirror exactly the `mind_activities` template:
+- Member-data: `connect_checkins`, `checkin_reactions`, `weekly_challenge_participation` — use `replaceForMember` (§23.43 merge-not-wipe).
+- Catalogue: `weekly_challenges`, `daily_checkin_prompts` — use `replaceCatalogue` (or equivalent).
+
+### Phase 4 add (from PM-186)
+
+- **mind.html localStorage snapshot strip** (§23.46). Remove `paintFromSnapshot()`, `writeSnapshot()`, `vyve_mind_hub_snapshot` key, `.is-loading`/`.has-loaded` skeleton fade. Companion: grep portal pages for `vyve_*_snapshot` localStorage keys, strip those too unless on a §23.10 carve-out surface.
+
+### Decisions resolved (no longer open)
+
+- Elite threshold: 30 distinct activity days in 30 days, ANY of 4 pillar tables (`connect_checkins`, `mind_activities`, `body_activities`, `daily_habits`).
+- Check-in body max: 60 chars.
+- Reaction set: ♥💪🔥🙌⭐👏 (six fixed).
+- Workplace label fallback: "VYVE Community" when employer is null.
+- Daily prompts: library of 30, interchangeable via admin console post-launch (v1: SQL directly).
+- Following tab v1: coming-soon pill (disabled).
+- Paint pattern: §23.46 — counters default 0, no skeletons. Snapshot patterns forbidden on Connect.
+
+### Drift corrections from PM-186
+
+- **Body section hub is `exercise.html` (existing), not `body.html` (new).** Phase 1 consolidation is INSIDE exercise.html, not a new file.
+- mind.html PM-183.4 snapshot pattern retroactively obsolete — added to Phase 4 strip backlog (above).
+
+---
+
 ## Added 21 May 2026 — PM-184: BUNDLE-READY CAMPAIGN (six phases, locked) + formal PF-40 closure
 
 **This is the active campaign.** All other backlog items below either fold into the phases here, defer post-launch, or close as superseded. Full campaign reference: `playbooks/bundle-ready-campaign.md`. Pre-bundle audit framework: `playbooks/offline-correctness-audit.md`.

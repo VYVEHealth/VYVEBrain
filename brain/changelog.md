@@ -1,3 +1,49 @@
+## 2026-05-21 PM-186 — Connect Phase 2 spec locked + 5 tables migrated + §23.46 counters-render-truth + Body=exercise.html drift fix
+
+**Context.** Continuation of the Composio-incident session. After §23.45 was codified (earlier PM-185 commit), session pivoted to product work: Dean asked to lock the Connect spec before any code is written. Substantive design conversation produced six locked decisions (Elite threshold = 30-of-any-activity, body cap = 60 chars, six fixed reactions, workplace fallback label, daily-prompts library, Following = coming-soon pill) plus a sharpened paint rule. Dean explicitly rejected the localStorage snapshot pattern that mind.html (PM-183.4) uses, arguing that on a bundled-native app Dexie reads should be synchronous and counters should default to 0, not skeleton characters. That conversation produced §23.46.
+
+**Why two separate PM numbers on the same date.** PM-185 (earlier session) was Composio-incident tooling. PM-186 (this commit) is Connect spec lock + database migration + counters rule. Each represents a distinct piece of work; collapsing them into one number would obscure what changed when.
+
+**Supabase migration (live, verified).** Five additive tables via `apply_migration` on project `ixjfklpckgxrwjlfsaaz`:
+- `connect_checkins` — uuid PK, member+date unique, 60-char body cap, focus_tag enum (move/mind/fuel/rest/growth), RLS read-all + write/update-own, `set_updated_at()` trigger, indices on `(posted_at desc)` and `(member_email, checkin_date desc)`.
+- `checkin_reactions` — composite PK `(checkin_id, member_email)`, reaction enum (heart/muscle/fire/hands/star/clap), RLS read-all + write/update/delete-own.
+- `weekly_challenges` — week_start unique, metric enum (check_ins/workouts/mind_sessions/steps_self_report/hydration_self_report/any_activity), scope enum (all/workplace/elite), RLS read-all + service-role-write only.
+- `weekly_challenge_participation` — composite PK `(challenge_id, member_email)`, denormalised `personal_count`, RLS read-all + write/update-own.
+- `daily_checkin_prompts` — uuid PK, 5-200 char prompt cap, optional `active_from`/`active_until`/`tag`/`weight`, RLS read-all + service-role-write only.
+
+Supabase table count: 88 → 93. All RLS-enabled with appropriate policies. Indices + triggers in place. Pre-flight check confirmed none existed.
+
+**30 prompts seeded.** Covers general / self-care / momentum / priorities / movement / mind / habits / reflection / gratitude / connection / nutrition (11 tags). Library is editable via direct SQL v1; admin console UI for prompt curation deferred to post-launch. Lewis owns rewriting these for tone before launch.
+
+**New playbook written.** `playbooks/connect-spec.md` (~23KB). Sections: page inventory (4 new pages + 2 reused), data model with all 5 SQL schemas, hub spec with visual layout + paint sequence + Dexie reads + bus subscriptions, three sub-page specs at the same depth, Elite unlock computation with code sample, sync/offline behaviour, EF list (2 in v1), v1-vs-deferred line, all locked decisions documented. A fresh session reading master + active + this playbook can ship the build with no further design questions.
+
+**New §23 hard rule earned: §23.46 — Counters render truth, not loading placeholders.** Bundled-native means Dexie IS the local DB, not a cache of a remote DB. Treating Dexie reads as if they need a loading state misrepresents the architecture to the user. Rule: counters default to `0` in HTML markup. New member sees `0` (honest — they have done 0 things). Reinstalled member sees `0 → real value` flicker as Dexie hydrates (honest — local store really is empty during the window). Warm-start member sees real value on first paint (~5-15ms below human perception). Only genuinely-unresolved-remote-data may use `…`, and only until first fetch establishes last-known value cached in `_kv`. Codified in master.md alongside §23.45.
+
+**Retroactive scope of §23.46.** mind.html PM-183.4 localStorage snapshot pattern (`paintFromSnapshot`, `writeSnapshot`, `vyve_mind_hub_snapshot`, `.is-loading`/`.has-loaded` fade) is now obsolete. Added to Phase 4 (offline-correctness sweep) strip backlog. Connect (Phase 2) ships without snapshots from day one.
+
+**Drift correction: Body section hub is `exercise.html`, not `body.html`.** Master §19 ("Next phase") had said "Build body.html proper hub mirroring mind.html shape". Dean confirmed PM-186: the Body hub is the EXISTING `exercise.html` shell. Phase 1 consolidation work is workouts/cardio/movement sub-page sweep INSIDE exercise.html + the `body_activities` table decision (table not view, mirror of mind_activities, `kind` discriminator). No new file. Master §19 sentence patched; §22 mind_sessions decision extended with the exercise.html clarification.
+
+**§23.41 working as designed.** Pre-commit SHA refresh on all 5 brain files revealed §23.45 + the §25 PAT entry were added by a parallel session earlier today (PM-185 Composio-incident commit) — re-fetched fresh, did NOT re-add. Master.md grew from ~333KB (early-session load) to ~339KB (this commit) cleanly — PM-185's §23.45 + §25 patch + this session's §19 + §22 + §23.46 + my prepend. Identified PM-185 already in changelog; bumped my commit to PM-186 to avoid collision.
+
+**Commit mechanics.** Direct PAT path (Composio still 401 throughout this session — incident not yet resolved). Git Data API chain: 5 file blobs → tree → commit → update main ref. Pre-commit SHA refresh on each file immediately before blob creation. Post-commit byte-equal verification via Contents API (NOT raw CDN, per §23.45) on first 100 chars of each file.
+
+**Files committed atomic.**
+- `brain/master.md` — §19 PM-186 entry prepended, header updated, body.html sentence patched, §22 mind_sessions entry extended, §23.46 inserted between §23.45 and §24.
+- `brain/active.md` — §2 PM-186 handoff prepended, §5 Phase 2 expanded from 2 lines to ~25 lines, §5 Phase 4 gained item 12a (mind snapshot strip).
+- `brain/changelog.md` — this entry prepended (PM-186 above PM-185).
+- `tasks/backlog.md` — PM-186 entry prepended (~4KB).
+- `playbooks/connect-spec.md` — NEW (~23KB).
+
+**No vyve-site commits this session.** Tables and prompts are the only "shipped" artefacts; no portal HTML/JS touched. Production iOS 1.3 (2) + Android 1.0.3 (10) still bundled at SHA `83874dd5` (frozen since PM-115/116). Main HEAD still `583d5905` (PM-183.7 dev panel).
+
+**Next session pickup options.**
+- Recommended: **Phase 2 Connect build** — start with connect.html hub. db.js + sync.js wiring for the 5 new tables comes first (10-15 min), then hub HTML/JS lifts mind.html directly.
+- Alternative: Phase 1 Body consolidation — exercise.html shell apply mind.html idiom, `body_activities` table migration. Phase 2 spec stays locked either way.
+
+**No new memory updates this session.** §23.45-era memory edits (#8 rewritten, #20 added) remain accurate.
+
+---
+
 ## 2026-05-21 PM-185 — Composio security incident: fallback protocol codified
 
 **Context.** During session continuation tonight, every Composio GitHub call returned `401 Bad credentials` despite the dashboard showing the connection as Active. Reconnecting fresh OAuth grants didn't fix it — same 401 on the simplest possible call (`GET /user`). Cost ~90 minutes of dashboard fighting before status.composio.dev surfaced two live incidents: "Composio Security Incident" (identified 19:59) and "Degraded performance on Github connections" (investigating since 18:58).

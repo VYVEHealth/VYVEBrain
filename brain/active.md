@@ -50,6 +50,31 @@ When the three disagree:
 
 ## 2. Live state snapshot (refreshed every session-end)
 
+**SESSION HANDOFF — 2026-05-21 (PM-186: Connect Phase 2 spec lock + counters-render-truth rule + Body=exercise.html drift fix).** Strategy + migration session. Five brain files committed atomic to VYVEBrain main: master.md (§19 + §22 drift corrections, §23.46 added), active.md (§2 prepend + §5 Phase 2 expansion + drift fixes — this file), changelog.md (PM-186 entry prepended), tasks/backlog.md (Phase 2 expanded), playbooks/connect-spec.md (NEW, ~23KB). §23.45 was already added by a parallel session earlier today — confirmed in this session's brain re-read, did NOT re-add.
+
+**Five Supabase tables migrated and live this session** (via Supabase MCP `apply_migration`, project `ixjfklpckgxrwjlfsaaz`):
+- `connect_checkins` — daily check-ins, RLS read-all + write-own, unique(member_email, checkin_date).
+- `checkin_reactions` — one reaction per member per check-in, swap-or-remove pattern.
+- `weekly_challenges` — author-curated, RLS read-all + service-role-write.
+- `weekly_challenge_participation` — denormalised personal_count.
+- `daily_checkin_prompts` — 30 prompts seeded across 11 tags, djb2 daily rotation by member+date.
+
+Supabase table count: 88 → 93. All five tables RLS-enabled with appropriate policies. Indices + triggers in place. Verified post-migration.
+
+**Connect spec build-ready.** A fresh session on "Load VYVE brain and run build" reads master + active + `playbooks/connect-spec.md` and can ship the Phase 2 build with no further design questions. Page build order: connect.html → connect-checkin.html → connect-feed.html → connect-challenge.html → 2 EFs → sub-page audit on sessions.html + leaderboard.html. Est 4-6 sessions.
+
+**Drift corrections this session.** (1) Body hub is `exercise.html` (existing), not `body.html` (new). Master §19 "Next phase" sentence patched, §22 body_activities decision clarified. No file rename — Phase 1 is workouts/cardio/movement consolidation INSIDE existing exercise.html shell + the `body_activities` table decision. (2) `mind.html` PM-183.4 localStorage snapshot pattern retroactively obsolete per §23.46 — flagged for Phase 4 (offline-correctness sweep) strip. Connect ships without snapshots from day one.
+
+**New §23 hard rules earned this session:** §23.45 (Composio outage fallback — already added by parallel earlier today, this session confirmed + tested by living through it), §23.46 (counters render truth, not loading placeholders — Dexie-instant paint, default 0, no skeletons on local-data surfaces).
+
+**Composio incident — this session's live experience.** Composio's GitHub OAuth tokens revoked 21 May during their security incident. Dashboard reported "Active" but every GitHub call returned 401. Spent ~15 min retrying through Composio UI before falling to the documented protocol: pulled `GITHUB_PAT_CLAUDE` from Supabase Vault via MCP `execute_sql`, used bash_tool curl against api.github.com directly. Reads via `Accept: application/vnd.github.raw`, this commit (multi-file atomic) via Git Data API (blobs → tree → commit → update ref). §23.41 SHA refresh + post-commit byte-equal verification preserved. Working as designed — §23.45 codifies it permanently.
+
+**Production state of vyve-site at this commit.** Unchanged from PM-184. Production iOS 1.3 (2) + Android 1.0.3 (10) bundled-mode at SHA `83874dd5` (frozen since 15 May per PM-115/116). Main HEAD `583d5905` (PM-183.7 settings.html dev panel) — does not reach members until next OTA bundle via Capawesome. No vyve-site commits this session.
+
+**Next session pickup options.**
+- **Recommended**: Phase 2 Connect build — start with connect.html hub. Tables and prompts already migrated; spec is build-ready.
+- Alternative: Phase 1 Body consolidation (per the campaign's original sequence). Decide `body_activities` table shape (mirror of mind_activities), migration, update exercise.html to apply mind.html idiom across the existing streams. Phase 2 spec stays locked either way.
+
 **SESSION HANDOFF — 2026-05-21 (PM-184: brain audit + Bundle-Ready campaign reframe).** Strategy-mode session in parallel with PM-183 build session. Dean opened the chat with "what started off as a few things to do to get the app to feel premium has quickly changed" — audit triggered.
 
 Six files committed atomic to VYVEBrain main: master.md (§19 collapsed, §21 rewritten), active.md (§2 prepend / §3 reframe / §5 reorder — this file), changelog.md (PM-184 entry), backlog.md (Bundle-Ready six-phase reorder), playbooks/bundle-ready-campaign.md (NEW ~16KB), playbooks/offline-correctness-audit.md (NEW ~8KB).
@@ -325,8 +350,17 @@ Full §23 lives in `master.md` (50+ rules). These are the ones that fire on most
 4. **Sub-page audit pass.** Verify Dexie-first reads + §23.39 writes on workouts.html / cardio.html / movement.html / exercise.html. Earlier work (PF-7, PF-9, PM-154-170) shipped Dexie-first; this is verification + any gap-fills.
 
 ### Phase 2 — Connect section build
-5. **connect.html hub build (NEW).** Charity impact hero + today's session + leaderboard preview + Day streak. Lifted from mind.html / body.html shape.
-6. **Sub-page audit pass.** sessions.html (schedule = catalogue hydrate; chat = Realtime carve-out), leaderboard.html (§23.10 carve-out with designed offline state).
+
+**Spec locked PM-185.** Full design at `playbooks/connect-spec.md` (~23KB). Five tables migrated + 30 prompts seeded PM-185 — build-ready, no further design questions. Page build order:
+
+5. **connect.html hub build (NEW).** Today's check-in CTA + Your Momentum (streak + Elite progress) + Live This Week carousel + This Week's Challenge + Recent Check-ins preview (top 3) + Latest from VYVE carousel. Lifts mind.html shape directly. Paint pattern per §23.46 (counters default 0, no skeletons). Bus subscriptions: `connect:checkin:logged|failed`, `connect:reaction:logged|cleared`, `connect:challenge:progress`, `connect:hydrated`, `mind:logged`, `body:logged`.
+6. **connect-checkin.html (NEW).** Daily Check-In write surface. Read daily prompt from Dexie `daily_checkin_prompts` via djb2(email+date) rotation. Textarea max 60 chars + 5 focus chips (Move/Mind/Fuel/Rest/Growth). §23.39 optimistic-first write to `connect_checkins`. Already-posted-today guard redirects to read-only view.
+7. **connect-feed.html (NEW).** Community Feed. Workplace tab (label switches to employer name OR "VYVE Community"), Elite tab (🔒 until 30-of-any-activity threshold), Following tab (coming-soon pill v1). Reactions only — 6 emojis ♥💪🔥🙌⭐👏. End-of-feed footer "Come back tomorrow" (anti-doomscroll).
+8. **connect-challenge.html (NEW).** Active weekly challenge detail. Community ring + personal 7-day strip + body_md + workplace leaderboard tab. Auto-joins on first qualifying activity, no explicit Join button.
+9. **2 Edge Functions.** `connect-challenge-summary` (community + personal counts, 60s client cache, updates `weekly_challenge_participation`), `connect-feed-counts` ("X members checked in today" workplace + elite, 60s cache). Both `verify_jwt: true`.
+10. **Sub-page audit pass.** sessions.html (Live This Week deep-link target — schedule = catalogue hydrate, chat = Realtime carve-out), leaderboard.html (§23.10 carve-out with designed offline state).
+
+**Estimated 4-6 sessions in Dean's working rhythm.** connect.html most independent — lifts mind.html directly. connect-checkin.html and connect-feed.html introduce two new write surfaces. connect-challenge.html read-only.
 
 ### Phase 3 — Pillar realignment
 7. **Home page rewrite (index.html).** Pillar tiles replace certificate-track cards. Activity Score Ring retained but Variety reframes per-pillar.
@@ -337,6 +371,7 @@ Full §23 lives in `master.md` (50+ rules). These are the ones that fire on most
 
 ### Phase 4 — Offline-correctness sweep (PRE-BUNDLE GATE)
 12. **Schema audit:** every member-data Supabase table has `updated_at` + `BEFORE UPDATE` trigger. Catalogue tables too (delta-pull depends on it). SQL in `playbooks/offline-correctness-audit.md`.
+12a. **mind.html localStorage snapshot strip** (PM-186, §23.46). Remove `paintFromSnapshot()`, `writeSnapshot()`, `vyve_mind_hub_snapshot` key, and the `.is-loading`/`.has-loaded` skeleton fade. Verify hub still paints instantly on cold load (it will — Dexie eager-open + warm-start auth fast-path handle it). Companion audit: any other portal page using a similar snapshot pattern (`paintFromSnapshot`, `vyve_*_snapshot` keys).
 13. **Idempotency audit:** every write surface has `client_id` UUID + server-side dedupe constraint.
 14. **Airplane-mode device walk:** Dean's iPhone with `server.url` + network killed. Every page walked, write surfaces tested. Anything broken = P0 fix.
 15. **Cold-start-no-network UX:** login screen detects no-connection, shows honest message.

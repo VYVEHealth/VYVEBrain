@@ -855,13 +855,15 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
-## 19. Current status — 21 May 2026 PM-184 (brain audit + Bundle-Ready campaign reframe)
+## 19. Current status — 21 May 2026 PM-186 (Connect Phase 2 spec lock + counters-render-truth)
+
+**PM-186 (21 May 2026, this commit).** Phase 2 Connect section spec locked. `playbooks/connect-spec.md` written (~23KB, build-ready). Five new Supabase tables migrated and live: `connect_checkins`, `checkin_reactions`, `weekly_challenges`, `weekly_challenge_participation`, `daily_checkin_prompts` (Supabase tables: 88 → 93). 30 daily check-in prompts seeded across 11 tags. One new §23 hard rule earned: §23.46 (counters render truth, not skeletons — mind.html PM-183.4 snapshot retroactively obsolete). §23.45 was added by the earlier PM-185 Composio-incident session and is intact in this read — no re-add. Drift correction: Body section hub is **`exercise.html` (existing)**, not `body.html` (new) as previous §19/backlog framing implied — Phase 1 consolidation is workouts/cardio/movement sub-page sweep under the existing exercise.html shell + `body_activities` table decision. No vyve-site commits this session — paper-only.
 
 **Current campaign:** Bundle-Ready (locked PM-184). Six phases serving one goal: ship a bundled iOS + Android app members can use offline. Reference: `playbooks/bundle-ready-campaign.md`.
 
 **Current phase:** Phase 0 (Mind v1) SHIPPED 20 May 2026 across PM-173 through PM-183 — all six user-visible pages (breathwork, journal, affirmations, meditation, sleep, visualisation) plus the mind.html hub real-wired against the §23.39 optimistic-first skeleton. Production iOS 1.3 (2) + Android 1.0.3 (10) bundled-mode at vyve-site SHA `83874dd5` (frozen since 15 May per PM-115/116). Main HEAD at vyve-site is `f44c7104` (PM-183 mind.html hub) — does not reach members until the next OTA bundle ships via Capawesome (production channel `89e12796-aa41-4176-8d78-bc2ef6dfd5c2`). Dean's dev iPhone via `server.url` dev-loop sees main HEAD immediately, subject to §23.29 WKWebView cache.
 
-**Next phase:** Phase 1 — Body section consolidation. Build body.html proper hub mirroring mind.html shape (Today's focus + Day streak + Today's progress, but for Workouts / Cardio / Movement). Decide `body_activities` table shape (mirror of mind_activities — `kind` discriminator across workouts/cardio/movement, `client_id` idempotency — vs view-over-existing-tables). Default to table per recent pattern. Audit pass on Body sub-pages (workouts.html, cardio.html, movement.html, exercise.html) — Dexie-first reads shipped via PF-7/PF-9/PM-154-170; this is consolidation, not rebuild. 2-3 sessions estimated.
+**Next phase:** Phase 1 — Body section consolidation. Consolidate workouts/cardio/movement under the existing `exercise.html` hub (NOT a new `body.html` — drift correction PM-185). Apply mind.html shape (Today's focus + Day streak + Today's progress) inside exercise.html. Decide `body_activities` table shape (mirror of mind_activities — `kind` discriminator across workouts/cardio/movement, `client_id` idempotency — vs view-over-existing-tables). Default to table per recent pattern. Audit pass on Body sub-pages (workouts.html, cardio.html, movement.html, exercise.html) — Dexie-first reads shipped via PF-7/PF-9/PM-154-170; this is consolidation, not rebuild. 2-3 sessions estimated.
 
 **Phases after Phase 1.** Phase 2 — Connect section build (connect.html NEW, unifies leaderboard + sessions + charity impact). Phase 3 — Pillar realignment (Home / Engagement / Weekly check-in / Monthly check-in / Certificates all reframe around Mind / Body / Connect; certificates re-pillar pulled in from deferred-post-launch). Phase 4 — Offline-correctness sweep (PRE-BUNDLE GATE; new playbook `playbooks/offline-correctness-audit.md`). Phase 5 — Bundle and OTA (three tasks from PM-178 already queued in backlog). Phase 6 — external-blocker items (HAVEN sign-off, copy reviews, Brevo logo, etc).
 
@@ -999,6 +1001,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 - **Home page redesign shape (PM-73, 12 May 2026 PM)** — v2 mockup at `playbooks/home-redesign-v2-mockup.html` is Dean's working preference ("kind of likes this"). Parked behind premium-feel polish pass. (The Mind/Body/Connect nav re-architecture this line previously waited on is now substantially shipped — Body rename PM-154, Mind tab + 7 Mind pages PM-158/159.) When this comes back, the EF trim (PM-71 re-scope to delete home payload fields, move detail to `/stats` via a new `member-stats` EF) is in-scope alongside the UI build. Daily goals canonical shape locked: "Watch 1 session" / "Log daily habits" / "Log one form of exercise".
 - **Goal & certificate re-pillaring (PM-159)** — with the BODY/Mind/Connect nav direction now partly shipped, the per-activity goal targets and certificate tracks (Habits/Workouts/Cardio) no longer map cleanly onto the section model. Moving goals + cert tracks onto the BODY/Mind/Connect pillars is **deferred to post-launch**. Revisit alongside the home-redesign EF trim.
 - **`mind_sessions` schema (PM-159)** — the Mind data table (dedicated table, `activity_type` discriminator, never `daily_habits`) is decided but **not yet created**. Schema is intentionally deferred until breathwork's real fields exist, so the schema is derived from the first real Mind feature rather than guessed. Breathwork build is the trigger.
+- **Body section hub is `exercise.html` (PM-186 drift correction)** — earlier §19 / Phase 1 backlog framing implied a new `body.html`. Dean's intent confirmed PM-186: the Body section hub is the existing `exercise.html` shell. Phase 1 work is consolidation under that shell (workouts / cardio / movement as streams already wired), apply mind.html visual idiom (Today's focus + Day streak + Today's progress), and the `body_activities` table decision (mirror of `mind_activities`, `kind` discriminator across workouts/cardio/movement, table not view per recent pattern). No file rename.
 
 ---
 
@@ -2200,6 +2203,54 @@ Composio has had at least one major outage that broke every GitHub call despite 
 6. After Composio's status page goes green, do NOT immediately trust the connection — test end-to-end with a real read before re-routing future calls through it.
 
 **Anti-pattern to avoid:** burning session time clicking the Composio UI to reconnect during a live outage. Reconnect attempts during an active incident produce fresh tokens that get revoked again immediately. The fallback path is faster and reliable.
+
+---
+
+## §23.46 — Counters render truth, not loading placeholders (PM-186, 21 May 2026)
+
+Bundled-native, Dexie-is-source-of-truth means counters on every member-data surface should render the true value on first paint. The localStorage snapshot pattern (mind.html PM-183.4 / §23.38) was a workaround for a since-fixed sync bug (§23.43 merge-not-wipe). It is no longer the right answer for new pages.
+
+**Rule:** Dexie reads are synchronous to first paint. Default value for any counter is `0` — the genuine zero state for an unhydrated or empty table. Skeleton characters (`·`, `…`) are forbidden on local-data surfaces because they signal ignorance about a value we can know.
+
+- A new member sees `0` because they have done 0 things. That is honest.
+- A reinstalled member sees `0 → real value` flicker as Dexie hydrates from Supabase. That flicker is also honest — the local store really is empty during the window.
+- A warm-start member (99% of opens) sees the real value on first paint. Imperceptibly brief 0→real transition (~5-15ms, below human perception).
+
+**Only genuinely-unresolved-remote-data may use `…`,** and only until the first successful fetch establishes a last-known value cached in Dexie `_kv`. After that, render the last-known value with an optional "Last updated Nm ago" tag rather than a skeleton. Surfaces that qualify: community counts, challenge community totals, fresh-catalogue freshness checks — the §23.10 carve-outs.
+
+**Audit signal:** any page with `·` or `…` in default HTML markup for a streak, day count, activity total, personal progress, or any other Dexie-readable value is in violation. The literal characters `·` and `…` should appear in markup only inside §23.10 surfaces (and even there, hidden until first fetch is preferred).
+
+**Implementation pattern:**
+
+```html
+<!-- Default markup -->
+<div class="streak-ring"><span id="streak-val">0</span></div>
+<div class="today-count"><span id="today-val">0</span>/<span id="today-target">2</span></div>
+```
+
+```js
+function boot() {
+  // window.vyveCurrentUser.email is already set via auth.js fast-path on warm starts
+  if (!window.vyveCurrentUser || !window.vyveCurrentUser.email) {
+    window.addEventListener('vyveAuthReady', boot, { once: true });
+    return;
+  }
+  const email = window.vyveCurrentUser.email;
+  // Dexie is already open via eager IIFE bootstrap in db.js
+  Promise.all([
+    VYVELocalDB.connect_checkins.allFor(email),
+    // ... other tables
+  ]).then(([rows]) => {
+    render(rows);  // paints real values OR 0 if empty
+  });
+  // Subscribe to hydrate events so cold-install gets a repaint when sync.js lands data
+  VYVEBus.subscribe('connect:hydrated', () => boot());
+}
+```
+
+**Retroactive scope:** mind.html PM-183.4 snapshot (`vyve_mind_hub_snapshot`, `paintFromSnapshot`, `writeSnapshot`) is now obsolete and queued for Phase 4 (offline-correctness sweep) removal. Connect (Phase 2) ships without snapshots from day one.
+
+**Why this is now a hard rule** (rather than a UX preference): bundled-native means Dexie IS the local DB, not a cache of a remote DB. Treating Dexie reads as if they need a loading state misrepresents the architecture to the user. A skeleton implies "we're computing this" — but for a local DB read on warm start, we're not. We already have it. Show it.
 
 ---
 
