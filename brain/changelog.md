@@ -1,3 +1,47 @@
+## 2026-05-21 PM-188 step 7 — Connect Phase 2 CLOSED: sessions.html + leaderboard.html §23.48 audit (vyve-site `0622db8e0d3622dccdabe81f8628e2f847af591a`)
+
+**Phase 2 closes here.** All 7 build-queue items shipped across PM-186 → PM-188. New §23 hard rule §23.48 codified at PM-188 brain commit `154d4745` earlier this session; this commit applies its patterns 3 + 4 to the two remaining Connect sub-pages via surgical patches. Sessions catalogue swap + Command Centre editor sequenced as a coordinated post-launch campaign (Dean's call: the schema migration only makes sense alongside the editor that uses it; both ship together post-launch, then sessions.html absorbs the catalogue swap as part of the same campaign).
+
+### Decision points
+
+- **Sessions.html scope = Option A** (hardcoded SESSIONS array remains for now). Discussed earlier this session; Dean's call. Reasoning: doing the full catalogue swap requires the schema migration + Command Centre editor, none of which exist yet. Adding nullable columns without the tool to populate them creates a half-wired surface for weeks. Better to keep the proven hardcoded array on sessions.html, ship the §23.48 pattern 3 hygiene, and let the catalogue swap travel with the Command Centre work as one coordinated campaign.
+- **Leaderboard.html scope = Option A** (keep localStorage cache). The cache mechanism works fine — migrating to `_kv` would be housework with no UX gain. §23.48 audit is satisfied by the visibility refresh + skeleton-on-cache-hit removal; the storage mechanism for pattern 4 is implementation detail, not doctrine.
+
+### What changed in vyve-site
+
+- **`sessions.html`.** Removed `—` and `--:--:--` skeletons on `#nextSession`/`#nextTime` (§23.46 — these were skeleton characters on time-derived data that gets painted in the same microtask as `buildCards()`; default empty is honest). Replaced `setInterval(tick, 1000)` block with `scheduleNextTick()` / `startTicker()` / `stopTicker()` cluster:
+  - `tickCadenceMs()` returns 1000 if any session is currently live OR nearest upcoming is ≤5 min out; 30000 otherwise. Adaptive — gives sharp JOIN-button transitions when it matters, low cadence the rest of the day.
+  - `scheduleNextTick()` uses `setTimeout` rather than `setInterval` so the cadence can change each tick. Bails on `visibilityState === 'hidden'`.
+  - `visibilitychange` listener — on `→hidden` calls `stopTicker()`; on `→visible` calls `startTicker()` which immediately fires `tick()` (correcting any stale state from the background period) BEFORE scheduling the next tick. No waiting up to cadence-length for resume correction.
+  - `pageshow` handler — covers bfcache restore on iOS Safari/WKWebView where `visibilitychange` may not fire reliably. Calls `startTicker()` if visible.
+  - Old `buildCards(); tick(); setInterval(tick, 1000)` boot replaced with `buildCards(); startTicker()`.
+- **`leaderboard.html`.** Two changes per §23.48 pattern 4:
+  - `_showSkeletonIfNoCache(range, scope)` helper added before the boot IIFE. Reads `vyve_leaderboard_cache` from localStorage, checks email/range/scope match. If cache hits, leaves existing rendered content visible (the next `loadLeaderboard()` call will repaint from cache then refresh from server, no flicker). If miss, paints the `Loading leaderboard…` skeleton. Range-tab and scope-tab click handlers now call this helper instead of unconditionally writing the skeleton — eliminates the §23.46 violation flash on tab switches when cache exists.
+  - `_maybeRefreshOnFocus()` triggered on `visibilitychange` (when `visible`) AND `pageshow`. 60s staleness threshold via `_LB_FOCUS_STALE_MS = 60 * 1000` — matches the Connect EF `_kv` cadence canonicalised in PM-187.3. Bails if no auth user OR `!navigator.onLine`. If cache stale, fires `loadLeaderboard()` (which is itself cache-first then server-refresh, no flicker). If cache fresh, no-op. Initial markup `Loading leaderboard…` left intact — it's the genuine no-cache-on-first-paint state §23.46 carves out for.
+- **`sw.js`.** Cache `vyve-cache-v2026-05-21-pm187-ef-wiring-a` → `vyve-cache-v2026-05-21-pm188-step7-a`.
+- **`index.html`.** vbb-marker Update 56 → 57. Mandatory per portal deployment checklist (memory: every vyve-site commit bumps sw.js cache key AND vbb-marker in the same commit).
+
+### Engineering hygiene
+
+- All three inline JS blocks per file `node --check` clean (sessions.html blocks 0/1/2: 8762 / 483 / 76 chars; leaderboard.html blocks 0/1/2: 18258 / 498 / 79 chars).
+- Atomic 4-file commit via Git Data API per §23.45 (Composio still dead from this morning's security incident; PAT-direct end-to-end).
+- Post-commit byte-equal verification via Contents API on all 4 files (not raw CDN — memory #2: `ref=branch` raw is CDN-cached and may return stale; pinned to commit SHA is the safe path but Contents API base64-decode is the canonical verification per memory).
+- Pre-commit refresh of base ref SHA per §23.41.
+
+### What this opens up
+
+Bundle-Ready Phase 2 (Connect section build) is **CLOSED**. Phase 1 (Body section consolidation) is next. The §23.48 patterns codified this session apply heavily there — workouts.html / cardio.html / movement.html are pattern 1 dominant (local member data, bus-driven), the body.html-inside-exercise.html hub composes pattern 1 + 2 (member data + catalogue), and there's no pattern 3 surface unless body classes acquire live-session shape (they don't). Phase 1 spec lock when it comes will quote §23.48 for the surface-by-surface freshness mapping.
+
+### Production state
+
+vyve-site main HEAD `0622db8e0d3622dccdabe81f8628e2f847af591a` (PM-188 step 7). Both Connect EFs still v1 ACTIVE (`connect-challenge-summary` id `1fbc2b53-2fe2-40d2-bb4d-aa27870388bf`, `connect-feed-counts` id `0273fac7-3848-4cbd-82c7-31baea9a2838`), `verify_jwt: true`, 60s `_kv` cache lifecycle. All 5 Connect tables live with RLS + indices. Production iOS 1.3 (2) + Android 1.0.3 (10) bundled-mode at SHA `83874dd5` — unchanged. Dean's dev iPhone via `server.url` dev-loop picks up HEAD on next WKWebView cache cycle (2-15 min) per §23.29. Bundled members stay frozen until next Capawesome OTA (app `f9961f66`, prod channel `89e12796`) per §23.42.
+
+### Tools state
+
+Composio creds remain dead from this morning's 21 May security incident. §23.45 PAT-direct path used for the brain re-pull, both Git Data API commits, and post-commit verification reads. No retries against Composio attempted — wasted cycles for nothing.
+
+---
+
 ## 2026-05-21 PM-188 — §23.48 codified (Connect freshness model, four patterns) + Command Centre session editor parked in backlog [brain-only commit, no vyve-site/EF changes]
 
 **Talk-first session.** Step 7 (sub-page audit on sessions.html + leaderboard.html) was opened by Dean asking for a coherent freshness strategy across the Connect cluster before touching code. The right answer turned out to be: the spec already locked it, we shipped the trickiest piece in PM-187.3, and the value of the discussion was to *name* the four patterns so step 7 and future phases can quote them rather than re-derive. Earned new §23 hard rule + backlog placeholder for the session content management surface Dean surfaced mid-discussion. No code shipped this commit — pure documentation + planning artefact.
