@@ -68,6 +68,8 @@ Six files committed atomic to VYVEBrain main: master.md (§19 collapsed, §21 re
 
 **Next session pickup: Phase 1 — Body section consolidation.** Decide `body_activities` table shape (table vs view — default table per recent pattern), ship migration + body.html + sub-page audit. Estimated 2-3 sessions.
 
+**Bug flagged for Phase 2 (PM-184.1, 21 May 2026 — Dean reported):** Live sessions page view not updating live sessions progress. `session_views` rows likely log correctly but downstream progress counters (Today's progress, Day streak, engagement-score Variety) don't reflect the view. Diagnose during Phase 2 sub-page audit. See `tasks/backlog.md` Phase 2 entry for full root-cause hypothesis.
+
 **SESSION HANDOFF — 2026-05-21 (PM-183.6: mind.html missing script stack — the actual root cause).** PM-183.1 through PM-183.5a treated symptoms because the diagnosis was wrong. The PM-183.5a always-on diagnostic overlay (`?debug=mind` had been gated to Safari, which has separate IDB stores from the Capacitor app — useless) screenshot from Dean showed the answer:
 
 ```
