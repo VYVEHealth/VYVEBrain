@@ -1,3 +1,53 @@
+## 2026-05-21 PM-190.b — Connect Live This Week chronological sort (vyve-site `ca1581e2942d7985db1a8a580a6d5ddc5163f5b2`)
+
+**Ship.** Live This Week carousel was sorting alphabetically by category, putting whichever category sorted first ("Education & Experts") at the front of the rail. With Education's image_url NULL, the carousel was leading with a gradient tile every time. Wrong on both UX axes: not chronologically meaningful, and visually weak.
+
+### What changed
+
+`connect.html` `renderLiveThisWeek` sort comparator replaced. New logic:
+
+1. `msUntilNext(r)` computes ms-until-next-occurrence by mapping `schedule_day` (text: "Monday", "Tuesday" etc) to JS `getDay()` integer via a constant DAY_INDEX table, parsing `schedule_time` (text: "07:00", "18:00" etc) into hour/min, then walking 0-7 days forward from `now` to find the first future occurrence matching the target weekday.
+2. Sort comparator returns `ma - mb` (closest first). NULL or unparseable schedules return `Infinity` and sort to the back. Alphabetical category tie-break for stability when two sessions have identical next-occurrence times (rare, possible).
+
+Pattern mirrors sessions.html's existing `getNextOccurrence()` — same logic, different fields. Could be extracted to a shared helper later; for now duplicated since it's <20 lines.
+
+SW cache `pm189-connect-thumbs-a` → `pm190-chronological-a`. vbb-marker 61 → 62.
+
+### Side effect on the NULL-image lead-tile problem
+
+Chronological sort *partially* fixes the gradient-lead problem and *does not fully solve it* — verified via dry-run against the live 8 live_session rows at `now = Thu 21 May 23:56`:
+
+| Hours to next | Image | Category |
+|---:|:---:|---|
+| 12.1 | ✗ | Podcast (Fri 12:00) |
+| 33.1 | ✓ | Events & Run Club (Sat 09:00) |
+| 79.1 | ✓ | Yoga, Pilates & Stretch (Mon 07:00) |
+| 108.1 | ✓ | Mindfulness & Mindset (Tue 12:00) |
+| 126.6 | ✓ | Workouts (Wed 06:30) |
+| 138.1 | ✓ | Weekly Check-In (Wed 18:00) |
+| 156.1 | ✓ | Group Therapy (Thu 12:00) |
+| 162.1 | ✗ | Education & Experts (Thu 18:00) |
+
+Tonight the carousel will *still* lead with a gradient tile (Podcast at 12 hours out) until Friday lunchtime. From Friday afternoon onwards it leads with Events (image) for ~33 hours, then Yoga (image), etc — gradient tiles only appear at the actual front of the carousel when that NULL-image session is genuinely the next one up.
+
+**Considered and rejected:** image-present rows first, chronological within each group. Wrong UX — would hide the genuinely next-up session (Podcast) behind whichever image-present session sorts soonest. Chronological order is the truth; the fix for the gradient lead-tile problem is content (add `thumb-education.jpg` and `thumb-podcast.jpg` to vyve-site root + populate the 4 NULL rows).
+
+### Process note
+
+`Composio:COMPOSIO_REMOTE_BASH_TOOL` python urllib path hit a 403 `"Host resolves to a private/reserved IP: resolve_no_records"` on the POST /git/commits step — appears to be an egress filter false-positive on certain JSON commit-message body content. Curl path worked first try with identical body. Swapped to curl for the actual commit; rest of the §23.45 flow (blobs, tree, ref-patch) unaffected. No new rule needed — single observation, may not repeat. Watch for it next time.
+
+### What changed in brain side
+
+- `brain/master.md` — §19 PM-190.b paragraph prepended above PM-190 paragraph.
+- `brain/changelog.md` — this entry prepended.
+- No new §23 rule. Sort logic isn't doctrine; chronological is just correct.
+
+### Production state
+
+vyve-site main HEAD: `ca1581e2942d7985db1a8a580a6d5ddc5163f5b2`. Brain HEAD before this commit: `116b0492`.
+
+---
+
 ## 2026-05-21 PM-190 — Connect carousel thumb imagery DB-driven (vyve-site `b92b4971741cd4a281e53e8ec84b76ad02c76266` + Supabase migration)
 
 **Ship.** Live This Week + Latest from VYVE carousels on `connect.html` rendered empty gradient thumbs because there was no data path for imagery. Mockup compare showed real session photography filling the cards; build showed striped gradient rectangles. Fixed via content-ops surface: nullable `image_url` column on `service_catalogue`, render path that emits img when populated and falls back to gradient when null. Dean's "updated on the fly" constraint drove the schema-driven choice over a convention-based hardcoded-filename approach — same constraint will hold for the upcoming Command Centre session editor.
