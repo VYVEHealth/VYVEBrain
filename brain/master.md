@@ -855,7 +855,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
-## 19. Current status — 21 May 2026 PM-190.b (Connect Live This Week chronological sort)
+## 19. Current status — 21 May 2026 PM-190.c (Catalogue freshness fix — service_catalogue stale window + invalidation key)
+
+**PM-190.c (21 May 2026, this commit).** Recovery for PM-190's image_url column not producing photos on Dean's device. Root cause: `sync.js` has 24h stale window on catalogue tables; PM-190 added the column after the device had already pulled pre-migration rows. Render path read undefined `image_url` from Dexie, no `<img>` emitted. Fixed two-axis: (1) `service_catalogue` joined a new `CATALOGUE_FRESH_TABLES` registry with a 5-minute stale window (content-ops surfaces should never be on 24h); (2) new global `CATALOGUE_INVALIDATION_KEY` constant in sync.js — when its value differs from the value recorded in `_sync_meta` for a table, force one refresh regardless of stale window. Both axes live forward. `db.js _sync_meta.set` extended to accept an optional third arg for the key. vyve-site commit `5e785cebd9004e2bc255eeeb81135394f8ef6bd7` (4 files: sync.js, db.js, sw.js, index.html). SW `pm190-chronological-a` → `pm190c-catalogue-fresh-a`. vbb-marker 62 → 63. New §23 hard rule earned: §23.50 (catalogue schema changes require an invalidation-key bump). Paired contract with §23.49.
 
 **PM-190.b (21 May 2026, this commit).** Follow-up to PM-190 imagery wiring. Live This Week carousel was sorting alphabetically by category, which forced "Education & Experts" to the lead position — and its `image_url` is NULL, so the carousel was always leading with a gradient tile. Replaced sort with chronological by next-occurrence: parse `schedule_day` + `schedule_time` into ms-until-next, sort ascending, NULL/unparseable schedules sort to back, alphabetical tie-break for stability. vyve-site commit `ca1581e2942d7985db1a8a580a6d5ddc5163f5b2` (3 files: `connect.html`, `sw.js`, `index.html`). SW `vyve-cache-v2026-05-21-pm189-connect-thumbs-a` → `vyve-cache-v2026-05-21-pm190-chronological-a`. vbb-marker Update 61 → 62. Tonight (Thu 23:56) the carousel will still lead with a gradient tile because Podcast at Fri 12:00 is genuinely the next session; chronological honesty over visual polish. Permanent fix is content: add Education + Podcast thumb files and populate the 4 NULL rows.
 
@@ -2399,6 +2401,22 @@ Any catalogue surface (`service_catalogue`, `programme_library`, future content 
 **Surfaces governed by §23.49 today.** `service_catalogue.image_url` — used by connect.html `renderLiveThisWeek` (live_session rows) + `renderLatestFromVyve` (replay rows). Future use: sessions.html when it absorbs the catalogue swap, any new content carousel built off `service_catalogue` or a sibling table.
 
 **Related rules:** §23.46 (NULL renders truth — empty thumb = gradient, not a skeleton), §23.47 (verify column names against live schema before render code locks them in).
+
+---
+
+## §23.50 — Catalogue schema changes require an invalidation-key bump (PM-190.c, 21 May 2026)
+
+Adding a column to a catalogue table is half the work; the other half is making existing devices re-pull. `sync.js` has stale windows on catalogue tables (24h default, 5min for content-ops surfaces registered in `CATALOGUE_FRESH_TABLES`). A column added today is invisible to a device that pulled the table yesterday until the stale window expires. For long windows this is a real bug — for content-ops surfaces it's just slow. Either way, schema additions need an invalidation trigger.
+
+**The contract.** Any migration that adds a column to a catalogue table AND that column is referenced by render code MUST be paired with a `sync.js` commit bumping `CATALOGUE_INVALIDATION_KEY` to a new string. The new value can be anything unique (`pm190c-image-url`, `pm205-xyz` etc); the requirement is that it differ from the value devices currently have recorded. On next visit, `shouldPullCatalogue` sees the mismatch and forces one refresh per affected catalogue. Subsequent visits with matching keys respect the stale window again.
+
+**Don't bump for:** pure-write columns (audit fields, server-only flags, columns no client code reads). When in doubt, bump — a forced refresh is one extra REST round trip per device on next visit. Cheap.
+
+**Why it matters.** PM-190 shipped `service_catalogue.image_url` + render path + backfill, and the photos didn't appear on device because Dexie was holding pre-migration rows. Recovery took an additional commit (PM-190.c) to add the invalidation mechanism *and* to drop service_catalogue's stale window from 24h to 5min (the right answer for content-ops surfaces regardless of whether a schema change is in flight). The clean version would have been one commit doing the migration, the render code, AND the invalidation bump together.
+
+**Operating model.** `CATALOGUE_INVALIDATION_KEY` lives at the top of `sync.js` alongside the other stale-window constants. It's a string, version-suffixed when convenient (`pm190c-image-url`, `pm200-foo-column` etc) but the suffix is just for readability — only string equality matters. The per-table `invalidation_key` stored in `_sync_meta` is set by the success path in `hydrate()`; reading happens in `shouldPullCatalogue`.
+
+**Related rules:** §23.49 (catalogue imagery is DB-driven — the rule §23.50 protects), §23.10 (offline contract — refreshes can't deadlock UI; stale data is acceptable, missing fields are not), §23.46 (counters render truth — same principle for catalogue render).
 
 ---
 
