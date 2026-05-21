@@ -1,3 +1,35 @@
+## 2026-05-21 PM-185 — Composio security incident: fallback protocol codified
+
+**Context.** During session continuation tonight, every Composio GitHub call returned `401 Bad credentials` despite the dashboard showing the connection as Active. Reconnecting fresh OAuth grants didn't fix it — same 401 on the simplest possible call (`GET /user`). Cost ~90 minutes of dashboard fighting before status.composio.dev surfaced two live incidents: "Composio Security Incident" (identified 19:59) and "Degraded performance on Github connections" (investigating since 18:58).
+
+**Root cause.** Composio published a security incident bulletin at `composio.dev/blog/composio-may-2026-security-incident`. Attacker probed their internal systems with LLM-generated attack patterns, gained a foothold in an internal monitoring tool, escalated through their automated remediation systems, and ultimately executed arbitrary code in their tool-execution sandbox. A small percentage of users had GitHub tokens compromised. **As a precaution, Composio revoked ALL user GitHub tokens.** Their connection store still reports tokens as Active, but the execution gateway rejects every call. Dean's account did not receive a "you are affected" email — so confirmed-compromised list is small, but everyone is impacted by the precautionary revocation. Composio paused all new SDK/CLI releases pending investigation.
+
+**Fallback executed.** Switched to direct GitHub PAT path:
+- Read: `curl -H "Authorization: Bearer $PAT" -H "Accept: application/vnd.github.raw"` against GitHub REST API.
+- Single-file write: `PUT /repos/{owner}/{repo}/contents/{path}` with base64-encoded content + fresh SHA.
+- Multi-file atomic commit (this one): Git Data API chain — create blobs → create tree → create commit → update ref.
+
+PAT used: existing `GITHUB_PAT` already stored in Supabase Edge Function secrets (the one wired to `github-proxy` v11). No new token needed for this session.
+
+**Memory updates (this Claude instance).**
+- #8 rewritten: Composio is normally primary, but has outages. Max 2 retries before falling back. Check status.composio.dev. Then ask Dean for `GITHUB_PAT` (Supabase secrets) and use bash_tool curl direct.
+- #20 added: Direct-PAT GitHub mechanics — reads via raw Accept header, single-file writes via Contents API, multi-file atomic commits via Git Data API. §23.41 SHA discipline still enforced regardless of path.
+
+**Brain updates (every Claude instance, every workspace).**
+- New `§23.45` hard rule (this commit) — Composio outage fallback protocol.
+- `§25 Key references` patched to document where to find `GITHUB_PAT` without asking Dean to paste it every chat. Pointer only; PAT itself never lives in the brain plaintext.
+- This changelog entry.
+
+**Lewis prompt drafted** so his Claude instance knows about the outage and doesn't waste time troubleshooting Composio either. Captured separately for him to copy in.
+
+**Outstanding.**
+- Composio support has not been emailed (no need — Dean wasn't in the affected-users notification list, and the fallback works). Re-attempt Composio path after their status page goes green. Don't trust until verified end-to-end.
+- Facebook connection expires tomorrow (22 May) per §25 — Lewis still needs to renew urgently; this is unrelated to Composio incident but the calendar item is now imminent.
+
+**No code shipped.** This session was pure tooling/operational hardening. No vyve-site commits, no Edge Function changes. Brain entry is the artefact.
+
+---
+
 ## 2026-05-21 PM-183.7 — settings.html dev panel: Dexie inspector + JSON export
 
 **Shipped.** vyve-site `583d59052abf10a90fbe711bdce16a7fc2c26399` — three files atomic.

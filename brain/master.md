@@ -2183,6 +2183,26 @@ console.log('mind_activities:', !!(window.VYVELocalDB && window.VYVELocalDB.mind
 
 **Process lesson worth carrying forward.** When a fix doesn't move the symptom, ship a diagnostic before shipping a sixth treatment. PM-183.5/5a's diagnostic overlay landed the answer in one screenshot. The five iterations before it were guessing in the dark because no instrumentation existed to confirm the actual state inside the WKWebView. Diagnostic-first should be the second move after the first patch fails, not the seventh.
 
+## §23.45 — Composio outage fallback: direct PAT, max 2 retries (PM-185, 21 May 2026)
+
+Composio has had at least one major outage that broke every GitHub call despite the dashboard reporting connections as Active (21 May 2026 security incident — they revoked all user GitHub tokens precautionarily). Pattern: tool_search reports `has_active_connection: true`, but every actual call returns `401 Bad credentials`, including the simplest `GET /user`. Clicking through the Composio dashboard to reconnect achieves nothing while the incident is live — fresh OAuth grants get the same 401.
+
+**Protocol when GitHub calls via Composio return 401:**
+
+1. Try the same call twice. If both fail with 401 (or any auth error), STOP.
+2. Check `status.composio.dev` — if any GitHub-related incident is open, fall back immediately.
+3. Fall back to direct GitHub PAT. Source: see §25 — Claude fetches via Supabase MCP; never ask Dean to paste it.
+4. Use `bash_tool` with `curl` against the GitHub REST API:
+   - Reads: `Authorization: Bearer $PAT` + `Accept: application/vnd.github.raw`.
+   - Single-file writes: `PUT /repos/{owner}/{repo}/contents/{path}` with base64 content + fresh SHA (always refresh SHA immediately pre-commit per §23.41, never reuse).
+   - Multi-file atomic commits: Git Data API chain — `POST /git/blobs` per file → `POST /git/trees` with base tree → `POST /git/commits` with parent → `PATCH /git/refs/heads/main`. Contents API is one-file-per-call and CANNOT do atomic multi-file.
+5. §23.41 pre-commit SHA refresh + first-100-char post-commit verification are mandatory regardless of which path is used.
+6. After Composio's status page goes green, do NOT immediately trust the connection — test end-to-end with a real read before re-routing future calls through it.
+
+**Anti-pattern to avoid:** burning session time clicking the Composio UI to reconnect during a live outage. Reconnect attempts during an active incident produce fresh tokens that get revoked again immediately. The fallback path is faster and reliable.
+
+---
+
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.
@@ -2277,6 +2297,7 @@ These remain in the historical backlog as superseded. Post-launch they can be re
 | Make analytics collectors | Scenarios 4993944 (IG), 4993948 (FB), 4993949 (LinkedIn) → Data Store 107716 |
 | Facebook connection expiry | **22 MAY 2026 — Lewis to renew urgently** |
 | GitHub PAT | `GITHUB_PAT_BRAIN` — scoped to `VYVEHealth/VYVEBrain` Contents R/W. Expires **18 April 2027** (calendar rotation required) |
+| GitHub PAT (Composio fallback) | Stored as Supabase Edge Function secret `GITHUB_PAT` (project `ixjfklpckgxrwjlfsaaz`). Scoped fine-grained, VYVEHealth org resource owner, all-repos, Contents + PRs + Workflows R/W. **Claude fetches via Supabase MCP** (`execute_sql` against `vault.decrypted_secrets` where `name='GITHUB_PAT'`) — never ask Dean to paste it. Used when Composio is down (per §23.45). Expires **20 June 2026** (calendar rotation required) — 30-day fine-grained token created during PM-185 Composio incident. |
 | APNs auth key | KEY_ID `2MWXR57BU4` — **rotation deferred 07 May 2026 PM-4 as accepted risk** (see §22). Chat exposure 27 April PM, rotation attempt 07 May hit Apple's 2-keys-per-team cap, deferred pending Sage procurement diligence. If Sage's security review surfaces it, rotate then via the runbook in `playbooks/disaster-recovery.md` (TBC). |
 | GitHub PAT (`vyve-capacitor`) | Fine-scoped, Contents R/W on `VYVEHealth/vyve-capacitor` only. Expires **7 May 2027** (calendar rotation required). Cached in macOS Keychain on Dean's Mac. |
 | Supabase Management PAT | Stored as Supabase Edge Function secret `MGMT_PAT` (NOT `SUPABASE_MGMT_PAT` — Supabase reserves the `SUPABASE_` prefix; see §23). ALSO stored as GitHub Actions repository secret `MGMT_PAT` on `VYVEHealth/VYVEBrain` for the `backup-edge-functions.yml` workflow. Both copies hold the same PAT value. Project-scoped via Management API. Expires **6 Jun 2026** (calendar rotation required) — when rotating, update both the Supabase secret AND the GitHub Actions secret in the same session. |
