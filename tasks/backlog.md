@@ -1,20 +1,20 @@
 ## Added 21 May 2026 — PM-186/187: Connect Phase 2 spec lock + 5 tables migrated + counters-render-truth (§23.46) + step 1+2 SHIPPED PM-187
 
-**Spec locked. Build started.** See `playbooks/connect-spec.md` for full design (~23KB). Five Supabase tables live as of PM-186; 30 daily prompts seeded. Steps 1+2 SHIPPED PM-187 (vyve-site `a7123667d2c13c003b314b23e5022b099919d5ef`).
+**Spec locked. Build started.** See `playbooks/connect-spec.md` for full design (~23KB). Five Supabase tables live as of PM-186; 30 daily prompts seeded. Steps 1-6 SHIPPED PM-187/187.2/187.3 (vyve-site head `d439477f7f0a5c3678e33d19ca69036b53ea31b9`).
 
 ### P0 — Connect build queue (Phase 2)
 
 1. **connect.html (hub).** ✅ **SHIPPED PM-187** (vyve-site `597851534a9c83296c95f57ba789a6bf5e54268e` + `a7123667d2c13c003b314b23e5022b099919d5ef`). ~40KB / 919 LOC. §23.46 paint pattern verbatim (counters default 0, no skeleton chars, no localStorage snapshot). djb2 daily prompt rotation read from `daily_checkin_prompts`. Elite progress: client-side union across 4 pillar tables. Read-only. Bus subscribers wired (`connect:*`, `mind:logged`, `body:logged`). **Outstanding:** Recent Check-Ins reads own-rows only v1 — re-wires to feed-scope cache when connect-feed.html (step 3) ships.
 
-2. **connect-checkin.html.** ⬅ **NEXT — step 3 of build queue.** Single write surface. Textarea max 60 chars, 5 focus chips, post button gated ≥3 chars. §23.39 optimistic-first write to `connect_checkins`. Already-posted-today guard redirects to read-only view. Body label note: stays at "Your check-in will be visible to your community."
+2. **connect-checkin.html.** ✅ **SHIPPED PM-187.2** (vyve-site `97adfda00f964aa7277de8360ce22160973d6b9b`). Single write surface. Textarea max 60 chars, 5 focus chips, post button gated ≥3 chars. §23.39 optimistic-first write to `connect_checkins`. Already-posted-today guard flips into read-only posted state.
 
-3. **connect-feed.html.** Tabs: Workplace (label switches to employer name OR "VYVE Community") | Elite (🔒 until 30-of-any-activity / 30 days) | Following (coming-soon pill v1). Reactions only (♥💪🔥🙌⭐👏). §23.39 toggle pattern for `checkin_reactions`. Day boundaries explicit. End-of-feed footer "Come back tomorrow" (anti-doomscroll).
+3. **connect-feed.html.** ✅ **SHIPPED PM-187.2** (vyve-site `97adfda00f964aa7277de8360ce22160973d6b9b`). Tabs: Workplace (label switches to employer name OR "VYVE Community") | Elite (🔒 until 30-of-any-activity / 30 days) | Following (coming-soon pill v1). Reactions only (♥💪🔥🙌⭐👏). §23.39 toggle pattern for `checkin_reactions`. Day boundaries explicit. End-of-feed footer (anti-doomscroll).
 
-4. **connect-challenge.html.** Read-only. Community ring + personal 7-day strip + body_md + workplace leaderboard tab. Auto-joins on first qualifying activity.
+4. **connect-challenge.html.** ✅ **SHIPPED PM-187.2** (vyve-site `97adfda00f964aa7277de8360ce22160973d6b9b`). Read-only. Community ring + personal 7-day strip + body_md + workplace leaderboard tab. Auto-joins on first qualifying activity via EF upsert.
 
-5. **EF `connect-challenge-summary` v1.** Computes community + personal counts for active challenge, updates `weekly_challenge_participation.personal_count`. `verify_jwt: true`. Client cache 60s in `_kv`.
+5. **EF `connect-challenge-summary` v1.** ✅ **SHIPPED PM-187 step 6** (id `1fbc2b53-2fe2-40d2-bb4d-aa27870388bf`, v1 ACTIVE). Computes community + personal counts for active challenge, upserts `weekly_challenge_participation.personal_count`. `verify_jwt: true`. Client cache 60s in `_kv`. Wiring SHIPPED PM-187.3 (vyve-site `d439477f7f0a5c3678e33d19ca69036b53ea31b9`).
 
-6. **EF `connect-feed-counts` v1.** Computes "X members checked in today" workplace + elite scopes. `verify_jwt: true`. Client cache 60s.
+6. **EF `connect-feed-counts` v1.** ✅ **SHIPPED PM-187 step 6** (id `0273fac7-3848-4cbd-82c7-31baea9a2838`, v1 ACTIVE). "X members checked in today" workplace + elite scopes. `verify_jwt: true`. Client cache 60s. Wiring SHIPPED PM-187.3 (vyve-site `d439477f7f0a5c3678e33d19ca69036b53ea31b9`).
 
 7. **Sub-page audit pass.** sessions.html (Live This Week deep-link target — schedule = catalogue hydrate, chat = Realtime carve-out), leaderboard.html (§23.10 carve-out with designed offline state).
 
@@ -70,7 +70,7 @@ Ship a bundled iOS + Android app that members can use offline on the tube, on a 
 - [ ] **body.html hub build.** Today's focus (djb2 daily rotation across programme exercises or curated pool) + Day streak (distinct activity_date consecutive days, one-day grace) + Today's progress (today's count, display capped). Mirror mind.html shape precisely.
 - [ ] **Sub-page audit.** workouts.html / cardio.html / movement.html / exercise.html. Verify Dexie-first reads (shipped via PF-7/PF-9/PM-154-170). Verify §23.39 writes. Gap-fill where surfaced.
 
-### Phase 2 — Connect section build [step 1+2 SHIPPED PM-187, 3-5 sessions remaining]
+### Phase 2 — Connect section build [steps 1-6 SHIPPED PM-187, step 7 remaining]
 
 - [x] **connect.html hub build (NEW).** ✅ SHIPPED PM-187 (vyve-site `597851534a9c83296c95f57ba789a6bf5e54268e` + `a7123667d2c13c003b314b23e5022b099919d5ef`). Sections per PM-186 spec — Today's Check-In hero + Your Momentum (streak ring + Elite progress) + Live This Week carousel + This Week's Challenge + Recent Check-Ins preview + Latest from VYVE. §23.46 paint pattern verbatim — counter defaults 0, no skeleton chars, no localStorage snapshot. Lifted from mind.html shape directly (NOT body.html — that hub will be exercise.html when Phase 1 lands).
 - [ ] **Sub-page audit.** sessions.html (schedule = catalogue hydrate; chat = Realtime carve-out). leaderboard.html (§23.10 carve-out — designed offline state showing last-cached ranking with "last updated X ago").
