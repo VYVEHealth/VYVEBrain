@@ -76,6 +76,8 @@ index.html    120748 → 120748 bytes    (+0)                                md5
 
 **Audit pass scope for Phase 4.** Every existing portal page containing `VYVELocalDB`, `VYVEBus`, or `VYVESync` in inline JS needs its `<script src>` declarations cross-referenced. The mind.html case was a silent-degrade — same latent bug may exist on affirmations.html (already flagged: no Dexie stack loaded, doesn't display activity counts so degradation isn't user-visible — but writes via missing infrastructure may be silently dropping too).
 
+**Confirmation.** Dean tested on Update 51 (01:30 BST) — "looks good". Hub paints real data from Dexie on cold load. PM-183.4 localStorage snapshot remains in place and active. Dean confirmed retention of snapshot logic (and asked specifically about whether the diagnostic overlay was removed — confirmed yes, stripped in PM-183.6).
+
 ---
 
 ## 2026-05-21 PM-183.4 — mind.html localStorage snapshot for synchronous first paint

@@ -96,6 +96,8 @@ mind.html was authored without the Dexie stack. Page loaded only `theme.js`, `au
 
 Process cost: ~7 commits, ~3 hours, ~2KB of brain churn. Could have been 1 commit + 30 minutes if PM-183.5 was PM-183.2.
 
+**Dean confirmation (Update 51, 01:30 BST).** "Looks good." Hub now paints with real Dexie data on cold load. Snapshot kept in place (Dean specifically asked to confirm). Diagnostic overlay deliberately stripped per PM-183.6 — root cause was found, no reason to keep instrumentation on screen. Session closed.
+
 **SESSION HANDOFF — 2026-05-21 (PM-183.4: localStorage snapshot for synchronous first paint).** PM-183.3 fixed Dexie's wipe-then-refill race so reads return correct data. But Dean reported the hub still had a visible ~1s delay before painting — even with merge-not-wipe, the cold-load path sits behind multiple awaits: getDB() opening IndexedDB (~200-500ms on iOS WKWebView), auth.js fast-path resolving vyveCurrentUser (~50-200ms), withEmail callback chaining behind that, then finally dexie.allFor() can run. Real data is there, but the door is locked behind serial awaits.
 
 Fix: §23.38 pattern applied. Read localStorage snapshot synchronously at the very top of boot(), before any await. Paint streak + today count from snapshot on the first frame. Async refresh from Dexie/REST overwrites with real values when ready. renderProgress writes a fresh snapshot at the end of every successful paint, so the next cold load's instant paint is always current.
