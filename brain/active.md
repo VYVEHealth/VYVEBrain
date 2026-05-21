@@ -68,6 +68,25 @@ Six files committed atomic to VYVEBrain main: master.md (§19 collapsed, §21 re
 
 **Next session pickup: Phase 1 — Body section consolidation.** Decide `body_activities` table shape (table vs view — default table per recent pattern), ship migration + body.html + sub-page audit. Estimated 2-3 sessions.
 
+**SESSION HANDOFF — 2026-05-21 (PM-183.4: localStorage snapshot for synchronous first paint).** PM-183.3 fixed Dexie's wipe-then-refill race so reads return correct data. But Dean reported the hub still had a visible ~1s delay before painting — even with merge-not-wipe, the cold-load path sits behind multiple awaits: getDB() opening IndexedDB (~200-500ms on iOS WKWebView), auth.js fast-path resolving vyveCurrentUser (~50-200ms), withEmail callback chaining behind that, then finally dexie.allFor() can run. Real data is there, but the door is locked behind serial awaits.
+
+Fix: §23.38 pattern applied. Read localStorage snapshot synchronously at the very top of boot(), before any await. Paint streak + today count from snapshot on the first frame. Async refresh from Dexie/REST overwrites with real values when ready. renderProgress writes a fresh snapshot at the end of every successful paint, so the next cold load's instant paint is always current.
+
+Snapshot shape: `{ day, streak, todayCount, written_at }` in `vyve_mind_hub_snapshot`. Stale-day guard: if snapshot.day !== today, todayCount resets to 0 for first paint (real value via async refresh in ~500ms); streak is durable across midnight rollover so used as-is.
+
+First load after the fix still shows skeleton briefly (no snapshot exists yet). After the first paint completes and the snapshot is written, every subsequent cold load paints instantly. This is the §23.38 pattern verbatim — same approach used on lists pages already.
+
+Shipped vyve-site `d9b47d75`. mind.html +2759 chars (snapshot helpers + paintFromSnapshot + writeSnapshot wired into renderProgress + paintFromSnapshot called at top of boot before any await). sw.js `pm183-3-merge-a` → `pm183-4-snap-a`. vbb-marker Update 47 → 48. node --check clean. §23.41 stable. No new §23 rule — direct application of §23.38 to aggregator hubs.
+
+**Hub paint sequence now (cold load, snapshot exists):**
+1. t=0: HTML markup paints with skeleton dots (· / ·).
+2. t=~5-10ms (first JS tick): paintFromSnapshot reads localStorage, paints streak + today count, flips skeleton off. User sees real numbers on first visible frame.
+3. t=~500-1500ms: Dexie/REST async resolves, renderProgress runs, paints same or updated values, writes fresh snapshot.
+
+**Snapshot invalidation considerations.** Snapshot is per-device, per-browser. Cleared on Dexie crash-wipe (the §3.1 iOS scenario) only if the wipe also clears localStorage (it doesn't — IDB and localStorage are independent on iOS). So the snapshot can outlive a Dexie wipe — first paint shows old values, async refresh from empty Dexie + REST overwrites correctly. Acceptable trade — user sees a frozen-but-real value for ~1s instead of a flash of zero.
+
+**Pattern reusable for Phase 1/2 hubs (body.html, connect.html).** Same shape: localStorage snapshot keyed per-hub, paintFromSnapshot before any await, writeSnapshot at end of renderProgress. Flag for the Bundle-Ready playbook.
+
 **SESSION HANDOFF — 2026-05-21 (PM-183.3: replaceForMember merge-not-wipe — root-cause fix for the hub zero-flash).** Dean's question — "but the dexie table should be there so it should paint instantly?" — triggered the real diagnosis. PM-183.1 (parallel REST) and PM-183.2 (skeleton paint) were treating symptoms. **Root cause:** `db.js` `replaceForMember(email, rows)` did `delete WHERE member=X` THEN `bulkPut(rows)` inside one Dexie transaction. Atomic at commit, but operations are progressive — any parallel reader querying during sync.js's hydrate fan-out lands between the delete and the bulkPut and sees zero rows. The mind.html hub boots in exactly this window during sync.js's auth-ready hydrate; that's why it painted empty until REST or a delayed timer caught it.
 
 **Fix (db.js, structural — affects all 17 member-scoped tables).** Reorder `replaceForMember` to merge: bulkPut new rows first (idempotent, .put = upsert by PK), then sweep stale rows (those keyed for this member but NOT in the new incoming set). At no point in the transaction is the member's row set empty. Local optimistic writes preserved if they have a new id; only explicit server-omissions get wiped. Empty hydrate (server has nothing) still wipes — matches old behaviour for the no-merge case.

@@ -1,3 +1,93 @@
+## 2026-05-21 PM-183.4 — mind.html localStorage snapshot for synchronous first paint
+
+**Shipped.** vyve-site `d9b47d75a0ff97fe81b50f32871567171c1d7558` — three files atomic. Same-day follow-up to PM-183.3.
+
+**Symptom Dean reported.** Even after PM-183.3 fixed the Dexie wipe-then-refill race, the hub still had a visible ~1s delay before painting real numbers on cold load. "Dexie should paint instant."
+
+**Root cause.** Dexie reads are async, even when the data is sitting in IndexedDB. On iOS WKWebView cold load, the path before the first `dexie.allFor()` query is a chain of awaits:
+
+1. `getDB()` opens IndexedDB connection (~200-500ms first call per page lifetime)
+2. auth.js fast-path resolves `window.vyveCurrentUser` (~50-200ms)
+3. `withEmail` callback chains behind that
+4. `repaint()` → `readMindActivities()` → `dexie.allFor(memberEmail)` queries
+
+Each step blocks the next. Total: 500ms-1.5s on cold load before the first paint with real data, regardless of how fast IDB itself is. PM-183.3's merge-not-wipe was necessary but not sufficient.
+
+**Fix — §23.38 pattern applied to the aggregator hub.**
+
+`localStorage` is synchronous and available before any await. Write a snapshot of the last successful paint to `localStorage.vyve_mind_hub_snapshot`. On boot, read it synchronously at the very top of boot() — before any await — and paint immediately. Then let the async Dexie/REST path run normally and overwrite when ready.
+
+```js
+function paintFromSnapshot(){
+  var snap = readSnapshot();
+  if (!snap) return false;
+  var today = todayStr();
+  // todayCount only valid if snapshot is from today; else 0 until refresh.
+  var todayCount = (snap.day === today) ? (snap.todayCount || 0) : 0;
+  // streak is durable across midnight rollover — used as-is.
+  var streak = snap.streak || 0;
+  // ... paint + flip skeleton class off
+  return true;
+}
+
+function boot(){
+  var painted = paintFromSnapshot();  // synchronous, before any await
+  if (!painted) {
+    // First-ever device load — fall through to skeleton.
+    var row0 = $('progress-row');
+    if (row0) row0.classList.add('is-loading');
+  }
+  // ... existing async path continues
+}
+```
+
+`renderProgress` writes a fresh snapshot at the end of every successful paint:
+
+```js
+writeSnapshot({
+  day:        today,
+  streak:     streak,
+  todayCount: todayCount,
+  written_at: Date.now()
+});
+```
+
+**Snapshot shape.** `{ day, streak, todayCount, written_at }`. Keyed per-device (single localStorage key per hub — `vyve_mind_hub_snapshot`). Per-user discrimination not needed because IDB is per-origin, single-device-per-user is the working assumption, and the next async refresh corrects any wrong-user value.
+
+**Stale-day guard.** If `snap.day !== todayStr()`:
+- `todayCount` resets to 0 on first paint (the async refresh ~500ms later supplies the real value).
+- `streak` is used as-is — streak is durable across midnight rollover (yesterday-end streak remains valid into today until today's activity is checked; the streak math handles the one-day grace independently).
+
+**First load after this commit.** No snapshot exists yet. Falls through to skeleton state, async path resolves, snapshot gets written. From the second cold load onward, paint is instant.
+
+**Files changed.**
+
+```
+mind.html      40833 → 43592  bytes (+2759)  md5 23532bbc
+sw.js          10197 → 10196  bytes    (-1)  md5 155c9039
+index.html    120748 → 120748 bytes    (+0)  md5 7fe5c7d3
+```
+
+**Verification.**
+
+- §23.41 pre-commit SHA refresh: all three stable.
+- `node --check` clean.
+- Post-commit byte-equal at commit SHA `d9b47d75`.
+
+**sw.js cache key.** `pm183-3-merge-a` → `pm183-4-snap-a`. **index.html vbb-marker.** Update 47 → 48.
+
+**Hub paint sequence (cold load, snapshot exists).**
+
+1. **t=0** — HTML markup paints with skeleton dots (`· / ·`).
+2. **t=~5-10ms** — First JS tick. `paintFromSnapshot` reads localStorage synchronously, paints streak + today count, flips skeleton class off. User sees real numbers on the first visible frame.
+3. **t=~500-1500ms** — Dexie/REST async resolves, `renderProgress` runs, paints same or updated values, writes fresh snapshot for next cold load.
+
+**Snapshot invalidation considerations.** Snapshot is per-device, per-browser. Cleared on Dexie crash-wipe (the §3.1 iOS scenario) only if the wipe also clears localStorage — it doesn't, IDB and localStorage are independent stores on iOS. So the snapshot can outlive a Dexie wipe: first paint shows old values, async refresh from empty Dexie + REST overwrites correctly within 500ms. Acceptable trade — user sees a frozen-but-real value for ~1s instead of a flash of zero.
+
+**No new §23 rule earned this commit.** §23.38 (cold-load list paints must read from persistent localStorage cache, not Dexie alone) already covers this pattern; PM-183.4 is its first application to an aggregator-hub paint surface specifically. Worth noting in the Bundle-Ready playbook as reusable for Phase 1/2 hubs (body.html, connect.html) — same shape, same snapshot helpers, different key per hub.
+
+---
+
 ## 2026-05-21 PM-183.3 — replaceForMember merge-not-wipe (root cause fix, structural)
 
 **Shipped.** vyve-site `a7c95c4e4e8ae8891ea6fef806ec0ebda10a6a39` — three files atomic. Same-day root-cause fix for the issue PM-183.1 and PM-183.2 treated symptomatically.
