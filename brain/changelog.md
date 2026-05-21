@@ -1,3 +1,57 @@
+## 2026-05-21 PM-190.d — Connect carousels read shared sessions-data.js, abandon service_catalogue path (vyve-site `360fdfe1425fba6c520e05212ae42e1b2ac55e45`)
+
+**Ship.** PM-190 → PM-190.c shipped DB-driven imagery via `service_catalogue.image_url` + Dexie sync + a freshness mechanism. Three commits, two §23 rules, one near-brain-wipe. Photos still didn't appear on Dean's device after Update 63 loaded — the catalogue-fresh + invalidation-key mechanism either didn't fire or fired silently against rows whose persistence path was broken in a way that wasn't visible in this session's diagnostic loop. Dean's question cut through: "why can't the front screen just render the pills from the sessions page?" Sessions.html has always rendered the same photos from a hardcoded JS const. Connect hub should consume the same data. PM-190.d does exactly that.
+
+### What changed
+
+**New file:** `sessions-data.js` (155 lines). Exposes `window.VYVE_SESSIONS` with the SESSIONS array (8 entries) and `getNextOccurrence(s)` helper. Extracted verbatim from sessions.html's inline `<script>` block — no shape changes, no rename. Pure IIFE, no DOM dependencies, safe to load synchronously.
+
+**`sessions.html`:** added `<script src="/sessions-data.js"></script>` (non-defer — must execute before the body inline script that calls `buildCards()` immediately). Inline SESSIONS const + getNextOccurrence helper replaced with thin globals-bound stubs (`const SESSIONS = window.VYVE_SESSIONS.SESSIONS` etc) so the rest of the inline script reads unchanged. Behaviour identical.
+
+**`connect.html`:** added `<script src="/sessions-data.js" defer>` (defer fine here — render functions run inside vyveAuthReady chain after all defers complete). Two functions rewritten:
+
+- `renderLiveThisWeek` no longer reads `VYVELocalDB.service_catalogue`. Reads `VYVE_SESSIONS.SESSIONS`, sorts by `getNextOccurrence(s).getTime() - now` ascending (sessions with no upcoming occurrence in 7 days sort to back via `Infinity`), formats `when` as `"Friday · 06:00"` from the computed Date (not the freqLabel — uses actual upcoming day name + HH:mm). Tags drawn from `s.tags[0]` (e.g. "MOVEMENT", "EXERCISE", "MENTAL WELLBEING"). Thumb src is `/' + s.thumb` (matches sessions.html's relative `s.thumb` pattern); onerror removes img + overlay so gradient shows through.
+- `renderLatestFromVyve` reads the same SESSIONS array, links to `s.replayUrl`, alphabetical order (no real "latest" signal in static data — sessions.html shows the same fixed 8 sessions). Category label fixed at "Replay".
+
+**`sw.js`:** `vyve-cache-v2026-05-21-pm190c-catalogue-fresh-a` → `vyve-cache-v2026-05-21-pm190d-shared-sessions-a`. `sessions-data.js` added to `urlsToCache` precache list.
+
+**`index.html`:** vbb-marker Update 63 → Update 64.
+
+### What this abandons
+
+**The DB-driven content-ops surface.** PM-190 was sold on "content team edits in DB, photos update everywhere within 5 minutes." PM-190.d reverts to "engineering edits in JS const, photos update on code deploy." For tonight's stakes — 15-20 trial members, 8 sessions, photos shipped tonight — this is the right tradeoff. The Command Centre session editor campaign (parked in backlog post-PM-188) is when DB-driven content properly happens, paired with a write surface that justifies the read surface.
+
+**The `service_catalogue.image_url` column stays in the DB.** Harmless, no migration to undo, no live code reads it. When the editor campaign lands, the column is already there with a useful comment + 12 backfilled rows ready to be edited.
+
+**§23.49 and §23.50 stay in the brain.** Both are still correct doctrine for the future editor campaign. They just don't govern any current code surface tonight. Treat them as forward-looking rules — when the editor lands, §23.49 defines the column shape and §23.50 defines the invalidation mechanism. The rules are pre-positioned.
+
+**The PM-190.c catalogue-freshness mechanism in sync.js** is still useful for other catalogue tables (habit_library, workout_plans, personas, etc) when they next need a schema bump. `CATALOGUE_FRESH_TABLES` registry currently lists only `service_catalogue` which no longer matters — but the registry pattern is sound. Future content tables join it.
+
+### Why this took 4 commits + a near-brain-wipe
+
+PM-190 made a real architectural call (DB-driven imagery via Dexie) without thinking through the local-first cache invalidation problem. PM-190.c attempted to fix that with the invalidation-key mechanism, which technically works but tonight didn't deliver photos to the device through the actual Dexie chain — either the persistence path silently dropped fields, the Dexie sync had another timing issue not yet diagnosed, or both. Multiple compounding unknowns are exactly when "step back to the simpler thing that already works" is the right call. Dean made it. The right answer was already running in sessions.html.
+
+**Process lesson.** When a "premium" architectural pattern fights a local-first cache for multiple commits without delivering visible value, the local-first cache is winning. Either invest one full debug session in fixing the cache properly (instrumentation, content verification at every layer, Dexie introspection) or revert to the simpler pattern. Don't keep patching forward hoping the next layer fixes it.
+
+### No new §23 rule earned
+
+The process lesson above is informally adopted, not codified as a hard rule yet — it's the kind of judgement that's better learned in context than enforced by a rule. If a future session hits the same trap (multi-commit fight against a local cache), promote it then.
+
+### What changed (brain side)
+
+- `brain/master.md` — §19 PM-190.d status paragraph prepended above PM-190.c paragraph. §23.49 and §23.50 untouched (still doctrine for future).
+- `brain/changelog.md` — this entry prepended.
+- No backlog edit. Command Centre session editor campaign was already parked there; PM-190.d doesn't change its scope.
+
+### Production state
+
+vyve-site main HEAD: `360fdfe1425fba6c520e05212ae42e1b2ac55e45`.
+Production iOS 1.3 (2) + Android 1.0.3 (10) bundled-mode at SHA `83874dd5` — unchanged. Dean's dev iPhone confirmed photos rendering at Update 64 (Yoga, Workouts, Mindfulness, Weekly Check-In, Events & Run Club, Group Therapy). Education & Experts and Podcast cards render with gradient fallback because `thumb-education.jpg` and `thumb-podcast.jpg` don't exist in the repo — same behaviour sessions.html has had since launch. Drop those two files in vyve-site root any time and they appear on next reload with no code change.
+
+Brain HEAD before this commit: `96bffe92dc28334af20abb8dcba3795e41fa60f4`.
+
+---
+
 ## 2026-05-21 PM-190.c — Catalogue freshness model (vyve-site `5e785cebd9004e2bc255eeeb81135394f8ef6bd7`)
 
 **Ship.** Diagnosed why PM-190's `image_url` column wasn't producing photos on device despite DB rows being correct, code path being correct, and asset files existing. Root cause: `sync.js` has a 24-hour stale window on catalogue tables — once a device has pulled `service_catalogue`, it skips re-pulling for 24h. PM-190 added the column *after* Dean's device had already pulled the pre-migration rows. Render path reads `r.image_url` from Dexie. Field was undefined on every cached row. No `<img>` emitted.
