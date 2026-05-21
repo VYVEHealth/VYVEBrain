@@ -2151,6 +2151,38 @@ Edge case: empty hydrate (server has no rows for this member) is still a delete-
 
 **Architectural note for §3.** The §3 local-first commitment says "Every read goes to Dexie." That contract is only honourable if Dexie reads are never *transiently empty* due to background sync activity. The PM-183.3 fix makes that contract enforceable.
 
+## §23.44 — A page that reads from Dexie must load the Dexie stack (PM-183.6, 21 May 2026)
+
+mind.html was authored as an aggregator hub reading from `window.VYVELocalDB.mind_activities` — but the page only loaded `theme.js`, `auth.js`, `sw.js` register, the inline IIFE, and `nav.js`. The five scripts that actually populate `window.VYVELocalDB` — `dexie.min.js`, `bus.js`, `db.js`, `vyve-offline.js`, `sync.js` — were missing entirely. The IIFE's safety guards (`if (window.VYVELocalDB && window.VYVELocalDB.mind_activities)`) caused every call to silently fall through to the empty-array path. From outside it looked like Dexie was returning empty; in reality Dexie was never loaded.
+
+This consumed five session iterations (PM-183.1 through PM-183.5a) treating downstream symptoms before a diagnostic overlay made `[t=0] VYVELocalDB? false` visible. The full chain of fixes shipped were each architecturally correct on their own terms (merge-not-wipe §23.43, localStorage snapshot §23.38, skeleton paint, parallel REST belt-and-braces), but none of them could have fixed the actual bug. A `<script src="db.js">` would have.
+
+**Hard rule.** Any page that references `window.VYVELocalDB`, `window.VYVEBus`, `window.VYVESync`, or any of the Dexie/bus/sync helpers in its IIFE must load the corresponding script tags before the inline block. The canonical hub-with-bus stack, in order:
+
+```html
+<script src="auth.js" defer></script>
+<script src="dexie.min.js" defer></script>
+<script src="bus.js" defer></script>
+<script src="db.js" defer></script>
+<script src="vyve-offline.js" defer></script>
+<script src="sync.js" defer></script>
+```
+
+`sync.js` is only required if the page needs the auth-ready REST hydrate (most aggregator hubs do). Pages that only write (journal.html) can omit it.
+
+**Audit signal.** Before shipping any new page that reads from Dexie, grep the page's `<script src>` declarations. If `db.js` is absent, the page cannot read from local storage and any apparent Dexie behaviour is silent fall-through to empty.
+
+**Debugging signal.** When a page's Dexie reads return empty unexpectedly, the first hypothesis to falsify is "is `window.VYVELocalDB` defined at all?", not "is the data missing from Dexie?". A two-line console check beats hours of downstream patching:
+
+```js
+console.log('VYVELocalDB:', !!window.VYVELocalDB);
+console.log('mind_activities:', !!(window.VYVELocalDB && window.VYVELocalDB.mind_activities));
+```
+
+**Scope.** Audit pass needed on every existing portal page that contains the string `VYVELocalDB`, `VYVEBus`, or `VYVESync` in inline JS. Cross-reference against the page's `<script src>` declarations. Any mismatch is a PM-183.6-class latent bug — the page either silently degrades to no-storage mode (the mind.html case) or throws if the IIFE doesn't have safety guards.
+
+**Process lesson worth carrying forward.** When a fix doesn't move the symptom, ship a diagnostic before shipping a sixth treatment. PM-183.5/5a's diagnostic overlay landed the answer in one screenshot. The five iterations before it were guessing in the dark because no instrumentation existed to confirm the actual state inside the WKWebView. Diagnostic-first should be the second move after the first patch fails, not the seventh.
+
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.

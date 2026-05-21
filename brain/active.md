@@ -68,6 +68,34 @@ Six files committed atomic to VYVEBrain main: master.md (§19 collapsed, §21 re
 
 **Next session pickup: Phase 1 — Body section consolidation.** Decide `body_activities` table shape (table vs view — default table per recent pattern), ship migration + body.html + sub-page audit. Estimated 2-3 sessions.
 
+**SESSION HANDOFF — 2026-05-21 (PM-183.6: mind.html missing script stack — the actual root cause).** PM-183.1 through PM-183.5a treated symptoms because the diagnosis was wrong. The PM-183.5a always-on diagnostic overlay (`?debug=mind` had been gated to Safari, which has separate IDB stores from the Capacitor app — useless) screenshot from Dean showed the answer:
+
+```
+[t=0] VYVELocalDB? false
+[t=0] mind_activities? false
+[t=1000ms] cannot query dexie — missing prereq
+```
+
+mind.html was authored without the Dexie stack. Page loaded only `theme.js`, `auth.js`, `sw.js` register, inline IIFE, `nav.js`. Missing: `dexie.min.js`, `bus.js`, `db.js`, `vyve-offline.js`, `sync.js`. Every Dexie call in the IIFE silently fell through the `if (window.VYVELocalDB && ...)` guard. From outside it looked like Dexie was returning empty; in reality Dexie was never instantiated on this page.
+
+**Fix shipped: vyve-site `c234959a`.** mind.html: added the five missing `<script src>` tags in the canonical breathwork-style order, right after `auth.js`. Diagnostic overlay stripped. PM-183.1-4 scaffolding kept in place — each was architecturally correct in its own right (PM-183.3 merge-not-wipe is a real db.js improvement benefitting all 17 tables; PM-183.4 localStorage snapshot is genuine §23.38 work; PM-183.2 skeleton paint is UX hygiene). sw.js `pm183-5a-diag-on-a` → `pm183-6-scripts-a`. vbb-marker Update 50 → 51. Dean confirmed working.
+
+**New §23 hard rule: §23.44 — A page that reads from Dexie must load the Dexie stack.** Codified in master.md after §23.43. Includes the canonical script order, audit signal (grep the page's `<script src>` declarations before shipping a Dexie-reading page), and the debugging signal (when Dexie reads return empty unexpectedly, falsify `window.VYVELocalDB === undefined` first, not "data missing from Dexie"). Process lesson appended: ship a diagnostic before the sixth treatment when the first five don't move the symptom.
+
+**Audit pass needed.** Every existing portal page containing `VYVELocalDB`, `VYVEBus`, or `VYVESync` in inline JS needs its `<script src>` declarations cross-referenced. The mind.html case was a silent-degrade — same latent bug may exist elsewhere. Flag for Phase 4 (offline-correctness sweep) per PM-184 Bundle-Ready campaign. Affirmations.html already noted as a candidate (no Dexie stack loaded, but doesn't display activity counts so the degradation isn't user-visible).
+
+**Open item flagged for next pass.** PM-183.5a diagnostic at t=4000ms showed snapshot wrote `todayCount:3` despite Supabase having only 2 of today's rows. Probable double-count between §23.39 optimistic write + REST re-read. Catch in the audit pass.
+
+**The fix sequence in summary.**
+- PM-183.1 (parallel REST) — chased ghost. Kept as fallback for first-ever-device-login.
+- PM-183.2 (skeleton paint) — UX hygiene. Kept.
+- PM-183.3 (merge-not-wipe in db.js) — REAL architectural win across all 17 tables. Kept. Earned §23.43.
+- PM-183.4 (localStorage snapshot) — REAL UX win for instant cold-load. Kept. §23.38 applied.
+- PM-183.5/5a (diagnostic overlay) — produced the answer. Stripped after PM-183.6.
+- PM-183.6 (add five script tags) — THE ACTUAL FIX. One commit. Earned §23.44.
+
+Process cost: ~7 commits, ~3 hours, ~2KB of brain churn. Could have been 1 commit + 30 minutes if PM-183.5 was PM-183.2.
+
 **SESSION HANDOFF — 2026-05-21 (PM-183.4: localStorage snapshot for synchronous first paint).** PM-183.3 fixed Dexie's wipe-then-refill race so reads return correct data. But Dean reported the hub still had a visible ~1s delay before painting — even with merge-not-wipe, the cold-load path sits behind multiple awaits: getDB() opening IndexedDB (~200-500ms on iOS WKWebView), auth.js fast-path resolving vyveCurrentUser (~50-200ms), withEmail callback chaining behind that, then finally dexie.allFor() can run. Real data is there, but the door is locked behind serial awaits.
 
 Fix: §23.38 pattern applied. Read localStorage snapshot synchronously at the very top of boot(), before any await. Paint streak + today count from snapshot on the first frame. Async refresh from Dexie/REST overwrites with real values when ready. renderProgress writes a fresh snapshot at the end of every successful paint, so the next cold load's instant paint is always current.

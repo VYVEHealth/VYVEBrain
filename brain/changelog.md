@@ -1,3 +1,83 @@
+## 2026-05-21 PM-183.6 — mind.html missing Dexie stack (the actual root cause)
+
+**Shipped.** vyve-site `c234959aa0d516f3ceccec4c373ed5910ad6ff40` — three files atomic. The fix that the previous five (PM-183.1, .2, .3, .4, .5/.5a) were dancing around.
+
+**Diagnosis.** PM-183.5a's always-on overlay (the one that mattered) returned from Dean's device:
+
+```
+[t=0] snapshot raw: {"day":"2026-05-21","streak":2,"todayCount":3,"written_at":1779323383085}
+[t=0] todayStr()=2026-05-21
+[t=0] memberEmail=test1@test.com
+[t=0] VYVELocalDB? false
+[t=0] mind_activities? false
+[t=0] vyveCurrentUser? {"email":"test1@test.com",...}
+[t=1000ms] memberEmail=test1@test.com
+[t=1000ms] VYVE_AUTH_READY? true
+[t=1000ms] cannot query dexie — missing prereq
+```
+
+`VYVELocalDB? false`. The Dexie module never loaded on mind.html. Every call from the IIFE to `dexie.allFor()` hit the safety guard `if (dexie && memberEmail && typeof dexie.allFor === 'function')` and silently fell through to `restMindActivities()`, which also returned empty because the JWT plumbing path wasn't being exercised in the right order on a page without `sync.js` loaded.
+
+**The actual bug.** mind.html's `<script>` declarations:
+
+```html
+<script src="/theme.js"></script>
+<script src="auth.js" defer></script>
+<script>if ('serviceWorker' in navigator) ...</script>
+<script> ...inline IIFE... </script>
+<script src="/nav.js" defer></script>
+```
+
+vs. breathwork.html's:
+
+```html
+<script src="/theme.js"></script>
+<script src="auth.js" defer></script>
+<script src="dexie.min.js" defer></script>
+<script src="bus.js" defer></script>
+<script src="db.js" defer></script>
+<script src="vyve-offline.js" defer></script>
+<script src="sync.js" defer></script>
+<script> ...inline IIFE... </script>
+<script src="/nav.js" defer></script>
+```
+
+Five script tags missing on mind.html. `db.js` exposes `window.VYVELocalDB`. Without `db.js` loaded, there is no Dexie wrapper at all on the page. The IIFE's local-DB code path was a no-op.
+
+**Fix.** Add the five missing script tags in the canonical order right after `auth.js`. Strip the PM-183.5/5a diagnostic overlay now that the root cause is known. Keep the rest of the fix scaffolding from PM-183.1-4 — each is independently valid:
+
+- **PM-183.1** parallel Dexie+REST in `readMindActivities` — kept as fallback for first-ever-device-login or post-WKWebView-IDB-crash scenarios where Dexie is genuinely empty.
+- **PM-183.2** skeleton paint with `·` placeholders — UX hygiene, generally useful.
+- **PM-183.3** `replaceForMember` merge-not-wipe in db.js — real architectural fix benefitting all 17 member-scoped tables; earned §23.43.
+- **PM-183.4** localStorage snapshot for synchronous instant first paint — §23.38 applied; makes cold loads instant once a snapshot exists.
+
+**Files changed.**
+
+```
+mind.html      47966 → 43794  bytes (-4172, diag stripped + 5 tags added)  md5 5702f072
+sw.js          10200 → 10199  bytes    (-1)                                md5 e430e1bd
+index.html    120748 → 120748 bytes    (+0)                                md5 6a588653
+```
+
+**Verification.**
+
+- §23.41 pre-commit SHA refresh: all three stable.
+- `node --check` clean on both inline JS blocks.
+- Post-commit byte-equal at commit SHA `c234959a`.
+- Dean confirmed working on reopen with Update 51 live.
+
+**sw.js cache key.** `pm183-5a-diag-on-a` → `pm183-6-scripts-a`. **index.html vbb-marker.** Update 50 → 51.
+
+**New hard rule earned: §23.44 — A page that reads from Dexie must load the Dexie stack.** Documented in master.md after §23.43. Canonical script order; audit signal (grep `<script src>` against any `VYVELocalDB` / `VYVEBus` / `VYVESync` reference in inline JS); debugging signal (when Dexie reads return empty, falsify `window.VYVELocalDB === undefined` first, not "data missing").
+
+**Process lesson.** Five iterations treating symptoms before the diagnostic shipped. Each fix was architecturally correct on its own terms — but none could possibly have fixed the actual bug because the bug was structural, one layer up. When the first patch doesn't move the symptom, ship a diagnostic. Don't ship a sixth treatment. Codified in §23.44.
+
+**Open item for next pass.** PM-183.5a snapshot showed `todayCount:3` despite Supabase having only 2 of today's rows. Probable double-count between §23.39 optimistic write + REST re-read on hydrate. Catch in the upcoming offline-correctness audit (PM-184 Phase 4).
+
+**Audit pass scope for Phase 4.** Every existing portal page containing `VYVELocalDB`, `VYVEBus`, or `VYVESync` in inline JS needs its `<script src>` declarations cross-referenced. The mind.html case was a silent-degrade — same latent bug may exist on affirmations.html (already flagged: no Dexie stack loaded, doesn't display activity counts so degradation isn't user-visible — but writes via missing infrastructure may be silently dropping too).
+
+---
+
 ## 2026-05-21 PM-183.4 — mind.html localStorage snapshot for synchronous first paint
 
 **Shipped.** vyve-site `d9b47d75a0ff97fe81b50f32871567171c1d7558` — three files atomic. Same-day follow-up to PM-183.3.
