@@ -855,15 +855,17 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
-## 19. Current status — 21 May 2026 PM-186 (Connect Phase 2 spec lock + counters-render-truth)
+## 19. Current status — 21 May 2026 PM-187 (Connect Phase 2 step 1+2 SHIPPED)
 
-**PM-186 (21 May 2026, this commit).** Phase 2 Connect section spec locked. `playbooks/connect-spec.md` written (~23KB, build-ready). Five new Supabase tables migrated and live: `connect_checkins`, `checkin_reactions`, `weekly_challenges`, `weekly_challenge_participation`, `daily_checkin_prompts` (Supabase tables: 88 → 93). 30 daily check-in prompts seeded across 11 tags. One new §23 hard rule earned: §23.46 (counters render truth, not skeletons — mind.html PM-183.4 snapshot retroactively obsolete). §23.45 was added by the earlier PM-185 Composio-incident session and is intact in this read — no re-add. Drift correction: Body section hub is **`exercise.html` (existing)**, not `body.html` (new) as previous §19/backlog framing implied — Phase 1 consolidation is workouts/cardio/movement sub-page sweep under the existing exercise.html shell + `body_activities` table decision. No vyve-site commits this session — paper-only.
+**PM-187 (21 May 2026, this commit).** Connect Phase 2 underway. Two vyve-site commits shipped — `597851534a9c83296c95f57ba789a6bf5e54268e` (db.js SCHEMA_V8 with 5 new stores + sync.js PULLABLE wiring + connect.html NEW + sw.js cache bump + index.html vbb-marker) and `a7123667d2c13c003b314b23e5022b099919d5ef` (§23.46 hygiene follow-up: prompt fallback markup replaced "Loading…" skeleton with real fallback question). connect.html hub mirrors mind.html shape with §23.46-compliant paint — counters default 0, no skeleton chars, no localStorage snapshot. Steps 1+2 of the Phase 2 build queue SHIPPED; step 3 (connect-checkin.html) is next. One new §23 hard rule earned: §23.47 (specs cross-checked against live schema before lock — caught service_catalogue `kind`/`is_live`/`published_at` drift between PM-186 spec language and live `type`/`active`/`created_at` columns). Composio creds remain dead from the morning's security incident; §23.45 PAT-direct path exercised end-to-end including two Git Data API multi-file commits.
 
 **Current campaign:** Bundle-Ready (locked PM-184). Six phases serving one goal: ship a bundled iOS + Android app members can use offline. Reference: `playbooks/bundle-ready-campaign.md`.
 
 **Current phase:** Phase 0 (Mind v1) SHIPPED 20 May 2026 across PM-173 through PM-183 — all six user-visible pages (breathwork, journal, affirmations, meditation, sleep, visualisation) plus the mind.html hub real-wired against the §23.39 optimistic-first skeleton. Production iOS 1.3 (2) + Android 1.0.3 (10) bundled-mode at vyve-site SHA `83874dd5` (frozen since 15 May per PM-115/116). Main HEAD at vyve-site is `f44c7104` (PM-183 mind.html hub) — does not reach members until the next OTA bundle ships via Capawesome (production channel `89e12796-aa41-4176-8d78-bc2ef6dfd5c2`). Dean's dev iPhone via `server.url` dev-loop sees main HEAD immediately, subject to §23.29 WKWebView cache.
 
-**Next phase:** Phase 1 — Body section consolidation. Consolidate workouts/cardio/movement under the existing `exercise.html` hub (NOT a new `body.html` — drift correction PM-185). Apply mind.html shape (Today's focus + Day streak + Today's progress) inside exercise.html. Decide `body_activities` table shape (mirror of mind_activities — `kind` discriminator across workouts/cardio/movement, `client_id` idempotency — vs view-over-existing-tables). Default to table per recent pattern. Audit pass on Body sub-pages (workouts.html, cardio.html, movement.html, exercise.html) — Dexie-first reads shipped via PF-7/PF-9/PM-154-170; this is consolidation, not rebuild. 2-3 sessions estimated.
+**Current phase: Phase 2 — Connect section build (in flight, PM-187).** Steps 1+2 of 7-item queue SHIPPED (db.js + sync.js wiring; connect.html hub). Step 3 next: connect-checkin.html — single-purpose write surface, 60-char body cap, 5 focus chips (Move/Mind/Fuel/Rest/Growth), §23.39 optimistic-first write to `connect_checkins`, already-posted-today guard redirects to read-only view. Subsequent steps: connect-feed.html (Workplace/Elite/Following tabs, reaction toggle pattern), connect-challenge.html (read-only community + personal progress), 2 Edge Functions (`connect-challenge-summary` + `connect-feed-counts`, both `verify_jwt: true`, 60s `_kv` cache), sub-page audit on sessions.html + leaderboard.html. Estimated 3-5 sessions remaining.
+
+**Phase 1 — Body section consolidation deferred to after Phase 2 closes.** Body hub is `exercise.html` (existing, drift-corrected PM-186), not `body.html`. Decide `body_activities` table shape (mirror of mind_activities — `kind` discriminator across workouts/cardio/movement, `client_id` idempotency — vs view-over-existing-tables), apply mind.html shape inside exercise.html, audit sub-pages (workouts.html, cardio.html, movement.html). 2-3 sessions estimated.
 
 **Phases after Phase 1.** Phase 2 — Connect section build (connect.html NEW, unifies leaderboard + sessions + charity impact). Phase 3 — Pillar realignment (Home / Engagement / Weekly check-in / Monthly check-in / Certificates all reframe around Mind / Body / Connect; certificates re-pillar pulled in from deferred-post-launch). Phase 4 — Offline-correctness sweep (PRE-BUNDLE GATE; new playbook `playbooks/offline-correctness-audit.md`). Phase 5 — Bundle and OTA (three tasks from PM-178 already queued in backlog). Phase 6 — external-blocker items (HAVEN sign-off, copy reviews, Brevo logo, etc).
 
@@ -2251,6 +2253,31 @@ function boot() {
 **Retroactive scope:** mind.html PM-183.4 snapshot (`vyve_mind_hub_snapshot`, `paintFromSnapshot`, `writeSnapshot`) is now obsolete and queued for Phase 4 (offline-correctness sweep) removal. Connect (Phase 2) ships without snapshots from day one.
 
 **Why this is now a hard rule** (rather than a UX preference): bundled-native means Dexie IS the local DB, not a cache of a remote DB. Treating Dexie reads as if they need a loading state misrepresents the architecture to the user. A skeleton implies "we're computing this" — but for a local DB read on warm start, we're not. We already have it. Show it.
+
+---
+
+## §23.47 — Specs cross-checked against live schema before lock (PM-187, 21 May 2026)
+
+PM-186's `playbooks/connect-spec.md` was written assuming `service_catalogue.kind` (`'live_session' | 'replay' | ...`), `is_live=true` boolean, and `published_at` timestamp — none of which exist on the live `service_catalogue` table. The live schema (verified at PM-187 build time) uses `type` ('live_session' / 'replay' / 'workout_plan'), `active` boolean, and `created_at` timestamp. Functionally identical, but the spec language was wrong, and a fresh session reading the spec to build off it would have wired three nonexistent columns and silently rendered empty carousels.
+
+**The rule:** Any spec that locks design decisions referencing columns on existing tables must include a live `information_schema.columns` cross-check, executed at design lock time, captured inline in the spec — either as a code block showing the verified columns or as a one-line note ("verified PM-NN against live schema"). The cross-check has the same shape as §23.41's SHA refresh: cheap, catches drift, prevents downstream rework.
+
+**Implementation pattern (design phase):**
+
+```sql
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name IN ('table_one', 'table_two', ...)
+ORDER BY table_name, ordinal_position;
+```
+
+Paste the result into the spec, alongside the data-model section. Any column referenced in spec prose that isn't in the result is a drift gap — fix the spec, not the live table (unless the migration is also part of the same spec lock, in which case the migration goes in first).
+
+**Audit signal:** A spec that names columns from existing tables without an adjacent verification of those column names — caught either by the writer at lock time or by the next session that builds against the spec. PM-187 caught it at build time; the rule exists so the next spec catches it at lock time.
+
+**Why this matters past Connect.** Phase 1 (Body consolidation) will produce a `body_activities` table spec that references shapes on `workouts`, `cardio`, `movement` history tables and `exercise_logs`. Phase 3 (Pillar realignment) will reference shapes on every member-scoped table when redefining the engagement-score Variety component. Phase 4 (Offline-correctness sweep) will reference every member-scoped table when applying the `updated_at` + `BEFORE UPDATE` trigger audit. Every one of these locks against an assumed shape is a potential drift gap if §23.47 isn't observed.
+
+**Related rules:** §23.41 (SHA refresh — same shape, file SHAs instead of column names), §23.39 (write-shape audit — same shape, write path instead of column shape), §23.43 (Dexie hydrate merge — applies to the column shapes pulled).
 
 ---
 

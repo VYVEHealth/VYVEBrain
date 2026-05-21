@@ -1,12 +1,12 @@
-## Added 21 May 2026 — PM-186: Connect Phase 2 spec lock + 5 tables migrated + counters-render-truth (§23.46)
+## Added 21 May 2026 — PM-186/187: Connect Phase 2 spec lock + 5 tables migrated + counters-render-truth (§23.46) + step 1+2 SHIPPED PM-187
 
-**Spec locked. Build-ready.** See `playbooks/connect-spec.md` for full design (~23KB). Five Supabase tables live as of this commit; 30 daily prompts seeded. A fresh session on "Load VYVE brain and run build" can ship Connect with no further design questions.
+**Spec locked. Build started.** See `playbooks/connect-spec.md` for full design (~23KB). Five Supabase tables live as of PM-186; 30 daily prompts seeded. Steps 1+2 SHIPPED PM-187 (vyve-site `a7123667d2c13c003b314b23e5022b099919d5ef`).
 
 ### P0 — Connect build queue (Phase 2)
 
-1. **connect.html (hub).** ~600-800 LOC equiv to mind.html. Default counter values = 0 per §23.46. Bus subscriptions for cross-page repaint. djb2 daily prompt rotation read from `daily_checkin_prompts`. Elite progress: client-side union across 4 pillar tables. Page is read-only; no writes.
+1. **connect.html (hub).** ✅ **SHIPPED PM-187** (vyve-site `597851534a9c83296c95f57ba789a6bf5e54268e` + `a7123667d2c13c003b314b23e5022b099919d5ef`). ~40KB / 919 LOC. §23.46 paint pattern verbatim (counters default 0, no skeleton chars, no localStorage snapshot). djb2 daily prompt rotation read from `daily_checkin_prompts`. Elite progress: client-side union across 4 pillar tables. Read-only. Bus subscribers wired (`connect:*`, `mind:logged`, `body:logged`). **Outstanding:** Recent Check-Ins reads own-rows only v1 — re-wires to feed-scope cache when connect-feed.html (step 3) ships.
 
-2. **connect-checkin.html.** Single write surface. Textarea max 60 chars, 5 focus chips, post button gated ≥3 chars. §23.39 optimistic-first write to `connect_checkins`. Already-posted-today guard redirects to read-only view. Body label note: stays at "Your check-in will be visible to your community."
+2. **connect-checkin.html.** ⬅ **NEXT — step 3 of build queue.** Single write surface. Textarea max 60 chars, 5 focus chips, post button gated ≥3 chars. §23.39 optimistic-first write to `connect_checkins`. Already-posted-today guard redirects to read-only view. Body label note: stays at "Your check-in will be visible to your community."
 
 3. **connect-feed.html.** Tabs: Workplace (label switches to employer name OR "VYVE Community") | Elite (🔒 until 30-of-any-activity / 30 days) | Following (coming-soon pill v1). Reactions only (♥💪🔥🙌⭐👏). §23.39 toggle pattern for `checkin_reactions`. Day boundaries explicit. End-of-feed footer "Come back tomorrow" (anti-doomscroll).
 
@@ -26,11 +26,9 @@
 - `weekly_challenge_participation` — denormalised personal_count.
 - `daily_checkin_prompts` — 30 seeded across 11 tags.
 
-### sync.js wiring needed before first build
+### sync.js wiring ✅ SHIPPED PM-187
 
-The five tables need `makeTable` entries in db.js + sync.js hydrate fan-out paths. Mirror exactly the `mind_activities` template:
-- Member-data: `connect_checkins`, `checkin_reactions`, `weekly_challenge_participation` — use `replaceForMember` (§23.43 merge-not-wipe).
-- Catalogue: `weekly_challenges`, `daily_checkin_prompts` — use `replaceCatalogue` (or equivalent).
+db.js SCHEMA_V8 + db.version(8) chained, sync.js 5 PULLABLE entries added. Compound-PK overrides for `checkin_reactions` and `weekly_challenge_participation` (generic `makeTable.replaceForMember` keys on `row.id`; these PKs are arrays). All member-data tables use the §23.43 merge-not-wipe shape (idempotent bulkPut → primaryKeys() → bulkDelete stale). Both catalogue tables use the existing `makeCatalogueTable` factory.
 
 ### Phase 4 add (from PM-186)
 
@@ -72,9 +70,9 @@ Ship a bundled iOS + Android app that members can use offline on the tube, on a 
 - [ ] **body.html hub build.** Today's focus (djb2 daily rotation across programme exercises or curated pool) + Day streak (distinct activity_date consecutive days, one-day grace) + Today's progress (today's count, display capped). Mirror mind.html shape precisely.
 - [ ] **Sub-page audit.** workouts.html / cardio.html / movement.html / exercise.html. Verify Dexie-first reads (shipped via PF-7/PF-9/PM-154-170). Verify §23.39 writes. Gap-fill where surfaced.
 
-### Phase 2 — Connect section build [2-3 sessions]
+### Phase 2 — Connect section build [step 1+2 SHIPPED PM-187, 3-5 sessions remaining]
 
-- [ ] **connect.html hub build (NEW).** Charity impact hero + today's session card + leaderboard preview + Day streak. Lifted from mind.html / body.html shape.
+- [x] **connect.html hub build (NEW).** ✅ SHIPPED PM-187 (vyve-site `597851534a9c83296c95f57ba789a6bf5e54268e` + `a7123667d2c13c003b314b23e5022b099919d5ef`). Sections per PM-186 spec — Today's Check-In hero + Your Momentum (streak ring + Elite progress) + Live This Week carousel + This Week's Challenge + Recent Check-Ins preview + Latest from VYVE. §23.46 paint pattern verbatim — counter defaults 0, no skeleton chars, no localStorage snapshot. Lifted from mind.html shape directly (NOT body.html — that hub will be exercise.html when Phase 1 lands).
 - [ ] **Sub-page audit.** sessions.html (schedule = catalogue hydrate; chat = Realtime carve-out). leaderboard.html (§23.10 carve-out — designed offline state showing last-cached ranking with "last updated X ago").
 - [ ] **Charity impact data wire-up.** Currently computed via `get_charity_total()` SQL function. Verify Dexie-cached version is correct.
 - [ ] **BUG (reported PM-184.1, Dean 21 May 2026):** Live sessions page view not updating live sessions progress. Member opens sessions.html / watches a live session → `session_views` row likely logs correctly to Supabase + Dexie, BUT the downstream progress counters (Today's progress on home, Day streak, engagement-score Variety contribution from sessions) don't reflect the view. Root cause not yet diagnosed — likely candidates: (a) `session_views` row writes but isn't subscribed via the bus, so dependent surfaces don't re-paint; (b) the 60s dwell threshold from PM-150 fires but the resulting row doesn't carry the fields downstream counters key off (`activity_date`? `client_id`?); (c) Today's progress / Day streak aggregations on home.html don't include `session_views` at all (would explain "live sessions progress" specifically). Investigate during Phase 2 sub-page audit; if it's category (c), fold the fix into Phase 3 pillar realignment when Connect-pillar counts get defined.
