@@ -2281,6 +2281,87 @@ Paste the result into the spec, alongside the data-model section. Any column ref
 
 ---
 
+## §23.48 — Connect freshness model (four patterns) (PM-188, 21 May 2026)
+
+After step 7 design discussion, the implicit freshness model embedded across mind.html, the PM-187 Connect cluster, and the PM-187.3 EF wiring is codified explicitly. Every surface on every member-data page in the portal falls into exactly one of four patterns. Pick the right one at design time; the wrong one is either a §23.46 violation (skeleton on data Dexie can answer), a §23.10 violation (treating network-bound data as local), or a §23.7.7 violation (stale across rollover because no focus handler).
+
+**Pattern 1 — Local member data. Bus-driven, no timers.**
+
+Source of truth: Dexie + `_sync_queue` outbox. Examples: streak rings, posted-today, personal challenge progress, own recent check-ins, own reactions, habit ticks, workout logs.
+
+Mechanism: synchronous Dexie read at paint (per §23.46, default 0 in markup), bus subscriptions repaint on every relevant write. The bus IS the freshness mechanism. No polling. No timers. No focus handler needed for the data itself — the §23.39 optimistic-first write path publishes the bus event the moment a write lands locally, so every subscribing surface is already in sync.
+
+Required events to subscribe to: `<domain>:logged`, `<domain>:failed`, `<domain>:hydrated`, plus any cross-domain event that affects the surface's compute (e.g. Elite progress on connect.html subscribes to `mind:logged` and `body:logged` because those count toward the 30-day threshold).
+
+**Pattern 2 — Catalogue data. Fan-out-on-focus, no live updates.**
+
+Source of truth: Dexie copy of server catalogue tables, hydrated by sync.js. Examples: `service_catalogue`, `weekly_challenges`, `daily_checkin_prompts`, `personas`, `knowledge_base`, `habit_library`.
+
+Mechanism: hydrate on `auth-ready`, refresh on `visibilitychange→visible` and `pageshow`. Paint reads Dexie synchronously. No timers. The focus loop IS the refresh mechanism. The user gets catalogue data as-of-when-they-opened-the-app or as-of-last-focus, never more stale than the gap between focus events — typically minutes in real use.
+
+Required: every page that renders catalogue data must have a `visibilitychange` handler that re-runs its Dexie read (cheap, microseconds). Sync.js fan-out-on-focus is already wired; the page just needs to listen for the resulting bus event OR re-read on `visibilitychange` itself. Either works.
+
+**Pattern 3 — Time-derived state from catalogue. Page-visible ticker, paused on hidden.**
+
+This is the new pattern codified here. Source of truth: pure function of `(catalogue_row, Date.now())`. Examples: "is this session live right now / upcoming / finished", live session countdown timers, "available now until 18:00" eligibility windows, anything where the catalogue row contains a timestamp and the UI state changes as wall-clock time crosses it.
+
+Mechanism: `setInterval` while page is visible, paused on `visibilitychange→hidden`, resumed on `→visible`. Interval re-evaluates the state machine for every visible row and reshuffles ordering if needed (e.g. live → top of carousel, upcoming next, finished hidden or last). On `→visible` after a long background period, ALSO immediately fire the state-machine re-evaluation once — don't wait up to N seconds for the next tick to correct stale UI.
+
+Interval cadence: 30s for session-liveness state; 1s only for active countdowns the user is staring at. Default 30s.
+
+This pattern is the minute/second-scale analogue of §23.7.7 rule 2 (date-anchored surfaces self-correct on date rollover). §23.7.7 handles the midnight case via `visibilitychange + focus` re-read of `todayStr`; §23.48 pattern 3 handles the same problem at higher frequencies for surfaces where state changes throughout the day.
+
+What this does NOT solve: a catalogue row being edited server-side (cancelled, rescheduled, host swapped) while the page is open. That falls to pattern 2's focus loop — acceptable cost of at-most-one-focus-gap of staleness. If a surface needs sub-focus-gap freshness for catalogue edits, that's an explicit pattern 4 carve-out or a Realtime channel decision (defer to post-launch by default).
+
+**Pattern 4 — Honestly-network-bound aggregates. 60s `_kv` cache, fetch-on-focus.**
+
+Source of truth: server-side aggregate compute (Edge Function), can't be derived from Dexie. Examples: "X members checked in today" feed banner, challenge community total ring, leaderboard rankings, peer reactions on others' feed posts, charity collective total.
+
+Mechanism: the PM-187.3 lifecycle, shipped and proven. (1) Paint immediately from `_kv` cache, counters default 0 or hidden if no last-known value (per §23.46 — only the genuinely-unresolved-remote-data carve-out may use `…`, and even then "Last updated Nm ago" with last-known is preferred). (2) On boot, check staleness: cache older than 60s OR missing OR key dimension mismatch (e.g. `challenge_id` changed). (3) If stale, fire EF un-awaited, write result to `_kv` with `computed_at_ms` timestamp, repaint. (4) `visibilitychange→visible` re-runs the staleness check; if stale, fire again. (5) EF errors leave last-known cache visible — never flicker to a blank, never overwrite good cache with an error state.
+
+`_kv` key shape: `<surface>_<scope>_v<version>`, e.g. `connect_feed_counts_v1`, `connect_challenge_summary_v1`, `connect_leaderboard_v1`. Stored value includes `computed_at_ms` and any dimension keys needed for invalidation.
+
+Realtime is NOT pattern 4 v1. Spec §6 (Connect) explicitly defers Realtime: "add post-launch only if Cole reports the gap hurts engagement." Same default for all pattern-4 surfaces: 60s cache + focus refresh covers the real-world cases. Reach for Realtime only when a specific UX gap is empirically demonstrated.
+
+**Decision tree for "which pattern applies".**
+
+1. Can Dexie answer this read with data already on device? → Pattern 1.
+2. Is this catalogue data the server owns and the client mirrors? → Pattern 2.
+3. Does the UI state change as wall-clock time crosses a timestamp in catalogue data? → Pattern 3, layered ON TOP of pattern 2.
+4. Is this a cross-member aggregate or live community count that the client can't compute locally? → Pattern 4.
+
+Most surfaces use exactly one pattern. Some compose: Live This Week carousel = pattern 2 (catalogue from Dexie) + pattern 3 (liveness state ticker). connect.html feed banner = pattern 4 (community count from EF). connect.html streak ring = pattern 1 (own connect_checkins from Dexie + bus).
+
+**Audit signal for new pages or new surfaces on existing pages:**
+
+For each surface on the page, ask the four decision-tree questions in order. The first "yes" identifies the pattern. If you can't answer "yes" to any of them, the surface is probably trying to render data that has no defined source — go back to spec.
+
+Violations to grep for:
+- Pattern 1 surface with no bus subscription → freshness depends on page reload, brittle.
+- Pattern 1 surface with `await fetch(...)` in the paint path → §23.10 violation (offline contract broken).
+- Pattern 2 surface with no `visibilitychange` handler → stale across long opens, no rollover correction.
+- Pattern 3 surface with `setInterval` that doesn't pause on hidden → battery drain, esp. on bundled-native.
+- Pattern 3 surface with no `visibilitychange→visible` immediate re-evaluation → stale up to interval-length on resume.
+- Pattern 4 surface with `…` or "Loading…" in default markup when last-known cache exists → §23.46 violation.
+- Pattern 4 surface that overwrites good cache with an error state on EF failure → user sees blank where they previously saw data.
+- Any surface with a hand-rolled 60s cache that doesn't use `_kv` → divergence from canonical pattern, future maintenance debt.
+
+**Application to existing surfaces.**
+
+Already correct: mind.html hub (pattern 1 + 2), habits.html (pattern 1, post §23.7.7 fixes), connect.html hub (pattern 1 + 2 + 3 partial — Live This Week needs ticker, step 7), connect-feed.html (pattern 1 + 4), connect-challenge.html (pattern 1 + 4), index.html home (pattern 1 + 2).
+
+Needs work at step 7: sessions.html (pattern 2 + 3 — full schedule, live ticker), leaderboard.html (pattern 4 — needs `_kv` cache + EF wiring + offline affordance per §23.10).
+
+Future Phase 1 (Body consolidation): pattern 1 dominant, pattern 3 only if movement classes acquire live-session shape.
+
+Future Phase 3 (Pillar realignment): all four patterns in play. Engagement score Variety component = pattern 1. Pillar certificate progress = pattern 1. Monthly check-in activity rollup = pattern 1.
+
+**Why codify now.** PM-187 and step 7 made the four patterns visible because Connect happens to exercise all four cleanly. The next two phases (Body, Pillar) will each touch surfaces that should use a specific pattern; without a named matrix, each phase risks re-deriving the answer and getting it wrong. §23.48 is the matrix. Future specs reference §23.48 when wiring a surface, the way PM-187 spec referenced §23.46 for paint and §23.39 for writes.
+
+**Related rules:** §23.46 (counters render truth — defines the paint side of patterns 1-2 and the carve-out for pattern 4), §23.10 (offline contract — defines which surfaces are pattern 4 carve-outs vs broken patterns 1-2), §23.7.7 (date rollover self-correction — the daily-rollover analogue of pattern 3's intra-day ticker), §23.39 (optimistic-first write skeleton — emits the bus events pattern 1 listens to), §23.43 (Dexie merge-not-wipe — makes pattern 2 hydration safe).
+
+---
+
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.

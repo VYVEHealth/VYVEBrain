@@ -1,3 +1,40 @@
+## 2026-05-21 PM-188 — §23.48 codified (Connect freshness model, four patterns) + Command Centre session editor parked in backlog [brain-only commit, no vyve-site/EF changes]
+
+**Talk-first session.** Step 7 (sub-page audit on sessions.html + leaderboard.html) was opened by Dean asking for a coherent freshness strategy across the Connect cluster before touching code. The right answer turned out to be: the spec already locked it, we shipped the trickiest piece in PM-187.3, and the value of the discussion was to *name* the four patterns so step 7 and future phases can quote them rather than re-derive. Earned new §23 hard rule + backlog placeholder for the session content management surface Dean surfaced mid-discussion. No code shipped this commit — pure documentation + planning artefact.
+
+### What changed
+
+- **`brain/master.md` §23.48 added** (~9.6KB, between §23.47 and §24). Codifies four freshness patterns observed across the portal:
+  - Pattern 1: Local member data, bus-driven, no timers. Source = Dexie + outbox.
+  - Pattern 2: Catalogue data, fan-out-on-focus, no live updates. Source = Dexie copy of server catalogue.
+  - Pattern 3: Time-derived state from catalogue, page-visible ticker paused on hidden, immediate re-eval on `→visible`. The NEW pattern this commit names; the others were implicit doctrine before.
+  - Pattern 4: Honestly-network-bound aggregates, 60s `_kv` cache, fetch-on-focus. Lifecycle proven and shipped in PM-187.3.
+  Includes decision tree ("which pattern applies"), audit signals for violations per pattern, and explicit application to existing surfaces (already correct vs. step-7 work vs. future Phase 1/3 surfaces). Codifies the 30s session-liveness ticker design with `visibilitychange→visible` immediate re-evaluation as the authoritative pattern-3 implementation, ready for step 7.
+
+- **`tasks/backlog.md` Session content management surface added** (~4.1KB, fresh dated entry between PM-186/187 entry and PM-184 entry). Sequenced post-Phase-2, parallel-friendly with Phase 1. Scope: schema migration adding `description`/`short_description`/`image_url`/`host_avatar_url` (verify live columns first per §23.47), then Command Centre editor for inline session metadata editing — Lewis + likely Calum + Phil get write access via role flag. Member-side propagation needs zero new architecture (pattern 2 catches it on next focus event); Realtime broadcast deferred unless empirical need surfaces. Image bucket on Supabase Storage, on-demand fetch (not bundled). v1 scope, deferred-v2 items, sequencing, and owners all spelled out.
+
+### Production state at this commit
+
+vyve-site main HEAD unchanged: `d439477f7f0a5c3678e33d19ca69036b53ea31b9` (PM-187.3, EF wiring + §23.46 hygiene). Both Connect EFs (`connect-challenge-summary` id `1fbc2b53-2fe2-40d2-bb4d-aa27870388bf`, `connect-feed-counts` id `0273fac7-3848-4cbd-82c7-31baea9a2838`) still v1 ACTIVE, `verify_jwt: true`, 60s `_kv` cache lifecycle. All 5 Connect tables live with RLS + indices. Production iOS 1.3 (2) + Android 1.0.3 (10) bundled-mode at SHA `83874dd5` (frozen since 15 May per PM-115/116) — unchanged. Dean's dev iPhone via `server.url` dev-loop sees main HEAD immediately, subject to §23.29 WKWebView cache.
+
+### What's next in this session
+
+Step 7 build, in two clean sub-tasks (per §23.48 mapping):
+1. **sessions.html.** Pattern 2 + pattern 3. Add 30s page-visible session-state ticker for live/upcoming/finished computed from `service_catalogue` rows in Dexie. `visibilitychange→hidden` pauses, `→visible` resumes AND immediately re-evaluates the state machine. §23.46 audit pass for any `·`/`…`/"Loading…" skeleton chars on local-data surfaces. Verify `visibilitychange` re-read of `service_catalogue` from Dexie fires.
+2. **leaderboard.html.** Pattern 4. Inherits PM-187.3 lifecycle verbatim — likely extends `connect-feed-counts` EF rather than ships a third EF (same shape). Honest offline affordance per §23.10 ("Leaderboard refreshes when you're online"). §23.46 audit pass.
+
+One session, two files, one EF extension. Then Phase 2 closes.
+
+### Tools state
+
+Composio creds remain dead from the morning's 21 May security incident. §23.45 PAT-direct path used end-to-end this session for the brain read at session open and this commit (Git Data API multi-file commit, three files atomic). No retry against Composio attempted — yesterday's data showed it stays dead, going straight to PAT path saved cycles.
+
+### No new §23 hard rule earned beyond §23.48 itself
+
+§23.48 IS the rule. The Command Centre backlog addition is a planning artefact, not architectural doctrine. Step 7 build will follow §23.48 patterns 2-4 verbatim.
+
+---
+
 ## 2026-05-21 PM-187.2 + PM-187.3 — Connect Phase 2 steps 3-6 SHIPPED: sub-pages + 2 EFs + client wiring (vyve-site `97adfda00f964aa7277de8360ce22160973d6b9b` + `d439477f7f0a5c3678e33d19ca69036b53ea31b9`)
 
 **Context.** Resuming session after Dean called out under-delivery (only step 1+2 had landed; queue was 7 items). Pushed through the rest: 3 new sub-pages + 2 EFs deployed + client wiring patch. All §23.45 PAT-direct via bash curl (Composio creds still 401-ing from morning's security incident). §23.41 SHA refresh + post-commit byte-equal verify on every commit. No drift between commits.

@@ -51,6 +51,46 @@ db.js SCHEMA_V8 + db.version(8) chained, sync.js 5 PULLABLE entries added. Compo
 
 ---
 
+## Added 21 May 2026 — Session content management surface (Command Centre extension) [post-Phase-2, parallel to Phase 1]
+
+**Why now.** Sessions currently edited via Supabase Studio table editor against `service_catalogue`. Fine for 31 trial members; unworkable at scale. Lewis (and probably Calum for fitness, Phil for mental health) need to edit session metadata on the fly — title, host, host avatar, start time, duration, short description (carousel), long description (sessions.html detail), image, active flag — without Dean in the loop. Surfaced 21 May 2026 in the step 7 design discussion as the natural next thing after Phase 2 closes.
+
+**Where it lives.** `VYVEHealth/vyve-command-centre` (admin.vyvehealth.co.uk) — already gated by Supabase Auth, already the pattern for admin-only writes. NOT a new repo, NOT a new portal page. Role flag in `members` table (or admin-side `admin_users` table — TBD at design time) gates write access.
+
+**Schema work first.** `service_catalogue` lacks several fields the editor needs. Verify live schema per §23.47, then migrate:
+- `description` (long-form, sessions.html detail page)
+- `short_description` (carousel subtitle, 60-80 char target)
+- `image_url` (Supabase Storage URL)
+- `host_avatar_url`
+- Possibly `duration_minutes` and `host_name` if not already present in the live schema (likely present — verify)
+
+**Storage bucket.** New `session-images` bucket, public-read, write-restricted to admin role. Existing certificate + breathwork buckets are the pattern.
+
+**Member-side propagation.** Pattern 2 (per §23.48) catches it for free: Lewis edits a row, member opens app or refocuses, sync.js fan-out-on-focus pulls fresh `service_catalogue`, Dexie merges (§23.43), page repaints. No new architecture on the member side. Always-open-page edge case (a member with sessions.html open continuously when Lewis edits) waits at most one focus event — acceptable v1. Realtime broadcast deferred unless Lewis reports needing same-minute substitution propagation.
+
+**Image handling on bundled-native.** Images fetched on-demand with a placeholder, not bundled into the binary. Service worker caches on first fetch. Reasoning: session imagery rotates, bundling adds 50-100MB of dead weight to the binary. Confirm SW cache strategy covers cross-origin Supabase Storage URLs (currently §23.10/2b says no cross-origin runtime deps in critical path — session images are NOT critical path, but verify SW handler doesn't choke).
+
+**Scope of v1.**
+1. Migration adding the missing columns to `service_catalogue` (per §23.47 cross-check first).
+2. Command Centre page: list view of `type='live_session'` and `type='replay'` rows, edit modal with all fields, Storage uploader for image, save via PostgREST or thin EF (admin-write-only — needs role check on the server side, not just UI).
+3. Member-side: zero changes if catalogue read patterns are already correct. Sessions.html and connect.html Live This Week carousel should be reading these new fields once step 7 ships. Audit during step 7 build that the read selects include the new columns (even if they're nullable at first).
+
+**Sequencing.**
+- BLOCKER: step 7 (sub-page audit on sessions.html + leaderboard.html) ships first — establishes the catalogue read pattern this depends on.
+- THEN: migration + Command Centre editor (2-3 sessions estimated).
+- Parallel-friendly with Phase 1 (Body section consolidation) — different repos, different surfaces.
+
+**Out of scope v1 (deferred):**
+- Realtime broadcast on `service_catalogue` changes (only if Lewis reports same-minute-substitution use case).
+- Session recurrence rules / template patterns (one-off rows for now, copy-as-new for similar future sessions).
+- Bulk import / CSV upload (single-row editing is enough at current volume).
+- Audit log of who edited what (post-launch, add if compliance asks).
+- Member-facing "session was updated" notification (probably not needed — silent update on next focus is fine).
+
+**Owners.** Dean: schema migration, Command Centre editor build. Lewis: defines field copy lengths, decides who else needs write access beyond him.
+
+---
+
 ## Added 21 May 2026 — PM-184: BUNDLE-READY CAMPAIGN (six phases, locked) + formal PF-40 closure
 
 **This is the active campaign.** All other backlog items below either fold into the phases here, defer post-launch, or close as superseded. Full campaign reference: `playbooks/bundle-ready-campaign.md`. Pre-bundle audit framework: `playbooks/offline-correctness-audit.md`.
