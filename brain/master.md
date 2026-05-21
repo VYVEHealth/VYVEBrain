@@ -2117,6 +2117,40 @@ After PM-115/116 (15 May 2026), iOS 1.3 (2) and Android 1.0.3 (10) ship bundled-
 
 The brain still carries scattered language assuming the old remote-origin model ("members will see it on next refresh", "push to main"). When found, correct in-line, not at session close — drift compounds.
 
+## §23.43 — Dexie hydrate via merge, never wipe-then-refill (PM-183.3, 21 May 2026)
+
+`db.js` exposes a per-table `replaceForMember(email, rows)` API used by `sync.js` to bring a member's local Dexie state into line with the server's snapshot on auth-ready, foreground, and delta-pull. The original shape did `where(memberKey).equals(email).delete()` THEN `bulkPut(rows)` inside a single `db.transaction('rw', ...)`.
+
+The transaction is atomic at commit boundaries, but Dexie operations are progressive — a parallel reader querying the same store sees the delete take effect immediately for the duration of the transaction, not just at commit. So any aggregator page (mind.html hub, future Body / Connect hubs) that boots in parallel with sync.js's hydrate fan-out lands `dexie.allFor(email)` in the window between delete and bulkPut, and sees zero rows. The reader paints empty even though the server has the data, the writer just wrote it on a sibling page, and the next paint will be correct. The user experience is a "0 day streak / 0 / 2 sessions" flash for hundreds of ms to several seconds depending on REST latency, before the real numbers appear.
+
+Diagnosed PM-183.3 after PM-183.1 (parallel REST fallback) and PM-183.2 (skeleton paint) had treated the symptom — both useful but neither fixing the cause.
+
+**Hard rule.** `replaceForMember` must merge, not wipe-then-refill:
+
+```js
+// 1. Upsert new rows first (idempotent — Dexie .put is upsert by PK).
+return db[tableName].bulkPut(rowList).then(function () {
+  // 2. Sweep stale: rows for this member NOT in the new set.
+  return db[tableName].where(memberKey).equals(email).primaryKeys().then(function (keys) {
+    var stale = keys.filter(function (k) { return !incomingIds[k]; });
+    if (!stale.length) return;
+    return db[tableName].bulkDelete(stale);
+  });
+});
+```
+
+At no point during the transaction is the member's row set empty. Local optimistic writes that happened between the REST snapshot capture and the merge are preserved if they have a new id; only explicit server-side omissions get wiped.
+
+Edge case: empty hydrate (server has no rows for this member) is still a delete-by-member, matching the old behaviour when there is nothing to merge with.
+
+**Scope.** All 17 member-scoped tables that flow through `makeTable` use the same `replaceForMember` shape — daily_habits, workouts, exercise_logs, custom_workouts, exercise_swaps, workout_plan_cache, cardio, nutrition_logs, nutrition_my_foods, weight_logs, session_views, replay_views, wellbeing_checkins, monthly_checkins, weekly_goals, certificates, member_achievements, mind_activities, affirmation_favourites. One change in db.js fixes them all.
+
+**Audit signal.** A `replaceForMember` implementation (or any future variant) whose first action inside the transaction is `.delete()` is a regression. Reads from any aggregator hub that runs in parallel with sync.js will paint empty. Code review: first verb in the transaction body must be `bulkPut`, not `delete`.
+
+**Why this matters past Mind v1.** Phase 1 (Body section consolidation per PM-184) introduces a `body_activities` table with the same aggregator-hub shape — body.html will read from `dexie.allFor()` exactly like mind.html does. Phase 2 (Connect) likewise. Without this fix, every new aggregator hub repeats the same bug. With it, all future aggregator hubs paint instantly from Dexie on cold load.
+
+**Architectural note for §3.** The §3 local-first commitment says "Every read goes to Dexie." That contract is only honourable if Dexie reads are never *transiently empty* due to background sync activity. The PM-183.3 fix makes that contract enforceable.
+
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.

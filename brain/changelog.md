@@ -1,3 +1,116 @@
+## 2026-05-21 PM-183.3 — replaceForMember merge-not-wipe (root cause fix, structural)
+
+**Shipped.** vyve-site `a7c95c4e4e8ae8891ea6fef806ec0ebda10a6a39` — three files atomic. Same-day root-cause fix for the issue PM-183.1 and PM-183.2 treated symptomatically.
+
+**Trigger.** Dean asked: "but the dexie table should be there so it should paint instantly or at least be cached until reset at midnight?" That instinct was correct. The earlier fixes (PM-183.1 parallel REST, PM-183.2 skeleton paint) made the hub LOOK fine but didn't fix why Dexie reads were returning empty in the first place.
+
+**Root cause traced.**
+
+`db.js` exposes `replaceForMember(email, rows)`, used by `sync.js` to update a member's local Dexie state on auth-ready, foreground visibilitychange, and delta-pull. The original implementation:
+
+```js
+replaceForMember: function (email, rows) {
+  return getDB().then(function (db) {
+    return db.transaction('rw', db[tableName], function () {
+      return db[tableName]
+        .where(memberKey).equals(email).delete()    // ← step 1
+        .then(function () {
+          if (!rows || !rows.length) return;
+          return db[tableName].bulkPut(rows.map(stamp));    // ← step 2
+        });
+    });
+  });
+}
+```
+
+A Dexie `db.transaction('rw', ...)` is atomic at commit boundaries — outside observers (other tabs, other transactions) see either the pre- or post-state, never mid-state. But operations *within* a single transaction are progressive: a `.delete()` followed by a `.bulkPut()` lets any reader inside the same transaction (or any code awaiting a promise chain that includes a read between those two operations) see the rows-deleted-but-not-yet-bulkput state.
+
+`sync.js` hydrate fans out parallel pulls of 17 member-scoped tables on auth-ready. Each pull's terminal `persist` call invokes `replaceForMember`. The mind.html hub's `boot() → withEmail → repaint()` runs on the same `vyveAuthReady` event. So:
+
+- t=0: page load. Dexie has the journal + breathwork rows Dean wrote earlier from sibling pages.
+- t=200ms: auth.js fires `vyveAuthReady`. sync.js calls `hydrate()`. mind.html's `withEmail` callback runs `repaint()` → `dexie.allFor()`.
+- Inside the parallel fan-out: `mind_activities` REST returns. sync.js calls `replaceForMember('test1@test.com', serverRows)`. The transaction enters, `delete WHERE member=test1@test.com` executes immediately.
+- mind.html's `dexie.allFor()` resolves with `[]` because the delete just landed and the bulkPut hasn't.
+- t=400ms: bulkPut completes. Transaction commits.
+- mind.html doesn't repaint because no event told it to. Hub stays empty.
+- t=800/2500ms: PM-183.1's delayed setTimeouts fire, repaint, find rows now in Dexie. User sees "2 day streak / 2 / 2".
+
+This is why Dean saw the 0/0 → 2/2 flash. Not a slow network. Not a sync.js hydrate delay. The data was *in Dexie the whole time on the read attempt and got deleted from under the reader by sync.js's own normaliser*.
+
+**Fix.**
+
+Reorder `replaceForMember` to merge, not wipe-then-refill:
+
+```js
+replaceForMember: function (email, rows) {
+  var rowList = (rows || []).map(stamp);
+  if (!rowList.length) {
+    // Empty hydrate — wipe (matches old behaviour for the no-merge case).
+    return getDB().then(function (db) {
+      return db.transaction('rw', db[tableName], function () {
+        return db[tableName].where(memberKey).equals(email).delete();
+      });
+    });
+  }
+  var incomingIds = {};
+  rowList.forEach(function (r) { if (r && r.id != null) incomingIds[r.id] = true; });
+  return getDB().then(function (db) {
+    return db.transaction('rw', db[tableName], function () {
+      // 1. Upsert new set first (idempotent, fast — Dexie .put is upsert).
+      return db[tableName].bulkPut(rowList).then(function () {
+        // 2. Sweep stale rows for this member.
+        return db[tableName].where(memberKey).equals(email).primaryKeys().then(function (keys) {
+          var stale = keys.filter(function (k) { return !incomingIds[k]; });
+          if (!stale.length) return;
+          return db[tableName].bulkDelete(stale);
+        });
+      });
+    });
+  });
+}
+```
+
+At no point during the transaction is the member's row set empty. A parallel reader sees either the pre-merge set (everything still in place) or the post-merge set (server snapshot + any local writes that survived the sweep). Both are correct, neither is empty.
+
+**Scope.** All 17 member-scoped tables flow through the same `makeTable` factory: daily_habits, workouts, exercise_logs, custom_workouts, exercise_swaps, workout_plan_cache, cardio, nutrition_logs, nutrition_my_foods, weight_logs, session_views, replay_views, wellbeing_checkins, monthly_checkins, weekly_goals, certificates, member_achievements, mind_activities, affirmation_favourites. One change in db.js fixes them all.
+
+**Local optimistic write preservation.** Subtle but important: if the page wrote a row to Dexie at t=350ms with a fresh `client_id` (the §23.39 optimistic-first pattern), and sync.js's REST snapshot was captured at t=300ms before that POST landed server-side, the old `replaceForMember` would wipe the local row at t=400ms. The new shape preserves it — the local row's id isn't in `incomingIds`, but the sweep only deletes rows for the *member*, and the bulkPut doesn't touch rows whose id isn't in the new set. Net: local optimistic writes are durable across hydrate cycles until the corresponding server row comes back through a later pull.
+
+**Edge case — empty hydrate.** If the server genuinely has zero rows for this member, the merge has nothing to add and the sweep would delete everything. Short-circuit to the original delete-only path — matches the no-merge case.
+
+**Files changed.**
+
+```
+db.js          31237 → 33515  bytes (+2278, mostly doc comment)   md5 3b2203f9
+sw.js          10196 → 10197  bytes    (+1)                       md5 72750792
+index.html    120748 → 120748 bytes    (+0)                       md5 45a56994
+```
+
+**mind.html unchanged.** PM-183.1's belt-and-braces (parallel REST, 800ms/2500ms repaint timers, visibilitychange listeners) become no-ops on the happy path. They remain in place as fallback for:
+- First-ever device login (Dexie genuinely empty until first hydrate completes)
+- Post-WKWebView IndexedDB crash-wipe (the §3.1 iOS scenario)
+- Cold offline boot (REST fails, Dexie is the only source — the parallel race is now harmless because Dexie won't return empty mid-hydrate)
+
+PM-183.2's skeleton paint also stays — first-ever device login is still an empty-Dexie scenario.
+
+Cleanup of these belt-and-braces is a follow-up if Dean confirms instant paint everywhere after this commit.
+
+**Verification.**
+
+- §23.41 pre-commit SHA refresh on all three files — stable.
+- `node --check` clean on db.js.
+- Post-commit byte-equal at commit SHA `a7c95c4e`.
+
+**sw.js cache key.** `pm183-2-skel-a` → `pm183-3-merge-a`. **index.html vbb-marker.** Update 46 → 47.
+
+**New hard rule earned: §23.43 — Dexie hydrate via merge, never wipe-then-refill.** Documented in master.md with the exact code shape, audit signal (first verb in transaction body must be bulkPut, never delete — `replaceForMember` whose first action inside the transaction is `.delete()` is a regression), and explanation of why this matters past Mind v1: Phase 1 body.html and Phase 2 connect.html (Bundle-Ready PM-184) introduce identical aggregator-hub shapes. Without this fix, every new hub repeats the same bug.
+
+**Architectural note.** §3's "Every read goes to Dexie" commitment is only honourable if Dexie reads are never transiently empty due to background sync activity. PM-183.3 makes that contract enforceable end-to-end.
+
+**PM-184 Phase 4 (offline-correctness sweep) has one less item to find.**
+
+---
+
 ## 2026-05-21 PM-183.2 — mind.html hub skeleton paint (no zero-flash on boot)
 
 **Shipped.** vyve-site `311f29d35a72768b0b663671c22641326e5f1bb1` — three files atomic. Same-day follow-up to PM-183.1.
