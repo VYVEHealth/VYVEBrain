@@ -1,3 +1,44 @@
+## 2026-05-21 PM-189 — Connect cluster visual polish SHIPPED (vyve-site `902278e8141f32144fa1447d86c35f325666ba7c`)
+
+**Ship.** Five of the six audit deltas from the PM-189 design audit earlier this session executed as one atomic vyve-site commit. Avatars explicitly parked under the post-launch profile-identity campaign per Dean's polish-first / identity-second ordering decision.
+
+### What changed
+
+Four files in one Git Data API atomic commit:
+
+- `connect-feed.html` — focus chip moved inline into `.cin-body` (was its own row in `.cin-foot` competing visually with the reaction strip); new `.cin-heart` element in `.cin-hd` shows total reactions summed across all 6 emojis, hidden when zero, recomputed on every render so optimistic toggle re-render picks it up automatically; `.cin-foot` simplified to reactions-only (no more `flex-wrap` between two items); end-state copy made context-aware with 4 variants (`feed-end-ico`/`-t`/`-s` got IDs; render logic picks variant from today's slice density + ownership: zero / all-mine / 2-4 / 5+); typography pass on `.cin-hd` (margin-bottom 9→8), `.cin-body` (margin-bottom 11→9), `.cin-when` (0.7→0.68rem), `.cin-mine` (padding tightened, letter-spacing reduced, font 0.6→0.58rem); YOU badge moved to end of `.cin-hd` after the heart-count for mockup parity.
+
+- `connect.html` — page tagline `Together we build better habits.` → `Together we build better habits and stronger lives.` (matches mockup line + delivers more on the Connect promise); `renderStreak` + `renderElite` rewritten with shared `currentStreak` / `currentEliteCount` module state and new `renderMomentumSub()` helper that writes a single combined sentence (mockup pattern: status + Elite teaser in one line); `.elite-meta` reduces to a tight numeric label (`X / 30 active days`) — narrative copy lives entirely in the sub line above. Initial static sub copy in HTML updated to match the no-data baseline (`renderMomentumSub` streak=0 path) so cache-paint doesn't render stale isolated copy.
+
+- `sw.js` — `vyve-cache-v2026-05-21-pm188-sessions-back-a` → `vyve-cache-v2026-05-21-pm189-connect-polish-a`.
+
+- `index.html` — vbb-marker `Update 59` → `Update 60`.
+
+### What didn't change
+
+`connect-challenge.html` and `connect-checkin.html` were in scope as "Connect cluster" pages but received zero changes — neither shares the `.cin-*` style block, none of the 5 audit deltas land on them. Touching them would have added risk for no functional gain. Item 6 from the audit (avatars) is the separate post-launch identity campaign; Item 7 (Live This Week thumbs / seed density) is content + copy work for Lewis, parked.
+
+### Process notes
+
+§23.45 PAT-direct path exercised end-to-end for the third time this session. Composio creds still dead from this morning's security incident. Pre-commit HEAD re-check confirmed `74bffac4` unchanged before commit; post-commit first-100-char verification passed on all 4 files pinned to the new commit SHA per §23.41. JS syntax validated via `node --check` on extracted inline blocks for both modified HTML files before commit (2 inline blocks per file, all clean).
+
+No new §23 hard rule earned. Visual polish, no new architectural doctrine.
+
+### What changed in this commit (brain side)
+
+- `brain/master.md` — §19 header updated to PM-189 + new PM-189 status paragraph prepended above PM-187/PM-188 entries (which are retained as recent-history context). No other section touched.
+- `brain/changelog.md` — this entry prepended.
+- No `tasks/backlog.md` edit — PM-189 ship doesn't add or close backlog items; the profile-identity campaign locked in the earlier PM-189 audit entry remains queued as-is.
+
+### Production state
+
+vyve-site main HEAD: `902278e8141f32144fa1447d86c35f325666ba7c` (this ship).
+Production iOS 1.3 (2) + Android 1.0.3 (10) bundled-mode at SHA `83874dd5` — unchanged. Dean's dev iPhone picks up Update 60 on next WKWebView cache cycle (2-15 min). Bundled members frozen at `83874dd5` until next Capawesome OTA (app `f9961f66`, prod channel `89e12796`) per §23.42.
+
+Brain HEAD before this commit: `9f686afe`.
+
+---
+
 ## 2026-05-21 PM-189 — Connect cluster design audit + profile identity system backlog lock [brain-only commit, no vyve-site changes]
 
 **Strategy session.** Dean opened with a question about improving "all of these pages" (Connect cluster). Compared the original Connect design mockup against the live build (vyve-site `74bffac4`). Identified the single biggest visual gap: avatar absence. Every feed card / leaderboard row / recent-checkin in the live build shows a teal initials badge ("YO", "SM" etc) which reads as email, not community. Spent the discussion designing the full profile identity system spec; locked it as a backlog item; ordered visual polish to ship FIRST, identity SECOND.
