@@ -1,3 +1,48 @@
+## 2026-05-21 PM-188 sessions back button + light mode audit (vyve-site `74bffac41df72347fe152b9c8a06db04e243b3d6`)
+
+Dean asked two follow-up questions after the nav fix: sessions.html needs a back button to Connect, and are all the pages set up for light mode.
+
+### Sessions back button
+
+**Root cause.** `sessions.html` was in `hubPaths`, treating it as a top-level hub that gets the logo on mobile (no back button). After the nav fix moved Sessions out of the bottom nav (now only reachable via More menu or Connect's "Live This Week" deep-link), every entry path benefits from a back button — and a hub treatment makes no sense for a page that isn't a primary nav surface anymore.
+
+**Fix.** Two surgical edits to `nav.js`:
+- Removed `/sessions.html` from `hubPaths`. Now `isNavPage` returns false for sessions, so nav.js renders the `.mph-back-btn` instead of the logo on mobile.
+- Added `'sessions': 'Live Sessions'` to `subPageLabels` so the mobile header shows "Live Sessions" as the page title (otherwise `pageLabel` fell back to empty because no bottom-nav item still has `tab: 'sessions'`).
+
+The back button uses `history.back()` with `/index.html` fallback — exactly right here: a member tapping Sessions from the Connect hub's "Live This Week" deep-link will go back to Connect; a member opening from the More menu will go back to wherever they were. No hardcoded parent-page needed.
+
+### Light mode audit (all 6 audited pages)
+
+Verified all five Connect cluster pages (`connect.html`, `connect-checkin.html`, `connect-feed.html`, `connect-challenge.html`) plus `sessions.html` and `leaderboard.html` support light mode correctly.
+
+**Method.** Three checks per page:
+1. Does the page include `/theme.js`? — Yes on all six.
+2. Does the page use CSS variables instead of hardcoded colours? — Yes. var(--*) usage counts: connect.html 72, connect-feed 55, connect-challenge 54, sessions 56, connect-checkin 45. All consume semantic tokens (`--bg`, `--text`, `--text-muted`, `--surface`, `--surface-hover`, `--border`, `--gold`, `--teal-lt`, `--line-accent`, `--fill-accent`, `--font-body`) defined in `theme.css`.
+3. Scanned each page's inline `<style>` for theme-rigid patterns — hardcoded `rgba(0,0,0,...)` (excluding shadows), `#fff`, `color: white`, `background: white`, `#000`. **Zero violations across all 6 pages.**
+
+The single appearance of a hardcoded colour was `color:#06201F` on each Connect page — used on button text against a teal CTA background. That colour is the brand dark anchor (`#0D2B2B` family) and intentionally stays dark in both themes because it sits on a teal button that's teal in both themes. Not a bug.
+
+**Why no `[data-theme="light"]` override block on the Connect pages.** None needed. `theme.css` has both a `:root, [data-theme="dark"]` block and a comprehensive `[data-theme="light"]` block (97 lines) with all the legacy aliases (`--text`, `--text-muted`, `--surface`, `--surface-hover`, `--border`, etc.) pointing to light-mode-correct values. Pages that consume only those vars flip automatically with the data-theme attribute. The Connect pages were built clean — they inherit the global token system rather than redefining it locally. Right pattern.
+
+**Locked-dark nav chrome on light theme.** Per CTO decision 21 April codified in theme.css, the nav (`nav.desktop-nav`, `.mobile-page-header`, `.vyve-bottom-nav`, `.vyve-more-menu`, `.nav-more-panel`, `.nav-avatar-panel`) stays visually dark across both themes — only page content flips. The token scope override at the bottom of theme.css re-pins nav-scope `--text`/`--border`/`--surface-teal` etc. to dark-mode values so nav text stays legible on the dark chrome. This is intentional and unchanged.
+
+**Caveat.** Audit is static — I didn't visually render each page in light mode. If something looks wrong when light mode is flipped, screenshot the issue and we patch the specific element. The audit says all six pages should flip cleanly; this is the best confidence achievable without a rendered check.
+
+### Files
+
+- `nav.js` — 2 surgical edits as above.
+- `sw.js` — cache `pm188-navfix-a` → `pm188-sessions-back-a`.
+- `index.html` — vbb-marker 58 → 59.
+
+Atomic 3-file commit via Git Data API per §23.45. Composio still dead from the morning's security incident.
+
+### Production state
+
+vyve-site main HEAD `74bffac41df72347fe152b9c8a06db04e243b3d6`. Bundled production iOS 1.3 / Android 1.0.3 still at SHA `83874dd5` — unchanged. Dean's dev iPhone via `server.url` dev-loop picks up new build on next WKWebView cache cycle.
+
+---
+
 ## 2026-05-21 PM-188 nav fix — bottom nav Sessions slot becomes Connect; Connect sub-pages strip duplicate topbar; Live Sessions accessible via More (vyve-site `b9d625381080a880e707166b3f3fefe9260b3ef8`)
 
 **Real gap caught.** Step 7 sub-page audit shipped earlier this session focused on §23.48 pattern hygiene inside sessions.html and leaderboard.html — but missed the more important thing: **Connect was built across PM-186/187/188 but never wired into the bottom nav.** The nav still had Sessions in slot 4. Members would have shipped onto Connect with no way to find it from the home page. Dean caught it.
