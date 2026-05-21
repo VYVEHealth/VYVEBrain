@@ -1,3 +1,43 @@
+## 2026-05-21 PM-188 nav fix — bottom nav Sessions slot becomes Connect; Connect sub-pages strip duplicate topbar; Live Sessions accessible via More (vyve-site `b9d625381080a880e707166b3f3fefe9260b3ef8`)
+
+**Real gap caught.** Step 7 sub-page audit shipped earlier this session focused on §23.48 pattern hygiene inside sessions.html and leaderboard.html — but missed the more important thing: **Connect was built across PM-186/187/188 but never wired into the bottom nav.** The nav still had Sessions in slot 4. Members would have shipped onto Connect with no way to find it from the home page. Dean caught it.
+
+### What changed
+
+- **`nav.js`.** Six surgical edits:
+  - `getActiveTab()` now recognises any `/connect*` path and returns `'connect'`. Added BEFORE the sessions check so the legacy `-live.html` / `-rp.html` path still maps to `'sessions'` when relevant (no breakage for full-screen session pages).
+  - `hubPaths` includes `/connect.html` — Connect hub gets the logo on mobile, sub-pages get the back button.
+  - `hubLabels` gains `connect: 'Connect'`.
+  - `subPageLabels` gains `'connect-checkin': 'Daily Check-In'`, `'connect-feed': 'Community Feed'`, `'connect-challenge': 'Weekly Challenge'` so the mobile header label is correct on each sub-page.
+  - `desktopLinks` slot 4: Sessions → Connect.
+  - `navItems` slot 4 (bottom nav): Sessions tab → Connect tab. New icon: two overlapping head-and-shoulder silhouettes (community signal at small bottom-nav size). Old play-button-in-video-frame icon retired from the bottom nav.
+  - More menu items (both desktop dropdown and mobile bottom sheet): `Catch-Up Replays` label retitled `Live Sessions` (more accurate — page is the live schedule plus replays, not just replays). Icon simplified to a single play-frame.
+- **`connect-checkin.html` / `connect-feed.html` / `connect-challenge.html`.** Each had its own `<div class="topbar">` with a `topbar-back` button hardcoded to `/connect.html` — a hangover from however the sub-page shape was lifted. nav.js already injects `.mobile-page-header` with `.mph-back-btn` (via `history.back()`) at `document.body.prepend`, so the sub-pages were rendering **two stacked back buttons** on mobile. The page-local `.topbar` divs were stripped on all three; nav.js is the canonical mobile header source, same pattern as journal.html / affirmations.html / breathwork.html which never had their own topbars. CSS class definitions for `.topbar` and `.topbar-back` retained in case other markup uses them; only the rendered DOM block removed.
+- **`sw.js`.** Cache `vyve-cache-v2026-05-21-pm188-step7-a` → `vyve-cache-v2026-05-21-pm188-navfix-a`.
+- **`index.html`.** vbb-marker Update 57 → 58.
+
+### Hygiene
+
+- `node --check` clean on `nav.js` and on all inline JS blocks in the three modified sub-pages.
+- Atomic 6-file commit via Git Data API per §23.45 (Composio still dead from morning's 21 May security incident).
+- Pre-commit refresh of base ref SHA per §23.41.
+- Post-commit verification on all 6 files via Contents API at the new commit SHA — first 80 chars + targeted greps for the nav swap + topbar strip + cache bump + vbb-marker.
+
+### Open considerations not addressed in this commit
+
+- **nav.js back-button parent-page awareness.** nav.js's `.mph-back-btn` uses `history.back()` with `/index.html` fallback. The page-local topbars I stripped previously hardcoded `/connect.html` as the destination — semantically richer (a deep-link / hard-refresh hit on connect-feed.html should fall back to `/connect.html`, not `/index.html`). Acceptable for now because 99% of nav happens via tap-from-hub so history is fine; if a member deep-links and hits back, `/index.html` is still safe but jumps over the parent hub. Real fix: extend nav.js to read a `<meta name="vyve-parent-page" content="/connect.html">` and use that for the fallback. Parked — not a launch blocker. New rule candidate (§23.49) if it gets implemented.
+- **Sessions tab in `getActiveTab` retained for legacy `-live.html` / `-rp.html` highlighting.** This means visiting a full-screen live session page returns `'sessions'` as the active tab — but nothing in the bottom nav has `tab: 'sessions'` anymore. Result: no bottom-nav item highlights on live session pages. Acceptable — live session pages run with the bottom nav hidden anyway (`.vyve-bottom-nav.session-active{display:none!important}`).
+
+### Production state
+
+vyve-site main HEAD `b9d625381080a880e707166b3f3fefe9260b3ef8` (PM-188 nav fix). Bundled production iOS 1.3 / Android 1.0.3 still at SHA `83874dd5` — unchanged. Dean's dev iPhone via `server.url` dev-loop picks up the new bottom nav on next WKWebView cache cycle (2-15 min per §23.29; `?debug=build` to confirm).
+
+### Why this matters past launch
+
+When the first-ever Capawesome OTA push goes (Phase 5 task 20), it will bundle this nav state. Members upgrading from current production to bundled-mode OTA bundle will see Connect in slot 4 of their bottom nav for the first time. The whole point of having built Connect across PM-186/187/188 was for members to find it; this commit makes that actually possible.
+
+---
+
 ## 2026-05-21 PM-188 step 7 — Connect Phase 2 CLOSED: sessions.html + leaderboard.html §23.48 audit (vyve-site `0622db8e0d3622dccdabe81f8628e2f847af591a`)
 
 **Phase 2 closes here.** All 7 build-queue items shipped across PM-186 → PM-188. New §23 hard rule §23.48 codified at PM-188 brain commit `154d4745` earlier this session; this commit applies its patterns 3 + 4 to the two remaining Connect sub-pages via surgical patches. Sessions catalogue swap + Command Centre editor sequenced as a coordinated post-launch campaign (Dean's call: the schema migration only makes sense alongside the editor that uses it; both ship together post-launch, then sessions.html absorbs the catalogue swap as part of the same campaign).
