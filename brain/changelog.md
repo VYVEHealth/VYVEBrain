@@ -1,3 +1,49 @@
+## 2026-05-21 PM-183.7 — settings.html dev panel: Dexie inspector + JSON export
+
+**Shipped.** vyve-site `583d59052abf10a90fbe711bdce16a7fc2c26399` — three files atomic.
+
+**Trigger.** Dean's audit of db.js (after PM-183.6 closed) surfaced two §23.43 violations still in the wild: catalogue tables use `clear()` then `bulkPut`, and the `member_habits` override does `where('member_email').equals(email).delete()` then `bulkPut(normalised)`. Both create the same empty-window race PM-183.3 fixed for member tables. Dean asked: "is there no way to download dexie tables" — meaning before deciding whether to fix the violations, he wanted ground truth on what's actually in each Dexie store across his device.
+
+**What shipped.** New `Developer Tools` section in `settings.html`, hidden by default. Unlock by tapping the "App version" label 5 times within 3 seconds. Toggle persists via `localStorage.vyve_dev_panel_unlocked = '1'`. Same gesture hides the panel.
+
+**Three capabilities once unlocked.**
+
+1. **Refresh counts** — iterates `db.tables`, calls `.count()` on each, displays sorted table-name → row-count list with the DB name + version header. Useful for a quick "are these tables populated at all?" sanity pass.
+
+2. **Download all (JSON)** — full dump of every table's rows via `t.toArray()`, plus DB metadata (`db_name`, `db_version`, current `member_email`, `generated_at` ISO timestamp). Serialised to pretty-printed JSON, wrapped in a `Blob`, triggered via a synthesised `<a href=URL.createObjectURL(...)>` click. Saves to device as `vyve-dexie-dump-YYYY-MM-DDTHH-MM-SS.json`. Works in Capacitor WKWebView — the standard browser file-download chain still functions because Capacitor passes blob URLs through to the OS download handler.
+
+3. **Inspect table…** — `prompt()` picker with the sorted list of table names. Shows total row count + first 100 rows of the chosen table as pretty-printed JSON in the panel. 100-row cap to keep the panel scrollable on phone; the JSON download is the path for full data.
+
+**Why it works without new script tags.** settings.html already loads `theme.js`, `auth.js`, `bus.js`, `db.js`, `sync.js`, `perf.js`, `achievements.js`, `healthbridge.js` — i.e. the full Dexie stack was already in place (settings has been a read+write Dexie surface for partial-upsert members/member_habits per §23.7.5 since PM-97). New code uses `window.VYVELocalDB.raw()` which returns the Dexie instance promise; everything iterates from `db.tables`.
+
+**Files changed.**
+
+```
+settings.html  120699 → 128733  bytes (+8034)  md5 25bbb4d5
+sw.js          10199  → 10200   bytes    (+1)  md5 b948252f
+index.html     120748 → 120748  bytes    (+0)  md5 d74f1842
+```
+
+**Verification.**
+
+- §23.41 pre-commit SHA refresh on all three files — stable.
+- `node --check` clean on all 6 inline JS blocks.
+- Post-commit byte-equal verified at commit SHA `583d5905`.
+
+**sw.js cache key.** `pm183-6-scripts-a` → `pm183-7-devpanel-a`. **index.html vbb-marker.** Update 51 → 52.
+
+**Long-term value.** This isn't just tonight's audit tool. PM-184 Phase 4 (offline-correctness sweep) will need exactly this surface — for every audited page, verify actual on-device state against the server. Saves the Mac/USB Safari Web Inspector dance. Also useful post-launch for any "data exists server-side but page renders empty" support ticket — Lewis can walk a member through tap-unlock dev panel → screenshot table counts → ship to Dean. Distinguishes between hydrate bugs, write-path bugs, and render bugs without a remote-debugging session.
+
+**No new §23 rule earned.** Pure tooling.
+
+**Outstanding from this audit, deferred to next session.**
+
+1. **§23.43 violations in db.js.** Catalogue `replaceForMember` (L439) still does `clear()` + `bulkPut`. `member_habits` override (L470) still does `delete()` + `bulkPut`. Both need the merge-not-wipe pattern applied to fully enforce §23.43. Risk profile: catalogue tables are read-mostly so race exposure is lower; `member_habits` is read by habits.html on every paint, same shape as mind_activities/mind.html before PM-183.3 — could exhibit the same empty-state flash if habits.html boots in parallel with sync.js hydrate. Worth fixing before Phase 1 Body section consolidation lands (PM-184).
+
+2. **PM-183.5a snapshot showed `todayCount:3` vs Supabase's `2` for 2026-05-21.** Probable double-count between §23.39 optimistic write + REST hydrate re-read. Easy to verify now with the dev panel: inspect `mind_activities`, count today's rows. If Dexie has 3 rows for today vs server's 2, the bug is local. If Dexie has 2, the snapshot was written with an over-counted value at some earlier point and just lingered.
+
+---
+
 ## 2026-05-21 PM-183.6 — mind.html missing Dexie stack (the actual root cause)
 
 **Shipped.** vyve-site `c234959aa0d516f3ceccec4c373ed5910ad6ff40` — three files atomic. The fix that the previous five (PM-183.1, .2, .3, .4, .5/.5a) were dancing around.

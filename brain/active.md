@@ -70,6 +70,20 @@ Six files committed atomic to VYVEBrain main: master.md (§19 collapsed, §21 re
 
 **Bug flagged for Phase 2 (PM-184.1, 21 May 2026 — Dean reported):** Live sessions page view not updating live sessions progress. `session_views` rows likely log correctly but downstream progress counters (Today's progress, Day streak, engagement-score Variety) don't reflect the view. Diagnose during Phase 2 sub-page audit. See `tasks/backlog.md` Phase 2 entry for full root-cause hypothesis.
 
+**SESSION HANDOFF — 2026-05-21 (PM-183.7: settings.html dev panel for Dexie inspection).** Dean asked "is there no way to download dexie tables" after auditing db.js revealed two latent §23.43 violations (catalogue `clear()` + `bulkPut`, member_habits `delete WHERE member` + `bulkPut`). Tooling answer: new Developer Tools section in settings.html. Gated behind tap-App-version-5-times-in-3-seconds gesture; unlock persists via `localStorage.vyve_dev_panel_unlocked`. Same gesture re-hides.
+
+Three capabilities once unlocked: (1) **Refresh counts** — sorted table-name → row-count list for every Dexie table; (2) **Download all (JSON)** — full dump of every table's rows + DB metadata, Blob + URL.createObjectURL triggers browser save as `vyve-dexie-dump-{ISO timestamp}.json`; (3) **Inspect table…** — prompt picker showing first 100 rows of any table as pretty-printed JSON in-panel.
+
+settings.html already loads bus.js + db.js + sync.js — no new script tags needed. Uses `VYVELocalDB.raw()` which returns the Dexie instance promise; iterates `db.tables` for both count and toArray.
+
+Shipped vyve-site `583d5905`. settings.html +8034 chars. sw.js `pm183-6-scripts-a` → `pm183-7-devpanel-a`. vbb-marker Update 51 → 52. node --check clean on all 6 inline JS blocks. §23.41 stable. Post-commit byte-equal verified.
+
+**Why this exists beyond tonight's audit.** Permanent ops capability for PM-184 Phase 4 (offline-correctness sweep). Each audited page can be verified against actual on-device state without needing Mac/USB Safari Web Inspector. Useful for triaging any "data exists server-side but page renders empty" report from a real member post-launch — Dean (or Lewis) can ask the member to tap-unlock dev panel, screenshot table counts, and confirm whether it's a Dexie hydrate bug, a write-path bug, or a render bug. Saves a remote-debugging round-trip.
+
+**No new §23 rule earned.** Pure tooling.
+
+**Outstanding items carried forward.** (1) §23.43 violations in db.js — catalogue `replaceForMember` (`clear()` first) and member_habits override (`delete()` first). Both need the merge-not-wipe pattern applied. Deferred — Dean stopped this thread to add the dev panel first. (2) PM-183.5a diagnostic showed `todayCount:3` vs Supabase `2` for today — probable double-count between §23.39 optimistic write + REST hydrate re-read. Will be easy to verify now with the dev panel: inspect `mind_activities`, count today's rows, compare to snapshot.
+
 **SESSION HANDOFF — 2026-05-21 (PM-183.6: mind.html missing script stack — the actual root cause).** PM-183.1 through PM-183.5a treated symptoms because the diagnosis was wrong. The PM-183.5a always-on diagnostic overlay (`?debug=mind` had been gated to Safari, which has separate IDB stores from the Capacitor app — useless) screenshot from Dean showed the answer:
 
 ```
