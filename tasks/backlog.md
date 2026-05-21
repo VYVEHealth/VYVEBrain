@@ -51,6 +51,96 @@ db.js SCHEMA_V8 + db.version(8) chained, sync.js 5 PULLABLE entries added. Compo
 
 ---
 
+## Added 21 May 2026 — Profile identity system (avatar + display-name privacy) [post-launch, coordinated campaign]
+
+**Surfaced in PM-188 design discussion** comparing the Connect mockup to the live build. Profile pictures and consistent identity privacy are the single biggest visual upgrade available to the Connect cluster — every feed card, leaderboard row, recent-checkin entry currently shows a teal initials badge ("YO", "SM", etc) which reads as email, not community. Dean's design call: full opt-in system, no required uploads, consistent privacy across every community-facing surface.
+
+### Spec (locked in this discussion)
+
+**Three-tier avatar system:**
+
+1. **Curated avatar library — default state.** Library of ~12 abstract geometric designs in the VYVE palette (VYVE V badge variants, gradient circles, palette-tinted shapes). Every new member gets one assigned at signup (probably randomly, or default to a generic V badge — TBD at build time). No friction at sign-up.
+2. **Upload your own photo.** Replaces the curated avatar. Goes into a new Supabase Storage bucket. Square crop, client-side resize to 256x256 JPEG before upload (keep storage small, load fast).
+3. **Keep the curated avatar.** Genuinely fine, no nudging, no friction.
+
+Avatar choice and upload both live in Settings, not onboarding. Onboarding stays as it is — adds zero friction to signup.
+
+**Four-way display name privacy:**
+
+- **Full name** — "Sophia Mitchell"
+- **First name only** — "Sophia"
+- **Initials only** — "SM"
+- **Anonymous** — "Member" (clean, honest label — not gimmicky like "Quiet Tiger" / "Calm Walker")
+
+Display name choice applies to every community-facing surface where the member's identity could surface: connect-feed, connect-challenge leaderboard tab, connect.html Recent Check-Ins, leaderboard.html, future Following surfaces.
+
+**Coupling rule — Anonymous forces generic avatar.** If a member selects Anonymous as their display name, their avatar reverts to a generic placeholder (the default curated avatar or a soft silhouette). Showing a face next to "Member" defeats the privacy choice. Members who want their photo visible but name hidden choose **Initials**, not Anonymous.
+
+**Unified leaderboard privacy.** Existing leaderboard.html has its own opt-in privacy toggle ("Members are anonymous unless they've opted in"). This new system consumes that — one setting drives every community-facing surface, no per-surface toggles. Less confusing for members. The existing leaderboard-only toggle is consolidated as part of this campaign.
+
+### Data model
+
+Schema additions to `members` table:
+
+```sql
+ALTER TABLE members
+  ADD COLUMN avatar_kind text DEFAULT 'curated' CHECK (avatar_kind IN ('curated', 'uploaded', 'default')),
+  ADD COLUMN avatar_id text,                  -- which curated avatar (e.g. 'avatar-04')
+  ADD COLUMN avatar_url text,                 -- Storage URL when uploaded
+  ADD COLUMN display_name_mode text DEFAULT 'first' CHECK (display_name_mode IN ('full', 'first', 'initials', 'anonymous'));
+```
+
+**Storage bucket:** new `member-avatars` bucket, public-read, write-restricted to authenticated member writing only their own avatar (RLS on the bucket). Standard pattern matching the existing certificate / breathwork buckets.
+
+**GDPR Article 17.** The existing erasure pipeline deletes the `members` row but does NOT today delete the bucket file. Bucket cleanup added to the erasure path as part of this campaign.
+
+### Identity helper (single source of truth)
+
+New file `identity.js` (or method on `db.js`, decide at build time). Exposes a single function:
+
+```js
+function getDisplayIdentity(memberRow) {
+  // Returns { displayName: string, avatarSrc: string }
+  // Handles all four display_name_mode cases + all three avatar_kind cases.
+  // Anonymous mode coerces avatarSrc to the generic placeholder regardless of avatar_kind.
+}
+```
+
+Every community-facing surface re-wires to call this helper. Avoids divergence — if we change how "Initials" renders, one file changes, not eight.
+
+### Build sequence (estimated 2-3 sessions, 4 if avatar SVG design takes its own session)
+
+1. **Avatar asset set.** Design ~12 SVGs in-session. Dean approves at end of session 1, Lewis spot-check post-session.
+2. **Schema migration.** §23.47 cross-check live `members` columns before lock. Migration + RLS for new columns + new bucket creation.
+3. **Settings UI.** Avatar picker (grid of curated, "Upload your own" button), display name radio. Image upload flow with client-side resize.
+4. **`identity.js` helper + integration.** Single function consumed by every community-facing surface.
+5. **Re-wire surfaces:** connect-feed, connect-challenge leaderboard tab, connect.html Recent Check-Ins, leaderboard.html.
+6. **GDPR pipeline update.** Add bucket file deletion to existing erasure path.
+
+### Sequencing relative to other post-launch work
+
+- BLOCKER for the Command Centre session content editor: none — independent surfaces.
+- BLOCKER for the sessions.html catalogue swap: none — independent.
+- This work is parallel-friendly with both. Could be done in any order, by any session.
+- **Should ship before the soft-launch trial scales beyond the initial 15-20 if community feel matters for first impressions.** Worth raising priority if the trial expands.
+
+### Out of scope v1 (deferred)
+
+- AI moderation on photo upload (NSFW detection, celebrity face rejection). Months away — manual spot-check by Dean + Lewis at trial scale.
+- "Report this photo" tap-and-hold on feed avatars → Command Centre moderation queue. v2 add, post-trial.
+- Behavioural-style handles like "Quiet Tiger" — explicitly rejected, doesn't fit VYVE brand voice.
+- Onboarding-time avatar selection — explicitly excluded, would add friction at signup.
+
+### Why this matters
+
+The Connect cluster's visual gap from the design mockup to the live build is overwhelmingly an avatar gap. Every other polish item (reaction counter prominence, focus chip placement, hub copy) interacts with how avatars render — fixing the cards without fixing the avatars means doing the visual work twice. Even so, Dean's call is to ship the visual polish FIRST and the profile identity system SECOND, post-launch. Rationale: launch is 31 May; the avatar/identity work is 2-3 sessions including SVG design; the visual polish to the cards/hub copy is roughly half that and surface-level. Polish first lets the trial members get visual improvement immediately; identity system follows when it can be properly designed.
+
+### Owners
+
+Dean: schema migration, identity.js helper, Settings UI build, bucket creation, re-wire surfaces. Lewis: spot-check of avatar SVG set, copy approval on Settings labels ("How you appear in the community"). Lewis: any tuning of "Member" as the anonymous label.
+
+---
+
 ## Added 21 May 2026 — Session content management surface (Command Centre extension) [post-Phase-2, parallel to Phase 1]
 
 **Why now.** Sessions currently edited via Supabase Studio table editor against `service_catalogue`. Fine for 31 trial members; unworkable at scale. Lewis (and probably Calum for fitness, Phil for mental health) need to edit session metadata on the fly — title, host, host avatar, start time, duration, short description (carousel), long description (sessions.html detail), image, active flag — without Dean in the loop. Surfaced 21 May 2026 in the step 7 design discussion as the natural next thing after Phase 2 closes.

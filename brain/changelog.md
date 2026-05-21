@@ -1,3 +1,68 @@
+## 2026-05-21 PM-189 — Connect cluster design audit + profile identity system backlog lock [brain-only commit, no vyve-site changes]
+
+**Strategy session.** Dean opened with a question about improving "all of these pages" (Connect cluster). Compared the original Connect design mockup against the live build (vyve-site `74bffac4`). Identified the single biggest visual gap: avatar absence. Every feed card / leaderboard row / recent-checkin in the live build shows a teal initials badge ("YO", "SM" etc) which reads as email, not community. Spent the discussion designing the full profile identity system spec; locked it as a backlog item; ordered visual polish to ship FIRST, identity SECOND.
+
+### Design audit — Connect mockup vs live build
+
+Audited 7 mockup screens (Connect hub, Community Feed, Daily Check-In, Live This Week, Session Replay, Challenges) against the deployed pages. Live build was at vyve-site `74bffac4` — Connect Phase 2 functionally complete, navigation wired, light/dark themed, §23.48 patterns applied.
+
+**The gap is not architectural. The gap is presentation density.** Build = "function." Mockup = "destination." Same skeleton, completely different intent. Specific deltas observed:
+
+1. **Avatars.** Mockup shows real faces on every card. Build shows teal initials badges. Single highest-impact change available.
+2. **Reaction count prominence.** Mockup shows a single prominent heart-count on the right side of each card (e.g. "♥ 24"). Build shows the full 6-emoji reaction strip with small counts under each. The strip is a *control panel*; a prominent count is *social proof*.
+3. **Focus chip placement.** Mockup integrates the focus chip (Move/Mind/Fuel/Rest/Growth) inline under the check-in text as a small tag. Build pins it as its own boxed row above the reactions, where it reads heavier than the actual check-in content.
+4. **Empty-state visibility.** Mockup never hits empty state in any frame — always seeded with 5+ check-ins from named members. Build hits "End of today's feed" after 1 entry, leaves the bottom half of the screen dead. (Content density problem, not code.)
+5. **Connect hub copy.** Mockup leads with "Together we build better habits and stronger lives." Build has no equivalent tagline. Hub copy across multiple sections does premium-app-caliber work — the mockup's YOUR MOMENTUM line ("You're on a roll! 4 more check-ins to unlock Elite Community access") packs five jobs into one sentence: status, motivation, gamification, Elite teaser, streak count. Build's hub copy is functional but not pulling its weight.
+6. **Live This Week thumbs.** Mockup uses real session photography with people in them. Build's thumbs need confirming — if they're the existing `thumb-*.jpg` stock files, that's the gap.
+
+### Profile identity system — full spec locked
+
+Dean's call: opt-in, three-tier, all in Settings, no onboarding friction. Backlog entry written verbatim to `tasks/backlog.md`. Key decisions resolved this session:
+
+- **Three-tier avatar:** curated library (~12 abstract geometric VYVE-palette designs) default → upload your own photo → keep curated indefinitely. No required upload. No nag.
+- **Four-way display name privacy:** Full name / First name only / Initials only / Anonymous (label = "Member"). One setting drives every community surface.
+- **Anonymous coerces generic avatar.** Privacy choice is consistent across the surface — selecting Anonymous reverts to a default placeholder regardless of avatar_kind. Members who want photo-visible-but-name-hidden choose Initials, not Anonymous.
+- **Unified leaderboard privacy.** The existing leaderboard.html opt-in privacy toggle gets consolidated into this system. One identity setting, every surface respects it. No per-surface toggles.
+- **Anonymous label = "Member"** (clean, honest, not gimmicky like "Quiet Tiger" / "Calm Walker"). Lewis copy review possible but defaults to "Member".
+- **Schema:** 4 new columns on `members` (`avatar_kind`, `avatar_id`, `avatar_url`, `display_name_mode`). New `member-avatars` Storage bucket (public-read, write-own-only). Client-side resize to 256x256 JPEG before upload.
+- **Single `identity.js` helper.** `getDisplayIdentity(memberRow) → {displayName, avatarSrc}`. Every community surface (connect-feed, connect-challenge leaderboard, connect.html Recent Check-Ins, leaderboard.html, future Following) re-wires to call this helper. Avoids divergence.
+- **GDPR Article 17.** Existing erasure pipeline adds bucket file deletion as part of this campaign.
+
+Build sequence in backlog: avatar SVGs → schema migration (§23.47 cross-check) → Settings UI → identity.js helper → surface re-wires → GDPR pipeline update. Estimated 2-3 sessions, 4 if SVG design takes its own session.
+
+### Ordering decision — visual polish first, identity second
+
+Dean's call. Rationale: launch is 31 May; identity work is 2-3 sessions including SVG design; visual polish to cards/hub copy is roughly half that and surface-level. Polish first lets trial members get visual improvement immediately; identity follows when it can be designed properly.
+
+**Open consideration:** if the soft-launch trial expands beyond 15-20 members, the priority may flip — community feel without avatars degrades fast at scale. Flagged in the backlog entry.
+
+### What changed in this commit
+
+- `tasks/backlog.md` — new entry "Added 21 May 2026 — Profile identity system" (~6.8KB, inserted between PM-186/187 entry and Command Centre entry, chronologically grouped with other PM-188-era post-launch items).
+- `brain/active.md` — §5 P1 post-launch block gains a "Profile identity system" line above the existing Command Centre line. Notes the "polish-first, identity-second" ordering and the trial-expansion priority flip condition.
+- `brain/changelog.md` — this entry prepended.
+
+### What's next in this session
+
+Visual polish to the Connect cluster. Working through the 6-item delta list above, with the explicit constraint that avatar work is parked. Focus on what can ship cleanly WITHOUT avatars:
+- Reaction counter prominence (single heart-count on right of card).
+- Focus chip placement (inline tag under text, not its own row).
+- Hub copy improvements (taglines, momentum copy, prompt framing).
+- Card spacing / typography refinements observable from mockup vs build.
+- Empty-state copy — make "End of today's feed" feel less abrupt when feed has 1 entry.
+
+Live This Week thumbs and seed content density are content/copy work for Lewis, not code. Flagged but parked.
+
+### Tools state
+
+Composio creds remain dead from this morning's 21 May security incident. §23.45 PAT-direct path used for this commit. No retries against Composio attempted.
+
+### Production state
+
+vyve-site main HEAD unchanged: `74bffac41df72347fe152b9c8a06db04e243b3d6`. Brain HEAD before this commit: `8e0e2cad`.
+
+---
+
 ## 2026-05-21 PM-188 sessions back button + light mode audit (vyve-site `74bffac41df72347fe152b9c8a06db04e243b3d6`)
 
 Dean asked two follow-up questions after the nav fix: sessions.html needs a back button to Connect, and are all the pages set up for light mode.
