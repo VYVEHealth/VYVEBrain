@@ -1,3 +1,69 @@
+## 2026-05-21 PM-190 — Connect carousel thumb imagery DB-driven (vyve-site `b92b4971741cd4a281e53e8ec84b76ad02c76266` + Supabase migration)
+
+**Ship.** Live This Week + Latest from VYVE carousels on `connect.html` rendered empty gradient thumbs because there was no data path for imagery. Mockup compare showed real session photography filling the cards; build showed striped gradient rectangles. Fixed via content-ops surface: nullable `image_url` column on `service_catalogue`, render path that emits img when populated and falls back to gradient when null. Dean's "updated on the fly" constraint drove the schema-driven choice over a convention-based hardcoded-filename approach — same constraint will hold for the upcoming Command Centre session editor.
+
+### What changed (three parts, one campaign)
+
+**1. Supabase migration `add_image_url_to_service_catalogue` (applied via Supabase MCP).**
+
+```sql
+ALTER TABLE public.service_catalogue ADD COLUMN image_url TEXT;
+COMMENT ON COLUMN public.service_catalogue.image_url IS '...';
+```
+
+Nullable, no default. Column comment documents NULL → gradient placeholder behaviour and editable-per-row intent.
+
+**2. Backfill (one UPDATE statement covering both live_session and replay rows).**
+
+16 rows total (8 live_session + 8 replay, same 8 categories in each). Mapping by category to the 6 existing thumb files at vyve-site root:
+
+- Yoga, Pilates & Stretch → `/thumb-yoga.jpg`
+- Mindfulness & Mindset → `/thumb-mindfulness.jpg`
+- Workouts → `/thumb-workouts.jpg`
+- Weekly Check-In → `/thumb-checkin.jpg`
+- Group Therapy → `/thumb-GT.jpg`
+- Events & Run Club → `/thumb-events.jpg`
+- Education & Experts → NULL (no asset file)
+- Podcast → NULL (no asset file)
+
+Education + Podcast rows stay NULL until asset files land — never invented paths hoping files would appear later (per §23.49 backfill rule).
+
+**3. vyve-site commit `b92b4971741cd4a281e53e8ec84b76ad02c76266` (3 files, atomic Git Data API commit).**
+
+- `connect.html` — `.scroll-card-thumb` CSS adds absolute-positioned `img` (z-index 1, object-fit cover) plus bottom-darken overlay (z-index 2) for text legibility over photos. `.scroll-card-thumb::after` gradient stripe pattern marked `pointer-events:none` so the link tap still resolves through to the parent `<a>`. `renderLiveThisWeek` and `renderLatestFromVyve` each compute `thumbInner` — img+overlay block when `r.image_url` is non-null, empty string when null (gradient shows through unchanged). URL `escapeHtml`-protected. `onerror` handler removes both img and overlay on 404, falls back to gradient silently. No broken-image icon UX.
+- `sw.js` — `vyve-cache-v2026-05-21-pm189-connect-polish-a` → `vyve-cache-v2026-05-21-pm189-connect-thumbs-a`.
+- `index.html` — vbb-marker `Update 60` → `Update 61`.
+
+### What didn't change
+
+- `db.js` — Dexie schema string indexes `id, type, category, active` only; non-indexed columns flow through `select=*` transparently. `image_url` does not need to be indexed (wrong data type for lookups). No db.version bump.
+- `sync.js` — already uses `select=*` for service_catalogue. New column arrives in payload for free.
+- `sessions.html` — still uses its hardcoded inline-JS array (`thumb: 'thumb-yoga.jpg'` style). Migration to DB-driven imagery is deferred to the Command Centre session editor campaign per the parked-in-backlog post-PM-188 decision. §23.49 lays the groundwork; the editor lights it up.
+- `connect-feed.html`, `connect-challenge.html`, `connect-checkin.html` — none render carousel thumbs from `service_catalogue`. Out of scope this commit.
+
+### New §23 hard rule
+
+**§23.49 — Catalogue imagery is DB-driven, nullable, with onerror fallback.** Codifies the contract used here: any catalogue surface (`service_catalogue`, `programme_library`, future content tables) rendering thumbnail imagery drives the URL from a nullable column on the catalogue row. Render path always emits the placeholder div; img + darkening overlay append only when column is non-null. `onerror` mandatory — degrade silently to placeholder, never broken-image icon. Backfill on column add — never invent paths. The Command Centre session editor writes against the column shape this rule defines; not the other way around.
+
+### Process
+
+§23.45 PAT-direct path exercised end-to-end for the fourth time this session (Composio creds still dead from the morning's security incident). Pre-commit HEAD re-check confirmed `902278e8` unchanged. Post-commit first-100-char verification on all 3 files pinned to the new commit SHA. JS syntax validated via `node --check` on extracted inline blocks. Supabase migration applied via `apply_migration` MCP (not `execute_sql`) since it's a DDL operation.
+
+### What changed in this commit (brain side)
+
+- `brain/master.md` — §6 `service_catalogue` table description updated with `image_url` column note; §19 header updated to PM-190 + new PM-190 status paragraph prepended above PM-189 ship paragraph; new §23.49 rule appended after §23.48.
+- `brain/changelog.md` — this entry prepended.
+- No `tasks/backlog.md` edit — PM-190 doesn't open or close backlog items. The Command Centre session editor campaign stays queued; sessions.html migration is implicitly the editor's responsibility now.
+
+### Production state
+
+vyve-site main HEAD: `b92b4971741cd4a281e53e8ec84b76ad02c76266`.
+Production iOS 1.3 (2) + Android 1.0.3 (10) bundled-mode at SHA `83874dd5` — unchanged. Dean's dev iPhone picks up Update 61 on next WKWebView cache cycle (2-15 min). Bundled members frozen at `83874dd5` until next Capawesome OTA (app `f9961f66`, prod channel `89e12796`) per §23.42.
+
+Brain HEAD before this commit: `b5fe721111747398e15fe19b478dcea7bbec49c0`.
+
+---
+
 ## 2026-05-21 PM-189 — Connect cluster visual polish SHIPPED (vyve-site `902278e8141f32144fa1447d86c35f325666ba7c`)
 
 **Ship.** Five of the six audit deltas from the PM-189 design audit earlier this session executed as one atomic vyve-site commit. Avatars explicitly parked under the post-launch profile-identity campaign per Dean's polish-first / identity-second ordering decision.
