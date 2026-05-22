@@ -1,3 +1,136 @@
+## Added 22 May 2026 — PM-197 Profile identity campaign: photo upload architecture, Connect first-load prompt, Edge Function usage analysis
+
+**Three Dean questions from 22 May design discussion** that further extend the existing 21 May Profile identity campaign and resolve an open architectural concern about Edge Function usage. None of these supersede the existing spec — they add detail and resolve open questions surfaced in PM-196.
+
+### Thread 1 — Connect first-load prompt placement (resolves PM-196 Thread 3)
+
+**Dean's decision.** First-load prompt on Connect tab, not onboarding. Onboarding stays as it is (zero added friction). The first time a member taps Connect after signup, they get a single dismissible modal asking how they want to appear in the community.
+
+**Why Connect is the right surface.** Onboarding is already long, and Connect is the first time the member encounters a social surface. The prompt is contextual — they have seen check-ins, leaderboards, recent-checkin cards on the hub. The question "how do you want to appear here?" makes sense at that moment in a way it doesn't during signup. This also implicitly answers the Option-A / Option-B / Option-C question from PM-196: Option B (contextual) wins for both avatar AND display name. Hybrid Option C is no longer the recommendation — Option B is cleaner.
+
+**Modal flow.**
+
+1. First time `connect.html` loads with `members.connect_onboarded_at` null (or `display_name_mode` null — pick one signal, probably the dedicated timestamp column for clarity), show a single modal: "Welcome to Connect. How would you like to appear?"
+2. Display name picker (radio: full / first / initials / anonymous), pre-selected to "first" with the first name pulled from onboarding data
+3. Avatar picker (curated grid pre-selected to a randomised V-badge variant, with "Upload your own photo" button)
+4. "Save and continue" / "Skip for now" (skip applies defaults, modal does not re-appear — `connect_onboarded_at` written either way)
+
+**Defaults matter.** First-name + curated V-badge as defaults means even the skip path produces a sensible identity. Members never appear as "Member" or as their email handle. This is the key UX decision.
+
+**Page renders behind the modal.** The modal does not gate Connect — the page paints normally with the default identity applied, modal overlays. Skip dismisses the modal and the member sees their first interaction with defaults applied immediately. This pattern matches how Instagram, Strava, Linear handle similar first-load prompts.
+
+**Schema addition** to the existing 21 May Profile identity migration:
+
+```sql
+ADD COLUMN connect_onboarded_at timestamptz
+```
+
+`null` means the modal still needs to fire; any non-null value means the member has been through it (saved or skipped). Single signal, no ambiguity.
+
+### Thread 2 — Photo upload architecture (resolves the "local vs cloud" question)
+
+**Dean's question.** "The profile picture I can be uploaded from the phone. How would that work, though? Would it store locally, or would it be stored on Supabase? How do the top companies use this?"
+
+**The answer: centralised storage with aggressive caching.** Local-only storage is a non-starter for anything social — the avatar must render on other members' devices. WhatsApp / Slack / Instagram / Notion / Linear all use the same shape: upload to centralised storage, derive a public URL, cache locally for speed.
+
+**The full flow (specced for build):**
+
+1. Member taps "Upload your own photo" in the Connect first-load modal (or later in Settings)
+2. Capacitor `@capacitor/camera` plugin opens the iOS native picker — photo library or take new
+3. Plugin returns image as base64 or file URI
+4. **Client-side processing before upload** (critical step that's often skipped):
+   - Resize to 512×512 max (square crop, member chooses crop region or auto-centre)
+   - JPEG quality 0.85
+   - Strip EXIF metadata — iPhone photos contain GPS coordinates by default, must not upload
+   - Library: ~30 lines of canvas-based resize. No external dependency needed
+   - Reduces a typical 4MB iPhone photo to ~50KB
+5. Upload processed JPEG to Supabase Storage bucket `member-avatars`
+6. Storage returns public URL — format: `https://ixjfklpckgxrwjlfsaaz.supabase.co/storage/v1/object/public/member-avatars/{email-hash-or-uuid}.jpg`
+7. Write URL to `members.avatar_url` (column already in the 21 May migration spec)
+8. Every avatar render reads from `members.avatar_url`
+
+**Bucket configuration:**
+- Bucket name: `member-avatars` (matches existing 21 May spec)
+- Public read (anyone with the URL can see — required for cross-member rendering on leaderboard / feed)
+- RLS write policy: authenticated members can only write objects with their own member identifier in the path
+- Standard pattern matching existing certificate + breathwork buckets
+
+**Three-layer caching reality:**
+
+1. Supabase Storage = authoritative source
+2. Service Worker cache = aggressive local cache, no network on subsequent loads
+3. Dexie = optional offline-safe cache (avatar bytes stored alongside member row)
+
+The Service Worker tier is what makes this fast. Once an avatar is fetched once, it's offline for that user permanently (until cache eviction). The leaderboard re-rendering doesn't re-fetch avatar bytes from Supabase on every page load — it serves from SW cache.
+
+**Single-size v1 vs multi-size.** WhatsApp generates 3-4 sizes server-side, Instagram 5-6. VYVE v1 ships ONE size (512×512). At 1000 members this is fine. Multi-size becomes worthwhile at scale or when feed cards want a different size from profile pages.
+
+**Cost reality with live numbers.** Supabase Storage costs $0.021/GB/month after free tier. 1000 members at 50KB each = 50MB total = effectively free. 250GB egress included on Pro plan. The cost driver isn't storage — it's egress on leaderboard renders, which Service Worker caching neutralises.
+
+**Anonymous + photo coupling rule (already in 21 May spec, re-stated for clarity).** If `display_name_mode = 'anonymous'`, avatar coerces to generic V-badge regardless of `avatar_kind`. Members who want photo-visible but name-hidden choose `'initials'`, not anonymous. The 21 May spec's identity.js (now profile.js per PM-196) helper enforces this coupling in one place.
+
+### Thread 3 — Lewis conversation needed for photo policy
+
+**The photo upload mechanic surfaces three Lewis-track concerns** that don't block engineering but need policy decisions before launch:
+
+1. **Moderation strategy.** What's the plan if a member uploads inappropriate content? Existing 21 May spec defers AI moderation (NSFW / celebrity face rejection) to v2, accepts manual spot-check at trial scale (15-20 members). Lewis just needs to be aware that's the policy in writing. At larger scale, this becomes Phil's mental-health-lead-adjacent concern as well.
+2. **GDPR Article 17 right-to-erasure.** Existing erasure pipeline deletes the `members` row but does not today delete the Storage bucket file. Bucket cleanup must be added to the erasure path as part of this campaign (already in 21 May spec build sequence step 6).
+3. **Offboarding policy.** When a member churns / cancels, what happens to their photo? Options: immediate delete, soft delete with 30-day retention, anonymise the row but keep the photo for analytics continuity. Lewis call. Recommend immediate delete on cancel/churn to match the GDPR posture VYVE already takes.
+
+These are explicitly flagged because the photo upload feature is the most exposure-sensitive single mechanic VYVE has built. Worth Lewis having sight before build, not after.
+
+### Thread 4 — Edge Function usage analysis (resolves Dean's "does Dexie reduce EF usage" question)
+
+**Dean's question.** "If we are using Dexie for the majority of stuff, so if Dexie paints most of the home pages and individual pages, and edge function is only really used on a backup, does that reduce the edge function usage?"
+
+**Short answer: Yes, but Edge Function cost is not a constraint VYVE will hit for a long time.**
+
+**Live numbers as of 22 May 2026 (queried direct from production):**
+
+- 20 total members, 6 active in last 7 days
+- 7 ai_interactions in 7 days, 18 in 30 days (anthropic-proxy + onboarding combined)
+- 111 write-EF invocations in 7 days from activity logging (14 workouts + 19 cardio + 78 habits + 1 check-in via log-activity + wellbeing-checkin EFs)
+- Read-EF invocations not directly measurable from DB; proxy: each active-member page navigation hits at least one read EF unless Dexie intercepts
+
+**Supabase Pro plan pricing reality:**
+
+- 2,000,000 EF invocations/month included
+- $2 per million over the included quota
+- Current rate: ~5,000 invocations/month → 0.25% of included quota
+- 10× scale (60 active members): ~50,000/month → 2.5% of quota
+- 100× scale (3000 active members — entire Sage account at full engagement): ~500,000/month → still under 2M ceiling
+
+**What does Dexie actually reduce?**
+
+Edge Functions in VYVE do four kinds of work:
+
+1. **Read paths** (member-dashboard, employer-dashboard, etc.) — Dexie absolutely reduces these. Page paints from Dexie immediately, un-awaited `criticalHydrate` calls the EF in background, refreshes Dexie when response returns. Net: EF still called but off the critical path for paint, called less frequently because Dexie cache is valid for longer than per-page localStorage caches.
+2. **Write paths** (log-activity, wellbeing-checkin, onboarding) — Dexie does NOT reduce these. Writes need server validation, triggers, RLS, activity-cap mechanics. Optimistic-first writes per §23.39 update Dexie immediately, but the EF call still fires.
+3. **Cron jobs** (daily-report, certificate-checker, re-engagement-scheduler) — No client involvement, Dexie irrelevant.
+4. **Privileged operations** (anthropic-proxy, send-email, github-proxy) — Must be server-side because they hold secrets. Cannot move client.
+
+**The strategic implication.** PF-15 / PF-40 / PM-96 family campaigns making the portal local-first via Dexie are paying off in **paint speed and offline capability**, NOT in EF cost reduction. Those are the actual returns — and they're the right reasons to do that work. EF-cost reduction is a side-effect, not a goal.
+
+**Actual constraints VYVE will hit before EF invocations matter:**
+
+1. **Storage egress** on avatar serving if Service Worker caching is broken or absent. 1000 members rendering a 50-row leaderboard daily without SW caching = 75GB/month egress. Still under the 250GB included on Pro, but in sight. SW caching neutralises it.
+2. **Realtime concurrent connections** when session_chat / Connect feed go heavily real-time. Pro includes 500. Trial scale fine; enterprise scale needs eyes.
+3. **Database compute** — historically cheap, but a single bad query at scale can blow this. Not yet observed.
+
+**No EF optimisation needed.** Don't restructure Edge Function architecture to "save money" — there's no money to save at any plausible scale before mid-2027. Optimise EFs for paint speed (which Dexie does naturally) and invocation latency (cold-start avoidance, `verify_jwt` decisions).
+
+### Updates to existing 21 May Profile identity spec
+
+Three additions to apply when the existing entry opens for build (in addition to the PM-196 supplement additions):
+
+1. **Schema migration block:** add `connect_onboarded_at timestamptz` column (Thread 1 signal for whether the first-load modal has fired).
+2. **Build sequence step 5 (re-wire surfaces):** add step 5b — Connect first-load modal in `connect.html` that fires when `members.connect_onboarded_at` is null. Modal contents: display-name picker + avatar picker + "Save and continue" / "Skip for now" buttons. Page paints behind the modal with defaults applied.
+3. **Build sequence step 3 (Settings UI) — photo upload pipeline:** specify the client-side processing step (resize to 512×512, JPEG q=0.85, strip EXIF). Capacitor `@capacitor/camera` plugin handles the iOS picker. Library reference: lightweight canvas-based resize, no external dependency.
+
+**Configuration decision parked for build kickoff:** whether to extract the resize + EXIF-strip into its own shared module (likely yes — also useful for any future "upload an image" mechanic e.g. workout photos, meal logs, certificate photos) or inline in profile.js (faster v1).
+
+No other changes to the existing 21 May spec — it stands as written.
+
 ## Added 22 May 2026 — PM-196 supplement to Profile identity campaign + Light-mode contrast audit (Sunday-pass scope expanded)
 
 **Two new threads from Dean's 22 May design discussion that touch the existing 21 May Profile identity spec and the PM-195 Sunday Premium-Feel polish pass.**

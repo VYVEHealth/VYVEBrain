@@ -1,3 +1,32 @@
+## 2026-05-22 PM-197 — Profile identity campaign further specced (photo upload architecture, Connect first-load prompt, EF usage analysis with live numbers) [brain-only commit, no vyve-site changes]
+
+**Three threads from Dean's 22 May design discussion** that extend the existing 21 May Profile identity campaign + PM-196 supplement, plus an architectural question about Edge Function usage resolved with live production data.
+
+**Thread 1 — Connect first-load prompt placement.** Dean's decision: prompt fires on first Connect tab load, not at onboarding. Single dismissible modal with display-name picker + avatar picker, defaults pre-applied (first name from onboarding + curated V-badge avatar), page paints behind the modal so skip path produces a sensible identity. New schema column `connect_onboarded_at` signals whether modal has fired. This resolves PM-196's Option A/B/C question — Option B (contextual) wins for both avatar AND display name, Hybrid Option C no longer the recommendation.
+
+**Thread 2 — Photo upload architecture.** Resolves Dean's "local vs cloud storage" question. Top apps (WhatsApp, Slack, Instagram, Notion, Linear) all use centralised storage with aggressive caching — local-only is non-starter for any social surface (avatar must render on other members' devices). Full pipeline specced: Capacitor `@capacitor/camera` plugin → client-side resize to 512×512 + JPEG q=0.85 + EXIF strip (privacy — iPhone photos contain GPS coords) → upload to Supabase Storage `member-avatars` bucket → public URL written to `members.avatar_url` → three-layer caching (Storage authoritative, Service Worker aggressive cache, optional Dexie offline-safe layer). Single 512×512 size for v1; multi-size only matters at scale. Cost reality: $0.021/GB/month storage + 250GB included egress = effectively free until well past 1000 members.
+
+**Thread 3 — Lewis-track policy concerns** flagged before build: moderation strategy (defer AI moderation to v2 per existing spec, manual spot-check at trial scale, Lewis aware in writing), GDPR Article 17 bucket cleanup on erasure (already in 21 May build sequence step 6), offboarding policy (immediate photo delete on churn recommended, Lewis call). Photo upload is the most exposure-sensitive single mechanic VYVE has built — worth Lewis sight before build, not after.
+
+**Thread 4 — Edge Function usage analysis with live data.** Dean's question whether Dexie reduces EF usage. Short answer: yes on read paths, but EF cost not a constraint VYVE will hit for a long time. Live numbers from production:
+- 20 members, 6 active last 7 days
+- ~5,000 EF invocations/month current rate
+- Pro plan includes 2,000,000/month → currently using 0.25% of quota
+- 10× scale (60 active): 2.5% of quota
+- 100× scale (3000 active, entire Sage at full engagement): still under 2M ceiling
+
+**Strategic implication.** PF-15 / PF-40 / PM-96 family local-first campaigns via Dexie are paying off in paint speed + offline capability, NOT in EF cost. Those are the right reasons to do that work. Don't restructure EF architecture to "save money" — no money to save at plausible scale before mid-2027. Real constraints will hit first: storage egress (avatars without SW caching at scale), Realtime concurrent connections at enterprise scale, database compute on bad queries.
+
+**Updates to existing 21 May Profile identity spec** (in addition to PM-196 additions): `connect_onboarded_at timestamptz` schema column, build sequence step 5b (Connect first-load modal), build sequence step 3 photo upload pipeline spec (Capacitor camera plugin, client-side resize/EXIF-strip, library reference). Existing spec stands as written with three documented additions to apply at build time.
+
+**Configuration decision parked for build kickoff:** whether to extract image resize + EXIF strip into shared module (likely yes — also useful for future image-upload mechanics e.g. workout photos, meal logs) or inline in profile.js (faster v1).
+
+**No new §23 hard rule earned.** Design + sequencing + cost analysis only. No code changes.
+
+**Brain HEAD before this commit:** `4379022fefd07630949f31994258cc2c877cdd9a`.
+
+---
+
 ## 2026-05-22 PM-196 — Profile identity campaign extended (theme as 4th persisted preference) + light-mode contrast audit folded into Sunday Premium-Feel pass [brain-only commit, no vyve-site changes]
 
 **Dean raised two threads in design discussion** that touch the existing 21 May Profile identity spec (PM-188 surfaced, parked post-launch) and the PM-195 Sunday Premium-Feel polish pass:
