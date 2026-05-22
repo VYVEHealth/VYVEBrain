@@ -855,7 +855,11 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
-## 19. Current status — 22 May 2026 PM-209 (Mind hub Today's Focus tile thumbnail-fills-card refactor + PM-209.1 index.html recovery; new §23.52 hard rule earned on bash argv overflow during 121KB blob create)
+## 19. Current status — 23 May 2026 PM-210b (Connect calendar member UI shipped end-to-end — connect-calendar.html new page + Calendar hub tile + Dexie SCHEMA_V9 + sync.js plan entry; new §23.53 hard rule earned on inline JSON parse swallowing real responses)
+
+**PM-210b (23 May 2026, vyve-site `5488a1f9` → `31e6910e`).** Connect calendar member UI shipped — closes PM-210 end-to-end (PM-210a 22 May shipped the Supabase schema + 190-row backfill; PM-210b ships the member-side wiring). Six-file atomic commit via Git Data API (Composio still 401 from 21 May security incident, now 36+ hours): `db.js` SCHEMA_V9 adds `calendar_occurrences` Dexie store with index `'&id, type, starts_at, active'` + `db.version(9).stores(SCHEMA_V9)` chain entry + `makeCatalogueTable` consumer; `sync.js` adds catalogue plan entry hitting `/calendar_occurrences?active=eq.true&select=*&order=starts_at` with `replaceForMember(null, rows)` persist + `calendar_occurrences: 1` to `CATALOGUE_FRESH_TABLES` (5-min stale) + `CATALOGUE_INVALIDATION_KEY` bumped `pm190c-image-url` → `pm210-calendar-occurrences` (one-time refresh on next visit per §23.50); `connect-calendar.html` NEW 798 lines with Agenda (default) + Month grid views, dismissible filter pills (Live Sessions teal + Events gold, both active by default with OR semantics), Pattern 2 catalogue paint per §23.48 (synchronous Dexie read, no skeleton per §23.46, repaints on `vyve-localdb-table-pulled`), Pattern 3 30-second `setInterval` ticker for Live-now state with pause-on-hidden + immediate-eval on resume, all dark/light parity via `theme.css` semantic tokens with no inline `:root` per PM-163; `connect.html` Latest from VYVE carousel REPLACED with single wide Calendar destination tile reading next live session + next event from Dexie via new `renderCalendarTile()` (was `renderLatestFromVyve()`) + bus listener for `vyve-localdb-table-pulled` filtered to `calendar_occurrences`; `sw.js` cache `pm209-mind-focus-banner-a` → `pm210-calendar-a` + `/connect-calendar.html` precache entry; `index.html` vbb-marker 79 → 80. §23.52 discipline applied cleanly — all six blob bodies via `/tmp/pm210/blob_*.json` files + `curl --data-binary @file` (largest body index.html at 162KB, exactly the size class that broke PM-209.1); all SHAs asserted non-empty + 40-char hex shape; post-commit `GET /commits/{sha}` `files[].status` confirmed `{added: 1, modified: 5, removed: 0}` — six files exactly. **One new §23 hard rule earned tonight — §23.53 (JSON parse from file, not inline `python3 -c | $(...)`)**. The commit POST succeeded but the response parser one-liner choked on raw newlines in the multi-line commit message field, returned empty captured SHA, mid-pipeline `exit 1` fired — and from the operator's perspective looked identical to "GitHub returned no SHA". Sibling rule to §23.52(c). See §23.53 below.
+
+**PM-210a (22 May 2026, brain `ea7af33f`, vyve-site untouched at `5488a1f9`).** Supabase-only ship — `pm210_create_calendar_occurrences` migration created the `calendar_occurrences` table with `type` discriminator (`live_session`|`event`), full timestamp shape (`starts_at`, `ends_at`), location fields, imagery URLs, FK to `service_catalogue` for materialised recurrences, cancellation flag, RLS enabled with single `calendar_occurrences_read_authenticated` read-all policy, `updated_at` trigger via `SECURITY DEFINER` function. Two partial indexes (`starts_at` + composite `(type, starts_at)`) both `WHERE active=true`. 190 backfill rows inserted covering 22 May → 16 Jul 2026, generated from `sessions-data.js` shape (not `service_catalogue` shape, because PM-190.d codified sessions-data.js as the actual member-facing source of truth post-PM-188). Breakdown: Yoga ×56, Mindfulness ×56, Workouts ×56, Group Therapy ×8, Weekly Check-In ×8, Events & Run Club ×2, Education & Experts ×2, Podcast ×2. Zero `event`-type rows yet — Lewis adds those via Supabase dashboard SQL editor as trial events get scheduled (handoff format documented in changelog).
 
 **PM-209 + PM-209.1 (22 May 2026, vyve-site `316aded3` → `5488a1f9`).** Mind hub Today's Focus tile restructured: 150px corner-circle thumbnail (`.thumb-hero`, radial-glow ring positioned absolute right:-30px top:-30px) replaced by full-bleed `.hero-banner` matching the `.vz-hero` detail-page pattern. Image fills the card top via `background-image` + `--bg-img` CSS variable, dark gradient bottom-half for legibility, badge top-left in a frosted-pill, title + meta stack bottom-left in white. Play CTA retained as full-width teal bar below. Brings the hub tile into visual parity with what members see one tap deeper. `renderFocus()` JS rewritten to probe-then-paint via `new Image()` + onload (avoids gradient placeholder flashing intrinsic image dimensions). The atomic 3-file commit (mind.html + sw.js + index.html) initially failed: index.html (121KB) base64 body (~162KB) overflowed bash argv when routed through `curl -d "$body"`, the `BLOB_INDEX` capture came back empty, the tree was built with an empty blob SHA, and **GitHub silently accepted it and deleted index.html from production for ~3 minutes**. Recovery commit `5488a1f9` restored the file from the parent commit's blob. New §23.52 rule earned with three sub-clauses: (a) `-d "$body"` forbidden for any body >10KB, use `--data-binary @file`; (b) post-commit verify must inspect `commits/{sha}` files[].status array, not just file contents; (c) any SHA captured from a blob/tree create must be asserted non-empty before downstream use. sw cache `pm208-silent-refresh-a` → `pm209-mind-focus-banner-a`. vbb-marker 78 → 79.
 
@@ -2541,6 +2545,48 @@ This applies to GitHub Git Data API blob creates, Supabase MCP migrations with l
 - §23.52(a): `curl -d "$body"` for any body >10KB is forbidden. Write to file, pass `--data-binary @file`.
 - §23.52(b): post-commit verify on atomic multi-file commits must inspect `files[].status` for the commit, not just file contents.
 - §23.52(c): any blob/tree creation flow that captures a SHA into a shell variable must assert the SHA is non-empty before passing it to the next step.
+
+---
+
+## §23.53 — JSON parse from a file, not from an inline `python3 -c` in a `$()` capture (PM-210b, 23 May 2026)
+
+PM-210b nearly hit a §23.52-class confusion on the commit step itself. The Git Data API `POST /git/commits` call succeeded — GitHub returned a fully-formed 201 response with the new commit SHA. But the surrounding shell pipeline was:
+
+```bash
+COMMIT_RESPONSE=$(curl -sf -X POST ... | tee /dev/null)
+COMMIT_SHA=$(echo "$COMMIT_RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('sha',''))")
+if [ -z "$COMMIT_SHA" ]; then echo "FAIL: empty commit SHA"; exit 1; fi
+```
+
+The response body contained a multi-line `message` field with literal `\n` characters interpreted as control characters by the inline `json.load`. Python 3 rejected them (`json.decoder.JSONDecodeError: Invalid control character at: line 20 column 116`). The exception bubbled to stderr; `print()` never executed; the `$(...)` capture returned empty. The `if [ -z "$COMMIT_SHA" ]` branch then fired with the misleading message "FAIL: empty commit SHA" — visually indistinguishable from "GitHub returned no SHA".
+
+The commit was actually fine. The new SHA (`31e6910e...`) was sitting in the response body the whole time. Operator triage took one extra step to realise this — fortunately a cheap one, but in a parallel-session situation or any context where pulling the response back is non-trivial, this could have prompted a re-attempt of an already-successful commit (duplicate commit, parent mismatch, broken ref chain).
+
+**The rule.** When a captured API response is JSON, **always write the response body to a file first**, then parse from disk in a separate step that surfaces parse errors as parse errors, not as empty captured values. Never use the `<command> | python3 -c | $(...)` shape for response parsing.
+
+**Canonical pattern:**
+
+```bash
+curl -sf ... -o /tmp/response.json
+SHA=$(python3 -c "import json; print(json.load(open('/tmp/response.json'))['sha'])")
+# If python3 fails here, it prints the traceback to stderr and exits non-zero,
+# which the surrounding script sees clearly. The $(...) capture only swallows
+# stdout, not the exit code from a separate process.
+[ -z "$SHA" ] && { echo "FAIL: response had no .sha — inspect /tmp/response.json"; exit 1; }
+```
+
+Or for the strictest version, separate the steps entirely so the operator can `cat /tmp/response.json` on any failure to see what GitHub actually returned.
+
+**Why this isn't covered by existing rules.** §23.52(c) protects against the value being legitimately empty (captured-and-empty); §23.53 protects against the value being legitimately present but the parser failing (captured-and-mis-parsed). Both end up as empty shell variables. The two failure modes need different responses — §23.52(c) means "API failed, look at the request"; §23.53 means "API succeeded, look at the response and fix the parser". Conflating them sends triage down the wrong path.
+
+**Operating pattern.** For every API call where the response is JSON and we need to extract a field:
+1. `curl -sf ... -o /tmp/<step>_response.json` (capture to disk).
+2. Inspect with a separate parse step that surfaces its own errors.
+3. Keep `/tmp/<step>_response.json` files until session close — they're the only forensic trail if anything goes wrong downstream.
+
+**Retroactive scope.** Every multi-step Git Data API chain (blob creates, tree create, commit create, ref update) should follow this pattern. The chain in PM-210b had four parse-from-stdin sites; three of them happened to parse cleanly because the response bodies didn't contain control characters in the fields being read. The fourth (commit response, reading from a `message` field full of newlines via the wider response) was the only one that failed — but the same fragile pattern was sitting in all four sites.
+
+**Related rules.** §23.45 (PAT-direct path mechanics — the same chain this rule patches), §23.52 (the parallel rule on shell argv overflow during write operations — §23.53 is the read-side equivalent), §23.41 (post-commit verification — the verify step itself uses JSON parse against response bodies, same fragility, same fix).
 
 ---
 

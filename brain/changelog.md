@@ -1,3 +1,79 @@
+## 2026-05-23 00:30 — PM-210b Calendar member UI shipped: connect-calendar.html + hub tile + db/sync wiring [vyve-site `31e6910e`]
+
+### What shipped
+
+Six-file atomic commit to `vyve-site` `main`: `31e6910e4a8e0077be68e31d1bee70c807d25d41`, parent `5488a1f9`. PM-210 closed end-to-end (schema + backfill at `ea7af33f` brain commit / pm210_create_calendar_occurrences migration; member UI tonight).
+
+**`connect-calendar.html` (NEW, 798 lines, 30774 bytes).** Two views toggled in-page — Agenda (default) and Month grid. Dismissible filter pills for Live Sessions (teal `--teal-lt`) and Events (gold `--gold`), both `active` by default, OR semantics (both off → empty state with "No filters selected" copy, one on → only that type). View toggle pill-row defaults to Agenda. Agenda groups by local day-key (YYYY-MM-DD), today highlighted with "TODAY" badge, past entries hidden behind a "Show past (N)" toggle. Month view 7×6 grid (Sun-first), prev/next month navigation, teal+gold dots per day, tap-to-select shows a detail panel below the grid with all occurrences for that day. Occurrence card has 62×62 thumbnail (gradient fallback when image_url null, `onerror="this.remove()"` per §23.49), type badge (Live teal / Event gold), time pill OR "Live now" with pulse animation when within window, title + meta line (location pill + category for events, duration + category for live). All dark/light parity via `theme.css` semantic tokens — no inline `:root` block per PM-163. Pattern 2 catalogue paint per §23.48: synchronous Dexie `.allFor()`, no skeleton chars per §23.46, repaints on `vyve-localdb-table-pulled` event from sync.js. Pattern 3 30-second `setInterval` ticker for Live-now state, paused on `visibilitychange→hidden`, immediate eval + restart on `→visible`. Six-script Dexie/bus/sync stack loaded per §23.44.
+
+**`connect.html` hub edit.** "Latest from VYVE" carousel removed entirely (markup + JS function + paintAll call). Replaced with single full-width destination tile (`<a class="calendar-tile" href="/connect-calendar.html">`) — 16:8 aspect ratio, teal gradient background, calendar SVG icon in frosted-pill top-left, dynamic meta top-right (today's session count OR next live session time OR fallback "Live sessions + upcoming events"), big Playfair "Calendar" title bottom-left, "Open →" CTA. `renderLatestFromVyve()` (line 812) renamed to `renderCalendarTile()`, simplified to read from Dexie `calendar_occurrences`. Section header eyebrow text changed from "Latest from VYVE" to "What's on". New bus listener subscribes to `vyve-localdb-table-pulled` filtered for `calendar_occurrences` → calls `renderCalendarTile` so the tile refreshes on hydrate without a full `paintAll`. `formatTileWhen()` helper added for the meta line shape ("Today 18:00" / "Tomorrow 06:00" / "Fri 06:00" / "14 Jun 09:00").
+
+**`db.js`.** `SCHEMA_V9 = Object.assign({}, SCHEMA_V8, { calendar_occurrences: '&id, type, starts_at, active' })` added immediately after SCHEMA_V8 block with full comment block explaining the column shape mirrors the live Supabase table. `db.version(9).stores(SCHEMA_V9)` appended to the version chain. `makeCatalogueTable('calendar_occurrences')` added to the catalogue-table consumer list (after `daily_checkin_prompts`). Result: `window.VYVELocalDB.calendar_occurrences.allFor()` exists; `replaceForMember(null, rows)` performs the canonical clear+bulkPut for catalogue scope (same shape as `service_catalogue`).
+
+**`sync.js`.** Three coordinated edits:
+- `CATALOGUE_INVALIDATION_KEY` bumped `'pm190c-image-url'` → `'pm210-calendar-occurrences'`. Forces one-time refresh on every existing device's next visit per §23.50.
+- `CATALOGUE_FRESH_TABLES` gains `calendar_occurrences: 1` so the table gets the 5-minute stale window (content-ops cadence — Lewis adds events live via Supabase dashboard).
+- Plan entry inserted immediately after `service_catalogue`: `{ table: 'calendar_occurrences', scope: 'catalogue', path: '/calendar_occurrences?active=eq.true&select=*&order=starts_at', persist: replaceForMember(null, rows) }`. Server-ordered by `starts_at` so agenda paint can iterate without re-sorting.
+
+**`sw.js`.** Cache key `vyve-cache-v2026-05-22-pm209-mind-focus-banner-a` → `vyve-cache-v2026-05-23-pm210-calendar-a`. `/connect-calendar.html` added to precache list immediately after `/connect-challenge.html`.
+
+**`index.html`.** vbb-marker `Update 79` → `Update 80`.
+
+### Why this works at first paint
+
+When the new bundle loads on a member's device, theme.js applies the `data-theme` attribute synchronously from `localStorage` before body renders (no FOUC). db.js opens Dexie at version 9, which is a non-destructive upgrade (only adds the new `calendar_occurrences` store). sync.js fires on `auth-ready`, sees the new `CATALOGUE_INVALIDATION_KEY` value vs the device's recorded `pm190c-image-url`, force-pulls `calendar_occurrences` (190 rows), writes via `replaceForMember(null, rows)`, dispatches `vyve-localdb-table-pulled` with `detail.table === 'calendar_occurrences'`. connect-calendar.html boot path either fires immediately if Dexie already has the rows (warm second visit, microseconds) or paints empty list and repaints on the bus event (cold first visit, ~hundreds of ms). connect.html hub repaints the Calendar tile via the same bus subscription path. Live-now state ticker handles the case where a member opens the page right as a live session is starting.
+
+### Tooling discipline
+
+§23.45 PAT-direct via Git Data API (blobs → tree → commit → update ref) throughout — Composio still 401-ing from 21 May security incident, now 36+ hours. §23.52(a) honoured — all six blob bodies routed via `/tmp/pm210/blob_*.json` files + `curl --data-binary @file`. Largest body was index.html at 162KB — exactly the size class that broke PM-209.1 when routed through `-d "$body"`. §23.52(c) every captured SHA asserted non-empty + 40-char hex shape before downstream use. §23.41 pre-tree HEAD re-fetch (still `5488a1f9`, no parallel drift). §23.52(b) post-commit verify on `GET /commits/{sha}` `files[].status` confirmed `{added: 1, modified: 5, removed: 0}` — six files exactly, no surprise drops. Per-file first-100-char + byte-size re-fetch against new commit SHA all passed.
+
+### One new §23 hard rule earned tonight — §23.53
+
+The commit step itself produced a near-miss of a different shape. The commit POST succeeded — GitHub created the commit object correctly — but the shell pipeline's `python3 -c "import json,sys; print(json.load(sys.stdin).get('sha',''))"` choked on raw newlines in the multi-line commit message field of the JSON response (control characters not escaped by GitHub's response serialiser, which is unusual but legal). The parse exception bubbled up, the captured `COMMIT_SHA` shell variable came back empty, and the surrounding `if [ -z "$COMMIT_SHA" ]; then exit 1` branch fired — printing "FAIL: empty commit SHA". From the operator's perspective this looked identical to a real "GitHub returned no SHA" failure, but the actual SHA was sitting in the response body, just unparseable by the one-liner.
+
+This is §23.52(c)'s twin: §23.52(c) protects against captured-value-actually-empty; §23.53 protects against captured-value-actually-fine-but-parser-blew-up. Both produce empty shell variables; the response either has the value or it doesn't, and the parser failure mode shouldn't be indistinguishable from the API-returned-nothing mode.
+
+The rule, applied retroactively to every multi-step API chain we run: when a captured response is JSON, **always write the response body to a file first**, then parse from disk in a separate step that surfaces parse errors explicitly. Never parse via `<command> | python3 -c` chained inline. Inline parsers eat their own errors via the surrounding `$()` capture and look the same as upstream failures.
+
+§23.53 codified below.
+
+### Files changed
+
+vyve-site `5488a1f9` → `31e6910e`:
+- connect-calendar.html (added, 798 lines)
+- connect.html (+179/-41)
+- db.js (+23/-0)
+- sync.js (+12/-2)
+- sw.js (+4/-1)
+- index.html (+1/-1)
+
+### Lewis handoff
+
+For any one-off event Lewis wants on the calendar, the insert via Supabase dashboard SQL editor remains as documented in the previous PM-210a brain entry:
+
+```sql
+INSERT INTO calendar_occurrences (type, category, name, description, starts_at, ends_at, location_city, location_venue, location_online, image_url)
+VALUES ('event', 'Run Club', 'VYVE Newcastle Run Club', 'Saturday morning 5km at Exhibition Park. All paces welcome.', '2026-06-14T09:00:00+00:00', '2026-06-14T11:00:00+00:00', 'Newcastle', 'Exhibition Park', false, NULL);
+```
+
+Members pick it up on the next 5-minute catalogue sync once they open the app. No deploy needed for content — the editor surface (Portal Admin) remains parked post-launch per the original PM-210 brain decision.
+
+### What's NOT in this commit (deferred by design)
+
+- Portal Admin editor surface (Lewis writes events via Supabase dashboard for trial).
+- Realtime channel for live-session edits (Pattern 2's focus loop is enough for v1 — Realtime is post-launch per §23.48 spec note).
+- `connect-calendar.jpg` custom background image for the Calendar tile (current gradient teal looks fine on dark + light; can add later if Lewis wants a photographic backdrop).
+- Sessions.html → catalogue migration (parked behind Portal Admin editor campaign per PM-190 brain entry).
+
+### Live state at session close
+
+- vyve-site main: `31e6910e` (was `5488a1f9`)
+- Brain HEAD before this commit: `ea7af33f`
+- Supabase `calendar_occurrences`: 190 rows live (zero changes — backfill already shipped PM-210a)
+- New §23 hard rule earned: §23.53 (JSON parse via file, not inline `python3 -c | $(...)`)
+
+---
+
 ## 2026-05-22 23:55 — PM-210a Calendar foundation: schema + backfill SHIPPED to Supabase, member UI deferred to next session
 
 ### What shipped

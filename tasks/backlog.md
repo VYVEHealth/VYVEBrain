@@ -1,4 +1,14 @@
-## Added 22 May 2026 — PM-210 (in flight) — Connect calendar + portal admin: schema + backfill SHIPPED, member UI deferred to next session
+## Shipped 23 May 2026 — PM-210 — Connect calendar member UI shipped end-to-end [vyve-site `31e6910e`, brain `ea7af33f` → next]
+
+**PM-210 closed across two sessions.** PM-210a (22 May): Supabase schema + RLS + 190-row backfill from `sessions-data.js`. PM-210b (23 May, this entry's session): six-file atomic commit to vyve-site main (db.js SCHEMA_V9, sync.js plan entry + invalidation key bump, connect-calendar.html NEW 798 lines, connect.html Latest from VYVE → Calendar tile, sw.js cache bump, index.html vbb-marker 80). Members hydrate `calendar_occurrences` automatically on next visit via the `CATALOGUE_INVALIDATION_KEY` bump `pm190c-image-url` → `pm210-calendar-occurrences`.
+
+See changelog top entry for full ship details + §23.53 hard rule earned tonight (JSON parse via file, not inline `python3 -c`).
+
+Portal Admin editor surface still deferred post-launch per original PM-210 brain decision. Lewis writes one-off events via Supabase dashboard SQL editor — handoff format documented in the previous PM-210a entry below.
+
+---
+
+## ARCHIVED 22 May 2026 — PM-210 (in flight) — Connect calendar + portal admin: schema + backfill SHIPPED, member UI deferred to next session
 
 **Status flip from the 22 May earlier "POST-LAUNCH deferred" entry.** Dean's call at the end of the earlier conversation was to defer the whole thing post-launch; he then reversed that within the same session, requesting the member-facing calendar to be built now (without the portal admin — Lewis enters data via Supabase dashboard for trial).
 
