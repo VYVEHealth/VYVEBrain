@@ -855,7 +855,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
-## 19. Current status — 21 May 2026 PM-190.d (Connect carousels read shared sessions-data.js, abandon service_catalogue path)
+## 19. Current status — 21 May 2026 PM-190.e (Connect Live This Week cards link direct to session pages)
+
+**PM-190.e (21 May 2026, this commit).** One-line port on top of PM-190.d. Live This Week card `href` was hardcoded `/sessions.html`; rewired to `s.liveUrl` so taps go directly to `yoga-live.html`, `workouts-live.html`, etc. Mirrors sessions.html behaviour. The two "View all ›" section-header links stay pointed at `/sessions.html` (correct — those are indices). Latest from VYVE was already linking to `s.replayUrl` per PM-190.d. vyve-site commit `5af820847aa2403becc56eed5d295ad1b559742b`. SW `pm190d-shared-sessions-a` → `pm190e-direct-links-a`. vbb-marker 64 → 65. No backlog edit, no new §23 rule.
 
 **PM-190.d (21 May 2026, this commit).** PM-190 → PM-190.c shipped DB-driven imagery via `service_catalogue.image_url` + Dexie sync + freshness mechanism across three commits. Photos still didn't render on device after Update 63. Dean's question cut through: "why can't the front screen just render the pills from the sessions page?" Sessions.html has always rendered the same photos from a hardcoded JS const that loads synchronously. PM-190.d extracts that const into shared `sessions-data.js`, both sessions.html and connect.html consume it. Three changes in connect.html: Live This Week sorts chronologically by `getNextOccurrence`, formats "when" as actual `"Friday · 06:00"` from upcoming Date, sources thumbs from `s.thumb` (e.g. `/thumb-yoga.jpg`); Latest from VYVE links to `s.replayUrl` with same imagery. New file `sessions-data.js` precached in sw.js. vyve-site commit `360fdfe1425fba6c520e05212ae42e1b2ac55e45` (5 files: sessions-data.js NEW, sessions.html, connect.html, sw.js, index.html). SW `pm190c-catalogue-fresh-a` → `pm190d-shared-sessions-a`. vbb-marker 63 → 64. Device-confirmed: photos rendering at Update 64.
 

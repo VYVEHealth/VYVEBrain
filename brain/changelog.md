@@ -1,3 +1,47 @@
+## 2026-05-21 PM-190.e — Connect Live This Week cards link direct to session pages (vyve-site `5af820847aa2403becc56eed5d295ad1b559742b`)
+
+**Ship.** PM-190.d wired the imagery and copy from `sessions-data.js` but every card on the Live This Week carousel still linked to the generic `/sessions.html` index. Dean flagged: tap on Workouts → should go to `workouts-live.html`, tap on Yoga → `yoga-live.html`. Sessions.html itself does this (`card.href = s.liveUrl` on line 226). Same pattern, one-line port.
+
+### What changed
+
+`connect.html` `renderLiveThisWeek` card render:
+
+```js
+var href = s.liveUrl || '/sessions.html';
+return '<a href="' + escapeHtml(href) + '" class="scroll-card">' +
+         ...
+```
+
+Fallback to `/sessions.html` if `liveUrl` is somehow absent (defensive — shouldn't happen given sessions-data.js shape, but cheap to belt-and-brace). The two `<a href="/sessions.html">View all ›` section-header links on lines 260 and 312 stay as-is — those are correct, they go to the index, not a specific session.
+
+The Latest from VYVE carousel was already linking to `s.replayUrl` per PM-190.d, so no change needed there.
+
+`sw.js` cache `pm190d-shared-sessions-a` → `pm190e-direct-links-a`. vbb-marker Update 64 → 65.
+
+### Process note
+
+Two transient tooling glitches during this commit, both observed and worked around:
+
+1. Bash function `declare -A` for SHA tracking trips under `/bin/sh` (the Composio sandbox shell). Switched to explicit env vars per blob. Workaround stable for the rest of the session.
+2. urllib path 403'd on a GET against the new commit SHA with the same egress filter false-positive seen earlier ("Host resolves to a private/reserved IP"). curl path works fine. Already informally adopted "curl for all GitHub IO" — confirmed again.
+
+Neither glitch caused a near-brain-wipe this time because the file-based-blob-body pattern from PM-190.c onward holds. Recovery loop tested twice across the session, doctrine holds.
+
+### What changed (brain side)
+
+- `brain/master.md` — §19 PM-190.e status paragraph prepended above PM-190.d paragraph.
+- `brain/changelog.md` — this entry prepended.
+- No backlog edit, no new §23 rule. One-line port, no new doctrine.
+
+### Production state
+
+vyve-site main HEAD: `5af820847aa2403becc56eed5d295ad1b559742b`.
+Production iOS 1.3 (2) + Android 1.0.3 (10) bundled-mode at SHA `83874dd5` — unchanged. Dean's dev iPhone picks up Update 65 on next WKWebView cache cycle (2-15 min). Bundled members frozen at `83874dd5` until next Capawesome OTA.
+
+Brain HEAD before this commit: `c6c17be3cb21a55d73aaa9a8050c12786f3b46f3`.
+
+---
+
 ## 2026-05-21 PM-190.d — Connect carousels read shared sessions-data.js, abandon service_catalogue path (vyve-site `360fdfe1425fba6c520e05212ae42e1b2ac55e45`)
 
 **Ship.** PM-190 → PM-190.c shipped DB-driven imagery via `service_catalogue.image_url` + Dexie sync + a freshness mechanism. Three commits, two §23 rules, one near-brain-wipe. Photos still didn't appear on Dean's device after Update 63 loaded — the catalogue-fresh + invalidation-key mechanism either didn't fire or fired silently against rows whose persistence path was broken in a way that wasn't visible in this session's diagnostic loop. Dean's question cut through: "why can't the front screen just render the pills from the sessions page?" Sessions.html has always rendered the same photos from a hardcoded JS const. Connect hub should consume the same data. PM-190.d does exactly that.
