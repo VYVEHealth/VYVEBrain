@@ -1,3 +1,95 @@
+## Added 22 May 2026 — PM-193 follow-up: native splash + app-icon polish (Monday bundle session)
+
+**Context.** PM-193 shipped vyve-site fixes for the login page (real `/logo.png` swapped in for the `<v>` placeholder + viewport switched to `interactive-widget=resizes-visual` to stop the form jumping when the keyboard opens). Dean's screenshots also surfaced two iOS-native issues that are NOT vyve-site fixes:
+
+1. **Splash screen.** The launch image shows the logo too small, with a visible white border/box around it on a black field. Looks unbranded.
+2. **Status-bar / app-switcher icon chip.** Same white-box-around-the-V appears as the running-app chip iOS surfaces in the status bar next to the page title. Same root cause — the app icon asset has an opaque white background where it should be transparent or VYVE Dark.
+
+Both belong to `vyve-capacitor`, not vyve-site. Parked for Monday's bundle session — Dean's next planned Xcode/Mac sitting, when the full bundle is rebuilt for the next Capawesome OTA.
+
+### Task 1 — Regenerate native iOS app icon + splash with correct background
+
+**Source assets.** Canonical brand icon source on vyve-site is `/icon-512.png` (1024×1024 in the repo, despite the filename — 113434 bytes; see master §25). The current splash issue is almost certainly that the icon asset baked into the iOS Capacitor app was generated from an RGB-white-background PNG or has trapped whitespace inside the artwork bounds.
+
+**Inputs required at `~/Projects/vyve-capacitor/assets/`:**
+
+- `icon.png` — 1024×1024, **RGB** (no alpha — Apple rejects RGBA app-icon submissions per §23 historical rule), with the logo artwork fully bleeding to the safe-area edges. Background colour `#0D2B2B` (VYVE Dark) on the icon canvas — NOT transparent, NOT white. Apple will round-corner-mask automatically.
+- `splash.png` — 2732×2732, **RGB**, VYVE Dark `#0D2B2B` background fill, logo centred at roughly **40% of frame width** (i.e. ~1100px wide), no white padding around the logo. The previous splash was generating with the logo at ~15% width inside a near-square white safe-area frame — that's what produced the "small logo with white box" effect Dean saw.
+
+If the source `/icon-512.png` from vyve-site has any white pixels around the logo bounds, those need cropping out at source before this step. Quickest path: drop both PNGs into Figma or Photoshop, layer over a `#0D2B2B` fill, export as PNG-24 RGB (no alpha).
+
+**Regen commands (on Mac, from `~/Projects/vyve-capacitor/`):**
+
+```bash
+# Ensure Sharp dependency is present (Apple Silicon needs --include=optional per §23 historical rule)
+npm install --include=optional sharp
+
+# Generate iOS icon set + splash assets from inputs
+npx @capacitor/assets generate --ios
+```
+
+This produces `ios/App/App/Assets.xcassets/AppIcon.appiconset/` (multiple sizes) and `ios/App/App/Assets.xcassets/Splash.imageset/` (1x/2x/3x), overwriting the existing assets.
+
+### Task 2 — Update `capacitor.config.json` SplashScreen plugin settings
+
+**Current state (estimated, verify on Mac):** the SplashScreen plugin block is either absent or defaulted, which means the iOS launch image renders the storyboard's centred image at a small native size against whatever the LaunchScreen.storyboard background is set to.
+
+**Target config** in `~/Projects/vyve-capacitor/capacitor.config.json`, add or replace the `plugins.SplashScreen` block with:
+
+```json
+"plugins": {
+  "SplashScreen": {
+    "launchShowDuration": 2000,
+    "launchAutoHide": true,
+    "backgroundColor": "#0D2B2B",
+    "androidScaleType": "CENTER_CROP",
+    "showSpinner": false,
+    "splashFullScreen": true,
+    "splashImmersive": true
+  }
+}
+```
+
+Keep any other existing `plugins.*` blocks intact (LiveUpdate / Capgo, HealthKit etc). The `splashFullScreen` + `splashImmersive` pair is the key change — they tell iOS to render the splash edge-to-edge rather than centring a thumbnail inside safe-area chrome.
+
+### Task 3 — Verify LaunchScreen.storyboard background
+
+`ios/App/App/Base.lproj/LaunchScreen.storyboard` may need its root view's background colour set to `#0D2B2B` directly in Xcode (Interface Builder) — the plugin's `backgroundColor` config governs the runtime splash overlay but iOS shows the storyboard frame for the very first paint before the plugin has loaded. If the storyboard background is white, there will be a brief white flash before the splash plugin paints over it.
+
+Quickest path in Xcode: open the storyboard, select the root View, Background → Custom → `#0D2B2B` (R 13 G 43 B 43 / 0.051 0.169 0.169). Confirm the image view inside the storyboard still references `Splash` (the imageset name).
+
+### Task 4 — Rebuild + reship
+
+Standard bundle sequence (already documented in `playbooks/bundle-ready-campaign.md`):
+
+```bash
+cd ~/Projects/vyve-capacitor
+git pull                              # pulls latest vyve-site contents into www/
+npx cap copy                          # copies www/ into ios + android builds
+npx cap sync ios                      # if config or plugin changes were made
+open ios/App/App.xcworkspace          # Xcode opens
+# Archive → Distribute → App Store Connect → submit 1.4 (or whatever PM-115 sequence dictates)
+```
+
+For Android in the same session: `npx cap sync android` then build the AAB via the same playbook.
+
+### Verification checklist on installed device
+
+After build lands and TestFlight installs:
+
+- [ ] Cold launch shows VYVE logo centred, large (~40% width), on solid VYVE Dark background — no white border, no white flash
+- [ ] App-switcher (swipe up + hold) shows the VYVE icon with no white box around it
+- [ ] Status bar app chip (iOS PWA/native indicator next to the time when app is foreground) shows clean rounded icon, no white square
+
+### Tooling / dependencies
+
+- `npx @capacitor/assets generate --ios` v3 with single-icon scheme (1024×1024 AppIcon-512@2x.png) is the canonical generation path per master §11 historical rules.
+- `npm install --include=optional sharp` on Apple Silicon is mandatory — Sharp's prebuilt binaries don't ship with the standard `sharp` install on M-series Macs.
+
+### Why not push to vyve-site
+
+This is entirely native-asset work. Nothing in vyve-site (HTML/CSS/JS portal) changes. The splash + app icon are baked into the IPA/AAB binary at build time and don't OTA via Capawesome — a new TestFlight + App Store build is required to ship.
+
 ## Added 21 May 2026 — PM-186/187: Connect Phase 2 spec lock + 5 tables migrated + counters-render-truth (§23.46) + step 1+2 SHIPPED PM-187
 
 **Spec locked. Build started.** See `playbooks/connect-spec.md` for full design (~23KB). Five Supabase tables live as of PM-186; 30 daily prompts seeded. Steps 1-6 SHIPPED PM-187/187.2/187.3 (vyve-site head `d439477f7f0a5c3678e33d19ca69036b53ea31b9`).

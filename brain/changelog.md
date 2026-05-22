@@ -1,3 +1,36 @@
+## 2026-05-22 PM-193 — login.html polish (logo placeholder → real /logo.png, keyboard no longer jumps the form) + native splash/icon spec parked for Monday bundle
+
+**Two Dean screenshots: launch splash + login page.** First showed the iOS native splash with the VYVE logo rendered small with a visible white square behind it on a black field. Second showed the login page on Dean's iPhone: a `<v>` placeholder block next to the "VYVE Health" wordmark, with the form having jumped upward as the iOS keyboard opened. Three issues across two layers (vyve-site web shell + vyve-capacitor native binary).
+
+**vyve-site fixes shipped this session as PM-193** (commit `a50d8b999ce3542d4df8b9653f88971f3da26a01`):
+
+1. **Login logo placeholder swap.** `login.html` was rendering `<div class="logo-v">V</div>` — a teal-block with a literal "V" character — alongside the "VYVE Health" wordmark. Placeholder from initial scaffolding, never replaced. Swapped for `<img class="logo-img" src="/logo.png" alt="VYVE"/>` at 56×56 / border-radius 12. CSS rule renamed accordingly. Now matches the canonical brand asset used in the mobile header (nav.js), home screen, and as the App Store icon source.
+
+2. **Keyboard jump.** Viewport meta was `interactive-widget=resizes-content` — this tells the browser to **shrink the layout viewport** when the soft keyboard appears. Combined with `body { display: flex; align-items: center }`, the centred `.wrap` element recomputes its centre point against a shorter viewport and visibly jumps upward — exactly what Dean reported. Switched to `interactive-widget=resizes-visual`: the keyboard now overlays the page, the layout viewport stays the same height, and the browser handles scrolling the focused input into view without reflowing the whole layout. The card stays where it was, form stays still.
+
+**Portal deployment bumps:** SW cache `pm191-live-page-titles-a` → `pm193-login-polish-a`. vbb-marker Update 66 → 67.
+
+**Tooling.** Composio still 401 from the 21 May security incident — §23.45 PAT-direct path again. Atomic 3-file commit via Git Data API, post-commit verification confirmed all three files pinned to `a50d8b9` carry the patched content.
+
+**Parked for Monday bundle session (vyve-capacitor):** backlog entry created with full spec covering the two remaining issues — the small/white-bordered splash logo + the `<v>` chip iOS shows in the status bar when the native app is running. Both are baked-into-binary native concerns (Assets.xcassets + capacitor.config.json + LaunchScreen.storyboard), not OTA-shippable via Capawesome. Spec covers:
+
+- Source asset prep (1024×1024 RGB no-alpha icon, 2732×2732 RGB splash, both on `#0D2B2B` VYVE Dark fill with logo at ~40% width)
+- `npx @capacitor/assets generate --ios` regeneration (Sharp via `--include=optional` per existing §23 rule for Apple Silicon)
+- `capacitor.config.json` `plugins.SplashScreen` block (`backgroundColor: #0D2B2B`, `splashFullScreen: true`, `splashImmersive: true`)
+- LaunchScreen.storyboard root-view background colour set to `#0D2B2B` in Xcode Interface Builder (fixes the brief white-flash before the splash plugin paints)
+- Standard `npx cap copy` + Xcode archive → App Store Connect resubmit sequence per `playbooks/bundle-ready-campaign.md`
+- Device verification checklist (cold launch, app-switcher chip, status bar chip)
+
+Dean confirmed his next Xcode/Mac sitting is Monday night for the next bundle, so the splash work batches into that session — no new vyve-capacitor session needed in the interim.
+
+**Why this matters for the splash.** The reason the existing splash looks the way it does is almost certainly that the source asset baked into iOS was generated from an RGB-white-background PNG with the logo placed at ~15% of the canvas width inside a near-square white safe-area frame. Apple then displays that asset at native splash dimensions, producing exactly the "small logo with white box on black" effect Dean sees. The fix is at the source asset level — Apple isn't doing anything wrong, the input PNG is wrong. Same root for the `<v>` chip: the app icon asset has a white background where it should have the VYVE Dark gradient logo bleeding to edges.
+
+**No new §23 hard rule earned this session.** The "viewport `resizes-visual` vs `resizes-content` for keyboard handling on forms" pattern is application of standard mobile-web doctrine, not architectural doctrine specific to VYVE. If a second page ever surfaces the same issue, the pattern will be one line in the relevant page's viewport meta — too local for a §23 rule.
+
+**vyve-site HEAD before:** `e94a5e595c01c9a74125280af767dcbb55da21e0` (PM-192). **After:** `a50d8b999ce3542d4df8b9653f88971f3da26a01` (PM-193). **Brain HEAD before this commit:** `cfa71fe253415d4b975ceafab9664a81006b01b0`.
+
+---
+
 ## 2026-05-22 PM-192 — Live + replay session pages show their actual title in the mobile header (was "SESSIONS" on all 16)
 
 **Quick UI fix shipped on top of PM-190.e.** Dean opened the yoga live page on iPhone and the mobile header read **SESSIONS**, not the session title. The `.topbar` element rendered by `session-live.js` carries the name (`<span class="session-name">Yoga, Pilates & Stretch</span>`) but `session-live.css` sets `.topbar{display:none}` globally and `.session-name{display:none}` at `max-width:900px` — the topbar is desktop-only by design. The mobile header is `nav.js`'s `mobile-page-header`, label sourced from `subPageLabels[fileStem] || hubLabels[active]`. No entry existed for `yoga-live` / `yoga-rp` / etc., so it fell through to `hubLabels.sessions = 'Sessions'` for all 16 live + replay pages.
