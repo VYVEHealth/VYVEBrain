@@ -1,48 +1,21 @@
-## Added 22 May 2026 — Sunday/Monday Connect deep-dive: bundle audit + Option C (global Dexie sync + Realtime)
+## Shipped 22 May 2026 — PM-209 + PM-209.1 Mind hub Today's Focus tile: thumbnail fills the card; §23.52 earned on near-miss home page deletion [vyve-site `316aded3` → `5488a1f9`]
 
-**Framing (Dean's words PM-208).** "A full audit of everything so that once we bundle this on the app later on or on Monday, this is all sorted... a real deep dive of a Sunday afternoon and Monday to find out how to get all of this working to be the best that it can be in the premium app."
+**The change.** Mind hub `Today's focus` tile restructured. The 150px corner-circle thumbnail (`.thumb-hero`, radial-glow ring positioned absolute right:-30px top:-30px on the legacy `.hero-card` shape) is replaced by a full-bleed `.hero-banner` matching the `.vz-hero` detail-page pattern. Image fills the card top via `background-image` + `--bg-img` CSS variable, dark gradient bottom-half for legibility, badge top-left in a frosted-pill (4px blur + 55% surface-dark fill + 999px border-radius), title + meta stack bottom-left in white with subtle text-shadow. Play CTA retained as full-width teal bar below the banner.
 
-PM-207/208 shipped the visible perf wins on connect-feed.html (cache paint, parallel fetch, silent background refresh). Those are §23.48 Pattern 4 done right. The structural ceiling on that pattern is the 3-5s background fetch round-trip — invisible to the user when nothing changed (PM-208), but visible as latency on the rare visit where new content has actually arrived. **Option C closes that gap entirely** by making the feed a pure Dexie read with Realtime push.
+Dean's feedback: the legacy corner-circle felt cramped vs the detail-page tile pattern members see one tap deeper (e.g. "Calm Your Mind" all-sessions list). The change brings hub-level imagery into parity with the detail page — one consistent visual language for Mind content cards.
 
-This is the scope of the deep dive — broader than just connect-feed.html.
+**Files in PM-209 commit `316aded3`:** mind.html (CSS rewrite of `.hero-card` + new `.hero-banner` + removal of obsolete `.thumb-hero` corner-circle CSS + `.thumb-hero.has-img` block; markup restructure so badge + title + meta live inside the banner; `renderFocus()` rewrite to probe-then-paint via `new Image()` + `--bg-img` CSS var); sw.js (cache key `pm208-silent-refresh-a` → `pm209-mind-focus-banner-a`); index.html (vbb-marker 78 → 79).
 
-### Specific work in scope
+**Recovery commit `5488a1f9` — PM-209.1.** The atomic 3-file commit initially deleted index.html from production for ~3 minutes. Root cause: `curl -d "$body"` where `$body` was a JSON string containing a 162KB base64-encoded index.html blob. Bash argv overflowed, the `python3 -c` capture that built the body returned empty, the `BLOB_INDEX` SHA variable came back empty, the resulting tree was built with `{path: 'index.html', sha: ''}`, and GitHub silently accepted the empty entry and dropped index.html from the tree. PM-209.1 fetched the parent commit's blob SHA via Contents API and restored the file on top of the broken HEAD using `curl --data-binary @/tmp/blob_body.json` (the pattern that doesn't route through argv).
 
-1. **Global-scope Dexie sync for `connect_checkins` + `checkin_reactions`.** Currently `sync.js` hydrates own-member rows only (line 235+253 region). Extend to all-member rows for these two tables. RLS is already permissive on SELECT (`_read_all` policies with `qual:true`) so the only blocker is the sync.js scope wiring. Storage impact: at 31 members × 1-2 check-ins/day × ~200 bytes/row = under 100KB/year per device. Reactions similar order of magnitude. Negligible.
+**§23.52 earned — Never substitute large file bodies into bash argv.** Three sub-rules:
+- (a) `curl -d "$body"` forbidden for any body >10KB. Write to `/tmp/*.json`, pass `--data-binary @file`.
+- (b) Post-commit verify on atomic multi-file commits must inspect `GET /commits/{sha}` and assert `files[].status` matches expected modified/added — no surprise `removed`.
+- (c) Any SHA captured from a blob/tree create must be asserted non-empty before downstream use.
 
-2. **Supabase Realtime channel for both tables.** Subscribe to `INSERT`/`UPDATE`/`DELETE` on `connect_checkins` + `checkin_reactions`. Each event writes the row to Dexie and publishes the existing bus events (`connect:checkin:logged`, `connect:reaction:logged`/`cleared`). connect.html and connect-feed.html already subscribe to those buses — they'll repaint on push without any page-level changes. Defer post-launch in PM-200's spec was "add only if Cole reports the gap hurts engagement"; Dean's premium-app push now justifies it.
+§23.41 first-100-char re-fetch verify catches **content** corruption on files that did make it into the commit; (b) closes the gap for files that were dropped from the tree entirely.
 
-3. **§23.48 Pattern 1 migration for both pages.** Once Dexie holds all the data, both connect.html and connect-feed.html reads become Pattern 1 (local bus-driven, no timers, no fetch). `loadFeed()`, `paintFromCache()`, `writeCache()`, `_kv` cache all become dead code on the read path. EFs `connect-feed-counts`, `connect-feed-preview`, `connect-challenge-summary` stay for cross-member aggregates but feed/hub no longer fetch them on every paint.
-
-4. **Audit every connect-* surface against §23.48 four-pattern framework.** Connect hub (PM-198 Elite hero, PM-206 Recent Check-ins, weekly challenge ring, Latest from VYVE carousel, feed banner) and connect-feed.html (tabs, list, banner, locked/coming-soon states). Each surface tagged with its pattern, mismatches fixed. Outputs a pattern-tagged spec sheet that becomes the contract for future Connect work.
-
-5. **Premium-feel polish pass.** Beyond perf, the broader UX: typography rhythm, card spacing across the cluster, empty-state copy consistency (today's feed has six different empty states across hub + feed + posted-state — should be one voice), animation timings, the loading-into-content transition feel.
-
-### Cost estimate
-
-3-5 Claude-assisted sessions. Sunday afternoon for the audit + Realtime spike on connect_checkins; Monday for the implementation across both tables + Pattern 1 migration on both pages + polish pass. Roughly aligns with how the PF-* campaigns have been sized.
-
-### Dependencies / unknowns to verify Sunday
-
-- Realtime quota on Supabase Pro plan — verify channel count and message rate aren't a constraint at our scale.
-- Dexie storage growth from global-scope rows — measure post-spike, confirm under any device-OS cache eviction threshold.
-- Whether autotick / push notification infrastructure overlaps Realtime channels in any way (probably not, but verify).
-- iOS Capacitor WKWebView WebSocket behaviour for Realtime — known-working but flag for verification.
-- §23.10 carve-out implications: are there any Connect surfaces that genuinely need network-bound semantics (e.g. employer leaderboard, charity total) that should explicitly stay out of the Pattern 1 migration.
-
-### Why this is the right shape
-
-- **Bounded by the audit, not the build.** Sunday is read-only — audit, measure, spec. Monday is build. Both fit Dean's session-window reality.
-- **Dexie scope wiring is the single change that unblocks everything else.** Realtime, Pattern 1 migration, polish — all downstream of "the rows are on the device."
-- **No new architectural primitives.** Everything composes from existing patterns (§23.39 optimistic write, §23.43 merge hydrate, §23.46 paint truth, §23.48 four patterns).
-
-### Parked in this entry, not built tonight
-
-- Any premature optimisation that doesn't have a measured baseline first.
-- Visual changes beyond the polish pass — no scope expansion mid-audit.
-- HAVEN, Achievements, leaderboard refactor — separate campaigns, separate work.
-
-Status: scoped, ready to pick up Sunday afternoon. Dean's call on exact start time.
+**Brain note.** The Composio 21 May security incident is still active (24h+) as of this commit — all GitHub writes tonight went via Vault PAT + direct Git Data API per §23.40. If the outage extends past 72h, the Composio/PAT primary/fallback designation in memory #8 should be inverted.
 
 ---
 

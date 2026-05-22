@@ -1,55 +1,56 @@
-## 2026-05-22 22:30 — PM-206 / PM-207 / PM-208 Connect cluster: hub card alignment + feed redesign + silent refresh + Sunday/Monday deep-dive scoped
+## 2026-05-22 22:50 — PM-209 mind.html Today's Focus tile: thumbnail fills the card + PM-209.1 index.html recovery (§23.52 earned)
 
-### Three commits shipped, all on vyve-site main
+### What shipped (PM-209, vyve-site `316aded3`)
 
-**PM-206 — connect.html hub Recent Check-ins aligned to feed card shape + reactions interactive** (`9e9bfc8f`).
-Hub Recent Check-ins cards rewritten using the canonical `cin-*`/`rx-*` markup lifted verbatim from `connect-feed.html`. Same 6-emoji reaction strip, "YOU" gold badge on own cards, heart total in header row. Wrap-link removed; "See all ›" in section header carries feed navigation.
+Mind hub Today's Focus tile restructured. The 150px corner-circle thumbnail (`.thumb-hero`, positioned absolute right:-30px top:-30px, radial-glow ring) is replaced by a full-bleed `.hero-banner` matching the `.vz-hero` detail-page pattern: 180px-tall banner fills the card top, image painted as `background-image` via `--bg-img` CSS variable, dark gradient from 40% → 100% for legibility, badge sits top-left in a frosted-pill (4px blur + 55% surface-dark fill), title + meta stack bottom-left in white with subtle text-shadow. Play CTA retained as a full-width teal bar below the banner — the card now has two clear zones, image + action.
 
-Hub now writes reactions: delegated `.rx-btn` click handler triggers `toggleReaction` — optimistic Dexie write + bus publish + REST POST/DELETE + outbox fallback. Identical pattern to feed. `paintAll` builds richer `reactionsByCheckin` shape (was: flat count map). Rows cached in `__lastRecentRows` for fast repaint.
+Visual reference: the "Calm Your Mind" detail-page tile pattern (`.vz-hero` at mind.html line 250). Dean's feedback was that the corner-circle pattern felt cramped vs the detail-page banner; the change brings the hub into visual parity with what members see one tap deeper.
 
-Zero added load cost — hub was already Dexie-only synchronous read. Visual upgrade is bigger HTML strings + one delegated handler + reaction write path. Hub docstring updated: no longer 100% read-only.
+JS rewrite in `renderFocus()`: instead of appending an `<img class="thumb-img-hero">` into the thumb div, the YouTube `mqdefault` URL is now probed via `new Image()` and applied as `--bg-img` on the banner only after onload fires. This prevents the gradient placeholder from briefly flashing the image element's intrinsic dimensions before paint, and the fallback chain (`mqdefault` → `hqdefault` → gradient-only) collapses cleanly. Same daily-rotation seed (djb2 of `memberEmail|todayStr`) drives a 12-session pool — the imagery changes daily.
 
-**PM-207 — connect-feed.html: All-members tab default + today-only feed + cache-paint perf** (`b37f8f90`).
-Three changes:
-- **Tab semantics.** "Workplace" demoted from default. New default `All members` shows every check-in today, employer-agnostic. `Workplace` now hidden if viewer's `members.company` is null; revealed by `loadMemberInfo` when set. Order: All members | Workplace? | Elite | Following.
-- **Today-only feed.** Dropped 7-day window + day separators. Daily midnight reset by cache-date mismatch + visibilitychange refetch.
-- **Cache-paint perf (§23.48 Pattern 4).** New `_kv` `connect_feed_rows_v1` stores `{tab, rows, reactions, today, computed_at_ms}`. `loadFeed()` paints from cache instantly, fires rows + reactions REST in parallel. `fetchReactionsForToday` filters by `created_at>=today` so launches without waiting for row IDs. Legacy `fetchReactionsFor` deleted. Visual chrome polish on tabs + banner.
+### Files in PM-209 commit `316aded3`
 
-**PM-208 — connect-feed.html silent background refresh** (`558c80cf`).
-PM-207's Pattern 4 implementation always called `render()` on fetch return, so on a slow network the 3-5s background fetch made the page feel like it was still loading after the cache had already painted. PM-208 adds a content-equivalence diff-check before the post-fetch render.
+- `mind.html` — CSS rewrite of `.hero-card` + new `.hero-banner` + removal of obsolete `.thumb-hero` corner-circle CSS; markup restructure so badge + title + meta live inside the banner; `renderFocus()` image paint via `--bg-img` probe pattern
+- `sw.js` — cache key `pm208-silent-refresh-a` → `pm209-mind-focus-banner-a`
+- `index.html` — vbb-marker 78 → 79
 
-`computeFeedSig(rows, rxMap)` generates a deterministic signature from row-ID order + per-row reaction total + my_reaction key. `__lastRenderedSig` stamped at end of every `render()`. `loadFeed()` compares fresh sig to last-rendered: if identical, in-memory state and `_kv` cache update but `render()` does NOT run — user sees zero visible change for the entire silent refresh. Cleared in `setTab()` since sig is scope-specific.
+### What went wrong (the §23.52-earning event)
 
-Result: second-visit-and-onwards mount paints from cache in ~100ms and stays there. Background fetch runs invisibly. Only new content (changed sig) triggers a visible repaint.
+The atomic 3-file commit was assembled via Git Data API directly (Composio still 401-ing from the 21 May security incident — Vault PAT path per §23.40). Each blob create looked like:
 
-Trade-off: a new check-in posted by another member during a visit shows up at the end of the 3-5s silent refetch, not in realtime. That's the gap Option C (global Dexie sync + Realtime) closes — parked for the Sunday/Monday deep dive per Dean's call.
+```bash
+b64=$(base64 -w0 < "vyve-site/$path")
+body=$(python3 -c "import json; print(json.dumps({'content':'$b64','encoding':'base64'}))")
+curl -X POST -d "$body" "$API/git/blobs"
+```
 
-### Sunday/Monday Connect deep-dive scoped
+For mind.html (44KB blob body) this worked. For sw.js (small) this worked. For **index.html (121KB → ~162KB base64 body)** the bash argv limit kicked in. `python3 -c` failed with `Argument list too long` (visible in stderr as `/bin/sh: 20: python3: Argument list too long`), the `$body` shell capture came back empty, the subsequent `BLOB_INDEX` SHA was an empty string, and the new tree was built with `{'path': 'index.html', 'sha': ''}`.
 
-Dean PM-208: "We need to do a full audit of everything so that once we bundle this on the app later on or on Monday, this is all sorted... a real deep dive of a Sunday afternoon and Monday to find out how to get all of this working to be the best that it can be in the premium app."
+**GitHub silently accepted the empty SHA.** The tree create returned a SHA. The commit create returned a SHA. The ref update returned 200. Live verification of the commit's `files[]` array showed `removed index.html add+:0 del-:1849` — the home page had been deleted from production for ~3 minutes.
 
-Logged in `tasks/backlog.md` as a top-priority entry. Scope summary:
-1. Global-scope Dexie sync for `connect_checkins` + `checkin_reactions` (sync.js line 235+253 region; RLS already permissive on SELECT).
-2. Supabase Realtime channel on both tables; INSERT/UPDATE/DELETE writes to Dexie + publishes existing bus events.
-3. §23.48 Pattern 1 migration for both Connect pages — reads become local bus-driven, no fetch on paint.
-4. Pattern audit across every Connect surface — pattern-tagged spec sheet as the contract for future work.
-5. Premium-feel polish pass — typography rhythm, card spacing, empty-state copy consistency, animation timings.
+### Recovery (PM-209.1, vyve-site `5488a1f9`)
 
-Estimate: 3-5 Claude-assisted sessions (Sunday audit + Realtime spike, Monday build + polish). Dependencies to verify Sunday: Realtime quota, Dexie storage growth, iOS WKWebView WebSocket behaviour, §23.10 carve-out implications.
+1. Fetched the original index.html blob SHA from the parent commit (`558c80cf`) via Contents API at ref.
+2. Re-uploaded the local PM-209 index.html (with vbb-marker 79 already in place) via `curl --data-binary @/tmp/blob_body.json` — the `--data-binary @file` pattern that doesn't route through argv. Blob SHA returned matched the parent's blob SHA exactly, confirming the marker bump had been in the original push attempt all along; the issue was purely the empty SHA in the tree, not file corruption.
+3. New tree on top of broken HEAD (`316aded3`) restoring `{path: 'index.html', sha: <restored>}`.
+4. New commit, ref update.
+5. Post-recovery verify: HEAD `5488a1f9`, all three files present at expected size + content, hero-banner CSS lives, cache key on `pm209`, marker on 79.
 
-### Files committed
+Total downtime ~3 minutes between the broken push and the recovery push landing.
 
-- `vyve-site` main: `9e9bfc8f` (PM-206), `b37f8f90` (PM-207), `558c80cf` (PM-208).
-- `VYVEBrain`: this session-close commit — §19 PM-208 header + PM-206/207/208 entries, backlog Sunday/Monday deep-dive entry, this changelog entry.
+### §23.52 earned — "Never substitute large file bodies into bash argv"
 
-### What stays unresolved (deferred to Sunday/Monday)
+Codified in master.md §23.52 with three sub-rules:
 
-- Realtime gap on connect-feed.html — new posts from other members during a visit take up to the silent-refetch duration to appear. Option C closes this.
-- Connect hub Recent Check-ins still own-member-scope only — global-scope Dexie sync makes it actually-recent-across-community.
-- `fetchReactionsForToday` does a `created_at>=today` scan on `checkin_reactions` — no `created_at` index. Small table today; flag for audit.
+- **(a)** `curl -d "$body"` is forbidden for any body >10KB. Always write to `/tmp/*.json` and pass `--data-binary @file`.
+- **(b)** Post-commit verify on atomic multi-file commits must inspect `commits/{sha}` and assert `files[].status` matches the expected `modified`/`added` set — no surprise `removed` entries.
+- **(c)** Any shell variable holding a SHA returned from a blob/tree create must be asserted non-empty before being passed to the next step.
 
----
+The §23.41 first-100-char re-fetch verify pattern is sufficient for **content correctness** of files that did get into the commit, but it doesn't cover **file presence** — a file dropped from the tree won't show up to be re-fetched. (b) closes that gap.
 
+### Brain note: Composio outage still active
+
+The 21 May Composio security incident token revocation is still live as of 22 May 22:50. Vault PAT path (§23.40) + direct Git Data API via bash_tool curl is the operational replacement until Composio is restored. Worth a brain entry to confirm we're past 24h on the outage; if it persists past 72h we should consider the Composio path stale-by-default and reverse the primary/fallback designation.
 ## 2026-05-22 21:30 — PM-204 / PM-205 connect-checkin.html posted-state spacing: dead-CSS root cause + final tune (§23.51 earned)
 
 ### Two commits shipped, capping a five-commit cluster on the same surface
