@@ -306,7 +306,7 @@ This commitment may not be revised without producing a specific measured problem
 
 - **Phase 1 — Body section consolidation.** NOT STARTED. body.html proper hub mirroring mind.html shape (Today's focus + Day streak + Today's progress for Workouts/Cardio/Movement). Probable new `body_activities` table. Sub-pages already Dexie-first — this phase is consolidation. **NEXT.**
 
-- **Phase 2 — Connect section build.** NOT STARTED. connect.html (NEW) unifying leaderboard + sessions + charity impact + (optionally) social feed.
+- **Phase 2 — Connect section build.** SHIPPED 21 May 2026 (PM-186 → PM-188). connect.html hub + connect-checkin.html + connect-feed.html + connect-challenge.html live. Two EFs deployed v1 ACTIVE (`connect-challenge-summary`, `connect-feed-counts`) with 60s `_kv` cache lifecycle. Bottom nav slot 4 swapped Sessions → Connect (Live Sessions accessible via More menu). Sub-page audit on sessions.html + leaderboard.html applied §23.48 patterns 3+4. **Phase 2 closed properly at PM-188 nav fix commit** — earlier "closure" at PM-188 step 7 was premature (Connect not navigable until bottom nav wired).
 
 - **Phase 3 — Pillar realignment.** NOT STARTED. Home / Engagement / Weekly check-in / Monthly check-in / Certificates all reframe around Mind / Body / Connect. Variety component reframes per-pillar (foreshadowed PM-183). Certificates re-pillar (was deferred-post-launch in §22 — pulled into this campaign per Dean's call: ship consistent or don't ship). Heaviest phase.
 
@@ -383,11 +383,42 @@ Full §23 lives in `master.md` (50+ rules). These are the ones that fire on most
 
 ### Read me when about to make architectural changes
 
-- **For Premium Feel Campaign work specifically:** §3 of this file is immutable. Dexie is the local source. Don't propose alternatives.
-- **Spike-gate pattern (codified PF-1, May 2026):** When shipping new architecture onto main before all members are ready to use it, gate via `localStorage.vyve_lf_spike === '1'`. Inert otherwise — the new code is dead weight for everyone except spike testers, and the work can ship to main without a parallel deploy pipeline. Pattern used because `vyve-site` GitHub Pages only deploys from `main` (single-branch publish, no preview ref). Generalises to any future architectural slice that wants live-on-main testing. The inert path MUST install a no-op shim under the same window symbol (e.g. `window.VYVELocalDB`) so call-sites don't need to branch.
+- **For Bundle-Ready Campaign work specifically:** §3 of this file is immutable. Dexie is the local source. Don't propose alternatives.
+- **Spike-gate pattern (codified PF-1, May 2026):** When shipping new architecture onto main before all members are ready to use it, gate via `localStorage.vyve_lf_spike === '1'`. Inert otherwise — the new code is dead weight for everyone except spike testers, and the work can ship to main without a parallel deploy pipeline. Used because `vyve-site` GitHub Pages only deploys from `main` (single-branch publish, no preview ref). The inert path MUST install a no-op shim under the same window symbol (e.g. `window.VYVELocalDB`) so call-sites don't need to branch.
 
-- **PF-40 is the active consolidation phase (locked PM-106).** When a session would otherwise propose a per-page Dexie wire / per-page write workaround / per-page hydrate patch, the answer is now "land it inside PF-40, not as a one-off." The campaign exists specifically to absorb those shapes. The new §23.11 / §23.12 / §23.13 rules are the contract; PF-40 is the implementation. See `tasks/backlog.md` PF-40 section for the 12 sub-items and dependency graph.
-- **The Habits "undefined" canary (PM-106).** When a Dexie-wired page renders `undefined` for fields the UI expects, the bug is almost always that the hydrate pulled thin rows but the page reads denormalised joins. Don't patch the page; expand `pullOneTable(table)` to include the join columns. This is the §23.11 rule.
+### Freshness model — §23.48 four patterns (load-bearing for every page in Phases 1, 3, and the Index rewrite)
+
+Every member-data surface in the portal falls into exactly one of these four patterns. Pick the right one at design time; the wrong one is either a §23.46 violation (skeleton on data Dexie can answer), a §23.10 violation (treating network-bound data as local), or a §23.7.7 violation (stale across rollover because no focus handler). Full rule in master.md §23.48 with decision tree + audit signals + per-surface application matrix.
+
+- **Pattern 1 — Local member data, bus-driven, no timers.** Source: Dexie + `_sync_queue` outbox. Examples: streak rings, posted-today, own check-ins, habit ticks, workout logs. Synchronous Dexie read at paint, bus subscriptions repaint on every relevant write. The bus IS the freshness mechanism.
+- **Pattern 2 — Catalogue data, fan-out-on-focus, no live updates.** Source: Dexie copy of server catalogue tables, hydrated by sync.js. Examples: `service_catalogue`, `weekly_challenges`, `daily_checkin_prompts`, `personas`, `knowledge_base`, `habit_library`. Hydrate on `auth-ready`, refresh on `visibilitychange→visible` + `pageshow`. No timers. The focus loop IS the refresh mechanism.
+- **Pattern 3 — Time-derived state from catalogue, page-visible ticker paused on hidden.** Source: pure function of `(catalogue_row, Date.now())`. Examples: "is this session live right now / upcoming / finished", live session countdown, "available now until 18:00" eligibility. `setInterval` while visible, paused on `→hidden`, immediate re-eval on `→visible`. Default 30s cadence; 1s only for active countdowns user is staring at.
+- **Pattern 4 — Honestly-network-bound aggregates, 60s `_kv` cache + fetch-on-focus.** Source: server-side aggregate compute (Edge Function). Examples: "X members checked in today" banner, challenge community total, leaderboard ranks, charity collective total. Paint from `_kv` cache immediately, on boot check staleness (cache >60s OR missing OR dimension mismatch), un-awaited EF fetch on stale, repaint silently. EF errors leave last-known cache visible. Realtime is NOT pattern 4 v1 — defer Realtime upgrade until empirically demonstrated UX gap.
+
+**Decision tree:** Can Dexie answer this read? → P1. Server-owned catalogue mirrored to client? → P2. UI state changes as wall-clock crosses a timestamp? → P3 layered on P2. Cross-member aggregate the client can't compute locally? → P4. Most surfaces use one pattern; some compose (Live This Week = P2 + P3, connect.html feed banner = P4, streak ring = P1).
+
+### Architecture (load-bearing for future sessions)
+
+- **§23.39 optimistic-first writes** are the canonical write pattern. Dexie upsert sync → bus publish → un-awaited POST → 4xx revert → network-throw enqueue to `_sync_queue`. Pattern 1 surfaces depend on these bus events firing.
+- **§23.41 parallel-session safety.** Mandatory pre-commit SHA refresh + post-commit byte-equal verify. Multiple Claude sessions on the same brain or vyve-site repo will drift between session start and write attempt. Refresh SHAs immediately before every `GITHUB_COMMIT_MULTIPLE_FILES` call; verify byte-equal at commit SHA after.
+- **§23.42 bundled-native production reach.** vyve-site main HEAD does NOT reach production members until the next Capawesome OTA bundle pushes. Dean's dev iPhone via `server.url` dev-loop sees main HEAD immediately (subject to §23.29 WKWebView 2-15min cache). Members are frozen at the SHA bundled into their IPA/AAB until next OTA. **A change being live for Dean ≠ live to members.**
+- **§23.45 Composio-down fallback (codified PM-185, exercised PM-186/187/188).** When Composio returns 401s on GitHub tools, do not retry endlessly. Max 2 retries, then fetch `GITHUB_PAT_CLAUDE` from `vault.decrypted_secrets` via Supabase MCP `execute_sql` (project `ixjfklpckgxrwjlfsaaz`), use bash_tool + curl direct against `api.github.com`. Reads via Accept: application/vnd.github.raw. Multi-file atomic commits via Git Data API (blobs → tree → commit → update ref). §23.41 SHA refresh + post-commit byte-equal verify still mandatory regardless of path. Never ask Dean to paste a token — Vault has it.
+- **§23.46 paint counters render truth.** Default `0` in markup for numeric counters. No skeleton chars (`…`, `--:--:--`, `Loading...`). The only carve-out is genuinely-unresolved remote data with no last-known cache — and even then prefer "Last updated Nm ago" with the last-known value. Cache hits paint immediately, no flash to skeleton.
+- **§23.7.7 date rollover self-correction.** Date-anchored surfaces (today's progress, today's prompt, today's focus) re-read `todayStr()` on `visibilitychange + pageshow` so members who leave the app open across midnight see the new day's content next time they look.
+
+### Auth + RLS (still load-bearing post-launch)
+
+- **Auth state-change handler guards on event type, not session-null** (PM-74). `if (ev === 'SIGNED_OUT')` only. Supabase fires TOKEN_REFRESHED with null session when refresh fails — that is not a sign-out and must not redirect.
+- **401 redirect must signOut-before-redirect** (PM-74). `await signOut() → set vyve_return_to → location.replace`. Naked `location.href = '/login.html'` creates auth loops on stale tokens.
+- **RLS policies wrap auth functions in `(SELECT ...)`** (PM-8). Bare `auth.email()` causes per-row re-evaluation and 300-2000ms planning overhead. Always `(SELECT auth.email())`.
+- **AFTER STATEMENT triggers + transition tables, never AFTER ROW for aggregation refresh** (PM-68). Inline-on-write aggregation refresh causes writer-contention cascades.
+- **Cache-paint runs before auth, not inside `onAuthReady`** (PM-3). Pages must `paintCacheEarly()` as a synchronous IIFE at the top, before any auth-gated code.
+
+### Audit method (when investigating bugs across many files)
+
+- **Whole-tree audits use `GITHUB_GET_A_TREE` recursive + parallel-fetch all .html/.js blobs + local grep.** Never pre-select a subset — past sessions have produced false negatives by guessing which files to audit (3× undercounting on PM-58).
+- **Verify Supabase triggers via `pg_trigger`, not `information_schema.triggers`** — the latter silently hides triggers from read-only users.
+- **Edge function source: `Supabase:get_edge_function` returns readable source.** `SUPABASE_GET_FUNCTION_BODY` returns ESZIP binary — useless.
 
 ---
 

@@ -942,9 +942,13 @@ Production iOS 1.3 (2) + Android 1.0.3 (10) bundled-mode at SHA `83874dd5` — u
 - Migration + body.html hub build.
 - Sub-page audit (workouts/cardio/movement/exercise).
 
-**Phase 2 — Connect section build (2-3 sessions):**
-- connect.html (NEW) — charity impact hero + today's session + leaderboard preview + Day streak.
-- Sub-page audit (sessions schedule = catalogue hydrate; leaderboard = §23.10 carve-out).
+**Phase 2 — Connect section build:** SHIPPED 21 May 2026 (PM-186 → PM-188).
+- connect.html hub + connect-checkin.html + connect-feed.html + connect-challenge.html LIVE on main.
+- Two Edge Functions deployed v1 ACTIVE (`connect-challenge-summary`, `connect-feed-counts`) with 60s `_kv` cache lifecycle.
+- Bottom nav slot 4 swapped Sessions → Connect (Live Sessions accessible via More menu).
+- Sub-page audit on sessions.html + leaderboard.html applied §23.48 patterns 3+4.
+- New §23 hard rule earned: §23.48 (Connect freshness model — four patterns). Master.md §23.48 has full doctrine.
+- Production reach gated on next OTA per §23.42.
 
 **Phase 3 — Pillar realignment (3-4 sessions, heaviest phase):**
 - Home page rewrite — pillar tiles replace certificate-track cards.
