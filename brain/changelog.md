@@ -1,3 +1,51 @@
+## 2026-05-22 21:30 — PM-204 / PM-205 connect-checkin.html posted-state spacing: dead-CSS root cause + final tune (§23.51 earned)
+
+### Two commits shipped, capping a five-commit cluster on the same surface
+
+**PM-205 — `.wrap` posted-state padding-top 14 → 28px** (`5e2ba978`).
+PM-204 had landed the fix on the correct surface but 14px read cramped on-device. Dean confirmed 28px gives the right breathing room between sticky `.mobile-page-header` and the hero card. sw cache `pm204-wrap-padding-a` → `pm205-wrap-padding-28-a`. vbb-marker 75 → 76.
+
+**PM-204 — root-cause fix for the three-iteration spacing miss** (`338a4a7a`).
+PM-201/202/203 chained three failed attempts on the same surface. All three tuned `body.posted-state-visible .topbar` padding — but `connect-checkin.html` has no `.topbar` element. The actual sticky header on the page is `.mobile-page-header`, injected at runtime by `nav.js` line 249 (styled `nav.js` line 115, `min-height:56px` + safe-area). The `.topbar` CSS block in connect-checkin.html is legacy dead code, probably copied from an older sub-page pattern that's since been replaced by nav.js's mobile header injection.
+
+Root-cause discovery: Dean asked "is this page different in how it paints?" — that prompted a cascade audit (grep for `.topbar`/`#posted-state`/`.wrap`/`.hero-checkin` in the page HTML, then grep for the injection mechanism in `nav.js`). The audit found:
+- `.topbar` selector matches no DOM element on the rendered page.
+- Real lever is `.wrap` `padding-top` in posted-state. PM-201 set it to 0 (assuming `.topbar` padding-bottom controlled the gap); fix is `padding-top:14px` (PM-204) or 28px (PM-205).
+
+PM-204 commit:
+- `connect-checkin.html`: removed the dead `body.posted-state-visible .topbar` override entirely; changed `.wrap{padding-top:0}` → `.wrap{padding-top:14px}` in posted-state.
+- `sw.js`: cache `pm203-spacing-restore-a` → `pm204-wrap-padding-a`.
+- `index.html`: vbb-marker 74 → 75.
+
+### The three failed prior iterations (PM-201 spacing component, PM-202, PM-203)
+
+All three landed clean commits with verified file SHAs on main, bumped cache keys, advanced build markers, and confirmed device pickup of the new marker — but produced **zero visible spacing change** because the CSS selector matched no element. Three commits of CSS tuning, ~30 minutes of round-trip, no movement.
+
+- **PM-201 spacing** (component of `f2a923f7`): `.topbar` padding-bottom 8 → 4px, `#posted-state` margin-top -4px. Intent was ~10px tighter against the header. Effect: invisible.
+- **PM-202** (`8df46dd1`): aggressive tighten — `.topbar` padding-bottom 4 → 2px, `#posted-state` margin-top -4 → -12px, `.hero-checkin` margin-top 0 → 8px. Intent was to close PM-201's residual gap. Effect: still invisible.
+- **PM-203** (`a1dd4e6b`): "over-correction restore" — back to `.topbar` padding-top:12px padding-bottom:14px, negative margins removed. Intent was breathing room without negative margins. Effect: still invisible.
+
+PM-201's prewarm + identity components shipped correctly and are fine. The spacing component was the part that took five commits to land.
+
+### New rule earned: §23.51 — When a CSS edit produces no visible change, audit the selector before re-tuning
+
+Codified in `brain/master.md` between §23.50 and §24. Summary: when a CSS edit completes the verify pipeline (commit on main, cache bumped, marker advanced, device picked up new marker) AND on-device output looks identical to previous state, do **not** re-tune the same value. The most likely explanation is a dead selector. Two-minute audit: grep for the class in the page HTML, grep shared injection scripts (`nav.js`) for `createElement` / `className =` / the visible header text. The element being styled is whatever's actually on the rendered DOM.
+
+PM-204 also deleted the dead `.topbar` rule rather than leaving it adjacent — hygiene corollary: dead CSS implies intent that the rendered output contradicts, which is worse than missing CSS for future sessions.
+
+### Files committed
+
+- `vyve-site` main: `8df46dd1` (PM-202), `a1dd4e6b` (PM-203), `338a4a7a` (PM-204), `5e2ba978` (PM-205). PM-201 had shipped earlier at `f2a923f7`.
+- `VYVEBrain`: this session-close commit — §19 PM-205 header + PM-201–205 narrative correction, §23.51 added, this changelog entry.
+
+### What stays unresolved
+
+Edge case from PM-201 still parked: if member goes straight into check-in flow from a fresh app launch / deep link without opening Connect hub first, the prewarm hasn't fired and the first-ever posted-state on a new install still waits on EF cold start. Mitigation if observed: fire prewarm from auth-ready instead of hub paint. Deferred until reported.
+
+Deeper structural fix still parked: global-scope `connect_checkins` + `checkin_reactions` Dexie sync (currently own-member only) → feed becomes local read, no EF on the read path. Phase 4 (offline-correctness sweep) territory. RLS already permissive on SELECT.
+
+---
+
 ## 2026-05-22 21:00 — PM-199 / PM-200 / PM-201 Connect cluster ship: reaction parity, posted-state Direction B, prewarm + identity polish
 
 ### Three commits shipped, all on vyve-site main
