@@ -1,3 +1,89 @@
+## Shipped 22 May 2026 — PM-201 Posted-state polish: prewarm + identity + spacing [vyve-site `f2a923f7`]
+
+**Three polish fixes on top of PM-200 Direction B after live-device feedback.**
+
+**1. Cache prewarm from Connect hub.** `connect.html` `paintAll()` now calls `prewarmFeedPreview()` un-awaited which writes `connect-feed-preview` EF result to Dexie `_kv` if cache stale. EF logs showed `connect-feed-counts` cold starts at 10-13s under load (same Deno cold-start cost inherited by `connect-feed-preview`). By the time the member composes + posts (10-30s), the cache is warm — posted-state community feed paints instantly. Pattern: §23.7.7 fan-out-on-arrival applied to a sibling page.
+
+**2. Own-card display name + avatar consistency.** PM-200 used `initialsFromName('', memberEmail)` which fell through to email local-part ("TE" for `test1@test.com`). Mismatched what other members see for the same account via EF resolution ("TC" via `first_name='TEST'` + `last_name='CLEAN'` + `display_name_preference='full_name'`). Added `resolveOwnInitials()` client-side helper mirroring EF logic, in-memory cached.
+
+**3. Hero spacing tightened.** `body.posted-state-visible` class on render; CSS pulls topbar padding-bottom 8→4px and posted-state margin-top -4px. Hero sits ~10px tighter.
+
+**Files in commit `f2a923f7`:** connect-checkin.html, connect.html, sw.js (`pm201-prewarm-polish-a`), index.html (vbb-marker 72).
+
+**Edge case still open.** If member goes straight into check-in flow from a fresh app launch / deep link *without* opening Connect hub first, the prewarm hasn't fired. The cache is cold, the first-ever posted-state on a new install still waits on EF cold start. Mitigation if observed: fire prewarm from auth-ready instead of hub paint. Deferred until reported.
+
+**Deeper structural fix parked.** Global-scope `connect_checkins` + `checkin_reactions` Dexie sync (currently own-member only via sync.js scope at line 235+253) would make the feed local — no EF on the read path, "Facebook-fast" by default. Phase 4 (offline-correctness sweep) territory. RLS is already permissive on SELECT (`_read_all` policies with `qual:true`), so the only blocker is sync.js scope wiring.
+
+---
+
+## Shipped 22 May 2026 — PM-200 connect-checkin.html posted-state Direction B (community preview embedded) [vyve-site `416cec0b` + `connect-feed-preview` EF v1 deploy]
+
+**The reframe.** Posted-state was a transaction receipt + dead-end button row. Direction B (selected from three mocks — A moment / B community / C streak) turns it into a social on-ramp by putting the live community feed on the same screen. Three panels:
+
+1. **Hero card (gradient teal):** own check-in as the largest element. Avatar + "You · Posted HH:MM" + italic Playfair prompt eyebrow + 1.8rem Playfair body + focus tag + own-reaction count from Dexie. "Posted ✓" badge top-right absorbs the receipt role.
+
+2. **"Latest from VYVE" community preview:** 3 latest check-ins across **ALL members globally** (Dean's PM-200 scope decision, not workplace-scoped). Display names resolved server-side per `members.display_name_preference` (anonymous → "Member", full_name → first+last, initials → 2 letters, fallback → email local-part). Reaction emoji buttons interactive in place via optimistic Dexie write + outbox queue. Live pulse dot + "N today" counter. "🌱 You're the first one today" empty state when feed excludes own row.
+
+3. **Single primary CTA:** teal "Open community feed →", ghost text link "Back to Connect", Playfair italic "Tomorrow waits with a fresh question." Lock + "come back tomorrow" dropped entirely.
+
+**New Edge Function — connect-feed-preview v1 ACTIVE** (id `1782d22d-2b9f-428e-b5fa-d44738e78580`). `verify_jwt: true`, dual-client pattern (PM-187 connect-feed-counts shape). Returns latest 3 `connect_checkins` with `display_name` + `initials` resolved server-side, `reaction_counts` aggregated by emoji key (heart/strong/fire/hands/star/clap), plus today's distinct-member count. Mirrors §23.48 Pattern 4 on the client.
+
+**Files in commit `416cec0b`:** connect-checkin.html (CSS + markup + render fn), sw.js (`pm200-community-preview-a`), index.html (vbb-marker 71). EF deployed separately via `Supabase:deploy_edge_function`.
+
+**§23 contracts honoured:** §23.46 (counters render truth), §23.48 Pattern 1 hero + Pattern 4 community, §23.39 optimistic-first writes, §23.41 pre-commit HEAD refresh + post-commit verify.
+
+---
+
+## Shipped 22 May 2026 — PM-199 Connect hub reaction count from Dexie + pencil/tick icon swap [vyve-site `229601f1`]
+
+**PM-198 follow-up cleanup.** Two gaps closed in `connect.html`:
+
+1. **renderPostedState now toggles `#checkin-icon-pencil` / `#checkin-icon-tick`** alongside the CTA/badge/copy swap. Both SVGs shipped in PM-198 but no JS toggle existed — tick was permanently `display:none`, so the visual done-state indicator never appeared.
+
+2. **renderRecentCheckins reads reaction_count from a `{ checkin_id: count }` map** built in `paintAll` via `Promise.all` over `connect_checkins.allFor()` + `checkin_reactions.allFor()`. Previously read `c.reaction_count` — a field that doesn't exist on `connect_checkins` rows. Hub Recent Check-ins always rendered `♥ 0` despite live reactions visible on `connect-feed.html` for the same rows.
+
+Scope: own member, own reactions (v1). Matches existing hub scope comment at line 998. Feed-scope reactions for other members' check-ins remain a future thread when sync.js feed-scope hydration lands.
+
+Bus subscriptions to `connect:reaction:logged` / `cleared` already in place from PM-187 (line 1044-1045) so cross-page tick-up from feed reactions repaints the hub automatically via `repaintDebounced`.
+
+§23.46 contract preserved: paint defaults to 0, real value overwrites on Dexie read.
+
+**Files in commit `229601f1`:** connect.html, sw.js (`pm199-recent-reactions-a`), index.html (vbb-marker 70).
+
+---
+
+## Added 22 May 2026 — Future-vision: community scale mechanics and internal dogfooding (PM-200 conversation, no build commitment)
+
+**Two threads from the PM-200 conversation parked as future-vision, documented for context retention.**
+
+### Internal dogfooding as cultural norm (no engineering required)
+
+Dean's framing during PM-200: *"I would like to think that all of the guys that are on our app actually use this."* The empty-feed UX problem reframes into a leadership commitment.
+
+**Expected baseline:** every VYVE founding-team member (Lewis, Dean, Alan, Calum, Phil, Vicki, Cole) uses VYVE as a member — check-ins, habits, sessions, Mind, Connect, the full surface. Accounts appear on the leaderboard, in Connect feed, in workplace scope, identical to any member. **No role flag, no team-account filter, no exclusion mechanic.** The product VYVE sells is the product VYVE uses.
+
+**Tactical implication for trial:** team check-in cadence drives feed density without any engineering. At 15-20 trial members, 7 team members checking in daily doubles the active cohort. **Lewis-track action:** short Slack message setting an expectation that every team member checks in daily during the trial. Cole especially (community lead role).
+
+**Separate "Content vs Check-in" distinction (also future-vision):** if VYVE later wants "official voices" — Phil sharing a clinical reflection, Calum sharing a workout reference, Cole publishing a community update — that's a Content surface, not a member-vs-team distinction. Not built. Not specced. Worth noting now so we don't conflate the two when one of them comes up later.
+
+### Community scale mechanics — five candidates, all post-trial
+
+When active member count grows past organic-feed thresholds, the following become worth considering. None MVP. None block launch. Build threshold listed beside each — decisions deferred until live data justifies one:
+
+- **For You curated feed.** Algorithmic mix replacing linear "everyone today" feed: members reacted-to-before + workplace + same-prompt-as-you + recency-weighted. Default 8-12 cards, infinite scroll. **Build threshold: >100 daily posts.**
+
+- **Hidden reaction counts below threshold of 3.** Show emoji icons, hide numeric count until ≥3 reactions. Removes the "0 reactions" sting that punishes vulnerability. Pattern from BeReal + recent Instagram experiments. Does NOT affect leaderboard scoring (separate surface, different mechanic). **Brand decision, not just UX — touches "evidence over assumption" company value. Lewis weigh-in required before build.** **Build threshold: >50 active members.**
+
+- **Guaranteed first reaction sweep.** Cron sweep (every 4h) checks `connect_checkins` for rows >4h old with 0 reactions; ensures at least one supportive reaction lands via a house account (Cole / Phil / "VYVE Community"). Members never see "0 reactions". **Build threshold: >50 daily posts.**
+
+- **Impression tracking + "Seen by N" surfacing.** New table `checkin_impressions(checkin_id, member_email, seen_at)` writes on render. Surface impressions on own check-in card ("Seen by 14 of your community") so posters feel seen even without reactions. Pattern from Substack. Schema cheap to add now; surfacing deferred. **Build threshold: >50 active members.** **Worth adding the schema soon to avoid retrofit cost.**
+
+- **Reaction-asymmetry detection.** Algorithmic promotion of low-impression-low-reaction posts on next render. Inverts the social-media default. **Build threshold: probably 100+ active members.**
+
+Mechanics compound — not mutually exclusive. Likely build order: dogfooding norm (no engineering) → hidden-count-below-3 (one EF flag) → impression schema (one table) → For You feed (full algo) → asymmetry promotion.
+
+---
+
 ## Shipped 22 May 2026 — PM-198 Connect Elite hero card [vyve-site `d0ad5320`]
 
 **What shipped.** Connect hub Elite section rebuilt to Cole Patterson's Premium-Feel mockup (19 May 2026). New shape: pencil check-in card first, Elite hero second. Elite hero is a 108px teal ring with a lock at centre, Playfair headline "The **Elite** Community unlocks at 30 days.", 10-dot consecutive-day strip below with "6 DAYS / 30 DAYS" end-cap numerals. Pencil card has SVG icon in a 64px accent circle, Playfair prompt, full-width teal CTA; done state swaps pencil → checkmark, teal → green, "Check In Now" → "View today's check-in".

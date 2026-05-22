@@ -1,3 +1,78 @@
+## 2026-05-22 21:00 — PM-199 / PM-200 / PM-201 Connect cluster ship: reaction parity, posted-state Direction B, prewarm + identity polish
+
+### Three commits shipped, all on vyve-site main
+
+**PM-199 — Connect hub reaction count from Dexie + pencil/tick icon swap** (`229601f1`).
+PM-198 follow-up cleanup. Two gaps closed in `connect.html`:
+- `renderPostedState` now toggles `#checkin-icon-pencil` / `#checkin-icon-tick` visibility alongside the existing CTA/badge/copy swap. Both SVGs shipped in PM-198 but no JS toggle existed — tick was permanently `display:none`.
+- `renderRecentCheckins` builds a `{ checkin_id: count }` map from a parallel `checkin_reactions.allFor(memberEmail)` Dexie read inside `paintAll`, passes count into render. Previously read `c.reaction_count` which is not a column on `connect_checkins` — always rendered 0 despite live reactions visible on `connect-feed.html` for the same rows.
+
+Scope: own member, own reactions (v1). Bus subs to `connect:reaction:logged/cleared` already in place from PM-187, so live tick-up from feed reactions repaints the hub automatically.
+
+§23.46 contract preserved: defaults to 0, real value overwrites on Dexie read.
+
+**PM-200 — connect-checkin.html posted-state Direction B (community preview embedded)** (`416cec0b`).
+Reframes the posted-state from transaction receipt into a social on-ramp. The three-mock design exploration (A moment / B community / C streak) shipped tonight selected Direction B. The dead-end problem (member posts → screen shows receipt + two buttons → leave) was the deep flaw; B solves it structurally by putting the live community feed on the same screen.
+
+Three-panel layout:
+1. Hero card (gradient teal): own check-in as the largest element. Avatar + "You · Posted HH:MM" + italic Playfair prompt eyebrow + 1.8rem Playfair body + focus tag + own-reaction count from Dexie. "Posted ✓" badge top-right absorbs the receipt role.
+2. "Latest from VYVE" community preview: 3 latest check-ins across **ALL members globally** (Dean's PM-200 scope decision — not workplace-scoped), with display names resolved server-side by `members.display_name_preference` (anonymous → "Member", full_name → first+last, initials → 2 letters, fallback → email local-part). Reaction emoji buttons interactive in place. Tap to react/unreact via optimistic Dexie write + vyve-offline outbox queue, mirroring `connect-feed.html`'s pattern. Live pulse dot + "N today" counter.
+3. Single primary teal CTA "Open community feed →", ghost text link "Back to Connect", Playfair italic "Tomorrow waits with a fresh question." Lock + "come back tomorrow" dropped entirely.
+
+New Edge Function — `connect-feed-preview` v1 ACTIVE (id `1782d22d-2b9f-428e-b5fa-d44738e78580`):
+- `verify_jwt: true`, dual-client pattern (PM-187 connect-feed-counts shape)
+- Returns latest 3 connect_checkins (any member, globally), with `display_name` + `initials` resolved server-side, `reaction_counts` aggregated by emoji key (heart/strong/fire/hands/star/clap), plus today's distinct-member count.
+- Mirrors §23.48 Pattern 4 on the client: paint from `_kv` cache → fetch if stale (>60s) → write + repaint.
+
+§23 contracts honoured: §23.46 (counters render truth), §23.48 Pattern 1 hero + Pattern 4 community, §23.39 optimistic-first writes, §23.41 pre-commit HEAD refresh + post-commit first-100-char verify.
+
+**PM-201 — posted-state polish: prewarm + identity + spacing** (`f2a923f7`).
+Three fixes after live-device feedback:
+
+1. **Cache prewarm from Connect hub.** EF logs revealed `connect-feed-counts` cold starts at 10-13s under load; `connect-feed-preview` inherits the same Deno cold-start cost. `connect.html` `paintAll()` now calls `prewarmFeedPreview()` un-awaited which writes to Dexie `_kv` (`connect_feed_preview_v1`) if cache stale. By the time member composes + posts (typically 10-30s), cache is warm, posted-state community feed paints instantly. Pattern: §23.7.7 fan-out-on-arrival applied to a sibling page. Shifts EF cold-start cost off the critical path entirely.
+
+2. **Own-card display name + avatar consistency.** PM-200 used `initialsFromName('', memberEmail)` for own card which fell through to email local-part (rendered "TE" for `test1@test.com`). Mismatched what other members see for the same account via EF resolution ("TC" via `first_name='TEST'` + `last_name='CLEAN'` + `display_name_preference='full_name'`). Added `resolveOwnInitials()` client-side helper mirroring EF logic; queries `members` for first_name + last_name + display_name_preference, caches in-memory. Avatar updates after lookup resolves.
+
+3. **Hero spacing tightened against topbar.** `body.posted-state-visible` class on render; CSS pulls topbar padding-bottom 8→4px and posted-state margin-top -4px. Hero sits ~10px tighter.
+
+### Tooling — Composio still dead
+
+§23.45 PAT-direct path exercised three times tonight across PM-199 / PM-200 / PM-201. 21 May Composio security incident not recovered for this account.
+
+### Production reach
+
+All three commits land on vyve-site `main` only. Production iOS 1.3 (2) + Android 1.0.3 (10) members still at bundled SHA `83874dd5` per §23.42 — no production reach until next Capawesome OTA. Dean's dev iPhone via `server.url` sees all three at next WKWebView cache cycle.
+
+### Design conversation — feed scale mechanics & internal dogfooding (parked, not built)
+
+Dean raised two questions about feed dynamics during the PM-200 conversation:
+
+1. **Seed accounts / fictional users to populate the trial feed.** Reframed by Dean as something deeper than UX seeding — "I would like to think that all of the guys that are on our app actually use this." The product-team-uses-product dogfooding commitment is bigger than the empty-feed UX problem.
+
+2. **What happens at 200+ members posting daily.** Reaction asymmetry (most posts get 0 reactions), volume overwhelms linear feed, posters don't know if anyone saw their post.
+
+Captured as future-vision in master.md + backlog.md. No build commitment, no MVP impact. Tactical follow-up for Lewis: short Slack message to founding team setting an expectation that every team member checks in daily during the trial. Cole especially (community lead role).
+
+### No new §23 hard rule earned this session
+
+All patterns exercised tonight (Pattern 4 client lifecycle, EF dual-client, optimistic-first write skeleton, prewarm-on-sibling-paint) are established doctrine. Prewarm is an extension of §23.7.7 fan-out-on-arrival, not new architectural ground.
+
+### Commits
+
+- vyve-site `229601f1` (PM-199)
+- vyve-site `416cec0b` (PM-200) + `connect-feed-preview` EF v1 deploy
+- vyve-site `f2a923f7` (PM-201)
+- Brain commit: this entry + §19 update + backlog entries
+
+### Live state at session close
+
+- vyve-site main HEAD: `f2a923f7` (Update 72, cache `pm201-prewarm-polish-a`)
+- Brain HEAD before this commit: `132b69de`
+- Production members frozen at vyve-site `83874dd5` per §23.42
+- All three commits visible on Dean's dev iPhone after next WKWebView cycle
+
+---
+
 ## 2026-05-22 PM-198 — Connect Elite hero shipped: lock-icon ring, 10-dot consecutive-day strip, Dexie-first paint, connect_checkins counts toward overall streak server-side parity [vyve-site `d0ad5320`]
 
 **The replacement.** Connect hub Elite section retired the "Your Momentum" framing — small ring with day count digit inside, flat gold progress bar, "21 more active days to unlock Elite Community access" sub-line. Shipped Cole Patterson's Premium-Feel mockup (19 May 2026) as direct port with VYVE polish: 108px teal ring with lock icon centred, Playfair headline reading "The **Elite** Community unlocks at 30 days." (Elite in gold), 10-dot consecutive-day strip below with "6 DAYS / 30 DAYS" end-cap numerals in Playfair.
