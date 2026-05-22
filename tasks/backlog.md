@@ -1,3 +1,17 @@
+## Shipped 22 May 2026 — PM-198 Connect Elite hero card [vyve-site `d0ad5320`]
+
+**What shipped.** Connect hub Elite section rebuilt to Cole Patterson's Premium-Feel mockup (19 May 2026). New shape: pencil check-in card first, Elite hero second. Elite hero is a 108px teal ring with a lock at centre, Playfair headline "The **Elite** Community unlocks at 30 days.", 10-dot consecutive-day strip below with "6 DAYS / 30 DAYS" end-cap numerals. Pencil card has SVG icon in a 64px accent circle, Playfair prompt, full-width teal CTA; done state swaps pencil → checkmark, teal → green, "Check In Now" → "View today's check-in".
+
+**Streak mechanic now in production.** Elite = 30 **consecutive** days of activity. Miss a day, streak resets to 0. Source: `member_home_state.overall_streak_current` via `VYVEHomeStateLocal.computeHomeStateFromDexie()`. Dexie-first read, EF backup via existing sync.js hydration. UNION now includes connect_checkins on both sides (Supabase migration `pm198_add_connect_checkins_to_overall_streak` + client home-state-local.js update). Optimistic-tick via existing `connect:checkin:logged` bus subscription — the dot strip ticks immediately on check-in submit because the optimistic Dexie row lands before the page repaints.
+
+**Files in commit `d0ad5320`:** connect.html, home-state-local.js, sw.js (cache `pm198-elite-hero-a`), index.html (vbb-marker 69).
+
+**What's NOT in this ship.** Pillar realignment (Habits/Body/Mind/Connect/Checkins replacing the legacy 5 tracks) — that's PM-159, deferred post-launch. Achievements catalog 32 metrics × 327 tiers, certificate naming, engagement.html component math all still use legacy tracks. The Elite hero is forward-compatible: when realignment ships, `overall_streak_current` just starts reflecting the new pillar definitions and the UI doesn't change.
+
+**Light-mode contrast** still flagged for Sunday Premium-Feel polish pass (PM-195/196). Tonight's CSS uses `--line-accent` border, `var(--teal-lt)` accents, `var(--text-muted)` for sub-line — all token-driven, so the Sunday audit fix propagates through automatically.
+
+---
+
 ## Added 22 May 2026 — PM-197 Profile identity campaign: photo upload architecture, Connect first-load prompt, Edge Function usage analysis
 
 **Three Dean questions from 22 May design discussion** that further extend the existing 21 May Profile identity campaign and resolve an open architectural concern about Edge Function usage. None of these supersede the existing spec — they add detail and resolve open questions surfaced in PM-196.
