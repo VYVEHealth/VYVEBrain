@@ -1,4 +1,54 @@
-## 2026-05-21 PM-190.e — Connect Live This Week cards link direct to session pages (vyve-site `5af820847aa2403becc56eed5d295ad1b559742b`)
+## 2026-05-22 PM-191 — Session streaming architecture locked: nine-channel YouTube reusable-stream pattern, test queued for next week [brain-only commit, no vyve-site/EF changes]
+
+**Talk-first session.** Dean opened with a request: how do we manage session metadata (titles, instructors, thumbnails, descriptions) and live stream URLs at scale, since both will change regularly and the current Castr "scheduled pre-recorded sessions look live" pattern is working but the live-stream URL handling isn't solved. Conversation went through several iterations — YouTube persistent stream model, Cloudflare Stream / Mux / Vimeo OTT alternatives, the cost maths at projected member counts, and ultimately back to YouTube once the actual channel structure surfaced.
+
+**The key reveal mid-conversation.** Dean noted VYVE has 9 separate YouTube channels (one per session category — Group Therapy, Workouts, Mindfulness, Podcasts, etc.), all under one Google account, each paired with its own Riverside studio. Each channel already has its own stream key configured in the matching Riverside studio. That structural fact changes the architectural calculus — instead of one persistent stream key + complicated back-to-back broadcast handover within a single channel, we use the existing nine-channel structure and the reusable-stream pattern within each channel. Back-to-back broadcasts on the same channel become rare (different categories rarely conflict), and Riverside studios remain configured once and forever.
+
+**Verified architecture (against current YouTube docs).** YouTube's `liveStream` resource defaulting `contentDetails.isReusable=true` allows one persistent stream key per channel to bind to unlimited `liveBroadcast` resources across time. Standard pattern for scheduled recurring live events. Riverside is configured per-studio once. Per-session work is API-side only: Command Centre creates a `liveBroadcast`, calls `liveBroadcasts.bind` to link it to the channel's persistent stream ID, gets back a video URL, writes it to the session row. Lewis goes live in the right Riverside studio at the scheduled time, RTMP routes to the scheduled broadcast for that window, YouTube archives at the same URL when done. Verified via developers.google.com/youtube/v3/live ("Life of a Broadcast", "Understanding Broadcasts and Streams", `liveBroadcasts.bind` reference).
+
+**Why Dean's previous attempts at "reuse the same YouTube link" failed.** Two likely causes captured in the backlog v2 layer: (1) creating broadcasts via YouTube Studio UI rather than the API — the UI defaults to per-broadcast unique streams not bound to a reusable parent; (2) using the deprecated default-broadcast pattern (killed by YouTube ~2020). The reusable-stream + per-broadcast-bind pattern via API is the explicitly-documented current approach for recurring scheduled live events.
+
+**Why YouTube over alternatives (decision recorded).** Walked through Mux, Cloudflare Stream, Vimeo OTT, api.video, bunny.net Stream during the conversation. At 31 members all are negligible cost. At 500 members: Cloudflare Stream ≈ £120/month, Mux ≈ £3,000/month (25× more), YouTube £0. Branded-player chrome and member-only privacy aren't dealbreakers today — YouTube Unlisted broadcasts + iframe parameter strips give an acceptable v1 experience. If those become contract requirements later (likely Sage / enterprise pushback), swap to Cloudflare Stream is a contained change — same Command Centre admin, different EF, different embed renderer. Migration cost low because session metadata lives in our DB and the per-row dependency on YouTube is a single `youtube_video_id` field.
+
+### What changed
+
+- **`tasks/backlog.md` Session content management surface entry extended** with a v2 layer (~5.5KB appended). Captures: the nine-channel structure, the reusable-stream architecture, YouTube vs alternatives decision and cost maths, new `session_categories` table schema, additive `service_catalogue` columns for `category_id` / `youtube_broadcast_id` / `youtube_video_id`, new `session-publish` EF spec, time-based portal resolution via Pattern 3 §23.48, the five-item test list for next week, two-phase build sequencing (phase 1 = admin UI no-YouTube, phase 2 = YouTube layer), and updated owners. v1 layer (text-only metadata editing) from earlier today (PM-188 backlog add) remains valid — v2 layer extends rather than replaces. Sequencing: v1 is a working interim with manual URL pasting; v2 unlocks scaling to 12-15 sessions/day cadence.
+
+- **`brain/master.md` §5 Streaming row corrected.** Was "Riverside (7 studios, permanent links) + YouTube (8 channels) + Castr". Now: 9 channels under one Google account, each paired to its own Riverside studio with its own stream key. Reusable-stream pattern architecture noted with pointer to backlog v2 layer. Resolves the count drift (Dean confirmed 9 in this session).
+
+- **`brain/changelog.md`** — this entry.
+
+### What's NOT in this commit
+
+- **No §23 hard rule added.** Considered §23.51 ("YouTube broadcast = one persistent stream per channel, bound to per-session broadcasts via API"). Held back deliberately. §23 rules earn their place by encoding a non-obvious gotcha that has bitten production OR is now permanently in scope. This architecture is verified-against-docs but not yet verified-against-VYVE-infrastructure. The test next week will either confirm the pattern works as described (in which case §23.51 codifies after the test) or expose an issue specific to VYVE's setup (in which case the rule captures the actual gotcha rather than a guessed one). Premature codification adds noise.
+- **No build work shipped.** This is design + decision + queued test. Phase 1 build (the schema migration + Command Centre UI, no YouTube layer) remains BLOCKED on Phase 2 step 7 closure per the existing v1 backlog entry — that ordering doesn't change.
+
+### Production state at this commit
+
+vyve-site main HEAD unchanged: `5af820847aa2403becc56eed5d295ad1b559742b` (PM-190.e from the parallel session that landed while this conversation was running). Both Connect EFs still v1 ACTIVE. Production iOS 1.3 (2) + Android 1.0.3 (10) bundled-mode at SHA `83874dd5` (frozen since 15 May per PM-115/116). Dean's dev iPhone via `server.url` dev-loop sees main HEAD immediately, subject to §23.29 WKWebView cache.
+
+### Tools state
+
+§23.45 PAT-direct path used end-to-end. Composio creds reported "Active" but every GitHub call returned 401 — same incident from yesterday morning (PM-185) still degrading the toolkit. PAT fetched from Supabase Vault via Supabase MCP, fresh SHAs pulled before commit, all I/O via direct GitHub REST against api.github.com and raw.githubusercontent.com (both allowlisted at the egress proxy). Multi-file atomic commit via Git Data API (blobs → tree → commit → update ref). §23.41 parallel-session safety protocol caught the PM-190 series drift mid-session: local brain copy from session-open was 354/1640/473KB across master/changelog/backlog; live had advanced to 369/1692/480KB. Re-fetched fresh before any patches were written; existing edits not lost because no patch had been committed yet. Saved ~30 minutes of "where did my changes go" detective work.
+
+### What's next
+
+**Next week test (queued explicitly in backlog v2 layer):**
+1. Reusable-stream pattern on a real VYVE channel — create stream + 3 broadcasts + bind via API + push from Riverside, verify each goes live in its scheduled window.
+2. Back-to-back broadcast handover within same channel — RTMP continuity across the boundary.
+3. API quota at session cadence — measure exact unit cost of monthly batch creation.
+4. Castr live-takeover behaviour — manual or automatic pause when Riverside is pushing.
+5. Capacitor iOS iframe embed — `playsinline=1` verification.
+
+If all five pass: phase 2 build proceeds. §23.51 rule codifies the pattern. If any fail: rule captures the actual constraint and build adapts.
+
+Until test: Phase 1 (sessions schema + Command Centre admin UI, manual URL paste as interim) remains the next build, blocked only on Phase 2 step 7 closure per the pre-existing v1 backlog entry.
+
+### Side note for context
+
+Brand pack PDF + canonical logo PNG shipped to Dean during this conversation for handover to Azusa (content/marketing). Standalone deliverable, not part of brain state but worth recording: VYVE Logo PNG + 8-page Brand Pack PDF generated using actual Playfair Display + Inter TTFs embedded, palette correct against §15 master, drop-in ChatGPT brief on page 6 for content-tool prompting. Confirmed the JPG variant of the logo at `assets/VYVE Logo.jpg` in Test-Site-Finalv3 repo is broken (transparent pixels exported as checkerboard pattern in a JPG that doesn't support alpha — only the PNG is the canonical asset).
+
+---
 
 **Ship.** PM-190.d wired the imagery and copy from `sessions-data.js` but every card on the Live This Week carousel still linked to the generic `/sessions.html` index. Dean flagged: tap on Workouts → should go to `workouts-live.html`, tap on Yoga → `yoga-live.html`. Sessions.html itself does this (`card.href = s.liveUrl` on line 226). Same pattern, one-line port.
 
