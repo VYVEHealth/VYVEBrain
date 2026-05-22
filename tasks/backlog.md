@@ -1,3 +1,89 @@
+## Added 22 May 2026 — PM-196 supplement to Profile identity campaign + Light-mode contrast audit (Sunday-pass scope expanded)
+
+**Two new threads from Dean's 22 May design discussion that touch the existing 21 May Profile identity spec and the PM-195 Sunday Premium-Feel polish pass.**
+
+### Thread 1 — Light-mode contrast audit (Sunday-pass scope expansion)
+
+**Dean's observation.** "I do everything in dark mode normally, and I really like how it looks. However, people like Alan like light mode, and I think that the light mode, some of the text is light gray or it's gray on white, and it's hard to read." Alan Bird (COO) is a light-mode user; light-mode contrast directly affects his daily use. Likely also affects light-mode users in the upcoming 15-20 person soft-launch trial.
+
+**Hypothesis of root cause.** The portal's dual theme system (theme.js, `data-theme` attribute on `<html>` + localStorage) maintains parallel CSS token sets for light + dark. The dark mode tokens were designed first and tuned to look premium; the light mode tokens were likely derived by mechanical inversion (`rgba(255,255,255,0.5)` for secondary text in dark → `rgba(13,43,43,0.5)` in light). Mechanical inversion fails on white because the eye tolerates low-contrast light-on-dark better than the equivalent dark-on-light. Body text below ~4.5:1 contrast ratio fails WCAG AA accessibility; secondary text below 3:1 is hard to read for anyone, not just users with vision impairment.
+
+**Scope for Sunday session.**
+
+1. **Automated audit pass.** Script that walks every CSS file in vyve-site, computes contrast ratio for every text colour × background combination in both themes, flags every pair below WCAG AA (4.5:1 body / 3:1 large text). Output: a spreadsheet ranking failures by visibility (number of pages affected × frequency of element).
+2. **Tightened light-mode tokens.** Secondary text needs `#5a6a6a` or darker, not faded teal. Borders, separators, skeleton states all need re-tuning. Light mode wants more saturated accent colours and darker text, not just inverted dark mode. Reference: WCAG contrast checker, also Stark plugin for Figma.
+3. **Reference page approach.** Pick one page (likely settings.html or index.html — both are heavy text pages with mixed hierarchy) as the canonical light-mode reference. Get every text element passing AA. Then propagate the proven token set across the rest of the portal.
+4. **Decision needed.** Whether the dark mode tokens get the same audit pass at the same time. Risk of "fixing" dark mode and breaking the premium feel Dean already likes. Recommendation: dark mode audited but only changes shipped where ratios fail WCAG AA — preserve the visual character of dark mode as-is.
+
+**Sunday-pass scope.** This folds into the same polish window as PM-195's Body-tab flicker fix. Both are surface-level passes across all hubs with a single proven pattern propagated everywhere. Combined scope estimate: full Sunday + likely half of Monday. The Body flicker work is engineering-heavy (cache architecture); the contrast work is design-heavy (token tuning + audit). They share the per-page audit shape but don't share files — independent.
+
+### Thread 2 — Profile preferences as a coordinated system (extends the 21 May spec)
+
+The 21 May Profile identity spec is excellent but **missing a fourth concern that Dean raised in this discussion**: theme preference. Dean's framing was for an onboarding-time settings option covering: theme (light/dark/system), profile picture, display name privacy (anonymous / initials / first name / full name). Three of those are in the existing spec. Theme is not.
+
+**Add to the existing spec — theme as a 4th persisted preference.**
+
+Schema addition to the 21 May `ALTER TABLE members` block:
+
+```sql
+ADD COLUMN theme_preference text DEFAULT 'system' CHECK (theme_preference IN ('light', 'dark', 'system'))
+```
+
+`system` follows `prefers-color-scheme` media query. `light` and `dark` are explicit overrides.
+
+**Why this isn't trivial — it surfaces a real architecture decision.** Currently theme is per-device localStorage. Dean toggles dark on his phone, his laptop still shows whatever it was last. For a single-member-multiple-device user that's annoying. If theme moves to `members.theme_preference`, it syncs across devices — same identity, same look, anywhere they log in. This is the right answer for a premium app. Implementation:
+
+- On app load, after auth resolves, read `theme_preference` from members row, write to `data-theme` on `<html>`, also write to localStorage so subsequent page loads in the same session paint instantly from localStorage before the auth round-trip
+- Theme toggle in Settings writes BOTH localStorage (instant local paint) AND `UPDATE members SET theme_preference = ...` (cross-device sync)
+- For users not yet signed in (login page, set-password page), localStorage wins — they haven't yet identified themselves
+
+This makes theme work behaviourally identical to the existing avatar/display-name pattern: written in Settings, persisted in members, consumed by all pages.
+
+### Thread 3 — Where preferences get configured (onboarding vs in-context vs settings)
+
+The 21 May spec puts avatar and display name in Settings, not onboarding, explicitly to avoid friction at signup. Dean's framing in this discussion suggested onboarding-time configuration. Trade-off worth resolving:
+
+**Option A — All at onboarding.** New "Make it yours" step after the persona/habit assignment, before the welcome email. Pro: members hit Connect/leaderboard with their identity already set, no "Anonymous Member" placeholder on first interaction. Con: extends onboarding flow, decisions made before the member knows what the app feels like, theme is hard to choose before they've seen anything.
+
+**Option B — Contextual prompts at first interaction.** Theme: one-time card on dashboard ("VYVE looks great in both — which do you prefer?"). Avatar/display name: prompted first time they tap into Connect or leaderboard. Pro: decisions in context, member already invested. Con: per-feature first-time prompt engineering, risk of skip leaving default state visible on social surfaces.
+
+**Option C — Hybrid (recommended).** Theme: Option B (contextual). Avatar: Option B (contextual). **Display name: Option A** with first-name-from-onboarding as the smart default, no explicit prompt. Member sees their first name on Connect from the very first interaction; can change to initials / anonymous / full name in Settings if they want privacy.
+
+The recommended default matters more than the option set. **First name as the default** gets community engagement on day one. **Anonymous as the default** turns the leaderboard into a wall of "Member" entries which kills the social mechanic before it starts.
+
+### Thread 4 — Soft-launch tension (15-20 person trial, ~31 May target)
+
+The 21 May spec correctly identifies that the full Profile identity campaign is 2-3 sessions, deferred post-launch. But the existing display-name default in the current system is the email's local-part (`test1@test.com` → `TEST1`). On a 15-person trial leaderboard that reads as test environment, not community. For the 8 Sage users in the system, it's worse — they shouldn't see each other's email handles.
+
+**Surgical pre-trial ship to consider** (not the full Profile identity campaign — just the smallest possible piece that fixes the trial-leaderboard read):
+
+```sql
+ALTER TABLE members ADD COLUMN display_name text;
+-- Backfill from onboarding first_name where present, fallback to email local-part
+UPDATE members SET display_name = COALESCE(first_name, INITCAP(SPLIT_PART(email, '@', 1)));
+```
+
+Then rewire leaderboard.html + connect-feed.html + connect.html Recent Check-Ins to render `display_name` instead of email-derived initials. Single column, single backfill, ~1 session of work. The full Profile identity campaign (avatars + privacy modes + system-wide identity.js helper) ships post-launch as planned.
+
+**Decision point for Dean** at the Sunday session or before: does the first-name-default mechanic block the soft launch, or can the trial run with email-derived initials and the full system ships in the first 30 days post-launch as a polish wave? My read: ship the surgical version pre-trial because the trial leaderboard read matters more than the full system polish. But Dean's call — could go either way without breaking the trial.
+
+### Sequencing relative to existing campaigns
+
+- **Light-mode contrast audit (Thread 1):** folds into PM-195 Sunday pass. Independent of Profile identity. Pure CSS/accessibility. No DB changes, no UX flow changes. Ship Sunday.
+- **Theme as persisted preference (Thread 2):** adds one column to the existing 21 May Profile identity schema migration. Build sequence updated to include theme in the Settings UI work. No standalone session needed — merges into the existing campaign.
+- **Onboarding vs context flow (Thread 3):** design decision at the Profile identity build kickoff. Doesn't change scope, changes where the existing Settings UI surfaces also fire as first-time prompts.
+- **Pre-trial display_name (Thread 4):** standalone surgical ship, 1 session, before soft launch. Independent of full Profile identity campaign. **Dean to confirm whether to schedule this.**
+
+### Updates to the existing 21 May Profile identity spec
+
+When the existing entry is opened for build, three additions:
+
+1. Schema migration block: add `theme_preference text DEFAULT 'system' CHECK (theme_preference IN ('light', 'dark', 'system'))` to the ALTER TABLE statement.
+2. Build sequence step 3 (Settings UI): include theme toggle as a 4th control alongside avatar picker, display name radio, and the existing logout. Theme toggle writes both localStorage and `members.theme_preference`.
+3. Build sequence step 4 (`identity.js` helper): rename to `profile.js` since the helper now covers identity AND theme. Function signature additions: `getThemePreference(memberRow) → 'light' | 'dark' | 'system'` and `applyTheme(preference)` which writes `data-theme` + localStorage.
+
+No other changes to the existing spec — it stands as written.
+
 ## Added 22 May 2026 — PM-195 diagnostic: Body tab flicker (1-6s skeleton on navigation) [DIAGNOSED, fix queued for the Sunday/Monday Premium-Feel polish pass]
 
 **Symptom Dean observed.** Tapping the Body tab in the bottom nav (test1@test.com on Dean's iPhone, native bundled iOS 1.3 (2) at the time, screenshot 17:34 BST 22 May) sometimes shows the exercise.html skeleton placeholders for 1 second (best case) up to 5-6 seconds (worst case) before content renders. Happens on bottom-nav navigation when the user has been away from the Body tab for some time. Inconsistent — not every Body tap reproduces it, but it's frequent enough to feel broken on a premium app.

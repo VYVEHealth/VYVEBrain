@@ -1,3 +1,23 @@
+## 2026-05-22 PM-196 — Profile identity campaign extended (theme as 4th persisted preference) + light-mode contrast audit folded into Sunday Premium-Feel pass [brain-only commit, no vyve-site changes]
+
+**Dean raised two threads in design discussion** that touch the existing 21 May Profile identity spec (PM-188 surfaced, parked post-launch) and the PM-195 Sunday Premium-Feel polish pass:
+
+**Thread 1 — Light-mode contrast audit.** Dean uses dark mode by default; Alan Bird (COO) uses light mode. Light mode has gray-on-white text that's hard to read — classic mistake of designing dark first then mechanically inverting tokens for light. Solution requires per-page audit pass with WCAG AA contrast targets (4.5:1 body, 3:1 large text), tightened light-mode token set (secondary text `#5a6a6a` not faded teal), reference-page approach (one page perfect, then propagate). Folded into PM-195 Sunday polish window — combined Body-flicker fix + light-mode audit + Premium-Feel pass. Independent of Profile identity work (pure CSS/accessibility, no DB or UX changes).
+
+**Thread 2 — Theme as 4th persisted preference.** Dean's framing suggested onboarding-time settings option for theme + profile picture + display name privacy. Three of four already exist in the 21 May spec (avatar curated/uploaded/default, display_name_mode full/first/initials/anonymous, no theme). Theme persistence is currently per-device localStorage — bad for single-member-multiple-device scenario. Recommendation: add `theme_preference text DEFAULT 'system'` column to the existing 21 May Profile identity schema migration, write to BOTH localStorage (instant local paint) AND members row (cross-device sync), rename planned `identity.js` helper to `profile.js` since it now covers identity AND theme.
+
+**Thread 3 — Onboarding vs contextual vs Settings configuration.** The 21 May spec puts avatar + display name in Settings (zero onboarding friction). Dean's discussion implied onboarding-time. Resolved as hybrid: theme + avatar = contextual first-time prompts (Option B), display name = onboarding-time with first-name-from-onboarding as smart default (Option A). The default matters more than the option set — first-name default gets community engagement on day one; anonymous default kills the leaderboard before it starts.
+
+**Thread 4 — Soft-launch tension.** Current display-name default is email local-part (`test1@test.com` → `TEST1`). On a 15-person trial leaderboard that reads as test environment; for 8 Sage users it shouldn't surface their email handles to each other. Surgical pre-trial ship considered: single `display_name` column on members, backfill from onboarding first_name with email-local-part fallback, rewire 3 surfaces (leaderboard, connect-feed, connect Recent Check-Ins) to render it. ~1 session. The full Profile identity campaign (avatars + privacy modes + identity.js helper) still ships post-launch as planned. **Dean to decide** whether the surgical pre-trial ship gets scheduled or the trial runs with email-derived initials.
+
+**Filed in tasks/backlog.md** under "Added 22 May 2026 — PM-196 supplement to Profile identity campaign + Light-mode contrast audit (Sunday-pass scope expanded)" with full diagnosis and decision matrix. Existing 21 May Profile identity entry kept as-is (the spec there stands) with PM-196 supplement noting three additions to apply when the existing entry opens for build.
+
+**No new §23 hard rule earned.** Design and sequencing only.
+
+**Brain HEAD before this commit:** `37c4ae363c366a0a3bf5f47d4119331d7f77b09d`.
+
+---
+
 ## 2026-05-22 PM-195 — Body tab flicker diagnosed; fix queued for Sunday/Monday Premium-Feel polish pass [brain-only commit, no vyve-site changes]
 
 **Symptom.** Dean reported Body-tab navigation showing the exercise.html skeleton for 1s (best) to 5-6s (worst) before content renders. Screenshot at 17:34 BST 22 May with skeleton clearly visible on test1@test.com / native bundled iOS. Inconsistent across taps but frequent enough to break Premium-Feel.
