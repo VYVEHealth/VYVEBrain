@@ -1,3 +1,52 @@
+## 2026-05-22 23:30 — Brain-only ship: Connect calendar + portal admin design parked in backlog (POST-LAUNCH)
+
+### What this commit captures
+
+Dean raised the idea of adding a calendar to Connect (livestreams + events with a toggle), then expanded the ambition into a dedicated portal admin surface owned by him, separate from the existing Command Centre. After ~30 min of design conversation walking through `cc_calendar_events`, `cc_sessions`, `pages/calendar.html`, `pages/sessions.html`, and the `service_catalogue` shape, Dean's call: park it post-launch, ship the MVP first.
+
+This commit captures the design conversation into `tasks/backlog.md` so when we return to it after 31 May trial launch we don't re-derive from scratch. No code shipped tonight, no schema changes, no portal-side or admin-side movement.
+
+### Key decisions captured in backlog
+
+- **Two-domain admin split confirmed.** Command Centre (team ops) stays as-is. Portal Admin (member-facing content) is a future separate domain — likely `manage.vyvehealth.co.uk` since `admin.vyvehealth.co.uk` is taken by Command Centre.
+- **Schema we'd pick:** new `calendar_occurrences` portal-domain table with `type` discriminator (`live_session`/`event`/`podcast_recording`), `location_city`/`location_venue` for events, FK back to `service_catalogue` for materialised recurrences, `locked_from_recurrence` flag to protect manual edits from the cron.
+- **Materialise vs join-at-read:** materialise (weekly Sunday 03:00 UTC cron generates next 8 weeks of occurrences from recurring catalogue rows). Manual edits get their own row to write against.
+- **Member UI shape:** new `connect-calendar.html` with month grid + agenda toggle, new tile carousel on `connect.html` hub replacing Live This Week + Latest from VYVE with Calendar + Podcast + Session Recaps destination tiles.
+- **Build sequencing when we return:** Bundle A (schema + sync, ~1 session) → Bundle B (new portal-admin repo + first editor page, ~1-2 sessions) → Bundle C (member-facing UI, ~1 session). Total 3-4 sessions, all post-launch.
+
+### Why the existing Command Centre wiring is wrong for this
+
+Investigated `vyve-command-centre` repo during the conversation. Findings recorded in backlog:
+- `cc_calendar_events` (16 columns: `id, title, description, start_at, end_at, all_day, location, meet_url, visibility, attendees, owner_email, source, gcal_event_id, color, created_at, updated_at`) is a team-ops calendar with `cc_team_only` RLS — wrong domain and wrong RLS shape for member-facing content.
+- `pages/calendar.html` (32KB, Month/Week/Agenda views, Mine/Team/All scope tabs, magic-link gate, Google Calendar bridge) is fully built but exclusively team-facing.
+- `pages/sessions.html` tracks *commercial-delivery* sessions (workshops Lewis runs for client orgs Sage/BT) — different concept entirely from member-portal livestreams. Name collision is a future risk to manage.
+- Verified live `cc_*` table inventory: 19 tables, all team-ops shaped, none with portal-content semantics. Confirms the new domain rather than retrofitting.
+
+### Service catalogue schema verified
+
+`service_catalogue` live columns: `id, type, category, name, description, youtube_url, riverside_url, duration_minutes, schedule_day, schedule_time, difficulty, active, created_at, image_url`. 8 live_session categories + 8 replay rows active. `schedule_day` + `schedule_time` are text columns expressing weekly recurrence only — cannot hold one-off events. Confirms the `calendar_occurrences` shape is the right cut for both.
+
+### Tooling note
+
+Composio still 401-ing from the 21 May security incident (24h+ now). Brain ship goes via Vault PAT path per §23.45. Single-file commit (no atomic multi-file needed — only `tasks/backlog.md` + this `changelog.md` change). §23.52 `--data-binary @file` pattern used for the large backlog body (559KB).
+
+### What we agreed NOT to do
+
+- No portal-admin repo creation tonight.
+- No schema migration (`calendar_occurrences` stays unbuilt).
+- No vyve-site touch (Connect hub unchanged, no `connect-calendar.html`).
+- No edits to existing Command Centre `pages/calendar.html` or `pages/sessions.html`.
+
+This is purely conversation capture into the brain so the design conversation isn't lost when we come back to it post-launch.
+
+### Live state at session close
+
+- Brain HEAD before this commit: `01a096e7`
+- vyve-site main HEAD unchanged: `5488a1f9` (PM-209.1, cache `pm209-mind-focus-banner-a`, vbb-marker 79)
+- No new §23 hard rule earned — design conversation only, no shipped pattern.
+
+---
+
 ## 2026-05-22 22:50 — PM-209 mind.html Today's Focus tile: thumbnail fills the card + PM-209.1 index.html recovery (§23.52 earned)
 
 ### What shipped (PM-209, vyve-site `316aded3`)

@@ -1,3 +1,110 @@
+## Added 22 May 2026 — Connect calendar + portal admin surface (POST-LAUNCH, MVP-deferred)
+
+**Conversation summary.** Dean raised the idea of adding a calendar to Connect for livestreams + events, with a toggle between the two. Real ambition: a dedicated portal admin surface for editing member-facing content (livestreams, events, podcasts, replays, content metadata) — owned by Dean, separate from the existing Command Centre. Dean's call at the end: ship the MVP first, then come back to this as a year-of-update item once the trial is in the wild.
+
+**The decision.** Defer this entire body of work to post-launch. Soft-launch is 31 May 2026 (~9 days from this conversation); the calendar UI, portal-admin scaffold, and supporting schema are polish and iteration, not MVP-blockers. Members can use the existing Live This Week + Latest from VYVE carousels through the trial. The current `sessions-data.js` hardcoded const (PM-190.d) remains the source of truth for trial.
+
+**Why this gets a backlog entry rather than being forgotten.** The design conversation is partly done. When we return to this, we should not re-derive it from scratch — we should pick up where we left off.
+
+### What we agreed on
+
+**Domain split.** Two separate admin domains, each with its own RLS pattern, neither contaminating the other:
+- **Command Centre** (`admin.vyvehealth.co.uk`, repo `VYVEHealth/vyve-command-centre`) — internal team operations (deals, tasks, finance, team calendar, client-services session delivery). RLS via `admin_users` allowlist, `cc_*` table convention.
+- **Portal Admin** (new, doesn't exist yet) — member-facing content management (livestreams, events, podcasts, replays, exercise library, achievements catalogue, etc.). Reads/writes portal-domain tables that members also read (via permissive read RLS); admin-only write via `admin_users` allowlist. Dean's domain.
+
+**Why two domains.** Dean's word during the conversation: "a backup area where we can manage this." The two surfaces should be structurally independent — if Command Centre breaks or pivots, Portal Admin keeps working, and vice versa. Co-locating them in the same repo was rejected (would conflate two unrelated domains under one deployment); putting the admin surface inside `vyve-site` was rejected (different conventions, different auth pattern).
+
+**Where the Command Centre is NOT the right home (worth recording so we don't relitigate).**
+- `cc_calendar_events` is a team-ops calendar (team meetings, Google Calendar bridge, RLS-locked to `admin_users`). Wrong RLS model for member-facing content.
+- `pages/calendar.html` (32KB, Month/Week/Agenda views, scope tabs Mine/Team/All) is a team calendar. Same point — wrong domain.
+- `pages/sessions.html` is for *commercial-delivery* sessions (workshops Lewis runs for client orgs like Sage/BT). Tracks attendees, format (in-person/virtual/hybrid), pillar tags. Completely separate concept from member-portal livestreams. Name collision is a confusion risk to manage when Portal Admin is built.
+
+**Domain naming.** `admin.vyvehealth.co.uk` is taken (Command Centre). Portal Admin will need a different subdomain — candidates: `manage.vyvehealth.co.uk`, `portal-admin.vyvehealth.co.uk`, `content.vyvehealth.co.uk`. Cloudflare DNS provisioning is a five-minute job; defer the naming decision to build time.
+
+### The schema we'd pick (when we build it)
+
+**New table: `calendar_occurrences`** (portal-domain, NOT a `cc_*` table). One row per actual scheduled occurrence — recurring livestreams get materialised into rows by a cron; one-off events get added directly by Lewis via the Portal Admin editor.
+
+```
+CREATE TABLE calendar_occurrences (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type TEXT NOT NULL CHECK (type IN ('live_session','event','podcast_recording')),
+  category TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  starts_at TIMESTAMPTZ NOT NULL,
+  ends_at TIMESTAMPTZ NOT NULL,
+  location_city TEXT,           -- nullable; livestreams have no location
+  location_venue TEXT,          -- nullable; livestreams have no location
+  image_url TEXT,
+  youtube_url TEXT,
+  riverside_url TEXT,
+  source_catalogue_id UUID REFERENCES service_catalogue(id), -- nullable for one-off events
+  cancelled_at TIMESTAMPTZ,
+  locked_from_recurrence BOOLEAN DEFAULT FALSE, -- when TRUE, materialiser cron skips this row (manual override)
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**RLS.** Read-all for authenticated members (catalogue-shape, same as `service_catalogue`). Write only via service-role / `admin_users` allowlist policy.
+
+**Materialisation cron.** Weekly Sunday 03:00 UTC EF (mirrors the existing schema-snapshot-refresh cadence). Walks active `service_catalogue` rows where `type='live_session'` and `schedule_day`/`schedule_time` are set, computes next 8 weeks of occurrences, upserts on `(source_catalogue_id, starts_at)` so re-runs are idempotent. Respects `locked_from_recurrence = TRUE` rows — skips them so manual edits in the Portal Admin survive cron runs. Backfill: one-shot insert of next 8 weeks from the 8 active recurring catalogue rows.
+
+**Why materialise vs join-at-read.** Manual edits (cancel one Friday, swap location for one occurrence, change image for one date) need a per-occurrence row to write against. Join-at-read would force overlay-row patterns, which is materialisation in disguise but more complex. Materialise wins on the editor side.
+
+**Dexie + sync.js.** New Dexie store mirroring `calendar_occurrences`. sync.js Pattern 2 (catalogue) per §23.48, 5-minute stale window per §23.50 (content-ops surfaces get the tight window). `calendar_occurrences` added to `CATALOGUE_FRESH_TABLES`. Editor publishes via existing CATALOGUE_INVALIDATION_KEY bump on schema-affecting changes.
+
+### The member-side UI we'd pick (when we build it)
+
+**New page `connect-calendar.html`** with two views toggled in-page:
+- **Month grid view.** Standard month layout with dot indicators per day, tap to drill into day's occurrences. Past entries dimmed but visible (tap-through to replay if live_session has become available).
+- **Agenda list view.** Chronological list, upcoming-first, with "show past" toggle. Event cards include location pill (city · venue) when present. Livestream cards include category badge + thumbnail.
+
+**Card design.** Visual parity with existing Connect surface tiles (gradient + image_url + dark overlay per §23.49). Location renders as a frosted-pill at top of card for events; livestream cards show day/time pill instead.
+
+**Connect hub layout change.** Replace the existing two carousels (Live This Week, Latest from VYVE) with a single new tile-carousel containing three destination tiles:
+1. **Calendar** — taps into `connect-calendar.html`
+2. **Podcast** — taps into new podcast hub (separate build, scoped under same post-launch theme)
+3. **Session Recaps** — taps into new session recaps hub (separate build)
+
+Dean's framing: each tile is "tap to go to a destination page", visually consistent across the row. Hub becomes simpler (pencil check-in → Elite hero → tile carousel → community feed → recent check-ins).
+
+### Build sequencing (when we return to this)
+
+Three bundles, build A → B → C:
+
+**Bundle A — Schema + member-side sync.** `calendar_occurrences` table + RLS + Dexie store + sync.js wiring + materialisation cron + backfill from `service_catalogue`. Lands on Supabase + `vyve-site`. ~1 session.
+
+**Bundle B — New portal-admin repo + first editor page.** Scaffold `VYVEHealth/vyve-portal-admin` (or chosen name) on GitHub Pages: CNAME, .nojekyll, app shell, Supabase client init, `admin_users` allowlist gate, magic-link auth (same pattern as Command Centre `lib/supabase-client.js` for consistency). First feature page: livestream/event list + edit modal writing to `calendar_occurrences`. ~1-2 sessions.
+
+**Bundle C — Member-facing UI.** New `connect-calendar.html` (month + agenda views), new tile carousel on `connect.html` hub, deprecation of Live This Week + Latest from VYVE carousels. ~1 session.
+
+Total estimate: 3-4 sessions. None blocks anything else in the trial. All deferred until post-launch when Dean has bandwidth for "year of updates" iteration.
+
+### Open questions parked for the build session
+
+1. **Event location granularity.** Do we need `latitude`/`longitude` for events (map render, "events near me"), or is `location_city` + `location_venue` text enough? Dean mentioned Newcastle as an example; trial scale doesn't need maps but the schema decision affects future ambitions.
+2. **Event RSVP / attendance.** Members marking themselves as "going" to an event? Out of scope for first build, but the schema either supports it or doesn't — if we want it later, a `calendar_rsvps(occurrence_id, member_email)` table would land in Bundle A or a follow-on.
+3. **Past entries — keep visible or archive?** Defaulted to "keep visible, dim them, tap-through to replay" above. Confirm at build time.
+4. **Recurring-event-edit semantics.** When Lewis edits the *catalogue row* (e.g. moves Yoga from Friday 06:00 to Friday 07:00 permanently), does the materialiser regenerate all future occurrences, or only insert new occurrences from a cutoff date? Lean toward "regenerate from now forward, leave past untouched" — but this is a UX call that should be made at build time with Lewis in the loop.
+
+### Tile carousel — Podcast + Session Recaps notes
+
+Dean's intent in the conversation: the new tile carousel holds three destinations. Podcast and Session Recaps are separate hub pages, each with their own member-facing UI + corresponding portal-admin editor. Both ride on the same `calendar_occurrences` table via `type='podcast_recording'` — or they get their own tables depending on what those hubs actually need. Out of scope for this entry; flag them as siblings of the calendar work when they come up.
+
+### When to revisit
+
+Trigger conditions:
+- After 31 May 2026 trial launch lands cleanly.
+- When Lewis hits the friction of needing to add an event and not having a UI for it (likely first month post-launch).
+- When Dean has bandwidth for greenfield repo work.
+
+Whichever comes first.
+
+---
+
 ## Shipped 22 May 2026 — PM-209 + PM-209.1 Mind hub Today's Focus tile: thumbnail fills the card; §23.52 earned on near-miss home page deletion [vyve-site `316aded3` → `5488a1f9`]
 
 **The change.** Mind hub `Today's focus` tile restructured. The 150px corner-circle thumbnail (`.thumb-hero`, radial-glow ring positioned absolute right:-30px top:-30px on the legacy `.hero-card` shape) is replaced by a full-bleed `.hero-banner` matching the `.vz-hero` detail-page pattern. Image fills the card top via `background-image` + `--bg-img` CSS variable, dark gradient bottom-half for legibility, badge top-left in a frosted-pill (4px blur + 55% surface-dark fill + 999px border-radius), title + meta stack bottom-left in white with subtle text-shadow. Play CTA retained as full-width teal bar below the banner.
