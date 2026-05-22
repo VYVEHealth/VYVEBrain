@@ -1,4 +1,109 @@
-## Added 22 May 2026 — Connect calendar + portal admin surface (POST-LAUNCH, MVP-deferred)
+## Added 22 May 2026 — PM-210 (in flight) — Connect calendar + portal admin: schema + backfill SHIPPED, member UI deferred to next session
+
+**Status flip from the 22 May earlier "POST-LAUNCH deferred" entry.** Dean's call at the end of the earlier conversation was to defer the whole thing post-launch; he then reversed that within the same session, requesting the member-facing calendar to be built now (without the portal admin — Lewis enters data via Supabase dashboard for trial).
+
+**What shipped this session (PM-210a, Supabase only).**
+
+Schema migration `pm210_create_calendar_occurrences` applied to `ixjfklpckgxrwjlfsaaz`:
+- New table `calendar_occurrences` with `type` discriminator (`live_session`|`event`), full timestamp shape (`starts_at`, `ends_at`), location fields (`location_city`, `location_venue`, `location_online`), imagery + URLs (`image_url`, `live_url`, `replay_url`), FK to `service_catalogue` for materialised recurrences (`source_catalogue_id`), cancellation flag, notes, active toggle, audit timestamps.
+- Two indexes: `starts_at` (single-column for date-range scans) and `(type, starts_at)` (composite for filtered views). Both partial WHERE `active=true`.
+- RLS enabled, single policy `calendar_occurrences_read_authenticated` (read-all for `authenticated` role). Writes restricted to service-role only.
+- `updated_at` trigger via `calendar_occurrences_set_updated_at()` function — `SECURITY DEFINER` (per §23 hard rule on RLS-affecting triggers from earlier campaign work).
+- Table comment documents intent: "PM-210 member-facing calendar entries for live sessions + events. Sourced initially by backfill from sessions-data.js; manual events added via Supabase dashboard. Future: portal-admin editor."
+
+Backfill: **190 occurrences inserted** covering 22 May 2026 → 16 Jul 2026 (8 weeks). Generated from `sessions-data.js` shape (not `service_catalogue` shape) because `sessions-data.js` is the actual member-facing source of truth post-PM-190.d. Breakdown: Yoga ×56, Mindfulness ×56, Workouts ×56, Group Therapy ×8, Weekly Check-In ×8, Events & Run Club ×2, Education & Experts ×2, Podcast ×2. No `event`-type rows yet — Lewis adds those manually via Supabase dashboard as they're scheduled.
+
+**Why backfilled from sessions-data.js, not service_catalogue.** Live `service_catalogue` has all 8 categories configured as weekly (single `schedule_day`), but the actual member-facing schedule per `sessions-data.js` has Yoga/Mindfulness/Workouts daily, Check-In/Therapy weekly, Events/Education/Podcast monthly. PM-190.d codified `sessions-data.js` as the source of truth for "Live This Week" + sessions.html. Calendar follows the same source for consistency. Future Command Centre / portal-admin editor will reconcile to one source by being the single write surface.
+
+**What's NOT shipped this session.**
+
+- `db.js` SCHEMA_V9 + `calendar_occurrences` Dexie store
+- `sync.js` plan entry + `CATALOGUE_FRESH_TABLES` registration + `CATALOGUE_INVALIDATION_KEY` bump to `pm210-calendar-occurrences`
+- `connect-calendar.html` new page (month grid + agenda toggle, dismissible filter pills for Live Sessions/Events, dark+light parity via `theme.css` semantic tokens, Dexie-first Pattern 2 paint per §23.48)
+- `connect.html` hub edit — replace `Latest from VYVE` block (line 434) with single wide Calendar destination tile reading next session + next event from Dexie
+- `sw.js` cache key bump
+- `index.html` vbb-marker bump
+
+Vyve-site `main` still at `5488a1f9` (PM-209.1, cache `pm209-mind-focus-banner-a`, vbb-marker 79).
+
+**Why paused here.** §23.52 was earned 24 hours ago on a long-session multi-file commit going wrong (PM-209.1 index.html near-deletion). Schema + backfill is durable Supabase state, atomic and verifiable. The remaining work (new HTML page from scratch + 4-file atomic commit) is larger surface area and should land in a fresh session with clean attention rather than pushed through at session-tail. Honest pause, not a stall — the brain entry below captures every spec decision so the next session picks up without re-deriving.
+
+### Locked spec for PM-210b (next session ship)
+
+**db.js v9 additions.** New Dexie store:
+```
+calendar_occurrences: 'id, type, starts_at, active'
+```
+SCHEMA_V9 = `Object.assign({}, SCHEMA_V8, { calendar_occurrences: 'id, type, starts_at, active' })`. Add `db.version(9).stores(SCHEMA_V9)` to the version chain.
+
+**sync.js plan entry.**
+```
+{
+  table: 'calendar_occurrences', scope: 'catalogue',
+  path: function () { return '/calendar_occurrences?active=eq.true&select=*&order=starts_at'; },
+  persist: function (_e, rows) { return window.VYVELocalDB.calendar_occurrences.replaceForMember(null, rows); }
+}
+```
+Add `calendar_occurrences: 1` to `CATALOGUE_FRESH_TABLES` (5-minute stale window). Bump `CATALOGUE_INVALIDATION_KEY` from `pm190c-image-url` to `pm210-calendar-occurrences` to force one-time refresh on existing devices so they pick up the new store + data.
+
+**connect-calendar.html.** New page at vyve-site root. Structure:
+- `<head>` order per PM-163: `theme.js` first (synchronous), then `theme.css` link, then page-specific inline `<style>` (NO `:root` block — would shadow theme.css and break light mode).
+- `theme.color` meta tag (theme.js auto-sets to `#0A1F1F` dark / `#E8F4F2` light).
+- Same fonts as mind.html: Playfair Display + DM Sans.
+- Mobile page header injected by nav.js — back button + title + sub.
+- Filter pills row: two dismissible pills (Live Sessions teal, Events gold), both active by default. Click toggles `active` class. Tokens: `var(--teal-lt)` / `var(--gold)` (base brand, present in both themes).
+- View toggle: Month | Agenda. Default Agenda (per Dean's decision).
+- Agenda view: groups by day, day-headers with weekday + date, occurrence cards. Past entries hidden by default with "Show past" toggle. Today's entries rendered first with `today` highlight on day-header.
+- Month view: 7×N grid, current month, prev/next month arrows, dots per day (teal for live sessions, gold for events). Today cell highlighted. Past days dimmed. Tap day → opens detail panel below grid showing that day's occurrences.
+- Card shape: thumbnail (62×62, gradient fallback if `image_url` null, `<img onerror>` fallback for 404), type badge (Live / Event), title, time (or "Live now" with pulse if currently within window), meta (duration · category, or location pill for events).
+- Empty states: "No live sessions today" / "No events this month" — honest, friendly, no skeleton chars.
+- Paint sequence: 
+  1. Inline `<script>` (synchronous, head): apply theme attribute (already done by theme.js).
+  2. Wait for `VYVELocalDB.ready` (existing pattern from mind.html).
+  3. Read `calendar_occurrences` from Dexie via `db.calendar_occurrences.where('active').equals(1).and(r => new Date(r.starts_at) >= cutoff).toArray()` — synchronous-ish, microseconds on warm Dexie.
+  4. Apply filter pill state + view state from in-memory toggle state.
+  5. Render. No `await fetch` in paint path. No skeleton.
+  6. Subscribe to `vyve-localdb-table-pulled` for `calendar_occurrences` — repaint on hydrate.
+  7. `visibilitychange→visible` handler re-reads Dexie + repaints (Pattern 2 catalogue refresh).
+- Tickers: 30-second `setInterval` for "Live now" state machine (Pattern 3). Pause on `visibilitychange→hidden`, resume on `→visible`, fire one immediate eval on resume.
+
+**connect.html hub edit.** Replace the `Latest from VYVE` section (line 434 area, function `renderLatestFromVyve()` at line 812):
+- Remove section-hdr + scroll-carousel markup for Latest from VYVE.
+- Replace with single full-width destination tile (aspect-ratio 16/8) that:
+  - Reads next live session + next event from Dexie (`calendar_occurrences.orderBy('starts_at').filter(r => starts_at > now).limit(2)`).
+  - Renders gradient teal-to-dark background, lock-icon (calendar SVG) top-left in 48×48 frosted-pill, today's session count + next event meta top-right, big Playfair "Calendar" title bottom-left, meta line "Live sessions + upcoming events", CTA "Open calendar →".
+  - `<a href="/connect-calendar.html">` wrapping the tile.
+  - Falls back to "View live sessions + upcoming events" meta if Dexie empty.
+- `renderLatestFromVyve` JS function: rename to `renderCalendarTile`, simplify to read from new store.
+
+**sw.js + index.html.** Cache key `pm209-mind-focus-banner-a` → `pm210-calendar-a`. vbb-marker 79 → 80. Add `/connect-calendar.html` to precache list in sw.js. Add `/calendar_occurrences` to runtime cache patterns if applicable (probably not — Dexie carries this).
+
+**Atomic commit shape.** Five files in one `GITHUB_COMMIT_*` via PAT-direct Git Data API (§23.45):
+1. `db.js` (SCHEMA_V9)
+2. `sync.js` (plan entry + invalidation key)
+3. `connect-calendar.html` (NEW)
+4. `connect.html` (Latest from VYVE → Calendar tile)
+5. `sw.js` (cache key)
+6. `index.html` (vbb-marker)
+
+Per §23.52: all blob bodies written to `/tmp/*.json`, passed as `curl --data-binary @file`. Post-commit verify via `GET /commits/{sha}` asserting `files[].status` set matches expected {modified ×5, added ×1}. Per §23.41: first-100-char re-fetch on each file pinned to commit SHA.
+
+**Why this is the right next-session opener.** Schema is in place and stable. Backfill is done. Member device hydrate of `calendar_occurrences` will happen automatically the moment SCHEMA_V9 + sync entry ship — no separate migration step. The new page reads from Dexie, which already has the data the moment hydrate completes. No coordination, no flag-flip, no race.
+
+### Open items for next session
+
+- **Events**: Lewis can add via Supabase dashboard `INSERT INTO calendar_occurrences (type, category, name, ...) VALUES ('event', ...)` once trial events are scheduled. Format documented in this brain entry for Lewis handoff.
+- **Image asset for Calendar tile**: optional, can ship without. If we want a custom Calendar tile background image (vs gradient), add `/thumb-calendar.jpg` to vyve-site root in same commit.
+- **Past-entries cutoff**: backfill goes back to 2026-05-22 (today). For first calendar load on launch day, "past" entries dropdown will be empty or near-empty. Acceptable for trial — past visibility ramps up naturally as days accumulate.
+- **Drift between `sessions-data.js` and `calendar_occurrences`**: parked. If Lewis edits sessions-data.js to add a 9th category or change a schedule, calendar_occurrences won't reflect it until next backfill. Reconciliation lives in future portal-admin editor.
+
+### Tooling note
+
+§23.45 PAT-direct path active for this session (Composio still 401-ing from the 21 May security incident — now >24h). Supabase MCP working normally for schema + execute_sql operations.
+
+---
+
+## Added 22 May 2026 — Connect calendar + portal admin surface — DESIGN CAPTURED (status reversed within same session — see PM-210 entry above for build-started status)
 
 **Conversation summary.** Dean raised the idea of adding a calendar to Connect for livestreams + events, with a toggle between the two. Real ambition: a dedicated portal admin surface for editing member-facing content (livestreams, events, podcasts, replays, content metadata) — owned by Dean, separate from the existing Command Centre. Dean's call at the end: ship the MVP first, then come back to this as a year-of-update item once the trial is in the wild.
 

@@ -1,3 +1,43 @@
+## 2026-05-22 23:55 — PM-210a Calendar foundation: schema + backfill SHIPPED to Supabase, member UI deferred to next session
+
+### What shipped
+
+Supabase migration `pm210_create_calendar_occurrences` applied to `ixjfklpckgxrwjlfsaaz`. New table `calendar_occurrences` with `type` discriminator (`live_session`|`event`), full timestamp shape, location fields, imagery URLs, FK to `service_catalogue`, cancellation flag, audit timestamps. Two partial indexes (`starts_at` + composite `(type, starts_at)`). RLS enabled, single read-all-authenticated policy. `updated_at` trigger via `SECURITY DEFINER` function. 190 backfill rows inserted from `sessions-data.js` shape covering 22 May → 16 Jul 2026 across all 8 live-session categories. Zero `event`-type rows yet — Lewis adds those via Supabase dashboard as trial events get scheduled.
+
+### What's NOT shipped
+
+`db.js` SCHEMA_V9, `sync.js` plan entry + `CATALOGUE_INVALIDATION_KEY` bump, `connect-calendar.html` new page (month + agenda views with dark/light parity), `connect.html` hub edit (replace Latest from VYVE with Calendar tile), `sw.js` cache bump, `index.html` vbb-marker bump. vyve-site `main` still at `5488a1f9` from PM-209.1.
+
+### Why paused here
+
+§23.52 was earned 24h ago on a long-session multi-file commit (PM-209.1 index.html near-deletion). Schema + backfill is durable, atomic, verifiable Supabase state. The remaining work — new HTML page from scratch + 6-file atomic commit at session-tail — has larger blast radius. Honest pause point. Brain entry below captures every spec decision so next session opens with clean attention and zero re-derivation needed.
+
+### Spec decisions captured for next session
+
+- Member UI = V2 mockup (default-all + dismissible filter pills) + single wide Calendar hub tile + agenda default. Confirmed by Dean.
+- Schema sourced from `sessions-data.js` shape (not `service_catalogue`) because PM-190.d codified sessions-data.js as the actual member-facing source. Drift between the two parked until future portal-admin editor.
+- Dexie wiring is Pattern 2 catalogue per §23.48 — 5-minute stale window, fan-out on focus, no skeleton, instant paint from Dexie on second visit.
+- Connect hub change is **replace Latest from VYVE**, **keep Live This Week** as-is. Calendar tile takes over the "long-tail destination" job that Latest from VYVE was doing poorly.
+- All styling via `theme.css` semantic tokens (`--text`, `--surface`, `--border`, `--label-accent`, etc.) + base brand tokens (`--teal-lt`, `--gold`). Dark/light flip is automatic via `[data-theme]` selector. No inline `:root` block per PM-163.
+- Instant paint via theme.js synchronous attribute apply (already runs in head before body renders) + Dexie-first read on page load (microseconds).
+
+### Conversation history this session (for next-session context)
+
+Started as schema design discussion (Bundle A+B+C). Initial decision: defer all post-launch. Reversal within same session: member-facing calendar build now, portal admin still deferred. Three mockup variants shown (V1/V2/V3 + two hub tile shapes), Dean picked V2 + wide tile + agenda default. Theme.css + theme.js patterns audited. Schema + backfill shipped. Member UI deferred.
+
+### Tooling
+
+§23.45 PAT-direct path used throughout — Composio still 401-ing from 21 May security incident, now >24h. Supabase MCP working normally for migrations + execute_sql.
+
+### Live state at session close
+
+- Brain HEAD before this commit: `d0f2193a`
+- vyve-site main HEAD unchanged: `5488a1f9` (PM-209.1, cache `pm209-mind-focus-banner-a`, vbb-marker 79)
+- Supabase `calendar_occurrences`: 190 rows live, all `type='live_session'`, 8 categories represented
+- No new §23 hard rule earned — established patterns only.
+
+---
+
 ## 2026-05-22 23:30 — Brain-only ship: Connect calendar + portal admin design parked in backlog (POST-LAUNCH)
 
 ### What this commit captures
