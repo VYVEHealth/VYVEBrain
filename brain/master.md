@@ -855,7 +855,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
-## 19. Current status — 21 May 2026 PM-190.e (Connect Live This Week cards link direct to session pages)
+## 19. Current status — 22 May 2026 PM-192 (live + replay session pages now show their session title in the mobile header)
+
+**PM-192 (22 May 2026, this commit).** Live + replay session pages were rendering "SESSIONS" in the mobile header on all 16 pages (8 live + 8 replay). Root: `nav.js` `subPageLabels` had no entries for the `{name}-live` / `{name}-rp` file stems, falling through to `hubLabels.sessions`. The desktop `.topbar` rendered by `session-live.js` already carries the correct `<span class="session-name">…</span>` but `session-live.css` hides it on mobile by design — mobile pages get their label from `nav.js`. Fix: added 16 entries mapping to canonical titles from `sessions-data.js`. Single-file edit in `nav.js`, plus mandatory portal-deployment bumps (`sw.js` cache key, `index.html` vbb-marker). vyve-site commit `e94a5e595c01c9a74125280af767dcbb55da21e0`. SW `pm190e-direct-links-a` → `pm191-live-page-titles-a`. vbb-marker 65 → 66. No new §23 rule.
 
 **PM-190.e (21 May 2026, this commit).** One-line port on top of PM-190.d. Live This Week card `href` was hardcoded `/sessions.html`; rewired to `s.liveUrl` so taps go directly to `yoga-live.html`, `workouts-live.html`, etc. Mirrors sessions.html behaviour. The two "View all ›" section-header links stay pointed at `/sessions.html` (correct — those are indices). Latest from VYVE was already linking to `s.replayUrl` per PM-190.d. vyve-site commit `5af820847aa2403becc56eed5d295ad1b559742b`. SW `pm190d-shared-sessions-a` → `pm190e-direct-links-a`. vbb-marker 64 → 65. No backlog edit, no new §23 rule.
 

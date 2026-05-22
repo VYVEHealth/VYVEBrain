@@ -1,3 +1,38 @@
+## 2026-05-22 PM-192 — Live + replay session pages show their actual title in the mobile header (was "SESSIONS" on all 16)
+
+**Quick UI fix shipped on top of PM-190.e.** Dean opened the yoga live page on iPhone and the mobile header read **SESSIONS**, not the session title. The `.topbar` element rendered by `session-live.js` carries the name (`<span class="session-name">Yoga, Pilates & Stretch</span>`) but `session-live.css` sets `.topbar{display:none}` globally and `.session-name{display:none}` at `max-width:900px` — the topbar is desktop-only by design. The mobile header is `nav.js`'s `mobile-page-header`, label sourced from `subPageLabels[fileStem] || hubLabels[active]`. No entry existed for `yoga-live` / `yoga-rp` / etc., so it fell through to `hubLabels.sessions = 'Sessions'` for all 16 live + replay pages.
+
+**Fix.** Added 16 entries to `subPageLabels` in `nav.js`, one per file stem, mapping to canonical titles from `sessions-data.js`:
+
+```
+yoga-live / yoga-rp          -> Yoga, Pilates & Stretch
+mindfulness-live / -rp       -> Mindfulness & Mindset
+workouts-live / -rp          -> Workouts
+checkin-live / -rp           -> Weekly Check-In
+therapy-live / -rp           -> Group Therapy
+events-live / -rp            -> Events & Run Club
+education-live / -rp         -> Education & Experts
+podcast-live / -rp           -> The VYVE Podcast
+```
+
+`sessions-data.js` is the single source of truth for session titles per PM-190.d; using its values keeps the mobile header consistent with the Connect carousel cards and the sessions hub.
+
+**Atomic 3-file commit** `e94a5e595c01c9a74125280af767dcbb55da21e0` — `nav.js`, `sw.js`, `index.html`. Commit message says "PM-191" (miscount at ship time — today's earlier PM-191 entry was the streaming architecture talk; this UI fix is PM-192). Harmless naming drift in commit history; brain owns the canonical numbering.
+
+**Portal deployment checklist (mandatory per §23.42):** SW cache key `vyve-cache-v2026-05-21-pm190e-direct-links-a` -> `vyve-cache-v2026-05-22-pm191-live-page-titles-a`. `<span id="vbb-marker">` Update 65 -> Update 66.
+
+**Tooling.** Composio still 401 from the 21 May security incident — §23.45 PAT-direct path exercised again (5th time across the incident). `GITHUB_PAT_CLAUDE` fetched from Supabase Vault, atomic 3-file commit via the Git Data API (blobs → tree → commit → ref). `curl -d "$JSON"` argv limit blew up at the 120KB index.html base64 on the first attempt; second attempt used `curl --data-binary @file` throughout, then a Python urllib script for the final commit + ref calls to avoid shell-escaping a multi-line commit message. Branch HEAD was unchanged across the failed attempt — no rollback needed.
+
+**Pre-commit and post-commit verification** per §23.41: HEAD re-checked at `5af820847aa2403becc56eed5d295ad1b559742b` immediately before commit; first-120-char post-commit re-fetch confirmed all three files pinned to `e94a5e59` carry the patched content (nav.js +638 bytes containing `yoga-live: 'Yoga, Pilates & Stretch'`, sw.js cache key updated, index.html vbb-marker at Update 66).
+
+**Production reach.** Dean's dev iPhone via `server.url` dev-loop sees the fix on next WKWebView cache cycle (2-15 min) per §23.42. Production bundled iOS 1.3 (2) + Android 1.0.3 (10) still frozen at vyve-site SHA `83874dd5` until next Capawesome OTA — bundled members still see "SESSIONS" until the next bundle ships.
+
+**No new §23 hard rule earned.** Single-file label addition, no new architectural doctrine. The miscount in the commit message is worth one observation: when commits straddle a brain commit boundary on the same day, re-check the changelog for today's existing PM-numbers before tagging the commit message. Not rule-shaped — just judgement.
+
+**vyve-site HEAD before:** `5af820847aa2403becc56eed5d295ad1b559742b` (PM-190.e). **After:** `e94a5e595c01c9a74125280af767dcbb55da21e0` (PM-192). **Brain HEAD before this commit:** `544c3ab90697c9aa334588bdeabeac26c80ab2b4`.
+
+---
+
 ## 2026-05-22 PM-191 — Session streaming architecture locked: nine-channel YouTube reusable-stream pattern, test queued for next week [brain-only commit, no vyve-site/EF changes]
 
 **Talk-first session.** Dean opened with a request: how do we manage session metadata (titles, instructors, thumbnails, descriptions) and live stream URLs at scale, since both will change regularly and the current Castr "scheduled pre-recorded sessions look live" pattern is working but the live-stream URL handling isn't solved. Conversation went through several iterations — YouTube persistent stream model, Cloudflare Stream / Mux / Vimeo OTT alternatives, the cost maths at projected member counts, and ultimately back to YouTube once the actual channel structure surfaced.
