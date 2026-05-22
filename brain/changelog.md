@@ -1,3 +1,62 @@
+## 2026-05-22 PM-195 — Body tab flicker diagnosed; fix queued for Sunday/Monday Premium-Feel polish pass [brain-only commit, no vyve-site changes]
+
+**Symptom.** Dean reported Body-tab navigation showing the exercise.html skeleton for 1s (best) to 5-6s (worst) before content renders. Screenshot at 17:34 BST 22 May with skeleton clearly visible on test1@test.com / native bundled iOS. Inconsistent across taps but frequent enough to break Premium-Feel.
+
+**Dean's call: do not fix tonight.** Diagnose, document candidate fixes, queue the ship for the Sunday/Monday Premium-Feel polish pass alongside Home / Mind / Connect / any other hub with the same shape. One coordinated pass with a single proven pattern across all hubs, rather than per-page patches that risk breaking the existing local-first architecture (PF-15 / PF-40 / PM-96 family) or the §23.46 paint pattern.
+
+**Full diagnostic + 5 candidate fixes filed in `tasks/backlog.md`** under "Added 22 May 2026 — PM-195 diagnostic". Headlines:
+
+- Six contributing factors identified in exercise.html paint sequence (vyve-site HEAD `40a3d010`):
+  1. CACHE_TTL only 1 hour — that's the 5-6s slow case (last visit >1hr ago, cache invalidated, page falls into "wait for network" path)
+  2. Cache key per-page only; nav.js touchstart-prefetch doesn't currently warm it
+  3. VYVESync.criticalHydrate runs un-awaited per PM-125 — Dexie helps the NEXT visit, not this one. Code comment claims "Dexie-first" but implementation only kicks hydrate as a side-effect, doesn't actually read Dexie before painting
+  4. Skeleton stays up until reveal() OR 10s watchdog — no mid-state
+  5. "Fast 1s" case = cache hit + Playfair Display font load + one layout shift
+  6. "5-6s slow" case = cache miss + cold network + Supabase round-trip
+- Five candidate fixes scoped (A: bump CACHE_TTL; B: Dexie-first read in paintCacheEarly; C: pre-warm cache from auth.js fan-out; D: nav.js touchstart cache prime; E: reduce skeleton lifetime to first frame only)
+- Recommendation pending Sunday session: most likely C + A + E in priority order
+
+**Sunday-session prep included in the backlog item.** Audit list (Home / Mind / Connect paint mechanic confirmation), full localStorage cache-key inventory ask, §23.46 paint pattern applicability question for Body/Mind vs Connect. The session opens with the picture drawn — no rediscovery work.
+
+**Why this matters for Premium-Feel.** "Do whatever it takes to make this feel like a premium app with absolutely no lag and instant feel" is the north star. A 5-6s skeleton on bottom-nav navigation is the single most visible violation of that promise. High-impact fix, even if not urgent. Sunday-pass is the right venue.
+
+**No new §23 hard rule earned.** Diagnostic only — no architectural doctrine until the actual fix lands.
+
+**Brain HEAD before this commit:** `432fb2abe0c0fcf11c2b6a181ac38296716fbc62`.
+
+---
+
+## 2026-05-22 PM-194 — auth.js init-catch: thrown errors now redirect to login (was: silent "Preview mode" banner stranding the user mid-session)
+
+**Dean screenshot at 16:22 BST.** Yellow banner across the top of Connect tab: "Preview mode: Auth failed to initialise." Connect tab itself painted correctly — Today's Check-In already completed, Your Momentum showing 2/9 active days, Live This Week thumbnails. The page worked but auth was broken.
+
+**Diagnosis via auth.refresh_tokens.** Direct Supabase query against `auth.refresh_tokens` for the test1@test.com user showed the timeline that explained everything:
+
+```
+id 1257: created 14:08:22 UTC, updated 15:22:16 UTC, revoked=true   (login → first refresh)
+id 1259: created 15:22:16 UTC, updated 15:22:16 UTC, revoked=false  (active token, never used after issue)
+```
+
+Original login token issued at 14:08:22 UTC. One successful refresh at 15:22:16 (parent revoked, child issued — normal rotation). Then nothing. The 15:22 child token had a ~1hr lifetime, putting expiry at ~16:22 — exactly when Dean's screenshot was taken. The refresh attempt at app re-foreground threw, the outer catch in `vyveInitAuth()` fired, showed the banner, and left the user in a "fast-path painted but authoritative auth dead" state with no recovery path other than knowing to manually sign out via the menu.
+
+**The behavioural bug.** `vyveInitAuth()` already handles `getSession()` returning `null` (an explicit "no session" answer from the server) correctly — it writes `VYVE_RETURN_TO_KEY` and redirects to login. But if `getSession()` *throws* (network blip, refresh-token refresh failure, anything else), the outer catch at line 907 took a different path: log + call `vyveRevealApp('Preview mode: Auth failed to initialise.')`. That's a footgun. Both paths are recoverable by re-authenticating — there is no scenario where staying on the page in "Preview mode" is better than just sending the user to log in again.
+
+**Fix shipped** (vyve-site commit `40a3d0106bcebdfae84966036ab8abeaa411f398`): the outer catch now mirrors the null-session branch — clear `localStorage.vyve_auth`, write current URL to `VYVE_RETURN_TO_KEY`, redirect to login. User signs in once, lands back where they were. No banner, no stranded state.
+
+**Root cause of the underlying refresh failure is unresolved.** Only one observed instance; not reproducible on demand. Candidates: Capacitor WKWebView throttling background network during app-foreground transition, transient gotrue blip, CSP edge case on the refresh endpoint, iOS Low Power Mode killing the fetch. Without the actual error message from Safari Web Inspector (Dean's iPhone wasn't connected to a Mac at the time), can't narrow further. The defensive fix means even if it recurs, the UX is now "you got logged out, sign in again" rather than "your app is broken in some opaque way."
+
+**Why not retry the refresh in-place instead of redirecting?** The Supabase JS SDK already retries internally on transient failures. If the SDK's retry fails and the error bubbles up to vyveInitAuth's catch, the SDK has effectively given up — building another retry layer on top would just delay the same outcome. Redirecting to login is the correct surface — re-authentication is the proven recovery path.
+
+**Portal deployment bumps:** SW cache `pm193-login-polish-a` → `pm194-auth-recovery-a`. vbb-marker Update 67 → 68.
+
+**Tooling.** Composio still 401 from the 21 May security incident — §23.45 PAT-direct path again. Pre-commit HEAD re-check at `a50d8b99`, post-commit first-200-char verification on all three files pinned to `40a3d010`. `node --check` syntax-validated `auth.js.new` before commit.
+
+**No new §23 hard rule earned.** The pattern is local to one file (auth.js) and one function (vyveInitAuth) — too narrow for architectural doctrine. The lesson is captured in the code comment: "any thrown error in the auth init outer catch must take the same path as a null session — redirect to login, never strand the user."
+
+**vyve-site HEAD before:** `a50d8b999ce3542d4df8b9653f88971f3da26a01` (PM-193). **After:** `40a3d0106bcebdfae84966036ab8abeaa411f398` (PM-194).
+
+---
+
 ## 2026-05-22 PM-193 — login.html polish (logo placeholder → real /logo.png, keyboard no longer jumps the form) + native splash/icon spec parked for Monday bundle
 
 **Two Dean screenshots: launch splash + login page.** First showed the iOS native splash with the VYVE logo rendered small with a visible white square behind it on a black field. Second showed the login page on Dean's iPhone: a `<v>` placeholder block next to the "VYVE Health" wordmark, with the form having jumped upward as the iOS keyboard opened. Three issues across two layers (vyve-site web shell + vyve-capacitor native binary).

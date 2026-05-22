@@ -1,3 +1,83 @@
+## Added 22 May 2026 — PM-195 diagnostic: Body tab flicker (1-6s skeleton on navigation) [DIAGNOSED, fix queued for the Sunday/Monday Premium-Feel polish pass]
+
+**Symptom Dean observed.** Tapping the Body tab in the bottom nav (test1@test.com on Dean's iPhone, native bundled iOS 1.3 (2) at the time, screenshot 17:34 BST 22 May) sometimes shows the exercise.html skeleton placeholders for 1 second (best case) up to 5-6 seconds (worst case) before content renders. Happens on bottom-nav navigation when the user has been away from the Body tab for some time. Inconsistent — not every Body tap reproduces it, but it's frequent enough to feel broken on a premium app.
+
+**Dean's call.** Do not fix in isolation tonight. Diagnose now, document the candidate fixes, queue the actual ship for the Sunday afternoon / Monday day-long Premium-Feel polish pass alongside Home, Mind, Connect, and any other hub showing the same shape. Fixing one symptom in isolation risks breaking the existing local-first architecture (PF-15 / PF-40 / PM-96 family) and the timing-sensitive paint pattern (§23.46). The right scope is one coordinated pass with a single proven pattern across all hubs.
+
+### Diagnosis (no fix shipped — for the Sunday session to pick up)
+
+**File:** `exercise.html` (Body section hub per backlog drift correction — Phase 1 consolidation is inside exercise.html, not a new body.html file). Same shape may be present on other hub pages — to be confirmed during the Sunday audit.
+
+**Current paint mechanic** (lines referenced from vyve-site HEAD `40a3d010` PM-194):
+
+```
+1. Page parses, skeleton renders (HTML at line 121-130, visible by default)
+2. Synchronous IIFE `paintCacheEarly()` runs at line 274:
+   - Reads email from localStorage['vyve_auth']
+   - Calls readCache() — reads localStorage['vyve_exercise_cache_v2']
+   - If hit + within CACHE_TTL: renderHero(cached) → reveal()
+3. onAuthReady() fires (or runs immediately if vyveCurrentUser already set):
+   - If _earlyPainted is false (cache miss in step 2), tries readCache() again
+   - Always kicks off fetchPlan() in background to refresh
+4. fetchPlan() (line 312) does:
+   - Un-awaited VYVESync.criticalHydrate('workouts') call (PM-125 — Dexie network pull)
+   - Awaits Dexie read OR falls back to REST
+   - Writes new cache, re-renders if data changed
+5. Skeleton watchdog at line 236: setTimeout 10000ms — if app still hidden, shows
+   "Taking longer than expected. Please check your connection and try again."
+```
+
+**Six contributing factors identified:**
+
+1. **CACHE_TTL is 1 hour** (line 197: `const CACHE_TTL = 60 * 60 * 1000`). After 1hr the cache is invalidated by `readCache()` and the page falls into the "no cache → wait for network" path. Dean's 5-6s slow case fits this exactly — last Body visit >1hr before the tap.
+
+2. **The cache key is per-page only.** `vyve_exercise_cache_v2` is exclusively read by exercise.html. There's no shared upstream cache that other navigation entry points populate. Bottom-nav touchstart prefetch in nav.js doesn't currently warm this key.
+
+3. **VYVESync.criticalHydrate runs un-awaited.** Per PM-125, the page does not gate first paint on Dexie hydrate. This is correct for paint speed but means Dexie having the data doesn't help first-paint on cold-cache hits — Dexie is hydrated AFTER paint, only useful for the next visit. The code comment at line 313-317 claims "Dexie-first: hydrate-await, read workout_plan_cache from local store, fall back to REST when spike-off or local miss" but the implementation doesn't actually read from Dexie before painting — it only kicks the hydrate as a side-effect.
+
+4. **The skeleton stays up until reveal() is called or the 10s watchdog fires.** No mid-state — skeleton is fully visible during the entire fetch on cache-miss.
+
+5. **The "fast 1s" case = cache hit but slight render delay.** Probably synchronous cache-paint runs but Playfair Display font load + a single layout shift produces a perceived flicker even when data is instant. The skeleton is `display: block` by default and `reveal()` swaps it for `display: none` on `#app` — between script parse and `paintCacheEarly()` completing, the skeleton paints at least one frame.
+
+6. **The "5-6s slow" case = cache miss + cold network + Supabase round-trip.** fetchPlan goes to either Dexie (after hydrate completes) or REST (member-dashboard EF or direct workout_plan_cache query). On 5G with Capacitor WKWebView startup overhead, this can easily run 3-6s end-to-end.
+
+### Candidate fixes (for the Sunday session to weigh)
+
+Each is scoped — pick zero, one, or all. Order roughly cheapest-to-most-effective:
+
+**A. Bump CACHE_TTL from 1hr to 24hr or remove entirely.** One-line change. The cache is invalidated on data change by writeCache anyway (called at end of every successful fetch). The TTL is belt-and-braces and creates the very problem we're trying to solve. Trade-off: stale cache served if the user's workout plan changes mid-day from another device. Mitigation: cache version bump (`vyve_exercise_cache_v3`) when schema changes, and the un-awaited fetchPlan still runs in the background to refresh.
+
+**B. Add Dexie-first read in `paintCacheEarly`.** The code comment already claims this. Implementation: before falling through to skeleton, try `await window.VYVESync.readWorkoutPlan(email)` (or whatever the Dexie accessor is) with a short timeout (e.g. 50ms). If Dexie has the plan and localStorage doesn't, render from Dexie and write the localStorage cache in the same step. Adds one layer between localStorage and network skeleton. Risk: Dexie initialisation latency on cold app start.
+
+**C. Pre-warm the Body cache from index.html's vyveAuthReady.** Pattern already used in auth.js line 786 (`_vyvePfHabits`, `_vyvePfHome`, `_vyvePfMembers`) — fire-and-forget background prefetch the moment auth resolves. Add `_vyvePfExercise` to the fan-out, which writes `vyve_exercise_cache_v2` so that by the time the user taps Body, the cache is already there. Most invisible win — no exercise.html changes at all if the prefetch helper writes the same cache key.
+
+**D. Nav.js touchstart prefetch for the cache.** nav.js already has touchstart-prefetch on hub destinations per existing backlog item. If the prefetch primes `vyve_exercise_cache_v2` directly (rather than just network-warming), the Body tap arrives at a cache that was populated milliseconds ago by touchstart. Highest investment, most surgical result for the navigation-specifically case.
+
+**E. Reduce skeleton lifetime to the first frame only.** Set skeleton `display: none` by default and only show it via `requestIdleCallback` after 100ms if `_earlyPainted` is still false. Most cache hits never see the skeleton at all because paintCacheEarly runs synchronously at script parse before the first frame.
+
+### Recommendation (placeholder until the Sunday session looks at it cold)
+
+Most likely Sunday outcome: **C + A + E**, in that order of priority.
+
+- C eliminates the cache-miss case entirely for normal navigation flow
+- A removes the artificial cache-poison-by-clock that creates the worst-case 5-6s flicker
+- E removes the visual flicker on cache-hit even when data is instant
+
+B is the deepest architectural improvement but Sunday-scope may not have time. D is overkill if C is in place.
+
+**Do not pursue any of these tonight.** Dean's explicit decision: this is a coordinated Premium-Feel pass alongside Home / Mind / Connect refresh work, not a one-off patch. The diagnostic is here so the Sunday session opens with the picture already drawn — no rediscovery work, no time spent re-reading exercise.html paint sequence from scratch.
+
+### Audit needed during the Sunday session
+
+- Confirm Home (`index.html`), Mind (`mind.html`), and Connect (`connect.html`) have or don't have the same paint mechanic
+- Check whether the §23.46 paint pattern (counters default 0, no skeleton chars, no localStorage snapshot) — used on Connect — should also apply to Body/Mind hubs, or whether the streams/cards-heavy Body hub needs a different pattern
+- Verify nav.js touchstart-prefetch is wired for all hubs or just some
+- Map every `vyve_*_cache_*` and `vyve_*_snapshot` localStorage key in use and document their TTLs in one place
+
+### Why this matters for Premium-Feel north star
+
+"Do whatever it takes to make this feel like a premium app with absolutely no lag and instant feel" — the active north star quoted in master. A 5-6 second skeleton on bottom-nav navigation is the single most visible violation of that promise. Fixing it is high-impact, even if not urgent. Sunday-pass is the right venue.
+
 ## Added 22 May 2026 — PM-193 follow-up: native splash + app-icon polish (Monday bundle session)
 
 **Context.** PM-193 shipped vyve-site fixes for the login page (real `/logo.png` swapped in for the `<v>` placeholder + viewport switched to `interactive-widget=resizes-visual` to stop the form jumping when the keyboard opens). Dean's screenshots also surfaced two iOS-native issues that are NOT vyve-site fixes:
