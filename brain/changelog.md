@@ -1,3 +1,45 @@
+## 2026-05-23 PM-237 — Connect hero bottom fades to theme bg (kills hard band-to-content seam in light mode) [vyve-site `f4c03da0`]
+
+Dean spotted this on device: in light mode, the `.connect-hero` photographic band's bottom edge fell off a cliff into the lighter page below it. The PM-223.2 overlay was hardcoded `rgba(13,43,43, …)` (VYVE Dark) at both top and bottom — fine in dark mode where page `--bg` is `#0A1F1F` (close enough to teal that the seam mostly hides), wrong in light mode where `--bg` is `#F0FAF8` and the dark teal bottom stripe of the photo sat against near-white page content like a flag.
+
+### The split
+
+One gradient became two stacked layers, each doing one job:
+
+**Layer 1 — top scrim.** Unchanged dark `rgba(13,43,43, …)` ramp from 0.55 down to transparent at 55% Y. Theme-independent on purpose: it exists for white-text legibility on the eyebrow + headline against bright sunrise photo zones. Flipping it to light in light mode would destroy that contrast.
+
+**Layer 2 — bottom fade.** New. Three rgba stops at 75% / 90% / 100% Y at alpha 0.35 / 0.75 / 1.0. Default rule uses `rgba(10,31,31, …)` for dark mode. `[data-theme="light"] .connect-hero-overlay` override swaps the bottom layer only to `rgba(240,250,248, …)` for light mode. Top scrim untouched in both. The dissolve target is *literally the page background colour* so the photo edge melts into the page rather than meeting it.
+
+Why I didn't bind to `var(--bg)` directly: would have meant either `color-mix(in srgb, var(--bg) X%, transparent)` (iOS Safari 16.2+ floor, fine for our cohort but unnecessary risk) or three CSS vars per theme. Hardcoded rgba per theme is two more lines than the `var(--bg)` approach, more explicit, and graceful-degrades on absolutely everything.
+
+PM-223.2 doctrine preserved: `transparent 55%` holdover on the top layer keeps the middle of the photo clear so the human subjects + sunrise stay the visual focus.
+
+### Parallel-session collision caught
+
+This commit was almost broken by parallel-session drift. Mid-session: started from `connect.html @ bde4e113`-era state (PM-232 More-menu trim). When I came to commit the overlay edit, the live cache key had jumped from `pm231-replays-theme-c` to `pm236-avatar-coldboot-a` — three updates I didn't ship. Investigation showed another session had been running in parallel: PM-232 (avatar pipeline), PM-233 (avatar instant-paint), PM-234 (avatar crop modal), PM-235 (Replays rebuilt as YouTube playlists, replacing the PM-229 broadcast-ID design entirely), PM-236 (avatar cold-boot fix). **PM numbers were colliding** — my PM-232/PM-233 (More-menu trim, Replays-to-More-menu) used the same numbers as parallel-session PM-232/PM-233 for completely different work.
+
+Per §23.41 parallel-session safety, I re-fetched `connect.html` from live and diffed the overlay region. The overlay block I was editing was unchanged in live (other sessions added ~1.7KB elsewhere — PM-229-era featured-replay tile content), so I re-applied the surgical replacement on the live file rather than pushing my stale session-start version. Parallel content preserved.
+
+Renumbered my comment from PM-234 → PM-237 mid-flight to claim a clean number after the parallel session had taken 234/235/236.
+
+### Files in this commit
+
+- `connect.html` 91096 → 92528 bytes (+1432). Overlay block expanded from one 6-stop gradient into two layered gradients + theme override rule. PM-223.2 comment block replaced with PM-237 comment block.
+- `sw.js` cache key `pm236-avatar-coldboot-a` → `pm237-connect-hero-fade-a`.
+- `index.html` vbb-marker 117 → 118.
+
+### Worth flagging as §23 — PM number collision under parallel sessions
+
+PM numbers are session-local; nothing prevents two parallel sessions both reaching for the next-available number. The brain doesn't have a global PM-number allocator, and master.md doesn't carry a "last-used PM" pointer. The recovery here was visual (cache-key surprise → log commit history → spot collision) and worked because I caught it before push, but the next collision could ship two PM-XXX commits with the same number across two repos before either author notices.
+
+Not a hard rule yet — one near-miss, single-day, single co-author session. But if it happens a second time it earns a §23 entry along the lines of: "Before claiming a PM number, fetch the last 10 commits from vyve-site main and brain main, take max(PM in those commits) + 1." For now I'll just keep my eyes open on the cache key + commit-log signals when re-fetching files mid-session.
+
+### Note: parallel session also superseded PM-229 design
+
+The parallel session's PM-235 rebuilt the Replays surface as YouTube-playlist-driven tiles, replacing the per-occurrence `youtube_broadcast_id` approach from PM-229. Good call — Dean's review note ("YouTube auto-archives broadcasts to playlists, why are we doing per-broadcast row mapping?") was right. This doesn't affect PM-237's overlay edit but is worth knowing as the surrounding `connect.html` context shifted underneath my edit window.
+
+---
+
 ## 2026-05-23 PM-235 — Replays rebuilt as YouTube playlist tiles (replaces PM-229 broadcast-ID approach) [vyve-site `1f0c81ff`]
 
 The PM-229 design — `calendar_occurrences.youtube_broadcast_id` populated per past occurrence, hub paints reverse-chron tile list of individual videos — got rebuilt entirely. Dean's question on review: "session goes live, session finishes, YouTube automatically adds that to the playlist, so why are we doing per-broadcast row mapping?" Right question. The previous design required either manual SQL after every broadcast (doesn't scale — Lewis can't write SQL, daily-cadence categories like Yoga need 21 inserts/week) or a complex `session-publish` EF cron to automate it (over-engineered when YouTube already auto-archives broadcasts to playlists). Replaced with a much simpler shape.
