@@ -1,3 +1,129 @@
+## Added 23 May 2026 — PM-211 — Single source of truth for live sessions: collapse sessions-data.js / service_catalogue / calendar_occurrences down to one recurring-pattern source + materialiser cron
+
+**The problem PM-211 solves.** As of PM-210b ship, live-session schedule data lives in three places that disagree:
+
+| Source | Shape | What it answers | Yoga today (post-ship) |
+|---|---|---|---|
+| `sessions-data.js` (vyve-site repo) | Recurring (scheduleDays[]) | sessions.html + connect.html Live This Week | Daily 06:00 |
+| `service_catalogue` (Supabase) | Recurring (single schedule_day) | Nothing live — went stale after PM-190.d | Monday 07:00 (wrong) |
+| `calendar_occurrences` (Supabase, PM-210a) | Materialised (one row per occurrence, 190 rows) | connect-calendar.html + Connect hub Calendar tile | Daily 06:00 (snapshot from sessions-data.js as of 22 May) |
+
+If Lewis changes a session time, he has to edit `sessions-data.js` (which means a deploy and is therefore not on-the-fly), AND someone has to update `calendar_occurrences` separately. `service_catalogue` is already wrong and nobody noticed because nothing reads from it for live sessions. This is exactly the friction Dean flagged: "I'm going to need to change this very soon... it needs to be arranged in a way that we're able to update session times on the fly."
+
+**The decision.** Move to one recurring-pattern source of truth in Supabase + a materialiser that keeps `calendar_occurrences` topped up. Lewis edits one row in the Supabase dashboard, calendar + sessions page + Live This Week all reflect the change within minutes. Delete `sessions-data.js` from the codebase. `service_catalogue` either becomes that source (preferred) or is repurposed/deprecated.
+
+### Architecture: which table holds the recurring pattern
+
+**Option A — Extend `service_catalogue`.** It's already the right shape (one row per category × type), already wired into sync.js as a Pattern 2 catalogue, already has `image_url` from PM-190 for thumbnails. Missing: `schedule_days` as an array (currently `schedule_day` TEXT single-value, breaks Yoga/Mindfulness/Workouts which are daily). Migration would be:
+- Add `schedule_days TEXT[]` nullable, e.g. `{Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday}` for daily Yoga.
+- Backfill from sessions-data.js (overwrites the current wrong values).
+- Keep `schedule_day` for a transition window then drop.
+- Add `tags TEXT[]` to match sessions-data.js's `tags: ['Movement','All levels']` chip arrays.
+- Add `live_url TEXT`, `replay_url TEXT` (already in `calendar_occurrences` schema, mirror here).
+
+**Option B — New table `live_session_schedules`.** Clean break, doesn't muddy `service_catalogue` which is also being used for non-live-session data (workout plans, replays). Smaller surface to reason about. Costs: another sync.js plan entry, another Dexie store, another invalidation key.
+
+**Recommendation: Option A.** `service_catalogue` was originally designed to be the recurring source (per its column shape — `type` + `schedule_day` + `schedule_time` + `duration_minutes`). PM-190.d only forked away because Dexie staleness blocked image_url from reaching devices; that's now solved by §23.50 CATALOGUE_INVALIDATION_KEY. Going back to the original architecture is cheaper than maintaining a third recurring table. The non-live-session rows (replays, workout_plans) just have NULL `schedule_days` — they're catalogue rows, not scheduled rows.
+
+### Materialiser cron
+
+New Edge Function: `materialise-calendar-occurrences`, scheduled via pg_cron. Walks active `service_catalogue` rows where `type='live_session'` AND `schedule_days IS NOT NULL`, computes the next N weeks of occurrences (default 8), upserts on `(source_catalogue_id, starts_at)` so re-runs are idempotent. Skips rows where `calendar_occurrences.locked_from_recurrence=true` (manual override — out of scope v1 but the column already exists from the original PM-210 schema design notes; can wire later).
+
+Cadence: weekly Sunday 03:00 UTC. The window is 8 weeks rolling — every Sunday it walks the catalogue and ensures rows exist for the next 8 weeks. New weeks materialise as time moves forward; manual edits to materialised rows survive because the upsert key is `(source_catalogue_id, starts_at)` not just `starts_at` — moving a session is an UPDATE on the catalogue row, which the next cron run regenerates from.
+
+**On-edit invalidation.** Cron is weekly, but Dean wants "on the fly". So pair the cron with an Edge Function trigger: when a `service_catalogue` row's `schedule_days` or `schedule_time` changes, immediately delete future `calendar_occurrences` rows for that catalogue id and re-materialise. Members on next 5-min sync (CATALOGUE_FRESH_TABLES) see the new schedule.
+
+Implementation options for the on-edit trigger:
+- **Postgres trigger** that calls the EF via `pg_net` (cleanest, no app coordination).
+- **Manual re-materialise call** from Supabase dashboard after Lewis edits — a "Re-materialise this row" button or a callable EF. Simpler for v1.
+- **Time-bound stale acceptance** — accept that a Lewis edit at noon shows the new schedule at next Sunday's cron run, plus he can hit the manual re-materialise button if he needs it sooner.
+
+Lean v1: manual re-materialise EF + the weekly cron. v2 adds the Postgres trigger if Lewis hits friction.
+
+### sessions.html migration
+
+Currently reads `window.VYVE_SESSIONS.SESSIONS` (array from sessions-data.js, recurring shape). Needs to read from `VYVELocalDB.service_catalogue` filtered to `type='live_session'`. The render path is straightforward — same fields, mapped from new column names:
+
+| sessions-data.js field | service_catalogue equivalent |
+|---|---|
+| `id: 'yoga'` | derive from `category` (slug it) OR add `slug` column |
+| `title` | `name` |
+| `scheduleDays: [0,1,2,...]` | `schedule_days` array, parse to JS weekday ints |
+| `sessionHour`, `sessionMin` | parse `schedule_time` "06:00" |
+| `duration` | `duration_minutes` |
+| `tags: ['Movement', ...]` | `tags` array (new column) |
+| `liveUrl`, `replayUrl` | `live_url`, `replay_url` (new columns) |
+| `thumb: 'thumb-yoga.jpg'` | `image_url` already present |
+| `freq: 'daily'|'weekly'|'monthly'` | derive from `schedule_days.length` (7=daily, 1=weekly, ?=monthly) — or add explicit `frequency` column |
+
+`getNextOccurrence(s)` recurrence math stays in JS — it's pure logic over `schedule_days` + `schedule_time`.
+
+`isLiveNow(s)`, the 30s/1s adaptive ticker, the countdown formatting — all unchanged. Only the data binding changes.
+
+### connect.html Live This Week migration
+
+Already reads from `service_catalogue` (per the PM-187 comment block at line 473). The change here is: stop relying on the (currently wrong) single `schedule_day` value and start reading `schedule_days` array. Could ride on the same commit as sessions.html.
+
+### connect-calendar.html / Calendar tile — no changes
+
+These already read from `calendar_occurrences` which the materialiser keeps current. Zero migration cost on the calendar surface itself.
+
+### What we delete
+
+- `sessions-data.js` entirely (5.2KB file gone)
+- The `<script src="/sessions-data.js"></script>` tag from `sessions.html` line 18
+- The `window.VYVE_SESSIONS` reference shims at sessions.html lines 181-183
+
+### Migration steps (in order)
+
+1. **Schema migration on `service_catalogue`.** Add `schedule_days TEXT[]`, `tags TEXT[]`, `live_url TEXT`, `replay_url TEXT`. Backfill from sessions-data.js so service_catalogue becomes correct (it's currently wrong but harmless — nothing reads schedule_day from it for live sessions today).
+2. **Update existing PM-210 backfill of `calendar_occurrences`** to reference `source_catalogue_id` for each materialised row (currently NULL because the backfill was sessions-data.js-driven, not catalogue-driven). One UPDATE statement keyed on category + starts_at.
+3. **Build `materialise-calendar-occurrences` Edge Function** + manual re-trigger endpoint + Sunday 03:00 UTC pg_cron schedule.
+4. **Migrate sessions.html data binding** from VYVE_SESSIONS to VYVELocalDB.service_catalogue. Update CATALOGUE_INVALIDATION_KEY so existing devices re-pull the new columns.
+5. **Migrate connect.html `renderLiveThisWeek`** to read `schedule_days` array.
+6. **Delete sessions-data.js + script tag + shims.**
+7. **First materialise run** — invoke the EF once to regenerate calendar_occurrences from the now-correct service_catalogue. Replaces the PM-210a backfill data with catalogue-sourced data of the same shape.
+
+Atomic? Mostly. Steps 1-3 are Supabase-only and don't touch members. Steps 4-6 land in one vyve-site commit (or two if we want to ship the sessions.html migration before the delete, for safety). Step 7 is a single EF invocation.
+
+### Why this is "post-MVP" but should land soon
+
+Doesn't block 31 May trial launch. The PM-210 calendar works fine on its own. But every week the trial runs with the current split-source setup is a week where editing a session time means editing two places, and the first time Lewis or Calum forgets one, members see contradictory info. The faster PM-211 lands after launch, the less drift accumulates.
+
+Realistic timing: ship PM-211 in the first 1-2 weeks post-launch (early-to-mid June). Trial members won't have noticed the underlying data shape change because the user-facing surfaces look identical.
+
+### Time estimate
+
+**One Claude-assisted session, possibly two if the materialiser EF needs careful testing.** Breakdown:
+- Schema migration: ~10 min Supabase MCP.
+- Backfill `service_catalogue` from sessions-data.js shape: ~10 min SQL.
+- Materialiser EF + pg_cron: ~45 min (small EF, well-defined inputs).
+- sessions.html + connect.html migration + commit: ~45 min including JS validation + §23.41/§23.52 verify.
+- sessions-data.js delete + cache bump: in same commit.
+- First materialise run + verify: ~10 min.
+
+### Open decisions for the build session
+
+1. **Slug source for sessions.html `id`.** Add `slug` column to service_catalogue, or derive from category text (`category.toLowerCase().replace(/[^a-z0-9]/g,'-')`)? Derivation is simpler; column is more explicit and survives category rename. Lean toward derivation for v1.
+2. **`frequency` enum.** Derive from `schedule_days.length`, or add explicit column? `length===7`→daily, `length===1`→weekly, `length===0` or null→monthly/ad-hoc. Derivation works for current shape; column is needed if we ever want bi-weekly or other patterns. Lean derivation for v1.
+3. **`locked_from_recurrence` semantics.** The column already exists in `calendar_occurrences`. v1 ignore it (materialiser regenerates everything in window); v2 honour it for per-occurrence manual overrides. Defer to v2.
+4. **What happens to past `calendar_occurrences` rows when a catalogue row is edited?** Leave them historical (they represent what actually happened on that date), or regenerate? Lean: leave past rows untouched, only regenerate future rows. Matches the original PM-210 spec note ("regenerate from now forward, leave past untouched").
+5. **Materialiser cron horizon.** 8 weeks proposed. Could be 12 or 16. 8 is the current `calendar_occurrences` shape; matches the existing backfill range. Confirm at build time.
+6. **`type='replay'` rows in service_catalogue.** Currently 8 rows, NULL schedule. Keep as-is — they're catalogue-shape, not scheduled. sessions.html already renders a "View replays" link per session, sourced from the live-session row's `replay_url` not from these separate replay rows. The replay rows can stay or be cleaned up; deferred.
+
+### Related rules invoked
+
+- §23.49 catalogue imagery (image_url already governed)
+- §23.50 CATALOGUE_INVALIDATION_KEY bump on schema change
+- §23.46 counters render truth (sessions.html paint already follows this)
+- §23.48 Pattern 2 catalogue (current sessions.html + connect Live This Week already use this)
+
+### Status
+
+Specced 23 May 2026 in this session (post-PM-210b ship). Not started. Pick up post-trial-launch.
+
+---
+
 ## Shipped 23 May 2026 — PM-210 — Connect calendar member UI shipped end-to-end [vyve-site `31e6910e`, brain `ea7af33f` → next]
 
 **PM-210 closed across two sessions.** PM-210a (22 May): Supabase schema + RLS + 190-row backfill from `sessions-data.js`. PM-210b (23 May, this entry's session): six-file atomic commit to vyve-site main (db.js SCHEMA_V9, sync.js plan entry + invalidation key bump, connect-calendar.html NEW 798 lines, connect.html Latest from VYVE → Calendar tile, sw.js cache bump, index.html vbb-marker 80). Members hydrate `calendar_occurrences` automatically on next visit via the `CATALOGUE_INVALIDATION_KEY` bump `pm190c-image-url` → `pm210-calendar-occurrences`.
