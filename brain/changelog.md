@@ -1,3 +1,80 @@
+## 2026-05-23 PM-243 + PM-244 — Connect fade: it was COLOUR not positioning the whole time [vyve-site `10ed1df3`, `a2e12cb0`]
+
+Six commits chasing this seam (237 → 238 → 240 → 241 → 242 → 244) and the bug was never where I thought it was.
+
+### PM-243 — the debug ship
+
+Replaced the gradient with `background:red` to isolate whether PM-242's positioning worked. Dean shipped two screenshots:
+
+- **Top of page:** red band sitting flush at photo's bottom edge, full width.
+- **Scrolled down:** red band moved up with the content tile, scrolling exactly as designed.
+
+**PM-242 was working perfectly all along.** The position was right. The scroll behaviour was right. I'd been about to revert the whole approach again.
+
+### PM-244 — the actual diagnosis
+
+The reason the gradient version was invisible: **colour proximity**. The Connect hero photo is a sunrise lake scene. Its bottom 80px (where the fade overlaps) is the lake foreground + shore shadows — already very dark teal. Dark-mode `--bg` is `#0A1F1F` — also dark teal. The PM-242 linear gradient ramped from transparent (revealing dark teal photo) to opaque dark teal var(--bg). Endpoints were visually identical against the photo. No perceived dissolve.
+
+This is the EXACT same bug as PM-238 ("both endpoints of the gradient were essentially the same colour") but in a different location. PM-238 the gradient was below the photo entirely (over body radial gradient ≈ var(--bg)). PM-244 the gradient was over the photo's dark zone ≈ var(--bg). Same failure mode, two different mechanisms. I missed it in PM-241 → PM-242 because I'd convinced myself the visibility issue was stacking-related after PM-240's WKWebView paint-quirk theory.
+
+### The fix
+
+Three-stop curve, rgba hardcoded per theme:
+
+```css
+.connect-hero-fade {
+  background: linear-gradient(
+    to bottom,
+    rgba(10,31,31,0)   0%,
+    rgba(10,31,31,0.6) 40%,
+    rgba(10,31,31,1)   75%,
+    rgba(10,31,31,1)   100%
+  );
+}
+[data-theme="light"] .connect-hero-fade {
+  background: linear-gradient(
+    to bottom,
+    rgba(240,250,248,0)   0%,
+    rgba(240,250,248,0.6) 40%,
+    rgba(240,250,248,1)   75%,
+    rgba(240,250,248,1)   100%
+  );
+}
+```
+
+Hitting opaque at 75% instead of 100% guarantees full coverage at the wrap top seam regardless of photo content underneath. The 60% mid-stop creates visible "thickening" that reads as a dissolve even against same-colour photo zones.
+
+rgba-only, theme-scoped override, no `color-mix` (PM-237 doctrine: keep iOS Safari 16.2+ floor unnecessary).
+
+### Why I missed this until the debug ship
+
+After PM-240's "WKWebView paint quirks" theory got cemented in my head from sequential debugging, I framed every subsequent failure as a stacking/positioning issue. PM-241 jumped to body-level fixed positioning to "guarantee paint." PM-242 went back to scroll-aware positioning with elaborate z-index management. Each time the gradient didn't show, I assumed it wasn't *painting* — never considered it was painting but *invisible against its backdrop*.
+
+The screenshot Dean uploaded for PM-241 actually showed the same bug: I could see a slight subtle softening at the seam if I squinted (which I didn't notice at the time, focused on the "fade-doesn't-scroll" feedback). The colour-proximity failure was there all along, masked by other genuine bugs.
+
+### Process lesson — promote to §23 candidate
+
+The debug-ship is the move. After 4+ commits on the same problem when each "fix" produces a visually identical or near-identical failure, **stop trying to fix it and isolate it instead**. A 30-second commit with `background:red` (or any other guaranteed-visible value) gave more diagnostic information than 4 attempted fixes combined.
+
+Proposed §23 entry: **"When a CSS effect should-be-visible-but-isn't across 2+ attempted fixes, the next commit is a debug commit (solid colour, larger size, neon — whatever is unmistakable) to isolate which sub-property is failing. Diagnosis before more attempts."**
+
+One-bite-from-rule. Will promote if I hit this pattern once more.
+
+### Files
+
+- `connect.html` 93780 bytes (PM-242) → 93780 (PM-243, same size — just `linear-gradient(...)` swapped for `red`) → 94326 (PM-244, gradient rewritten with theme override).
+- `sw.js` cache: `pm242-fade-scrolls-with-content-a` → `pm243-DEBUG-red-band-a` → `pm244-fade-gradient-strong-a`.
+- `index.html` vbb-marker: 123 → 124 → 125.
+
+### Commit chain
+
+- `10ed1df3` — PM-243 DEBUG red band
+- `a2e12cb0` — PM-244 strong gradient + revert red
+
+Both shipped in the same session. PM-243 was on production for ~5 minutes — Dean saw it (and screenshotted it) before PM-244 landed. Not a problem at scale (15 members all internal), but worth flagging that debug ships ARE production ships on this setup. For larger-cohort work, consider routing debug visuals through a query-param flag (`?debug=fade`) instead of unconditionally shipping. Not enforcing for this session.
+
+---
+
 ## 2026-05-23 PM-242 — Connect fade actually scrolls with content (PM-238 mental model, finally working) [vyve-site `f8f08a91`]
 
 Five attempts at this seam now. PM-241 fixed the visibility problem (fade was painting) but Dean's screenshot showed the consequence: fixed-position fade band stayed put as content scrolled past, so the fade ended up cutting through the middle of the check-in card. Wrong feel. Dean's original ask was right: the fade belongs to the content tile and scrolls with it.
