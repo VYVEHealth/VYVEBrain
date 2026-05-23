@@ -2600,6 +2600,109 @@ Or for the strictest version, separate the steps entirely so the operator can `c
 
 ---
 
+## §23.54 — SW install must use `fetch(url, { cache: 'reload' })`, never `cache.addAll()` (PM-220.6, 23 May 2026)
+
+**The rule.** In `sw.js`, the install handler precaches `urlsToCache` via an explicit `fetch(url, { cache: 'reload' })` followed by `cache.put`, never `cache.addAll()` and never default-mode `fetch()`. The `cache: 'reload'` mode forces bypass of both browser HTTP cache and any intermediate CDN cache.
+
+```javascript
+// CORRECT
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => Promise.all(
+        urlsToCache.map(url =>
+          fetch(url, { cache: 'reload' })
+            .then(resp => resp && resp.status === 200 ? cache.put(url, resp) : null)
+            .catch(() => {})  // asset-by-asset failure tolerated
+        )
+      ))
+      .then(() => self.skipWaiting())
+  );
+});
+
+// WRONG — default cache mode serves stale CDN copies
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(urlsToCache))
+      .then(() => self.skipWaiting())
+  );
+});
+```
+
+**Why.** GitHub Pages fronts the repo via its own CDN. When `cache.addAll()` runs during install, each fetch uses the browser default cache mode, which is allowed to return cached CDN responses. If the CDN has not yet propagated the latest commit (typical 5-10 minute lag), install fetches the *previous* version of each precached file and stores it into the new SW cache. Activate then purges the old SW cache. The new cache, populated with stale CDN content, becomes the active cache. Stale-while-revalidate serves the stale content on every navigation. Each cache key bump installs another stale copy. **The fix never reaches the device.**
+
+This pattern explains every "Update X shipped but the device still shows the previous bug" symptom. PM-220.4 → PM-220.5 was correctly committed and visible at origin but Dean's device kept rendering the diagnostic for three deploy cycles, all served from the SW cache populated during install while GitHub Pages CDN was still propagating.
+
+**Side benefit.** `cache.addAll()` is all-or-nothing: any single 404 fails the entire install. `fetch + cache.put` per URL with `.catch(() => {})` tolerates asset-by-asset failures — one bad URL no longer kills the whole install.
+
+**Signature.** If a bug appears to never get fixed despite committing the fix correctly across multiple deploy cycles, the SW install path is the first suspect. Verify the source on `main` is correct via API, verify the cache key bumped, verify vbb-marker bumped. If all three are correct and the device still shows the old bug, the SW install is grabbing stale CDN copies. Apply this rule.
+
+**Related rules.** §23.42 (every vyve-site commit needs sw.js + vbb-marker bumped together), §23.51 (when a CSS edit produces no visible change, audit the selector — §23.54 is the SW-side equivalent: when a code change produces no visible change despite correct source, audit the SW install path).
+
+---
+
+## §23.55 — Hub-page hero doctrine (PM-216 → PM-226, 23 May 2026)
+
+**The rule.** Photographic heroes on hub pages (Connect now, Mind / Body / Index next) follow a single settled doctrine. Full implementation spec is in `playbooks/hub-page-hero-doctrine.md` — load it before touching any hub-page hero. The contract here is the **invariants** that every hero ship must honour.
+
+### Layout invariants
+
+- Hero is `position: fixed` with **longhand** `top:0; left:0; right:0; height: max(280px, 46vh)`. No `inset:0` shorthand (silently fails on WKWebView per PM-221.1).
+- Hero is **body-level**, not inside `<main>`. Parent stacking contexts interfere with fixed pinning on WKWebView (PM-220.1).
+- `translateZ(0)` + `will-change: transform` on the hero. GPU compositor layer hint, canonical WKWebView fix for flaky `position: fixed`.
+- Hero photo via CSS `background-image`, **never `<img>` children**. `<img>` inside a `translateZ(0)` GPU-layered fixed parent silently fails to paint on WKWebView (PM-220.5).
+- Day/night swap via `.is-night` class on the hero, set by inline script before paint based on `getHours() < 6 || >= 19`.
+- `main padding-top` matches hero height; `.wrap` has `background: var(--bg)`. Padding lives on the transparent element, never on the backgrounded element (PM-220.2). Spacer must be see-through.
+- Gradient overlay is dark-top + clear-middle + dark-bottom: `linear-gradient(180deg, rgba(13,43,43,0.55) 0%, .25 22%, .05 45%, .05 60%, .25 80%, .50 100%)`. Top scrim for text legibility, middle clear so photo is the visual focus, bottom scrim for band-to-content transition (PM-223.2).
+- `body::before` glow must be suppressed on hub pages: `body.<hub>-page::before{display:none}`. Same-z-index conflict with the hero on WKWebView (PM-220.3).
+- `.wrap .fade` animation must be killed on hub pages: `body.<hub>-page .wrap.fade{animation:none}`. Transform on wrap creates stacking context interference (PM-220.3).
+- z-index discipline: hero `z:1`, wrap `z:2`. Unambiguous.
+
+### Typography invariants
+
+- **Eyebrow = page name = primary focal point.** `1.6rem`, weight `700`, uppercase, letter-spacing `0.12em`, colour `var(--teal-lt)` (NOT white — PM-226 confirmed Dean's brand call). Text-shadow `0 2px 14px rgba(0,0,0,0.85), 0 1px 3px rgba(0,0,0,0.6)`.
+- **Headline = tagline = supporting subtitle.** Playfair Display, `1.1rem`, weight `500`, line-height `1.25`, colour `rgba(255,255,255,0.92)`, `max-width: 85%`. Text-shadow `0 2px 14px rgba(0,0,0,0.75), 0 1px 3px rgba(0,0,0,0.5)`.
+- Content layer padding: `calc(env(safe-area-inset-top, 0px) + 20px) 20px 0`. Status-bar clearance on iOS.
+- Hierarchy is page-name-dominant, tagline-supporting. The reverse (tagline dominant) was tried and Dean rejected it (PM-224).
+
+### Image production spec
+
+- 1024 × 1024 progressive JPEG, quality 82.
+- Source files (typically Gemini-generated at 1254×1254) resized via Python PIL `Image.LANCZOS` before commit.
+- Stored at repo root as `/<hub>-hero-day.jpg` and `/<hub>-hero-night.jpg`.
+- Both URLs added to `sw.js` `urlsToCache` array for offline support.
+- `background-position` chosen per image composition. People in lower portion → `center bottom` (Connect's choice). Scenery distributed → `center center`. Sky as focus → `center top`.
+- Brand grading line for Gemini: "Colour grade: deep teals and greens, warm highlights, no text, no logos."
+
+### Editable rotating tagline (PM-225)
+
+- Tagline pool stored in `public.taglines` Supabase table: `id uuid PK, text text, position int, active boolean, created_at, updated_at`. RLS `SELECT` for `anon + authenticated` where `active = true`. Edit via Supabase Studio.
+- Rotation index: `Math.floor(Date.UTC(localYear, localMonth, localDate) / 86400000) % count`. Local-midnight-anchored day index. Same value for every member in the same timezone on the same date. Rolls over at local midnight on next page load (not mid-session).
+- localStorage cache key `vyve.taglines.v1` for instant paint on next-load. First-ever visit shows the literal markup default per honest-paint contract (§23.46).
+- Background fetch updates cache + repaints headline if rotation index changed.
+- Markup contains a static default tagline. JS swaps it once the fetch settles. Fetch failure leaves the default in place.
+- **Default for Mind / Body / Index: share the existing taglines pool.** Five Connect taglines work as VYVE-wide brand copy. If a hub needs its own pool later, add a `hub` column and filter the fetch.
+
+### Page identity
+
+- `<body class="<hub>-page hub-page">`. Both classes required. `hub-page` is the cross-cutting class that drives topbar suppression (nav.js JS-guard) and hub-page-scoped CSS (PM-218/219).
+- `body.<hub>-page .mph-page-label{display:none}` to suppress the nav.js topbar page-label (the in-hero eyebrow is the page identifier now).
+
+### Diagnostic-first principle (applies to all visual debugging)
+
+When a CSS edit produces no visible change OR a known-correct DOM doesn't render visually, **ship a diagnostic build with extreme high-contrast values** (lime green text, magenta outlines, yellow tinted backgrounds) before continuing CSS speculation. PM-220.4 and PM-223.1 both used this pattern; each isolated the variable in one Dean cycle versus the multi-cycle CSS speculation that preceded them. Predict the three diagnostic outcomes before shipping — (a) renders correctly = original issue was elsewhere (contrast, position, etc), (b) container renders + content doesn't = element-specific render failure, (c) nothing renders = DOM / display issue. Pattern is borderline §23 but not yet promoted; codified in the playbook.
+
+### Shipping order
+
+Mind → Body → Index. Mind has the lowest content density and is the cleanest place to validate the doctrine on a second page. Index is busiest and benefits from any tuning learned on the simpler hubs.
+
+### Related rules
+
+§23.42 (every vyve-site commit needs sw.js + vbb-marker), §23.46 (honest-paint default in markup), §23.48 (Connect freshness model — tagline rotation is Pattern 2 catalogue), §23.51 (when CSS produces no visible change, audit before re-tuning — connects to the diagnostic-first principle), §23.54 (SW install must use `cache: 'reload'` — without this the hero ships never reached the device for 4 cycles).
+
+---
+
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.
