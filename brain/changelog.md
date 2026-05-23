@@ -1,3 +1,17 @@
+## 2026-05-23 04:35 — PM-220.3 Parallax hero fade-out fix [vyve-site `3a20f9d8`]
+
+PM-220.2 still failing — photo flashed in then faded out on every Connect load. Three plausible interactions, all addressed at once:
+
+1. **`body::before` radial-glow suppressed on connect.html.** It's `position:fixed; inset:0; z-index:0` with an opaque `var(--bg)` third gradient — same z-index:0 as the hero, occupies full viewport. WKWebView paint-order non-determinism between same-z-index fixed elements could have it covering the photo.
+2. **`.fade` animation killed on `.wrap` for connect.html.** The fadeUp animation applies `transform:translateY(8px → 0)` for 0.4s on load. Transform on `.wrap` creates a stacking context which, for unclear WKWebView reasons, was interfering with the body-level fixed hero. Wrap content now appears instantly on connect (no fade-up).
+3. **Z-index made unambiguous.** Hero bumped 0 → 1, wrap bumped 1 → 2. Hero clearly above suppressed glow, wrap clearly above hero.
+
+If the photo is *still* misbehaving on Update 92, the diagnostic narrows to either an `<img>`-element-specific quirk or the SW serving stale HTML. Next step would be temporarily removing the `<img>` tags and seeing if the gradient fallback pins correctly — that isolates whether it's the imgs causing the trouble vs the hero element itself.
+
+Files: `connect.html`, `sw.js` (`pm220-parallax-hero-c` → `-d`), `index.html` (vbb-marker 91 → 92).
+
+---
+
 ## 2026-05-23 04:20 — PM-220.2 Parallax-hero spacer fix: padding on main, not wrap [vyve-site `6805124b`]
 
 PM-220.1 hid the photo entirely. Cause: `.wrap` had both `padding-top:38vh` AND `background:var(--bg)` — solid bg fills the padding region, covering the photo from top-of-viewport down. Defeats the parallax effect at initial paint.
