@@ -1,3 +1,43 @@
+## 2026-05-23 02:35 — PM-217 Connect hero trim: remove in-hero title, drop checked-in pill, hide topbar page-label [vyve-site `d2d0459f`]
+
+### What shipped
+
+Same-evening device-test follow-up to PM-216. Dean's feedback: the v1 hero was eating too much vertical space because three title surfaces were stacking at the top of the page — sticky topbar with "CONNECT" page-label, large in-hero "Connect" wordmark + subtitle over the photo, then a "1 member checked in today" banner, then the pencil card. Reference mockup (a sunset hero with no in-image text, only the V logo in the topbar) made the direction unambiguous: photography speaks for itself, the bottom-nav active state already identifies the page.
+
+Three trims, all surgical:
+
+**1. In-hero `.connect-hero-content` + `.page-hdr` block removed.** Hero markup is now purely `<img class="connect-hero-img is-day">` + `<img class="connect-hero-img is-night">` + `<div class="connect-hero-overlay">`. The "Connect" wordmark and "Together we build better habits and stronger lives." subtitle are gone from the page. The 100vw breakout + negative-margin pull-under-topbar mechanics from PM-216 are preserved.
+
+**2. Topbar `.mph-page-label` suppressed on this page only.** nav.js injects a `.mph-page-label` inside `.mobile-page-header` rendering "CONNECT" in uppercase teal. Scoped suppression via `body.connect-page .mph-page-label { display:none; }` plus `<body class="connect-page">`. V logo (left slot) and the bell icon (right slot, when push surfaces) both remain. This is the reusable pattern for `body.index-page` / `body.mind-page` / `body.body-page` when each of those gets a photographic hero — full-bleed photo + V logo only, no duplicate text identifier.
+
+**3. `.feed-banner` markup deleted entirely.** The "1 member checked in today" pill driven by `connect-feed-counts` EF is gone. Low-value signal at trial scale (15-20 members). The `paintFeedBanner` JS function is left in place but is null-guarded on missing DOM element and becomes inert — full JS-side cleanup is a follow-up. Orphan `.feed-banner` CSS rules also left in place for the same reason; both can be stripped in a later janitor pass without urgency.
+
+Hero min-height also trimmed: 340px → `max(240px, 38vh)`. Hero scales naturally across phone sizes; 240px floor protects small handsets, 38vh gives the photo room to breathe on larger devices without dominating the page.
+
+### Files committed (vyve-site `d2d0459f`, 3-file atomic via Git Data API)
+
+- `connect.html` MODIFIED +31/-53 — net -22 lines. Markup removals (in-hero title block, feed-banner pill) + CSS additions (`body.connect-page` scoped topbar suppression, min-height clamp). Pencil check-in card / Elite hero / Calendar tile / Podcast tile / Live This Week carousel untouched.
+- `sw.js` MODIFIED +1/-1 — cache `pm213-connect-hero-a` → `pm217-hero-trim-a`.
+- `index.html` MODIFIED +1/-1 — vbb-marker 85 → 86.
+
+### Reusable doctrine added to the PM-216 set
+
+Scoped page-label suppression via `body.<page>-page` class + topbar element selector is the durable mechanism for "no duplicate page identifier when a photographic hero already establishes context". The V logo stays as brand presence; the page-label uppercase text is redundant chrome over photography. Apply on index.html / mind.html / body.html when their heroes ship.
+
+### Tooling discipline
+
+§23.41 pre-tree HEAD re-fetch confirmed vyve-site parent at `3ee5c60f`. §23.52(a) all 3 blob bodies via `/tmp/vyve-commit/blob217_*.json` files. §23.52(c) all blob SHAs asserted 40-hex. §23.52(b) post-commit `GET /commits/{sha}` confirmed `{added:0, modified:3, removed:0}` — three files exactly. §23.53 commit-create JSON parse via `json.loads(strict=False)` to handle raw newlines in `message` field. Composio still 401-ing from 21 May (now ~39h); §23.45 PAT-direct path used throughout. No new §23 rule earned.
+
+### Carry-forward cleanup (not load-bearing)
+
+Two janitor items deferred to a later cleanup pass on connect.html — both safe to leave for now because they have no behavioural effect:
+- `.feed-banner` CSS rules (4 lines, lines ~387-394) orphaned now that the markup is gone.
+- `paintFeedBanner()` and `fetchFeedCounts()` JS functions inert (null-guard returns immediately on missing DOM element). Call sites also no-op.
+
+Both can be removed in a single follow-up commit when next pass through connect.html lands.
+
+---
+
 ## 2026-05-23 02:01 — PM-216 Connect photographic hero with day/night swap [vyve-site `3ee5c60f`]
 
 > **Numbering note.** This ship landed concurrent with two other sessions claiming PM-213 (live session pages spec, brain `6c8d0806`) and PM-214 (admin console placeholder, same brain commit), and PM-215 (YouTube reusable streams diagnostic, brain `41bc8f7d`). Per §23.14 rule 3 the next free PM-number for this work is **PM-216**. The vyve-site commit message at `3ee5c60f` was authored as "PM-213" before the conflict was known — read it as PM-216 going forward. No code change needed; the commit content is correct, only the PM-tag in the commit message is stale.
