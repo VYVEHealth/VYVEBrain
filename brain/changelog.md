@@ -1,339 +1,44 @@
-## 2026-05-23 13:45 — PM-215.z All 7 active VYVE category streams verified end-to-end (Workouts, Mindfulness, Weekly Check-In, Group Therapy, Events, Education, Podcast)
+## 2026-05-23 13:48 — PM-212.7 Podcast fallback uses real brand asset, dropping the threshold-extracted V [vyve-site `b7b6ac3d` → `da563832`]
 
-### What was tested
+Closes the PM-212 logo-asset arc. Five-file atomic commit: `logo-mark.png` replaced with the canonical VYVE brand logo Dean uploaded (500×500 RGB, 14671 bytes, the actual rounded-square app-icon asset with V-mark inside), CSS rewritten on `.ep-thumb .logo-fallback img` to `width:100%; height:100%; object-fit:cover` with zero padding, `.logo-fallback` container changed from `display:flex` centring box to `display:block` full-bleed positioning. Asset fills the tile edge-to-edge; parent `.ep-thumb` `border-radius:10px overflow:hidden` clips the corners cleanly. `/logo-white.png` deleted (PM-212.4 leftover, verified zero references via repo-wide code search). sw cache `pm223-text-contrast-c` → `pm212-7-real-logo-a`. vbb-marker 104 → 105.
 
-Dean configured all 8 Riverside studios (skipped Default — catch-all, not used in practice) with custom RTMP destinations pointing at their matching YouTube stream keys. Then ran 15-90 second test streams through each studio to verify the pipeline works end-to-end on every category.
+### Why this lands when PM-212.1–6 didn't
 
-8 pre-created `liveBroadcast` resources (`latencyPreference: ultraLow`, `enableAutoStart`/`AutoStop: true`, `recordFromStart: true`, `unlisted`) were batch-created and bound to their respective streams + inserted to their category playlists via API in a single setup pass. Dean then pushed RTMP through each Riverside studio in order; each broadcast auto-started on first RTMP frames, recorded, then auto-stopped after Riverside stopped.
+PM-212.1 through PM-212.6 burned six iterations trying to produce a transparent-background white V-mark glyph to layer over the card's teal gradient. The premise was wrong: every attempt to extract the V from `logo.png` / `icon-192.png` / `icon-512.png` either lost shape fidelity (filter approaches collapsed the colour-variation V into solid white squares) or produced a glyph slightly different from the canonical brand letterform (luminance-threshold extracts at 192 and 512 give visibly different stances because the threshold catches more or less of the edge-gradient pixels). The right fix was to stop reproducing the V and just use the actual brand asset Dean had. PM-212.7 does exactly that — the file in `/logo-mark.png` is now Dean's `VYVE_Logo.png` upload byte-for-byte (SHA256 match verified post-commit).
 
-### Results
+### What members see now
 
-| # | Category | Broadcast ID | Lifecycle | Recording | Duration |
-|---|---|---|---|---|---|
-| 1 | Workouts | `4LhzmXdjxpM` | complete | recorded | 96s |
-| 2 | Mindfulness & Mindset | `_c_JjHM2sio` | complete | recorded | 56s |
-| 3 | Weekly Check-In | `l2bLX9U4AA4` | complete | recorded | 62s |
-| 4 | Group Therapy | `p5M24G37lrw` | complete | recorded | 38s |
-| 5 | Events | `DpnOTzSPazc` | complete | recorded | 122s |
-| 6 | Education and Experts | `WWt22zNSGSU` | complete | recorded | 37s |
-| 7 | Podcast | `p4uvPBNNTcU` | live → complete | recording → recorded | (verified via API mid-stream) |
-| 8 | Default | `2n0-yB2h7D0` | ready (untested) | notRecording | skipped |
+For the 12 episodes without Drive thumbnails (the Everyman archive entries and any future Drive 404), the tile shows the full VYVE app-icon asset — dark-teal rounded-square container with light-teal V-mark inside — clipped to the `.ep-thumb` border-radius. The "foreign sticker" perception PM-212.6 was trying to solve via blending is replaced by **clear brand-asset rendering** — the fallback tile reads as intentional VYVE branding rather than a mismatched element. Same visual language as App Store icon, home-screen icon, splash screen.
 
-All 7 tested categories: stream succeeded, recording archived, playlist binding intact. The 8th (Default) was deliberately skipped — Default is a catch-all from the pre-categorisation setup and isn't used in VYVE's operational workflow.
+The 28 episodes with Drive thumbnails are unchanged — their thumbnails still fade in via opacity transition over the brand tile during load (`.ep-thumb-img` at z-index:1 with `onload="this.classList.add('loaded');"`), still cached SW-runtime by `vyve-drive-thumbs-v1` (preserved across cache-key bumps per PM-212.5 activate handler).
 
-### Observations to capture for PM-215 build time
+### Tooling discipline
 
-**1. Time-to-go-live varies 1-30 seconds per broadcast.** YouTube's `liveBroadcast` lifecycle transition from `ready` → `live` takes between 1s and ~30s depending on transcoder farm load. Dean noted Events specifically felt slow (~10s); within YouTube's documented "up to 30s" spec. Member-facing live pages must handle the "broadcast scheduled but not yet `live`" state gracefully — typical pattern is to open the iframe ~30-45s *before* `scheduledStartTime` so YouTube's native pre-roll UI bridges the gap. Hosts should start Riverside ~60s before the scheduled session start to absorb this startup window.
+**Parallel-session drift caught and handled.** vyve-site HEAD moved `17f49276` → `b7b6ac3d` between session start and commit setup — §23.41 pre-commit HEAD refresh caught it cleanly, blobs and tree rebuilt against the live parent. Two concurrent ships had landed between session start (memory said `17f49276`) and the PM-212.7 commit: PM-223 text-contrast (sw cache `pm223-text-contrast-c`, vbb-marker reached 104). PM-212.7 layered on top of those changes, didn't clobber them.
 
-**2. Steady-state playback latency is the OTHER number.** Once `lifeCycleStatus=live`, playback latency between live action and viewer playback is 2-5s on `ultraLow` mode. Distinct from startup variance. Dean's "30 second delay" observation from the Yoga test earlier was time-to-go-live, not ongoing latency.
+**Shell variable-loading gotcha:** initial commit-chain script used `source /tmp/pm2127/shas` which fails in `/bin/sh` (POSIX-only `.` works). The failed `source` call produced empty variables, which produced an empty `base_tree` in the tree POST, which produced a clean `422 base_tree is not a valid tree oid` error. GitHub's API failed loud — no partial commit, no orphan tree, nothing landed. Re-ran with `.` and it landed first try. Not a new §23 rule (single occurrence, environment-specific, the failure mode is clean), but worth knowing for future PAT-direct sessions.
 
-**3. Quality settings are per-Riverside-studio.** Dean's first Yoga test was visibly soft; bumping Riverside output to 4K/1080p between tests substantially improved perceived quality. Per-studio config recommendation: 1080p minimum at 6000 kbps (normal latency) or 4500 kbps (ultraLow). Riverside owns this config; not adjustable via the YouTube API. PM-215.x followup pencilled in: confirm Lewis sets each studio's streaming output spec at his Riverside admin level once.
+§23.45 PAT-direct throughout (Composio still 401 from 21 May incident, ~46h now). §23.52(a) all four blob bodies routed via `/tmp/pm2127/blob_*.json` + `curl --data-binary @file` (largest body index.html at 162KB, exactly the size class that broke PM-209.1). §23.52(c) every SHA shape-asserted (40-char hex, non-empty). §23.52(b) post-commit `files[].status` verified: `{modified: 4, removed: 1, added: 0}` — five files exactly as planned. §23.53 every response body to disk before parse. First-100-byte byte-for-byte match between live `logo-mark.png` and source upload via SHA256. `/logo-white.png` 404 confirmed at the commit SHA. No new §23 rule earned.
 
-**4. pg_net cold-start DNS penalty.** First two parallel `net.http_post` calls in a batch of 8 timed out at the default 5000ms ceiling because cold DNS resolution + TLS handshake consumed 3-4s of the budget. Retry with `timeout_milliseconds := 15000` succeeded instantly. Codify: **when firing >2 parallel pg_net calls to a fresh domain, always pass `timeout_milliseconds := 15000` or higher.** §23 candidate rule, holding for one more occurrence before formalising.
+### What's still on the deferred podcast list
 
-**5. Concurrent brain commit drift.** Mid-session, a parallel Claude session shipped PM-223 (Connect hero text overlay) to brain main, moving HEAD from `9228122b` → `5764f30b` between my pre-fetch and pre-commit re-fetch. Caught by §23.41 HEAD re-fetch before this commit. Reinforces the rule: **always re-fetch HEAD immediately before authoring the commit tree, not at session start.** Already codified in §23.53; this is the third occurrence today.
+- Migrate the 28 Drive thumbnails to Supabase Storage `podcast-thumbs` bucket (v1.1). Self-hosted, EXIF-corrected, same-origin, CDN-cached, fixes Louis Watkins's rotated thumbnail in the process.
+- Per-episode artwork for the 12 fallback episodes (post v1.1 thumb migration). Until then, the VYVE app icon as fallback is the intentional brand-tile.
+- In-app audio player (v2, post-trial-launch). Capacitor background-audio plugin, `audio_url` column, `podcast_views` activity table, Achievement track for listening.
 
-### Resource state at session close
+### Lessons captured
 
-- 9 `liveStream` resources on `UCuptZFgSk0ZmNnE2IbYBdtg`, all `isReusable=true`, all proven working (8 of 9 explicitly tested, Default left untested as it's not used).
-- 8 category playlists, each populated with at least one test broadcast as proof of binding.
-- 10 PM-215.* test broadcasts on the VYVE channel from today (2 from Yoga earlier + 8 from this batch). All unlisted. Safe to leave. PM-215 build can do a janitor pass to clean test broadcasts if desired (DELETE via `liveBroadcasts.delete` works on completed broadcasts).
-- Riverside: 8 of 9 studios now configured with custom RTMP destinations + persistent stream keys. Default studio not configured (intentional).
-- Bridge cron `youtube-token-keepalive-daily` (jobid 25) firing daily 03:00 UTC, EF v2 ACTIVE, end-to-end tested. Refresh-token clock will never expire in steady-state operation.
+Six iterations on this asset across PM-212.1–6, none of which would have been needed if I'd asked "do you have the brand logo as a file?" at PM-212.1 instead of trying to extract one from existing repo assets. The arc was: (212.1) filter approach assuming transparent negative space; (212.2) Playfair V-glyph substitute; (212.3) filter approach again with new positioning; (212.4) generated white silhouette server-side; (212.5) icon-192.png direct as fallback; (212.6) luminance-threshold extract from icon-192.png; (212.7) **use the actual brand asset Dean has**. The lesson is to default to "ask for the canonical asset" before "extract from secondary asset", especially when the secondary asset's shape was the unknown that confused the prior iterations. Repeated in the same arc with the same root cause = signal to update intuition, not just to log once.
 
-### What this closes off
+Not earning a new §23 rule for this — the principle ("use canonical brand assets, ask before extracting") is too judgement-shaped for a hard rule. But the arc is captured for future sessions to read.
 
-PM-215 v2 layer infrastructure is now **fully verified and ready for build**. The session-publish EF + cron is the only remaining work. Estimated ~45 min once specced (per Dean's morning brief, spec already in backlog at PM-215 block updated this morning at commit `0f194f1e`).
+### Files changed (vyve-site `da56383240db0432030f4a50e70ffad6b23b7b6a`)
 
-The next session can ship PM-215 with full confidence — every primitive (stream, broadcast lifecycle, playlist binding, token persistence, Riverside RTMP pipeline) is proven on real infrastructure. No more exploration needed; only orchestration.
-
-### Tooling
-
-§23.45 PAT-direct (Composio still 401 ~48h post-incident). §23.41 pre-commit HEAD re-fetch caught PM-223 concurrent drift, rebased onto correct parent. §23.52(a)/(b)/(c) for the commit. Token-refresh + access-stash via pg_net + Vault throughout, working pattern. Parallel pg_net call batching: 6/8 first-pass succeeded, 2 timed out, retry with extended `timeout_milliseconds` succeeded — reusable pattern for high-volume batch API calls.
-
----
-
-## 2026-05-23 15:55 — PM-223.1/.2 Hero text contrast fix — diagnostic + production [vyve-site `b7b6ac3d`]
-
-### What happened across PM-223 → PM-223.2
-
-PM-223 shipped the hero text overlay (eyebrow + headline). Dean device-test on Update 102 reported "noticeably taller band, no visible text." Three possible causes: text not rendering, container not rendering, or text rendering but invisible (contrast failure).
-
-PM-223.1 shipped a diagnostic with lime green text + yellow tinted container background + magenta outline. Dean's Update 103 screenshot: yellow band visible with bright lime text "CONNECT" + "Together we build better habits." clearly rendering. **Answer: option 1 — text was rendering all along, contrast was the issue.** White text on the day photo's bright sunrise sky was washing out completely.
-
-PM-223.2 ships the production fix:
-
-- Production colours restored (teal-lt eyebrow, white headline)
-- Headline `max-width` 75% → 85% — fits two clean lines instead of awkward three-line wrap
-- Text shadows strengthened: eyebrow `rgba(0,0,0,0.85)` 8px blur, headline `rgba(0,0,0,0.85)` 16px blur + secondary 3px blur for crisp edge
-- Gradient overlay rebuilt: dark-top + clear-middle + dark-bottom
-  - 55% rgba(13,43,43) at 0% → 25% at 22% → **5% at 45-60% (clear band)** → 25% at 80% → 50% at 100%
-  - Top scrim makes text legible regardless of photo brightness
-  - Middle stays clear so people/scenery remain the visual focus
-  - Bottom scrim retained for band-to-content transition
-
-### Codified lesson — diagnostic-first when text doesn't render
-
-Same lesson as the PM-220.4 bisect: when something doesn't render visually, **strip to a high-contrast debug state first** rather than chasing CSS theories. Lime green + magenta outline + yellow background is unambiguous — within one cycle we knew exactly which of three causes was active. Saved at least two speculation cycles compared to the PM-220 path where we tried multiple CSS theories before bisecting.
-
-The diagnostic-first principle now applies to:
-- Element not rendering / invisible
-- Layout not behaving as expected
-- Text or images missing from a known-correct DOM
-
-Pattern: replace styling with extreme high-contrast values (bright fill, outline, alternative font/color), ship one diagnostic cycle, get the answer in one Dean observation, ship the real fix in the next cycle.
-
-### Files committed (vyve-site `b7b6ac3d`)
-
-- `connect.html` — diagnostic reverted, production colors + 85% width + stronger shadows, overlay gradient restructured with dark-top scrim
-- `sw.js` — cache `pm223-diagnostic-b` → `pm223-text-contrast-c`
-- `index.html` — vbb-marker 103 → 104
-
-### Tooling
-
-§23.41/52/53 honoured. Composio still 401. PAT-direct. No new §23 rule earned — the diagnostic-first principle is borderline but not novel enough to codify formally yet.
-
----
-
-## 2026-05-23 15:30 — PM-223 Connect hero text overlay: CONNECT eyebrow + "Together we build better habits." headline [vyve-site `16ddd8b8`]
-
-### What shipped
-
-Dean mockup spec: re-add text over the hero photo. Small teal uppercase "CONNECT" eyebrow at the top, large white serif headline "Together we build better habits." below it. Both sit over the photograph at the top of the hero band, left-aligned, within the same 640px container max-width as page content so they line up vertically with widgets below.
-
-This is a deliberate re-add of what PM-217 stripped — not a regression, an evolution. PM-217 removed in-hero text because the previous title was redundant with the topbar's "CONNECT" page label and consumed too much vertical space. After PM-218/219 killed the topbar on hub pages, the "CONNECT" identifier was gone *entirely*. The mockup-driven re-add reintroduces it as part of the hero's photographic composition (over the image, not in a separate chrome band).
-
-### Changes
-
-- Hero height `max(240px, 38vh)` → `max(280px, 46vh)` for text breathing room
-- `main padding-top` matched to new hero height
-- New `.connect-hero-content` layer at z-index:2 above the gradient overlay (z-index:1). Flex-column from top. `padding-top: calc(env(safe-area-inset-top, 0px) + 20px)` so text never sits under the iOS status bar
-- `.connect-hero-eyebrow`: 0.72rem uppercase teal-light, letter-spacing 0.18em, soft text-shadow
-- `.connect-hero-headline`: Playfair Display 1.6rem white bold, max-width 75% so it wraps naturally, text-shadow 14px blur for legibility against sunrise highlights
-
-### Why text-shadow not gradient overlay strength
-
-Could have darkened the overlay gradient peak to 60-70% at the top to make text legible. Chose text-shadow instead because (a) overlay darkening would also dim the photo, defeating the point of having photography, and (b) text-shadow only affects the text glyphs themselves — photo stays vivid where there's no text.
-
-### Doctrine reusable for index/mind/exercise
-
-When their hero ships land, the recipe is:
-- Hero band height max(280px, 46vh) when carrying text overlay (vs 38vh for photo-only)
-- `.<hub>-hero-content` flex-column with safe-area-inset-top padding
-- Eyebrow uppercase teal-light + headline Playfair white bold
-- text-shadow on both glyphs rather than darker gradient
-
-### Files committed (vyve-site `16ddd8b8`)
-
-- `connect.html` — hero CSS additions (height bump, .connect-hero-content + eyebrow + headline rules) + two new divs in hero markup
-- `sw.js` — cache `pm212-podcast-mark-j` → `pm223-hero-text-a`
-- `index.html` — vbb-marker 101 → 102
-
-Built on top of `17f49276` (PM-212.6 podcast logo-mark from parallel session — unrelated to Connect, safe build).
-
-### Tooling
-
-§23.41/52/53 honoured. Composio still 401. PAT-direct. No new §23 rule earned.
-
----
-
-## 2026-05-23 13:05 — PM-215.y youtube-token-keepalive bridge cron SHIPPED (insurance until PM-215 cron lands)
-
-### What shipped
-
-**Edge Function `youtube-token-keepalive` v2 ACTIVE** at `/functions/v1/youtube-token-keepalive`. `verify_jwt: false`. Reads the 3 YouTube OAuth secrets from Vault via the new `public.get_youtube_oauth_secrets()` SECURITY DEFINER RPC, hits Google's `oauth2.googleapis.com/token` endpoint with `grant_type=refresh_token`, discards the returned access_token (we don't need it for anything), returns 200 with the new `refresh_token_expires_in` telemetry for logging. The act of making the refresh call is what resets the 7-day clock; we don't use the access token.
-
-**SQL migration `add_youtube_oauth_get_secret_rpc` applied.** Creates `public.get_youtube_oauth_secrets()` that returns just the 3 YouTube-OAuth-named secrets from Vault. Hardcoded WHERE clause prevents this RPC being used to exfiltrate unrelated Vault secrets. EXECUTE granted to service_role only; revoked from PUBLIC/anon/authenticated.
-
-**pg_cron schedule `youtube-token-keepalive-daily` registered** (jobid 25, active=true, cron `0 3 * * *`). Fires the EF daily at 03:00 UTC. Chosen time: quiet hour, no collision with daily-report (08:05), certificate-checker (09:00), or re-engagement-scheduler (08:00). Same pg_net pattern as the other VYVE crons — service-role auth bypassed because pg_net from same project to a `verify_jwt: false` EF doesn't require apikey.
-
-### Why this exists
-
-PM-215.x note from earlier this session documented that Dean had configured the OAuth consent screen for verification (branding + In Production + sensitive scope registered) but deliberately parked the demo-video + formal-submit step as friction. State at park: 7-day refresh-token clock still active. The bridge cron removes the "PM-215 must ship within 7 days or token dies" timing pressure entirely.
-
-The cron is **structurally redundant** once PM-215's session-publish EF ships, because that EF will refresh the token as a side effect of its daily run. But keeping this dedicated keepalive EF after PM-215 ships is also fine — defence in depth, costs nothing, can run alongside session-publish without conflict. Decision to keep or delete deferred to PM-215 build time.
-
-### End-to-end test results
-
-- EF v1 deployed without RPC fallback — failed first invocation (`vault_access_failed: Could not find the table 'public.vault.decrypted_secrets' in the schema cache`). Expected — PostgREST doesn't expose the `vault` schema by default.
-- RPC `public.get_youtube_oauth_secrets()` created with SECURITY DEFINER + whitelist + service_role grant.
-- EF v2 redeployed using the RPC. Re-invoked from inside Supabase via pg_net (chat sandbox can't egress to supabase.co directly — known `Host not in allowlist` block).
-- v2 returned 200 with body `{"success":true,"refresh_token_expires_in_seconds":563656,"refresh_token_expires_in_days":"6.52","access_token_ttl_seconds":3599,"scope":"https://www.googleapis.com/auth/youtube","startedAt":"2026-05-23T13:04:03.703Z"}`. Token refreshed, clock reset, scope verified.
-
-### Failure-mode handling
-
-- **Network error to oauth2.googleapis.com:** returns 500, cron logs failure. 7-day buffer means ~6 consecutive daily failures tolerable before token actually dies. Recoverable.
-- **Refresh token revoked/invalid:** 400 from Google. Function logs and returns 500. Requires manual re-mint via OAuth Playground. Rare.
-- **Vault RPC failure:** 500 with clear error. Should never happen — RPC is service-role-only and the 3 secrets are stable.
-
-### Files / deploys
-
-- EF `youtube-token-keepalive` v2 — id `9fa56ac0-a85f-4c3d-863d-510340889b7c`, ezbr_sha256 `3e2a715fc7da0a9f53de3a7abe389c9966034f6cc5f5f511b041a38e81c10d9e`
-- Migration `add_youtube_oauth_get_secret_rpc` applied to `ixjfklpckgxrwjlfsaaz`
-- pg_cron jobid 25 (`youtube-token-keepalive-daily`)
-- Brain: this commit
-
-### Tooling
-
-§23.45 PAT-direct throughout. §23.41 pre-commit HEAD re-fetch confirmed parent at `d87365d5` (PM-215.x followup from earlier this session) — no concurrent activity. Supabase MCP `deploy_edge_function` + `apply_migration` used for the EF + RPC + cron deploys. Test-invoke via pg_net `net.http_post` from inside Supabase (chat sandbox egress block to `*.supabase.co` is known §23.x limitation; using pg_net for self-calls is the canonical workaround).
-
-### What this completes
-
-The 7-day refresh-token expiry is no longer a risk vector for VYVE's YouTube pipeline. Steady-state: cron fires daily, clock resets to 7 days, never approaches expiry. Manual intervention required only if (a) cron is broken for 7+ consecutive days, or (b) refresh token gets explicitly revoked. Both are recoverable via 10-min OAuth Playground re-mint.
-
-PM-215 build can now proceed at its own pace without the pressure of "ship within 7 days or token dies."
-
----
-
-## 2026-05-23 13:00 — PM-215.x OAuth verification flow partially configured, parked deliberately
-
-### What happened after the PM-215 commit (0f194f1e)
-
-Dean asked about the 7-day refresh-token expiry — wanted to know if it could be removed permanently. Walked him through the Google Cloud Console flow for moving the `vyve-website` OAuth consent screen out of Testing and through verification.
-
-### State of the OAuth consent screen at parking
-
-Completed in this sub-session (persisted in Google Cloud Console, no further action needed on these):
-- **Branding** page filled and saved: App name "VYVE Health", support email team@vyvehealth.co.uk, logo uploaded (VYVE V-mark PNG from `online.vyvehealth.co.uk/logo.png`), home page `https://www.vyvehealth.co.uk`, privacy `https://www.vyvehealth.co.uk/privacy.html`, terms `https://www.vyvehealth.co.uk/terms.html`, authorised domain `vyvehealth.co.uk`, developer contact team@vyvehealth.co.uk.
-- **Audience** page: publishing status flipped from "Testing" to "In production" via Publish app button. App is now in production status.
-- **Data access** page: `https://www.googleapis.com/auth/youtube` scope added to "Your sensitive scopes" via the Manually add scopes box. Scope is registered at the project level (was previously only passed at runtime by OAuth Playground).
-
-Not completed (deliberate stop):
-- Justification text for the scope was drafted (in this changelog below) but NOT yet pasted into the form on Data access page.
-- Demo video field still blank.
-- "Prepare for verification" button on Verification centre is greyed out — Google wants the branding step explicitly "verified" first via a confirmation click on the branding page before allowing scope review submission.
-
-### Why parked, not finished
-
-After scope registration, Verification centre page surfaced the proper verification gate: "Your app's data access is not verified. Verification is required because your app requests sensitive or restricted scopes. You need to verify and publish your branding before you can request verification." Greyed-out "Prepare for verification" CTA. Three remaining steps to clear: branding verification click, demo video recording + upload, formal submit-for-review.
-
-Demo video specifically is the friction step. Google requires a public YouTube video showing the OAuth flow + the API being called with the requested scope. Realistically 30-60 minutes of focused work to record, upload, and submit. Not appropriate as a tail-end task on a big session.
-
-Critically: **PM-215's daily cron, once shipped, refreshes the OAuth token as a side effect of every API call. The 7-day clock resets every time the token is used. So in steady-state operation the 7-day expiry never actually triggers.** The verification flow is therefore a "clean it up properly later" task, not a "blocks PM-215 from working" task. Decided to bank progress and walk away.
-
-### Justification text to paste when picking this up
-
-Ready to copy verbatim into the "How will the scopes be used?" field on the Data access page:
-
-```
-VYVE Health uses this scope to programmatically manage broadcasts on our own VYVE YouTube channel (UCuptZFgSk0ZmNnE2IbYBdtg). The application runs as a server-side cron operated by our team — no third-party users authorise this app. We use the YouTube Data API v3 to materialise scheduled liveBroadcast resources in advance of wellbeing sessions, bind them to our reusable liveStream resources, and add them to category playlists. No user data beyond our own channel's metadata is accessed. The OAuth client is single-tenant: only team@vyvehealth.co.uk (the channel owner) ever authorises this app.
-```
-
-### Resume checklist for next session (PM-215.x finishing pass)
-
-1. Go to https://console.cloud.google.com/auth/branding?project=vyve-website → confirm Branding is saved (should already be, but verify "Branding changes saved" toast appears OR fields are pre-filled).
-2. Go to Verification centre → click "View branding" → confirm branding verified.
-3. Go to Data access → paste the justification text above into "How will the scopes be used?" box.
-4. Record demo video (2-3 mins): screen-capture the OAuth Playground consent flow showing scope grant + a curl call to `liveBroadcasts.insert` returning 200. Upload as unlisted YouTube video.
-5. Paste video URL into the "Demo video" field on Data access page.
-6. Save → return to Verification centre → "Prepare for verification" should now be clickable → submit.
-7. Wait 3-7 business days for Google review.
-8. On approval: refresh token becomes permanent (no `refresh_token_expires_in` reset clock). Test with a fresh token mint via OAuth Playground; expect `refresh_token_expires_in` field absent or set to a much larger value than 604800.
-
-### Token-expiry status at this commit
-
-Refresh token verified working in this session — `refresh_token_expires_in: 564320` (~6.5 days) returned on the 12:59 UTC refresh call. Each daily API call from PM-215 will reset this to 604800. Steady-state expiry never triggers as long as the cron runs at least once every 7 days. Single point of fragility: if PM-215 is down for >7 days, manual re-mint via OAuth Playground is required. Acceptable risk pre-verification.
-
-### Tooling
-
-§23.45 PAT-direct throughout. §23.41 fresh HEAD re-fetch confirmed parent at `0f194f1e` (the PM-215 commit from this morning) — no concurrent brain activity since. Brain commit only this session (no code touched).
-
----
-
-## 2026-05-23 12:25 — PM-215 YouTube reusable-stream pipeline VERIFIED end-to-end (Riverside → YouTube → playlist, second-attempt repeatability proven)
-
-### What we set out to prove
-
-The "first stream works, second stream same key doesn't" symptom Dean has hit before, manually, when trying to use Riverside → YouTube without API-side orchestration. Last night's session (changelog entry 2026-05-23 03:15) hypothesised it was a non-reusable-stream issue — `isReusable=false` on the stream resource causing second-attempt rejection. PM-215 spec was queued to investigate and fix.
-
-### Hypothesis was wrong. Actual root cause identified.
-
-**All 9 streams are already `isReusable: true`.** Diagnostic via pg_net from Supabase (sandbox can't egress to googleapis.com directly — known §23.x limitation). Token exchange via `https://oauth2.googleapis.com/token` succeeded first try; refresh token had 6.57 days remaining (started at 7, ~10 hours used since mint last night). Three parallel API calls landed the picture:
-
-- `channels.list?mine=true` → 1 channel ("VYVE", `UCuptZFgSk0ZmNnE2IbYBdtg`). NOT 9 channels.
-- `liveStreams.list?mine=true` → 9 streams, all on the same channel, all `isReusable=true`, all `streamStatus=inactive`.
-- `liveBroadcasts.list?broadcastType=all&mine=true` → 8 completed broadcasts from 17–18 March 2026, each 2–20 seconds (the prior manual tests), all `recordingStatus=recorded`, all bound to their category stream, all `lifeCycleStatus=complete`.
-
-**Architectural correction to master.md doctrine: there is ONE YouTube channel ("VYVE"), not 9.** The "9 brand-account channels" mental model in master.md §5 was wrong. What actually exists is **9 named stream-key configurations all routing to the single VYVE channel**. Each named stream (Yoga, Mindfulness, Workouts, Weekly Check-In, Group Therapy, Events, Education, Podcast, Default) is a `liveStream` resource on the same channel, with a different `streamName` (the key visible to encoders) and a distinct title. Genuinely better architecture than 9 separate channels — one subscriber base, one analytics surface, category playlists do the segmentation.
-
-**Brand-account access worry resolves cleanly.** Even though `channels.list?mine=true` returned 1 channel, `liveStreams.list?mine=true` returned all 9 streams the OAuth identity can manage. No fallback to 9 separate OAuth flows needed. Single refresh token is sufficient for the entire account.
-
-### So why DID the second attempt fail historically?
-
-**A YouTube `liveStream` is reusable. A YouTube `liveBroadcast` is one-shot.** Every "go live" event needs a fresh broadcast resource. If you push RTMP to a stream key without a pre-existing scheduled broadcast bound to that stream, YouTube has nothing to materialise the feed into and silently rejects the push (no error to the encoder; the encoder thinks it's streaming, YouTube sees no broadcast to attach it to).
-
-YouTube Studio's "Stream now" feature creates a broadcast on the fly when it detects an incoming feed — but that uses a different code path requiring "Stream automatically when I connect my encoder" to be enabled. When that setting is off, the only way to materialise a broadcast is API-side `liveBroadcasts.insert` + `liveBroadcasts.bind`.
-
-That's exactly what Dean was hitting. First March test worked because something (Studio's auto-create, or manual click) created the broadcast for him. Subsequent attempts didn't because that flow wasn't re-triggered. The "second attempt" never got past silent rejection — broadcasts list confirms: 8 broadcasts on 17–18 March, then nothing for 2 months.
-
-### Today's pipeline proof
-
-**Test 1: stream → broadcast → playlist binding, normal latency.** Pre-created broadcast `5ARkBsU30Eg` via `liveBroadcasts.insert`, bound to Yoga stream `uptZFgSk0ZmNnE2IbYBdtg1773787341014499` via `liveBroadcasts.bind`, inserted into `VYVE Yoga, Pilates & Stretch` playlist (`PLyaCafiXVsshk0I0Z9ii4qeT7CSItwgU2`) via `playlistItems.insert`. Settings: `enableAutoStart: true`, `enableAutoStop: true`, `recordFromStart: true`, `latencyPreference: normal`, `privacyStatus: unlisted`, `selfDeclaredMadeForKids: false`. Riverside custom-RTMP destination configured once on Yoga studio (`rtmps://a.rtmps.youtube.com/live2` + key `fprw-ah7k-m19g-vywk-du23`). Dean pushed feed. Broadcast auto-transitioned `created → ready → live` within ~5s of RTMP packets arriving. `streamStatus: active`, `healthStatus: good`. ~60s test stream. `actualStartTime: 2026-05-23T12:15:51Z`. Auto-stop fired on Riverside stop, broadcast transitioned to `complete`, recording archived to playlist.
-
-**Test 2: second attempt on the same stream, ultraLow latency.** Pre-created broadcast `CD_q1zzHguo` via the same API path. **Different watch URL, same stream key, same Riverside config.** Dean pushed feed without changing anything in Riverside. Broadcast auto-transitioned `created → live` within ~5s. `actualStartTime: 2026-05-23T12:20:39Z`. Recorded successfully. **Second-attempt repeatability proven.**
-
-**Quality + latency observations from Dean's side.**
-- Test 1 (normal latency): visible ~20s delay between Riverside and YouTube playback. Standard YouTube normal-latency behaviour.
-- Test 2 (ultraLow): noticeably shorter, will measure precisely next test; expect 2–5s per docs.
-- Initial quality on test 1 was visibly soft. Dean updated Riverside output to 4K/1080p between tests. Test 2 was visibly better. **PM-215.x followup pencilled in:** every Riverside studio needs streaming output set to 1080p minimum, ideally 6000 kbps bitrate for normal-latency / 4500 kbps for ultraLow. Not a one-time setup we own from the API side — has to be set per-studio in Riverside.
-
-### Decisions locked in this session
-
-- **All future PM-215-managed broadcasts use `latencyPreference: ultraLow`.** Live coaching demands sub-5s latency for chat-based interaction; normal-latency's 20s delay would feel broken. Trade-off (1080p ceiling, less error correction) is correct for VYVE's use case.
-- **`enableAutoStart: true` + `enableAutoStop: true` on every broadcast.** No manual "Go Live" button needed in Studio. Riverside push triggers everything.
-- **`recordFromStart: true`.** Recording automatic, archived to playlist on completion, immediately available for replay.
-- **`selfDeclaredMadeForKids: false`** required on every broadcast; YouTube rejects creation without it.
-- **`enableContentEncryption: false`** for v1; signed-URL upgrade path (Mux/Cloudflare Stream) stays open in PM-191.
-
-### Pipeline shape confirmed
-
-```
-Member-facing live page (yoga-live.html etc)
-  └─ fetch current/next occurrence for category from Supabase
-       └─ reads {youtube_broadcast_id, scheduled_for, ...} from calendar_occurrences row
-            └─ embeds https://www.youtube.com/embed/{youtube_broadcast_id}?autoplay=1&...
-                 (same iframe serves live during window, replay after archive — broadcast_id stable)
-
-Backend (PM-215 cron EF — next to build)
-  └─ nightly cron reads calendar_occurrences with scheduled_for in next 7 days, no youtube_broadcast_id
-       └─ for each: liveBroadcasts.insert + liveBroadcasts.bind + playlistItems.insert
-            └─ writes back youtube_broadcast_id and youtube_video_id to occurrence row
-
-YouTube layer (one-time setup, done)
-  └─ 9 reusable liveStream resources, one per category (verified isReusable=true)
-       └─ 8 category playlists exist and are mapped 1:1
-            └─ broadcasts created via API bind to streams, insert into playlists, no manual touch
-```
-
-### Stream and playlist ID inventory
-
-| Category | Stream ID | Stream key (redacted suffix) | Playlist ID |
-|---|---|---|---|
-| Default | `uptZFgSk0ZmNnE2IbYBdtg1773786332742438` | ts5d-…-azqz | (none — catch-all) |
-| Education and Experts | `uptZFgSk0ZmNnE2IbYBdtg1773786554581556` | 7u71-…-cvh9 | `PLyaCafiXVssj7hcKLfbS32n0xf6prOysa` |
-| Events | `uptZFgSk0ZmNnE2IbYBdtg1773787842061692` | r7qj-…-b7x1 | `PLyaCafiXVssiPt5whqWDiK0EVTMYxbCyh` |
-| Group Therapy | `uptZFgSk0ZmNnE2IbYBdtg1773787742902658` | yq3q-…-323g | `PLyaCafiXVssjAUHO8SN5l9K1zqlNWVlTU` |
-| Mindfulness & Mindset | `uptZFgSk0ZmNnE2IbYBdtg1773787428540514` | fb2d-…-01m2 | `PLyaCafiXVssjw0wn0ECO8Rh6_kme91MLV` |
-| Podcast | `uptZFgSk0ZmNnE2IbYBdtg1773787932659198` | yxw8-…-59q2 | `PLyaCafiXVssjZdvH9iqA7A5-l5KQZUINU` |
-| Weekly Check-In | `uptZFgSk0ZmNnE2IbYBdtg1773787612302221` | rdrr-…-cmer | `PLyaCafiXVssiL0asHJhhwTE-78PX7Ut4m` |
-| Workouts | `uptZFgSk0ZmNnE2IbYBdtg1773787528049051` | 2197-…-5rr9 | `PLyaCafiXVsshhnwd6-Hfyxn1Z2OKNCLfM` |
-| Yoga, Pilates & Stretch | `uptZFgSk0ZmNnE2IbYBdtg1773787341014499` | fprw-…-du23 | `PLyaCafiXVsshk0I0Z9ii4qeT7CSItwgU2` |
-
-Full stream keys live in Vault (and the VYVE Access sheet, separately). Mapping table is the source of truth for the `session_categories` seed data when PM-215 builds.
-
-### Tooling
-
-§23.45 PAT-direct throughout (Composio still 401 ~48h after 21 May incident). §23.41 pre-commit HEAD re-fetch at session close — caught concurrent-session drift (HEAD moved from session-start to PM-221.1's `6c8d2bec` parent ref). §23.14 PM-number conflict: confirmed PM-215 reserved for this work, PM-216–221.1 used by concurrent connect.html session. pg_net diagnostic pattern (Supabase Vault → execute_sql → pg_net → Google API) worked end-to-end without chat-sandbox egress — reusable for any Google/AWS/etc API diagnostics from within the Supabase boundary. **Candidate §23 rule:** when chat-sandbox egress is blocked for an API, the canonical workaround is pg_net via execute_sql with Vault-stored credentials — not a one-shot EF. Faster, simpler, observable via `net._http_response`. Holding for one more occurrence before formalising.
-
-### What this clears off the backlog
-
-PM-191 v2-layer "test required next week" gate: **PASSED**. Phase 2 (YouTube layer of session content management) can now be built in confidence. Phase 1 (catalogue editor in Command Centre) and Phase 2 (session-publish EF + cron) can run in parallel — they touch different tables and surfaces.
-
-### Next session
-
-Build PM-215 v1: `session-publish` EF + cron schedule + writeback to `calendar_occurrences`. Estimate ~45 min once specced (per Dean's brief). Spec is now in backlog as the updated PM-191 v2 block.
-
----
+- `podcast.html` (+3/-5) — `.ep-thumb .logo-fallback` flex→block, img `object-fit:contain` → `cover`, padding 18px → 0
+- `logo-mark.png` (+0/-0, content replaced) — was PM-212.6 luminance-extracted V at 192px, now Dean's canonical VYVE_Logo.png at 500×500 RGB
+- `logo-white.png` REMOVED — PM-212.4 leftover, verified unreferenced via GitHub code search
+- `sw.js` — cache `pm223-text-contrast-c` → `pm212-7-real-logo-a`
+- `index.html` — vbb-marker 104 → 105
 
 ## 2026-05-23 12:08 — PM-212.3 → 212.6 Podcast hub iteration: logo fallback fixed, skeleton paint, Drive thumbnail SW cache, transparent V-mark fallback [vyve-site `38c64631` → `17f49276`]
 
