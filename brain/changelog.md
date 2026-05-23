@@ -1,3 +1,45 @@
+## 2026-05-23 15:55 — PM-223.1/.2 Hero text contrast fix — diagnostic + production [vyve-site `b7b6ac3d`]
+
+### What happened across PM-223 → PM-223.2
+
+PM-223 shipped the hero text overlay (eyebrow + headline). Dean device-test on Update 102 reported "noticeably taller band, no visible text." Three possible causes: text not rendering, container not rendering, or text rendering but invisible (contrast failure).
+
+PM-223.1 shipped a diagnostic with lime green text + yellow tinted container background + magenta outline. Dean's Update 103 screenshot: yellow band visible with bright lime text "CONNECT" + "Together we build better habits." clearly rendering. **Answer: option 1 — text was rendering all along, contrast was the issue.** White text on the day photo's bright sunrise sky was washing out completely.
+
+PM-223.2 ships the production fix:
+
+- Production colours restored (teal-lt eyebrow, white headline)
+- Headline `max-width` 75% → 85% — fits two clean lines instead of awkward three-line wrap
+- Text shadows strengthened: eyebrow `rgba(0,0,0,0.85)` 8px blur, headline `rgba(0,0,0,0.85)` 16px blur + secondary 3px blur for crisp edge
+- Gradient overlay rebuilt: dark-top + clear-middle + dark-bottom
+  - 55% rgba(13,43,43) at 0% → 25% at 22% → **5% at 45-60% (clear band)** → 25% at 80% → 50% at 100%
+  - Top scrim makes text legible regardless of photo brightness
+  - Middle stays clear so people/scenery remain the visual focus
+  - Bottom scrim retained for band-to-content transition
+
+### Codified lesson — diagnostic-first when text doesn't render
+
+Same lesson as the PM-220.4 bisect: when something doesn't render visually, **strip to a high-contrast debug state first** rather than chasing CSS theories. Lime green + magenta outline + yellow background is unambiguous — within one cycle we knew exactly which of three causes was active. Saved at least two speculation cycles compared to the PM-220 path where we tried multiple CSS theories before bisecting.
+
+The diagnostic-first principle now applies to:
+- Element not rendering / invisible
+- Layout not behaving as expected
+- Text or images missing from a known-correct DOM
+
+Pattern: replace styling with extreme high-contrast values (bright fill, outline, alternative font/color), ship one diagnostic cycle, get the answer in one Dean observation, ship the real fix in the next cycle.
+
+### Files committed (vyve-site `b7b6ac3d`)
+
+- `connect.html` — diagnostic reverted, production colors + 85% width + stronger shadows, overlay gradient restructured with dark-top scrim
+- `sw.js` — cache `pm223-diagnostic-b` → `pm223-text-contrast-c`
+- `index.html` — vbb-marker 103 → 104
+
+### Tooling
+
+§23.41/52/53 honoured. Composio still 401. PAT-direct. No new §23 rule earned — the diagnostic-first principle is borderline but not novel enough to codify formally yet.
+
+---
+
 ## 2026-05-23 15:30 — PM-223 Connect hero text overlay: CONNECT eyebrow + "Together we build better habits." headline [vyve-site `16ddd8b8`]
 
 ### What shipped
