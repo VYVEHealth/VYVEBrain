@@ -1,3 +1,23 @@
+## 2026-05-23 PM-233 — Add Replays to More menu (after Live Sessions in Tools) [vyve-site `aa395bfc`]
+
+Companion to PM-232. Dean asked for the Replays page to surface in More. `replays.html` is the existing replay hub (separate from the per-stream `*-rp.html` pages); back-button title map line `'replays': 'Replays'` was already in nav.js, so only the menu entries needed adding.
+
+Slotted directly after Live Sessions in both desktop dropdown and mobile bottom-sheet, with no divider between the two — they're conceptually paired content surfaces (watch now / watch back), and adjacency without divider visually couples them. Tools section now contains Live Sessions + Replays.
+
+Icon chosen: play triangle inside a circle outline. Distinguishes from Live Sessions' rectangle/cassette mark. The circle reads as "recorded/recent" without being literal about it. SVG sized 16×16 (desktop) / 18×18 (mobile) to match surrounding pattern.
+
+### Files in this commit
+
+- `nav.js` 36561 → 37142 bytes (+581). Two new entries, one per menu surface.
+- `sw.js` cache key `pm231-replays-theme-b-more-trim` → `pm231-replays-theme-c-more-replays`.
+- `index.html` vbb-marker 112 → 113.
+
+### Tooling
+
+Same Composio-down fallback as PM-232 (Vault PAT + Git Data API via bash_tool curl). Pre-flight verifies on both insertion points before mutating; both `content.count` post-checks passed.
+
+---
+
 ## 2026-05-23 PM-232 — Trim three items from More menu (Running Plan, Guides & PDFs, How-to Videos) [vyve-site `bde4e113`]
 
 Dean asked for these three items off the More menu. Surgical drop — underlying pages stay live and reachable by direct URL, just no surfaced nav entry. No other changes.
