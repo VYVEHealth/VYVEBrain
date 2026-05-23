@@ -1,3 +1,35 @@
+## 2026-05-23 01:48 — PM-212.2 Podcast hub thumbnail fix: V-glyph fallback + Louis Watkins NULL [vyve-site `38c64631`]
+
+### Two fixes
+
+**(1) Logo fallback wasn't rendering.** PM-212.1 used `<img src="/logo.png">` inside `.logo-fallback` with `filter: brightness(0) invert(1)` to recolour the VYVE V-mark to white over the teal gradient. On device, the result wasn't visible — the filter approach was too fragile at the 78px tile size (logo is 500×500 RGBA with transparent edges + teal V-glyph at centre; filter chain should have produced a white V over the gradient but didn't render cleanly). Swapped to a **Playfair Display "V" character** in the same `.logo-fallback` div — `font-family:var(--font-head); font-weight:800; font-size:2.6rem; color:#fff; text-shadow:0 1px 3px rgba(0,0,0,0.22)`. No asset dependency, scales perfectly at any size, matches the exact pattern nav.js uses for the `.mph-logo-v` mobile-page-header V-mark (consistency win). JS change: `<div class="logo-fallback" aria-hidden="true">V</div>` instead of `<div class="logo-fallback"><img.../></div>`.
+
+**(2) Louis Watkins thumbnail rotated 90°.** Source JPEG has an EXIF Orientation tag the Drive thumbnail service doesn't apply when rendering — Drive serves the raw pixel data oriented per the camera sensor, not per the metadata. Fixed via Supabase UPDATE: `thumbnail_url = NULL` for `ep_louis_watkins`, so it falls back to the V-glyph until we migrate thumbnails to Supabase Storage in v1.1 (where we can pre-process orientation server-side). One-line fix, propagates to all members on next 5-minute catalogue sync.
+
+### Files
+
+vyve-site `9badb2cb` → `38c64631`:
+- podcast.html (+19/-16) — replaced filter-img fallback with Playfair V-glyph
+- sw.js (+1/-1) — cache `pm211-podcast-b` → `pm211-podcast-c`
+- index.html (+1/-1) — vbb-marker 82 → 83
+
+Supabase `ixjfklpckgxrwjlfsaaz`:
+- `podcast_episodes.thumbnail_url` set to NULL for `ep_louis_watkins`
+
+### Why Playfair "V" instead of the actual logo asset
+
+Three reasons in increasing order of weight: (a) scales cleanly at any container size without asset-quality concerns, (b) no network round-trip for a 140KB PNG on every card (12-40 cards depending on section count), (c) matches the existing portal pattern in nav.js where the mobile-page-header logo is also a Playfair "V" in a teal pill — visual consistency with what members already see at the top of every page. The trade is that it's a single glyph not the full logomark, but at 78px tile size the full mark would be illegible anyway.
+
+### What this leaves on the backlog
+
+Louis Watkins specifically: at v1.1 thumbnail-migration time, re-import his photo with corrected orientation directly to Supabase Storage `podcast-thumbs` bucket, then UPDATE `thumbnail_url` to the Storage URL. Same fix applies to any other EXIF-rotated Drive thumbnails when we walk the full set. Captured in the v1.1 deferred-work list under the existing podcast hub backlog entry.
+
+### Tooling
+
+PAT-direct, §23.52(a)/(b)/(c), §23.41, §23.53 all clean. 3-file atomic commit, parent `9badb2cb`, verify confirmed `{modified: 3, added: 0, removed: 0}`, first-100-char re-fetch all passed.
+
+---
+
 ## 2026-05-23 03:00 — YouTube Data API v3 OAuth setup complete (PM-215 prep, brain-only)
 
 ### What landed
