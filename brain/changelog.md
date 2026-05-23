@@ -1,3 +1,49 @@
+## 2026-05-23 PM-247 — Hub-hero canonical size standardised to max(250px, 35vh) on mind.html + connect.html [vyve-site `37bd75f2`]
+
+Dean's spec: *"the picture needs to only take up about 35%, similar to the connect one. That will be the target going forward for all hero images."*
+
+### Before / after
+
+| Page | Hero height (before) | Hero height (after) | Main padding-top |
+|---|---|---|---|
+| connect.html | `max(260px, 36vh)` | `max(250px, 35vh)` | matches hero |
+| mind.html | `max(280px, 46vh)` | `max(250px, 35vh)` | matches hero |
+
+mind was 28% taller than connect on a standard iPhone (374px vs 292px). Standardised both to `max(250px, 35vh)` as the canonical hub-hero size going forward.
+
+### Why the paired-values pattern matters
+
+Each page has TWO values that must always match each other:
+
+1. `.X-hero { height: max(250px, 35vh); }` — the band itself.
+2. `main { padding-top: max(250px, 35vh); }` — pushes scrolling content below the photo so the first widget doesn't overlap.
+
+Mismatching them either (a) puts content under the photo (padding too small) or (b) leaves a gap below the hero (padding too large). Both are subtle on small bumps and ugly on large ones. The brain §8 callout now codifies this invariant — any future hub-hero size change must touch both lines on the same page in the same commit.
+
+### Brain updates
+
+§8 hub-page hero pattern callout — added the `max(250px, 35vh)` canonical-size paragraph + the paired-values invariant. Quoted Dean's spec verbatim for future-Claude reference.
+
+### Plumbing
+
+- sw.js cache key: `pm246-hero-fade-a` → `pm247-hub-hero-35vh-a`
+- index.html vbb-marker: 128 → 129
+
+### Discipline observed
+
+- §23.41 + §23.58: fresh-HEAD fetch of all 4 files in batch immediately before commit (not just the headline files — both `connect.html` AND `mind.html` AND `sw.js` AND `index.html` were re-fetched from main right before edits).
+- Atomic 4-file commit via Git Data API (blob → tree → commit → update ref).
+- Composio still down — PAT-direct via Vault per memory #8.
+- Post-commit first-100-char verification on all 4 files: all `OK`.
+
+### On-device verification needed
+
+Dean's iPhone (server.url dev-loop). Confirm `?debug=build` shows "Update 129", then check mind.html hero band looks proportionally similar to connect.html. Light-mode + dark-mode both. Fade behaviour should be identical to PM-246 — band height changing doesn't affect the §23.57 fade recipe because the fade anchors to wrap top with `transform:translateY(-100%)`, not to a hero edge.
+
+Commit: `37bd75f2f4692592150ff51ad884ae8925ec6680`
+
+---
+
 ## 2026-05-23 PM-246 — §23.57 recipe restored on connect.html + applied to mind.html; PM-244 silent revert recovered [vyve-site `ec3f2c30`]
 
 **Two things shipped in one atomic commit.**
