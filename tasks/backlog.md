@@ -1384,68 +1384,100 @@ Dean: schema migration, identity.js helper, Settings UI build, bucket creation, 
 
 ---
 
-### v2 layer added 21 May 2026 (PM-191) — YouTube broadcast lifecycle as the URL source (replaces "Lewis pastes a URL per session")
+### v2 layer — UPDATED 23 May 2026 (PM-191 → PM-215) — Pipeline VERIFIED end-to-end, build queue unblocked
 
-**The architectural decision.** Sessions on the portal need a working video URL that resolves live → replay automatically. The session row's `stream_url` (or equivalent) field is populated by the Command Centre via YouTube's Live Streaming API at session-creation time, not by Lewis hand-pasting URLs. This unblocks scaling from current ~4 live sessions/day to a planned 12-15/day where manual URL handling is no longer viable.
+**Status change.** Original PM-191 v2 block specced YouTube reusable-stream + per-broadcast-bind architecture as "test required next week before phase 2 build." That test was executed 23 May 2026 (PM-215 changelog entry) and **passed end-to-end on the Yoga channel**: two consecutive broadcasts on the same reusable stream, same encoder config, both went live, both recorded, both bound to the Yoga playlist via API. Second-attempt repeatability proven.
 
-**Nine-channel structure (live, today).** VYVE Health operates 9 YouTube channels, all under one Google account, each paired with a dedicated Riverside studio. Channels include (non-exhaustive): Group Therapy, Workouts, Mindfulness, Podcasts. Each channel has its own stream key already configured in its paired Riverside studio. **This is the foundation the architecture sits on top of — not something to be migrated away from.** Master.md §5 Streaming row corrected from "8 channels" to "9 channels (1 Google account)" in this commit.
+**One architectural correction surfaced by the test.** Master.md §5 said "9 YouTube channels under one Google account." The actual structure is **ONE YouTube channel ("VYVE") with 9 named `liveStream` resources**. All streams live on `UCuptZFgSk0ZmNnE2IbYBdtg`, each with a distinct title and stream key. This is genuinely better — one subscriber base, one analytics surface, category playlists do the segmentation. Update to master.md §5 streaming row deferred to next master rewrite. The `session_categories` table seed below reflects the corrected structure.
 
-**The reusable stream pattern (YouTube API).** YouTube's `liveStream` resource has a `contentDetails.isReusable` property defaulting to `true`. With it true, one stream key can bind to unlimited `liveBroadcast` resources across time — channels schedule recurring live events with a single encoder. The Command Centre creates ONE persistent `liveStream` per channel (once, ever — stored as `youtube_stream_id` in a new `session_categories` table) and then creates many `liveBroadcast` resources, each bound to the matching channel's reusable stream via `liveBroadcasts.bind`. Riverside is configured once per studio with the persistent stream key and never updated again. Per-session, the only work is API-side broadcast creation; encoder side touches nothing. Verified against current YouTube docs (developers.google.com/youtube/v3/live, "Life of a Broadcast" + "Understanding Broadcasts and Streams" + `liveBroadcasts.bind`) on 21 May 2026.
+**Verified resource inventory (catalogued in 2026-05-23 12:25 changelog entry).** 9 live `isReusable=true` streams, 8 category playlists (1:1 mapping with non-default categories), 1 catch-all "Default stream key". Stream IDs + playlist IDs in the changelog entry's table — copy into `session_categories` seed at build time.
 
-**Why this is the answer to a problem Dean has hit before.** Dean has tried "use the same YouTube link" approaches previously and found broadcasts didn't reuse cleanly. Two failure modes likely caused those past failures: (1) creating broadcasts via the YouTube Studio UI rather than the API — the UI defaults to per-broadcast unique streams; (2) using the deprecated default-broadcast pattern (killed by YouTube ~2020). The reusable-stream + per-broadcast-bind pattern is the explicitly-documented current approach for recurring scheduled live events. Test required before committing to phase 2 build (below).
+**Locked decisions from PM-215 test.**
+- All managed broadcasts use `latencyPreference: ultraLow` (2–5s delay, required for chat-based live coaching).
+- `enableAutoStart: true` + `enableAutoStop: true` on every broadcast (no manual "Go Live" anywhere).
+- `recordFromStart: true` (automatic recording, archived to playlist on completion).
+- `selfDeclaredMadeForKids: false` is mandatory (YouTube rejects creation without it).
+- `enableContentEncryption: false` for v1; Mux/Cloudflare Stream upgrade path stays open.
+- Riverside studios configured once per category with the persistent stream key + custom-RTMP destination (`rtmps://a.rtmps.youtube.com/live2` + key). Never touched after.
+- **Riverside output settings:** streaming output set to 1080p minimum, target 6000 kbps (normal) / 4500 kbps (ultraLow). Per-studio config in Riverside, not API-side. Pencilled in as PM-215.x followup — owned by Lewis (Riverside admin).
 
-**Member-side time-based resolution.** Sessions table holds `youtube_video_id` (or full URL) per row. Portal sessions / live page query "what session is live right now" — the row where `scheduled_start ≤ now < scheduled_start + duration_minutes` — and embeds that row's video_id in an iframe. Same URL serves live (during the window) and replay (after YouTube auto-archives). At 7:10 the iframe shows meditation; at 7:30 (via either auto-poll or refresh) it shows affirmations. Resolution lives in the page, not at the streaming layer. Pattern 3 per §23.48 (time-derived state from catalogue, page-visible ticker, immediate re-eval on `visibilitychange→visible`). The pre-existing `session_schedule` table backlog item (line ~728 of this file) is the foundation — it remains valid; this work extends rather than replaces it.
-
-**Castr's role unchanged.** Castr continues pushing scheduled pre-recorded content to channel stream keys. Live sessions are Riverside-pushed to the same keys. They're mutually exclusive at the encoder level (one RTMP source per key at a time) but coordinate via the schedule: Castr pauses for live windows, resumes after. Worth verifying current Castr plan supports automatic live-takeover or whether Lewis manually toggles — flagged for the test next week.
-
-**Batch creation cadence.** Lewis fills in a recurring-session template once per category (e.g. "Daily Mindfulness, James Reid, 8am, 30min, Mindfulness category"). Command Centre rolls templates forward week-by-week, generates session rows, then on "Publish next month" calls YouTube's API in batch — typically ~360 sessions/month at 12-15/day cadence. Lewis touches no URLs. He runs the publish step once a month.
-
-**Member-facing embed.** YouTube iframe embed with parameters strip most YouTube chrome: `rel=0`, `modestbranding=1`, `playsinline=1`, `iv_load_policy=3`, `showinfo=0`. The YouTube watermark and "Watch on YouTube" link survive but aren't worth optimising away at current scale. Broadcasts created **Unlisted** for member-only access (security-by-obscurity acceptable v1; signed-URL platforms like Mux/Cloudflare Stream are the upgrade path if true privacy becomes a contract requirement). Capacitor iOS quirk to verify on the test: `playsinline=1` should keep video in-page rather than forcing fullscreen, but worth confirming on the actual iOS build.
-
-**Why YouTube over Mux/Cloudflare Stream/Vimeo (decision recorded).** Cost at 31 members is negligible across all platforms (<£20/month). At 500 members watching ~4hr/month, Cloudflare Stream ≈ £120/month delivery, Mux ≈ £3,000/month (25× more per-minute delivery), YouTube = £0. YouTube also has the cheaper migration story going forward — the only field that changes per session is the `stream_url` (or `youtube_video_id` mapped to a URL pattern). If member privacy or branded-player chrome becomes a real product requirement, swap to Cloudflare Stream is a contained change: same sessions admin, different embed renderer, different broadcast-creation EF. Not blocking today.
-
-**New tables required (additive to the schema migration step above).**
+**Schema work (refined from PM-191 original spec).**
 
 ```sql
--- One row per channel, one-time configuration
-session_categories (
-  id uuid PK,
-  name text NOT NULL UNIQUE,           -- "Group Therapy", "Workouts", "Mindfulness", "Podcasts"...
+-- One row per category, one-time seed
+CREATE TABLE session_categories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL UNIQUE,                -- "Yoga, Pilates & Stretch", "Mindfulness & Mindset", ...
   slug text NOT NULL UNIQUE,
-  riverside_studio_url text,           -- For Lewis's reference, not used by code
-  youtube_channel_id text NOT NULL,
-  youtube_stream_id text NOT NULL,     -- The reusable liveStream resource ID per channel
+  riverside_studio_label text,              -- Lewis's reference, not used by code
+  youtube_channel_id text NOT NULL DEFAULT 'UCuptZFgSk0ZmNnE2IbYBdtg',  -- single channel for now
+  youtube_stream_id text NOT NULL,          -- The reusable liveStream resource ID for this category
+  youtube_playlist_id text,                 -- Nullable for catch-all category
   default_thumbnail_url text,
   brand_color text,
+  latency_preference text DEFAULT 'ultraLow' CHECK (latency_preference IN ('normal','low','ultraLow')),
+  privacy_status text DEFAULT 'unlisted' CHECK (privacy_status IN ('public','unlisted','private')),
   sort_order int DEFAULT 100,
   active boolean DEFAULT true,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
-)
+);
 
--- Foreign key from sessions (or service_catalogue if we extend it)
-ALTER TABLE service_catalogue ADD COLUMN category_id uuid REFERENCES session_categories(id);
-ALTER TABLE service_catalogue ADD COLUMN youtube_broadcast_id text;  -- API-returned broadcast resource id
-ALTER TABLE service_catalogue ADD COLUMN youtube_video_id text;      -- The watchable video id (== broadcast id post-creation)
+-- Foreign key wire-up on the occurrence-bearing table (calendar_occurrences OR service_catalogue
+-- depending on schema verification at build time — verify per §23.47)
+ALTER TABLE calendar_occurrences ADD COLUMN category_id uuid REFERENCES session_categories(id);
+ALTER TABLE calendar_occurrences ADD COLUMN youtube_broadcast_id text;
+ALTER TABLE calendar_occurrences ADD COLUMN youtube_video_id text;   -- == broadcast_id post-creation; kept distinct for future flexibility
+ALTER TABLE calendar_occurrences ADD COLUMN youtube_publish_attempts int DEFAULT 0;
+ALTER TABLE calendar_occurrences ADD COLUMN youtube_publish_error text;
+ALTER TABLE calendar_occurrences ADD COLUMN youtube_published_at timestamptz;
 ```
 
-Nine rows seeded in `session_categories` once during phase 2 setup, mapped to existing channels.
+9 category rows seeded once with the verified stream + playlist IDs from changelog 2026-05-23 12:25.
 
-**Edge Function required.** `session-publish` v1 — takes a batch of session rows lacking `youtube_broadcast_id`, iterates them, calls YouTube Data API v3 (`liveBroadcasts.insert` + `liveBroadcasts.bind` + optional `thumbnails.set`), writes back `youtube_broadcast_id` and `youtube_video_id` on each row. Service-role only. `verify_jwt: true` at the gateway. OAuth refresh token for the VYVE Google account stored in Supabase Vault. Quota-aware (YouTube Data API v3 default quota is 10,000 units/day; `liveBroadcasts.insert` = 50 units; 360 broadcasts/month = ~18,000 units one-time, exceeds daily by margin — batch must split across multiple days OR weekly cadence). Quota math to verify in the test.
+**Edge Function spec.** `session-publish` v1.
 
-**Test required next week — explicitly out-of-scope until then.**
+- Trigger: cron (overnight, recommend 02:00 UTC to avoid contention with other crons).
+- Input: query `calendar_occurrences` for rows with `scheduled_for BETWEEN now() AND now() + interval '7 days'` AND `youtube_broadcast_id IS NULL` AND `category_id IS NOT NULL`.
+- Per row: call YouTube Data API v3 (`liveBroadcasts.insert` + `liveBroadcasts.bind` + `playlistItems.insert` if `youtube_playlist_id IS NOT NULL`). Use the verified payload shape from PM-215 changelog entry — known-good.
+- On success: write `youtube_broadcast_id`, `youtube_video_id`, `youtube_published_at`. Bump `youtube_publish_attempts`.
+- On failure: write `youtube_publish_error`, bump `youtube_publish_attempts`. Skip rows with `youtube_publish_attempts >= 3` to prevent retry loops (escalation requires human investigation).
+- Service-role only. `verify_jwt: false` (cron call).
+- OAuth: read 3 secrets from Vault (`YOUTUBE_OAUTH_CLIENT_ID`, `YOUTUBE_OAUTH_CLIENT_SECRET`, `YOUTUBE_OAUTH_REFRESH_TOKEN`). Exchange refresh for access token at start of run (1-hour validity covers entire batch).
+- Title generation: `{service_catalogue.about_session.title}` or category default fallback.
+- Description generation: `{service_catalogue.about_session.description}` or category default fallback.
 
-1. **Reusable-stream pattern works on a real VYVE channel.** Pick one of the 9 channels. Via API, create a fresh `liveStream` with `isReusable=true`. Create 3 scheduled `liveBroadcast` resources 10 minutes apart. Bind all 3 to the one stream. Push RTMP from Riverside through each scheduled window. Confirm: each broadcast goes live when scheduled, archives independently, and Riverside doesn't need stream-key changes between them.
-2. **Back-to-back broadcast handover.** Two of the 3 test broadcasts should be adjacent (e.g. 10:00-10:10 + 10:10-10:20). Confirm Riverside can stream continuously across the boundary OR document the manual step required if YouTube doesn't auto-handover.
-3. **API quota at session-cadence.** Measure exact quota cost of one full month's batch creation (target: ~360 broadcasts × all per-call costs). Decide weekly vs monthly batch cadence based on result.
-4. **Castr live-takeover behaviour.** When Riverside is pushing RTMP to a stream key, what does Castr do with its scheduled push for the same key? Does it pause automatically or does Lewis need to manually disable Castr's scheduled slot before going live?
-5. **Capacitor iOS embed.** Test the iframe parameters on the actual iOS build — does `playsinline=1` keep video in-page or does iOS force fullscreen?
+**Quota math (revised from PM-191).** YouTube Data API v3 default quota 10,000 units/day. `liveBroadcasts.insert` = 50 units, `liveBroadcasts.bind` = 50 units, `playlistItems.insert` = 50 units. Per-occurrence cost: 150 units. At 12–15 sessions/day × 7-day rolling window = 105 occurrences/run × 150 = ~15,750 units. **Exceeds daily quota.**
 
-**Build queue once test passes (not before).**
-- Phase 1 (no YouTube dependency): `session_categories` table + the existing `service_catalogue` column additions, plus the Command Centre sessions list/edit UI reading and writing them. Lewis can hand-paste URLs as an interim workflow. Validates the admin surface independently of YouTube integration.
-- Phase 2 (YouTube layer): `session-publish` EF, OAuth setup for the VYVE Google account, "Publish month" button in Command Centre. Phase 1 keeps working if phase 2 hits trouble.
+Two paths:
+1. **Daily cron creating ~1-day-ahead window only** (~12–15 occurrences × 150 = ~2,250 units/day, well under quota). Member-facing live page falls back to "session at {time}, video URL coming soon" if occurrence is >24h out without `youtube_broadcast_id`. **Recommended.** Simpler, naturally retry-friendly, never blows quota.
+2. **Weekly cron with quota increase request to Google.** Submit YouTube API quota increase form (free, ~7-14 day review). Acceptable but adds dependency on Google review.
 
-**Owners updated.** Dean: schema, Command Centre UI, EF, OAuth integration, test execution next week. Lewis: defines the 9 categories (final names + the existing channel mapping), runs the test alongside Dean (he's the one with Riverside access).
+Default to option 1 unless option 2 becomes friction-free.
+
+**Member-side wire-up.** Live session pages read `youtube_broadcast_id` from `calendar_occurrences` and embed:
+
+```html
+<iframe src="https://www.youtube.com/embed/{youtube_broadcast_id}?autoplay=1&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3"></iframe>
+```
+
+Same broadcast ID serves live (during window) and replay (after archive). Pattern 3 (time-derived state from catalogue) — §23.48. No schema or page changes per category; one renderer powers all 9.
+
+**Capacitor iOS embed quirk.** `playsinline=1` should keep video in-page on iOS; verify at build time. If iOS forces fullscreen anyway, fallback is opening native YouTube app (acceptable but worse UX). Mitigation: native HLS player via Capacitor plugin is a v2 if v1 fails this test.
+
+**Out of scope v1 (post-launch).**
+- Bulk publish UI in Command Centre (manual "Publish next 7 days" button) — cron handles automatically, but a manual override is nice-to-have.
+- Per-broadcast thumbnail upload via `thumbnails.set` (uses 50 units; adds time without much member-facing value at trial size). Default category thumbnail acceptable v1.
+- Quota dashboard. Build if hit the daily cap repeatedly.
+- Castr live-takeover automation. Currently mutually exclusive (one RTMP source per stream at a time). Lewis manages Castr scheduling manually for now; automate later if it becomes painful.
+- Switching to signed-URL platforms (Mux / Cloudflare Stream). YouTube unlisted is good enough for current scale; revisit if member privacy becomes a Sage-level contract requirement.
+
+**Build sequencing (refined from PM-191).**
+- Phase 1 (no YouTube dependency): `session_categories` migration + Command Centre sessions list/edit UI. Lewis can edit categories + seed the 9 rows manually first time. Estimated 2-3 sessions.
+- Phase 2 (YouTube layer — **this is PM-215**): `session-publish` EF + cron + writeback. Estimated ~45 minutes (per Dean's brief). Unblocked.
+- Phase 1 and Phase 2 can run in parallel — different repos, different surfaces. Phase 2 is shippable independently if `category_id` is populated on occurrences (even via SQL one-off until Phase 1 ships).
+
+**Owners.** Dean: schema migration, EF + cron, integration test. Lewis: 9 category seed (names + Riverside studio labels), per-category Riverside output settings (PM-215.x), copy approval on session title + description templates.
 
 ---
 

@@ -1,3 +1,98 @@
+## 2026-05-23 12:25 — PM-215 YouTube reusable-stream pipeline VERIFIED end-to-end (Riverside → YouTube → playlist, second-attempt repeatability proven)
+
+### What we set out to prove
+
+The "first stream works, second stream same key doesn't" symptom Dean has hit before, manually, when trying to use Riverside → YouTube without API-side orchestration. Last night's session (changelog entry 2026-05-23 03:15) hypothesised it was a non-reusable-stream issue — `isReusable=false` on the stream resource causing second-attempt rejection. PM-215 spec was queued to investigate and fix.
+
+### Hypothesis was wrong. Actual root cause identified.
+
+**All 9 streams are already `isReusable: true`.** Diagnostic via pg_net from Supabase (sandbox can't egress to googleapis.com directly — known §23.x limitation). Token exchange via `https://oauth2.googleapis.com/token` succeeded first try; refresh token had 6.57 days remaining (started at 7, ~10 hours used since mint last night). Three parallel API calls landed the picture:
+
+- `channels.list?mine=true` → 1 channel ("VYVE", `UCuptZFgSk0ZmNnE2IbYBdtg`). NOT 9 channels.
+- `liveStreams.list?mine=true` → 9 streams, all on the same channel, all `isReusable=true`, all `streamStatus=inactive`.
+- `liveBroadcasts.list?broadcastType=all&mine=true` → 8 completed broadcasts from 17–18 March 2026, each 2–20 seconds (the prior manual tests), all `recordingStatus=recorded`, all bound to their category stream, all `lifeCycleStatus=complete`.
+
+**Architectural correction to master.md doctrine: there is ONE YouTube channel ("VYVE"), not 9.** The "9 brand-account channels" mental model in master.md §5 was wrong. What actually exists is **9 named stream-key configurations all routing to the single VYVE channel**. Each named stream (Yoga, Mindfulness, Workouts, Weekly Check-In, Group Therapy, Events, Education, Podcast, Default) is a `liveStream` resource on the same channel, with a different `streamName` (the key visible to encoders) and a distinct title. Genuinely better architecture than 9 separate channels — one subscriber base, one analytics surface, category playlists do the segmentation.
+
+**Brand-account access worry resolves cleanly.** Even though `channels.list?mine=true` returned 1 channel, `liveStreams.list?mine=true` returned all 9 streams the OAuth identity can manage. No fallback to 9 separate OAuth flows needed. Single refresh token is sufficient for the entire account.
+
+### So why DID the second attempt fail historically?
+
+**A YouTube `liveStream` is reusable. A YouTube `liveBroadcast` is one-shot.** Every "go live" event needs a fresh broadcast resource. If you push RTMP to a stream key without a pre-existing scheduled broadcast bound to that stream, YouTube has nothing to materialise the feed into and silently rejects the push (no error to the encoder; the encoder thinks it's streaming, YouTube sees no broadcast to attach it to).
+
+YouTube Studio's "Stream now" feature creates a broadcast on the fly when it detects an incoming feed — but that uses a different code path requiring "Stream automatically when I connect my encoder" to be enabled. When that setting is off, the only way to materialise a broadcast is API-side `liveBroadcasts.insert` + `liveBroadcasts.bind`.
+
+That's exactly what Dean was hitting. First March test worked because something (Studio's auto-create, or manual click) created the broadcast for him. Subsequent attempts didn't because that flow wasn't re-triggered. The "second attempt" never got past silent rejection — broadcasts list confirms: 8 broadcasts on 17–18 March, then nothing for 2 months.
+
+### Today's pipeline proof
+
+**Test 1: stream → broadcast → playlist binding, normal latency.** Pre-created broadcast `5ARkBsU30Eg` via `liveBroadcasts.insert`, bound to Yoga stream `uptZFgSk0ZmNnE2IbYBdtg1773787341014499` via `liveBroadcasts.bind`, inserted into `VYVE Yoga, Pilates & Stretch` playlist (`PLyaCafiXVsshk0I0Z9ii4qeT7CSItwgU2`) via `playlistItems.insert`. Settings: `enableAutoStart: true`, `enableAutoStop: true`, `recordFromStart: true`, `latencyPreference: normal`, `privacyStatus: unlisted`, `selfDeclaredMadeForKids: false`. Riverside custom-RTMP destination configured once on Yoga studio (`rtmps://a.rtmps.youtube.com/live2` + key `fprw-ah7k-m19g-vywk-du23`). Dean pushed feed. Broadcast auto-transitioned `created → ready → live` within ~5s of RTMP packets arriving. `streamStatus: active`, `healthStatus: good`. ~60s test stream. `actualStartTime: 2026-05-23T12:15:51Z`. Auto-stop fired on Riverside stop, broadcast transitioned to `complete`, recording archived to playlist.
+
+**Test 2: second attempt on the same stream, ultraLow latency.** Pre-created broadcast `CD_q1zzHguo` via the same API path. **Different watch URL, same stream key, same Riverside config.** Dean pushed feed without changing anything in Riverside. Broadcast auto-transitioned `created → live` within ~5s. `actualStartTime: 2026-05-23T12:20:39Z`. Recorded successfully. **Second-attempt repeatability proven.**
+
+**Quality + latency observations from Dean's side.**
+- Test 1 (normal latency): visible ~20s delay between Riverside and YouTube playback. Standard YouTube normal-latency behaviour.
+- Test 2 (ultraLow): noticeably shorter, will measure precisely next test; expect 2–5s per docs.
+- Initial quality on test 1 was visibly soft. Dean updated Riverside output to 4K/1080p between tests. Test 2 was visibly better. **PM-215.x followup pencilled in:** every Riverside studio needs streaming output set to 1080p minimum, ideally 6000 kbps bitrate for normal-latency / 4500 kbps for ultraLow. Not a one-time setup we own from the API side — has to be set per-studio in Riverside.
+
+### Decisions locked in this session
+
+- **All future PM-215-managed broadcasts use `latencyPreference: ultraLow`.** Live coaching demands sub-5s latency for chat-based interaction; normal-latency's 20s delay would feel broken. Trade-off (1080p ceiling, less error correction) is correct for VYVE's use case.
+- **`enableAutoStart: true` + `enableAutoStop: true` on every broadcast.** No manual "Go Live" button needed in Studio. Riverside push triggers everything.
+- **`recordFromStart: true`.** Recording automatic, archived to playlist on completion, immediately available for replay.
+- **`selfDeclaredMadeForKids: false`** required on every broadcast; YouTube rejects creation without it.
+- **`enableContentEncryption: false`** for v1; signed-URL upgrade path (Mux/Cloudflare Stream) stays open in PM-191.
+
+### Pipeline shape confirmed
+
+```
+Member-facing live page (yoga-live.html etc)
+  └─ fetch current/next occurrence for category from Supabase
+       └─ reads {youtube_broadcast_id, scheduled_for, ...} from calendar_occurrences row
+            └─ embeds https://www.youtube.com/embed/{youtube_broadcast_id}?autoplay=1&...
+                 (same iframe serves live during window, replay after archive — broadcast_id stable)
+
+Backend (PM-215 cron EF — next to build)
+  └─ nightly cron reads calendar_occurrences with scheduled_for in next 7 days, no youtube_broadcast_id
+       └─ for each: liveBroadcasts.insert + liveBroadcasts.bind + playlistItems.insert
+            └─ writes back youtube_broadcast_id and youtube_video_id to occurrence row
+
+YouTube layer (one-time setup, done)
+  └─ 9 reusable liveStream resources, one per category (verified isReusable=true)
+       └─ 8 category playlists exist and are mapped 1:1
+            └─ broadcasts created via API bind to streams, insert into playlists, no manual touch
+```
+
+### Stream and playlist ID inventory
+
+| Category | Stream ID | Stream key (redacted suffix) | Playlist ID |
+|---|---|---|---|
+| Default | `uptZFgSk0ZmNnE2IbYBdtg1773786332742438` | ts5d-…-azqz | (none — catch-all) |
+| Education and Experts | `uptZFgSk0ZmNnE2IbYBdtg1773786554581556` | 7u71-…-cvh9 | `PLyaCafiXVssj7hcKLfbS32n0xf6prOysa` |
+| Events | `uptZFgSk0ZmNnE2IbYBdtg1773787842061692` | r7qj-…-b7x1 | `PLyaCafiXVssiPt5whqWDiK0EVTMYxbCyh` |
+| Group Therapy | `uptZFgSk0ZmNnE2IbYBdtg1773787742902658` | yq3q-…-323g | `PLyaCafiXVssjAUHO8SN5l9K1zqlNWVlTU` |
+| Mindfulness & Mindset | `uptZFgSk0ZmNnE2IbYBdtg1773787428540514` | fb2d-…-01m2 | `PLyaCafiXVssjw0wn0ECO8Rh6_kme91MLV` |
+| Podcast | `uptZFgSk0ZmNnE2IbYBdtg1773787932659198` | yxw8-…-59q2 | `PLyaCafiXVssjZdvH9iqA7A5-l5KQZUINU` |
+| Weekly Check-In | `uptZFgSk0ZmNnE2IbYBdtg1773787612302221` | rdrr-…-cmer | `PLyaCafiXVssiL0asHJhhwTE-78PX7Ut4m` |
+| Workouts | `uptZFgSk0ZmNnE2IbYBdtg1773787528049051` | 2197-…-5rr9 | `PLyaCafiXVsshhnwd6-Hfyxn1Z2OKNCLfM` |
+| Yoga, Pilates & Stretch | `uptZFgSk0ZmNnE2IbYBdtg1773787341014499` | fprw-…-du23 | `PLyaCafiXVsshk0I0Z9ii4qeT7CSItwgU2` |
+
+Full stream keys live in Vault (and the VYVE Access sheet, separately). Mapping table is the source of truth for the `session_categories` seed data when PM-215 builds.
+
+### Tooling
+
+§23.45 PAT-direct throughout (Composio still 401 ~48h after 21 May incident). §23.41 pre-commit HEAD re-fetch at session close — caught concurrent-session drift (HEAD moved from session-start to PM-221.1's `6c8d2bec` parent ref). §23.14 PM-number conflict: confirmed PM-215 reserved for this work, PM-216–221.1 used by concurrent connect.html session. pg_net diagnostic pattern (Supabase Vault → execute_sql → pg_net → Google API) worked end-to-end without chat-sandbox egress — reusable for any Google/AWS/etc API diagnostics from within the Supabase boundary. **Candidate §23 rule:** when chat-sandbox egress is blocked for an API, the canonical workaround is pg_net via execute_sql with Vault-stored credentials — not a one-shot EF. Faster, simpler, observable via `net._http_response`. Holding for one more occurrence before formalising.
+
+### What this clears off the backlog
+
+PM-191 v2-layer "test required next week" gate: **PASSED**. Phase 2 (YouTube layer of session content management) can now be built in confidence. Phase 1 (catalogue editor in Command Centre) and Phase 2 (session-publish EF + cron) can run in parallel — they touch different tables and surfaces.
+
+### Next session
+
+Build PM-215 v1: `session-publish` EF + cron schedule + writeback to `calendar_occurrences`. Estimate ~45 min once specced (per Dean's brief). Spec is now in backlog as the updated PM-191 v2 block.
+
+---
+
 ## 2026-05-23 12:08 — PM-212.3 → 212.6 Podcast hub iteration: logo fallback fixed, skeleton paint, Drive thumbnail SW cache, transparent V-mark fallback [vyve-site `38c64631` → `17f49276`]
 
 Four-commit iteration arc on the podcast hub thumbnail/loading experience driven by Dean's device feedback. Captured here as a single brain entry because the four ships are best understood together — each one diagnosing the previous attempt's weakness on device.
