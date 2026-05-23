@@ -1,3 +1,72 @@
+## 2026-05-23 PM-236 → handoff — Replays diagnostic shipped + design pivot to per-category list view [vyve-site `13846ab6`]
+
+PM-236 single-file diagnostic patch landed (`replays.html?debug=1` query param surfaces Dexie state, table registration, sync meta row, and direct REST status on a fixed-position overlay). Was about to deploy it to diagnose the "no replays yet" empty state Dean reported, but pull-to-refresh resolved it on its own — the issue was WKWebView holding onto cached `db.js` (Dexie v10) while running the new `replays.html` (PM-235, expecting v11 store). SW cache key bump in PM-236 (`pm236-replays-diag-a`) forced refetch, Dexie upgraded to v11, `replay_playlists` populated, tiles paint correctly.
+
+Diagnostic infrastructure remains shipped — `?debug=1` works on any future replays.html iteration, captures the same instrumentation pattern that took two attempts to surface without console access. Worth keeping in mind for future Dexie/sync issues: the `?debug=1` URL pattern is now a real diagnostic tool, not just one-off.
+
+### Design pivot — Dean's feedback on the playlist-tile design
+
+Once tiles painted, Dean tried tapping "Yoga, Pilates & Stretch" and hit the real UX issue: the `youtube.com/embed/videoseries?list=PLxxx` iframe plays the most recent video but offers no in-place browse of the full playlist. Member is stuck on the most recent video and can only navigate via YouTube's >>| / |<< player controls. On mobile this is a poor browse experience.
+
+Dean's preferred shape, captured for next-session build:
+
+```
+Replays hub (vertical scroll):
+
+  YOGA, PILATES & STRETCH
+  [tile most recent]  [tile -1]  [tile -2]
+  See all yoga sessions ›
+  ────────────────────────────────
+  WORKOUTS
+  [tile most recent]  [tile -1]  [tile -2]
+  See all workouts ›
+  ────────────────────────────────
+  ...8 sections total
+```
+
+Each section: 3 most recent video tiles + a "See all" link. Tap a tile = plays that video. Tap "See all" = routes to a per-category page that shows the full playlist with all videos in reverse chronological order.
+
+### Build plan for next session (locked, ready to execute)
+
+1. **Supabase: new `replay_videos` table.** Per-video rows, one per playlist item. Columns: id (uuid PK), youtube_video_id (unique), playlist_category (FK / string), title, description (nullable), thumb_url, published_at (tz), position_in_playlist (int), duration_sec (nullable — needs separate videos.list call to populate, defer to v2), active, created_at, updated_at. Indexed on (playlist_category, published_at DESC) and (youtube_video_id). RLS authenticated SELECT WHERE active. ~25-50 rows per playlist × 8 playlists = ~200-400 rows total at trial scale. Cheap.
+
+2. **Initial seed:** call `youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=<each>&maxResults=50` for all 8 playlists via Vault OAuth + pg_net (same path as PM-235 cache populate). Walk each response, INSERT one row per item with sorted-by-publishedAt position_in_playlist. Confirmed during PM-235 cache populate: API quirk — items come back in **playlist order, not date order** — sort by snippet.publishedAt DESC client-side.
+
+3. **db.js: SCHEMA_V12** adds `replay_videos` store with `'&id, playlist_category, published_at, active'` index. Version chain entry. makeCatalogueTable consumer.
+
+4. **sync.js: new catalogue plan entry** hitting `/replay_videos?active=eq.true&select=*&order=published_at.desc`. CATALOGUE_FRESH_TABLES entry. CATALOGUE_INVALIDATION_KEY bump pm235-replay-playlists → pm-next-replay-videos per §23.50.
+
+5. **replays.html: third rewrite.** 8 sections, each rendering 3 most recent video tiles per category from Dexie + "See all [category] sessions ›" link. Tap tile = inline player mount (same iframe pattern as current — single-video embed, autoplay=1, modestbranding=1, rel=0, playsinline=1). Tap "See all" = routes to `/replay-category.html?cat=<slug>`. Keeps the `?debug=1` diagnostic.
+
+6. **NEW: `replay-category.html`** — single shared page handling all 8 categories via `?cat=<slug>` URL param. Page shell + Dexie read filtered by playlist_category + reverse-chron tile list of every video in that playlist. Tap tile = inline player (same pattern). Back button → /replays.html. Page title from URL param ("Yoga, Pilates & Stretch — Replays").
+
+7. **connect.html `renderLatestReplay`** — unchanged. Still reads from `replay_playlists` for the single "Latest replay" featured card. The new `replay_videos` table is for the hub + category pages; the featured card on Connect just needs the latest of latest.
+
+8. **sw.js precache** add `/replay-category.html`. **nav.js subPageLabels** add `'replay-category': 'Replays'` (since the URL param drives the actual title, the nav label stays generic).
+
+9. **PM-235b cron EF still pending** — refreshes `replay_playlists.latest_video_*` AND now also `replay_videos` rows hourly. Quota: 8 playlistItems.list calls/hour × 1 unit = 192 units/day. Well under 10000-unit daily.
+
+### Session arc captured
+
+This was a four-rewrite session on the same surface. PM-229 (broadcast-ID approach, mockup-first design with chip filter + reverse-chron tile list) → PM-231 (theme fix, body/main/wrap convention + semantic tokens on hero) → PM-235 (full pivot to YouTube playlists as source of truth, 8 playlist tiles in grid, in-place videoseries iframe) → PM-236 (?debug diagnostic) → handoff to next-session for the section-rail design with per-category pages.
+
+**Lesson worth keeping:** Dean's "is that not how it works?" came at PM-235 *after* the PM-229 ship. Dean's "I can only see the most recent video" came at PM-235 *after* the playlist embed shipped. Both were architectural questions that would have been better surfaced during mockup-first review. The mockups for PM-229 (chip filter design) and the brief sketch for PM-235 (8-tile grid) both **looked fine in still images** but failed in actual interaction because the playback affordance was implicit. Next time on a video-browse surface, the mockup needs to walk through the tap-flow explicitly: "tap tile → what does the member see → how do they navigate to the next/previous?" Static tile mockup is insufficient for video surfaces.
+
+### Files modified this session (final state)
+
+- vyve-site at HEAD `13846ab6`: replays.html (PM-236 with diagnostic), sw.js (cache `pm236-replays-diag-a`), plus PM-235 changes to db.js, sync.js, connect.html
+- Supabase: `replay_playlists` table (8 rows, latest-video cache populated), `calendar_occurrences.youtube_broadcast_id` column DROPPED, 10 PM-229 test rows DELETED, 6 original past-occurrence rows kept with `youtube_broadcast_id` nulled
+- VYVEBrain at `90eeb819` (PM-235 entry), this commit extends with handoff entry
+
+### Open items for next session
+
+1. **Build the section-rail design above.** Locked.
+2. **Test the URL-param routing pattern** for `/replay-category.html?cat=yoga` style. The `?cat=` slug needs to map cleanly to `playlist_category` strings — probably hardcode slug → category map in JS (small, 8 entries, never changes).
+3. **PM-235b cron EF** — separate, smaller ship. Can wait until after the section-rail design is in production.
+4. **Duration field on `replay_videos`** — videos.list call required to populate. Defer to v2 — playlistItems.list doesn't include duration. The hub tiles work without it (just don't show duration overlay on the thumbnail).
+
+---
+
 ## 2026-05-23 PM-238 — Connect hero fade lives on .wrap top now, not the hero overlay (scrolls with content) [vyve-site `c00b6fba`]
 
 Dean's refinement on PM-237: instead of painting the bottom-fade on the fixed hero photo, put the fade on the `.wrap` top edge so it scrolls *with* the content. Photo stays clean below, content's top edge softly emerges from the photo rather than meeting it at a hard seam. As the page scrolls, the soft seam scrolls with it.
