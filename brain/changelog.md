@@ -1,3 +1,46 @@
+## 2026-05-23 PM-232 — Avatar pipeline two bugs: RLS path mismatch + missing apikey [vyve-site `189bedaa`]
+
+Dean tested photo upload on PM-230, photo wouldn't load. Two real bugs in the PM-228 avatar pipeline that hadn't surfaced because no one had actually completed an upload end-to-end before tonight.
+
+### Bug 1 — Storage RLS denied uploads
+
+The pipeline built the path as `encodeURIComponent(email) + '/avatar.jpg'`, producing e.g. `deanonbrown%40hotmail.com/avatar.jpg`. The RLS policy I shipped in PM-228 reads:
+
+```sql
+WITH CHECK (
+  bucket_id = 'member-avatars'
+  AND (storage.foldername(name))[1] = auth.email()
+)
+```
+
+`storage.foldername()` splits the path on `/`, returns `["deanonbrown%40hotmail.com"]`. `auth.email()` returns the raw `deanonbrown@hotmail.com` from the JWT claims. `%40` ≠ `@`, RLS denies, 403 on upload. Verified live via `SELECT (storage.foldername('deanonbrown@hotmail.com/avatar.jpg'))[1]` — returned raw email, exactly matching `auth.email()`.
+
+Fix: drop `encodeURIComponent` from the email segment. Use `email + '/avatar.jpg'` raw, then `encodeURI(path)` on the URL itself. `@` is a valid sub-delim in URI path segments per RFC 3986 (it's the same reason `mailto:user@host` URIs work without encoding). Raw `@` in Storage object names is also fine — Supabase Storage allows it.
+
+### Bug 2 — PATCH members.avatar_url sent apikey:''
+
+The pipeline read `apikey: (window.VYVE_SUPABASE_ANON || '')`. `window.VYVE_SUPABASE_ANON` is undefined — nothing in the portal codebase sets it. The portal's anon key is declared in settings.html's main inline script as `const SUPA_KEY`, scope-isolated from the avatar IIFE that comes later. Result: `apikey: ''` → PostgREST 401 on the PATCH → "Profile update failed: 401" even though the JWT was valid.
+
+Fix: declare `var SUPA_ANON_KEY = 'eyJ...'` (same value) at the top of the avatar IIFE. Pass `apikey: SUPA_ANON_KEY` to both the Storage upload AND the PATCH. Storage doesn't strictly require apikey when an Authorization header is present, but it's harmless to send and matches the rest-of-portal pattern.
+
+### Files
+
+- `settings.html` 100105 → 99287 bytes. +12/-4 lines (12 added: SUPA_ANON_KEY constant + 4-line comment block explaining why path isn't URL-encoded + apikey on both calls; 4 removed: old `encodeURIComponent(email)` + old `window.VYVE_SUPABASE_ANON` ref + dead path encoding).
+- `sw.js` cache `pm231-replays-theme-c-more-replays` → `pm232-avatar-rls-fix-a`.
+- `index.html` vbb-marker 113 → 114.
+
+### Parallel session drift
+
+PM-229 (Replays hub) and PM-231 (Replays theme refinement) both shipped from parallel sessions between my PM-228/230 work and this fix. §23.41 fresh re-fetch right before commit caught both — sw.js was at `pm231-replays-theme-c-more-replays` when I started this fix (I'd remembered it as `pm230-settings-bugfix-a`), index.html vbb-marker was at 113 not 111. Rebased cleanly on each. Same shape as the §23.41 catch during PM-230. Both shipped without conflict.
+
+### Circle vs square
+
+Dean asked if the avatar should be a circle. It already is — `.profile-avatar` has `border-radius:50%`, `overflow:hidden`, the `img` child is `width:100%;height:100%;object-fit:cover`. The "square" perception was because the upload was failing → no image rendered → only the placeholder initials visible (which look more square than circular when the page is in its broken state). Once the upload works, the photo renders as a clean circle. No CSS change needed yet; revisit on device after the fix lands if it still reads wrong.
+
+### Discipline note
+
+The avatar pipeline shipped untested end-to-end. I committed PM-228 confident in the design, validated the SQL migration on Supabase, validated the JS with `node --check`, validated structural fidelity with grep, but **didn't simulate an actual upload through to the persisted state**. Both bugs would have surfaced in literally one round-trip test. The §23.52(b) post-commit `files[].status` check catches presence/absence on disk but doesn't catch runtime errors in newly-shipped code. For any pipeline that touches Storage + RLS + REST in sequence, the trip needs to be exercised before declaring complete. Not earning a new §23 rule because this is general engineering hygiene, not VYVE-specific architecture.
+
 ## 2026-05-23 PM-233 — Add Replays to More menu (after Live Sessions in Tools) [vyve-site `aa395bfc`]
 
 Companion to PM-232. Dean asked for the Replays page to surface in More. `replays.html` is the existing replay hub (separate from the per-stream `*-rp.html` pages); back-button title map line `'replays': 'Replays'` was already in nav.js, so only the menu entries needed adding.
