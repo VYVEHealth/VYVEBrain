@@ -1,3 +1,54 @@
+## Shipped 23 May 2026 — PM-212 — Podcast hub MVP shipped end-to-end [vyve-site `bff78cb4`, brain `0ce93681` → next]
+
+**PM-212 closed in one session.** Supabase migration + 40-row seed + member UI all landed clean. Six-file atomic commit to vyve-site main (podcast.html NEW 17314 bytes, connect.html gold Podcast tile next to Calendar tile, db.js SCHEMA_V10 + makeCatalogueTable consumer, sync.js plan entry + CATALOGUE_INVALIDATION_KEY bump `pm210-calendar-occurrences` → `pm211-podcast-episodes`, sw.js cache bump, index.html vbb-marker 80 → 81). Supabase: `pm211_create_podcast_episodes` migration earlier in session, 40 rows seeded (7 latest post-rebrand + 33 Everyman archive; 28 with Drive thumbnails, 12 with NULL rendering as gradient placeholders).
+
+**Naming note.** Live-code labels (sw cache key `vyve-cache-v2026-05-23-pm211-podcast-a`, `CATALOGUE_INVALIDATION_KEY = 'pm211-podcast-episodes'`, Supabase migration `pm211_create_podcast_episodes`) still say `pm211-*`. On returning to commit the brain trail, the PM-211 number was already claimed by the earlier-same-day spec commit `0ce93681` for the live-sessions single-source-of-truth collapse. Brain entries renumbered to PM-212; live code strings remain as opaque IDs (changing them means another vyve-site commit + cache invalidation cascade for zero member value). All future references to "the podcast hub MVP" use PM-212.
+
+See changelog top entry for full ship details. No new §23 hard rules earned.
+
+External-links MVP framing was deliberate — Dean's call to ship the functional shape now (Spotify / Apple / Amazon buttons per episode card), defer the in-app audio player to post-trial v2.
+
+**Lewis handoff for new episodes:** Supabase dashboard INSERT into `public.podcast_episodes`. Members pick it up on next 5-minute catalogue sync, no deploy needed.
+
+```sql
+INSERT INTO public.podcast_episodes (id, title, description, thumbnail_url, section, spotify_url, apple_url, amazon_url, display_order, active)
+VALUES (
+  'ep_new_guest_slug',
+  'Episode title with guest name',
+  'Two-to-three-sentence summary that fits in the 3-line clamp on the card.',
+  'https://drive.google.com/thumbnail?id=DRIVE_FILE_ID&sz=w400',  -- or NULL for gradient placeholder
+  'latest',                                                        -- or 'archive' for legacy Everyman episodes
+  'https://open.spotify.com/show/1IytZMMcWBVlyTzfTxBfnq',
+  'https://podcasts.apple.com/us/podcast/the-everyman/id1673004879',
+  'https://music.amazon.co.uk/podcasts/the-everyman',
+  0,                                                               -- display_order: lower = earlier in section
+  true
+);
+```
+
+When an episode moves from "latest" to "archive" after a rebrand cutoff, update `section` and `display_order`. Members pick up the move on next catalogue sync.
+
+### Deferred to post-trial v2 (the in-app player bundle)
+
+Collected here so the eventual build session opens with everything in one place:
+
+- **In-app audio player.** Capacitor `@capacitor-community/background-media-controls` plugin (or equivalent). iOS `UIBackgroundModes: [audio]` in Info.plist + Android `FOREGROUND_SERVICE_MEDIA_PLAYBACK` permission + foreground service manifest entry. Lock-screen controls, scrubber, speed control (1x/1.25x/1.5x/2x), 15s skip back/forward, mini-player persisting across navigation. New iOS 1.4 / Android 1.0.4 store submission required — App Review queue sets the pace.
+- **Audio sourcing.** Three viable paths: (1) Lewis pulls master MP3/WAV from Riverside studios; (2) extract MP3 URLs from the podcast host RSS feed (Buzzsprout / Anchor / Captivate — Lewis knows which); (3) re-upload masters to Supabase Storage `podcast-episodes` bucket public-read. Path (3) is the durable end state regardless of sourcing. Adds `audio_url TEXT` column to `podcast_episodes` table; existing rows backfill or stay NULL with "external-only" badge until audio lands.
+- **`podcast_views` activity table.** Cap 2/day per source-aware shape (mirror of workouts/cardio caps). Feeds the existing 30-activities-equals-1-donated-month charity engine, lights up a new Achievement track (naming Lewis-blocked — "The Listener" / "The Conversationalist" / similar). New §6 entry + member-scoped RLS + BEFORE INSERT cap trigger.
+- **Migrate Drive thumbnails to Supabase Storage `podcast-thumbs` bucket.** Current Drive URLs work but are fragile (rate-limited, can be revoked by Google, no Cache-Control). One-time copy of the 28 existing thumbs; update `thumbnail_url` column for those rows. v1.1 follow-up, low priority unless a thumb 404s in the wild.
+- **Listen-history surface.** Members see "Continue listening" / "Recently played" carousels on podcast.html hub. Reads from `podcast_views` + last play position (new column on the view row or separate `podcast_playback_state` table — TBD at build time).
+
+### Sibling work in the post-launch destination-carousel bundle
+
+- **Session Recaps tile** (the third tile in the original PM-210 Connect-hub carousel spec). Its own hub page + post-trial editor. Sibling of PM-212; same content-ops shape, different content.
+- **Portal Admin editor** for podcast row management. Same gate as the Calendar editor surface — Lewis writes via Supabase dashboard until Portal Admin lands. Episode-row CRUD is one of the first editor pages, sitting next to live-session-occurrence CRUD.
+
+### Interaction with PM-211 (live-sessions source-of-truth collapse)
+
+PM-211 (collapse `sessions-data.js` / `service_catalogue` / `calendar_occurrences` to one source + materialiser) and PM-212 (podcast hub) are independent — different tables, different surfaces, different sync entries. They can ship in either order. The architectural pattern is shared though: both are "catalogue tables Lewis edits in Supabase dashboard, members pick up on 5-min sync via CATALOGUE_INVALIDATION_KEY". `podcast_episodes` is the simpler shape (no materialiser needed — episodes are point-in-time, not recurring). When PM-211 lands, the materialiser EF pattern it introduces is the right template for any future content that does need to expand recurrences into occurrences.
+
+---
+
 ## Added 23 May 2026 — PM-211 — Single source of truth for live sessions: collapse sessions-data.js / service_catalogue / calendar_occurrences down to one recurring-pattern source + materialiser cron
 
 **The problem PM-211 solves.** As of PM-210b ship, live-session schedule data lives in three places that disagree:

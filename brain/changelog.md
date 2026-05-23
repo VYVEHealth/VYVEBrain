@@ -1,3 +1,102 @@
+## 2026-05-23 01:05 — PM-212 Podcast hub MVP shipped: external-links page + Connect tile + 40 episodes hydrated from Supabase [vyve-site `bff78cb4`]
+
+### Naming note — PM-211 → PM-212 rename
+
+This work shipped under "PM-211" in the live code (sw cache key `vyve-cache-v2026-05-23-pm211-podcast-a`, `CATALOGUE_INVALIDATION_KEY = 'pm211-podcast-episodes'`, Supabase migration name `pm211_create_podcast_episodes`, brain entry first draft also said PM-211). On returning to commit the brain trail I discovered PM-211 had already been claimed earlier the same day by a backlog-only spec commit `0ce93681` for the live-sessions single-source-of-truth collapse. Brain entries renamed to PM-212; **live code strings stay as `pm211-podcast-*`** because changing them means another vyve-site commit + cache invalidation cascade, and the strings are opaque IDs not human-facing. Future migrations referring to this work should call it PM-212; the on-disk `pm211_*` artefacts in Supabase + vyve-site are legacy of the original numbering.
+
+### What shipped
+
+Six-file atomic commit to `vyve-site` `main`: `bff78cb4d25b82e4f3abf996a3ceb8729e69a048`, parent `31e6910e` (PM-210b). PM-212 closed end-to-end (Supabase schema + 40-row seed + member UI in one session).
+
+**`podcast.html` (NEW, 17314 bytes).** External-link MVP of the marketing-site `vyvehealth.co.uk/vyve-podcast.html` page, reskinned in the portal's design system. Single-column wrap, max-width 480px to match the rest of the portal. Hero card with teal gradient + radial-glow shape, eyebrow "The VYVE Podcast", Playfair title "Honest conversations. / Real change.", sub-copy mirroring the marketing page's positioning, three frosted-pill listen-on buttons (Spotify / Apple / Amazon) opening `target="_blank" rel="noopener"`. Two sections below — "Latest Episodes" (7 rows) and "The Everyman Archive" (33 rows) — each with section-header strip (eyebrow label + horizontal rule + episode count pill). Episode card is `display:flex` row with 78×78 thumbnail (gradient fallback + `onerror="this.remove();"` per §23.49) on the left, body on the right (Playfair title clamped to 2 lines, DM Sans description clamped to 3 lines, action row with platform-tinted Spotify/Apple/Amazon pills at the bottom). Below the lists: a "Be a guest" CTA block linking out to the marketing-site form (`#guest` anchor, opens in new tab), and a "Coming soon" future-note teasing the in-app player. All styling via `theme.css` semantic tokens — no inline `:root` per PM-163, dark/light parity automatic via `[data-theme]` selector. Six-script Dexie/bus/sync stack loaded per §23.44. §23.46 honest-paint: lists default empty, paint runs on Dexie hydrate + repaints on `vyve-localdb-table-pulled` filtered for `podcast_episodes`. Two inline `<script>` blocks — service-worker register + wiring IIFE. `node --check` passed pre-commit.
+
+**`connect.html` hub edit (+~75 lines).** New Podcast destination tile added immediately below the Calendar tile from PM-210b. CSS defines `.podcast-tile` as a gold-gradient variant of `.calendar-tile` (mirror shape — 16:8 aspect ratio, frosted-pill icon top-left, meta top-right, Playfair title bottom-left, "Open →" CTA bottom-right — but with `linear-gradient(135deg,#7a5f1f 0%,#a8842f 40%,var(--gold) 100%)` background to distinguish it from the teal Calendar tile). Markup reuses `.calendar-tile-*` inner classes so the layout stays consistent across the two tiles. Microphone SVG icon (path + circular base) in the frosted-pill icon slot. Meta: "Honest conversations" + "Tap to listen". Title: "Podcast". Sub: "The VYVE Podcast — formerly The Everyman". No JS wiring needed — the tile reads no data from Dexie, just navigates to `/podcast.html`. The two tiles now form a stacked pair under the "What's on" section header; once Session Recaps lands as the third tile per the original PM-210 spec, this becomes the three-tile destination carousel.
+
+**`db.js` (+19 lines).** `SCHEMA_V10 = Object.assign({}, SCHEMA_V9, { podcast_episodes: '&id, section, display_order, active' })` added immediately after SCHEMA_V9 block with full comment block documenting column shape (id PK, title, description, thumbnail_url nullable, section enum, spotify_url, apple_url, amazon_url, display_order, active, audit timestamps). `db.version(10).stores(SCHEMA_V10)` appended to the version chain. `makeCatalogueTable('podcast_episodes')` added to the catalogue-table consumer list (after `calendar_occurrences`). Result: `window.VYVELocalDB.podcast_episodes.allFor()` exists; `replaceForMember(null, rows)` performs the canonical clear+bulkPut for catalogue scope.
+
+**`sync.js` (3 coordinated edits).**
+- `CATALOGUE_INVALIDATION_KEY` bumped `'pm210-calendar-occurrences'` → `'pm211-podcast-episodes'`. Forces one-time refresh on every existing device's next visit per §23.50.
+- `CATALOGUE_FRESH_TABLES` gains `podcast_episodes: 1` so the table gets the 5-minute stale window (Lewis adds episodes via Supabase dashboard).
+- Plan entry inserted immediately after `calendar_occurrences`: `{ table: 'podcast_episodes', scope: 'catalogue', path: '/podcast_episodes?active=eq.true&select=*&order=display_order', persist: replaceForMember(null, rows) }`. Server-ordered by `display_order` so section paint can iterate without re-sorting.
+
+**`sw.js`.** Cache key `vyve-cache-v2026-05-23-pm210-calendar-a` → `vyve-cache-v2026-05-23-pm211-podcast-a`. `/podcast.html` added to precache list immediately after `/connect-calendar.html`.
+
+**`index.html`.** vbb-marker `Update 80` → `Update 81`.
+
+### Supabase migration + 40-row seed
+
+`pm211_create_podcast_episodes` migration applied to `ixjfklpckgxrwjlfsaaz` earlier in the session. Schema: `id text PK`, `title text NOT NULL`, `description text`, `thumbnail_url text` (nullable per §23.49), `section text NOT NULL CHECK IN ('latest','archive')`, `spotify_url`, `apple_url`, `amazon_url`, `display_order integer NOT NULL DEFAULT 0`, `active boolean NOT NULL DEFAULT true`, `created_at` + `updated_at` audit. Partial index on `(section, display_order) WHERE active=true`. `updated_at` trigger via `SECURITY DEFINER` function (consistent with `calendar_occurrences` pattern). RLS enabled, single read-all policy `podcast_episodes_read_authenticated` for `authenticated` role; writes restricted to service-role only.
+
+Seed: 40 episodes inserted in a single ON CONFLICT UPSERT. Breakdown: 7 latest (post-VYVE-rebrand episodes — Gleghorn, Callendar, Gibson, Lindsay, Nesl, Lloyd, Watkins), 33 archive (Everyman legacy back catalogue including Matt Jarvis, Luke Ambler, Ray Winstone, Tamara Russell, David Wetherill, 3 Dads Walking, Nathan Jones P1+P2, Tim Harkness, Lewis Vines own story, etc.). 28 rows have Drive thumbnail URLs sourced from the marketing-site page; 12 lack thumbnails and render as gradient placeholders. Display order assigned 1-40 to match the visual sequence from the marketing site (most recent first within each section).
+
+### Why external-link MVP, not in-app player
+
+Dean's framing in the session: build the functional shape first, leave the player for v2 post-trial. Member taps a Spotify pill → handed off to the Spotify app (or browser if not installed). Apple / Amazon same. The page is fully useful from day one — not a "coming soon" placeholder. In-app player is real product work (Capacitor background-audio plugin, lock-screen controls, audio sourcing from Riverside masters or RSS feed, store resubmission for both platforms, podcast_views activity table, achievement track) and that's a multi-session shape that belongs in the post-launch "year of updates" bundle alongside Session Recaps + Portal Admin.
+
+The "Coming soon" future-note at the bottom of `podcast.html` signals the v2 ambition without making the v1 feel like scaffolding.
+
+### Why this works at first paint
+
+When the new bundle loads on a member's device, theme.js applies `data-theme` synchronously from localStorage before body renders (no FOUC). db.js opens Dexie at version 10, which is a non-destructive upgrade (only adds the new `podcast_episodes` store on top of V9). sync.js fires on `auth-ready`, sees the new `CATALOGUE_INVALIDATION_KEY` value vs the device's recorded `pm210-calendar-occurrences`, force-pulls `podcast_episodes` (40 rows), writes via `replaceForMember(null, rows)`, dispatches `vyve-localdb-table-pulled` with `detail.table === 'podcast_episodes'`. podcast.html boot path either fires immediately if Dexie already has the rows (warm second visit, microseconds) or paints empty list and repaints on the bus event (cold first visit, ~hundreds of ms). connect.html renders the new gold Podcast tile statically — no Dexie read, no async wait, just markup.
+
+### Tooling discipline
+
+§23.45 PAT-direct via Git Data API (blobs → tree → commit → update ref) throughout — Composio still 401-ing from 21 May security incident, now ~36h. §23.52(a) honoured — all six blob bodies routed via `/tmp/vyve/commit/blob_*.json` files + `curl --data-binary @file`. Largest body was index.html at 162KB body (after base64 inflation) — the exact size class that broke PM-209.1 when routed through `-d "$body"`. §23.52(c) every captured SHA asserted non-empty + 40-char hex shape before downstream use. §23.53 every response body written to disk first, parsed in a separate step (no inline `python3 -c | $()` chains). §23.41 pre-tree HEAD re-fetch confirmed parent at `31e6910e` (no parallel drift). §23.52(b) post-commit `GET /commits/{sha}` `files[].status` verification confirmed `{added: 1, modified: 5, removed: 0}` — six files exactly, no surprise drops. Per-file first-100-char re-fetch against new commit SHA all passed.
+
+### Files changed
+
+vyve-site `31e6910e` → `bff78cb4`:
+- podcast.html (added, 17314 bytes)
+- connect.html (+75/-0)
+- db.js (+19/-0)
+- sync.js (+12/-2)
+- sw.js (+4/-1)
+- index.html (+1/-1)
+
+Supabase `ixjfklpckgxrwjlfsaaz`:
+- `pm211_create_podcast_episodes` migration applied (table + index + trigger + RLS + read-all policy)
+- 40 rows seeded in `public.podcast_episodes`
+
+### Lewis handoff
+
+Adding a new episode is now a Supabase dashboard insert — members pick it up on the next 5-minute catalogue sync, no deploy needed.
+
+```sql
+INSERT INTO public.podcast_episodes (id, title, description, thumbnail_url, section, spotify_url, apple_url, amazon_url, display_order, active)
+VALUES (
+  'ep_new_guest_slug',
+  'Episode title with guest name',
+  'Two-to-three-sentence summary that fits in the 3-line clamp on the card.',
+  'https://drive.google.com/thumbnail?id=DRIVE_FILE_ID&sz=w400',  -- or NULL for gradient placeholder
+  'latest',  -- or 'archive' for legacy Everyman episodes
+  'https://open.spotify.com/show/1IytZMMcWBVlyTzfTxBfnq',
+  'https://podcasts.apple.com/us/podcast/the-everyman/id1673004879',
+  'https://music.amazon.co.uk/podcasts/the-everyman',
+  0,         -- display_order: lower = earlier in section; bump existing rows if needed
+  true
+);
+```
+
+When an episode moves from "latest" to "archive" after a rebrand cutoff, update its `section` value and `display_order`. Members pick up the move on next catalogue sync.
+
+### What's NOT in this commit (deferred by design)
+
+- In-app audio player (Capacitor background-audio plugin, lock-screen controls, scrubber, speed control, mini-player). Post-trial v2.
+- `podcast_views` activity table feeding charity-mechanic counts + Achievement track. Lands with the player.
+- Audio sourcing (Riverside masters / RSS feed extraction / Supabase Storage `podcast-episodes` bucket). Lewis-blocked decision; plays into the player work.
+- Migration of Drive thumbnails to Supabase Storage `podcast-thumbs` bucket. v1.1 follow-up; current Drive URLs work fine until a thumb 404s.
+- Session Recaps tile (the third tile in the original PM-210 destination carousel spec). Sibling of this work, gated on Lewis content workflow.
+- Portal Admin editor surface for podcast row management. Same gate as the Calendar editor surface — Lewis writes via Supabase dashboard until Portal Admin lands post-launch.
+
+### Live state at session close
+
+- vyve-site main: `bff78cb4` (was `31e6910e`)
+- Brain HEAD before this commit: `ea7af33f` (PM-210b ship)
+- Supabase `podcast_episodes`: 40 rows live (7 latest + 33 archive; 28 with thumbnails, 12 gradient placeholders)
+- No new §23 hard rules earned this session
+
+---
+
 ## 2026-05-23 00:30 — PM-210b Calendar member UI shipped: connect-calendar.html + hub tile + db/sync wiring [vyve-site `31e6910e`]
 
 ### What shipped
