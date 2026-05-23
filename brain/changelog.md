@@ -1,76 +1,95 @@
-## 2026-05-23 — PM-228 Per-hub tagline pools — schema + Mind/Connect fetch split [vyve-site `dea9279b`]
+## 2026-05-23 PM-228 — Settings restructure: Profile→Coaching→Preferences→Habits→Connections→About, sub-page for sign-out/danger/GDPR, live avatar pipeline [vyve-site `d1657514`]
 
-Mind shipped (PM-227) sharing Connect's tagline pool per the original §23.55 doctrine. Dean rejected the shared-pool model: each hub should feel distinct, with copy themed to its pillar — Connect about connection, Mind about mind, Body about body. PM-228 splits the pool by hub and updates both shipped pages to filter accordingly.
+Five-file atomic commit landing tonight's settings overhaul. Dean's spec from the design conversation: sharpen up settings, add profile picture, section out the page, hide danger zone, hide download-data, fix the theme highlight that stayed on "System" after switching to Light, fix Sign Out that "doesn't work". One bug Dean surfaced mid-session ("saving your goals doesn't actually do anything") — diagnosed as the entire Primary Focus card writing to `members.specific_goal` which is read by exactly zero files in the portal; the actual goal column consumed by index.html/nutrition.html is `members.goal_focus`, written only at onboarding. Vestigial control. Card removed entirely rather than shipping a placeholder.
 
-### Schema change (`public.taglines`)
+**Mockup-first flow followed.** Built two standalone HTML mockups (`mockup-settings.html` + `mockup-settings-account.html`) with full theme parity, pushed to vyve-site, Dean confirmed "looks fantastic" on device. Then went to production build. Mockup files deleted in tonight's commit.
 
-- New column: `hub text NOT NULL DEFAULT 'connect'`. Existing 5 rows stamp as `connect` automatically.
-- New check constraint `taglines_hub_chk`: `hub IN ('connect','mind','body','index')`.
-- Dropped global partial unique index `taglines_position_unique` (on `position` WHERE `active=true`); replaced with per-hub `taglines_hub_position_unique` (on `(hub, position)` WHERE `active=true`). Each hub has its own 0-indexed position space.
-- New fetch-path index `taglines_hub_active_position_idx` on `(hub, active, position)`.
-- 5 mind taglines seeded: "A moment of stillness.", "Quiet the noise.", "Come back to yourself.", "Rest is a practice.", "Pause. Breathe. Begin again."
-- 5 body taglines placeholder-seeded for the body.html hero ship: "Move with purpose.", "Strength is built, not given.", "One rep at a time.", "Honour the effort.", "Show up for your body." Lewis to refine via Supabase Studio when body.html ships.
-- Existing 5 connect-hub lines retained verbatim (`Together we build better habits.` etc) — Lewis flagged these are generic-VYVE, not connection-specific; copy refresh is a separate Lewis-Studio task, not blocking infrastructure.
+### Section structure (new settings.html)
 
-### Migration drama (lesson)
+1. **Profile** — new section. Avatar (72px circle) with edit-pencil overlay top-right. Tap opens hidden file input (`<input type="file" accept="image/jpeg,image/png,image/webp">`) which routes through WKWebView's native photo picker on iOS, native chooser on Android, file dialog on web. Name + email + persona badge. Capacitor `@capacitor/camera` plugin upgrade deferred to next iOS binary cut per PM-197 build sequence — web file input fallback works fine in WKWebView today.
+2. **Coaching** — renamed from "AI Coach". Current persona card + "Best for" reasoning blurb + Change Coach chevron (unchanged from prior code).
+3. **Preferences** — three cards grouped: Theme (light/dark/system), Leaderboard name (anonymous/initials/first/full), Notifications toggles (re-engagement, weekly check-in reminder). 10px gap between cards inside the section, single section-label up top.
+4. **Habits** — renamed from "Daily Habits". Unchanged.
+5. **Connections** — HealthKit block, hidden on PWA/Android. Renamed from "Apple Health" to fit a future Strava/Garmin pluralisation.
+6. **About** — Reset app cache, HK Diagnostic, Privacy Policy, Contact support, **NEW "Account & data" chevron row** linking to `/settings-account.html`, App version row.
 
-First migration call failed mid-transaction (Supabase `apply_migration` is wrapped atomically) — the INSERT seeded `(text, position=0)` and tripped the pre-existing global `position` partial-unique index. Whole migration rolled back, leaving the table untouched. Second migration call dropped the offending index first, then re-applied schema + seeds in order. Worth noting as a sub-pattern: **when migrating a table with positional ordering toward a partitioned scheme, drop the old partition-less unique constraints before the seeds, not after.**
+### Sub-page (new settings-account.html, 43.5KB)
 
-### Client changes
+Brand-new portal page. Same auth gate pattern as other portal pages (theme.js + auth.js + bus.js + perf.js deferred; reveal `#app` on `vyveAuthReady`). Contents:
 
-- `mind.html`: `TAGLINES_CACHE_KEY` `vyve.taglines.v1` → `vyve.taglines.mind.v1`; fetch URL gains `&hub=eq.mind`.
-- `connect.html`: `TAGLINES_CACHE_KEY` `vyve.taglines.v1` → `vyve.taglines.connect.v1`; fetch URL gains `&hub=eq.connect`.
-- `sw.js`: cache key `pm227-mind-hero-a` → `pm228-taglines-per-hub-a`.
-- `index.html`: vbb-marker `Update 109` → `Update 110`.
+- **Sign out card** at top (no section label, alone) — calls `window.vyveSignOut()` from auth.js with proper await + redirect-to-login fallback if the deferred script hasn't run yet.
+- **Your data** section — Download my data row → opens the GDPR export modal (Article 15 flow, copied from old settings.html with local `getJWT()` redefined since this page doesn't inherit the main settings.html script chain).
+- **Erase cancellation banner** — auto-renders when `gdpr-erase-status` returns `has_pending: true`.
+- **Danger zone** — Delete my account → fires `erase-modal` (typed-email gate) → submits to `gdpr-erase-request` EF. Banner refreshes on successful schedule/cancel.
+- **PM-183.7 dev panel** (Dexie table inspector + JSON export) moved here, hidden behind the 5-tap App version label gesture. Same unlock localStorage key (`vyve_dev_panel_unlocked`) and same JS — copied verbatim.
+- **Version footer** with PF-14 spike toggle (7-tap) + PM-97 long-press reset gesture (1.2s hold) — both copied verbatim from old settings.html.
 
-Per-hub localStorage cache keys prevent the two hubs overwriting each other's cached pool (the v1 key was a single namespace). First-visit-after-deploy on each hub will see the literal markup default until the fetch settles, per §23.46 honest-paint — same as the first-ever-visit case.
+### Bug fixes folded into the same commit
 
-### Doctrine update (§23.55)
+**Theme highlight race (was the live "switch to Light, leave, come back → System still highlighted" bug).** Root cause: `theme.js` loads with `defer`, settings.html's inline `markActiveThemeBtn()` ran synchronously during HTML parse, before `window.vyveGetThemePref` was defined. Fallback returned `'system'` regardless of actual preference. Theme itself was applied correctly (theme.js's first-execute line reads localStorage and sets `data-theme`), but the toggle buttons never reflected reality. Fix: wrap the initial call in a retry loop that waits up to ~3s for `window.vyveGetThemePref` to appear, then runs the highlight. `vyveSetTheme()` wrapper still re-highlights on click as before, so no change to interaction path.
 
-The "Mind / Body / Index share the existing taglines pool" line removed. Replaced with the per-hub model and an explicit infrastructure note that each hub gets its own pool filtered by `hub` column with per-hub localStorage cache key. Body.html hero ship (next) will use `hub=eq.body` and `vyve.taglines.body.v1` with no code-side rule changes — taglines already seeded.
+**Sign out race.** Old `handleSignOut()` had a fallback `window.location.href = '/login.html'` that fired if `window.vyveSignOut` wasn't yet defined — but the redirect didn't clear the Supabase session, so auth.js's fast-path on login.html could re-auth and bounce back. New `handleSignOut()` awaits `vyveSupabase.auth.signOut()` directly in the fallback path, removes the `vyve_auth` localStorage key, then redirects. Same pattern as the §23.5.3 PM-74 9-site sweep.
 
-### Verification
+**Dead Primary Focus card.** Removed. `members.specific_goal` left in schema for forward-compat in case Lewis wants to redesign the goal-system later; nothing currently writes to it post-this-ship, nothing reads it.
 
-§23.41 pre-tree HEAD refresh caught parallel-session drift: vyve-site moved `578bb1af` (PM-227) → `8f98bc49` (settings restructure mockup landed between sessions at 14:37 UTC, +7 mins after PM-227). Mockup files are new and don't touch any PM-228 path. Built on `8f98bc49`. New commit `dea9279b`. Schema verified via Supabase MCP `SELECT hub, count(*)` returning 5+5+5 rows across connect/mind/body. Post-commit first-200-char re-fetch of all 4 site files confirms intent landed exactly. No regressions detected.
+### Avatar pipeline (live, tonight)
 
-### Hub-page hero campaign status
+Supabase migration: `ALTER TABLE members ADD COLUMN IF NOT EXISTS avatar_url text`. Public Storage bucket `member-avatars` created with 512KB file ceiling + JPEG/PNG/WebP MIME allowlist + four RLS policies (authenticated INSERT/UPDATE/DELETE constrained to path-prefix === auth.email(), public SELECT).
 
-Connect ✅, Mind ✅, infrastructure for Body + Index ready (taglines pre-seeded). No new §23 hard rule earned — the failed-migration lesson is too narrow to promote.
+Client pipeline (~150 lines, end of settings.html):
+1. Picker fires `handleAvatarPick(event)`.
+2. `resizeAndStripExif(file)` via canvas: centre-crop to square, scale to max 512×512, `canvas.toBlob('image/jpeg', 0.85)`. The canvas re-render strips EXIF naturally — iPhone photos no longer carry GPS coords through to Storage.
+3. `uploadAvatar(blob, email, jwt)` PUTs to `/storage/v1/object/member-avatars/{email}/avatar.jpg` with `x-upsert: true`. Overwrite-on-replace by design.
+4. `persistAvatarUrl(publicUrl, email, jwt)` PATCHes `members.avatar_url`, optimistic Dexie upsert, `VYVEBus.publish('avatar:changed', {email, avatar_url})`.
+5. `renderAvatar(url, initials)` swaps the `.profile-avatar` text initials for an `<img>`. On page boot, if Dexie holds an `avatar_url`, render immediately (cache-first); the network `members` row from `loadProfile()` repaints if it differs.
 
----
+Bus event `avatar:changed` not yet wired to subscribers — leaderboard / Connect feed surfaces will pick this up in the Profile Identity Campaign full build. For now it's a future-proofing publish.
 
-## 2026-05-23 — PM-227 Mind hub-page hero shipped — three-state time-of-day swap [vyve-site `578bb1af`]
+### sw.js / index.html
 
-First replication of the Connect hub-page hero doctrine (§23.55, PM-216 → PM-226) onto a second hub. Doctrine clone with one deliberate evolution: where Connect ships a two-state `.is-night` day/night swap, Mind ships a three-state `.is-morning` / `.is-night` swap with default (no class) = afternoon.
+`sw.js` cache key bumped `pm227-mind-hero-a` → `pm228-settings-restructure-a`. `/settings-account.html` added to precache list immediately after `/settings.html`. `index.html` vbb-marker `Update 109` → `Update 110`. `nav.js` `subPageLabels` gained `'settings-account': 'Account & Data'`. Five-file atomic commit via Git Data API.
 
-### What shipped
+### Tooling: §23.52 violation tonight
 
-- `mind.html` (+6666 bytes): `.mind-hero` CSS block (longhand fixed pin, GPU layer hint, three `background-image` declarations, `body.mind-page::before` glow suppression, `.wrap.fade` animation kill, `.mph-page-label` topbar suppression, hero-band `main padding-top` override). `<body class="mind-page hub-page">`. Body-level `<section class="mind-hero">` with `.mind-hero-overlay` (dark-clear-dark gradient verbatim from §23.55), `.mind-hero-eyebrow` ("Mind", 1.6rem 700 uppercase 0.12em tracking teal-light), `.mind-hero-headline` ("A moment of stillness." Playfair 1.1rem muted white — markup default per §23.46, swapped by PM-225-pattern tagline JS on next-load). Inline `<script>` time-of-day class setter (hour <6 || >=19 → night, hour <12 → morning, else no class = afternoon default). PM-225-clone tagline rotation block (`pickTodayTagline` / `renderTaglineFromCache` / `fetchAndStoreTaglines` / `initTagline`) injected into existing mind.html IIFE — shares `vyve.taglines.v1` localStorage key and `public.taglines` Supabase table with Connect per §23.55 doctrine.
-- Three new repo-root JPEGs: `mind-hero-morning.jpg` (86KB), `mind-hero-afternoon.jpg` (165KB), `mind-hero-night.jpg` (83KB). All 1024² progressive JPEG quality 82, resized via PIL LANCZOS from Dean-supplied 1254² sources. Same subject + composition across all three (figure on dock, mountain lake) so identity stays consistent and only light shifts.
-- `sw.js` cache key `pm226-eyebrow-teal-a` → `pm227-mind-hero-a`; three new entries in `urlsToCache` for the JPEGs.
-- `index.html` vbb-marker `Update 108` → `Update 109`.
+First commit attempt (`f9620c66`) used `curl -d "$body"` for blob creation. Two of the five blobs (settings.html @ 100KB → 132KB b64; index.html @ 121KB → 162KB b64) overflowed bash argv silently. `BLOB_SETTINGS` and `BLOB_INDEX` captured empty. The tree was built with empty-string SHAs in those slots. **GitHub accepted the malformed tree, the commit landed, main was advanced — and both settings.html and index.html were deleted from production for ~90 seconds.** Verified live via Contents API `?ref=main` — both returned `size: None` / 404.
 
-### Background-position chosen
+Recovery: force-PATCH main back to last good SHA `dea9279b`. Re-verified — both files restored to expected sizes (130073 / 121255). Then second attempt via `python3 + urllib.request` (no argv path), which worked cleanly: `d1657514` is live.
 
-`center center` (not `center bottom` like Connect). Subject sits lower-right in all three Mind images; `center bottom` would crop the mountain peaks off on tall viewports. `center center` keeps mountains visible while still anchoring the figure in frame.
+This is exactly the failure class §23.52 was earned for at PM-209 (22 May, three-clause rule). The rule was in master.md AND in the brain memory I loaded at session start. I read it and forgot it the moment I sat down to bash-script the commit. Real lesson: §23.52(a) needs to fire as a hard reflex at any blob-create step, not as a "best practice when files are large." The base64 body of a 50KB file is ~67KB which is well within argv limits; the body of a 100KB file is 133KB which can be over the limit on some systems. The wedge between "fine" and "not fine" is invisible at code-write time. Treat all blob creates as if §23.52 is mandatory.
 
-### Three-state swap rationale
+No new §23 rule earned — tonight is a recurrence not a new gotcha. The existing rule stands. Discipline note logged here for the next session.
 
-Dean supplied three time-of-day photos (morning misty dawn, clear afternoon daylight, moonlit night) rather than the two-state day/night the §23.55 doctrine assumed. Same subject across all three, which is the right call — identity preserved, only light shifts. Default-without-class = afternoon means the brightest, safest image is the honest-paint default (§23.46) when JS fails. Boundaries: morning `< 12`, afternoon `12–19`, night `>= 19 || < 6`. Night boundary matches the original Connect `.is-night` boundary exactly so the doctrine remains forward-compatible.
+### Supabase changes recap
 
-### Doctrine update
+- `members.avatar_url text` (nullable) — new column for profile photo URL.
+- `storage.buckets` insert: `member-avatars`, public, 512KB ceiling, JPEG/PNG/WebP allowlist.
+- 4 storage.objects RLS policies on member-avatars: authenticated INSERT/UPDATE/DELETE scoped by `(storage.foldername(name))[1] = auth.email()`; public SELECT.
 
-§23.55 amended in same brain commit: "Day/night swap via `.is-night` class" → "Time-of-day swap via `.is-morning` / `.is-night` classes (default = afternoon if neither applies)". Image production spec amended to "1–3 photos per hub (Connect ships 2: day/night; Mind ships 3: morning/afternoon/night). Default-without-class is the brightest fallback for honest-paint robustness." Future hub heroes (body.html, index.html) inherit the option — ship 2 or 3 photos as image supply dictates.
+### Files in the commit
 
-### Verification
+- `settings.html` 130073 → 100105 bytes (−23%). Sections re-ordered, profile card added, primary-focus card removed, GDPR/erase HTML+JS pulled out, dev panel pulled out, footer gesture pulled out, theme race fixed, avatar pipeline added.
+- `settings-account.html` NEW 43537 bytes. Sub-page with sign out, GDPR export, erase flow, dev panel, version footer + gestures.
+- `sw.js` 13924 → 14206 bytes. Cache key bumped, `/settings-account.html` precached.
+- `index.html` unchanged size 121255. vbb-marker 109 → 110.
+- `nav.js` 38095 → 38691 bytes. `subPageLabels` gained `'settings-account'`.
 
-§23.41 pre-tree HEAD refresh on `c971d6cd` (PM-226), no parallel-session drift. Tree, commit, ref-update via Git Data API (Composio still 401 from 21 May incident, ~37 hours). Six blobs created (3 text utf-8 + 3 binary base64). All blob SHAs shape-asserted (40-char hex). Post-commit verification via `?ref=<commit_sha>` (not branch ref — CDN-safe per established pattern): first-200-char re-fetch of each text file confirms intent landed, JPEG `size` fields confirmed at expected byte counts (86076 / 164783 / 83470). Critical-string spot-checks all pass: `class="mind-page hub-page"`, `mind-hero-eyebrow`, `is-morning`, `initTagline`, `pm227-mind-hero-a`, three `mind-hero-*.jpg` precache entries, `Update 109`.
+Mockup files (`mockup-settings.html`, `mockup-settings-account.html`) deleted in the same atomic tree.
 
-### Hub-page hero campaign status
+### Profile Identity Campaign status
 
-Connect (PM-216 → PM-226) ✅ shipped. Mind (PM-227) ✅ shipped. Next: body.html, then index.html. Doctrine playbook (`playbooks/hub-page-hero-doctrine.md`) holds; no new playbook lesson earned this ship — three-state swap is a doctrine extension not a doctrine correction. No new §23 hard rule earned.
+Tonight's ship is a **slice** of the 21 May + PM-196 + PM-197 supplements campaign. Slice contents:
+- ✅ `members.avatar_url` column live
+- ✅ `member-avatars` Storage bucket + RLS live
+- ✅ Settings UI avatar upload + display
+- ✅ Client-side resize + EXIF strip + JPEG q=0.85
+- ⏳ Connect first-load modal (display-name + avatar pickers) — not built
+- ⏳ `profile.js` shared identity helper — not built
+- ⏳ `members.connect_onboarded_at` column — not migrated
+- ⏳ `members.display_name_mode` column (vs current `display_name_preference`) — not migrated
+- ⏳ Capacitor `@capacitor/camera` plugin — next iOS binary cut
+- ⏳ Leaderboard / Connect feed avatar rendering subscribers — not wired
 
----
+Backlog entry updated to reflect partial ship.
 
 ## 2026-05-23 17:25 — PM-226 CONNECT eyebrow colour back to teal-light [vyve-site `c971d6cd`]
 

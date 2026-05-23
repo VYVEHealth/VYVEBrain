@@ -1282,6 +1282,36 @@ db.js SCHEMA_V8 + db.version(8) chained, sync.js 5 PULLABLE entries added. Compo
 
 ---
 
+## Added 21 May 2026 — Profile identity system (avatar + display-name privacy) [PARTIALLY SHIPPED PM-228 23 May 2026]
+
+**Status update PM-228 (23 May 2026).** Settings-side avatar slice shipped to production tonight as part of the PM-228 settings restructure.
+
+**Shipped tonight:**
+- ✅ `members.avatar_url text` column live
+- ✅ `member-avatars` public Storage bucket with 4 RLS policies (auth INSERT/UPDATE/DELETE scoped to `(storage.foldername(name))[1] = auth.email()`, public SELECT)
+- ✅ Settings UI: tappable avatar with edit-pencil overlay → file picker → resize + EXIF strip + upload + persist + Dexie optimistic write + bus publish
+- ✅ Client-side canvas pipeline (centre-crop square, max 512×512, JPEG q=0.85, EXIF stripped via canvas re-render)
+- ✅ Upload via `x-upsert: true` to `{email}/avatar.jpg` overwrite pattern
+- ✅ `VYVEBus.publish('avatar:changed', {email, avatar_url})` published (no subscribers yet)
+- ✅ Page-boot Dexie read renders avatar immediately on return visits
+
+**Still to ship (full campaign):**
+- ⏳ Connect first-load modal (display-name + avatar pickers, fires when `members.connect_onboarded_at` is null)
+- ⏳ `members.connect_onboarded_at timestamptz` schema migration
+- ⏳ `members.display_name_mode text` migration (replaces / coexists with current `display_name_preference`)
+- ⏳ `profile.js` shared identity helper (centralises display-name + avatar resolution + anonymous-coupling rule)
+- ⏳ Capacitor `@capacitor/camera` plugin (next iOS binary cut — web file input fallback works through WKWebView today)
+- ⏳ Avatar render subscribers across leaderboard.html / connect-feed.html / connect.html Recent Check-Ins (listen for `avatar:changed` bus event + render `<img>` from `members.avatar_url` in resolver)
+- ⏳ Anonymous-coupling rule enforcement (display_name='anonymous' coerces avatar to generic V-badge regardless of avatar_url presence)
+- ⏳ Curated V-badge library (12 variants) for default state members who don't upload a photo
+- ⏳ GDPR Article 17 erasure pipeline extension: delete the member's `member-avatars/{email}/` Storage folder when the erasure tick fires
+
+The PM-228 ship makes the avatar functional in Settings — every member can upload one and it persists. The remaining campaign work is what makes avatars **render across the community surfaces** and what handles the privacy/onboarding edges. Re-open this entry when scheduling the next slice.
+
+---
+
+## ORIGINAL ENTRY (preserved below)
+
 ## Added 21 May 2026 — Profile identity system (avatar + display-name privacy) [post-launch, coordinated campaign]
 
 **Surfaced in PM-188 design discussion** comparing the Connect mockup to the live build. Profile pictures and consistent identity privacy are the single biggest visual upgrade available to the Connect cluster — every feed card, leaderboard row, recent-checkin entry currently shows a teal initials badge ("YO", "SM", etc) which reads as email, not community. Dean's design call: full opt-in system, no required uploads, consistent privacy across every community-facing surface.
