@@ -1,3 +1,45 @@
+## 2026-05-23 15:30 — PM-223 Connect hero text overlay: CONNECT eyebrow + "Together we build better habits." headline [vyve-site `16ddd8b8`]
+
+### What shipped
+
+Dean mockup spec: re-add text over the hero photo. Small teal uppercase "CONNECT" eyebrow at the top, large white serif headline "Together we build better habits." below it. Both sit over the photograph at the top of the hero band, left-aligned, within the same 640px container max-width as page content so they line up vertically with widgets below.
+
+This is a deliberate re-add of what PM-217 stripped — not a regression, an evolution. PM-217 removed in-hero text because the previous title was redundant with the topbar's "CONNECT" page label and consumed too much vertical space. After PM-218/219 killed the topbar on hub pages, the "CONNECT" identifier was gone *entirely*. The mockup-driven re-add reintroduces it as part of the hero's photographic composition (over the image, not in a separate chrome band).
+
+### Changes
+
+- Hero height `max(240px, 38vh)` → `max(280px, 46vh)` for text breathing room
+- `main padding-top` matched to new hero height
+- New `.connect-hero-content` layer at z-index:2 above the gradient overlay (z-index:1). Flex-column from top. `padding-top: calc(env(safe-area-inset-top, 0px) + 20px)` so text never sits under the iOS status bar
+- `.connect-hero-eyebrow`: 0.72rem uppercase teal-light, letter-spacing 0.18em, soft text-shadow
+- `.connect-hero-headline`: Playfair Display 1.6rem white bold, max-width 75% so it wraps naturally, text-shadow 14px blur for legibility against sunrise highlights
+
+### Why text-shadow not gradient overlay strength
+
+Could have darkened the overlay gradient peak to 60-70% at the top to make text legible. Chose text-shadow instead because (a) overlay darkening would also dim the photo, defeating the point of having photography, and (b) text-shadow only affects the text glyphs themselves — photo stays vivid where there's no text.
+
+### Doctrine reusable for index/mind/exercise
+
+When their hero ships land, the recipe is:
+- Hero band height max(280px, 46vh) when carrying text overlay (vs 38vh for photo-only)
+- `.<hub>-hero-content` flex-column with safe-area-inset-top padding
+- Eyebrow uppercase teal-light + headline Playfair white bold
+- text-shadow on both glyphs rather than darker gradient
+
+### Files committed (vyve-site `16ddd8b8`)
+
+- `connect.html` — hero CSS additions (height bump, .connect-hero-content + eyebrow + headline rules) + two new divs in hero markup
+- `sw.js` — cache `pm212-podcast-mark-j` → `pm223-hero-text-a`
+- `index.html` — vbb-marker 101 → 102
+
+Built on top of `17f49276` (PM-212.6 podcast logo-mark from parallel session — unrelated to Connect, safe build).
+
+### Tooling
+
+§23.41/52/53 honoured. Composio still 401. PAT-direct. No new §23 rule earned.
+
+---
+
 ## 2026-05-23 13:05 — PM-215.y youtube-token-keepalive bridge cron SHIPPED (insurance until PM-215 cron lands)
 
 ### What shipped
