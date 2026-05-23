@@ -1284,6 +1284,19 @@ db.js SCHEMA_V8 + db.version(8) chained, sync.js 5 PULLABLE entries added. Compo
 
 ## Added 21 May 2026 — Profile identity system (avatar + display-name privacy) [post-launch, coordinated campaign]
 
+**PARTIAL SHIP — PM-242 (23 May 2026):** Read-side identity rendering on connect-feed.html + connect.html Recent Check-Ins is LIVE. `profile.js` helper exists (called `profile.js`, not `identity.js` per PM-196 rename). `connect-feed-preview` EF v2 enforces anonymous-coupling server-side. Three avatar states render correctly: initials text / uploaded photo / V-mark for anonymous (uses `/logo-mark.png`). `vyve_identity_<email>` cross-member localStorage directory operational.
+
+**Still pending after PM-242:**
+- **Leaderboard avatars** — blocked on additive `email` column return from `get_leaderboard()` Postgres RPC. Punted to next-session full-repo audit for careful RPC change.
+- **Settings UI for changing privacy mode** — members currently set `display_name_preference` via direct DB only; no member-facing toggle. Distribution at PM-242 ship: 16 anonymous, 3 full_name, 1 initials. Needs Settings page surface to let trial members pick.
+- **Curated avatar library** (`avatar_kind`, `avatar_id` columns + ~12 SVGs) — full campaign owns. PM-242 ships only the `avatar_url` photo + initials + V-mark anonymous path; library lands later.
+- **Connect first-load modal for first-time display-name + avatar pickers** (per PM-197 Thread 1) — design locked, not shipped.
+- **GDPR Article 17 bucket cleanup** in erasure pipeline.
+
+Original 21 May spec retained below for reference. PM-196 supplement (theme as 4th persisted preference) and PM-197 supplement (photo upload architecture + Connect first-load modal + EF cost analysis) still apply to the remaining work.
+
+---
+
 **Surfaced in PM-188 design discussion** comparing the Connect mockup to the live build. Profile pictures and consistent identity privacy are the single biggest visual upgrade available to the Connect cluster — every feed card, leaderboard row, recent-checkin entry currently shows a teal initials badge ("YO", "SM", etc) which reads as email, not community. Dean's design call: full opt-in system, no required uploads, consistent privacy across every community-facing surface.
 
 ### Spec (locked in this discussion)

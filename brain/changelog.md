@@ -1,3 +1,83 @@
+## 2026-05-23 PM-242 (Avatars) — connect-feed.html + connect.html Recent Check-Ins [vyve-site `59afbb85`, EF connect-feed-preview v2]
+
+*Note: this PM number collides with the parallel session's PM-242 (Connect fade actually scrolls with content, `f8f08a91`) — see entry further down. Both shipped under the same number within the same session; disambiguated in the brain by "(Avatars)" vs "(Connect fade)" parenthetical. §23.14 parallel-session number collision artifact.*
+
+**The honest version: avatars shipped correctly. The same commit silently reverted PM-244's §23.57 fade recipe on connect.html. PM-246 recovered the fade. §23.58 codifies the gotcha.**
+
+### What this commit was meant to ship
+
+The first slice of the Profile Identity Campaign — cross-member avatar + privacy-aware identity rendering on the connect-feed.html and connect.html Recent Check-Ins surfaces. Sister ship to PM-228's settings-side avatar pipeline (own member, write-side) — this is the read-side analogue (cross-member, paint).
+
+### Architecture
+
+**Server-side identity contract (single source of truth):**
+
+`connect-feed-preview` EF v2 deployed. v1 (PM-200, latest 3 check-ins for connect-checkin.html posted-state hero) generalised with `limit` (1..100, default 3), `scope` (`all`|`workplace`, default `all`), `today_only` (1|0, default 1) query params. v1 callers default-compatible.
+
+Identity resolver in the EF reads `members.display_name_preference` + `members.avatar_url` per row and returns a canonical `{display_name, initials, avatar_url, is_anonymous}` tuple. Anonymous-coupling rule enforced server-side:
+
+```
+if pref === 'anonymous':
+  display_name = 'Member'
+  initials = '··'  (client sentinel for V-badge)
+  avatar_url = null  (photo URL never leaves the EF)
+  is_anonymous = true
+```
+
+Privacy can't leak through render because the photo URL never reaches the client when a member is anonymous. Single enforcement point.
+
+**Client-side identity directory (cross-member, fast paint):**
+
+New `profile.js` (216 LOC) — three responsibilities:
+
+1. Cross-member identity directory backed by `vyve_identity_<email>` localStorage keys. Synchronous reads via `getCachedIdentity(email)` for cold-boot paints. Sibling to settings.html's PM-238 own-member `vyve_avatar_url_<email>` key (separate contract, separate key, no conflict).
+2. `cacheIdentitiesFromResponse(checkins)` writes every EF response row's identity into the directory. Every feed paint primes the directory for the next paint.
+3. `buildAvatarInnerHtml(identity)` + `buildAvatarClassModifiers(identity)` + `buildAvatarHtml(identity, outerClass)` — single render path covering the three states (initials text / photo `<img>` / V-logo `<img>` for anonymous). Anonymous renders `/logo-mark.png`.
+
+**connect-feed.html rewiring:**
+
+`fetchFeedRows` rewritten: instead of direct PostgREST against `connect_checkins`, calls `connect-feed-preview?limit=100&scope=all|workplace&today_only=1`. One round-trip returns rows + reactions + identity. Dropped the parallel `fetchReactionsForToday()` initial-paint call (helper retained for the reaction-toggle reconciliation flow). Card render swapped to `VYVEProfile.buildAvatarHtml`. `.cin-avatar` CSS 36px → 40px; `.cin-avatar img` rule for photo states; `.cin-avatar.is-anon, .cin-avatar.has-photo` transparent background.
+
+**connect.html Recent Check-Ins rewiring:**
+
+Dexie own-row paint kept as fast-first render (paints instantly). Layered EF call (limit=3, scope=all, today_only=0) on top — upgrades the section from own-rows-only to global community top-3 with server-resolved identity. EF reaction counts overwrite the own-row reactionsByCheckin since cross-member reactions are now visible. Card render rewired to `VYVEProfile.buildAvatarHtml`. Same `.cin-avatar` CSS upgrade as feed.
+
+### Live data sanity at ship
+
+20 members had `display_name_preference` set when PM-242 deployed: 16 anonymous, 3 full_name, 1 initials. Storage bucket held one uploaded photo at `test1@test.com/avatar.jpg` (98,056 bytes — 95.8KB at 512×512 JPEG q=0.85, the canonical pipeline output). Resolver tested via SQL simulation across every row before EF deploy — all anonymous rows coerced to `{Member, ··, null, is_anonymous=true}` as designed.
+
+### §23.58 violation
+
+This commit was the canonical example used to codify §23.58 (PM-246, see entry above). Workbench `/home/claude/audit/connect.html` was fetched at session start when vyve-site HEAD was `74bfc0af` (PM-241). HEAD moved to `20c673dc` (PM-245) during the session. The §23.41 parent-SHA check passed because parent was correctly captured at `20c673dc` before commit. But the connect.html file body in workbench never got re-fetched. PM-243 (`10ed1df3`) and PM-244 (`a2e12cb0`) had landed connect.html edits between the two HEADs — including PM-244's verbatim §23.57 fade recipe.
+
+Result: 58 lines of PM-243/244 fade work were silently overwritten by the stale workbench version of connect.html. Avatars themselves shipped correctly (the +80 lines were clean). The commit message read "Avatars on community surfaces" so the diff never got reviewed for collateral damage. Detected when the next session opened connect.html as the §23.57 reference impl and the file didn't match the doc. Recovery in PM-246 (`ec3f2c30`) — full restoration of fade + application to mind.html.
+
+**Defence in depth lesson.** §23.41 as written before PM-246 emphasised SHA-vs-ref-on-main at commit time. That check did pass here. The failure was on a separate axis: the file CONTENT in workbench was stale relative to that ref. §23.58 codifies that whole-file commits require re-fetching the file body at the same time as the HEAD check, not just confirming the ref hasn't moved. This rule didn't exist before tonight; it does now.
+
+The avatar code itself was clean and well-tested (resolver simulated against every member, EF round-trip verified). The error was tooling discipline — at exactly the point in the session where mockup-approval gives momentum, the workbench freshness check fell off. Worth remembering for future sessions: long-running edits to a file demand a re-fetch right before commit, not at start-of-edit.
+
+### Plumbing
+
+- EF `connect-feed-preview` v2 deployed, `verify_jwt:true` preserved
+- sw.js cache key: `pm245-replay-videos-a` → `pm242-feed-avatars-a` (subsequently → `pm246-hero-fade-a` → `pm247-hub-hero-35vh-a` by parallel ships)
+- sw.js precache list: added `/profile.js`
+- index.html vbb-marker: 126 → 127 (subsequently → 128 → 129)
+- 5-file atomic commit via Git Data API (PAT-direct, Composio still 401-ing from 21 May incident, now 36+ hours)
+
+### What didn't ship in PM-242
+
+- **Leaderboard avatars.** Leaderboard uses the `get_leaderboard()` Postgres RPC which returns ranked rows server-side with display name resolution already baked in, but doesn't return `email` per row so the EF can't merge `avatar_url`. Deferred — the RPC needs an additive `email` column return before the EF can hydrate identity. Punted to the next-session full-repo audit for careful RPC change with explicit verification.
+- **Settings UI for changing avatar/display name privacy mode.** Currently members set `display_name_preference` via direct DB update only — there's no member-facing way to switch from `anonymous` → `first` etc. Full Profile Identity Campaign owns this; this slice is read-side only.
+- **Curated avatar library (`avatar_kind`, `avatar_id` columns + ~12 SVGs).** Deferred to full campaign. PM-242 ships the `avatar_url` photo + initials + V-mark anonymous path; curated library lands later.
+
+### Reference
+
+Commit: `59afbb85a49d71269cdcdee60a48a3076577331a` (vyve-site)
+EF: `connect-feed-preview` v2, ID `1782d22d-2b9f-428e-b5fa-d44738e78580`
+Backlog item: "Added 21 May 2026 — Profile identity system" (now partially shipped — feed + Recent Check-Ins surfaces done; leaderboard + Settings UI + curated library still pending).
+
+---
+
 ## 2026-05-23 PM-247 — Hub-hero canonical size standardised to max(250px, 35vh) on mind.html + connect.html [vyve-site `37bd75f2`]
 
 Dean's spec: *"the picture needs to only take up about 35%, similar to the connect one. That will be the target going forward for all hero images."*
