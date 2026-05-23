@@ -2642,7 +2642,7 @@ This pattern explains every "Update X shipped but the device still shows the pre
 
 ---
 
-## §23.55 — Hub-page hero doctrine (PM-216 → PM-226 Connect, PM-227 Mind extension, 23 May 2026)
+## §23.55 — Hub-page hero doctrine (PM-216 → PM-228, 23 May 2026)
 
 **The rule.** Photographic heroes on hub pages (Connect now, Mind / Body / Index next) follow a single settled doctrine. Full implementation spec is in `playbooks/hub-page-hero-doctrine.md` — load it before touching any hub-page hero. The contract here is the **invariants** that every hero ship must honour.
 
@@ -2677,12 +2677,12 @@ This pattern explains every "Update X shipped but the device still shows the pre
 
 ### Editable rotating tagline (PM-225)
 
-- Tagline pool stored in `public.taglines` Supabase table: `id uuid PK, text text, position int, active boolean, created_at, updated_at`. RLS `SELECT` for `anon + authenticated` where `active = true`. Edit via Supabase Studio.
+- Tagline pool stored in `public.taglines` Supabase table: `id uuid PK, hub text (default 'connect', check IN connect/mind/body/index), text text, position int, active boolean, created_at, updated_at`. Partial unique on `(hub, position) WHERE active=true`. RLS `SELECT` for `anon + authenticated` where `active = true`. Edit via Supabase Studio.
 - Rotation index: `Math.floor(Date.UTC(localYear, localMonth, localDate) / 86400000) % count`. Local-midnight-anchored day index. Same value for every member in the same timezone on the same date. Rolls over at local midnight on next page load (not mid-session).
-- localStorage cache key `vyve.taglines.v1` for instant paint on next-load. First-ever visit shows the literal markup default per honest-paint contract (§23.46).
+- localStorage cache key `vyve.taglines.<hub>.v1` (per-hub namespace — `vyve.taglines.connect.v1`, `vyve.taglines.mind.v1`, etc) for instant paint on next-load. First-ever visit shows the literal markup default per honest-paint contract (§23.46).
 - Background fetch updates cache + repaints headline if rotation index changed.
 - Markup contains a static default tagline. JS swaps it once the fetch settles. Fetch failure leaves the default in place.
-- **Default for Mind / Body / Index: share the existing taglines pool.** Five Connect taglines work as VYVE-wide brand copy. If a hub needs its own pool later, add a `hub` column and filter the fetch.
+- **Per-hub tagline pools (PM-228 evolution).** Each hub has its own pool, filtered by `hub` column in `public.taglines`. Schema: `hub text NOT NULL DEFAULT 'connect'`, check constraint `IN ('connect','mind','body','index')`, partial unique `(hub, position) WHERE active=true`. Fetch URL appends `&hub=eq.<hub>`. localStorage cache key is per-hub: `vyve.taglines.<hub>.v1`. The original "share the pool" model was rejected (PM-228 Dean spec) because each hub should feel themed to its pillar: Connect about connection, Mind about mind, Body about body. Lewis edits per-hub copy via Supabase Studio.
 
 ### Page identity
 

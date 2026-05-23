@@ -1,3 +1,44 @@
+## 2026-05-23 — PM-228 Per-hub tagline pools — schema + Mind/Connect fetch split [vyve-site `dea9279b`]
+
+Mind shipped (PM-227) sharing Connect's tagline pool per the original §23.55 doctrine. Dean rejected the shared-pool model: each hub should feel distinct, with copy themed to its pillar — Connect about connection, Mind about mind, Body about body. PM-228 splits the pool by hub and updates both shipped pages to filter accordingly.
+
+### Schema change (`public.taglines`)
+
+- New column: `hub text NOT NULL DEFAULT 'connect'`. Existing 5 rows stamp as `connect` automatically.
+- New check constraint `taglines_hub_chk`: `hub IN ('connect','mind','body','index')`.
+- Dropped global partial unique index `taglines_position_unique` (on `position` WHERE `active=true`); replaced with per-hub `taglines_hub_position_unique` (on `(hub, position)` WHERE `active=true`). Each hub has its own 0-indexed position space.
+- New fetch-path index `taglines_hub_active_position_idx` on `(hub, active, position)`.
+- 5 mind taglines seeded: "A moment of stillness.", "Quiet the noise.", "Come back to yourself.", "Rest is a practice.", "Pause. Breathe. Begin again."
+- 5 body taglines placeholder-seeded for the body.html hero ship: "Move with purpose.", "Strength is built, not given.", "One rep at a time.", "Honour the effort.", "Show up for your body." Lewis to refine via Supabase Studio when body.html ships.
+- Existing 5 connect-hub lines retained verbatim (`Together we build better habits.` etc) — Lewis flagged these are generic-VYVE, not connection-specific; copy refresh is a separate Lewis-Studio task, not blocking infrastructure.
+
+### Migration drama (lesson)
+
+First migration call failed mid-transaction (Supabase `apply_migration` is wrapped atomically) — the INSERT seeded `(text, position=0)` and tripped the pre-existing global `position` partial-unique index. Whole migration rolled back, leaving the table untouched. Second migration call dropped the offending index first, then re-applied schema + seeds in order. Worth noting as a sub-pattern: **when migrating a table with positional ordering toward a partitioned scheme, drop the old partition-less unique constraints before the seeds, not after.**
+
+### Client changes
+
+- `mind.html`: `TAGLINES_CACHE_KEY` `vyve.taglines.v1` → `vyve.taglines.mind.v1`; fetch URL gains `&hub=eq.mind`.
+- `connect.html`: `TAGLINES_CACHE_KEY` `vyve.taglines.v1` → `vyve.taglines.connect.v1`; fetch URL gains `&hub=eq.connect`.
+- `sw.js`: cache key `pm227-mind-hero-a` → `pm228-taglines-per-hub-a`.
+- `index.html`: vbb-marker `Update 109` → `Update 110`.
+
+Per-hub localStorage cache keys prevent the two hubs overwriting each other's cached pool (the v1 key was a single namespace). First-visit-after-deploy on each hub will see the literal markup default until the fetch settles, per §23.46 honest-paint — same as the first-ever-visit case.
+
+### Doctrine update (§23.55)
+
+The "Mind / Body / Index share the existing taglines pool" line removed. Replaced with the per-hub model and an explicit infrastructure note that each hub gets its own pool filtered by `hub` column with per-hub localStorage cache key. Body.html hero ship (next) will use `hub=eq.body` and `vyve.taglines.body.v1` with no code-side rule changes — taglines already seeded.
+
+### Verification
+
+§23.41 pre-tree HEAD refresh caught parallel-session drift: vyve-site moved `578bb1af` (PM-227) → `8f98bc49` (settings restructure mockup landed between sessions at 14:37 UTC, +7 mins after PM-227). Mockup files are new and don't touch any PM-228 path. Built on `8f98bc49`. New commit `dea9279b`. Schema verified via Supabase MCP `SELECT hub, count(*)` returning 5+5+5 rows across connect/mind/body. Post-commit first-200-char re-fetch of all 4 site files confirms intent landed exactly. No regressions detected.
+
+### Hub-page hero campaign status
+
+Connect ✅, Mind ✅, infrastructure for Body + Index ready (taglines pre-seeded). No new §23 hard rule earned — the failed-migration lesson is too narrow to promote.
+
+---
+
 ## 2026-05-23 — PM-227 Mind hub-page hero shipped — three-state time-of-day swap [vyve-site `578bb1af`]
 
 First replication of the Connect hub-page hero doctrine (§23.55, PM-216 → PM-226) onto a second hub. Doctrine clone with one deliberate evolution: where Connect ships a two-state `.is-night` day/night swap, Mind ships a three-state `.is-morning` / `.is-night` swap with default (no class) = afternoon.
