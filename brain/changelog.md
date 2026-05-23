@@ -1,3 +1,36 @@
+## 2026-05-23 — PM-227 Mind hub-page hero shipped — three-state time-of-day swap [vyve-site `578bb1af`]
+
+First replication of the Connect hub-page hero doctrine (§23.55, PM-216 → PM-226) onto a second hub. Doctrine clone with one deliberate evolution: where Connect ships a two-state `.is-night` day/night swap, Mind ships a three-state `.is-morning` / `.is-night` swap with default (no class) = afternoon.
+
+### What shipped
+
+- `mind.html` (+6666 bytes): `.mind-hero` CSS block (longhand fixed pin, GPU layer hint, three `background-image` declarations, `body.mind-page::before` glow suppression, `.wrap.fade` animation kill, `.mph-page-label` topbar suppression, hero-band `main padding-top` override). `<body class="mind-page hub-page">`. Body-level `<section class="mind-hero">` with `.mind-hero-overlay` (dark-clear-dark gradient verbatim from §23.55), `.mind-hero-eyebrow` ("Mind", 1.6rem 700 uppercase 0.12em tracking teal-light), `.mind-hero-headline` ("A moment of stillness." Playfair 1.1rem muted white — markup default per §23.46, swapped by PM-225-pattern tagline JS on next-load). Inline `<script>` time-of-day class setter (hour <6 || >=19 → night, hour <12 → morning, else no class = afternoon default). PM-225-clone tagline rotation block (`pickTodayTagline` / `renderTaglineFromCache` / `fetchAndStoreTaglines` / `initTagline`) injected into existing mind.html IIFE — shares `vyve.taglines.v1` localStorage key and `public.taglines` Supabase table with Connect per §23.55 doctrine.
+- Three new repo-root JPEGs: `mind-hero-morning.jpg` (86KB), `mind-hero-afternoon.jpg` (165KB), `mind-hero-night.jpg` (83KB). All 1024² progressive JPEG quality 82, resized via PIL LANCZOS from Dean-supplied 1254² sources. Same subject + composition across all three (figure on dock, mountain lake) so identity stays consistent and only light shifts.
+- `sw.js` cache key `pm226-eyebrow-teal-a` → `pm227-mind-hero-a`; three new entries in `urlsToCache` for the JPEGs.
+- `index.html` vbb-marker `Update 108` → `Update 109`.
+
+### Background-position chosen
+
+`center center` (not `center bottom` like Connect). Subject sits lower-right in all three Mind images; `center bottom` would crop the mountain peaks off on tall viewports. `center center` keeps mountains visible while still anchoring the figure in frame.
+
+### Three-state swap rationale
+
+Dean supplied three time-of-day photos (morning misty dawn, clear afternoon daylight, moonlit night) rather than the two-state day/night the §23.55 doctrine assumed. Same subject across all three, which is the right call — identity preserved, only light shifts. Default-without-class = afternoon means the brightest, safest image is the honest-paint default (§23.46) when JS fails. Boundaries: morning `< 12`, afternoon `12–19`, night `>= 19 || < 6`. Night boundary matches the original Connect `.is-night` boundary exactly so the doctrine remains forward-compatible.
+
+### Doctrine update
+
+§23.55 amended in same brain commit: "Day/night swap via `.is-night` class" → "Time-of-day swap via `.is-morning` / `.is-night` classes (default = afternoon if neither applies)". Image production spec amended to "1–3 photos per hub (Connect ships 2: day/night; Mind ships 3: morning/afternoon/night). Default-without-class is the brightest fallback for honest-paint robustness." Future hub heroes (body.html, index.html) inherit the option — ship 2 or 3 photos as image supply dictates.
+
+### Verification
+
+§23.41 pre-tree HEAD refresh on `c971d6cd` (PM-226), no parallel-session drift. Tree, commit, ref-update via Git Data API (Composio still 401 from 21 May incident, ~37 hours). Six blobs created (3 text utf-8 + 3 binary base64). All blob SHAs shape-asserted (40-char hex). Post-commit verification via `?ref=<commit_sha>` (not branch ref — CDN-safe per established pattern): first-200-char re-fetch of each text file confirms intent landed, JPEG `size` fields confirmed at expected byte counts (86076 / 164783 / 83470). Critical-string spot-checks all pass: `class="mind-page hub-page"`, `mind-hero-eyebrow`, `is-morning`, `initTagline`, `pm227-mind-hero-a`, three `mind-hero-*.jpg` precache entries, `Update 109`.
+
+### Hub-page hero campaign status
+
+Connect (PM-216 → PM-226) ✅ shipped. Mind (PM-227) ✅ shipped. Next: body.html, then index.html. Doctrine playbook (`playbooks/hub-page-hero-doctrine.md`) holds; no new playbook lesson earned this ship — three-state swap is a doctrine extension not a doctrine correction. No new §23 hard rule earned.
+
+---
+
 ## 2026-05-23 17:25 — PM-226 CONNECT eyebrow colour back to teal-light [vyve-site `c971d6cd`]
 
 Dean spec: "Connect is better but the colour is white instead of the teal." PM-224 switched the promoted eyebrow to white to read as the dominant anchor — Dean prefers the brand teal at the same size/weight/tracking.

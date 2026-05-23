@@ -2642,7 +2642,7 @@ This pattern explains every "Update X shipped but the device still shows the pre
 
 ---
 
-## §23.55 — Hub-page hero doctrine (PM-216 → PM-226, 23 May 2026)
+## §23.55 — Hub-page hero doctrine (PM-216 → PM-226 Connect, PM-227 Mind extension, 23 May 2026)
 
 **The rule.** Photographic heroes on hub pages (Connect now, Mind / Body / Index next) follow a single settled doctrine. Full implementation spec is in `playbooks/hub-page-hero-doctrine.md` — load it before touching any hub-page hero. The contract here is the **invariants** that every hero ship must honour.
 
@@ -2652,7 +2652,7 @@ This pattern explains every "Update X shipped but the device still shows the pre
 - Hero is **body-level**, not inside `<main>`. Parent stacking contexts interfere with fixed pinning on WKWebView (PM-220.1).
 - `translateZ(0)` + `will-change: transform` on the hero. GPU compositor layer hint, canonical WKWebView fix for flaky `position: fixed`.
 - Hero photo via CSS `background-image`, **never `<img>` children**. `<img>` inside a `translateZ(0)` GPU-layered fixed parent silently fails to paint on WKWebView (PM-220.5).
-- Day/night swap via `.is-night` class on the hero, set by inline script before paint based on `getHours() < 6 || >= 19`.
+- Time-of-day swap via `.is-morning` / `.is-night` classes set by inline script before paint. Hour `< 6 || >= 19` = night, hour `< 12` = morning, otherwise default (no class) = afternoon. **Default-without-class is the brightest fallback per §23.46 honest-paint contract.** Hubs may ship 2 photos (Connect: day + night, no morning) or 3 photos (Mind PM-227: morning + afternoon + night) — image-supply driven. Backward-compatible: a two-photo hub omits the `.is-morning` branch and treats the no-class default as the day image.
 - `main padding-top` matches hero height; `.wrap` has `background: var(--bg)`. Padding lives on the transparent element, never on the backgrounded element (PM-220.2). Spacer must be see-through.
 - Gradient overlay is dark-top + clear-middle + dark-bottom: `linear-gradient(180deg, rgba(13,43,43,0.55) 0%, .25 22%, .05 45%, .05 60%, .25 80%, .50 100%)`. Top scrim for text legibility, middle clear so photo is the visual focus, bottom scrim for band-to-content transition (PM-223.2).
 - `body::before` glow must be suppressed on hub pages: `body.<hub>-page::before{display:none}`. Same-z-index conflict with the hero on WKWebView (PM-220.3).
