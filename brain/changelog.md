@@ -1,3 +1,15 @@
+## 2026-05-23 14:00 — PM-221.1 Hero inset:0 → longhand on hero (PM-221 wasn't full-viewport on device) [vyve-site `6c8d2bec`]
+
+Dean reported Update 98 active but the photo wasn't filling the viewport — "image hasn't changed in size" — and widgets weren't showing the photo through them either. Both symptoms explained by a single cause: PM-221 used `inset: 0` shorthand on `.connect-hero` which was being silently ignored on the device's WKWebView. Hero rendered at default content-height (~38vh from the PM-220.x height rule), leaving widgets sitting below it on body bg with no photographic backdrop for backdrop-filter to blur.
+
+Fix: replace `inset: 0` with the four longhand properties `top: 0; right: 0; bottom: 0; left: 0`. Universal WKWebView support, no spec-version risk.
+
+Codify as a working principle (not §23 yet, single occurrence): on the VYVE iOS PWA / Capacitor target, **prefer longhand positional properties over shorthand**. The cost is 3 extra lines per fixed-positioning element. The benefit is zero risk of silent failure on older WKWebView builds. Apply this principle when index/mind/exercise hero ships drop.
+
+Files: `connect.html` (hero longhand), `sw.js` (`pm221-frosted-glass-a` → `pm221-inset-longhand-b`), `index.html` (vbb-marker 98 → 99).
+
+---
+
 ## 2026-05-23 13:35 — PM-221 Full-viewport Connect hero + frosted-glass widgets [vyve-site `e4e19a2a`]
 
 ### What shipped
