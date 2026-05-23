@@ -1,3 +1,84 @@
+## 2026-05-23 04:50 — PM-220.4/5 Connect parallax-hero RESOLVED via <img> → background-image switch [vyve-site `ec054bd4`]
+
+### Resolution
+
+PM-220 / 220.1 / 220.2 / 220.3 all addressed CSS-stacking and ancestor-transform suspects without success — photo still faded out on every Connect load. PM-220.4 shipped a diagnostic build: stripped the `<img>` tags entirely, replaced the hero with a bright red rectangle. Dean device-tested and confirmed: **the red rectangle pinned correctly.** `position: fixed` on the hero element was working all along.
+
+The root cause: `<img position:absolute; inset:0>` children inside a `translateZ(0)` GPU-layered `position:fixed` parent **silently fail to paint** on WKWebView. The `<img>` element exists in the DOM, takes up size, but renders nothing. Known iOS Safari quirk around img-element painting inside compositor-promoted layers.
+
+PM-220.5 ships the fix: switch from `<img>` children to **CSS `background-image`** on `.connect-hero` itself. Same photo data, but routes through CSS rendering rather than img-element rendering — different code path, plays nice with GPU compositing.
+
+### Final hero shape
+
+```css
+.connect-hero{
+  position:fixed; top:0; left:0; right:0;
+  height:max(240px, 38vh);
+  z-index:1;
+  overflow:hidden;
+  -webkit-transform:translateZ(0);
+  transform:translateZ(0);
+  will-change:transform;
+  background-color:#0D2B2B;
+  background-image:url('/connect-hero-day.jpg');
+  background-size:cover;
+  background-position:center;
+  background-repeat:no-repeat;
+}
+.connect-hero.is-night{ background-image:url('/connect-hero-night.jpg'); }
+```
+
+```html
+<section class="connect-hero" id="connect-hero">
+  <div class="connect-hero-overlay"></div>
+</section>
+<script>
+  /* Day/night swap before paint — hour 6-18 day, else night */
+  (function(){
+    try {
+      var h = new Date().getHours();
+      if (h < 6 || h >= 19) {
+        var el = document.getElementById('connect-hero');
+        if (el) el.classList.add('is-night');
+      }
+    } catch(_){}
+  })();
+</script>
+```
+
+Day/night swap preserved via `.is-night` class on the hero swapping the `background-image` URL. Cross-fade between states dropped (CSS doesn't reliably cross-fade `background-image` changes across browsers, and instant swap on load is fine — state only changes at load time, no mid-session transition).
+
+### New §23 candidate rule — img elements + GPU-layered fixed parents
+
+When a hero/banner element is `position:fixed` AND has `translateZ(0)` / `will-change:transform` / any GPU layer promotion, **don't use `<img>` children for the photo**. Use CSS `background-image` instead. The `<img>` element rendering path inside a compositor-promoted layer is unreliable on WKWebView — silent paint failures, not a console error or any debugging signal.
+
+This is a strong enough pattern to codify. Holding for one more occurrence before promoting to §23 hard rule, but applying preemptively for index/mind/exercise hero ships: their heroes should use `background-image` directly.
+
+### PM-220 series summary
+
+The five-step path was:
+
+1. **PM-220 (CSS theory):** position:fixed on .connect-hero, .wrap with bg + padding. Did not work — photo scrolled with page.
+2. **PM-220.1 (DOM relocation + GPU hint):** Moved hero out of `<main>` to body-level, added `translateZ(0)`. Photo disappeared entirely.
+3. **PM-220.2 (spacer transparency):** Moved `padding-top` from .wrap to <main> so spacer is transparent. Photo back but still misbehaving.
+4. **PM-220.3 (suspect elimination):** Killed `body::before` glow, killed `.fade` animation on .wrap, bumped z-indices. Photo still faded out.
+5. **PM-220.4 (diagnostic):** Stripped imgs, vivid red box. Confirmed fixed pinning works → bisected to img-element issue.
+6. **PM-220.5 (resolution):** background-image instead of `<img>` children. Should work.
+
+Lesson: should have run the diagnostic step (220.4) earlier. Three CSS-suspect rounds in a row when a 5-minute bisect would have isolated the actual variable. Future debugging: when CSS changes don't move the symptom, strip the suspected element and replace with the simplest possible placeholder before trying more CSS changes.
+
+### Files committed (vyve-site `ec054bd4`)
+
+- `connect.html` — orphan `.connect-hero-img` CSS removed, hero markup is now just `<section>` + overlay div, hero CSS uses background-image
+- `sw.js` — cache `pm220-diagnostic-e` → `pm220-parallax-bgimage-f`
+- `index.html` — vbb-marker 93 → 94
+
+### Tooling
+
+Composio still 401. PAT-direct throughout. §23.41/52/53 honoured across all PM-220 sub-commits.
+
+---
+
 ## 2026-05-23 04:35 — PM-220.3 Parallax hero fade-out fix [vyve-site `3a20f9d8`]
 
 PM-220.2 still failing — photo flashed in then faded out on every Connect load. Three plausible interactions, all addressed at once:
