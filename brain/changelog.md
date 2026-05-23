@@ -1,3 +1,34 @@
+## 2026-05-23 03:25 — PM-219 JS-side guard for hub-page topbar suppression (belt-and-braces over PM-218) [vyve-site `1ca8d566`]
+
+### What shipped
+
+PM-218 added `body.hub-page .mobile-page-header { display:none!important }` to `nav.js` CSS plus the class on all four hub-page bodies. Dean device-tested on Update 87 and confirmed: **the topbar was still rendering on connect.html.** The PM-218 CSS rule alone didn't actually suppress on device.
+
+Root cause not definitively isolated. Likely candidates:
+1. **Service worker cache mismatch.** sw.js v218 was bumped, but the browser may have cached the previous nav.js version. With the new connect.html (carrying `class="hub-page"`) loading against the old nav.js (no suppression rule), the topbar renders.
+2. **Paint-order race.** nav.js injects its `<style>` via `style.textContent = css; head.appendChild(style)` at runtime. If this fires after the topbar paints (unlikely, but possible under some script-load conditions), the suppression rule applies a frame too late and only after the topbar has flashed in.
+3. **Some other override I haven't found.** Specificity audit on the rule passed clean (0,1,2,1 + `!important` beats `@media .mobile-page-header { display:flex }` at 0,0,1,0).
+
+Belt-and-braces fix: skip the `document.body.prepend(mobileHeader)` call entirely when `document.body.classList.contains('hub-page')`. **No element in the DOM → no rendering possible → no CSS specificity battle to lose.** This is the JS-side equivalent of the PM-218 doctrine. The CSS rule stays in nav.js as a backup signal — both are now in place, either one alone is sufficient.
+
+### Files committed (vyve-site `1ca8d566`)
+
+- `nav.js` (+11/-1) — if-guard around `mobileHeader` DOM insertion
+- `sw.js` — cache `pm218-hub-no-topbar-a` → `pm219-hub-topbar-js-guard-a`
+- `index.html` — vbb-marker 87 → 88
+
+### Codified lesson — DOM-side guard beats CSS suppression for nav.js-injected elements
+
+When nav.js injects an element at runtime, prefer **skipping the insertion entirely** based on a body class signal over relying on a CSS suppression rule to hide it after insertion. Two reasons: (a) the injected element exists in the DOM for some non-zero duration before CSS can paint over it (visible flash on slow devices); (b) any service-worker cache scenario where the CSS and the page disagree leaves the element visible. The JS-guard pattern is more robust for nav.js's prepend/appendChild calls and should be the default for future hub-page-style suppressions.
+
+This is borderline §23 hard-rule territory but not novel enough to codify yet — it's a specific instance of the broader principle "prefer don't-create over create-then-hide for runtime-injected DOM elements". Worth tagging here for future application, will promote to §23 if it bites again.
+
+### Tooling
+
+§23.41 / §23.52(a-c) / §23.53 all honoured. Composio still 401-ing from 21 May (now ~40h); PAT-direct throughout.
+
+---
+
 ## 2026-05-23 02:50 — PM-218 Hide sticky topbar on all 4 hub pages [vyve-site `acea5327`]
 
 ### What shipped
