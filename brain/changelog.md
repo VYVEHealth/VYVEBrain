@@ -1,3 +1,51 @@
+## 2026-05-23 02:50 — PM-218 Hide sticky topbar on all 4 hub pages [vyve-site `acea5327`]
+
+### What shipped
+
+Dean device-test follow-up to PM-217. The `.mobile-page-header` (V logo on left, page-label on right) was still showing on Connect over the photographic hero, and Dean called it from his own iPhone view. Decision: kill the topbar entirely on all four hub destinations (index, exercise/Body, mind, connect), not just Connect — these are the top-level pages where a hero photograph (current or coming) establishes the page identity and the topbar's repeated wordmark is dead chrome.
+
+New doctrine: `body.hub-page` class as the universal signal. Single CSS rule in `nav.js`:
+
+```css
+body.hub-page .mobile-page-header{display:none!important}
+```
+
+Class added to `<body>` on `index.html`, `exercise.html`, `mind.html`, `connect.html` (the last keeps its existing `connect-page` class too — `class="connect-page hub-page"`). Rule lives in nav.js next to the existing `.mobile-page-header` definition so the doctrine sits beside the topbar code itself, not scattered across per-page CSS.
+
+### Known scruffiness on three of the four pages
+
+`index.html`, `mind.html`, `exercise.html` do **not** have photographic heroes yet. With the topbar gone but no hero pulling up to fill the space, their existing content (page-hdr blocks, hero cards, section headers) now sits closer to the iOS status bar than is ideal. Specifically:
+
+- `index.html` opens with the dashboard greeting + activity score ring
+- `exercise.html` opens with its skeleton then the Body content
+- `mind.html` opens with the mind hub paint
+
+All three render correctly — content is not hidden, the iOS status bar is still rendered (OS-level chrome), but there's no breathing room above the first card that the topbar previously provided. Accepted ugly because:
+
+1. Internal dev-loop only — Dean is the only one on `server.url` dev mode pointing at `online.vyvehealth.co.uk`; bundled iOS 1.3 / Android 1.0.3 IPAs (members) won't pick up these changes until next OTA via Capawesome.
+2. Each page is queued for a full overhaul with its own photographic hero (index first per Dean's spoken plan this session) — adding compensating body-padding now would create dead CSS that needs ripping back out during the hero ship.
+
+### Reusable doctrine — the `hub-page` class
+
+This is the durable signal for "top-level destination, photographic hero is/will-be the identity, suppress sticky topbar". Pair it with the existing PM-216 hero recipe (100vw breakout + negative-margin pull-under-topbar + matching padding for safe-area) when each page gets its hero, and the layout works correctly with or without the topbar present.
+
+The `.connect-hero` CSS still uses `margin-top: calc(-56px - env(safe-area-inset-top, 0px))` even though the topbar it was originally pulling under is no longer rendering — that calc still produces the right photo-bleeds-under-iOS-status-bar result because the negative offset matches the natural top-of-body anchor when the topbar is absent. Same math, two valid topographies.
+
+### Files committed (vyve-site `acea5327`, 6-file atomic via Git Data API)
+
+- `nav.js` +9/-0 — hub-page topbar suppression rule
+- `index.html` +2/-2 — body class + vbb-marker 86 → 87
+- `mind.html` +1/-1 — body class
+- `exercise.html` +1/-1 — body class
+- `connect.html` +1/-1 — body class extension (`connect-page` → `connect-page hub-page`)
+- `sw.js` +1/-1 — cache `pm217-hero-trim-a` → `pm218-hub-no-topbar-a`
+
+### Tooling
+
+§23.41 pre-tree HEAD re-fetch confirmed parent at `d2d0459f`. §23.52(a) all 6 blob bodies via `/tmp/vyve-commit/blob218_*.json` files + curl `--data-binary @file`. §23.52(c) all blob SHAs asserted 40-hex. §23.52(b) post-commit confirmed `{added:0, modified:6, removed:0}`. §23.53 commit-response JSON parsed via `json.loads(strict=False)`. No new §23 rule earned. Composio still 401-ing from 21 May incident.
+
+---
+
 ## 2026-05-23 02:35 — PM-217 Connect hero trim: remove in-hero title, drop checked-in pill, hide topbar page-label [vyve-site `d2d0459f`]
 
 ### What shipped
