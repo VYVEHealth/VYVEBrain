@@ -411,7 +411,7 @@ Cron dedupe — 08 May 2026: jobid 19 `process-scheduled-pushes-every-5min` was 
 
 All portal pages live at `online.vyvehealth.co.uk` and are bundled inside the iOS + Android Capacitor binaries via `npx cap copy` from `~/Projects/vyve-capacitor`. The web URL itself is the browser-accessible account-management fallback — the *member experience* (the app) is delivered exclusively through the App Store and Play Store binaries. Every page is gated behind Supabase Auth (`auth.js` v2.3).
 
-**Hub-page hero pattern (PM-244, 23 May 2026).** The hub pages (Home, Body, Mind, Connect) use a `position:fixed` photographic hero band at the top with scrolling content below. The soft seam between photo and content follows the **§23.57 canonical scrolling-fade recipe** — dedicated `.X-hero-fade` absolute-positioned div as first child of `.wrap`, lifted up 80px via `transform:translateY(-100%)`, 3-stop rgba gradient with `[data-theme="light"]` override. `connect.html` is the reference implementation; `mind.html` already has the photographic hero (`.mind-hero`) and is the next target for the recipe; `exercise.html` and `index.html` will adopt if/when they get photo heroes during Premium Feel continuation.
+**Hub-page hero pattern (PM-244, 23 May 2026; PM-246, 23 May 2026).** The hub pages (Home, Body, Mind, Connect) use a `position:fixed` photographic hero band at the top with scrolling content below. The soft seam between photo and content follows the **§23.57 canonical scrolling-fade recipe** — dedicated `.X-hero-fade` absolute-positioned div as first child of `.wrap`, lifted up 80px via `transform:translateY(-100%)`, 3-stop rgba gradient with `[data-theme="light"]` override. `connect.html` and `mind.html` both implement the recipe (PM-246 ship); `exercise.html` and `index.html` will adopt if/when they get photo heroes during Premium Feel continuation. **Caveat — see §23.58.** PM-244 was silently reverted within 16min by a stale-workbench whole-file commit on the same file; PM-246 recovered the recipe AND codified §23.58 to prevent recurrence.
 
 ### Core pages
 
@@ -2832,7 +2832,28 @@ main{position:relative;z-index:2;}
 
 **Meta-lesson — promote to its own §23 if it bites again.** When a CSS visual effect "doesn't work" across 2+ fix attempts and each fix looks the same, the next commit MUST be a debug ship with a guaranteed-visible value (solid colour, larger size, neon) to isolate the failure mode. Diagnosis before more attempts. Six commits on this seam — could have been three if I'd gone to debug-red at PM-241 instead of PM-243.
 
-**Reference implementation.** `connect.html` PM-244, vyve-site `a2e12cb0`. Key lines: `main{position:relative;z-index:2;}` (early CSS block); `.connect-hero-fade{...}` rule + `[data-theme="light"] .connect-hero-fade{...}` override; `<div class="connect-hero-fade"></div>` as first child of `.wrap fade`.
+**Reference implementation.** `connect.html` PM-246, vyve-site `ec3f2c30` (replaces previous pointer to PM-244 `a2e12cb0` which was silently reverted by 59afbb85 within 16 minutes of shipping — see §23.58 for the gotcha and PM-246 for the recovery). `mind.html` PM-246 also implements the recipe verbatim with `.mind-hero-fade` class. Key lines: `main{position:relative;z-index:2;}` (early CSS block); `.X-hero-fade{...}` rule + `[data-theme="light"] .X-hero-fade{...}` override; `<div class="X-hero-fade"></div>` as first child of `.wrap fade`.
+
+---
+
+### §23.58 — Whole-file commits from stale workbench copies silently revert same-day unrelated work (PM-244 → 59afbb85 → PM-246, 23 May 2026)
+
+**The hazard.** When a session starts work on file X with a workbench copy fetched at time T₀, and a different session ships unrelated changes to file X between T₀ and the original session's commit time T₁, a whole-file content commit from the original session will erase everything between T₀ and T₁. The commit message will say what the original session was doing (e.g. "Avatars on community surfaces"), so reviewers seeing the commit title won't catch that 80% of the diff is collateral damage to unrelated same-day work.
+
+**The canonical case.** PM-244 (`a2e12cb0`, 16:32 UTC) shipped the §23.57 fade recipe on connect.html — `main z-index:2`, absolute-positioned `.connect-hero-fade` as first child of wrap, 3-stop rgba gradient, `[data-theme="light"]` override. Sixteen minutes later, `59afbb85` (16:48 UTC) shipped avatar work on connect-feed.html that ALSO whole-file rewrote connect.html with a workbench copy pre-dating PM-244. Net effect: PM-244 was cleanly reverted (z-index back to 1, fade back to `position:fixed`, gradient back to 2-stop, light-theme override gone, fade div relocated outside main). Avatars themselves landed correctly. The revert was undetected for the rest of the day until Dean asked to apply §23.57 to mind.html and Claude reading connect.html as the §23.57 reference found it didn't match the recipe.
+
+**Why §23.41 fresh-HEAD fetch is the only defence.** The fresh-HEAD fetch right before commit is meant to detect "the file on main changed since my workbench was loaded — I need to merge". A whole-file content commit without that check silently writes whatever was in the workbench, regardless of what's actually on main. The blob SHA stage of Git Data API doesn't surface the conflict because the commit's parent is correctly set to current HEAD — the conflict is at the content level, not the ref level.
+
+**The hard rule.**
+
+1. **Any commit that touches a file's content as a whole-file write (which is most multi-file edit sessions) MUST be preceded by a fresh-HEAD fetch of that file from main, immediately before the commit batch is assembled.** Not at session start. Not at edit-time. Immediately before commit.
+2. **If the freshly-fetched main copy of any file differs from the workbench base copy, STOP.** Either (a) re-apply the workbench edits on top of the fresh main copy, or (b) abort and surface the parallel ship to Dean for a merge decision.
+3. **In bash/Python commit scripts, the fresh-HEAD fetch is a hard precondition.** `commit.py`'s `EXPECTED_HEAD` constant is the simplest enforcement — if HEAD has drifted from expected since the script was written/the workbench loaded, the script must abort.
+4. **The §23.41 fresh-HEAD discipline applies to EVERY file in the commit batch, not just the file the session "is about".** PM-246's recovery was needed because the avatar session correctly fresh-fetched connect-feed.html but didn't think to fresh-fetch connect.html which it also touched.
+
+**Meta-lesson — defence in depth.** This is a §23.41 violation by definition, but §23.41 as previously written emphasised the SHA-vs-ref-on-main check at commit time. That check passes here (parent SHA was correct), so §23.41 needs to be re-read as "fresh-fetch the CONTENT of every file you're about to write, not just confirm the ref hasn't moved". This addendum is codified here as §23.58 rather than buried in §23.41 because the failure mode is different enough to warrant its own anchor — and the recovery cost (one Claude session reading reference docs and finding the doc-impl drift) was lucky. Without that, the regression would have shipped to members.
+
+**Defensive verification idea (low-priority playbook item).** A post-commit diff-the-diff script: for every file in a new commit, fetch the file's content from the previous commit and the new commit, diff them, and surface any sections that differ but aren't mentioned in the commit message. Cheap to write, would have caught this in ~1 second.
 
 ---
 

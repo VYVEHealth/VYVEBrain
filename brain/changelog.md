@@ -1,3 +1,85 @@
+## 2026-05-23 PM-246 — §23.57 recipe restored on connect.html + applied to mind.html; PM-244 silent revert recovered [vyve-site `ec3f2c30`]
+
+**Two things shipped in one atomic commit.**
+
+1. **Recovery of connect.html PM-244 fade recipe** (silently reverted by 59afbb85 earlier today).
+2. **Application of §23.57 canonical scrolling-fade recipe to mind.html** as next hub-page target.
+
+Plus the standard sw.js cache key bump (`pm242-feed-avatars-a` → `pm246-hero-fade-a`) and vbb-marker bump (127 → 128).
+
+### The silent revert (PM-244 → 59afbb85)
+
+PM-244 (`a2e12cb0`, 16:32 UTC) shipped §23.57's verbatim recipe on connect.html. Three commits later, `59afbb85` (16:48 UTC, "PM-242: Avatars on community surfaces — connect-feed + Recent Check-Ins") whole-file rewrote connect.html with +80/-58 lines. The avatar work itself was small (~22 lines around `.cin-avatar`). The remaining ±58 lines were a clean rollback of PM-244 — full restoration of the old `position:fixed; top:calc(max(260px, 36vh) - 80px)` body-level fade band, `main z-index 2 → 1` revert, removal of the `[data-theme="light"]` override, removal of the 3-stop rgba gradient, and relocation of the fade div from "first child of `.wrap fade`" back to "sibling of `<main>`".
+
+How this happened: the avatar session started with a stale workbench copy of connect.html that pre-dated PM-244, made its small avatar edits on top of that stale base, then committed the whole file. No fresh-HEAD fetch (§23.41 violation). The unrelated changes between the stale workbench and current HEAD were silently flattened by the whole-file overwrite. The commit message says "Avatars" so the diff was never reviewed for collateral damage.
+
+I caught this only because Dean asked to apply §23.57 to mind.html. Reading connect.html as the reference impl, the actual file didn't match the §23.57 doc. If Dean had asked for any other piece of work today, this revert would have shipped to members for some indeterminate stretch before anyone noticed the seam quality on Connect had regressed.
+
+### What this commit does
+
+**connect.html — restores PM-244 verbatim.** All four §23.57 steps re-applied:
+
+- `main{position:relative;z-index:2;}` (was 1)
+- `.connect-hero-fade` rule restored: `position:absolute; top:0; transform:translateY(-100%); height:80px; pointer-events:none` (was `position:fixed`, anchored to viewport)
+- 3-stop rgba(10,31,31,*) gradient hitting opaque at 75% (was 2-stop transparent → var(--bg))
+- `[data-theme="light"] .connect-hero-fade` override with rgba(240,250,248,*) (was missing)
+- `<div class="connect-hero-fade"></div>` relocated to FIRST CHILD of `.wrap fade` (was sibling-of-main)
+
+**mind.html — §23.57 applied as designed.**
+
+- `main{position:relative;z-index:2}` (was 1)
+- `.mind-hero-fade` CSS rule + `[data-theme="light"] .mind-hero-fade` override added next to `body.mind-page .wrap` styling
+- `<div class="mind-hero-fade"></div>` as FIRST CHILD of `.wrap fade`
+
+Hero structure differences vs connect.html that were checked but didn't affect the recipe:
+- Mind hero is taller (`max(280px, 46vh)` vs connect's `max(260px, 36vh)`) — irrelevant because the fade is anchored to wrap top with `transform:translateY(-100%)`, not to a hero edge.
+- Mind uses `body.mind-page main{padding-top:...}` scoped override for hero clearance — the base `main{z-index:2}` rule sits at line 44 and is the one §23.57 cares about. Both layers coexist.
+- Mind has its own overlay (`.mind-hero-overlay`) and morning/afternoon/night background-image swaps — orthogonal to the fade, untouched by this commit.
+
+### Pre-commit / commit / post-commit discipline
+
+- §23.41 fresh-HEAD fetch executed: HEAD = `59afbb85` matched expected. No drift.
+- Atomic 4-file commit via Git Data API (blob → tree → commit → update ref), not Contents API which is one-file-per-call.
+- Composio GitHub down (tool_search returned no GitHub tools); fell back to PAT direct via Vault per memory #8.
+- Post-commit first-100-char verification on all 4 files: all `✓`.
+
+### Files in this commit
+
+| File | Δ | Purpose |
+|---|---|---|
+| `connect.html` | +1073/-58 effectively (full restore + light additions) | Restore PM-244 fade recipe verbatim |
+| `mind.html` | +1328/-0 (CSS block + div) | Apply §23.57 to mind hub |
+| `sw.js` | +1/-1 | Cache key bump |
+| `index.html` | +1/-1 | vbb-marker 127 → 128 |
+
+Commit: `ec3f2c30feebcf42f0ad5a54919672e05209cbb9`
+
+### Brain updates in companion commit
+
+This vyve-site commit ships alone; the brain commit that follows captures:
+
+- Master §23.57: reference implementation pointer corrected from `a2e12cb0` (PM-244) → `ec3f2c30` (PM-246, which is the live verbatim recipe ON main again). Note added that mind.html also implements the recipe.
+- Master §23 new hard rule: **§23.58 — whole-file commits from stale workbench copies silently revert other same-day work.** The §23.41 fresh-HEAD fetch is the only protection against this class of bug; whole-file content commits without a fresh-HEAD pre-fetch can erase up to N hours of unrelated work in the same file. Codified with the PM-246 recovery as the canonical example.
+- Backlog: top item ("Apply §23.57 recipe to mind.html") marked done and removed.
+
+### What didn't ship
+
+- No exercise.html or index.html work (deferred until/if they get photo heroes per Premium Feel continuation).
+- No tuning of the fade gradient height/curve on mind.html (default 80px / same 3-stop curve as connect; will tune only if device test surfaces a mind-hero-specific issue).
+- No debug-red ship (recipe is verbatim from a known-shipped reference, low risk of "invisible against backdrop" failure).
+
+### On-device verification needed
+
+Dean's iPhone is on server.url dev-loop → online.vyvehealth.co.uk, so within WKWebView cache window (2-15min) this is live. Confirm:
+
+1. `?debug=build` shows "Update 128".
+2. Connect page: scroll Connect — the fade band should scroll WITH the content (not stick to viewport). The seam where photo meets first content widget should be soft, not hard. Switch to light theme: confirm the fade gradient is visible (rgba over the lower-half teal photo zone hits opaque around 75% Y).
+3. Mind page: same scroll behaviour and light-theme visibility test. Compare to Connect — they should feel identical.
+
+If invisible: ship debug-red per §23.57 meta-lesson before re-tuning. This time the recipe is a verbatim port from a known-working reference; if it's broken, it'll be a per-page structural mismatch I didn't catch in the audit, not a colour-proximity bug.
+
+---
+
 ## 2026-05-23 PM-245 — Hub-page hero scrolling-fade recipe codified as §23.57; pattern ready to replicate to mind.html / exercise.html / index.html [VYVEBrain]
 
 Brain-only commit. No code change. Closing out the PM-237 → PM-244 chain by extracting the canonical recipe into a §23 hard rule and a §8 callout, so the other hub pages get the same treatment without re-deriving from scratch.
