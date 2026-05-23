@@ -1,3 +1,50 @@
+## 2026-05-23 04:05 — PM-220.1 Connect parallax-hero fix: move out of main + GPU layer hint [vyve-site `6df6c787`]
+
+### What happened
+
+PM-220 shipped `position: fixed` on the hero — Dean device-tested on Update 89 and reported the photo was still scrolling with the page. WKWebView fixed-positioning quirk.
+
+Two changes:
+
+**1. Hero moved from inside `<main>` to direct child of `<body>`.** Removes the possibility that main's stacking context (`position:relative; z-index:1`) was interfering with viewport-pinning. Section is now a body-level sibling of main, rendered before main in DOM order. The hero CSS unchanged — `position: fixed; top: 0; left: 0; right: 0; height: max(240px, 38vh); z-index: 0;`.
+
+**2. `translateZ(0)` + `will-change: transform` on `.connect-hero`.** Canonical WKWebView workaround for flaky `position: fixed` behaviour when the element contains other positioned children + `<img>` tags. Forces the hero onto its own GPU compositor layer — scroll only composites the photo, doesn't repaint it. The browser can't lose track of the fixed-pin under composition.
+
+```css
+.connect-hero {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: max(240px, 38vh); z-index: 0; overflow: hidden;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  will-change: transform;
+  /* gradient fallback retained */
+}
+```
+
+### Codified lesson — §23 candidate
+
+When `position: fixed` doesn't behave as expected on WKWebView/iOS Safari, the two standard fixes are:
+1. Move the element out of any ancestor that might be creating a containing block or stacking context (parent `position: relative` *shouldn't* affect it per spec but iOS Safari has known quirks).
+2. Force GPU compositing via `translateZ(0)` + `will-change: transform`.
+
+Applying both together is overkill in most cases but cheap and robust. For hero/banner-style elements that need to feel pinned, this is the default recipe. Worth codifying as §23.54 if it bites again — held back tonight as a single occurrence isn't enough signal yet.
+
+### Files committed (vyve-site `6df6c787`)
+
+- `connect.html` — hero element relocated body-level, GPU layer hints added to CSS
+- `sw.js` — cache `pm220-parallax-hero-a` → `pm220-parallax-hero-b`
+- `index.html` — vbb-marker 89 → 90
+
+### Backup plan if 220.1 still doesn't pin
+
+If Dean reports the photo *still* scrolls on Update 90, the next intervention is `background-attachment: fixed` on a normal-flow div instead of `position: fixed` on an element. Worse compatibility on iOS (some versions ignore `background-attachment: fixed` entirely) but a different code path that might work where this one doesn't. Last resort: JS-driven `transform: translateY(scrollY)` on the hero, which is heavier but guaranteed.
+
+### Tooling
+
+Composio still 401 from 21 May. PAT-direct. §23.41/52/53 honoured.
+
+---
+
 ## 2026-05-23 03:50 — PM-220 Connect parallax-pinned hero — photo stays, content scrolls over it [vyve-site `516e138c`]
 
 ### What shipped
