@@ -1,3 +1,68 @@
+## 2026-05-23 14:25 — PM-222 Revert PM-221/221.1 frosted-glass + replace hero images [vyve-site `2811566f`]
+
+### What happened
+
+Dean device-tested PM-221.1 (Update 99) — full-viewport ambient hero with frosted-glass widgets working correctly — and didn't like the look. "Too busy." Two distinct asks in one message:
+
+1. **Revert the frosted-glass + full-viewport setup** back to the PM-220.6 band-hero doctrine (band at top, content scrolls over solid backdrop).
+2. **Replace both hero images** with new uploads — better composition, group + sunrise / campfire scenes properly framed.
+
+Both shipped in a single 5-file atomic commit so the device update lands clean in one cycle (no transitional ugly state).
+
+### Reverts
+
+- `.connect-hero`: `top/right/bottom/left: 0` → `top:0; left:0; right:0; height: max(240px, 38vh)` — back to top-band
+- `.wrap`: `background: transparent` → `background: var(--bg)` — solid backdrop covers photo on scroll
+- `main padding-top`: `max(220px, 32vh)` → `max(240px, 38vh)` — matches new hero band height
+- PM-221 frosted-glass block at end of stylesheet removed entirely: backdrop-filter rules on .checkin-card / .elite-hero / .hero-card / .calendar-tile / .podcast-tile gone; .calendar-tile and .podcast-tile backgrounds restored from translucent rgba to opaque var(--teal-dark/teal/teal-lt) and gold gradients respectively
+
+### New hero images
+
+Both replaced at the same `/connect-hero-day.jpg` and `/connect-hero-night.jpg` paths (sw.js precache list untouched). Source images were 1254×1254 JPEGs (despite .png extension on upload), resized to 1024×1024 at q=82 progressive JPEG:
+
+- **connect-hero-day.jpg** — 86KB. Morning lakeside group + sunrise over mountains + lake mist reflection. Strong human warmth in the lower portion.
+- **connect-hero-night.jpg** — 123KB. Night campfire + group + starry sky over lake. Fire in the lower portion, stars/Milky Way at top.
+
+### Cropping decision
+
+Both new images are 1:1 squares. The hero band is portrait-strip — full viewport width, ~38vh tall. With `background-size: cover` and default `background-position: center center`, the band crop would land on the middle of each square, which on both images is the lake's reflective middle — missing the human element (group + campfire / sunrise glow live in the lower portion of both).
+
+Set `background-position: center bottom` on the hero. Band crop now lands at the bottom of each image, keeping the people and the warm light in frame.
+
+### Doctrines preserved from PM-220.x
+
+All the WKWebView robustness lessons survive into PM-222:
+
+- `position: fixed` with **longhand** `top/left/right` (no `inset` shorthand — PM-221.1 confirmed silent fail on device)
+- `translateZ(0)` + `will-change: transform` GPU layer hint
+- Photo as `background-image` on the hero element, not `<img>` children (PM-220.5 confirmed `<img>` paint-failure inside GPU-promoted fixed parent)
+- hub-page topbar suppression via `body.connect-page.hub-page` class (PM-218/219)
+- SW install with `fetch(url, { cache: 'reload' })` for CDN-cache bypass (PM-220.6) — this commit will install cleanly thanks to that fix already being in place
+
+### Hub-page hero doctrine — settled
+
+After the PM-220 → PM-221 → PM-222 round-trip, the doctrine for hub-page heroes is:
+
+**Band variant** is the default. Hero is `position: fixed` band at top, ~38vh height, with `background-image` photo. Content sits inside `.wrap` with solid `var(--bg)` backdrop that covers the photo on scroll. Clean, premium, low GPU cost.
+
+**Ambient variant** (full-viewport hero + frosted-glass widgets) is documented in PM-221 but not the default — feels too busy at the current widget density. Available if a future hub page wants the WHOOP-style layered look, but Connect doesn't.
+
+Index/mind/exercise should default to band variant when their heroes ship.
+
+### Files committed (vyve-site `2811566f`, 5-file atomic)
+
+- `connect.html` (+25/-76) — revert CSS, background-position:center bottom, PM-221 block stripped
+- `connect-hero-day.jpg` REPLACED — new morning shot, 86KB
+- `connect-hero-night.jpg` REPLACED — new night shot, 123KB
+- `sw.js` — cache `pm221-inset-longhand-b` → `pm222-revert-new-hero-a`
+- `index.html` — vbb-marker 99 → 100
+
+### Tooling
+
+§23.41/52/53 honoured. Composio still 401 (~42h since 21 May incident). PAT-direct throughout. Two binary blobs created via base64-encoded JSON requests per §23.45 binary-commit pattern.
+
+---
+
 ## 2026-05-23 14:00 — PM-221.1 Hero inset:0 → longhand on hero (PM-221 wasn't full-viewport on device) [vyve-site `6c8d2bec`]
 
 Dean reported Update 98 active but the photo wasn't filling the viewport — "image hasn't changed in size" — and widgets weren't showing the photo through them either. Both symptoms explained by a single cause: PM-221 used `inset: 0` shorthand on `.connect-hero` which was being silently ignored on the device's WKWebView. Hero rendered at default content-height (~38vh from the PM-220.x height rule), leaving widgets sitting below it on body bg with no photographic backdrop for backdrop-filter to blur.
