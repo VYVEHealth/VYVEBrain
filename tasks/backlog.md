@@ -1282,36 +1282,6 @@ db.js SCHEMA_V8 + db.version(8) chained, sync.js 5 PULLABLE entries added. Compo
 
 ---
 
-## Added 21 May 2026 — Profile identity system (avatar + display-name privacy) [PARTIALLY SHIPPED PM-228 23 May 2026]
-
-**Status update PM-228 (23 May 2026).** Settings-side avatar slice shipped to production tonight as part of the PM-228 settings restructure.
-
-**Shipped tonight:**
-- ✅ `members.avatar_url text` column live
-- ✅ `member-avatars` public Storage bucket with 4 RLS policies (auth INSERT/UPDATE/DELETE scoped to `(storage.foldername(name))[1] = auth.email()`, public SELECT)
-- ✅ Settings UI: tappable avatar with edit-pencil overlay → file picker → resize + EXIF strip + upload + persist + Dexie optimistic write + bus publish
-- ✅ Client-side canvas pipeline (centre-crop square, max 512×512, JPEG q=0.85, EXIF stripped via canvas re-render)
-- ✅ Upload via `x-upsert: true` to `{email}/avatar.jpg` overwrite pattern
-- ✅ `VYVEBus.publish('avatar:changed', {email, avatar_url})` published (no subscribers yet)
-- ✅ Page-boot Dexie read renders avatar immediately on return visits
-
-**Still to ship (full campaign):**
-- ⏳ Connect first-load modal (display-name + avatar pickers, fires when `members.connect_onboarded_at` is null)
-- ⏳ `members.connect_onboarded_at timestamptz` schema migration
-- ⏳ `members.display_name_mode text` migration (replaces / coexists with current `display_name_preference`)
-- ⏳ `profile.js` shared identity helper (centralises display-name + avatar resolution + anonymous-coupling rule)
-- ⏳ Capacitor `@capacitor/camera` plugin (next iOS binary cut — web file input fallback works through WKWebView today)
-- ⏳ Avatar render subscribers across leaderboard.html / connect-feed.html / connect.html Recent Check-Ins (listen for `avatar:changed` bus event + render `<img>` from `members.avatar_url` in resolver)
-- ⏳ Anonymous-coupling rule enforcement (display_name='anonymous' coerces avatar to generic V-badge regardless of avatar_url presence)
-- ⏳ Curated V-badge library (12 variants) for default state members who don't upload a photo
-- ⏳ GDPR Article 17 erasure pipeline extension: delete the member's `member-avatars/{email}/` Storage folder when the erasure tick fires
-
-The PM-228 ship makes the avatar functional in Settings — every member can upload one and it persists. The remaining campaign work is what makes avatars **render across the community surfaces** and what handles the privacy/onboarding edges. Re-open this entry when scheduling the next slice.
-
----
-
-## ORIGINAL ENTRY (preserved below)
-
 ## Added 21 May 2026 — Profile identity system (avatar + display-name privacy) [post-launch, coordinated campaign]
 
 **Surfaced in PM-188 design discussion** comparing the Connect mockup to the live build. Profile pictures and consistent identity privacy are the single biggest visual upgrade available to the Connect cluster — every feed card, leaderboard row, recent-checkin entry currently shows a teal initials badge ("YO", "SM", etc) which reads as email, not community. Dean's design call: full opt-in system, no required uploads, consistent privacy across every community-facing surface.
@@ -1502,6 +1472,8 @@ Nine rows seeded in `session_categories` once during phase 2 setup, mapped to ex
 **Build queue once test passes (not before).**
 - Phase 1 (no YouTube dependency): `session_categories` table + the existing `service_catalogue` column additions, plus the Command Centre sessions list/edit UI reading and writing them. Lewis can hand-paste URLs as an interim workflow. Validates the admin surface independently of YouTube integration.
 - Phase 2 (YouTube layer): `session-publish` EF, OAuth setup for the VYVE Google account, "Publish month" button in Command Centre. Phase 1 keeps working if phase 2 hits trouble.
+
+**PARTIAL — 23 May 2026 (PM-229).** Test passed — reusable-stream pattern verified end-to-end this morning across all 8 categories. Pipeline-proving broadcasts 12:15-13:41 UTC on the live channels with multiple successful `status: complete` broadcasts in the same category (Yoga at 12:15 + 12:20). PM-229 also shipped a sibling column: `calendar_occurrences.youtube_broadcast_id TEXT` plus partial index `idx_calendar_occurrences_replays`, populated for 6 past test occurrences. Strictly speaking PM-215's spec asked for the column on `service_catalogue`, but PM-210b shifted the runtime catalogue from `service_catalogue` (template) to `calendar_occurrences` (materialised) so the column lives where the broadcasts actually need it — on the per-occurrence row. The `session-publish` EF in Phase 2 below should write to `calendar_occurrences.youtube_broadcast_id` (one row per scheduled broadcast) rather than the original spec's `service_catalogue.youtube_broadcast_id`. Vault OAuth (`YOUTUBE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN`) confirmed working via `net.http_post` from inside Postgres. API quirk worth noting in the EF design: `broadcastStatus=completed` and `mine=true` are mutually exclusive — use `mine=true` and filter client-side.
 
 **Owners updated.** Dean: schema, Command Centre UI, EF, OAuth integration, test execution next week. Lewis: defines the 9 categories (final names + the existing channel mapping), runs the test alongside Dean (he's the one with Riverside access).
 

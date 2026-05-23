@@ -1,3 +1,66 @@
+## 2026-05-23 PM-229 — Replays hub: replays.html new + Connect featured replay tile [vyve-site `7d7e11e1`]
+
+Member-facing replay surface. Today's morning pipeline-proving of the PM-215 reusable-stream pattern (verified — multiple successful completed broadcasts per category, today's 12:15 + 12:20 Yoga both `status: complete`) cleared the upstream blocker. Built the consumption surface on top of it.
+
+### Architectural decisions worked through in the design conversation
+
+1. **One global `replays.html` hub, not per-category pages.** Dean's concern that "28 available" with three tiles visible looked wrong was a mockup-tightness issue, not a design issue — the live list scrolls to all replays. The actual decision driving the global-hub choice: chip filter scopes the list (All → Yoga drops from 28 to 7), so per-category browse pages would just duplicate the chip-filter mechanism. The 8 existing `-rp.html` shells stay as live-session deep-link receivers only. No browse view on those shells.
+2. **In-place YouTube iframe player on replays.html (Option C from spec).** Tile tap = hero iframe `src` swap, no navigation. Sidesteps PM-215's full automation dependency for v1 — the per-category `-rp.html` shells don't need to learn how to read `?broadcast_id=` because the player lives entirely on replays.html. PM-215 becomes "automate writing `youtube_broadcast_id` to `calendar_occurrences` ahead of scheduled broadcasts" rather than "blocker for the replay surface to play video".
+3. **Variant B chosen for the Connect entry point.** Featured 16:9 video card above the "What's on" tile cluster, not a third destination tile alongside Calendar/Podcast. Two reasons: (a) the latest replay IS content, not a destination — showing the actual thumb beats showing a generic "Replays" tile; (b) the card shape extends naturally to future "Continue watching" / "Daily focus replay" rails once those land post-trial, whereas the destination-tile pattern doesn't.
+4. **`youtube_broadcast_id` as a new nullable column, not overloading `replay_url`.** `replay_url` currently stores page-path placeholders (`/yoga-rp.html`) from the PM-210a backfill. Adding a new column rather than retrofitting the old one means PM-215's existing scope (the cron that writes broadcast IDs) plugs in cleanly when it ships.
+
+### What shipped
+
+**Supabase (shipped before the GitHub commit):**
+- `calendar_occurrences.youtube_broadcast_id TEXT` nullable column (migration `pm216_add_youtube_broadcast_id_to_calendar_occurrences`)
+- Partial index `idx_calendar_occurrences_replays` on `(ends_at DESC, category)` `WHERE active AND youtube_broadcast_id IS NOT NULL`. First attempt failed because `now()` in the predicate isn't `IMMUTABLE` — dropped that clause; `ends_at < now()` is applied at query time via the index-order scan.
+- 6 past `calendar_occurrences` rows seeded with real test broadcast IDs. Today's three (23 May: Yoga `CD_q1zzHguo`, Workouts `4LhzmXdjxpM`, Mindfulness `_c_JjHM2sio`) point at this morning's PM-215 pipeline-proving broadcasts (12:20 / 13:22 / 13:27 UTC). Yesterday's three (22 May) point at the March-era originals (Yoga `5ARkBsU30Eg`, Workouts `LREYjyuTG_w`, Mindfulness `9i9fe6RgLaA`).
+
+**Vault OAuth + pg_net path for YouTube Data API.** Used `Supabase:execute_sql` calling `net.http_post` from inside Postgres to hit `oauth2.googleapis.com/token` (refresh token from `vault.decrypted_secrets WHERE name='YOUTUBE_OAUTH_REFRESH_TOKEN'`), then `youtube/v3/liveBroadcasts?mine=true&maxResults=50`. Discovery returned 17 completed broadcasts across all 8 categories — confirmed reusable-stream pattern works (same `mine=true` query returned multiple Yoga broadcasts both at `status: complete`). API quirk: `broadcastStatus=completed` and `mine=true` are mutually exclusive parameters; use `mine=true` and filter client-side. `bash_tool` can't reach `*.googleapis.com` from the sandbox so this Vault-OAuth-via-Supabase path becomes the canonical recipe for any future YouTube API discovery work.
+
+**vyve-site (commit `7d7e11e1`):**
+- `replays.html` NEW (24,524 bytes). Pattern 2 catalogue surface per §23.48 — Dexie-first paint per §23.46, no skeleton characters, no localStorage snapshot. Chips render from data on paint so only categories that actually have replays show. Hero defaults to a poster + play overlay; member tap mounts the YouTube iframe with `autoplay=1&modestbranding=1&rel=0&playsinline=1` (playsinline mandatory for iOS WKWebView, otherwise iOS forces fullscreen). Subsequent tile taps reset to poster state, then mount iframe on poster tap — the user gesture each time is what YouTube needs for mobile autoplay. visibilitychange handler refreshes from Dexie when the page becomes visible. §23.10 honest offline state: tile metadata is local (works offline), the iframe itself is the network-bound surface and YouTube's own error UI surfaces when offline.
+- `connect.html` — `renderLatestReplay()` added, wired into `paintAll()` after `renderCalendarTile()`. Section wrapper carries `hidden` attribute by default; JS un-hides only when a real row is found (§23.46). CSS block for `.replay-hero-card` added in the section-block convention.
+- `sync.js` — `CATALOGUE_INVALIDATION_KEY` bump `pm211-podcast-episodes` → `pm228-replays-youtube-id` per §23.50. Forces every device to re-pull `calendar_occurrences` on next visit so the new `youtube_broadcast_id` column reaches Dexie. (Note: the key is named after PM-228 because that was my working number before the parallel-collision rename — keeping it as-is rather than re-bumping a second time, since it's the trigger value not a name members see.)
+- `nav.js` — `'replays': 'Replays'` added to `subPageLabels`.
+- `sw.js` — cache key bumped to `vyve-cache-v2026-05-23-pm229-replays-hub-a`. `/replays.html` added to `urlsToCache`.
+- `index.html` vbb-marker bump (Update 109 → 110) was originally in scope but **dropped** during the rebase (see §23.14 incident below).
+
+### §23.14 parallel collision incident — TWO collisions in one ship
+
+Dean was running three sessions in parallel (this one + settings restructure + mind update). HEAD moved twice during the build.
+
+**First move:** session-start HEAD `8f98bc49` → `f9620c66` (parallel "PM-228: settings restructure" mid-build). My PM-228 number collided; renamed to PM-229 per §23.14 rule 3. Their commit also showed `removed index.html +0 -1849` in the file diff. Was about to flag a production outage to Dean when their session self-corrected — they shipped `d1657514` next, which is the same settings restructure but modifies `settings.html` (+266 -870) and leaves `index.html` intact. The earlier `f9620c66` was a transient corrupted-state commit they followed up.
+
+**Second move:** while building my commit body against `f9620c66`, HEAD moved again to `d1657514` (the corrective commit). My first PATCH ref attempt failed `422 Update is not a fast forward`. Re-fetched, re-rebased, re-shipped. The commit object `44492853` from the first attempt is orphaned in the object database but harmless.
+
+**Connect.html also got a hub-namespacing tweak from the parallel mind session** (taglines query gained `hub=eq.connect` filter + cache key renamed to `vyve.taglines.connect.v1`). Detected by md5sum comparison of new HEAD's `connect.html` vs session-start. Reset my local copy to the new HEAD and re-applied the four PM-229 patches (section HTML, CSS block, JS function, paintAll wire-in) on top.
+
+**Working assumption to codify:** Dean runs parallel sessions; the post-commit-verify protocol (§23.41 + §23.52) is doing its job and catching collisions, but every multi-step Git Data API ship now needs a HEAD re-fetch immediately before the ref-PATCH step, not just immediately before the tree creation step. Tightening this into protocol §23.14.b.
+
+### Commit mechanics — two lessons codified
+
+1. **Heredoc EOF marker scope.** `<<'PYEOF'` (single-quoted) disables `$VAR` expansion inside the heredoc body. First commit attempt built the commit JSON via inline Python with `'tree': '$TREE_SHA'` expecting interpolation; got `nil is not a string` from the GitHub commit API because `$TREE_SHA` arrived literally. Fix: route values through environment variables read via `os.environ.get()` inside the Python heredoc, OR (cleaner) build the commit message in a file with `cat > file << 'EOF'` and use the bash-interpolating outer Python `-c` form for the small assembly step. §23.53 already covered this for response parsing; extending to request body assembly.
+
+2. **dash vs bash for associative arrays.** First commit attempt failed on `declare: not found` because the sandboxed `bash_tool` shell is `/bin/sh` (dash). Explicit `/bin/bash << 'BASH' ... BASH` wrapper required for any script using `declare -A` or other bash-specific features.
+
+### What didn't ship this session
+
+- The 3 broadcasts in `status: ready` or `status: created` on YouTube (scaffolding from morning testing that never went live). Filtered out — not real replays.
+- PM-215's automation cron. Still in backlog. The replay surface works against manually-seeded `youtube_broadcast_id` values; PM-215 becomes the upgrade that populates them automatically.
+- Bigger replay catalogue. 6 rows seeded — enough to validate the surface design. Dean said "I'm probably just gonna delete the videos from the playlists" once it's confirmed working, since the test broadcasts are 30-90 seconds of him sat in front of the computer.
+
+### Verification trail
+
+Post-commit `GET /commits/{sha}` returned: 1 added (`replays.html`), 4 modified (`connect.html`, `nav.js`, `sw.js`, `sync.js`). Status summary matches expectation. First-100-char re-fetch on all 5 files via live Contents API at HEAD `7d7e11e1` confirmed; key marker greps:
+- `pm229-replays-hub-a` cache key present in sw.js
+- `'replays': 'Replays'` present in nav.js
+- `pm228-replays-youtube-id` invalidation key present in sync.js
+- `renderLatestReplay` × 2 references in connect.html (declaration + paintAll call)
+- `youtube_broadcast_id` × 10 references in replays.html
+
+---
+
 ## 2026-05-23 PM-228 — Settings restructure: Profile→Coaching→Preferences→Habits→Connections→About, sub-page for sign-out/danger/GDPR, live avatar pipeline [vyve-site `d1657514`]
 
 Five-file atomic commit landing tonight's settings overhaul. Dean's spec from the design conversation: sharpen up settings, add profile picture, section out the page, hide danger zone, hide download-data, fix the theme highlight that stayed on "System" after switching to Light, fix Sign Out that "doesn't work". One bug Dean surfaced mid-session ("saving your goals doesn't actually do anything") — diagnosed as the entire Primary Focus card writing to `members.specific_goal` which is read by exactly zero files in the portal; the actual goal column consumed by index.html/nutrition.html is `members.goal_focus`, written only at onboarding. Vestigial control. Card removed entirely rather than shipping a placeholder.
