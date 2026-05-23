@@ -1,3 +1,61 @@
+## 2026-05-23 — PM-213 specced (brain-only): Live session pages redesign + PM-214 admin console placeholder
+
+### What this commit captures
+
+Two design conversations on the live session pages folded into the brain as spec entries. No code shipped this session — pure conversation capture so when PM-213 is picked up (after PM-211 ideally, or sooner if needed), zero re-derivation. Both entries live in `tasks/backlog.md`.
+
+### PM-213 — Live session pages redesign
+
+Three problems with the 16 live/replay shells today:
+
+1. **Chat is unmoderated.** Untenable for trial. Stripping the chat surface entirely, replacing with "Chat coming soon" tab. `session_chat` table stays in DB unused.
+2. **No Q&A path.** Adding "Q&A coming soon" placeholder tab. Real Q&A wiring deferred — Castr playback means there's no live host to respond in real-time. Decision was to ship placeholders now, build the surface when real live sessions begin.
+3. **Host info hardcoded in HTML.** Each of 16 shells carries hardcoded host_name/about/photo. Moves to `service_catalogue` columns (per-category default) + nullable `calendar_occurrences` columns (per-occurrence overrides). Lewis edits via Supabase dashboard pre-PM-214.
+
+Plus a fourth thing on `checkin-live.html` specifically: live check-in form below the video, swaps variant based on `calendar_occurrences.checkin_variant`. Five variants for v1: sleep, nutrition, mood, stress, mindfulness. New `live_checkin_submissions` table with `client_id` UUID + JSONB answers payload. Optimistic-first per §23.39.
+
+YouTube embed uses the channel-level URL pattern (`embed/live_stream?channel=<id>`) — auto-handles live/offline state, no YouTube API integration needed in the app. Lewis handles the broadcast batch creation via his own tooling (Riverside → RTMP → YouTube channel reusable streams + pre-created liveBroadcast resources, all manual / Lewis-owned).
+
+Achievement impact (folded into engagement overhaul this week, not PM-213 atomic scope): `checkins_completed` source widens to include `live_checkin_submissions` + `monthly_checkins`. Cap: max 2 per ISO week (1 weekly + 1 live) + 1 per calendar month. Per §23.37 the cap is a credit calculation, never a write gate. New `certificate_checkins` metric = distinct ISO weeks with ≥1 check-in (any type) → drives The Elite cert at 30 weeks (cert mechanic unchanged, just widened source). Tier ladder thresholds not recalibrated — defer to post-trial Achievements overhaul.
+
+Estimated 2-3 Claude-assisted sessions for PM-213 atomic scope: session 1 (schema + storage + chat strip + Info tab on 16 shells), session 2 (checkin-live form variants), session 3 fold-in to engagement work.
+
+### PM-214 — Portal admin console for live session content
+
+Placeholder spec for June, sales-readiness push. Lewis + Cole + Calum need a branded admin surface to edit session content without raw SQL. Override-aware editing ("just this one" / "this and all future") backed by the nullable `calendar_occurrences` columns PM-213 ships. 3-5 sessions when built. Either extends `vyve-command-centre` or new `manage.vyvehealth.co.uk` domain — decided at build time.
+
+### Naming history this session
+
+Originally drafted as "PM-212". On commit pre-flight per §23.41, fresh SHA fetch on VYVEBrain main showed it had moved from session-start `ea7af33f` → `4561db11`, three parallel commits in between:
+
+1. `1cc42d1c` — PM-210b Calendar member UI shipped (claimed the original PM-211 number from earlier spec).
+2. `0ce93681` — PM-211 spec: live-sessions source-of-truth collapse (sessions-data.js + service_catalogue + calendar_occurrences).
+3. `4561db11` — PM-212 Podcast hub MVP shipped (renamed from PM-211 due to naming collision with the spec at `0ce93681`).
+
+PM-212 was taken. Per §23.14 rule 3, next available number = PM-213. Sessions admin console placeholder renumbered from PM-213 → PM-214.
+
+§23.14 rule fired cleanly. No collision, no overwrite. Three parallel sessions shipped while this one was holding context; pre-commit SHA refresh caught it, brain compare API call surfaced what had shipped, renumbering applied. The rule is paying for itself.
+
+### Tooling discipline this session
+
+Composio still 401-ing from 21 May security incident, going into hour ~48. §23.45 PAT-direct path used throughout — Supabase MCP → Vault for `GITHUB_PAT_CLAUDE`, bash_tool curl direct against GitHub REST.
+
+Brain commit shape: two-file atomic via Git Data API per §23.45 (backlog.md ~600KB + changelog.md ~1.8MB → use blobs/tree/commit/update ref chain, never single-file PUT). §23.52(a) `--data-binary @file` for both blob bodies. §23.53 response parsing via `/tmp/response.json` files, never inline `python3 -c | $(...)`. §23.52(c) every captured SHA asserted non-empty + 40-char hex before downstream use.
+
+### What's NOT in this commit
+
+- No vyve-site changes. Member-facing surface unchanged.
+- No Supabase migrations. Schema is specced, not applied.
+- No achievement metric changes. Engagement overhaul fold-in is separate work this week.
+
+### Live state at session close
+
+- Brain HEAD before this commit: `4561db11` (PM-212 Podcast hub)
+- vyve-site main: `bff78cb4` (PM-212 Podcast hub, sw cache `pm211-podcast-a`, vbb-marker 81) — unchanged this session
+- No new §23 hard rule earned — §23.14 (parallel-session safety) fired and was honoured, codified rule used as designed.
+
+---
+
 ## 2026-05-23 01:05 — PM-212 Podcast hub MVP shipped: external-links page + Connect tile + 40 episodes hydrated from Supabase [vyve-site `bff78cb4`]
 
 ### Naming note — PM-211 → PM-212 rename

@@ -1,3 +1,283 @@
+## Added 23 May 2026 — PM-213 — Live session pages redesign: editable host/about + chat/Q&A removal + live check-in form variants
+
+**Source.** Dean conversation 23 May PM. Sequenced after PM-211 (live-sessions source-of-truth collapse) because PM-213 builds on the `service_catalogue` shape PM-211 establishes. Could ship before PM-211 with minor rework if PM-211 slips — see "Ordering with PM-211" at the bottom.
+
+**The problem PM-213 solves.** The 16 live/replay session pages (`yoga-live.html`, `yoga-rp.html`, etc. across 8 categories × 2 modes) have three structural issues for trial launch and June sales push:
+
+1. **Existing chat surface is unmoderated.** Free-text member chat with no moderation tooling. Untenable for trial — one bad actor breaks the trial experience. Members will use chat-shaped surfaces; we need to remove the affordance entirely.
+2. **No Q&A path.** Members want to ask the host questions during a session. Today they have nowhere to put them. Adds engagement value when it lands.
+3. **Host info hardcoded per page.** Host name, host photo, "about this session" copy all live in HTML markup across 16 files. Any update requires a code deploy. Untenable for sales — Lewis needs to swap hosts or update copy on demand without engineering.
+
+Adjacent opportunity: `checkin-live.html` specifically can do more than embed a video. Members watching a guided check-in want to fill in a check-in form *alongside* the host. The form contents vary session-to-session (sleep check-in Monday, nutrition check-in Wednesday). Today the page has no form below the video.
+
+### Scope summary
+
+1. **Schema changes** — extend `service_catalogue` with editable Info-tab fields. Add nullable per-occurrence override columns to `calendar_occurrences`. New `live_checkin_submissions` table for the alongside-video check-in form.
+2. **Storage** — `host-photos` bucket, public-read, for Lewis to upload host photos via Supabase dashboard.
+3. **Page redesign** — strip chat from all 16 shells, add "Chat coming soon" + "Q&A coming soon" placeholder tabs, paint Info tab from Dexie with occurrence-override fallback. Specifically on `checkin-live.html`: add live check-in form section below the video.
+4. **YouTube embed wiring** — channel-level embed using `https://www.youtube.com/embed/live_stream?channel=<id>` pattern. No YouTube API integration in v1. Lewis handles broadcast batch creation separately via his own tooling.
+5. **Achievement metric widening** — live check-ins count toward `checkins_completed` achievement and certificate cert track. Sessioned-out into the broader engagement/cert overhaul Dean is doing this week, not built atomically with PM-213.
+
+### Data model
+
+**`service_catalogue` additions (Info-tab defaults, per-category fixed):**
+
+```sql
+ALTER TABLE public.service_catalogue
+  ADD COLUMN host_name TEXT,
+  ADD COLUMN host_photo_url TEXT,
+  ADD COLUMN about_session TEXT,
+  ADD COLUMN youtube_channel_id TEXT;
+```
+
+Backfill from current hardcoded shell values for the 8 live-session rows. Replay rows can stay NULL on `youtube_channel_id` (replays use `replay_url`, not channel embed).
+
+**`calendar_occurrences` additions (per-occurrence overrides, NULL = use catalogue default):**
+
+```sql
+ALTER TABLE public.calendar_occurrences
+  ADD COLUMN host_name TEXT,
+  ADD COLUMN host_photo_url TEXT,
+  ADD COLUMN about_session TEXT,
+  ADD COLUMN checkin_variant TEXT
+    CHECK (checkin_variant IS NULL OR checkin_variant IN
+      ('sleep','nutrition','mood','stress','mindfulness'));
+```
+
+Render path uses fallback: `occurrence.host_name OR catalogue.host_name` (likewise for photo + about). The override-aware admin console (PM-214) writes to one or the other column based on the "just this one" vs "this and all future" choice.
+
+`checkin_variant` only meaningful for occurrences where the catalogue row is the Weekly Check-In. NULL elsewhere.
+
+**New `live_checkin_submissions` table:**
+
+```sql
+CREATE TABLE public.live_checkin_submissions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id UUID NOT NULL,
+  member_email TEXT NOT NULL,
+  occurrence_id UUID REFERENCES calendar_occurrences(id) ON DELETE SET NULL,
+  variant TEXT NOT NULL CHECK (variant IN ('sleep','nutrition','mood','stress','mindfulness')),
+  answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+  submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  activity_date DATE NOT NULL,
+  week_start DATE NOT NULL,
+  iso_week INT NOT NULL
+);
+
+CREATE UNIQUE INDEX live_checkin_client_id_idx
+  ON public.live_checkin_submissions (member_email, client_id);
+```
+
+`client_id` UUID required per §23.36 (Dexie row id + idempotency for the optimistic-first write skeleton per §23.39). `set_activity_time_fields()` trigger populates `activity_date`/`week_start`/`iso_week` from `submitted_at` per existing convention. RLS member-scoped (read/write own rows only, service-role exempt).
+
+**Per §23.37 (caps are credit calculations, not write gates):** no `BEFORE INSERT` trigger blocking over-cap rows. Storage is uncapped — a member doing 3 live check-ins in a day stores 3 rows. Cap enforcement lives at credit-read time (achievement metric query applies `LEAST(weekly_live_checkin_count, 1)` per ISO week).
+
+### Storage
+
+New bucket `host-photos`, public-read RLS, service-role write. Lewis uploads photos via Supabase dashboard, copies URL into `service_catalogue.host_photo_url`. Same pattern as PM-190 image_url + §23.40 Mind imagery. Photos auto-resize/EXIF-strip is a v2 polish item; v1 trusts Lewis to upload reasonable-size photos.
+
+### Code changes
+
+**All 16 live + replay shells (`yoga-live.html`, `yoga-rp.html`, ..., `checkin-live.html`, `checkin-rp.html`):**
+
+Strip chat surface entirely. Removes the `session_chat`-bound textarea, send button, message list, and the `subscribe`/`broadcast` channel code. `session_chat` table stays in DB for now — no writes, harmless rows accumulate from any pre-PM-213 sessions until a post-launch cleanup. No new RLS work needed — the existing policies stay valid, just unused.
+
+Add tab strip: **Info | Chat | Q&A**. Info is the only active tab. Chat and Q&A render "Coming soon" copy with a brief description of what's coming. Tabs use the existing `.tab-strip` pattern from the rest of the portal.
+
+**Info tab data binding:**
+
+Each shell reads two Dexie sources:
+1. `VYVELocalDB.service_catalogue.allFor()` filtered to `category=<this-page-category>` AND `type='live_session'` (for `*-live.html`) or `type='replay'` (for `*-rp.html`). Single row.
+2. `VYVELocalDB.calendar_occurrences.allFor()` filtered to current/next occurrence for this category. Optional — used for occurrence-specific override fallback.
+
+Render path: `occurrence?.host_name ?? catalogue.host_name` (same for photo + about). Host card markup pulls from this composed value. Pattern 1 paint per §23.48 — synchronous Dexie read at boot, repaint on `vyve-localdb-table-pulled` event filtered to `service_catalogue` or `calendar_occurrences`.
+
+§23.46 applies: counters render truth. The host card has a fallback shape (gradient placeholder + "Host TBC" copy) when both columns NULL. Never skeleton chars.
+
+**YouTube embed:**
+
+`*-live.html` shells: `<iframe src="https://www.youtube.com/embed/live_stream?channel=<youtube_channel_id>">`. Auto-shows live state or channel-art if offline. No per-broadcast URL juggling needed.
+
+`*-rp.html` shells: existing `replay_url` field per category (already in `service_catalogue` per PM-211 spec — confirm at build time). Renders the most recent replay for that category.
+
+**`checkin-live.html` specifically — live check-in form section:**
+
+Below the video, a form section that swaps based on `current_occurrence.checkin_variant`. Variants to build for v1: `sleep`, `nutrition`, `mood`, `stress`, `mindfulness`. Five distinct form shapes, each with 2-4 inputs tailored to the variant:
+
+- **Sleep:** hours slept slider (0-12, half-hour increments), quality slider (1-10), dream recall yes/no.
+- **Nutrition:** hydration count (glasses today, 0-12), meal quality slider (1-10), cravings yes/no.
+- **Mood:** mood slider (1-10), three-word feeling text input (free text, 50-char cap).
+- **Stress:** stress level slider (1-10), top stressor text input (free text, 100-char cap), coping action text input (optional, 100-char cap).
+- **Mindfulness:** minutes spent slider (0-60), practice type radio (breathwork / meditation / body scan / journaling / other), reflection text input (optional, 200-char cap).
+
+Submit button writes to `live_checkin_submissions` via §23.39 optimistic-first skeleton:
+1. Generate `client_id = crypto.randomUUID()`.
+2. Synchronous Dexie write to `VYVELocalDB.live_checkin_submissions.upsert`.
+3. Publish `live_checkin:logged` on the bus with envelope `{client_id, variant, occurrence_id, member_email}`.
+4. Synchronous "Submitted ✓" UI flip.
+5. Un-awaited background POST to PostgREST.
+6. On 4xx: publish `live_checkin:failed`, delete Dexie row, revert UI to form.
+7. On 5xx/network: leave Dexie row, outbox drainer retries per existing pattern.
+
+If member has already submitted for the current occurrence (`live_checkin_submissions` row exists with `occurrence_id=<current>` for this member), render the read-only post-submit view instead of the form. Pattern mirrors connect-checkin.html's already-posted-today guard from PM-200.
+
+### Variant editing — Lewis handoff for v1
+
+Until PM-214 ships the admin console, Lewis sets the variant via Supabase dashboard:
+
+```sql
+UPDATE calendar_occurrences
+SET checkin_variant = 'sleep'  -- or 'nutrition' / 'mood' / 'stress' / 'mindfulness'
+WHERE id = '<occurrence-id-for-this-weeks-checkin-live>';
+```
+
+Members pick up the variant on next 5-minute catalogue sync. The form on `checkin-live.html` re-evaluates which variant to render on page open.
+
+If `checkin_variant` is NULL when the page loads, render a default "general weekly check-in" variant (feeling slider + free text — matches the existing `wellbeing-checkin.html` shape).
+
+### Achievement / certificate impact (folded into engagement overhaul this week)
+
+Out of scope for PM-213's atomic ship; called out here for the engagement-overhaul work happening alongside.
+
+Currently `checkins_completed` achievement metric sources from `wellbeing_checkins` only. Post-PM-213 it needs to widen:
+
+```
+checkins_completed = SUM(
+    LEAST(weekly_checkin_count_for_week, 1)  -- existing wellbeing_checkins
+  + LEAST(live_checkin_count_for_week, 1)    -- new live_checkin_submissions
+)
++ LEAST(monthly_checkin_count_for_month, 1)
+```
+
+Caps per Dean's call: max 2 per ISO week (one weekly + one live) + 1 per calendar month from monthly. Per §23.37 storage is uncapped; this is the credit calculation.
+
+Two related counters needed:
+- `checkins_completed` — total individual check-ins capped at per-period limits. Drives the granular achievement ladder.
+- `certificate_checkins` — distinct ISO weeks with ≥1 check-in (any type). Drives The Elite certificate at 30 weeks. Cert mechanic unchanged — still 30 weeks of engagement, just widened source.
+
+Tier ladder thresholds (1, 3, 5, 10, 20, 50, ...) **not recalibrated for PM-213**. New ceiling (12/month vs 5/month) makes existing thresholds easier — re-tune post-trial when real engagement data lands. Brain already flags Achievements for post-trial overhaul; this folds naturally.
+
+### Build sequencing
+
+Estimated 2-3 Claude-assisted sessions.
+
+**Session 1: schema + storage + chat strip + Info tab on all 16 shells.**
+- Supabase migrations: `service_catalogue` additions, `calendar_occurrences` additions, `live_checkin_submissions` table.
+- Storage bucket creation + RLS.
+- Backfill `service_catalogue.host_name` / `host_photo_url` / `about_session` / `youtube_channel_id` for all 9 categories (8 live + checkin) from current shell hardcoded values. `replay` rows backfill host/about copies; `youtube_channel_id` stays NULL for replay rows.
+- Multi-file atomic commit to vyve-site: 16 shells modified (strip chat, add tabs, Info tab data binding from Dexie with override fallback, YouTube embed swap), sw.js cache bump, vbb-marker bump.
+- db.js SCHEMA bump if `live_checkin_submissions` Dexie store needed yet (yes — even though session 2 wires the form, session 1 needs the store available for hydrate consistency).
+- sync.js plan entry for `live_checkin_submissions` (member-scoped table per existing pattern).
+- §23.50 CATALOGUE_INVALIDATION_KEY bump (`pm211-podcast-episodes` → `pm213-live-sessions`) so existing devices re-pull service_catalogue + calendar_occurrences with the new columns.
+
+**Session 2: `checkin-live.html` form variants + submit path.**
+- Build 5 variant form shapes inline in checkin-live.html (sleep, nutrition, mood, stress, mindfulness).
+- Variant selection logic reads `current_occurrence.checkin_variant`.
+- Optimistic-first submit path per §23.39.
+- Already-submitted-for-this-occurrence guard.
+- Default "general" variant for NULL checkin_variant.
+- Brain commit + sw.js cache bump.
+
+**Session 3 (folds into engagement-overhaul session, not standalone):** widen `checkins_completed` source, re-point The Elite cert at `certificate_checkins`, evaluator updates, post-flight verify.
+
+### Ordering with PM-211
+
+PM-211 ships first → PM-213 is a clean follow-up against the post-PM-211 service_catalogue shape (`schedule_days[]`, `live_url`, `replay_url` columns already present, sessions-data.js deleted, materialiser EF running).
+
+PM-213 ships first → PM-211 still works as scoped; the Info-tab columns (`host_name`, `host_photo_url`, `about_session`, `youtube_channel_id`) are additive to PM-211's migration. The chat-strip + tab changes touch shells PM-211 also touches (data binding migration from sessions-data.js to VYVELocalDB.service_catalogue) — second migration is a bit more work but no merge conflict shape.
+
+**Recommendation: PM-211 first.** It's smaller scoped (one schema migration + materialiser EF + sessions.html/connect.html migration + sessions-data.js delete) and unblocks the data foundation PM-213 builds on. If trial deadline pressure makes PM-211 slip, PM-213 can ship against the current (split-source) state and PM-211 reconverges later.
+
+### Decisions locked (do not re-derive)
+
+1. Chat removed entirely from all 16 shells. No moderation tooling, no exception.
+2. Q&A is "coming soon" placeholder only for v1 — text-only, no UI. Real Q&A wiring deferred until real live sessions begin (post-Castr-playback era).
+3. Reactions deferred — initially considered for PM-213 but Dean's call was "coming soon" placeholder alongside chat + Q&A for v1.
+4. Host info on `service_catalogue` (per-category default) with nullable per-occurrence overrides on `calendar_occurrences`. Override-aware editing in PM-214 admin console.
+5. Storage bucket `host-photos`, public-read, Lewis uploads via Supabase dashboard.
+6. YouTube embed = channel-level URL pattern (`embed/live_stream?channel=<id>`). No YouTube API integration in app; Lewis handles broadcast batch creation via his own tooling.
+7. Live check-ins are a separate table (`live_checkin_submissions`), not folded into `wellbeing_checkins`. Different submission shape (variant + JSONB answers) vs the fixed-shape weekly check-in.
+8. Live check-ins count toward `checkins_completed` achievement + `certificate_checkins` cert track. Max 2 per ISO week (1 weekly + 1 live) + 1 per month from monthly. Per §23.37 credit calc, not write gate.
+9. Achievement tier ladder NOT recalibrated for PM-213. Defer to post-trial Achievements overhaul.
+10. PM-214 (admin console) parked for June. Override-aware editing UI ("just this one" / "this and all future") deferred until then. Lewis edits via Supabase dashboard until PM-214 ships.
+
+### Open decisions for the build session
+
+1. **Default variant for NULL `checkin_variant`.** Lean toward rendering the existing wellbeing-checkin shape (feeling slider + free text) so members get *something* useful. Alternative: render an empty state ("Today's check-in format will be set by the host shortly") and require Lewis to set variant before each occurrence. First option is safer (no blank state if Lewis forgets); second forces explicit decisions. Confirm at build time.
+2. **`live_checkin_submissions.occurrence_id` nullability.** What if a member fills in the form when no live session is currently running (page visited mid-day, no occurrence in window)? Either reject submission ("come back during a live session"), or allow it with NULL occurrence_id (counts as a generic variant check-in). Lean toward allow-with-NULL — members get credit for engaging, the data still ties to a variant.
+3. **Read scope on `live_checkin_submissions`.** Member sees own row only (RLS member-scoped, matches all other activity tables). Admin (service-role) can read all for analytics. Aggregate reporting via existing patterns. No special carve-out needed.
+4. **Achievement metric name.** Keep `checkins_completed` (just widen source) or rename to `total_checkins` or similar? Lean keep — existing tier rows reference the slug, renaming cascades to a rewrite of tier copy. Widen quietly.
+5. **The Elite cert wiring.** Currently driven off `wellbeing_checkins` count. Post-PM-213 should drive off `certificate_checkins` (distinct ISO weeks with ≥1 check-in any type). New SQL function or extend existing? Build-time call.
+
+### Related rules invoked
+
+- §23.36 (`client_id` UUID, no `'c-' + Date.now()` patterns)
+- §23.37 (caps are credit calculations, never write gates)
+- §23.39 (Mind/cardio optimistic-first / outbox / failure-bus skeleton — reused for live_checkin submit path)
+- §23.40 (Storage public-read for content imagery — same pattern for host photos)
+- §23.41 (parallel-session safety — pre-commit SHA refresh)
+- §23.46 (counters render truth, no skeleton chars on Dexie-readable fields)
+- §23.47 (cross-check spec against live schema before lock)
+- §23.48 Pattern 1 (Dexie-driven, bus-fan-out) for Info tab + check-in form repaint
+- §23.49 (catalogue imagery DB-driven, nullable, onerror fallback) for host_photo_url
+- §23.50 (CATALOGUE_INVALIDATION_KEY bump on catalogue schema change)
+- §23.52 (large-body curl discipline) — Info tab data fits comfortably under threshold, but the multi-shell commit touches 16+ files and the chat-strip diffs may produce large per-file bodies for some shells
+- §23.53 (JSON parse from file, not inline `python3 -c`)
+
+### Time estimate
+
+**2-3 Claude-assisted sessions for PM-213 atomic scope.** Plus the engagement-overhaul fold-in (separate session, this week).
+
+- Session 1 (schema + chat strip + Info tab on 16 shells): 90 min including verify.
+- Session 2 (checkin-live form variants + submit path): 60-90 min.
+- Session 3 (engagement overhaul fold-in): tracked separately as part of this week's achievement work.
+
+---
+
+## Added 23 May 2026 — PM-214 — Portal admin console for live session content (placeholder spec, scoped for June)
+
+**Source.** Dean conversation 23 May PM, sequenced post-PM-213. Scoped for June as part of the sales-readiness push (Sage demo, BT/Barclays outreach). Not started.
+
+**The problem PM-214 solves.** PM-213 ships editable schema for live session content but no admin UI — Lewis edits `service_catalogue` and `calendar_occurrences` via Supabase dashboard. That's fine for trial but not a story you tell during enterprise sales conversations. By June, Lewis + Cole + Calum need a branded admin surface to manage session content without exposure to raw SQL.
+
+### Scope (high-level — full spec at build time)
+
+1. **Sessions list view.** Read `calendar_occurrences` for next N weeks (default 8). Show each occurrence with category, scheduled start, host name, status (upcoming / live / past). Filter by category, by host, by date range. Search by host name or session title.
+2. **Per-occurrence detail + edit.** Click into an occurrence → see host card preview + about copy + photo + check-in variant (if applicable). Edit any of these fields inline.
+3. **Override-aware save.** When the field being edited is one of (`host_name`, `host_photo_url`, `about_session`, `checkin_variant`), surface the override choice:
+   - "Just this one" → UPDATE single `calendar_occurrences` row.
+   - "This and all future" → UPDATE `service_catalogue` (the default) + clear future override rows for that category.
+   - "All occurrences" → UPDATE `service_catalogue` + clear ALL override rows for that category (rarely the right choice; surface only behind "show advanced").
+4. **Host photo upload.** Direct upload to `host-photos` Storage bucket, auto-populate `host_photo_url`. Optional client-side resize + EXIF strip (post-MVP polish).
+5. **At-a-glance status board.** "Next session: Yoga 7pm tomorrow" rolling list. Live session indicator (green dot when broadcast active — derived from YouTube API or just from scheduled_starts_at + duration window).
+
+### Where it lives
+
+Two options worth considering at build time:
+
+- **Option A:** Extend `vyve-command-centre` at `admin.vyvehealth.co.uk`. Reuses auth, faster build, mixes team-ops and content-ops in one surface.
+- **Option B:** New domain `manage.vyvehealth.co.uk` for portal-content admin. Cleaner separation, matches PM-188's design discussion. More setup work.
+
+Lean Option A for speed unless the team-ops vs content-ops separation becomes a real concern (multi-user collision, role-scoped access, etc.).
+
+### What it doesn't need v1
+
+- Recurring schedule editing (Lewis changes `service_catalogue.schedule_days` via dashboard until v2).
+- One-off event creation (Lewis uses SQL editor INSERT template — already documented in PM-210a brain entry).
+- Multi-user collision detection / locking.
+- Audit log / version history (Supabase DB-level audit infra already exists).
+- Pre-recorded Castr playback scheduling (separate Castr surface, not VYVE admin scope).
+
+### Time estimate
+
+**3-5 Claude-assisted sessions when built.** Static HTML + Supabase JS SDK + admin role check. Same shape as Command Centre Shell 1. No backend beyond what Supabase already provides.
+
+### Not started
+
+Scoped 23 May 2026 PM. Pickup post-trial-launch in June. Trigger: when Lewis hits friction with Supabase-dashboard editing OR when sales conversations require a "we have an admin tool" story.
+
+---
+
 ## Shipped 23 May 2026 — PM-212 — Podcast hub MVP shipped end-to-end [vyve-site `bff78cb4`, brain `0ce93681` → next]
 
 **PM-212 closed in one session.** Supabase migration + 40-row seed + member UI all landed clean. Six-file atomic commit to vyve-site main (podcast.html NEW 17314 bytes, connect.html gold Podcast tile next to Calendar tile, db.js SCHEMA_V10 + makeCatalogueTable consumer, sync.js plan entry + CATALOGUE_INVALIDATION_KEY bump `pm210-calendar-occurrences` → `pm211-podcast-episodes`, sw.js cache bump, index.html vbb-marker 80 → 81). Supabase: `pm211_create_podcast_episodes` migration earlier in session, 40 rows seeded (7 latest post-rebrand + 33 Everyman archive; 28 with Drive thumbnails, 12 with NULL rendering as gradient placeholders).
