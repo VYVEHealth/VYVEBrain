@@ -1,3 +1,27 @@
+## 2026-05-23 16:25 — PM-224 Promote CONNECT eyebrow to main focal point [vyve-site `b3139e2b`]
+
+Dean spec on the production-text Connect hero (PM-223.2): "Connect needs to be a bit bigger though, it's the main focal point."
+
+Inverted the hierarchy:
+
+- **Eyebrow → primary anchor**: 0.72rem 600 teal-lt → 1.6rem 700 **white**, letter-spacing tightened 0.18em → 0.12em (uppercase glyphs look better looser at small sizes, tighter at large sizes). Kept uppercase + tracking for the geometric anchor feel.
+- **Headline → supporting subtitle**: 1.6rem 700 white → 1.1rem 500 muted white (rgba 0.92). Stays Playfair Display for serif continuity, drops weight + size to support role.
+
+Spacing between them unchanged. Same gradient overlay scrim from PM-223.2 (dark top + clear middle + dark bottom) carries the contrast for both.
+
+### Settled hero hierarchy for hub pages
+
+When a hub page has a photographic hero with text overlay:
+- **Page name** (CONNECT, HOME, BODY, MIND) gets the dominant typographic treatment — uppercase, weight 700, ~1.6rem, white, generous tracking
+- **Tagline** sits below as subtitle — Playfair Display, weight 500, ~1.1rem, slightly muted white
+- Both rely on the gradient overlay's dark-top scrim for legibility
+
+Reusable directly when index/mind/exercise hero ships drop.
+
+Files: `connect.html` (eyebrow + headline rules), `sw.js` (`pm212-7-real-logo-a` → `pm224-connect-focal-a`), `index.html` (vbb 105 → 106).
+
+---
+
 ## 2026-05-23 13:48 — PM-212.7 Podcast fallback uses real brand asset, dropping the threshold-extracted V [vyve-site `b7b6ac3d` → `da563832`]
 
 Closes the PM-212 logo-asset arc. Five-file atomic commit: `logo-mark.png` replaced with the canonical VYVE brand logo Dean uploaded (500×500 RGB, 14671 bytes, the actual rounded-square app-icon asset with V-mark inside), CSS rewritten on `.ep-thumb .logo-fallback img` to `width:100%; height:100%; object-fit:cover` with zero padding, `.logo-fallback` container changed from `display:flex` centring box to `display:block` full-bleed positioning. Asset fills the tile edge-to-edge; parent `.ep-thumb` `border-radius:10px overflow:hidden` clips the corners cleanly. `/logo-white.png` deleted (PM-212.4 leftover, verified zero references via repo-wide code search). sw cache `pm223-text-contrast-c` → `pm212-7-real-logo-a`. vbb-marker 104 → 105.
