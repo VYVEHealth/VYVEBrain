@@ -1,3 +1,63 @@
+## 2026-05-23 13:35 — PM-221 Full-viewport Connect hero + frosted-glass widgets [vyve-site `e4e19a2a`]
+
+### What shipped
+
+Dean spec after seeing PM-220.6 work: more image visible from behind, widgets slightly translucent so you can see what's happening in the background. WHOOP / Apple Fitness+ layered-glass aesthetic.
+
+Three coordinated changes:
+
+**1. `.connect-hero` is now `position: fixed; inset: 0`.** Was top 38vh band. Photo fills the entire viewport, sits behind everything continuously. Same fixed-pin mechanics from PM-220.5/6 — GPU layer hint via `translateZ(0)`, background-image (not `<img>` children), day/night swap via `.is-night` class.
+
+**2. `.wrap` background goes transparent.** Was solid `var(--bg)` to cover the photo on scroll (PM-220.2 doctrine). That doctrine is **reversed** here — we want the photo visible *through* the page, not covered. Main padding-top reduced from `max(240px, 38vh)` to `max(220px, 32vh)` so the first widget sits ~32vh down, leaving the most cinematic part of the photo (sky/mountain area) visible above it.
+
+**3. Light frost on all widgets.** `backdrop-filter: blur(10px) saturate(140%)` on `.checkin-card`, `.elite-hero`, `.hero-card`, `.calendar-tile`, `.podcast-tile`. Photo softly shows through every card. Saturate 140% gives the photo through the frost a bit more colour vividness, compensating for the desaturation that blur causes.
+
+The two previously-opaque decorative tiles (`.calendar-tile` solid teal gradient, `.podcast-tile` solid gold gradient) had their backgrounds toned down to translucent rgba versions:
+
+```css
+.calendar-tile{
+  background:linear-gradient(135deg,
+    rgba(13,43,43,0.55) 0%,
+    rgba(27,120,120,0.50) 40%,
+    rgba(77,170,170,0.40) 100%);
+}
+.podcast-tile{
+  background:linear-gradient(135deg,
+    rgba(122,95,31,0.55) 0%,
+    rgba(168,132,47,0.50) 40%,
+    rgba(201,168,76,0.40) 100%);
+}
+```
+
+Net result: photo bleeds through every widget consistently, not just the previously-translucent ones.
+
+### Reusable doctrine update for hub-page heroes
+
+The PM-220 series doctrine was "fixed-pinned hero band at top, content scrolls over solid backdrop". PM-221 updates that doctrine: **for hub pages where photography is the ambient identity, the hero is `inset: 0` and widgets get backdrop-filter blur.** When the index/mind/exercise heroes ship, choice between the two doctrines depends on the page:
+
+- **Band hero** (PM-220 doctrine): better for pages with dense content from the top edge, where covering the photo on scroll is acceptable.
+- **Ambient hero** (PM-221 doctrine): better for hub pages where you want photographic presence *throughout* the page, not just at the top. Costs GPU for backdrop-filter on every widget but acceptable on a single page.
+
+Connect uses the ambient doctrine. Index/mind/exercise will probably want the same once their content is reorganised — but each page can choose.
+
+### Concurrent session note
+
+Two PM-212.x commits landed on top of PM-220.6 around 11:23-11:38 UTC (between Dean going to bed and waking up): `ca145636` (PM-212.4 logo-white.png on podcast) and `b863c04d` (PM-212.5 podcast skeleton-first paint). Both isolated to podcast.html. PM-221 fresh-fetched both sw.js and index.html from main at commit time, picking up their cache-key + vbb-marker bumps, and built on top of `b863c04d`. PM-220.6 install handler (cache:reload) survived intact — the parallel session built on top correctly.
+
+The repeated pattern of parallel-session activity overnight is now reliable enough that it should be treated as background-normal — every brain/site commit needs a fresh HEAD fetch immediately before the ref PATCH, not at session start. Already in §23.53 reminder but worth re-emphasising.
+
+### Files committed (vyve-site `e4e19a2a`)
+
+- `connect.html` (+22/-16) — hero `inset: 0`, `.wrap` transparent, frosted-glass overrides + tile bg tone-down at end of style block
+- `sw.js` — cache `pm212-podcast-skel-i` → `pm221-frosted-glass-a`
+- `index.html` — vbb-marker 97 → 98
+
+### Tooling
+
+§23.41/52/53 honoured. Composio still 401. PAT-direct. No new §23 rule earned tonight beyond PM-220.6's `cache:reload` candidate.
+
+---
+
 ## 2026-05-23 05:10 — PM-220.6 SW install with cache:reload — bypass CDN cache for fresh precache [vyve-site `1f004499`]
 
 ### What broke through the night
