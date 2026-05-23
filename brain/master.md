@@ -411,6 +411,8 @@ Cron dedupe — 08 May 2026: jobid 19 `process-scheduled-pushes-every-5min` was 
 
 All portal pages live at `online.vyvehealth.co.uk` and are bundled inside the iOS + Android Capacitor binaries via `npx cap copy` from `~/Projects/vyve-capacitor`. The web URL itself is the browser-accessible account-management fallback — the *member experience* (the app) is delivered exclusively through the App Store and Play Store binaries. Every page is gated behind Supabase Auth (`auth.js` v2.3).
 
+**Hub-page hero pattern (PM-244, 23 May 2026).** The hub pages (Home, Body, Mind, Connect) use a `position:fixed` photographic hero band at the top with scrolling content below. The soft seam between photo and content follows the **§23.57 canonical scrolling-fade recipe** — dedicated `.X-hero-fade` absolute-positioned div as first child of `.wrap`, lifted up 80px via `transform:translateY(-100%)`, 3-stop rgba gradient with `[data-theme="light"]` override. `connect.html` is the reference implementation; `mind.html` already has the photographic hero (`.mind-hero`) and is the next target for the recipe; `exercise.html` and `index.html` will adopt if/when they get photo heroes during Premium Feel continuation.
+
 ### Core pages
 
 | Page | Purpose |
@@ -857,7 +859,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ## 19. Current status — 23 May 2026 PM-239 (Avatar pipeline complete — optimistic-first persist-then-upload; paints instantly, changes instantly, loads instantly; §23.56 hard rule earned)
 
-**PM-245 Replays section-rail rebuild (23 May 2026, vyve-site `20c673dc`).** Closed the loop on the PM-229 → PM-231 → PM-235 → PM-236 sequence with a third rewrite of replays.html. Replays hub is now 8 vertical sections (one per playlist) of up-to-3 most-recent tiles + "See all" link, with a new `/replay-category.html?cat=<slug>` shared shell handling the full per-playlist archive. Tap a tile mounts an inline single-video iframe — no more playlist-iframe lock-in that PM-235 had where members were stuck on the most-recent video with only YouTube's >>| controls to navigate. Backend: new `replay_videos` table (per-video rows, indexes on `playlist_slug, published_at DESC` and `youtube_video_id UNIQUE`), `slug` column added to `replay_playlists` for URL-safe routing (decoupled from display name), `refresh-replay-videos` EF v1 fetching playlistItems.list + videos.list for all 8 playlists via Vault OAuth + the codified `get_youtube_oauth_secrets()` RPC path. pg_cron job 26 nightly at 03:30 UTC. Initial backfill: 17 videos, 0 failures, 4.7s. db.js SCHEMA_V12, sync.js catalogue plan + `CATALOGUE_INVALIDATION_KEY = 'pm245-replay-videos'` per §23.50, sw.js `pm245-replay-videos-a` cache key, nav.js subPageLabel for replay-category, index.html vbb-marker 125→126. **PM-XXX placeholder discipline:** this session demonstrated the placeholder-then-sed-at-commit pattern preventing parallel-session collision churn — 0 renames vs yesterday's 4. Promoting to §23.57 candidate on next master rebuild. **Lesson held from PM-236 handoff:** Dean's UX gap ("I can only see the most recent video") came after mockup-approval and ship. The fix was a tap-flow walkthrough at design time, not just static tile mockups — captured for future video-browse surfaces.
+**PM-236 + handoff state (23 May 2026, vyve-site `13846ab6`).** Single-file diagnostic patch shipped: `replays.html?debug=1` surfaces VYVELocalDB table registration, Dexie row count, _kv meta state, direct REST status. Built to diagnose Dean's "no replays yet" empty state, but pull-to-refresh resolved before the diagnostic ran — issue was WKWebView serving cached db.js (Dexie v10) while running new replays.html (PM-235, expecting v11 store). SW cache bump in PM-236 (`pm236-replays-diag-a`) forced refetch, Dexie upgraded, tiles paint correctly. Diagnostic infrastructure stays in place for future Dexie/sync issues — `?debug=1` is now a real tool. **Design pivot identified by Dean post-paint:** the PM-235 playlist-embed iframe plays the most recent video but offers no in-place browse of the full playlist — member is stuck on the most recent and can only navigate via YouTube's player controls. Poor mobile browse experience. **New design locked for next-session build:** Replays hub becomes 8 sections of "3 most recent tiles + See all [category] ›" rails, with a new `/replay-category.html?cat=<slug>` shared page handling the full per-playlist view. Build plan: new `replay_videos` table (per-video rows, ~200-400 total at trial scale, indexed on (playlist_category, published_at DESC)), seeded from playlistItems.list for all 8 playlists via the established Vault OAuth + pg_net path. db.js SCHEMA_V12 + version chain + makeCatalogueTable consumer. sync.js new catalogue plan entry + CATALOGUE_INVALIDATION_KEY bump. Third rewrite of replays.html (sections + tile rails + See all routes). NEW replay-category.html shell (single page, URL-param driven, reverse-chron list). connect.html `renderLatestReplay` unchanged (still reads from `replay_playlists` for the single featured card). sw.js precache + nav.js subPageLabel for replay-category. **Session arc:** PM-229 (broadcast-ID approach with chip filter) → PM-231 (theme fix) → PM-235 (full pivot to playlists as source of truth, 8 playlist tiles) → PM-236 (diagnostic) → handoff. Four rewrites on the same surface in one session. **Lesson worth codifying:** Dean's architectural questions ("is that not how it works?", "I can only see the most recent video") both came AFTER mockup-approval and ship. Both were tap-flow issues invisible in static mockups. Next time on a video-browse surface, the mockup needs to walk through the tap-flow explicitly — "tap tile → what does member see → how do they navigate to next/previous?" Static tile mockup is insufficient for video surfaces.
 
 **PM-235 (23 May 2026, vyve-site `1f0c81ff`).** Five-file atomic commit landing the replay surface rebuild. PM-229's `calendar_occurrences.youtube_broadcast_id` approach replaced with `replay_playlists` catalogue table — YouTube playlists are now the source of truth for replay videos, our table just holds the 8 playlist identifiers plus cached latest-video metadata (thumb, title, video_count, published_at). Why the rebuild: Dean's question "session goes live, session finishes, YouTube automatically adds that to the playlist, so why are we doing per-broadcast row mapping?" was correct. Manual SQL per broadcast doesn't scale; a `session-publish` EF cron to automate it is over-engineered when YouTube already aggregates broadcasts into category playlists automatically. **Supabase pre-shipped:** `replay_playlists` table created with RLS + `set_updated_at` trigger + partial index `(display_order) WHERE active = true`; 8 rows seeded with playlist IDs discovered via Vault OAuth + pg_net path (`youtube/v3/playlists?mine=true`); one-shot latest-video cache populated for all 8 via parallel `playlistItems.list` calls. `calendar_occurrences.youtube_broadcast_id` column DROPPED + partial index `idx_calendar_occurrences_replays` dropped first; 10 PM-229 test rows deleted, 6 original past-occurrence rows kept with broadcast_id nulled (legit historical scheduling data). **vyve-site changes:** `db.js` SCHEMA_V11 adds `replay_playlists` store + version chain + `makeCatalogueTable` consumer; `sync.js` adds catalogue plan entry + `CATALOGUE_FRESH_TABLES` entry + `CATALOGUE_INVALIDATION_KEY` bump `pm228-replays-youtube-id` → `pm235-replay-playlists` per §23.50; `replays.html` complete rewrite (PM-229's chip-filter + reverse-chron tile-list replaced with 8 playlist tiles in responsive grid, 1col mobile / 2col >=480px, in-place `videoseries` iframe on tap, close button tears down iframe to stop audio, "Latest" badge on most-recently-updated playlist); `connect.html` `renderLatestReplay` rewritten to read from `replay_playlists` (max `latest_video_published_at` across 8 rows); `sw.js` cache key bumped `pm234-avatar-crop-a` → `pm235-replay-playlists-a`. **Numbering — three renames per §23.14 rule 3:** internal PM-232 during data-layer build → PM-234 when two parallel sessions (More-menu trim + Replays-in-More-menu + avatar instant-paint) took PM-232/233 → PM-235 final ship when a third parallel session (avatar crop modal) took PM-234 during commit build. `sw.js` rebased once on the new HEAD's cache key value; other four files untouched by any parallel session. **YouTube API edge worth codifying:** `playlistItems.list` returns items in playlist order, not date order. Sort by `snippet.publishedAt DESC` client-side to find most recent. Sibling gotcha to PM-229's `broadcastStatus`/`mine` mutual-exclusion. **Lesson on architectural question framing:** Dean's "is that not how it works?" came after two layers of build. Tighter take on mockup-first → also data-layer-first: confirm data shape before building consumer surface. Catalogue-table-of-identifiers scales better than per-item-mirror when upstream system (YouTube/Spotify/Stripe) already aggregates content sensibly. **PM-235b cron EF (hourly refresh of `latest_video_*` cache) is the only follow-up — manually populated once today; quota math 8 calls/hour × 1 unit each = 192 units/day, well under 10000-unit daily.
 
@@ -2742,6 +2744,97 @@ Mind → Body → Index. Mind has the lowest content density and is the cleanest
 **Doesn't apply to:** writes that NEED server confirmation before UI changes — payment, account deletion, persona change (UI state IS derived from server state, not from a local artefact). Those still await server response.
 
 **Reference implementation:** settings.html `handleAvatarPick` → crop modal `onConfirm` callback (PM-239 vyve-site `994e5d9b`).
+
+### §23.57 — Hub-page photographic hero seam: canonical scrolling-fade recipe (PM-238 → PM-244, 23 May 2026)
+
+**Applies to:** any portal page with a `position:fixed` photographic hero band at the top + scrolling content below. Currently `connect.html` and `mind.html`. Will apply to `exercise.html` and `index.html` when/if they get photo heroes (Premium Feel campaign sequel work).
+
+**The problem.** A fixed-position photographic hero meeting solid-bg scrolling content below creates a hard horizontal seam at the photo's bottom edge. The seam reads especially bad in light mode where the photo's dark teal lower zone falls off into near-white page content. In dark mode the colour proximity hides the seam but the edge is still visually wrong.
+
+**Six commits of failed approaches before this recipe stuck:**
+
+| PM | Attempt | Why it failed |
+|---|---|---|
+| 237 | Two-layer gradient on `.connect-hero-overlay` with `[data-theme="light"]` override | Painted on the fixed photo — didn't scroll. Dean's correct ask: fade should belong to the content. |
+| 238 | Background gradient on `.wrap` top, `var(--bg)` endpoints | Wrap top sat flush below photo. Gradient painted in air between photo and content; both endpoints were essentially same-colour against the body radial gradient. Invisible. |
+| 240 | `.wrap { margin-top:-80px; padding-top:80px }` to overlap photo, with background gradient | Mental model right (overlap photo). But WKWebView paint-order on background-property + overlapping fixed sibling + main's stacking context combined to make the gradient invisible. |
+| 241 | Body-level fixed-position `.connect-hero-fade` element | Visible at last but fixed = didn't scroll. Cut through content mid-page when member scrolled. |
+| 242 | Absolute-positioned `.connect-hero-fade` as first child of `.wrap`, `main { z-index: 2 }` | Positioning + scroll behaviour correct. Gradient still appeared invisible because of colour proximity bug from PM-238 striking in a new place (now over photo's dark-teal zone). |
+| 243 | Debug ship with `background: red` | Proved PM-242's positioning + scroll worked perfectly. Isolated the real bug as colour proximity (gradient endpoints visually identical against photo's dark zone). |
+| **244** | **Three-stop rgba gradient hitting opaque at 75%, theme-scoped override** | **Ships.** |
+
+**The canonical recipe.** Verbatim from shipped `connect.html` PM-244 (vyve-site `a2e12cb0`):
+
+1. **Bump `main` z-index from 1 to 2.** The hero is `position:fixed; z-index:1` at body level. Without this bump, main's z-index:1 tied with hero's z-index:1 and relied on DOM-order tie-break. WKWebView's paint order on `transform:translateZ(0)`-marked fixed elements made the tie-break unreliable for property-on-overlapping-element approaches. With main at z-index:2, the entire scrolling document layer unambiguously beats the hero in body stacking. No tie-break dependency.
+
+```css
+main{position:relative;z-index:2;}
+```
+
+2. **Add a dedicated `<div class="X-hero-fade">` as the FIRST CHILD of `.wrap`.** Not inside `<main>` directly, not a sibling of the hero at body level — must be inside the wrap so it scrolls with the wrap's box. Dedicated element, not a background-property hack.
+
+```html
+<main>
+  <div class="wrap fade">
+    <div class="connect-hero-fade"></div>
+    <!-- ... rest of content ... -->
+```
+
+3. **Position the fade band absolute, anchored to wrap top, lifted up 80px via translateY(-100%).** The wrap already has `position:relative; z-index:2` (now inside main's z-index:2 stacking context). `top:0` puts the fade at wrap top, `transform:translateY(-100%)` lifts it 80px above. As wrap scrolls, fade scrolls with it. `height:80px` chosen by feel — long enough to feel soft, short enough not to swallow first content widget. Adjustable per page.
+
+```css
+.connect-hero-fade{
+  position:absolute;
+  top:0;
+  left:0;
+  right:0;
+  height:80px;
+  transform:translateY(-100%);
+  pointer-events:none;
+  z-index:1;
+}
+```
+
+4. **Gradient: three-stop rgba, hits opaque at 75% Y not 100%.** A linear gradient from `transparent` to `var(--bg)` will be invisible when both endpoints are nearly the same colour against the photo backdrop. Use a 3-stop curve that hits ~60% opacity at 40% Y and full opacity by 75% Y. This guarantees visible "thickening" mid-band regardless of what's behind it, and full coverage at the seam. **rgba hardcoded per theme, no `color-mix` dependency** (per §23 doctrine carried over from PM-237 — keeps iOS Safari 16.2+ floor unnecessary). Theme-scoped via `[data-theme="light"]` override.
+
+```css
+.connect-hero-fade{
+  background:linear-gradient(
+    to bottom,
+    rgba(10,31,31,0)   0%,
+    rgba(10,31,31,0.6) 40%,
+    rgba(10,31,31,1)   75%,
+    rgba(10,31,31,1)   100%
+  );
+}
+[data-theme="light"] .connect-hero-fade{
+  background:linear-gradient(
+    to bottom,
+    rgba(240,250,248,0)   0%,
+    rgba(240,250,248,0.6) 40%,
+    rgba(240,250,248,1)   75%,
+    rgba(240,250,248,1)   100%
+  );
+}
+```
+
+5. **`pointer-events:none`.** Fade band must never intercept taps on the photo or content beneath.
+
+**Per-page application checklist.** When applying this to mind.html / exercise.html / index.html:
+
+- [ ] Confirm the hero element has `position:fixed` with a `background-image` (not an `<img>` child — WKWebView img-paint failure per PM-220.x).
+- [ ] Confirm `<main>` exists and has `position:relative; z-index:N`. Bump N to 2 if not already.
+- [ ] Confirm `.wrap` (or page equivalent) has `position:relative` so the absolute fade child can anchor.
+- [ ] Add `<div class="X-hero-fade"></div>` as FIRST child of the wrap, before any content.
+- [ ] Add the CSS rule + light-theme override. Class name per page: `.connect-hero-fade`, `.mind-hero-fade`, `.exercise-hero-fade`, `.index-hero-fade`.
+- [ ] Test on device: scroll the page. Fade band must scroll with content, dissolve must be visible against the photo's bottom edge in both themes.
+- [ ] If invisible: ship a debug version with `background: red;` to isolate. Per the meta-lesson below.
+
+**Meta-lesson — promote to its own §23 if it bites again.** When a CSS visual effect "doesn't work" across 2+ fix attempts and each fix looks the same, the next commit MUST be a debug ship with a guaranteed-visible value (solid colour, larger size, neon) to isolate the failure mode. Diagnosis before more attempts. Six commits on this seam — could have been three if I'd gone to debug-red at PM-241 instead of PM-243.
+
+**Reference implementation.** `connect.html` PM-244, vyve-site `a2e12cb0`. Key lines: `main{position:relative;z-index:2;}` (early CSS block); `.connect-hero-fade{...}` rule + `[data-theme="light"] .connect-hero-fade{...}` override; `<div class="connect-hero-fade"></div>` as first child of `.wrap fade`.
+
+---
 
 ## 24. Premium Feel Campaign — local-first migration (active)
 

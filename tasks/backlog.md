@@ -1,3 +1,22 @@
+## Added 23 May 2026 — Hub-page hero scrolling-fade: apply §23.57 recipe to mind.html (next), exercise.html / index.html (later)
+
+**Status.** Recipe codified in §23.57 from connect.html PM-244 ship. Ready to replicate.
+
+**Next target — `mind.html`.** Already has `.mind-hero` (`position:fixed` with `background-image:url('/mind-hero-afternoon.jpg')`) at lines 315+. Likely suffers the same hard-seam problem in light mode that connect.html had pre-PM-244. Application:
+
+1. Bump `main { z-index: 1 → 2 }` in mind.html (currently z-index:1 per the body radial-gradient pattern shared across hub pages).
+2. Add `<div class="mind-hero-fade"></div>` as first child of `.wrap` (or page equivalent).
+3. Add `.mind-hero-fade` CSS rule + `[data-theme="light"]` override per the §23.57 recipe (clone connect-hero-fade verbatim, swap class name).
+4. Verify on device. If invisible, ship debug-red per §23.57 meta-lesson before re-tuning.
+
+Estimated session: one focused PM commit, follows the recipe exactly.
+
+**Later targets — `exercise.html`, `index.html`.** Both currently use body radial-gradient backdrop without photo heroes. If/when the Premium Feel continuation adds photo heroes to these pages, the §23.57 recipe applies one-shot per page.
+
+**Sequencing note.** Mind hub work should pair with any other mind.html refinements queued (current Today's Focus banner per PM-209+) to avoid two separate sw.cache bumps and two separate vbb-marker increments on the same page in short succession.
+
+---
+
 ## Added 23 May 2026 — Podcast fallback tile still reads as foreign vs photo tiles (12 episodes affected) — DEFER
 
 **Status.** Parked post-trial. Not blocking launch.

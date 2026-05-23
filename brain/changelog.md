@@ -1,3 +1,39 @@
+## 2026-05-23 PM-245 — Hub-page hero scrolling-fade recipe codified as §23.57; pattern ready to replicate to mind.html / exercise.html / index.html [VYVEBrain]
+
+Brain-only commit. No code change. Closing out the PM-237 → PM-244 chain by extracting the canonical recipe into a §23 hard rule and a §8 callout, so the other hub pages get the same treatment without re-deriving from scratch.
+
+### What landed
+
+**§23.57** — Hub-page photographic hero seam: canonical scrolling-fade recipe. Includes:
+- Full chain of six failed approaches with one-line "why it failed" summaries, so future Claude doesn't go down the same dead ends.
+- The four-step recipe verbatim from connect.html PM-244: bump `main` z-index → dedicated `.X-hero-fade` element as first child of `.wrap` → `position:absolute; top:0; transform:translateY(-100%); height:80px` → 3-stop rgba gradient hitting opaque at 75% with `[data-theme="light"]` override.
+- Per-page application checklist (7 items) — drop-in usable.
+- Meta-lesson on debug-ship-first when 2+ identical-looking fix attempts fail.
+- Reference implementation pointer to `connect.html` PM-244 (`a2e12cb0`).
+
+**§8 callout** — short note at the top of the portal-pages section pointing to §23.57 with the list of which pages already have hero photos (`connect.html` shipped, `mind.html` ready) and which will adopt when they get heroes (`exercise.html`, `index.html`).
+
+**Backlog item** — "Hub-page hero scrolling-fade: apply to mind.html (next)" added under the Premium Feel continuation block.
+
+### Why this earns a rule and not just a changelog note
+
+Three reasons it's durable doctrine, not just one-off context:
+
+1. **Multiple future surfaces** — at minimum mind.html (existing hero), and likely exercise.html + index.html when those get hero treatment in the Premium Feel campaign continuation.
+2. **High failure-mode density** — six attempts to get this right on one page. Pattern-replicating risks re-running the same dead ends without the rule.
+3. **Specific colour-proximity gotcha** — the gradient-invisible-against-photo-dark-zone bug isn't obvious until you've hit it. The rule's recipe encodes the workaround (3-stop curve hitting opaque at 75%) explicitly.
+
+### Files
+
+- `brain/master.md` 446430 → 453168 chars (+6738). §23.57 inserted before "## 24. Premium Feel" boundary. §8 callout inserted after "Every page is gated behind Supabase Auth" intro sentence.
+- `tasks/backlog.md` — new item added for mind.html application of the recipe.
+
+### Tooling discipline
+
+§23.41 fresh master.md re-fetch before edit ✓. §23.52(a) JSON payload via `--data-binary @file` (master.md is 450KB, well over argv threshold) ✓.
+
+---
+
 ## 2026-05-23 PM-245 — Replays section-rail rebuild [vyve-site `20c673dc`]
 
 Third rewrite of the Replays surface in 24 hours. Dean spotted the UX gap after PM-235's playlist-embed ship: tap a tile, get the most recent video, no in-app way to browse the rest of that playlist. Member is stuck on whatever YouTube serves first, can only navigate via YouTube's own player controls. Poor mobile browse.
