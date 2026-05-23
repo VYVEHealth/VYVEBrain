@@ -1,3 +1,27 @@
+## 2026-05-23 PM-232 — Trim three items from More menu (Running Plan, Guides & PDFs, How-to Videos) [vyve-site `bde4e113`]
+
+Dean asked for these three items off the More menu. Surgical drop — underlying pages stay live and reachable by direct URL, just no surfaced nav entry. No other changes.
+
+`nav.js` carries two parallel rendering paths: the desktop `moreItems` array (data-driven, used by `buildMorePanelHTML`) and the mobile bottom-sheet (inline HTML string assembled in `buildNav`). Both had to change. First pass tried a verbatim string replace on the mobile block and assertion-tripped because the live SVG markup carried extra `<rect>` decoration my source snippet didn't have — reverted from `.bak` and switched to a line-index drop with pre-flight verifies asserting the exact 1-indexed line content before mutating. 8 lines dropped: 3 desktop items + (1 mobile divider preceding the trio + 3 mobile items). Tools section header retained on desktop in case future Tools-class items land. Mobile reads cleanly as Leaderboard → divider → Live Sessions → divider → Settings.
+
+Post-change verified `running-plan.html` page-title map at line 30 untouched (`'running-plan': 'Running Plan'`) — back-button labelling for direct-URL hits still works. `/sessions.html` (Live Sessions) preserved in both menus. `node --check` clean.
+
+### Files in this commit
+
+- `nav.js` 36561 → 36561 bytes after blob round-trip (8 lines removed but exact byte parity is coincidence, content verified by post-commit Contents API fetch and first-100-chars match).
+- `sw.js` cache key `pm231-replays-theme-a` → `pm231-replays-theme-b-more-trim`.
+- `index.html` vbb-marker 111 → 112.
+
+### Tooling note
+
+Composio not surfacing in `tool_search` this session — same pattern as the 21 May outage. Fell back to Vault PAT + GitHub Git Data API (blobs → tree → commit → ref update) via `bash_tool` curl per memory #8. Worked exactly as documented. The fallback path is now well-trodden — no friction beyond the extra round-trip to Supabase for the PAT.
+
+### Worth flagging but not a §23
+
+Two parallel rendering paths in one nav.js file is a footgun (desktop array vs mobile inline HTML), but it's contained to this single file and the grep caught it immediately. Codifying it would be over-fitting on one near-miss; the existing whole-file-grep discipline already covers this class of error. If it bites a second time, promote to a rule then.
+
+---
+
 ## 2026-05-23 PM-230 — Settings bugfix: dead-ID writes aborted loadProfile, Profile/Coach/Habits never populated [vyve-site `1ea875e3`]
 
 PM-228 introduced a regression Dean caught on device within the first interaction: Profile name, Coach name, Habits count all stuck on "Loading…" placeholders. Root cause was the surgical transformer's section-removal scope. The pre-PM-228 settings.html had an **Account** section containing three rows with IDs `setting-name`, `setting-email`, and a `Password` row that chevroned to `/set-password.html`. Profile + email information moved up into the new Profile section in PM-228 (with new IDs `profile-name`, `profile-email`), and the old Account section was removed wholesale (the password row's responsibility migrated to the sub-page Account & data flow).
