@@ -1,3 +1,78 @@
+## 2026-05-23 03:50 — PM-220 Connect parallax-pinned hero — photo stays, content scrolls over it [vyve-site `516e138c`]
+
+### What shipped
+
+Dean spec: Apple Fitness+ / WHOOP-style parallax-pinned hero. Photo anchors to the viewport, content rises over it as the member scrolls. Scroll back up and the photo is right there. Premium feel without animation cost.
+
+Implementation chosen: **Option A — pure `position: fixed`, no JS scroll listener.** The browser compositor handles the pinning at GPU layer level. Zero scroll-tracking overhead, zero jank.
+
+Three CSS shape changes from PM-216/PM-217:
+
+**1. `.connect-hero` is now `position: fixed`.** Was `position: relative` with 100vw breakout + negative-margin pull-under-topbar (which became dead machinery after PM-218/219 killed the topbar on hub pages anyway). New rule:
+
+```css
+.connect-hero {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: max(240px, 38vh);
+  z-index: 0;
+  overflow: hidden;
+  /* gradient fallback retained */
+}
+```
+
+The hero is now a `position: fixed` element inside `<main>`. Because `position: fixed` is positioned relative to the viewport (not its containing block), the hero pins to viewport top regardless of scroll. The z-index:0 evaluates within main's stacking context (main has `position: relative; z-index: 1`), so the hero sits behind `.wrap` content but above body radial-glow.
+
+**2. `.wrap` becomes the scroll surface with a solid backdrop.** New rules added:
+
+```css
+.wrap {
+  background: var(--bg);
+  position: relative;
+  z-index: 1;
+  padding-top: max(240px, 38vh);
+}
+```
+
+The `padding-top` (matching hero height) pushes content below the hero on initial paint. The solid `--bg` background means as content scrolls up over the hero, it cleanly covers the photo — no see-through, no muddy gradient blend. The original `.wrap{max-width:640px;margin:0 auto;padding:0 18px 110px}` rule (line 67) still applies for max-width and side/bottom padding; my new rule (line 175) just adds the longhand `padding-top` which wins in cascade order.
+
+**3. Removed dead machinery.** Negative-margin pull-under-topbar (`margin-top:calc(-56px - env(safe-area-inset-top))` + matching `padding-top:calc(56px + env(safe-area-inset-top))`) was added in PM-216 to let the photo bleed under the sticky topbar. PM-218/219 removed the topbar on hub-page bodies, so this machinery was already vestigial. PM-220 removes it cleanly — `position: fixed` from `top: 0` does the bleed-to-viewport-top for free.
+
+### Stacking context audit
+
+Bottom to top:
+1. body bg (var(--bg) solid)
+2. `body::before` radial-glow (`position: fixed; z-index: 0`) — paints in root stacking context
+3. `main` (`position: relative; z-index: 1`) — establishes new stacking context above body::before
+4. Inside main's context: `.connect-hero` (`position: fixed; z-index: 0`) — pinned to viewport, sits at bottom of main's children
+5. Inside main's context: `.wrap` (`position: relative; z-index: 1`) — sits above hero, scrolls naturally
+
+The `position: fixed` on `.connect-hero` inside an ancestor with a transform/filter/perspective would have anchored to that ancestor instead of viewport, but main has none of those — fixed-pinning works as expected.
+
+### Reusable doctrine for index/mind/exercise
+
+The parallax-pinned hero pattern is now codified. Three rules in the per-page CSS:
+
+```css
+.<hub>-hero { position: fixed; top: 0; left: 0; right: 0; height: max(240px, 38vh); z-index: 0; overflow: hidden; }
+.<hub>-hero img { position: absolute; inset: 0; object-fit: cover; width: 100%; height: 100%; }
+.wrap { background: var(--bg); position: relative; z-index: 1; padding-top: max(240px, 38vh); }
+```
+
+Plus the hub-page body class (PM-218/219) suppresses the topbar via the nav.js JS-guard. Index/mind/exercise can copy this verbatim when their photographic heroes ship.
+
+### Files committed (vyve-site `516e138c`)
+
+- `connect.html` — hero CSS rewritten, `.wrap` augmented, comment block updated
+- `sw.js` — cache `pm219-hub-topbar-js-guard-a` → `pm220-parallax-hero-a`
+- `index.html` — vbb-marker 88 → 89
+
+### Tooling
+
+§23.41 / §23.52(a-c) / §23.53 all honoured. Composio still 401 (~40h+ since 21 May incident); PAT-direct throughout. No new §23 rule earned — clean execution.
+
+---
+
 ## 2026-05-23 03:25 — PM-219 JS-side guard for hub-page topbar suppression (belt-and-braces over PM-218) [vyve-site `1ca8d566`]
 
 ### What shipped
