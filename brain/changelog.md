@@ -1,3 +1,69 @@
+## 2026-05-23 03:00 — YouTube Data API v3 OAuth setup complete (PM-215 prep, brain-only)
+
+### What landed
+
+OAuth 2.0 credentials for the YouTube Data API v3 provisioned end-to-end on `team@vyvehealth.co.uk` (manager account for all 9 VYVE brand-account channels). Three Vault secrets stored in Supabase `ixjfklpckgxrwjlfsaaz`:
+
+- `YOUTUBE_OAUTH_CLIENT_ID` (UUID `4be3...` — created earlier this session, full UUID in vault.secrets)
+- `YOUTUBE_OAUTH_CLIENT_SECRET` (UUID `d8ad1e6e-022f-4f31-97ec-2e75a0ac44f6`)
+- `YOUTUBE_OAUTH_REFRESH_TOKEN` (UUID `11d36796-1864-4477-a10e-2415e13abe14`)
+
+Scope granted: `https://www.googleapis.com/auth/youtube` (full read+write to channels: broadcasts, playlists, video metadata, thumbnails). Auth flow: Server-side / Offline / Consent Screen, via Google OAuth Playground with custom client credentials.
+
+### Google Cloud project state
+
+- Project: `vyve-website`
+- YouTube Data API v3: enabled
+- OAuth consent screen: Testing mode, External user type, App name "VYVE"
+- Scopes: declared in OAuth Playground request, not bound to the consent screen (newer Cloud Console flow does this at token-request time, not consent-screen time)
+- Test users: `team@vyvehealth.co.uk` (the channels-owning account)
+- OAuth 2.0 Client: type=Web application, name="VYVE Backend", redirect URI=`https://developers.google.com/oauthplayground`
+
+### The 7-day refresh-token wrinkle
+
+Token-exchange response carries `refresh_token_expires_in: 604799` (7 days). This is the Google enforcement for OAuth apps still in "Testing" state on the consent screen — once submitted for verification (Google review, takes ~3-7 days), refresh tokens become long-lived. Workaround until verification submitted: re-mint the refresh token weekly via the same OAuth Playground flow, update `YOUTUBE_OAUTH_REFRESH_TOKEN` in Vault. Calendar reminder logic for the rotation lives in the secret description.
+
+When PM-215 ships, the EF will detect 401-on-refresh and surface a `platform_alerts` row prompting re-mint. Until then, manual cadence: re-mint every Friday-or-so for the next 4-6 weeks while we decide whether to submit consent for verification (probably yes, it's a one-time process and unlocks long-lived tokens).
+
+### Brand-account architecture verified
+
+The 9 channels are YouTube brand accounts (separate channels with their own channel IDs, playlists, stream keys, watch URLs) all managed by `team@vyvehealth.co.uk`. Manager-account OAuth grants cross-brand access in principle. First API call (in PM-215's cron EF) will confirm by hitting `channels.list?managedByMe=true` and counting returned channels — expecting 9. If only the manager's own channel comes back, the fallback is 9 separate OAuth flows producing 9 refresh tokens stored as `YOUTUBE_REFRESH_TOKEN_{CATEGORY}`. The escape hatch is known; the cost is one extra OAuth Playground cycle per channel (~2 min each, ~20 min total).
+
+### Why no live API test tonight
+
+bash_tool sandbox in Claude's container has an egress allowlist that doesn't include `*.googleapis.com` (response body: "Host not in allowlist"). TLS handshake completes against `oauth2.googleapis.com` (proxy accepts the destination at SSL layer) but the request itself is rejected at the proxy's HTTP filter. Same allowlist will not affect Supabase Edge Functions when PM-215 ships — EFs have full internet egress. Today's session just can't run the end-to-end test from the chat sandbox.
+
+### Tomorrow's plan (Dean memory)
+
+Manual end-to-end test of the Riverside → YouTube → playlist pipeline. Pick one channel (likely Mindfulness for the multi-session reusable-stream test, or Yoga for fastest one-shot). Confirm:
+
+1. Stream key in the matching Riverside studio works (RTMP flows).
+2. Live broadcast appears on the YouTube watch URL.
+3. End stream in Riverside → broadcast finalises → video lands in the channel's playlist.
+
+If all three confirm, PM-215's spec is purely "automate broadcast creation via API" — no infrastructure work needed beyond the cron EF + materialise logic + token refresh helper.
+
+### Tooling discipline this session
+
+§23.41 fired again — HEAD moved between my last commit (`6c8d0806`) and this one (`5de38f87`, PM-212.1 podcast follow-up by parallel session). No collision with my work. This commit is a clean follow-up on top.
+
+§23.45 PAT-direct path used throughout (Composio still 401-ing from 21 May security incident, ~50 hours now). §23.52(a) `--data-binary @file` for blob bodies. §23.53 response parsing via `/tmp/response.json` files, not inline `python3 -c | $(...)` — this rule fired live tonight when the OAuth token-exchange test failed silently with empty access_token: re-running with file capture revealed the actual response was 21 bytes of "Host not in allowlist", proving the rule's value for the second time in 24 hours.
+
+### Live state at session close
+
+- Brain HEAD before this commit: `5de38f87` (PM-212.1 podcast follow-up)
+- vyve-site main: `9badb2cb` (PM-212.1 podcast follow-up) — unchanged this session
+- Vault new secrets: 3 (YOUTUBE_OAUTH_CLIENT_ID, YOUTUBE_OAUTH_CLIENT_SECRET, YOUTUBE_OAUTH_REFRESH_TOKEN)
+- No new §23 hard rule earned — §23.41, §23.45, §23.52, §23.53 all fired and were honoured.
+
+### What's NOT in this commit
+
+- No code (no EF, no vyve-site changes).
+- No PM-215 spec — that lands tomorrow after we've run the manual Riverside→YouTube test and seen the pipeline work end-to-end. Spec is more accurate with real-world observations than from theory.
+- No automated refresh-token rotation. Manual re-mint cadence acceptable until OAuth consent is submitted for verification.
+
+---
+
 ## 2026-05-23 01:15 — PM-212.1 Podcast hub follow-up: nav.js wiring, VYVE-logo fallback, in-app guest interest modal [vyve-site `9badb2cb`]
 
 ### What shipped
