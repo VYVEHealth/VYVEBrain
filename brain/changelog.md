@@ -1,3 +1,72 @@
+## 2026-05-23 05:10 — PM-220.6 SW install with cache:reload — bypass CDN cache for fresh precache [vyve-site `1f004499`]
+
+### What broke through the night
+
+After PM-220.5 shipped (background-image hero, source-correct), Dean device-tested and reported Update 94 active but Connect still showed the PM-220.4 diagnostic red/yellow box. Source on main confirmed PM-220.5 (`ec054bd4`) — no red, no yellow, background-image present. So the file was right but **the SW cache had the wrong file in it**.
+
+### Root cause
+
+The SW install handler called `cache.addAll(urlsToCache)`. `cache.addAll` uses the **browser default cache mode** for each fetch. Default mode is allowed to serve cached responses from HTTP cache / CDN. **GitHub Pages CDN had cached the PM-220.4 connect.html.** So when SW installed for cache-key `pm220-parallax-bgimage-f`, the install fetched connect.html from CDN cache — which returned the stale PM-220.4 version — and stored that into the new SW cache.
+
+Activate then deleted the previous SW cache (`pm220-diagnostic-e`). The new cache, populated with stale-fetched-during-install content, became the active cache. Stale-while-revalidate served it on every navigation. The background refresh did eventually fetch the fresh PM-220.5 from origin, but each cache bump cycle just installed another stale copy from CDN — chasing the cache by bumping the version never caught up because the CDN was always one step behind.
+
+This explains every "Update X showing the previous bug" symptom from the last 3-4 cache cycles.
+
+### Fix
+
+Replace `cache.addAll()` with explicit `fetch(url, { cache: 'reload' })` followed by `cache.put`. `cache: 'reload'` instructs the browser to **bypass both browser HTTP cache and any intermediate CDN cache**, going directly to origin for the fetch. Asset-by-asset error tolerance preserved (one 404 no longer kills the entire install per `addAll`'s all-or-nothing semantics — a small UX improvement on top).
+
+```javascript
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => Promise.all(
+        urlsToCache.map(url =>
+          fetch(url, { cache: 'reload' })
+            .then(resp => {
+              if (resp && resp.status === 200) {
+                return cache.put(url, resp);
+              }
+            })
+            .catch(() => {})  // asset-by-asset failure tolerated
+        )
+      ))
+      .then(() => self.skipWaiting())
+  );
+});
+```
+
+### §23 candidate rule — SW install fetches must use cache:'reload'
+
+When using GitHub Pages (or any CDN-fronted origin) with a service worker that precaches HTML, **never use `cache.addAll()` or default-mode `fetch()` in the install handler**. The CDN can serve stale content during install, baking it into the new SW cache and trapping members in stale-state for an unbounded number of deploy cycles. Always use `fetch(url, { cache: 'reload' })` followed by manual `cache.put`. This bypasses CDN cache deterministically.
+
+Strong enough to codify as §23.54 in the next master.md rewrite. For now flagged here as a candidate. The symptom (chasing a bug across multiple deploys that all appear to ship correctly) is the strong signal to look for.
+
+### PM-220 series — actually closed now
+
+PM-220 (CSS theory) → PM-220.1 (DOM relocation + GPU hint) → PM-220.2 (spacer transparency) → PM-220.3 (suspect elimination) → PM-220.4 (diagnostic strip) → PM-220.5 (background-image fix, source-correct) → **PM-220.6 (SW CDN-cache bypass, fix actually reaches the device).**
+
+In retrospect, two distinct bugs were intertwined:
+1. **WKWebView img-in-fixed-translateZ paint failure** — PM-220.4 isolated, PM-220.5 fixed.
+2. **SW install grabbing stale CDN copies** — PM-220.6 fixes. This was actively making bug #1 appear unfixed for 3-4 deploy cycles because each "fix" was being correctly committed but never reaching the device.
+
+### Files committed (vyve-site `1f004499`)
+
+- `sw.js`: install handler rewritten with `fetch(cache:'reload')` loop, cache `pm220-parallax-bgimage-f` → `pm220-cdn-bypass-g`
+- `index.html`: vbb-marker 94 → 95
+
+### What Dean should see on next Connect visit
+
+Update 95 active → SW reinstalls with cache:reload → connect.html fetched fresh from origin → PM-220.5 background-image version stored in cache → Connect page shows the actual photographic hero (not red box). Photo should pin to viewport while content scrolls over it.
+
+If Dean still sees the red box on Update 95, the SW didn't reinstall — needs hard-kill of the app to force a fresh SW boot. But the install code itself should now do the right thing on first install opportunity.
+
+### Tooling
+
+Composio still 401. PAT-direct. §23.41/52/53 honoured.
+
+---
+
 ## 2026-05-23 04:50 — PM-220.4/5 Connect parallax-hero RESOLVED via <img> → background-image switch [vyve-site `ec054bd4`]
 
 ### Resolution
