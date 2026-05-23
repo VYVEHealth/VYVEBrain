@@ -1,3 +1,15 @@
+## 2026-05-23 04:20 — PM-220.2 Parallax-hero spacer fix: padding on main, not wrap [vyve-site `6805124b`]
+
+PM-220.1 hid the photo entirely. Cause: `.wrap` had both `padding-top:38vh` AND `background:var(--bg)` — solid bg fills the padding region, covering the photo from top-of-viewport down. Defeats the parallax effect at initial paint.
+
+Fix: move `padding-top` to `<main>` (transparent, no bg). The spacer region is now see-through to the fixed hero behind. `.wrap` keeps `background:var(--bg)` but only sized to its content, so when content scrolls up it cleanly covers the photo (the desired behaviour).
+
+**Codified lesson:** for parallax-pinned heroes with a scroll-surface above, the spacer that pushes content below the hero must be a **transparent box** (padding on a no-bg element, OR margin). If the spacer has a solid background it covers the hero at initial paint and you lose the photo.
+
+Files: `connect.html` (CSS rules), `sw.js` (`pm220-parallax-hero-b` → `-c`), `index.html` (vbb-marker 90 → 91).
+
+---
+
 ## 2026-05-23 04:05 — PM-220.1 Connect parallax-hero fix: move out of main + GPU layer hint [vyve-site `6df6c787`]
 
 ### What happened
