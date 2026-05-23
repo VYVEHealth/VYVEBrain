@@ -1,3 +1,43 @@
+## 2026-05-23 02:01 — PM-216 Connect photographic hero with day/night swap [vyve-site `3ee5c60f`]
+
+> **Numbering note.** This ship landed concurrent with two other sessions claiming PM-213 (live session pages spec, brain `6c8d0806`) and PM-214 (admin console placeholder, same brain commit), and PM-215 (YouTube reusable streams diagnostic, brain `41bc8f7d`). Per §23.14 rule 3 the next free PM-number for this work is **PM-216**. The vyve-site commit message at `3ee5c60f` was authored as "PM-213" before the conflict was known — read it as PM-216 going forward. No code change needed; the commit content is correct, only the PM-tag in the commit message is stale.
+
+### What shipped
+
+Full-bleed photographic hero anchored to the top of `connect.html` with cross-fade between a daytime image (sunlit lakeside dock, four people in conversation) and a nighttime image (campfire by a lake at dusk, four people around it). Photo swap is local-time driven — `getHours()` between 6 and 18 inclusive renders day, anything else renders night. Inline pre-paint script runs synchronously before first paint to set the `.is-night` class on the hero element, so evening loads do not flash the day photo for a frame before swapping.
+
+Photography stays the primary visual focus per Lewis brief. The gradient overlay is intentionally soft: 10% rgba(13,43,43) at the top → 5% at 35% → 25% at 70% → 45% at the bottom. Sky/mountain detail preserved in both images, faces and environmental detail remain clearly visible, the page-hdr title ("Connect") sits in the lower third where the gradient peaks at 45% for legibility against any image content. White text with a soft `text-shadow:0 2px 16px rgba(0,0,0,0.45)` finishes the legibility pass without flattening the photo.
+
+Three structural decisions worth durably codifying for the index.html rewrite that follows:
+
+**1. Topbar treatment via scoped CSS token override, not nav.js modification.** The sticky `.mobile-page-header` injected by `nav.js` already applies `backdrop-filter:blur(20px)`. Its background colour is read from `--nav-bg-mob`, which the theme.css default sets to `rgba(8,24,24,0.97)` (near-opaque). PM-216 overrides that token on the connect.html `<body>` only — `--nav-bg-mob: rgba(8,24,24,0.42)` — and the topbar instantly reads as frosted glass floating over the photography. No nav.js change, no per-page-header markup change, override does not leak to other pages because it sits on the body declaration of connect.html. The same trick is reusable for index.html when its photographic hero ships next.
+
+**2. Hero breaks the .wrap max-width via 100vw + negative margins.** `.connect-hero { width:100vw; margin-left:calc(50% - 50vw); margin-right:calc(50% - 50vw); }` pulls the hero out to full viewport width while the surrounding `.wrap` content (pencil check-in card, Elite hero, Calendar/Podcast tiles, Live This Week carousel) stays inside the 640px max-width container. Tested pattern for any future full-bleed hero on a `.wrap`-constrained page.
+
+**3. Hero pulls up under the sticky topbar via negative margin + matching padding.** `margin-top:calc(-56px - env(safe-area-inset-top,0px))` pulls the hero up so the photo bleeds *under* the sticky topbar; `padding-top:calc(56px + env(safe-area-inset-top,0px))` adds the same distance back as internal padding so content (page-hdr title block) clears the topbar. The visual result is the topbar floating as frosted glass directly over the photograph — exactly the "pills sit on top, photography behind" pattern Dean specified. Both halves use `env(safe-area-inset-top)` so iOS notch handling is automatic.
+
+### Files committed (vyve-site `3ee5c60f`, atomic 5-file via Git Data API)
+
+- `connect.html` MODIFIED +141/-5 — hero CSS block, scoped `--nav-bg-mob` override on `<body>`, `.wrap` top padding 20px → 0, new `<section class="connect-hero">` markup wrapping the page-hdr, inline pre-paint day/night script. Pencil check-in card / Elite hero / Calendar tile / Podcast tile / Live This Week carousel all untouched.
+- `connect-hero-day.jpg` NEW 72,269 bytes — 572×1024 portrait, q=82 progressive JPEG. Source from Lewis (Connect Hero 2).
+- `connect-hero-night.jpg` NEW 95,601 bytes — 572×1024 portrait, q=82 progressive JPEG. Source from Lewis (Connect Hero).
+- `sw.js` MODIFIED +6/-1 — cache key `pm211-podcast-d` → `pm213-connect-hero-a` (cache prefix retains the stale PM-213 string for now; will roll forward on next vyve-site ship). Both hero JPGs added to precache list alongside breathwork thumbs (PM-177 pattern).
+- `index.html` MODIFIED +1/-1 — vbb-marker Update 84 → 85.
+
+### Hard rule observed (no new §23 earned)
+
+Tooling discipline clean throughout: Composio still 401-ing from 21 May security incident (now ~38h), so §23.45 PAT-direct path exercised end-to-end via Supabase Vault → bash_tool curl → GitHub Git Data API. §23.41 pre-tree HEAD re-fetch confirmed parent at `d2c9a322` for vyve-site. §23.52(a) all 5 blob bodies routed via `/tmp/vyve-commit/blob_*.json` files + `curl --data-binary @file` — 3 text blobs UTF-8 encoding, 2 binary blobs base64 encoding. §23.52(c) every blob SHA asserted as 40-hex via grep -E. §23.52(b) post-commit `GET /commits/{sha}` `files[].status` confirmed `{added:2, modified:3, removed:0}` — five files exactly.
+
+**§23.53 mid-pipeline reminder.** This commit hit the exact failure mode §23.53 codifies: inline `python3 -c "import json; print(json.load(...).get('sha','ERR'))"` parsing of the commit-create response failed because GitHub returned literal newlines inside the `message` field, and Python's `json.load` rejects unescaped control characters. The commit *succeeded* on GitHub (returned `3ee5c60f` cleanly) but the parser returned empty string, the ref update then 422'd with "At least 40 characters required". Caught immediately by reading the raw response body from disk. Pattern reinforced: always inspect raw response files before assuming an API failure when an inline parser comes back empty. The brain commit itself hit a fast-forward conflict because three parallel sessions were operating on the brain repo simultaneously — resolved by re-fetching HEAD, pulling the latest changelog, and re-prepending. Worth noting that with multiple concurrent Claude sessions on the same brain repo (which is now a pattern), every brain commit needs a fresh HEAD re-fetch immediately before the ref update PATCH, not at the start of the brain session.
+
+### State after this commit
+
+Connect hub now opens with photographic immersion. Existing pencil check-in card sits ~18px below the hero, then the Elite hero ring + dot strip, then the destination tiles (Calendar, Podcast), then Live This Week carousel — full sequence preserved exactly as PM-198 → PM-212 shipped. The hero is purely additive, no down-stream behaviour affected.
+
+**Next on horizon (Dean's call).** Index.html gets the same photographic hero treatment as part of its full overhaul — Dean's call captured this session. The three doctrines codified above (scoped `--nav-bg-mob` token override, 100vw + negative-margin breakout, negative-margin pull-under-topbar) are the reusable recipe for the index.html ship and any future hero across other hub pages.
+
+---
+
 ## 2026-05-23 03:15 — CRITICAL: YouTube live streams may not be reusable (PM-215 diagnostic queued)
 
 ### What Dean reported
