@@ -1,3 +1,57 @@
+## 2026-05-23 03:15 — CRITICAL: YouTube live streams may not be reusable (PM-215 diagnostic queued)
+
+### What Dean reported
+
+Tried the Riverside → YouTube flow previously. First stream worked end-to-end (went live, ended, video archived). Second attempt with the SAME stream key did not go live. Repeatedly observed.
+
+This is the textbook signature of a **one-time / non-reusable live stream** on YouTube. The stream resource is consumed by its first broadcast and cannot host a second one. To stream regularly to the same channel with the same key + watch URL, the stream resource must have `isReusable=true` set at the YouTube API level (or "Reusable" toggled in YouTube Studio's stream settings).
+
+### Why this changes the morning plan
+
+The previous plan was "manual Riverside test first, then spec PM-215 from observations". That plan assumed the 9 stream keys in the VYVE Access sheet are reusable. They may not be. Dean's prior experience strongly suggests they are not.
+
+**Revised morning plan:**
+
+1. **Diagnose via API first, before any Riverside test.** Use the OAuth credentials in Vault to call `liveStreams.list?part=snippet,cdn,contentDetails&mine=true` (and `managedByMe=true` for brand-account channels) on each of the 9 channels. Inspect `contentDetails.isReusable` per stream. Catalogue current state.
+2. **If any are non-reusable:** either flip them via `liveStreams.update` with `isReusable=true`, OR create fresh reusable streams via `liveStreams.insert`. Update the VYVE Access sheet with any new keys.
+3. **Then** the Riverside manual test — paste the (verified-reusable) stream key into Riverside, go live, end, go live again. Confirm second-attempt success.
+4. **Then** spec PM-215 with verified-good infrastructure underneath.
+
+### Other possible causes to rule out via API
+
+While I'm in there diagnosing, also check:
+
+- **Account-level live-streaming verification status.** New YouTube channels can have a 24-hour delay or phone-verification requirement before unlimited streaming is enabled. `channels.list?part=status` reports `longUploadsStatus` and live-streaming eligibility. Check all 9.
+- **Channel monetization / mid-stream restrictions** — not blockers for VYVE's unlisted setup, but worth noting in the audit.
+- **Per-channel live-streaming history** — `liveBroadcasts.list?broadcastStatus=completed` to see if completed broadcasts exist (Dean's first-attempt success would show as a completed broadcast).
+
+### Tooling note for the morning
+
+bash_tool sandbox in Claude's container blocks egress to `*.googleapis.com` ("Host not in allowlist" returned at HTTP filter layer after TLS handshake succeeds). Can't hit the YouTube API directly from chat. Two paths:
+
+1. **Deploy a one-shot diagnostic Edge Function** that uses Vault secrets to call YouTube Data API v3, dumps results to a `youtube_diagnostic_results` table or returns JSON. EFs have full internet egress. Most reliable.
+2. **Use Supabase MCP's `execute_sql` to invoke `net.http_post` from inside Postgres against googleapis.com.** Single SQL call, no EF needed. Faster for one-shot diagnostics. Likely the right choice.
+
+Either way: never lift Vault secrets out of Supabase. The token-exchange logic must run inside the Supabase boundary (EF or pg_net), not in chat.
+
+### State at note close
+
+- OAuth setup intact in Vault (3 secrets: CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN).
+- Refresh token 7-day clock ticking — expires ~30 May 02:38 UTC.
+- Brain HEAD: `6521c610` (PM-212.2 podcast V-glyph fix landed in parallel; no collision with this work).
+- vyve-site main: `38c64631` (PM-212.2) — unchanged in this thread.
+
+### What "buzzing" looks like in the morning
+
+Dean's words: "If you can get this work and that's fucking unbelievable, I'll be buzzing." The deliverable to clear that bar:
+
+1. API-confirmed diagnosis of why second-stream-attempt failed.
+2. Reusable streams set up across all 9 channels (or escalation plan if YouTube account-level restriction blocks it).
+3. Riverside → YouTube → playlist pipeline manually verified end-to-end on at least one channel with second-attempt repeatability.
+4. PM-215 spec written with real observations.
+
+---
+
 ## 2026-05-23 01:48 — PM-212.2 Podcast hub thumbnail fix: V-glyph fallback + Louis Watkins NULL [vyve-site `38c64631`]
 
 ### Two fixes
