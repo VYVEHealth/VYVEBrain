@@ -411,7 +411,7 @@ Cron dedupe — 08 May 2026: jobid 19 `process-scheduled-pushes-every-5min` was 
 
 All portal pages live at `online.vyvehealth.co.uk` and are bundled inside the iOS + Android Capacitor binaries via `npx cap copy` from `~/Projects/vyve-capacitor`. The web URL itself is the browser-accessible account-management fallback — the *member experience* (the app) is delivered exclusively through the App Store and Play Store binaries. Every page is gated behind Supabase Auth (`auth.js` v2.3).
 
-**Hub-page hero pattern (PM-244, 23 May 2026; PM-246 + PM-247, 23 May 2026).** The hub pages (Home, Body, Mind, Connect) use a `position:fixed` photographic hero band at the top with scrolling content below. The soft seam between photo and content follows the **§23.57 canonical scrolling-fade recipe** — dedicated `.X-hero-fade` absolute-positioned div as first child of `.wrap`, lifted up 80px via `transform:translateY(-100%)`, 3-stop rgba gradient with `[data-theme="light"]` override. `connect.html` and `mind.html` both implement the recipe (PM-246 ship); `exercise.html` and `index.html` will adopt if/when they get photo heroes during Premium Feel continuation.
+**Hub-page hero pattern (PM-244, 23 May 2026; PM-246 + PM-247, 23 May 2026; PM-252, 24 May 2026).** The hub pages (Home, Body, Mind, Connect) use a `position:fixed` photographic hero band at the top with scrolling content below. The soft seam between photo and content follows the **§23.57 canonical scrolling-fade recipe** — dedicated `.X-hero-fade` absolute-positioned div as first child of `.wrap`, lifted up 80px via `transform:translateY(-100%)`, 3-stop rgba gradient with `[data-theme="light"]` override. `connect.html` (PM-246), `mind.html` (PM-246), and `exercise.html` (PM-252 — the "Body" hub) all implement the recipe; `index.html` will adopt if/when it gets a photo hero during Premium Feel continuation.
 
 **Hub-hero canonical size (PM-247, 23 May 2026): `max(250px, 35vh)`.** Two paired values must always match on each page or content overlaps the photo / a gap appears: (1) `.X-hero { height: max(250px, 35vh); }` and (2) `main { padding-top: max(250px, 35vh); }` (or its `body.X-page main` scoped override). The 35vh applies to viewport-driven scaling — the band takes 35% of viewport height on phones taller than ~720px. The 250px floor protects against the band collapsing too short on small phones where 35vh < 250px. Dean's spec at PM-247: *"the picture needs to only take up about 35%, similar to the connect one. That will be the target going forward for all hero images."* Before PM-247, connect was on `max(260px, 36vh)` and mind was on `max(280px, 46vh)`. Both standardised in the same commit.
 
@@ -2757,7 +2757,7 @@ Mind → Body → Index. Mind has the lowest content density and is the cleanest
 
 ### §23.57 — Hub-page photographic hero seam: canonical scrolling-fade recipe (PM-238 → PM-244, 23 May 2026)
 
-**Applies to:** any portal page with a `position:fixed` photographic hero band at the top + scrolling content below. Currently `connect.html` and `mind.html`. Will apply to `exercise.html` and `index.html` when/if they get photo heroes (Premium Feel campaign sequel work).
+**Applies to:** any portal page with a `position:fixed` photographic hero band at the top + scrolling content below. Currently `connect.html`, `mind.html`, and `exercise.html` (the "Body" hub — see §23.61 for the body↔exercise.html naming convention). Will apply to `index.html` if/when it gets a photo hero (Premium Feel campaign sequel work).
 
 **The problem.** A fixed-position photographic hero meeting solid-bg scrolling content below creates a hard horizontal seam at the photo's bottom edge. The seam reads especially bad in light mode where the photo's dark teal lower zone falls off into near-white page content. In dark mode the colour proximity hides the seam but the edge is still visually wrong.
 
@@ -2842,7 +2842,7 @@ main{position:relative;z-index:2;}
 
 **Meta-lesson — promote to its own §23 if it bites again.** When a CSS visual effect "doesn't work" across 2+ fix attempts and each fix looks the same, the next commit MUST be a debug ship with a guaranteed-visible value (solid colour, larger size, neon) to isolate the failure mode. Diagnosis before more attempts. Six commits on this seam — could have been three if I'd gone to debug-red at PM-241 instead of PM-243.
 
-**Reference implementation.** `connect.html` PM-246, vyve-site `ec3f2c30` (replaces previous pointer to PM-244 `a2e12cb0` which was silently reverted by 59afbb85 within 16 minutes of shipping — see §23.58 for the gotcha and PM-246 for the recovery). `mind.html` PM-246 also implements the recipe verbatim with `.mind-hero-fade` class. Key lines: `main{position:relative;z-index:2;}` (early CSS block); `.X-hero-fade{...}` rule + `[data-theme="light"] .X-hero-fade{...}` override; `<div class="X-hero-fade"></div>` as first child of `.wrap fade`.
+**Reference implementation.** `connect.html` PM-246, vyve-site `ec3f2c30` (replaces previous pointer to PM-244 `a2e12cb0` which was silently reverted by 59afbb85 within 16 minutes of shipping — see §23.58 for the gotcha and PM-246 for the recovery). `mind.html` PM-246 implements the recipe verbatim with `.mind-hero-fade` class. `exercise.html` PM-252, vyve-site `5beef819` (24 May 2026), implements the recipe verbatim with `.body-hero-fade` class — third hub page to ship the pattern, day/night 2-variant swap mirroring connect's scheme. Key lines: `main{position:relative;z-index:2;}` (early CSS block); `.X-hero-fade{...}` rule + `[data-theme="light"] .X-hero-fade{...}` override; `<div class="X-hero-fade"></div>` as first child of `.wrap` (mind/connect use `.wrap fade`; exercise uses plain `.wrap` because it has no `fadeUp` animation to suppress — both work identically for the recipe).
 
 ---
 
@@ -2934,6 +2934,27 @@ The first is cleaner — preferred. The second is acceptable when iterating on a
 **Recovery.** When the symptom shows up, immediately re-issue the failing command with absolute paths and inspect both the intended and the unintended location for misplaced files. The wrong-directory artifacts are often safe to leave (no perms to write usually means nothing landed) but worth `rm`'ing if visible to keep the workspace clean.
 
 **Cross-reference.** Pairs with §23.45 (PAT-direct path mechanics — the same pipeline this rule patches) and §23.52 (write-path discipline — §23.60 is the prior step's discipline).
+
+
+### §23.61 — When Dean says "body" he always means `exercise.html` (PM-252, 24 May 2026)
+
+**Status: HARD RULE.** Earned PM-252 when Claude initially blocked on a hub-hero ship because Dean's instruction said "apply the hub-hero treatment to body.html" but no `body.html` file exists in `vyve-site`.
+
+**The mechanic.** VYVE's three pillars are Body / Mind / Connect. The hub pages for Mind and Connect are file-named after the pillar (`mind.html`, `connect.html`). The hub page for Body is historically named after the dominant content category that lived there first — `exercise.html` (the Exercise Hub with Movement / Workouts / Cardio / Classes streams). The page title is "VYVE — Body", the body class is `hub-page` (PM-252 adds `body-page`), the nav uses "Body" not "Exercise" as of PM-154 (16 May 2026 — Exercise hub renamed to Body in nav copy; the underlying filename was never changed). The naming asymmetry is permanent unless we ship a route migration as its own PM — see "Why not rename" below.
+
+**The rule.** When Dean says "body" or "body.html" or "the body page" in any VYVE engineering context, he means `exercise.html`. Don't ask. Don't stop. Substitute and proceed. Memory edit #22 codifies this for future sessions; this brain entry codifies it for any session that does not have the memory loaded (e.g. a fresh Claude looking at the repo cold).
+
+**Hub-page work referencing "body" mirrors `mind.html` and `connect.html`.** Specifically:
+
+- `<body class="body-page hub-page">` (parallel to `mind-page hub-page` and `connect-page hub-page`)
+- Photographic hero element class `.body-hero` (parallel to `.mind-hero`, `.connect-hero`)
+- §23.57 fade band class `.body-hero-fade` (parallel to `.mind-hero-fade`, `.connect-hero-fade`)
+- Hero photo asset paths `/body-hero-day.jpg` + `/body-hero-night.jpg` (parallel to connect's `connect-hero-day/night.jpg`)
+- Eyebrow text "Body", not "Exercise"
+
+**Why not rename `exercise.html` to `body.html`.** Tempting on first reading but it's a route migration, not a hub-hero job. It would touch: nav.js link entries, internal `<a href="exercise.html">` references across the portal (dashboard cards, related-page links), `sw.js` precache list, bundled iOS+Android binaries (cached members would 404 the new path until they re-launch and pick up new precache), HubSpot/PostHog event URLs that include the path, Brevo email templates that link in, and the Capacitor `server.url` fallback handling. Each is small but together it's a full PM of audit work for what would deliver zero member-visible benefit — members never see filenames. The naming asymmetry is purely a developer-facing wart and it lives in this brain entry to neutralise it.
+
+**Cross-reference.** §8 hub-page hero pattern (which references all three: connect.html, mind.html, exercise.html). §23.57 fade recipe applies to all three.
 
 
 ## 24. Premium Feel Campaign — local-first migration (active)

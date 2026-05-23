@@ -1,3 +1,58 @@
+## 2026-05-24 PM-252 — Body hero: §8 hub-page hero pattern on exercise.html (third hub) [vyve-site `5beef819`]
+
+### What shipped
+
+Atomic 5-file commit to `vyve-site` `main`: `5beef819b81446dc4c4f4aa1316056f775a677a5`, parent `02ae45b6` (PM-251c live page countdown). Applied the §8 hub-page hero pattern + §23.57 canonical scrolling-fade recipe to `exercise.html` — the third hub page to ship the recipe after `connect.html` (PM-244/246/247) and `mind.html` (PM-246/247/248). `index.html` is the only remaining hub without a photo hero.
+
+**Photographic hero band at the top of exercise.html.** `.body-hero` section at body level, position:fixed, z-index:1, height `max(250px, 35vh)` (PM-247 canonical hub-hero size), `background-image` not `<img>` (PM-220.x WKWebView paint failure), `translateZ(0)` GPU hint, `background-position:center center` (subject zones in both photos sit lower-half). Day/night 2-variant swap mirroring connect's pattern exactly — `/body-hero-day.jpg` (coastal sunrise group run, warm outdoor) as the default per §23.46 honest-paint contract; `.is-night` class applied by inline pre-paint script when `hour < 6 || >= 19` swaps in `/body-hero-night.jpg` (gym barbell row, dark indoor). Single inline IIFE, runs before main paint, no DOM-event wait.
+
+**§23.57 scrolling-fade band.** `.body-hero-fade` div as first child of the app `.wrap` (NOT the skeleton wrap — the skeleton has its own placeholder rows and a fade there would be noise). Absolute-positioned, `top:0`, `transform:translateY(-100%)` lifting it 80px above wrap top, `height:80px`, `pointer-events:none`. Canonical 3-stop rgba gradient hitting opaque at 75% Y (`rgba(10,31,31,*)` for dark, `[data-theme="light"]` override at `rgba(240,250,248,*)`). Verbatim port from `mind.html`'s `.mind-hero-fade` rule, just renamed.
+
+**Hero text overlay.** Eyebrow "BODY", headline "Strength is built in motion.". Same `.body-hero-content` / `.body-hero-eyebrow` / `.body-hero-headline` markup structure as connect/mind. White headline + teal-light eyebrow with deep text-shadows for legibility over any photo. Same `.body-hero-overlay` 6-stop gradient for top+bottom darkening as the other two heroes.
+
+**Stacking + suppression.** `body.body-page::before{display:none;}` kills the radial-gradient backdrop (would compete with the photo). `body.body-page .mph-page-label{display:none;}` hides the nav.js-injected sticky topbar label (PM-218 hid the whole sticky topbar on all 4 hub pages; this rule covers the page-label nav.js still tries to inject independently). `body.body-page main{padding-top:max(250px, 35vh);}` paired with hero height per §8 paired-values invariant — future change to one always touches the other. `body.body-page .wrap{background:var(--bg); position:relative; z-index:2;}` so wrap is the solid scroll surface that covers the photo on scroll and so the .body-hero-fade can absolute-anchor against it. NO `body.body-page .wrap.fade{animation:none;}` line — exercise.html uses plain `<div class="wrap">`, not `<div class="wrap fade">` (mind/connect both have `.wrap fade` and need to suppress the fadeUp animation; exercise has no such animation to suppress).
+
+**The existing `.hero-card` programme card was preserved.** It's the Active Programme card inside the wrap — distinct from the page-level photographic hero. Both coexist correctly: photo hero is the page chrome, hero-card is the first widget below the fade.
+
+**Body class change:** `<body class="hub-page">` → `<body class="body-page hub-page">`. The `hub-page` class is shared by index/exercise/mind/connect and used by PM-218 topbar suppression. The `body-page` class is the page-specific scope that the new CSS rules attach to.
+
+**Plus:**
+
+- `sw.js` precache list gains `/body-hero-day.jpg` + `/body-hero-night.jpg` alongside the existing connect/mind hero precaches — guarantees offline first-paint on cold boot and removes network jitter on the swap. Cache key bumped to `vyve-cache-v2026-05-24-pm252-body-hero-a`.
+- `index.html` vbb-marker `Update 136` → `Update 137`.
+
+### Files (5)
+
+- `exercise.html` (28.5KB, +5KB) — `.body-hero` CSS block, body class addition, hero `<section>` + inline swap script, `.body-hero-fade` injected as first child of app .wrap
+- `sw.js` (16.2KB, +235 bytes) — cache key bump, 2 new precache entries
+- `index.html` (121KB, +1 byte) — vbb-marker bump
+- `body-hero-day.jpg` (NEW, 212KB) — coastal sunrise group run
+- `body-hero-night.jpg` (NEW, 175KB) — gym barbell row
+
+### State after this commit
+
+`exercise.html` (the Body hub) now matches connect.html and mind.html in chrome — photographic hero, fade band, eyebrow+headline overlay. The page's content below (Active Programme card, stream cards for Movement/Workouts/Cardio) renders unchanged. Members on Dean's dev-loop iPhone see the change immediately (subject to §23.29 WKWebView cache); cohort members see it via OTA / next binary release (current trial cohort is on bundled iOS 1.3 / Android 1.0.3 from PM-115/116).
+
+`index.html` is now the only hub page without a photographic hero. Per §23.57 it will adopt the pattern if/when it gets a photo during Premium Feel continuation. Not in scope for current campaign.
+
+### Naming gotcha resolved (§23.61 new rule)
+
+Dean's instruction said "apply the hub-hero treatment to body.html". No `body.html` exists in the repo — the Body hub is filed under the legacy `exercise.html` filename (renamed in nav copy at PM-154 16 May 2026, never on disk). Surfaced the asymmetry at session start, Dean confirmed "if I say body I always mean exercise.html" — codified as memory edit #22 (session-level) and §23.61 in master.md (brain-level). Future sessions reading either source treat "body" as a synonym for `exercise.html`.
+
+### Tooling discipline
+
+§23.41 + §23.58 fired clean — HEAD pre-fetched at session start (`02ae45b6`), re-fetched immediately before commit-create against `EXPECTED_HEAD` constant, fresh content-diff confirmed unchanged on all three text files (`exercise.html`, `sw.js`, `index.html`) — no parallel ship collision. Composio still 401 (now ~58 hours since 21 May security incident); PAT-direct path via Vault per §23.45 throughout.
+
+Initial post-commit verification script choked on JSON parse of the Contents API response (base64 with embedded newlines, my `json.load` from `python3 -c "..."` was fragile across the embedded literal newlines). Pivoted to raw endpoint pinned to commit SHA per §23.45 — `https://raw.githubusercontent.com/.../<commit_sha>/<path>` — gave clean byte-identical verification on all 5 files including the two binaries (md5sum match). Worth noting: raw-pinned-to-SHA is the simplest post-commit verify for binary-blob commits since Contents API responses encode binaries as base64 inside JSON which is awkward to parse robustly.
+
+### Design choices worth recording
+
+**Why two variants not three.** Mind ships morning/afternoon/night (3 variants). Connect ships day/night (2 variants). Body shipped day/night (2 variants) — matched connect rather than mind because we have two photos: one warm outdoor sunrise (clearly "day"), one dark indoor gym (clearly "night"). No middle "afternoon" image exists. Future morning-vs-afternoon-outdoor or evening-vs-late-night-indoor splits can be added if the design wants finer granularity, but the swap script supports any number of `.is-X` classes — additive.
+
+**Why image 1 (gym) is night, not image 2 (coastal run).** Visual brightness mapping. Image 1 has a dark backdrop with teal LED accents and gold uplighting — reads as "evening indoor session". Image 2 is sunset on a coast with warm orange sky — reads as "early-morning outdoor session". Time-of-day defaults: hour 6-19 (06:00-18:59) = day, hour 19-6 = night.
+
+**Why `background-position:center center`.** Both photos place their subject focal point in the lower-half of the frame. Center-center keeps the upper-third of each photo (sky in image 2, ceiling/window light in image 1) visible at the top of the band where the eyebrow + headline sit, and anchors the subject below them. Bottom-anchored would cut the sky off in image 2 and cut the gym window light off in image 1.
+
 ## 2026-05-23 PM-251 — Live page state machine: 5-state engine + 8 shells + hub-awareness [vyve-site `765c5b69`, supabase migration `pm251_live_page_state_machine`]
 
 ### What shipped
