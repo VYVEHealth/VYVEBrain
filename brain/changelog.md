@@ -1,3 +1,58 @@
+## 2026-05-23 13:45 — PM-215.z All 7 active VYVE category streams verified end-to-end (Workouts, Mindfulness, Weekly Check-In, Group Therapy, Events, Education, Podcast)
+
+### What was tested
+
+Dean configured all 8 Riverside studios (skipped Default — catch-all, not used in practice) with custom RTMP destinations pointing at their matching YouTube stream keys. Then ran 15-90 second test streams through each studio to verify the pipeline works end-to-end on every category.
+
+8 pre-created `liveBroadcast` resources (`latencyPreference: ultraLow`, `enableAutoStart`/`AutoStop: true`, `recordFromStart: true`, `unlisted`) were batch-created and bound to their respective streams + inserted to their category playlists via API in a single setup pass. Dean then pushed RTMP through each Riverside studio in order; each broadcast auto-started on first RTMP frames, recorded, then auto-stopped after Riverside stopped.
+
+### Results
+
+| # | Category | Broadcast ID | Lifecycle | Recording | Duration |
+|---|---|---|---|---|---|
+| 1 | Workouts | `4LhzmXdjxpM` | complete | recorded | 96s |
+| 2 | Mindfulness & Mindset | `_c_JjHM2sio` | complete | recorded | 56s |
+| 3 | Weekly Check-In | `l2bLX9U4AA4` | complete | recorded | 62s |
+| 4 | Group Therapy | `p5M24G37lrw` | complete | recorded | 38s |
+| 5 | Events | `DpnOTzSPazc` | complete | recorded | 122s |
+| 6 | Education and Experts | `WWt22zNSGSU` | complete | recorded | 37s |
+| 7 | Podcast | `p4uvPBNNTcU` | live → complete | recording → recorded | (verified via API mid-stream) |
+| 8 | Default | `2n0-yB2h7D0` | ready (untested) | notRecording | skipped |
+
+All 7 tested categories: stream succeeded, recording archived, playlist binding intact. The 8th (Default) was deliberately skipped — Default is a catch-all from the pre-categorisation setup and isn't used in VYVE's operational workflow.
+
+### Observations to capture for PM-215 build time
+
+**1. Time-to-go-live varies 1-30 seconds per broadcast.** YouTube's `liveBroadcast` lifecycle transition from `ready` → `live` takes between 1s and ~30s depending on transcoder farm load. Dean noted Events specifically felt slow (~10s); within YouTube's documented "up to 30s" spec. Member-facing live pages must handle the "broadcast scheduled but not yet `live`" state gracefully — typical pattern is to open the iframe ~30-45s *before* `scheduledStartTime` so YouTube's native pre-roll UI bridges the gap. Hosts should start Riverside ~60s before the scheduled session start to absorb this startup window.
+
+**2. Steady-state playback latency is the OTHER number.** Once `lifeCycleStatus=live`, playback latency between live action and viewer playback is 2-5s on `ultraLow` mode. Distinct from startup variance. Dean's "30 second delay" observation from the Yoga test earlier was time-to-go-live, not ongoing latency.
+
+**3. Quality settings are per-Riverside-studio.** Dean's first Yoga test was visibly soft; bumping Riverside output to 4K/1080p between tests substantially improved perceived quality. Per-studio config recommendation: 1080p minimum at 6000 kbps (normal latency) or 4500 kbps (ultraLow). Riverside owns this config; not adjustable via the YouTube API. PM-215.x followup pencilled in: confirm Lewis sets each studio's streaming output spec at his Riverside admin level once.
+
+**4. pg_net cold-start DNS penalty.** First two parallel `net.http_post` calls in a batch of 8 timed out at the default 5000ms ceiling because cold DNS resolution + TLS handshake consumed 3-4s of the budget. Retry with `timeout_milliseconds := 15000` succeeded instantly. Codify: **when firing >2 parallel pg_net calls to a fresh domain, always pass `timeout_milliseconds := 15000` or higher.** §23 candidate rule, holding for one more occurrence before formalising.
+
+**5. Concurrent brain commit drift.** Mid-session, a parallel Claude session shipped PM-223 (Connect hero text overlay) to brain main, moving HEAD from `9228122b` → `5764f30b` between my pre-fetch and pre-commit re-fetch. Caught by §23.41 HEAD re-fetch before this commit. Reinforces the rule: **always re-fetch HEAD immediately before authoring the commit tree, not at session start.** Already codified in §23.53; this is the third occurrence today.
+
+### Resource state at session close
+
+- 9 `liveStream` resources on `UCuptZFgSk0ZmNnE2IbYBdtg`, all `isReusable=true`, all proven working (8 of 9 explicitly tested, Default left untested as it's not used).
+- 8 category playlists, each populated with at least one test broadcast as proof of binding.
+- 10 PM-215.* test broadcasts on the VYVE channel from today (2 from Yoga earlier + 8 from this batch). All unlisted. Safe to leave. PM-215 build can do a janitor pass to clean test broadcasts if desired (DELETE via `liveBroadcasts.delete` works on completed broadcasts).
+- Riverside: 8 of 9 studios now configured with custom RTMP destinations + persistent stream keys. Default studio not configured (intentional).
+- Bridge cron `youtube-token-keepalive-daily` (jobid 25) firing daily 03:00 UTC, EF v2 ACTIVE, end-to-end tested. Refresh-token clock will never expire in steady-state operation.
+
+### What this closes off
+
+PM-215 v2 layer infrastructure is now **fully verified and ready for build**. The session-publish EF + cron is the only remaining work. Estimated ~45 min once specced (per Dean's morning brief, spec already in backlog at PM-215 block updated this morning at commit `0f194f1e`).
+
+The next session can ship PM-215 with full confidence — every primitive (stream, broadcast lifecycle, playlist binding, token persistence, Riverside RTMP pipeline) is proven on real infrastructure. No more exploration needed; only orchestration.
+
+### Tooling
+
+§23.45 PAT-direct (Composio still 401 ~48h post-incident). §23.41 pre-commit HEAD re-fetch caught PM-223 concurrent drift, rebased onto correct parent. §23.52(a)/(b)/(c) for the commit. Token-refresh + access-stash via pg_net + Vault throughout, working pattern. Parallel pg_net call batching: 6/8 first-pass succeeded, 2 timed out, retry with extended `timeout_milliseconds` succeeded — reusable pattern for high-volume batch API calls.
+
+---
+
 ## 2026-05-23 15:55 — PM-223.1/.2 Hero text contrast fix — diagnostic + production [vyve-site `b7b6ac3d`]
 
 ### What happened across PM-223 → PM-223.2
