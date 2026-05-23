@@ -1,3 +1,22 @@
+## 2026-05-23 17:25 — PM-226 CONNECT eyebrow colour back to teal-light [vyve-site `c971d6cd`]
+
+Dean spec: "Connect is better but the colour is white instead of the teal." PM-224 switched the promoted eyebrow to white to read as the dominant anchor — Dean prefers the brand teal at the same size/weight/tracking.
+
+`.connect-hero-eyebrow` colour `#FFFFFF` → `var(--teal-lt)`. PM-224 size (1.6rem 700 uppercase 0.12em tracking) preserved. PM-223.2 text-shadow + dark gradient scrim still carry contrast over the bright sunrise zones of the day photo.
+
+### Final Connect hero hierarchy (closes PM-220 → PM-226 series)
+
+- CONNECT eyebrow: 1.6rem 700 **teal-light** uppercase tracking 0.12em — brand-coloured focal point
+- Tagline subtitle: 1.1rem 500 Playfair muted white (rgba 0.92) — supporting line, daily-rotating from Supabase
+- Hero band: position:fixed, height max(280px, 46vh), background-image with day/night swap via .is-night class
+- Gradient overlay: dark-top scrim + clear-middle + dark-bottom, lets text breathe while keeping photo as visual focus
+
+Hub-page hero doctrine updated: page name eyebrow uses **brand teal-light**, not white. Apply this when index/mind/exercise heroes ship.
+
+Files: `connect.html`, `sw.js` (`pm225-rotating-tagline-a` → `pm226-eyebrow-teal-a`), `index.html` (vbb 107 → 108).
+
+---
+
 ## 2026-05-23 17:05 — PM-225 Editable rotating Connect hero tagline via Supabase taglines table [vyve-site `101789b4`]
 
 ### What shipped
