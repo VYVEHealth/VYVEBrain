@@ -1,3 +1,62 @@
+## 2026-05-23 PM-241 — Connect hero fade: dedicated body-level fixed band + shorter hero (36vh) [vyve-site `74bfc0af`]
+
+Dean ran PM-240 on device and the fade was still invisible — solid hard seam where photo met page bg. Screenshot confirmed: razor-sharp horizontal line, no softening. Three commits in (237 → 238 → 240) chasing the same target, time to step out of the rabbit hole.
+
+### Why the wrap-based approaches kept failing on device
+
+Stacking-wise the wrap-overlap-photo design (PM-240) was correct on paper: `<main>` z-index:1 later in DOM beats `.connect-hero` z-index:1 earlier in DOM, so main's contents (including wrap) paint above hero. On WKWebView, the hero's `transform: translateZ(0)` creates its own stacking context. Main creates another stacking context via `position:relative; z-index:1`. The wrap is z-index:2 inside main's stacking, with negative margin-top trying to overlap into the hero's z-index:1 painted region at body level.
+
+In theory: main wins on DOM-order tie-break, wrap inherits main's body-level slot, gradient paints over photo. In practice on WKWebView: paint order goes weird when stacking contexts overlap via negative margins. The gradient was probably painting *somewhere* — just not where we could see it — possibly behind the photo entirely, possibly with the photo's compositor layer taking precedence in the overlap zone.
+
+The root issue: cleverness compounded. Background-layered gradient + negative margin + matching padding-top + relying on positioned-element DOM-order tie-breaking + WKWebView paint order = too many ways for something to be subtly wrong, and no easy way to diagnose from screenshots.
+
+### What shipped instead
+
+Reverted all three commits' wrap manipulation back to PM-237-era state (`.wrap { background:var(--bg); position:relative; z-index:2; }`). Built a new dedicated DOM element instead:
+
+```html
+<div class="connect-hero-fade"></div>
+```
+
+Inserted as a sibling of `.connect-hero` at body level, immediately before `<main>`. Styled:
+
+```css
+.connect-hero-fade{
+  position:fixed;
+  left:0;
+  right:0;
+  top:calc(max(260px, 36vh) - 80px);
+  height:80px;
+  z-index:2;
+  pointer-events:none;
+  background:linear-gradient(to bottom, transparent 0%, var(--bg) 100%);
+}
+```
+
+Lives in the body stacking context, not main's. z-index:2 beats hero's z-index:1 unambiguously at body level. `position:fixed` anchors it at the photo's bottom edge regardless of scroll. `pointer-events:none` so it never intercepts taps. `var(--bg)` auto-themes — dark mode dissolves to `#0A1F1F`, light mode to `#F0FAF8`.
+
+**Trade-off accepted:** the fade is now fixed at the photo's bottom edge, not scrolling with content. PM-238's design ambition was scroll-with-content, but the hero itself is `position:fixed` — the seam between photo and content NEVER moves visually because the photo doesn't move. Scrolling content goes UP past the seam, then under it. So a fixed fade band at the seam looks visually identical to a scrolling one. The PM-238 mental model was over-thinking; PM-241 is honest about what the eye actually sees.
+
+### Shorter hero (Dean's preference)
+
+Dropped hero height from `max(280px, 46vh)` to `max(260px, 36vh)`. Main padding-top synced to match. `.connect-hero-fade top` calc'd from the same value via `calc(max(260px, 36vh) - 80px)` so all three stay in lockstep — change the hero height once, the fade band follows automatically.
+
+The eyebrow "CONNECT" + headline "Together we build better habits." still fit comfortably; they sit in the upper third of the band, well clear of the people/sunrise focal zone in the lower portion of the image.
+
+### Files
+
+- `connect.html` 92339 → 93260 bytes (+921). Wrap reverted to simple form, hero height shortened, .connect-hero-fade CSS rule added, DOM element added before `<main>`.
+- `sw.js` cache `pm240-wrap-overlap-photo-a` → `pm241-hero-fade-band-fixed-a`.
+- `index.html` vbb-marker 121 → 122.
+
+### Lesson — generalisable
+
+When a CSS effect that should work according to spec doesn't render on device, and you've checked the rules carefully, **stop trying to be clever within the existing element structure** and add a dedicated element with explicit positioning. A new `<div>` with three CSS properties is more robust than four elegant property tweaks on existing elements when those existing elements live in tangled stacking contexts. WKWebView in particular has a history of paint quirks around `transform`, `position:fixed`, and negative-margin overlap that don't reproduce in desktop browsers — codified across multiple PM-220.x sessions, recurring here.
+
+Worth a §23 promotion if it bites a third time: **"For hero-band hub pages with fixed photographic backgrounds, soft seams between hero and content should be a dedicated body-level fixed sibling element, not a property on the hero or the content wrapper."**
+
+---
+
 ## 2026-05-23 PM-233 → PM-239 — Avatar persistence + crop modal + optimistic-first upload [vyve-site `e3823f71` `d40099b0` `fc3f756b` `a1c2926c` `994e5d9b`]
 
 Five-ship cascade tonight chasing the avatar "feels broken" thread through to "paints instantly, changes instantly, loads instantly". Dean tested each ship on device and fed back the next failure mode. Logging the sequence because the architectural lesson at the end (optimistic-first persist-then-upload) earns a §23 rule.
