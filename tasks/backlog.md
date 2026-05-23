@@ -1,3 +1,114 @@
+## Added 23 May 2026 PM — PM-215 — YouTube broadcast-creation cron (paired with PM-251 consumer contract)
+
+**Status.** Data contract now defined by PM-251. PM-251 added `youtube_broadcast_id TEXT NULL` back to `calendar_occurrences`; live pages will activate UPCOMING/PRE_ROLL/LIVE/JUST_ENDED states the moment this cron starts populating broadcast IDs. Until then, all 8 categories show QUIET state (latest replay from `replay_playlists`).
+
+**Source.** Spec backwards-derived from PM-251 consumer surface. OAuth credentials provisioned 23 May AM (3 Vault secrets: `YOUTUBE_OAUTH_CLIENT_ID`, `YOUTUBE_OAUTH_CLIENT_SECRET`, `YOUTUBE_OAUTH_REFRESH_TOKEN`). Refresh token currently on 7-day cadence pending Google consent-screen verification submission.
+
+**Prerequisite — reusable streams diagnostic.** Before this cron can run, the 9 brand-account stream keys need verifying as `isReusable=true` via `liveStreams.list?part=contentDetails&managedByMe=true`. Dean's prior experience suggests they're one-shot streams. Either flip them via `liveStreams.update` or create fresh reusable streams via `liveStreams.insert`. See changelog 23 May 03:15 entry for full diagnostic plan.
+
+**What the cron does.**
+
+1. **Trigger.** Scheduled via pg_cron per occurrence at `starts_at - 6 minutes` (gives 1-minute slack against the 5-min Dexie sync window). Alternative shape: a single hourly EF that walks `calendar_occurrences WHERE starts_at BETWEEN now() AND now() + interval '1 hour' AND youtube_broadcast_id IS NULL` and processes each. Single hourly is simpler operationally and avoids per-occurrence pg_cron rows; recommended.
+
+2. **Action per occurrence.** Call YouTube Data API v3 `liveBroadcasts.insert` (parts: `snippet,status,contentDetails`) with:
+   - `snippet.title` = `session_title` or `service_catalogue.name` ("Yoga, Pilates & Stretch — 07:00")
+   - `snippet.description` = `session_description` or catalogue default
+   - `snippet.scheduledStartTime` = `starts_at` ISO
+   - `snippet.scheduledEndTime` = `ends_at` ISO
+   - `status.privacyStatus` = `'unlisted'` (members tap the live page; YouTube channel direct-search shouldn't surface)
+   - `status.selfDeclaredMadeForKids` = `false`
+   - Then call `liveBroadcasts.bind?id={broadcast_id}&streamId={reusable_stream_id_for_category}` to wire it to the channel's persistent stream.
+
+3. **Write.** `UPDATE calendar_occurrences SET youtube_broadcast_id = $broadcast_id WHERE id = $occurrence_id`.
+
+4. **Idempotency.** Skip if `youtube_broadcast_id IS NOT NULL` on the row (someone manually populated, or a previous cron run succeeded). Belt-and-braces: only process rows where `starts_at > now()` (don't backfill past occurrences).
+
+5. **Channel routing.** Each of the 8 categories maps to a different YouTube brand channel. The category→channel_id map can live as a constant in the EF or as a `service_catalogue.youtube_channel_id` column (PM-211 originally proposed this; not added yet). Prefer column-on-catalogue so Lewis can edit if a new channel is added.
+
+6. **Stream key routing.** Same shape — category→stream_id map. Either EF constant or `service_catalogue.youtube_stream_id` column.
+
+7. **On failure.** Insert `platform_alerts` row (table TBC — currently doesn't exist; create as part of this ship), leave `youtube_broadcast_id` NULL, page stays in QUIET state. Fail-soft.
+
+8. **Token rotation handling.** The Vault refresh token expires every 7 days while consent screen is in Testing mode. EF must detect 401 on access-token exchange, surface a `platform_alerts` row prompting manual re-mint via OAuth Playground. Until verification is submitted, calendar reminder logic captured in secret description; post-verification this becomes free.
+
+**Out of scope for this ship.**
+
+- Post-broadcast cleanup. Once a broadcast ends, its videoId stays valid and the recording surfaces via the existing `replay_playlists` cache (PM-235b's hourly refresh cron picks it up automatically). No cleanup needed.
+- Live viewer count display on the live page. Requires `liveBroadcasts.list?part=statistics` polling; quota math is trivial (8 active broadcasts × hourly = 192 units/day) but UX adds complexity. Defer.
+- Per-occurrence custom thumbnails. Default to channel-level thumbnail; bulk thumbnail upload via `liveBroadcasts.update?part=snippet` is a v1.1 nice-to-have.
+
+**Quota math.** ~32 live occurrences/day at full schedule (Yoga + Mindfulness + Workouts daily × 7 = 21, plus Weekly Check-In + Group Therapy weekly, plus monthly Events/Education/Podcast). Each occurrence: 1 × `liveBroadcasts.insert` (50 units) + 1 × `liveBroadcasts.bind` (50 units) = 100 units. Daily: ~3,200 units. Well under the 10,000-unit default daily quota. Headroom for retries.
+
+**Estimate.** Claude-assisted: ~3-hour session for EF + cron + Vault wiring + reusable-stream diagnostic + manual end-to-end test on one category. Plus ~1-hour follow-up after first cron run lands a broadcast and the live page transitions Quiet → Live in real-time.
+
+---
+
+## Added 23 May 2026 PM — PM-251b — Instructor backfill on service_catalogue.default_host_*
+
+**Status.** Small one-shot SQL ship for Lewis. PM-251 backfilled `default_host_name='Lewis Vines'` + `default_host_role='Co-Founder, VYVE Health'` on all 8 `type='live_session'` rows as a placeholder. Real instructor identities should be populated category-by-category.
+
+**Action.** Single SQL UPDATE per category as instructor is confirmed:
+
+```sql
+UPDATE service_catalogue SET
+  default_host_name      = 'Emma Clarke',
+  default_host_role      = 'Yoga teacher · 12 years experience',
+  default_host_photo_url = NULL  -- TBC, upload to Supabase Storage when available
+WHERE type = 'live_session' AND category = 'Yoga, Pilates & Stretch';
+```
+
+Repeat for: Mindfulness (Phil — gated on clinical sign-off review of voice), Workouts (Calum), Weekly Check-In (Vicki?), Group Therapy (Phil), Events & Run Club (Lewis), Education & Experts (TBD per guest), Podcast (Lewis).
+
+Photos: upload 512×512 JPEG to a `host-photos` Supabase Storage bucket (create with public read, similar shape to `member-avatars` from PM-228), then UPDATE `default_host_photo_url` to the public URL. Pre-PM-214 Lewis edits via Supabase dashboard SQL editor; post-PM-214 via admin console.
+
+**Estimate.** 15 minutes once instructors confirmed. Pure data, no code.
+
+---
+
+## Added 23 May 2026 PM — PM-251c — Chat + Q&A unlock (v1.1 feature flag flip)
+
+**Status.** Locked behind `COMING_SOON_TABS = true` flag in PM-251's `session-live.js`. Tabs render with lock icon + "Coming soon" body. Flip the flag and port the legacy chat code (was in the pre-PM-251 engine; not retained in the new engine to keep v1 surface clean) when v1.1 ships.
+
+**Action.**
+
+1. Audit legacy `session-live.js` (pre-PM-251 commit `6b61d95d`) for the chat + Q&A code blocks: `session_chat` Realtime websocket subscribe, `loadHistory`, `renderMsg`, `sendMessage`, `submitQ`, `upvote`. ~200 lines.
+2. Port into new `session-live.js` behind the `COMING_SOON_TABS` flag check — when flag is false, render the live chat panel + Q&A panel with full functionality.
+3. Wire `chat-input-row` + `qa-input-row` into the new `sl-tab-content` markup (panels are already structured with `data-panel="chat"` / `data-panel="qa"`).
+4. Q&A in particular wants a Supabase-backed equivalent — currently legacy code stores Q&A entirely client-side (vote counts don't persist, refresh wipes). Worth a small new `session_qa` table at this point. Or scope-cut and ship chat-only first.
+5. Tabs lose the lock icon + locked styling when flag is false.
+
+**Estimate.** Chat-only: ~2 hour session (port + wire + device test). Q&A with Supabase persistence: +1-2 hours.
+
+---
+
+## Added 23 May 2026 PM — PM-213b — Live check-in form variants (carved out of original PM-213)
+
+**Status.** The only sub-piece of original PM-213 not subsumed by PM-251. PM-213 proposed 5 check-in variants (sleep / nutrition / mood / stress / mindfulness) backed by a new `live_checkin_submissions` table with JSONB answers, alongside the video on `checkin-live.html`. Not built.
+
+**Action.** New table:
+
+```sql
+CREATE TABLE live_checkin_submissions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  member_email TEXT NOT NULL,
+  occurrence_id UUID REFERENCES calendar_occurrences(id) ON DELETE SET NULL,
+  variant TEXT NOT NULL,  -- sleep | nutrition | mood | stress | mindfulness
+  answers JSONB NOT NULL,
+  client_id UUID,  -- optimistic-first dedupe
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+Plus `calendar_occurrences + checkin_variant TEXT NULL` so Lewis chooses which variant to render per check-in occurrence.
+
+`checkin-live.html` would need a bespoke shape on top of the PM-251 shell — embed the question form inside the `sl-tab-content` "Info" panel (or add a 4th "Check-in" tab). Submissions optimistic-first per §23.39.
+
+**Defer.** PM-213b is post-trial work. Trial-phase the weekly check-in just runs as a normal live session; the existing async `wellbeing-checkin.html` carries the structured check-in load.
+
+**Estimate.** Claude-assisted: ~2 sessions when prioritised. Pure feature work, no architecture.
+
+---
+
 ## Added 23 May 2026 — PM-250 follow-up — Wire @capacitor/browser for external links inside the app
 
 **Status.** Plugin already installed (`@capacitor/browser ^8.0.3` in `vyve-capacitor/package.json`), wiring deferred from PM-250 session. Next session, ~30min.
@@ -86,7 +197,9 @@ ORDER BY section, display_order;
 
 ---
 
-## Added 23 May 2026 — PM-213 — Live session pages redesign: editable host/about + chat/Q&A removal + live check-in form variants
+## Added 23 May 2026 — PM-213 — Live session pages redesign: editable host/about + chat/Q&A removal + live check-in form variants  [SUPERSEDED BY PM-251, 23 May 2026 evening]
+
+**Status: SUPERSEDED.** PM-251 (vyve-site `765c5b69`) shipped the schema migration + 8-shell rewrite + 5-state engine + `sessions.html` hub gate end-to-end. The host/about override columns, the chat/Q&A removal, and the events-live legacy-fat-shape migration all landed under PM-251 in one atomic commit rather than the three-step PM-213 plan documented below. The original PM-213 entry is retained for historical context; the live check-in form variants (`live_checkin_submissions` table + variant rendering on `checkin-live.html`) remain unbuilt and are now tracked separately under "PM-213b — Live check-in form variants" below.
 
 **Source.** Dean conversation 23 May PM. Sequenced after PM-211 (live-sessions source-of-truth collapse) because PM-213 builds on the `service_catalogue` shape PM-211 establishes. Could ship before PM-211 with minor rework if PM-211 slips — see "Ordering with PM-211" at the bottom.
 

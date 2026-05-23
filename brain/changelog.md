@@ -1,3 +1,88 @@
+## 2026-05-23 PM-251 — Live page state machine: 5-state engine + 8 shells + hub-awareness [vyve-site `765c5b69`, supabase migration `pm251_live_page_state_machine`]
+
+### What shipped
+
+Atomic 14-file commit to `vyve-site` `main`: `765c5b69a855ad0264ab94eb29efe46c1b971d44`, parent `6b61d95d` (PM-250 native UX). Paired Supabase migration `pm251_live_page_state_machine` applied to `ixjfklpckgxrwjlfsaaz` before the code ship. End-to-end consumer surface for live broadcasts ready; PM-215 cron lands its data into the contract this defines.
+
+**Five-state machine in `session-live.js` (32KB, full rewrite of the 16KB legacy engine).** `UPCOMING` (>10min before), `PRE_ROLL` (≤10min, iframe loaded, YouTube slate), `LIVE` (between starts_at and ends_at), `JUST_ENDED` (≤30min after end, same broadcast URL serves the recording), `QUIET` (no live session OR matching row has NULL `youtube_broadcast_id` — latest replay auto-mounts from `replay_playlists`). State picker reads `calendar_occurrences` from Dexie filtered to `cfg.category`, finds the row whose time window covers "now" (with pre-roll grace), resolves state from clock + broadcast_id presence. `QUIET_WITHIN_WINDOW` is the special case where picker finds an active row but cron hasn't populated broadcast_id yet — triggers a single targeted REST GET against `/calendar_occurrences?category=eq.X&starts_at=lte.now+10min&ends_at=gte.now&select=...` to cover the 5-min sync gap. Fires only in that narrow window, only when actually needed. Adaptive ticker per §23.48 Pattern 3: 1s near-live/live/just-ended, 30s otherwise; pauses on `visibilitychange→hidden`, immediate re-eval on resume; bus listener on `vyve-localdb-table-pulled` filtered to `calendar_occurrences` and `replay_playlists` triggers full re-paint on hydrate. Same-day rollover (Mindfulness 07:00→07:15→07:30 example) handled — picker naturally returns the next-window row at the previous row's `ends_at` boundary, engine swaps iframe src to new broadcast_id, no page reload.
+
+**Field resolution chain per spec §2.** For every field the page renders (title, description, host name/role/photo): per-occurrence override (`calendar_occurrences.session_title`, etc.) → catalogue default (`service_catalogue.name`, `default_host_name`, etc.) → literal fallback ("Live Session", "VYVE team"). No coalescing on `youtube_broadcast_id` — NULL means state = QUIET, which is the right fail-soft UX. Host photo missing → initials chip computed from name.
+
+**Eight shells generated from single template.** `yoga-live.html`, `mindfulness-live.html`, `workouts-live.html`, `checkin-live.html`, `therapy-live.html`, `events-live.html`, `education-live.html`, `podcast-live.html`. Each declares `window.VYVE_SESSION = { category, replaySlug, name, shortLabel, description, chatType, rpLink }`. **`events-live.html` migrated from legacy fat shape** (24KB self-contained markup + chat code) to 3KB shell shape — long-overdue cleanup, surfaced naturally during this ship. Shell→category→slug mapping locked: shell filename uses lowercase slug for URL, but `category` declares the **full label** matching `calendar_occurrences.category` (`'Yoga, Pilates & Stretch'`, `'Mindfulness & Mindset'`, etc.). Slug-vs-label mismatch was caught during the audit step — `sessions-data.js` uses slugs (`yoga`), `calendar_occurrences` uses labels, `replay_playlists.slug` is yet a third convention (`yoga-stretch`). Shells now reference both.
+
+**Hub-awareness in `sessions.html`.** LIVE pill now gated on `hasActiveBroadcast(s)` not `isLiveNow(s)` — combines clock window + Dexie lookup against `ACTIVE_BROADCAST_CATEGORIES` Set built from `calendar_occurrences` rows where `now ∈ [starts_at, ends_at)` AND `youtube_broadcast_id IS NOT NULL`. `CATEGORY_LABEL_BY_SLUG` map inlined (8 entries) to bridge sessions-data.js slugs to calendar_occurrences full labels. `dexie.min.js` + `bus.js` + `db.js` + `sync.js` added to sessions.html script tags — the hub was previously catalogue-naive, becomes a Dexie consumer for the first time. Safe fallback: if Dexie reads return empty (offline, pre-hydrate, etc.), `hasActiveBroadcast` returns false → pill shows Offline → page still works, just clock-only. Boot sequence: clock-only paint first (instant), broadcast-gated upgrade once Dexie ready; bus listener triggers full re-paint on calendar_occurrences hydrate every 5 min.
+
+**Chat + Q&A locked behind `COMING_SOON_TABS = true` flag.** Existing `session_chat` Realtime code in the legacy engine intentionally not ported — when v1.1 unlocks chat, flip the flag and re-add the chat block (or, better, port the legacy code under the flag at that point). v1 surface is cleaner without 200 lines of dormant Realtime code in the engine. Tab tap shows a "Coming soon" body with explanation copy.
+
+**Schema migration applied first** (separate Supabase apply_migration call before code commit, idempotent): `calendar_occurrences` + `youtube_broadcast_id` + `session_title` + `session_description` + `host_name` + `host_role` + `host_photo_url` (all TEXT NULL); `service_catalogue` + `default_host_name` + `default_host_role` + `default_host_photo_url` (TEXT NULL); partial index `idx_calendar_occurrences_live_lookup ON (category, starts_at, ends_at) WHERE active = true AND youtube_broadcast_id IS NOT NULL` for the fallback REST GET path. Backfill UPDATE seeded `default_host_name='Lewis Vines'`, `default_host_role='Co-Founder, VYVE Health'` on every `type='live_session'` row in service_catalogue. Lewis edits per-instructor overrides via Supabase dashboard pre-PM-214.
+
+### Files (14)
+
+- `session-live.js` (NEW rewrite, 32KB) — state machine, picker, field resolution, fallback REST GET, adaptive ticker, locked tabs
+- `session-live.css` (NEW rewrite, 14KB) — `sl-` prefixed classes for the new markup; legacy `.layout`/`.topbar` classes still exist in the file for the period until all consumers re-render
+- `sessions.html` — hub LIVE-pill gate + 4 new script tags for Dexie/db/bus/sync; refreshBroadcastsAndRepaint() boot wiring + hydrate listener
+- `sync.js` — `CATALOGUE_INVALIDATION_KEY = 'pm251-live-state-machine'` (was `pm245-replay-videos`); forces existing devices to re-pull `calendar_occurrences` + `service_catalogue` with the new override columns on next visit
+- `sw.js` — `CACHE_NAME = 'vyve-cache-v2026-05-23-pm251-live-state-machine-a'`
+- `index.html` — vbb-marker 132→133
+- 8 shells (yoga/mindfulness/workouts/checkin/therapy/events/education/podcast-live.html), all ~3KB. events-live.html went 24KB→3KB (legacy fat→shell migration).
+
+### State after this commit
+
+**Live pages render Quiet state immediately.** All 8 categories show their latest replay (from `replay_playlists.latest_video_id`, populated by PM-235b's hourly refresh cron). No live state activates until PM-215's cron runs and writes `youtube_broadcast_id` to the matching occurrence row. The moment that happens, hydrate on 5-min sync → bus event fires → engine re-paints → state transitions to Pre-roll/Live as appropriate. No code redeploy needed; PM-251 and PM-215 are decoupled at the data contract.
+
+**Hub LIVE pills currently all show Offline.** Same reason — until PM-215 writes broadcast_ids, `ACTIVE_BROADCAST_CATEGORIES` is empty. Clock-derived schedule still drives countdowns, "Next up" banner, today's session count.
+
+**32 `calendar_occurrences` rows now have nullable override columns.** None populated yet (Lewis edits via Supabase dashboard as instructors come online). `service_catalogue` `default_host_name`/`default_host_role` backfilled to Lewis on all live_session rows; Lewis will customise per-category (Emma Clarke for Yoga, Calum for Workouts, Phil for Therapy, etc.) before first enterprise demo.
+
+### Tooling discipline
+
+§23.41 fired clean — fresh HEAD `6b61d95d` re-fetched immediately before commit-create, fresh re-fetch confirmed unchanged before ref-update PATCH. No parallel ship collision.
+
+§23.45 PAT-direct path throughout (Composio still 401, now ~57 hours since 21 May security incident). PAT pulled from `vault.decrypted_secrets` via Supabase MCP. Earlier session-start probe attempt failed because of an in-container `cd` not persisting across bash_tool calls — files landed at `/` with no write perms, returned 401-from-different-probe noise rather than the real 200 we got once `cd` ran in the same shell as curl. Caught immediately, retried, succeeded. Worth codifying — see §23.58 below.
+
+§23.52(a)(b)(c) all clean. Blob bodies via `/tmp/pm251/{f}.body.json` files + `curl --data-binary @file`. All 14 SHAs validated as 40-char hex before tree-create. First-100-char post-commit verification against the new commit SHA (not branch ref, not raw CDN) passed on all 14 files.
+
+§23.53 response parsing via files throughout — `commit.resp.json`, `tree.resp.json`, `ref.resp.json` each read via `json.load(open(...))` not inline `python3 -c "..."` with literal newlines in the multi-line commit message.
+
+**One pre-flight gotcha worth noting** — initial blob-verification assertion checked `data['size']` against local file size, but `POST /git/blobs` response payload doesn't include `size` (returns only `sha` + `url`). The richer payload comes from `GET /git/blobs/{sha}`. Caught on first run, dropped the assertion, SHAs themselves were always valid (40-char hex). Not a new rule — just a misread of the API surface.
+
+### New §23 hard rule earned tonight — §23.60 (bash_tool `cd` does not persist across calls)
+
+Each `bash_tool` invocation starts a fresh `/bin/sh` (or equivalent) — `cd` from a previous call is gone. Patterns that look like they work but silently land files in the wrong directory:
+
+```bash
+# Call 1
+cd /home/claude/work && mkdir -p out
+
+# Call 2 — NOT in /home/claude/work, lands in /
+curl ... > result.txt    # ← writes to /result.txt, not /home/claude/work/result.txt
+```
+
+The failure mode is particularly nasty when the wrong-directory write **looks** like a network failure: the curl returns the response body but pipes to a file that may not be writable, leaving an empty/zero-byte/corrupted file that gets misinterpreted as "the API returned garbage". Two real-world miscalls this session diagnosed wrong on first pass before realising the directory was wrong.
+
+**Rule.** Every multi-step bash_tool sequence that writes files must either:
+1. Use absolute paths throughout (`curl ... > /home/claude/work/result.txt`), OR
+2. Re-`cd` to the working directory at the start of every single bash_tool call (`cd /home/claude/work && curl ...`).
+
+The first is cleaner. The second is acceptable when iterating on a known location. Mixing the two — `cd` in one call, relative path in the next — is the actual antipattern.
+
+### Live state at session close
+
+- vyve-site main: `765c5b69` (this commit)
+- Brain main: TBC by this commit
+- Supabase: `pm251_live_page_state_machine` migration applied to `ixjfklpckgxrwjlfsaaz`
+- Vault PAT health: verified 200 against `/user` mid-session. Composio still 401-ing (no fresh attempt this session — Vault path stable).
+- §23 hard rules: §23.60 added (bash_tool cd non-persistence). §23.57 (PM-XXX placeholder discipline) fired but wasn't needed — single-session ship, no parallel-session number collision risk.
+
+### What's next
+
+- **PM-215** is the natural follow-up — write the broadcast-creation cron. Spec is now backwards-derivable from this consumer surface: cron must `UPDATE calendar_occurrences SET youtube_broadcast_id = ? WHERE id = ?` at `starts_at - 6 minutes`, idempotent on the column. YouTube `liveBroadcasts.insert` against the channel matched by `category`, bound to the channel's reusable stream. Refresh-token rotation handled by existing OAuth pipeline (currently 7-day cadence pending Google verification submission).
+- **PM-214 admin console** is the second-priority follow-up — Lewis edits per-occurrence overrides via Supabase dashboard today, branded admin surface needed before first enterprise demo.
+- **PM-251b — instructor backfill** (small one-shot for Lewis): once Emma Clarke / Calum / Phil etc. are confirmed as default hosts per category, single SQL UPDATE on `service_catalogue.default_host_name` per `type='live_session'` row, plus optional `default_host_photo_url` if photos uploaded to Supabase Storage. No code change.
+- **PM-251c — chat unlock** (v1.1): flip `COMING_SOON_TABS = false` in session-live.js, port the legacy chat code in behind it, ship as a single small commit. Existing `session_chat` table + RLS unchanged.
+
+---
+
 ## 2026-05-23 PM-250 — Native UX cleanup: kill landscape block, suppress long-press callout, lock portrait at OS layer [vyve-site `6b61d95d`, vyve-capacitor `4f5f55ae`]
 
 Three iOS native-feel regressions Dean caught on device tonight, all stemming from the same root cause: the portal still carries PWA-era assumptions even though the product has been Capacitor-wrapped since iOS 1.2 / Android 1.0.2 (28 April 2026). Members are inside a native binary; defaults that made sense for a browser tab now leak the "this is a web page" feeling into the app.
