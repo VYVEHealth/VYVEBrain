@@ -1,3 +1,87 @@
+## 2026-05-23 17:05 — PM-225 Editable rotating Connect hero tagline via Supabase taglines table [vyve-site `101789b4`]
+
+### What shipped
+
+Dean spec: tagline subtitle editable from Supabase, rotates at local midnight. Pool-with-auto-rotation pattern (option 2 from the architecture call).
+
+**Supabase migration `create_taglines_table`:**
+
+```sql
+CREATE TABLE public.taglines (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  text text NOT NULL,
+  position int NOT NULL,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX taglines_position_unique ON public.taglines(position) WHERE active = true;
+CREATE INDEX taglines_active_position ON public.taglines(active, position);
+-- updated_at trigger via taglines_set_updated_at()
+-- RLS enabled, policy taglines_read_active grants SELECT to anon+authenticated WHERE active=true
+```
+
+Seeded with 5 starters:
+- pos 0: "Together we build better habits."
+- pos 1: "Small steps, shared progress."
+- pos 2: "Health is built, not found."
+- pos 3: "Show up. Even briefly."
+- pos 4: "Today is a great day for one habit."
+
+Anon-role read verified through RLS (`SET LOCAL role anon` test).
+
+**Client wiring (connect.html, ~95 lines added):**
+
+- `initTagline()` fires on `DOMContentLoaded` BEFORE `boot()` — no auth dependency since RLS allows anon reads of active rows
+- localStorage cache (`vyve.taglines.v1`) renders instantly on next-load with zero network wait
+- Background fetch: `GET /rest/v1/taglines?select=text&active=eq.true&order=position.asc` with `apikey` + `Bearer` headers
+- Updates cache + repaints headline if rotation index has changed since last cached value
+- Silent failure leaves the literal markup default visible (graceful degradation per honest-paint §23.46)
+
+**Rotation algorithm:**
+
+```javascript
+var now = new Date();
+var localMidnightUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+var daysSinceLocalEpoch = Math.floor(localMidnightUTC / 86400000);
+var index = ((daysSinceLocalEpoch % taglines.length) + taglines.length) % taglines.length;
+return taglines[index];
+```
+
+Local-midnight-anchored day index. Every member in the same timezone sees the same tagline on the same calendar date. Rolls over at local midnight on next page load (not mid-session — that was explicitly skipped per the architecture call).
+
+### How Dean edits taglines
+
+Supabase Studio → Table Editor → `public.taglines`. Edit `text`, toggle `active`, reorder `position`. Members pick up the new copy on their next Connect page load. To change tomorrow's tagline preemptively: locate the row at `(daysSinceLocalEpoch + 1) % count` position and edit that row.
+
+### Reusable doctrine — editable copy via Supabase table
+
+First instance of this pattern on the portal. Reusable for future editable strings:
+
+- **welcome messages on hub pages** — same table shape, different DOM selector
+- **motivational copy on Check-In screens** — `motivations` table, same fetch + render pattern
+- **rotating quotes / weekly themes** — daily/weekly index logic via the same `daysSinceLocalEpoch` math
+
+Pattern is: small public table, RLS read for anon, position column for stable ordering, daily-index rotation client-side, localStorage cache for instant paint, honest-paint default in markup for graceful first-load and failure modes.
+
+Not promoting to §23 yet — single occurrence so far. If a second editable-copy surface ships and matches this shape, codify then.
+
+### Caching note
+
+Per §23.48 freshness model this is **Pattern 2** (catalogue-style: small list, rarely changes, fetched on page load). No realtime subscription needed. No bus event needed. The rare edge case where Dean edits a tagline while a member's page is open shows the previous tagline until that member reloads — acceptable.
+
+### Files committed (vyve-site `101789b4`)
+
+- `connect.html` — tagline init function block + DOMContentLoaded wiring
+- `sw.js` — cache `pm224-connect-focal-a` → `pm225-rotating-tagline-a`
+- `index.html` — vbb-marker 106 → 107
+
+### Tooling
+
+§23.41/52/53 honoured. Composio still 401 (~42h since 21 May incident). PAT-direct + Supabase MCP. No new §23 rule.
+
+---
+
 ## 2026-05-23 16:25 — PM-224 Promote CONNECT eyebrow to main focal point [vyve-site `b3139e2b`]
 
 Dean spec on the production-text Connect hero (PM-223.2): "Connect needs to be a bit bigger though, it's the main focal point."
