@@ -1,3 +1,63 @@
+## Added 23 May 2026 — PM-250 follow-up — Wire @capacitor/browser for external links inside the app
+
+**Status.** Plugin already installed (`@capacitor/browser ^8.0.3` in `vyve-capacitor/package.json`), wiring deferred from PM-250 session. Next session, ~30min.
+
+**Why now.** PM-250 suppressed the long-press "Open in Safari" preview via `-webkit-touch-callout: none`, which solves the visible UX issue. But the underlying click behaviour is still browser-default: a tap on `<a href="https://example.com/...">` inside WKWebView navigates IN the WebView (replacing the app's web shell with the external page). Members would get visually trapped in a foreign site with no way back to VYVE except the OS back gesture. This needs explicit handling so external links route through `Browser.open()` → `SFSafariViewController` on iOS / Chrome Custom Tab on Android — a modal browser sheet WITH a "Done" affordance back to the app.
+
+**Inventory first.** Before wiring, do the audit:
+```bash
+grep -rn 'href="http' vyve-site/*.html | grep -v 'online.vyvehealth.co.uk\|vyvehealth.co.uk' | grep -v 'mailto:\|tel:'
+grep -rn 'window\.open\|location\.href' vyve-site/*.js vyve-site/*.html
+grep -rn 'target="_blank"' vyve-site/*.html
+```
+Need to see exactly which surfaces emit external links before deciding scope. Some candidates from memory: settings.html (Privacy Policy, Terms — link to www.vyvehealth.co.uk), help/contact links, podcast platform links (Spotify, Apple Podcasts), share buttons.
+
+**Implementation pattern.**
+
+Client-side delegated click handler in a new tiny module loaded after auth.js (call it `external-links.js` or fold into `nav.js`):
+
+```javascript
+// Capacitor environments only — no-op in browser fallback at online.vyvehealth.co.uk
+if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+  const INTERNAL_HOSTS = new Set(['online.vyvehealth.co.uk', 'localhost']);
+  document.addEventListener('click', async (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    const href = a.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+    if (href.startsWith('mailto:') || href.startsWith('tel:')) return; // OS handles these
+    let url;
+    try { url = new URL(href, window.location.origin); } catch { return; }
+    if (INTERNAL_HOSTS.has(url.host)) return; // stay in WebView
+    e.preventDefault();
+    const { Browser } = await import('https://cdn.jsdelivr.net/npm/@capacitor/browser@8.0.3/+esm');
+    // OR: import from a Capacitor-bundled path — confirm at wire time
+    await Browser.open({ url: url.href, presentationStyle: 'popover' });
+  }, { capture: true });
+}
+```
+
+The Capacitor `Browser` import path needs to be confirmed — typically `@capacitor/browser` is bundled into the Capacitor runtime and accessed via `window.Capacitor.Plugins.Browser` rather than ESM import. Easier path:
+```javascript
+const Browser = window.Capacitor.Plugins.Browser;
+await Browser.open({ url: url.href, presentationStyle: 'popover' });
+```
+
+**Capacitor detection.** `window.Capacitor.isNativePlatform()` returns true inside the iOS/Android binaries, false in the browser at `online.vyvehealth.co.uk`. The handler must no-op in browser mode — there's no Capacitor.Plugins.Browser to call, and the browser already handles external links natively (new tab).
+
+**Ship in vyve-site, not vyve-capacitor.** Since this is client-side JS executed by the WebView, it lands in vyve-site (and reaches Dean's dev iPhone immediately, members on next OTA). No native binary change needed. The plugin is already in the binary from existing `@capacitor/browser ^8.0.3` install.
+
+**Sweep target.** Wider audit per §23.59 — re-grep for any other PWA-era assumptions still lurking. Specifically:
+- Any "Add to home screen" / "Install app" UI (should be already gone per 04 May PM-3, re-verify)
+- Any `<a target="_blank">` that should now route through Browser.open
+- Any reference to "tab" / "browser" / "Safari" / "Chrome" in member-facing copy
+- Confirm sw.js `urlsToCache` doesn't have stale entries from removed pages
+- Confirm there's no `beforeinstallprompt` event handler lingering
+
+**No §23 rule needed.** §23.59 (earned PM-250) already codifies the doctrine. This backlog item is the tactical follow-up.
+
+---
+
 ## Added 23 May 2026 — Podcast fallback tile still reads as foreign vs photo tiles (12 episodes affected) — DEFER
 
 **Status.** Parked post-trial. Not blocking launch.

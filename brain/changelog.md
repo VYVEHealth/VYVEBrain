@@ -1,3 +1,38 @@
+## 2026-05-23 PM-250 — Native UX cleanup: kill landscape block, suppress long-press callout, lock portrait at OS layer [vyve-site `6b61d95d`, vyve-capacitor `4f5f55ae`]
+
+Three iOS native-feel regressions Dean caught on device tonight, all stemming from the same root cause: the portal still carries PWA-era assumptions even though the product has been Capacitor-wrapped since iOS 1.2 / Android 1.0.2 (28 April 2026). Members are inside a native binary; defaults that made sense for a browser tab now leak the "this is a web page" feeling into the app.
+
+**The three symptoms.**
+
+1. **Long-press on body text → iOS callout** with `Copy | Look Up | Translate | →`. Screenshot was the Connect-page "Daily activity builds your streak" copy on the Journey-to-Elite locked tile — a member long-pressing a tappable card got the iOS selection toolbar instead of the card's intended interaction.
+2. **Long-press on internal links → "Open in Safari" preview**. Default WKWebView behaviour: hard-press a link and iOS offers to open it externally. In a native app this should not exist — every internal link stays inside the WebView and members never get punted to Safari.
+3. **Rotate to landscape → "Please rotate your phone back to portrait mode"** full-screen teal overlay. This was a deliberate legacy injection (`auth.js` `vyvePortraitLock` IIFE + matching `#vyve-rotate-overlay` CSS in `theme.css`), built for the PWA era when there was no OS-level orientation control. It's been firing inside the native app the whole time — landscape was never blocked at the iOS/Android layer, the app rotated freely and then the JS injected an overlay on top.
+
+**vyve-site fix (`6b61d95d`, parent `aae1b593`).** Five-file atomic commit via Git Data API:
+
+- `auth.js`: deleted the `vyvePortraitLock` IIFE (lines 925-962, ~1.5KB). Both the overlay-injection function and the `screen.orientation.lock('portrait')` API call are gone. Function name + element ID + user-facing string all grepped clean post-commit.
+- `theme.css`: removed the `#vyve-rotate-overlay` rule block + `@keyframes vyve-rotate-hint` + `@media (orientation: landscape) and (max-height: 430px)` show rule + leading comment + orphaned section header (~1.5KB). Added a clean replacement block: `html, body { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }` with opt-in selection on `input, textarea, select, [contenteditable="true"], [contenteditable=""], .selectable, .selectable *`. The `.selectable` utility class is the new escape hatch for anywhere we want copy-paste (journal entries, AI response cards, etc.) — no surface uses it yet but it's there.
+- `certificate.html`: removed the now-orphaned `#vyve-rotate-overlay { display: none !important }` defensive override.
+- `sw.js`: cache key bumped `pm249-replays-chips-a` → `pm250-native-ux-a`.
+- `index.html`: vbb-marker `Update 131` → `Update 132`.
+
+**vyve-capacitor fix (`4f5f55ae`, parent `3432aab1`).** Two-file commit locking portrait at the OS layer so the rotation event itself can't fire:
+
+- `ios/App/App/Info.plist`: `UISupportedInterfaceOrientations` array reduced to `UIInterfaceOrientationPortrait` only on iPhone; iPad retains portrait + portrait-upside-down (no landscape). Apple respects this strictly — the home-button rotation hardware event is simply ignored when the orientation isn't in the allowed list.
+- `android/app/src/main/AndroidManifest.xml`: MainActivity gains `android:screenOrientation="portrait"`. Same lock at the OS layer on Android.
+
+Native binary changes ship in the next Capacitor cut (iOS 1.4 / Android 1.0.4 — full store resubmission, NOT OTA-compatible per §23.31). The vyve-site CSS/JS fixes ship immediately to bundled members on next OTA + to Dean's dev iPhone on the next WKWebView cache cycle.
+
+**External link → Capacitor Browser plugin staged but NOT shipped.** `@capacitor/browser ^8.0.3` is already in `vyve-capacitor`'s `package.json` — no install needed. The wiring (boot-time JS that intercepts `<a>` clicks targeting any non-`online.vyvehealth.co.uk` URL and routes through `Browser.open()` for in-app SFSafariViewController on iOS / Custom Tab on Android) was deliberately deferred to a separate session. The long-press preview is suppressed by `-webkit-touch-callout: none` so the immediate UX issue is resolved; the click-handler wiring is a polish layer on top, not a blocker. Filed in backlog.
+
+**Tooling discipline (PM-250 follow-up note).** First commit attempt used bash with `declare -A` for blob-SHA collection — failed silently because `/bin/sh` is dash on this container, not bash. Blobs were created cleanly (5/5 SHAs valid 40-char hex per §23.52(c)), but the tree/commit/ref steps got partial empty variables and reported "Ref updated:" with no content. Caught immediately by post-commit verification reading old content. Recovery was clean: re-issued tree/commit/ref in pure Python (`urllib.request`) reusing the existing blob SHAs — no blob recreation needed since GitHub deduplicates by content hash. **Lesson for the playbook**: when the commit flow uses both bash and Python in the same script, do the whole flow in Python — bash array semantics differ across shells and the failure mode is silent. This is a soft echo of §23.52(a) (argv overflow → silent corruption); same family of "bash inconsistency causes silent partial success in commit pipelines". Not a new §23 rule — codified as "Python for the whole commit flow" working-practice note. Reference impl `/home/claude/commit.py` already follows this; tonight's session improvised the bash version which is what failed.
+
+**New §23 hard rule earned: §23.59** — "VYVE is a native app, not a browser. Audit and suppress all WKWebView/Chrome default behaviours that leak the browser feeling into the app." Full text in master.md §23.
+
+**Backlog added.** External-link → @capacitor/browser routing (next session, ~30min). Also worth a sweep audit: any other PWA-era assumptions still in the code (PWA install banners — already removed per 04 May PM-3 but worth re-grepping, browser back-button / browser-history behaviours, browser-tab references in copy, anything that says "tab" or "browser" in member-facing strings).
+
+---
+
 ## 2026-05-23 PM-249 — Replays chip filter on top of PM-245 [vyve-site `aae1b593`]
 
 Layer on top of PM-245's section-rail layout. Dean's feedback after PM-245 shipped: the first-draft browse model was right, just needed two tweaks.

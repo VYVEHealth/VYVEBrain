@@ -2864,6 +2864,38 @@ main{position:relative;z-index:2;}
 **Defensive verification idea (low-priority playbook item).** A post-commit diff-the-diff script: for every file in a new commit, fetch the file's content from the previous commit and the new commit, diff them, and surface any sections that differ but aren't mentioned in the commit message. Cheap to write, would have caught this in ~1 second.
 
 ---
+### §23.59 — VYVE is a native app, not a browser: audit and suppress every WKWebView/Chrome default that leaks "I am a web page" feeling into the app (PM-250, 23 May 2026)
+
+**Status: HARD RULE.** Earned PM-250 from three regressions Dean caught on device in one session — text-selection callout on body copy, "Open in Safari" preview on internal links, full-screen "rotate to portrait" overlay still firing from PWA-era `auth.js` code.
+
+**The doctrine.** Since iOS 1.2 (28 April 2026) and Android 1.0.2 the product has shipped as two Capacitor binaries wrapping the `vyve-site` web shell (per §23.20 "VYVE is not a PWA"). But the web shell still carries assumptions from the PWA era — defaults that were correct in a browser tab now feel wrong inside a native app, because members expect native-app interaction physics, not browser physics.
+
+**The four canonical web-browser defaults that DON'T belong in a native app:**
+
+1. **Long-press text → iOS callout toolbar** (`Copy | Look Up | Translate`). Native apps almost never expose this on incidental UI copy; it's a browser pattern. Suppress globally via `-webkit-touch-callout: none` on `html, body`. Re-enable on inputs, textareas, contenteditable, and an explicit `.selectable` opt-in utility for surfaces where copy-paste IS the intent (journal entries, AI response cards, code blocks).
+2. **Long-press internal link → "Open in Safari" preview** (Peek/Pop in older iOS terms). Same fix: `-webkit-touch-callout: none` on `html, body` suppresses it for all link types globally.
+3. **Tap highlight flash** — the grey/blue rectangle that briefly flashes when a button or link is tapped. Browser-default visual that's never been seen in native iOS or Android UI. Suppress globally via `-webkit-tap-highlight-color: transparent`.
+4. **Text-selection drag-handles on body copy** — if a member long-presses to start selecting on a headline, body paragraph, or button label, the iOS selection magnifier appears and they enter a selection state on something that was never meant to be selectable. Suppress via `-webkit-user-select: none; user-select: none` on `html, body`. Re-enable on inputs + `.selectable`.
+
+**The orientation question (PM-250 specific).** Locking portrait at the OS layer is the right place to do it — not in JS, not in CSS. `Info.plist` `UISupportedInterfaceOrientations = [UIInterfaceOrientationPortrait]` on iPhone (iPad keeps portrait + portrait-upside-down only — no landscape on tablets either). Android `AndroidManifest.xml` MainActivity gains `android:screenOrientation="portrait"`. The OS then ignores the rotation hardware event entirely; the WebView never rotates, no CSS or JS guard is needed. Any JS-side `screen.orientation.lock()` or CSS-side `@media (orientation: landscape)` overlay is a tell that the OS layer hasn't been set correctly — fix at the OS layer and delete the workaround.
+
+**External link routing.** Browser-default for an `<a href="https://example.com/...">` tap inside WKWebView is to navigate IN the WebView (replacing the app's web shell with the external page). That's wrong: members get visually trapped in a foreign site with no way back to VYVE except the OS back gesture. The native-app pattern is to detect non-`online.vyvehealth.co.uk` URLs at click time and route through `@capacitor/browser`'s `Browser.open()` which presents `SFSafariViewController` (iOS) / Chrome Custom Tab (Android) — a modal browser sheet WITH a "Done" affordance back to the app. The plugin is already installed in `vyve-capacitor`; wiring is the client-side click handler.
+
+**Sweep mandate.** Whenever an iOS-or-Android device test surfaces a "this feels like a web page" moment, treat it as evidence the wider audit is incomplete and re-grep the portal for the cousin defaults:
+
+- `grep -ri "user-select\|touch-callout\|tap-highlight\|orientation\|landscape\|portrait" .` across vyve-site
+- `grep -ri "browser\|safari\|chrome\|tab\|web app\|PWA\|install.*app\|add.*home.*screen" .` across vyve-site (member-facing copy only — internal-doctrine references are fine)
+- Audit every `<a href>` for `target="_blank"` and external URLs — these are the candidates for Browser-plugin routing
+- Audit every `window.open` / `location.href` for external destinations
+- Confirm `Info.plist` orientation array matches intent (portrait-only on iPhone is the current VYVE policy)
+- Confirm `AndroidManifest.xml` MainActivity has `screenOrientation` set
+- Confirm there are no `meta viewport user-scalable=yes` or zoom-related metas — pinch-zoom on a native app surface is a tell (already disabled cohort-wide per earlier work, but worth checking)
+- Confirm no PWA install banners or "add to home screen" prompts remain (removed 04 May PM-3 per §23.20 — re-verify periodically)
+
+**Why this matters.** Members install VYVE from the App Store / Play Store and expect to interact with a native app. Every browser-default that bleeds through is a small "wait, am I in Safari?" moment that erodes the perceived quality of the product. The fixes are individually trivial CSS lines but collectively they're the difference between "feels like a website wrapped in an app" and "feels like a real app". Per north-star (memory: "make this feel like a premium app with absolutely no lag and instant feel") this is load-bearing polish, not optional polish.
+
+**Cross-reference.** Pairs with §23.20 ("VYVE is not a PWA — it's two Capacitor binaries"). §23.20 is the strategic framing; §23.59 is the tactical audit checklist that flows from it.
+
 
 ## 24. Premium Feel Campaign — local-first migration (active)
 
