@@ -1,3 +1,58 @@
+## 2026-05-23 13:00 — PM-215.x OAuth verification flow partially configured, parked deliberately
+
+### What happened after the PM-215 commit (0f194f1e)
+
+Dean asked about the 7-day refresh-token expiry — wanted to know if it could be removed permanently. Walked him through the Google Cloud Console flow for moving the `vyve-website` OAuth consent screen out of Testing and through verification.
+
+### State of the OAuth consent screen at parking
+
+Completed in this sub-session (persisted in Google Cloud Console, no further action needed on these):
+- **Branding** page filled and saved: App name "VYVE Health", support email team@vyvehealth.co.uk, logo uploaded (VYVE V-mark PNG from `online.vyvehealth.co.uk/logo.png`), home page `https://www.vyvehealth.co.uk`, privacy `https://www.vyvehealth.co.uk/privacy.html`, terms `https://www.vyvehealth.co.uk/terms.html`, authorised domain `vyvehealth.co.uk`, developer contact team@vyvehealth.co.uk.
+- **Audience** page: publishing status flipped from "Testing" to "In production" via Publish app button. App is now in production status.
+- **Data access** page: `https://www.googleapis.com/auth/youtube` scope added to "Your sensitive scopes" via the Manually add scopes box. Scope is registered at the project level (was previously only passed at runtime by OAuth Playground).
+
+Not completed (deliberate stop):
+- Justification text for the scope was drafted (in this changelog below) but NOT yet pasted into the form on Data access page.
+- Demo video field still blank.
+- "Prepare for verification" button on Verification centre is greyed out — Google wants the branding step explicitly "verified" first via a confirmation click on the branding page before allowing scope review submission.
+
+### Why parked, not finished
+
+After scope registration, Verification centre page surfaced the proper verification gate: "Your app's data access is not verified. Verification is required because your app requests sensitive or restricted scopes. You need to verify and publish your branding before you can request verification." Greyed-out "Prepare for verification" CTA. Three remaining steps to clear: branding verification click, demo video recording + upload, formal submit-for-review.
+
+Demo video specifically is the friction step. Google requires a public YouTube video showing the OAuth flow + the API being called with the requested scope. Realistically 30-60 minutes of focused work to record, upload, and submit. Not appropriate as a tail-end task on a big session.
+
+Critically: **PM-215's daily cron, once shipped, refreshes the OAuth token as a side effect of every API call. The 7-day clock resets every time the token is used. So in steady-state operation the 7-day expiry never actually triggers.** The verification flow is therefore a "clean it up properly later" task, not a "blocks PM-215 from working" task. Decided to bank progress and walk away.
+
+### Justification text to paste when picking this up
+
+Ready to copy verbatim into the "How will the scopes be used?" field on the Data access page:
+
+```
+VYVE Health uses this scope to programmatically manage broadcasts on our own VYVE YouTube channel (UCuptZFgSk0ZmNnE2IbYBdtg). The application runs as a server-side cron operated by our team — no third-party users authorise this app. We use the YouTube Data API v3 to materialise scheduled liveBroadcast resources in advance of wellbeing sessions, bind them to our reusable liveStream resources, and add them to category playlists. No user data beyond our own channel's metadata is accessed. The OAuth client is single-tenant: only team@vyvehealth.co.uk (the channel owner) ever authorises this app.
+```
+
+### Resume checklist for next session (PM-215.x finishing pass)
+
+1. Go to https://console.cloud.google.com/auth/branding?project=vyve-website → confirm Branding is saved (should already be, but verify "Branding changes saved" toast appears OR fields are pre-filled).
+2. Go to Verification centre → click "View branding" → confirm branding verified.
+3. Go to Data access → paste the justification text above into "How will the scopes be used?" box.
+4. Record demo video (2-3 mins): screen-capture the OAuth Playground consent flow showing scope grant + a curl call to `liveBroadcasts.insert` returning 200. Upload as unlisted YouTube video.
+5. Paste video URL into the "Demo video" field on Data access page.
+6. Save → return to Verification centre → "Prepare for verification" should now be clickable → submit.
+7. Wait 3-7 business days for Google review.
+8. On approval: refresh token becomes permanent (no `refresh_token_expires_in` reset clock). Test with a fresh token mint via OAuth Playground; expect `refresh_token_expires_in` field absent or set to a much larger value than 604800.
+
+### Token-expiry status at this commit
+
+Refresh token verified working in this session — `refresh_token_expires_in: 564320` (~6.5 days) returned on the 12:59 UTC refresh call. Each daily API call from PM-215 will reset this to 604800. Steady-state expiry never triggers as long as the cron runs at least once every 7 days. Single point of fragility: if PM-215 is down for >7 days, manual re-mint via OAuth Playground is required. Acceptable risk pre-verification.
+
+### Tooling
+
+§23.45 PAT-direct throughout. §23.41 fresh HEAD re-fetch confirmed parent at `0f194f1e` (the PM-215 commit from this morning) — no concurrent brain activity since. Brain commit only this session (no code touched).
+
+---
+
 ## 2026-05-23 12:25 — PM-215 YouTube reusable-stream pipeline VERIFIED end-to-end (Riverside → YouTube → playlist, second-attempt repeatability proven)
 
 ### What we set out to prove
