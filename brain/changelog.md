@@ -1,3 +1,45 @@
+## 2026-05-23 PM-249 — Replays chip filter on top of PM-245 [vyve-site `aae1b593`]
+
+Layer on top of PM-245's section-rail layout. Dean's feedback after PM-245 shipped: the first-draft browse model was right, just needed two tweaks.
+
+**Changes:**
+
+1. **Horizontally-scrolling chip row** across the top of the hub. `All` (pinned left, default) plus one chip per active playlist in `display_order`. Tap a chip → filter the sections below to that one playlist. Tap `All` → all 8 sections come back. Scroll-snap with momentum on touch (mobile-native pattern, like App Store category chips). Chip state survives paint cycles (visibilitychange, vyve-localdb-table-pulled) because it lives on the existing `state` object.
+
+2. **See all always renders.** Removed the `video_count > 3` gate from PM-245's `renderSection`. Dean's call: sparse content is a temporary trial-phase state, not worth coding a hide condition for. Always-on path to `/replay-category.html?cat=<slug>` even when there's nothing extra to see right now. At trial scale that's redundant (See all routes to a page with the same 3 tiles as the hub), but the wiring is correct for when content grows past 3.
+
+**Why this is better than PM-245's first ship:** PM-245 gave a section per playlist with 3 tiles per section — good for grazing but not for "I want to drill into Mindfulness and scroll through everything we have". The chip + section combo handles both: All for grazing, chip for drilling, See all for full archive when content grows.
+
+**Frontend-only patch, single source file change:**
+
+- `replays.html`: +chip-row CSS (~40 lines), +chip-row markup in intro region, +`renderChips()` function, +`activeChip` state field defaulting to `'all'`, +chip-tap handler with scrollIntoView for selected chip, `renderAll()` filters playlists by activeChip before mapping to sections, `hasMore` gate removed from `renderSection` so See all always renders, `?debug=1` diagnostic gains active-chip field. 21,226 → 24,654 bytes (+3,428).
+- `sw.js`: `pm248-mind-wrap-padding-a` → `pm249-replays-chips-a`.
+- `index.html`: vbb-marker 130 → 131.
+
+**No backend changes** — chip filtering is pure client-side over the existing Dexie reads (replay_playlists + replay_videos). No catalogue invalidation needed; schema unchanged from PM-245.
+
+### PM-XXX placeholder discipline worked again
+
+§23.57 candidate (earned PM-245) applied here for the second time. Source written with `PM-XXX` and `pmxxx-` placeholders throughout; final sed sweep at commit time turned 9 occurrences (8 in replays.html + 1 in sw.js) into PM-249 in one pass. Live `pm248-mind-wrap-padding-a` cache key fetched at commit time, claim auto-bumped to PM-249 (highest PM in last 25 vyve-site commits). 0 renames. The pattern is durable across consecutive commits and the reference impl in `/home/claude/commit.py` is now reusable boilerplate — narrow FILES list + replace commit_message + update post-verify markers and it works for any commit shape.
+
+### Session arc for the Replays surface (closed)
+
+PM-229 (broadcast-ID approach + chip filter) → PM-231 (theme fix) → PM-235 (full pivot to YouTube playlists as truth, 8 playlist tiles) → PM-236 (?debug=1 diagnostic) → handoff → PM-245 (section-rail layout, per-video tiles, replay_videos table + EF + daily cron, replay-category.html per-slug archive) → PM-249 (chip filter + always-on See all).
+
+**Six ships on the same surface in ~26 hours.** This one resolves Dean's "I can only see the most recent video" complaint from after PM-235 and his "first draft was perfect, just needed chips" feedback after PM-245. End-state: browse newest-first across everything via All, drill into any category via chip, escape to full archive via See all — three browse paths, one screen.
+
+### Files
+
+| File | Bytes | Change |
+| --- | --- | --- |
+| `replays.html` | 24,654 | +chip filter layer on PM-245 section-rails |
+| `sw.js` | 15,994 | Cache key bump |
+| `index.html` | 121,255 | vbb-marker 130→131 |
+
+vyve-site `aae1b593` shipped via atomic Git Data API (Composio remained down throughout the session; PAT fallback per memory #20 ran cleanly twice today — PM-245 + PM-249).
+
+---
+
 ## 2026-05-23 PM-242 (Avatars) — connect-feed.html + connect.html Recent Check-Ins [vyve-site `59afbb85`, EF connect-feed-preview v2]
 
 *Note: this PM number collides with the parallel session's PM-242 (Connect fade actually scrolls with content, `f8f08a91`) — see entry further down. Both shipped under the same number within the same session; disambiguated in the brain by "(Avatars)" vs "(Connect fade)" parenthetical. §23.14 parallel-session number collision artifact.*
