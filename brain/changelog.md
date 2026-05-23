@@ -1,3 +1,56 @@
+## 2026-05-23 PM-235 — Replays rebuilt as YouTube playlist tiles (replaces PM-229 broadcast-ID approach) [vyve-site `1f0c81ff`]
+
+The PM-229 design — `calendar_occurrences.youtube_broadcast_id` populated per past occurrence, hub paints reverse-chron tile list of individual videos — got rebuilt entirely. Dean's question on review: "session goes live, session finishes, YouTube automatically adds that to the playlist, so why are we doing per-broadcast row mapping?" Right question. The previous design required either manual SQL after every broadcast (doesn't scale — Lewis can't write SQL, daily-cadence categories like Yoga need 21 inserts/week) or a complex `session-publish` EF cron to automate it (over-engineered when YouTube already auto-archives broadcasts to playlists). Replaced with a much simpler shape.
+
+### Architecture decision
+
+YouTube playlists become the source of truth for replay videos. A new `replay_playlists` Supabase table holds the 8 playlist IDs + cached latest-video metadata. The hub renders 8 playlist tiles; tap mounts the playlist iframe (`youtube.com/embed/videoseries?list=PLxxx`) which steps through every video in the playlist via YouTube's native UI. Members get YouTube's full player (chapters, comments, captions, full controls) without leaving the app. Zero database work per replay — when a session finishes broadcasting, YouTube auto-adds it to the matching channel's playlist, and the playlist iframe surfaces it on next page load.
+
+### What shipped
+
+**Supabase (pre-commit):**
+- `replay_playlists` table created with RLS, `set_updated_at` trigger, partial index on `(display_order) WHERE active = true`. 8 rows seeded with playlist IDs discovered via Vault OAuth + pg_net path: Yoga `PLyaCafiXVsshk0I0Z9ii4qeT7CSItwgU2`, Mindfulness `PLyaCafiXVssjw0wn0ECO8Rh6_kme91MLV`, Workouts `PLyaCafiXVsshhnwd6-Hfyxn1Z2OKNCLfM`, Check-In `PLyaCafiXVssiL0asHJhhwTE-78PX7Ut4m`, Therapy `PLyaCafiXVssjAUHO8SN5l9K1zqlNWVlTU`, Events `PLyaCafiXVssiPt5whqWDiK0EVTMYxbCyh`, Education `PLyaCafiXVssj7hcKLfbS32n0xf6prOysa`, Podcast `PLyaCafiXVssjZdvH9iqA7A5-l5KQZUINU`. All 8 are `unlisted` privacy — embeds work fine, only YouTube search-and-discover is gated.
+- One-shot cache populated for all 8 via parallel `playlistItems.list` calls, picking the row with max `publishedAt` per playlist. Future: PM-235b cron EF (separate ship) refreshes hourly.
+- `calendar_occurrences.youtube_broadcast_id` column DROPPED. Partial index `idx_calendar_occurrences_replays` dropped first. The 10 test rows I inserted for the 5 weekly/monthly categories during PM-229 follow-up DELETED. The 6 original past-occurrence rows (Yoga/Workouts/Mindfulness from PM-210a backfill) had `youtube_broadcast_id` nulled but stay as legit historical scheduling data.
+
+**Edge of API behaviour worth codifying.** `youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=X&maxResults=50` returns items in **playlist order**, NOT date order. Sorting by `snippet.publishedAt DESC` client-side is required to find the most recent video. The same trap is worth flagging in the PM-235b cron EF design — if you sort wrong, the "Latest" badge points at a 2-month-old video instead of today's session.
+
+**vyve-site (commit `1f0c81ff`):**
+- `db.js`: `SCHEMA_V11` adds `replay_playlists` store with `'&id, display_order, active'` index. `db.version(11).stores(SCHEMA_V11)` chain entry. `makeCatalogueTable` consumer registration alongside `podcast_episodes`.
+- `sync.js`: `replay_playlists` catalogue plan entry hitting `/replay_playlists?active=eq.true&select=*&order=display_order`. Added to `CATALOGUE_FRESH_TABLES` (5-min stale window). `CATALOGUE_INVALIDATION_KEY` bumped `pm228-replays-youtube-id` → `pm235-replay-playlists` per §23.50, forcing one-shot re-pull on every device's next visit.
+- `replays.html`: total rewrite (PM-229's chip-filter + reverse-chron tile-list design replaced with playlist-tile-grid). 8 tiles in a responsive grid (1col on mobile, 2col on >=480px wide screens). Each tile shows the playlist's most-recent video thumbnail as the tile background (via the cached `latest_video_thumb_url`), category short_label in Playfair, "X sessions · Today" meta line. "Latest" badge on the playlist with the most-recent `latest_video_published_at` across all 8 — gives a single attention anchor. Tap mounts in-place playlist iframe (`videoseries` embed pattern) with autoplay; close button tears down iframe to stop audio. Theme tokens throughout — flips dark/light correctly inherited from the PM-231 fix.
+- `connect.html`: `renderLatestReplay` rewritten to read from `replay_playlists` instead of `calendar_occurrences`. Picks the row with max `latest_video_published_at`, paints cached metadata (`latest_video_thumb_url`, `display_name`, `latest_video_title`, `video_count`). Cleaner than the previous occurrence-based query — no time-filtering needed since the cache already filters to completed videos.
+- `sw.js`: cache key bumped `pm234-avatar-crop-a` → `pm235-replay-playlists-a`. No new files added to `urlsToCache` (replays.html was already added in PM-229).
+
+### Numbering — three renames during build per §23.14
+
+This work was internally PM-232 during the data-layer build. Then within minutes the brain HEAD showed two parallel sessions had shipped:
+
+- `bde4e113` PM-232 (More-menu trim — Running Plan / Guides & PDFs / How-to Videos removed)
+- `aa395bfc` PM-233 (Add Replays to More menu after Live Sessions — useful, it threads to this work but they did it independently)
+- `189bedaa` PM-232 (avatar pipeline RLS bug — `encodeURIComponent(email)` produced `user%40` paths that failed the bucket policy)
+- `e3823f71` PM-233 (avatar instant-paint on return — `populateFromCache` renders photo from cached `members.avatar_url` instead of an `<img>` 200ms wait)
+
+Renumbered to PM-234. Started the commit build. HEAD moved again during my build (`d40099b0` PM-234 — avatar crop modal with pan/pinch-zoom). Renumbered ship to PM-235. `sw.js` was the only file collision — rebased my cache-key bump on top of the new HEAD's `pm234-avatar-crop-a` value, producing `pm235-replay-playlists-a`. Other four files untouched by any parallel session, no rebase needed.
+
+The §23.41b pre-PATCH HEAD re-check protocol from PM-229 caught both moves cleanly. New shape worth keeping: **always re-check HEAD AND re-check the SHAs of files I'm about to overwrite immediately before each ref-PATCH attempt**. The first attempt detected the `sw.js` collision and bailed out cleanly before the PATCH would have 422'd.
+
+### Lessons codified
+
+1. **YouTube `playlistItems` returns playlist order, not date order.** Add to the YouTube API recipe alongside the `broadcastStatus`/`mine` mutual-exclusion gotcha from PM-229. The cache builder MUST sort by `snippet.publishedAt DESC` to find the most recent video — playlist-order works if the playlist itself is manually ordered, but YouTube's default playlist sort is reverse-chronological-of-add-time which isn't necessarily reverse-chronological-of-publish-time.
+
+2. **Catalogue-table approach scales better than per-occurrence approach for content where the upstream system already aggregates.** PM-229 tried to mirror per-broadcast data into our DB. PM-235 just stores playlist identifiers and lets YouTube be the system of record for videos. When the upstream system (YouTube, Spotify, Stripe) already groups content sensibly, our DB should hold the grouping identifier, not the per-item data. Worth keeping in mind for future content surfaces.
+
+3. **Branch the conversation early when the architectural question is "why X and not Y".** Dean's "is that not how it works?" came after two layers of build (data layer + first replays.html ship). If I'd flagged the playlist-as-source-of-truth alternative during initial design, we'd have skipped the manual seeding scaffolding entirely. Not a new rule — just a tighter take on "mockup-first" → also "data-layer-first": confirm the data shape before building the consumer.
+
+### What didn't ship this session
+
+- **PM-235b cron EF.** The hourly refresh of `replay_playlists.latest_video_*` cache. Manually populated once for all 8 today; will go stale within hours. Members will see correct-but-aging tile previews until PM-235b ships. The playlist iframe itself always plays the live YouTube content so the staleness only affects tile preview, not the actual video experience.
+- **PR-style "Continue watching" rail.** Was scoped for post-trial. Still scoped for post-trial — the playlist-tile design extends to that pattern naturally when ready.
+- **YouTube quota math.** PM-235b's hourly refresh = 8 `playlistItems.list` calls/hour = 24 units/hour = 576 units/day. Well under YouTube Data API v3's 10,000-unit daily quota. No quota concern.
+
+---
+
 ## 2026-05-23 PM-232 — Avatar pipeline two bugs: RLS path mismatch + missing apikey [vyve-site `189bedaa`]
 
 Dean tested photo upload on PM-230, photo wouldn't load. Two real bugs in the PM-228 avatar pipeline that hadn't surfaced because no one had actually completed an upload end-to-end before tonight.
