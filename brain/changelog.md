@@ -1,3 +1,35 @@
+## 2026-05-23 PM-238 — Connect hero fade lives on .wrap top now, not the hero overlay (scrolls with content) [vyve-site `c00b6fba`]
+
+Dean's refinement on PM-237: instead of painting the bottom-fade on the fixed hero photo, put the fade on the `.wrap` top edge so it scrolls *with* the content. Photo stays clean below, content's top edge softly emerges from the photo rather than meeting it at a hard seam. As the page scrolls, the soft seam scrolls with it.
+
+This is a better mental model. PM-237 had me painting a fake "where the photo meets the page" effect on the fixed photo. PM-238 puts the effect where it conceptually belongs — on the content layer itself.
+
+### What changed
+
+**Hero overlay reverted to PM-223.2 shape.** The `.connect-hero-overlay` is now back to a single-layer top scrim only — `rgba(13,43,43, …)` ramp from 0.55 down to transparent at 55% Y, for white-text legibility on eyebrow + headline. That's its only job. The dark-mode and light-mode bottom-fade layers PM-237 added are stripped. The `[data-theme="light"] .connect-hero-overlay` override rule is gone entirely.
+
+**`.wrap` background became a stacked background.** Two layers:
+- Layer 1: `linear-gradient(to bottom, transparent 0, var(--bg) 80px)` sized `100% × 80px` anchored `top`, `no-repeat`. This is the fade band — transparent at top so the photo shows through, ramping to solid `var(--bg)` at the 80px mark.
+- Layer 2: solid `var(--bg)` fills the rest of the wrap.
+
+Auto-themes via `var(--bg)` — no `[data-theme]` override needed. Dark mode → fades to `#0A1F1F`. Light mode → fades to `#F0FAF8`. Same theme behaviour PM-237 gave, but cleaner mechanism.
+
+80px band height picked by feel — long enough to feel soft, short enough not to swallow the first widget below. Adjustable.
+
+### Files
+
+- `connect.html` 92528 → 91970 bytes (−558). Net code shrink: PM-237's two-layer hero overlay + light-theme override was bulkier than the new wrap-top gradient.
+- `sw.js` cache `pm237-connect-hero-fade-a` → `pm238-wrap-fade-band-a`.
+- `index.html` vbb-marker 118 → 119.
+
+### Worth noting
+
+PM-237 worked but the *mental model* was wrong. Painting a "this is where the page begins" effect on a fixed-position photo creates a phantom seam that doesn't move when the page does — which the eye reads as not-quite-right even if it can't articulate why. PM-238 puts the effect on the scrolling layer, so the seam moves with the content, which is what the brain expects.
+
+Generally applicable: when a UI element needs to look like it's interacting with something that's scrolling, put the interaction on the *scrolling* element, not on the fixed one. Worth keeping in mind for any future hub-page hero work (Mind hero, Body hero, Home dashboard hero).
+
+---
+
 ## 2026-05-23 PM-237 — Connect hero bottom fades to theme bg (kills hard band-to-content seam in light mode) [vyve-site `f4c03da0`]
 
 Dean spotted this on device: in light mode, the `.connect-hero` photographic band's bottom edge fell off a cliff into the lighter page below it. The PM-223.2 overlay was hardcoded `rgba(13,43,43, …)` (VYVE Dark) at both top and bottom — fine in dark mode where page `--bg` is `#0A1F1F` (close enough to teal that the seam mostly hides), wrong in light mode where `--bg` is `#F0FAF8` and the dark teal bottom stripe of the photo sat against near-white page content like a flag.
