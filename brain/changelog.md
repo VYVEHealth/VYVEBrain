@@ -1,3 +1,64 @@
+## 2026-05-23 01:15 — PM-212.1 Podcast hub follow-up: nav.js wiring, VYVE-logo fallback, in-app guest interest modal [vyve-site `9badb2cb`]
+
+### What shipped
+
+Four-file atomic commit to `vyve-site` `main`: `9badb2cb6667335c33a7817829c5ff92f9a9d7b2`, parent `bff78cb4` (PM-212). Dean's first device-test feedback closed in same session — four concrete changes plus a Lewis-facing content playbook.
+
+**`podcast.html` (+199/-10 lines, 17314 → 25095 bytes).** Four changes layered on top of the PM-212 baseline:
+
+1. **nav.js wired** via `<script src="/nav.js" defer></script>` at end of `<body>`. Page now renders the standard mobile sticky topbar (56px) with back button + "The VYVE Podcast" page label, AND the fixed bottom-nav with Home / Body / Mind / Connect (Connect highlighted since podcast lives under that hub). The hero card sits ~62px below viewport top instead of flush against it — matches the rest of the portal. Page-level `main` padding of `6px 0 100px` left untouched because nav.js's sticky topbar naturally pushes content down; the 100px bottom is for the fixed bottom nav.
+
+2. **VYVE-logo thumbnail fallback.** Per Dean's call, the 12 episodes without a Drive thumbnail (and any episode whose Drive URL 404s in future) now render the white VYVE logo over the teal gradient instead of bare gradient. Implementation: `.ep-thumb` always emits a `.logo-fallback` child (absolute-positioned, centred, 56% × 56% sized, `filter: brightness(0) invert(1)` recolouring `/logo.png` to white, opacity 0.92). If `thumbnail_url` is non-null, an `<img class="ep-thumb-img">` is layered on top with `z-index:1`; on 404, `onerror="this.remove();"` strips the failed `<img>` and the logo fallback shows through. The `::after` darkening overlay sits at `z-index:2` above both layers so card text remains legible regardless of which fallback state renders.
+
+3. **In-app guest interest modal.** Replaced the previous external link to `vyvehealth.co.uk/vyve-podcast.html#guest` with a button that opens a bottom-sheet modal in-app. Modal collects name + 3-line story, then `window.location.href = 'mailto:team@vyvehealth.co.uk?subject=...&body=...'` opens the system mail composer with the email pre-filled. Native iOS hands off to Mail app via Capacitor's default URL handler; web users get their default mail client. No EF, no DB, no form-submission infrastructure — Lewis just receives normal emails to `team@vyvehealth.co.uk` (same handoff shape as `settings.html` "Contact support"). Modal styling matches the rest of the portal: `var(--bg)` background, semantic theme tokens throughout, `safe-area-inset-bottom` honoured, slide-in transition matching the `vyve-more-menu` pattern from nav.js. Closes on backdrop tap, Cancel button, ESC key, or auto-close 400ms after the mailto fires (so mail app has time to take focus before sheet animates away).
+
+4. **Hero spacing**: implicit fix from change 1. Was sitting at viewport top; now sits below the sticky topbar at the same vertical position as every other portal page.
+
+**`nav.js` (+2/-1 lines).** Two surgical edits:
+- `getActiveTab()` matcher extended: `path.includes('connect') || path.includes('podcast')` returns `'connect'`. Podcast is reached from the Connect hub and feels like a Connect sub-page, so the Connect tab pill highlights when the member is on `/podcast.html`.
+- `subPageLabels` map gains `'podcast': 'The VYVE Podcast'` so the sticky top header reads correctly. Sits adjacent to the existing connect-* entries (checkin / feed / challenge).
+
+Both changes are additive — no existing behaviour modified.
+
+**`sw.js` (+1/-1).** Cache key `vyve-cache-v2026-05-23-pm211-podcast-a` → `vyve-cache-v2026-05-23-pm211-podcast-b`. Suffix bump for the follow-up — keeps the same campaign prefix since PM-212.1 is a same-line refinement.
+
+**`index.html` (+1/-1).** vbb-marker `Update 81` → `Update 82`.
+
+### What's also landing this brain commit (no vyve-site impact)
+
+**`playbooks/podcast-episode-add.md` (NEW).** Lewis-facing operational doc — step-by-step guide for adding new episodes via Supabase dashboard, including the INSERT template, display_order shuffle for putting a new episode at the top of "Latest", section migration from "latest" → "archive", and the column-by-column reference. Plus a brief explainer of why the no-deploy workflow works (catalogue sync pattern) and what changes when PM-212 v2 ships (audio_url column for in-app player). Direct answer to Dean's question "how will new episodes get added?" — captured as durable doc rather than session-bound prose.
+
+### Why this is PM-212.1 not PM-215
+
+Same-day follow-up to PM-212 (podcast hub MVP ship). Follows the established `.1` suffix pattern from PM-209.1 (recovery commit on same-line index.html deletion), PM-187.2 (markup fallback hygiene), etc. PM-213 and PM-214 are in flight from other sessions on separate work surfaces (live session pages redesign + admin console placeholder); they're independent.
+
+### Tooling discipline
+
+§23.45 PAT-direct (Composio still 401-ing). §23.52(a) four blob bodies via `/tmp/vyve/commit2/blob_*.json` + `--data-binary @file`. §23.52(c) every SHA shape-asserted. §23.53 every response body to disk first. §23.41 pre-tree HEAD re-fetch confirmed `bff78cb4`. §23.52(b) post-commit `files[].status` confirmed `{modified: 4, added: 0, removed: 0}`. Per-file first-100-char re-fetch all passed. No new §23 rules earned.
+
+### Files changed
+
+vyve-site `bff78cb4` → `9badb2cb`:
+- podcast.html (+199/-10)
+- nav.js (+2/-1)
+- sw.js (+1/-1)
+- index.html (+1/-1)
+
+VYVEBrain (this commit, after sibling PM-213/214 brain commits landed at `6c8d0806`):
+- brain/changelog.md (this entry prepended)
+- brain/master.md (§19 PM-212.1 line + paragraph appended after PM-212)
+- tasks/backlog.md (PM-212 ship entry updated to reference 212.1 follow-up)
+- playbooks/podcast-episode-add.md (NEW — Lewis episode-add workflow)
+
+### Live state at session close
+
+- vyve-site main: `9badb2cb` (was `bff78cb4`)
+- VYVEBrain main: this commit (after `6c8d0806` PM-213/214 spec ship)
+- Supabase `podcast_episodes`: 40 rows, unchanged
+- No new §23 hard rules earned
+
+---
+
 ## 2026-05-23 — PM-213 specced (brain-only): Live session pages redesign + PM-214 admin console placeholder
 
 ### What this commit captures

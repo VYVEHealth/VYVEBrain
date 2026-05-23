@@ -278,7 +278,11 @@ Scoped 23 May 2026 PM. Pickup post-trial-launch in June. Trigger: when Lewis hit
 
 ---
 
-## Shipped 23 May 2026 — PM-212 — Podcast hub MVP shipped end-to-end [vyve-site `bff78cb4`, brain `0ce93681` → next]
+## Shipped 23 May 2026 — PM-212 + PM-212.1 — Podcast hub MVP shipped + same-session follow-up (nav.js, logo fallback, in-app mailto modal, episode-add playbook) [vyve-site `bff78cb4` → `9badb2cb`, brain `0ce93681` → next]
+
+**PM-212.1 follow-up (same day).** Four-file atomic commit closing Dean's first device-test feedback in same session as the original ship. (1) `nav.js` script tag added to `podcast.html` — page now has the standard sticky topbar + bottom-nav, hero spacing fixes implicitly. (2) Thumbnail fallback for missing Drive thumbs swapped from bare gradient to white VYVE logo over teal gradient (12 affected episodes plus any future Drive 404). (3) Express Interest CTA changed from external link to in-app bottom-sheet modal that opens `mailto:team@vyvehealth.co.uk` pre-filled with name + story — mirrors settings.html Contact support handoff, no EF/DB needed. (4) `nav.js` gained `path.includes('podcast')` Connect-tab match + `'podcast': 'The VYVE Podcast'` subPageLabels entry. sw cache `pm211-podcast-a` → `pm211-podcast-b`, vbb-marker 81 → 82. New playbook `playbooks/podcast-episode-add.md` ships in same brain commit (Lewis-facing operational doc for the no-deploy episode-add workflow). See changelog top entry for full details.
+
+**PM-212 (original ship, earlier same session):**
 
 **PM-212 closed in one session.** Supabase migration + 40-row seed + member UI all landed clean. Six-file atomic commit to vyve-site main (podcast.html NEW 17314 bytes, connect.html gold Podcast tile next to Calendar tile, db.js SCHEMA_V10 + makeCatalogueTable consumer, sync.js plan entry + CATALOGUE_INVALIDATION_KEY bump `pm210-calendar-occurrences` → `pm211-podcast-episodes`, sw.js cache bump, index.html vbb-marker 80 → 81). Supabase: `pm211_create_podcast_episodes` migration earlier in session, 40 rows seeded (7 latest post-rebrand + 33 Everyman archive; 28 with Drive thumbnails, 12 with NULL rendering as gradient placeholders).
 
