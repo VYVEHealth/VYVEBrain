@@ -1,3 +1,73 @@
+## 2026-05-23 PM-245 — Replays section-rail rebuild [vyve-site `20c673dc`]
+
+Third rewrite of the Replays surface in 24 hours. Dean spotted the UX gap after PM-235's playlist-embed ship: tap a tile, get the most recent video, no in-app way to browse the rest of that playlist. Member is stuck on whatever YouTube serves first, can only navigate via YouTube's own player controls. Poor mobile browse.
+
+Design locked in PM-236's handoff and shipped here: Replays hub becomes 8 vertical sections (one per playlist), each showing up to 3 most recent tiles with a "See all [category] ›" link routing to `/replay-category.html?cat=<slug>`. Tap a tile = mount inline single-video iframe (not playlist iframe). Header static; only See all navigates. See all hides when `video_count <= 3`.
+
+### Backend (shipped previous session, brain-only trail captured here)
+
+- **`replay_playlists.slug` column** added + 8 URL-safe slugs populated: `yoga-stretch`, `mindfulness`, `workouts`, `checkin`, `group-therapy`, `events`, `education`, `podcast`. Decoupled from `category` display name so renaming a category never breaks shared URLs.
+- **`replay_videos` table created** — per-video rows with `youtube_video_id UNIQUE`, `playlist_slug`, `category` (denormalised), `title`, `thumb_url`, `published_at`, `duration_sec`, `view_count`, `position_in_playlist`, `created_at`, `updated_at`. Composite index on `(playlist_slug, published_at DESC)` powers both the section-rail group-by and the per-category archive read. RLS read-authenticated, service-role writes only. ~200-400 rows at production scale, currently 17.
+- **`refresh-replay-videos` Edge Function v1** (`verify_jwt:false`). For each active row in `replay_playlists`: refresh-token-exchange against Google → `playlistItems.list` (maxResults=50, sufficient at trial scale) → `videos.list` for `contentDetails.duration` + `statistics.viewCount` → upsert into `replay_videos` by `youtube_video_id` → recompute `replay_playlists.latest_*` cache from the freshest video in the just-pulled set. Per-playlist failures isolated — partial success preserved. Initial backfill: 17 videos across 8 playlists in 4.7s, 0 failures.
+- **pg_cron job 26** `vyve-refresh-replay-videos-daily` at `30 3 * * *` UTC, after `youtube-token-keepalive` at `0 3 * * *` UTC. Same Vault → `get_youtube_oauth_secrets()` RPC → access-token path codified by `youtube-token-keepalive` v2.
+
+### Frontend (this commit)
+
+- **`replays.html` rewritten** as 8-section vertical layout. Reads `replay_playlists` + `replay_videos` from Dexie in parallel, groups videos by `playlist_slug`, sorts each group by `published_at DESC`, paints up to 3 tiles per section. `?debug=1` diagnostic preserved from PM-236, expanded to surface `replay_videos` table state and per-slug counts. 21,226 bytes.
+- **`replay-category.html` new file** — single shared shell driven by `?cat=<slug>`. Looks up the playlist row by slug, paints all videos in that category newest-first as a 2-column tile grid. Tap = play inline. "Category not found" state only shows after Dexie has loaded *some* rows (avoids cold-boot flash on first load before sync hydrates). 17,778 bytes.
+- **`db.js` SCHEMA_V12** adds `replay_videos: '&id, &youtube_video_id, playlist_slug, published_at'` store. Version chain `v11 → v12` is additive (no data loss). `replay_videos` consumer registered via `makeCatalogueTable('replay_videos')`.
+- **`sync.js`** catalogue plan entry: `path: '/replay_videos?select=*&order=published_at.desc'` with `replaceForMember(null, rows)` persist. Added to `CATALOGUE_FRESH_TABLES` (5-min stale window). `CATALOGUE_INVALIDATION_KEY` bumped `pm235-replay-playlists` → `pm245-replay-videos` per §23.50, forcing one-shot re-pull on every device's next visit.
+- **`sw.js`** cache key `pm244-fade-gradient-strong-a` → `pm245-replay-videos-a`. `/replay-category.html` added to precache list.
+- **`nav.js`** `subPageLabel` map: `'replay-category': 'Replays'` so the back button title is correct on the per-category page.
+- **`index.html`** vbb-marker `Update 125` → `Update 126`.
+
+### Open decisions resolved at session start
+
+- **Routing**: `/replay-category.html?cat=<slug>` single shared shell, URL-param driven. Confirmed.
+- **Slug map**: New `slug` column on `replay_playlists` (not URL-encoded `category` strings). URLs become `?cat=yoga-stretch`, decoupled from display-name renames. Filter is `replay_videos.playlist_slug = <slug>`.
+- **Tile design**: 3 fixed tiles per section, no horizontal scroll. Avoids gesture conflicts on the vertically-scrolling page. When fewer than 3 videos exist (5 of 8 playlists currently — Podcast has 1, several have 2), tiles render left-aligned in a 3-col grid.
+- **Section header navigation**: header static, only "See all" navigates. Cleaner, less accidental taps.
+
+### PM number churn (third consecutive session on the same surface)
+
+PM-241 claimed → PM-242 burned by parallel Connect-fade session → PM-243 burned → PM-244 burned by yesterday's bash-array commit failure leaving the work uncommitted overnight → today's session opens at PM-244 already taken (parallel session shipped between sessions) → PM-245 finally claimed and shipped via the new placeholder pattern.
+
+### Mechanical details worth keeping
+
+- **Backfill**: ran from `pg_net.http_post` to `refresh-replay-videos` once; verified via `net._http_response` row at `request_id = 2618` showing `status_code: 200`, response body `playlists_processed: 8, videos_upserted: 17, playlists_failed: [], cache_updates: 8`. 4.7s end-to-end including 8 × `playlistItems.list` + 8 × `videos.list` calls and the upserts. No pagination needed at current scale; if any playlist grows past 50 videos, a pageToken loop is needed.
+- **YouTube API quirk preserved**: `playlistItems.list` returns items in curator-defined playlist order, not date order. EF sorts client-side by `snippet.publishedAt DESC` before deriving the "freshest" entry for the playlist cache. Same trap as PM-229's `broadcastStatus`/`mine` mutual-exclusion.
+- **Thumb resolution preference order**: `maxres → standard → high → medium → default`, fall back to first-available if none of those exist. Maxres is `_live` for live-broadcast archives (e.g. `maxresdefault_live.jpg`), normal for VOD uploads.
+- **Empty-playlist handling**: if a playlist returns 0 items, EF still touches `replay_playlists.last_refreshed_at` so cron monitoring sees the playlist was processed; `video_count` set to 0; `latest_*` columns left alone (preserves any prior values rather than nulling).
+- **Cron timing**: 03:30 UTC = 04:30 BST. After `youtube-token-keepalive` at 03:00 UTC (which resets the 7-day refresh-token clock). Pair runs nightly with 30-minute gap, never overlapping.
+
+### §23 candidate rule earned — PM-XXX placeholder pattern
+
+When a build spans more than one bash tool turn AND parallel sessions are active on the same day, write source with `PM-XXX` and `pmxxx-` placeholders. Run a single sed sweep to the freshly-claimed number at commit time, just after the §23.41 fresh-HEAD fetch. This commit demonstrated the pattern working: sed swept 9 occurrences across 5 files in one pass, no per-file rename cascade. The §23.41 fresh-fetch caught the live `pm244-fade-gradient-strong-a` cache key and the script auto-bumped the claim — would have collided silently if the number had been baked in early.
+
+**Compare to yesterday's churn**: PM-241 baked into source at session start → parallel ship took PM-241 → renamed everything to PM-242 → parallel ship took PM-242 → renamed to PM-243 → parallel ship took PM-243 → renamed to PM-244. Four global renames, none of them necessary if the placeholder pattern had been in use from the start. Yesterday: 4 renames. Today with placeholders: 0 renames (one sed-replace at commit time isn't a rename, it's the claim).
+
+**Promoting:** §23.57 (next master rebuild) — *PM-XXX placeholder discipline on multi-step ships*. Apply when (a) the build spans >1 tool turn AND (b) other sessions are active on overlapping work this day. Otherwise the early-claim is fine. The script's `claim → normalise → sed → §23.41 → commit` flow is now in `/home/claude/commit.py` as the canonical reference implementation.
+
+### Session arc captured
+
+PM-229 (broadcast-ID + chip filter) → PM-231 (theme fix) → PM-235 (full pivot, playlists as truth, 8 tiles) → PM-236 (diagnostic) → handoff → **PM-245 (section-rails + per-category archive page, backend complete with EF + cron + table + 17 backfilled videos)**. Five ships on the same surface, this one closes the loop. Dean's "I can only see the most recent video" UX gap resolved.
+
+### Files
+
+| File | Bytes | Change |
+| --- | --- | --- |
+| `replays.html` | 21,226 | Full rewrite (PM-235 → PM-245 section-rails) |
+| `replay-category.html` | 17,778 | NEW |
+| `db.js` | 45,428 | +SCHEMA_V12 +version(12) +consumer |
+| `sync.js` | 53,921 | +catalogue entry +FRESH_TABLES +INVALIDATION_KEY bump |
+| `sw.js` | 15,760 | Cache key bump +precache entry |
+| `nav.js` | 37,176 | +subPageLabel entry |
+| `index.html` | 121,255 | vbb-marker 125→126 |
+
+vyve-site `20c673dc` shipped via atomic Git Data API blobs → tree → commit → update ref (Composio remained unavailable; codified PAT-fallback path per memory #10).
+
+---
+
 ## 2026-05-23 PM-243 + PM-244 — Connect fade: it was COLOUR not positioning the whole time [vyve-site `10ed1df3`, `a2e12cb0`]
 
 Six commits chasing this seam (237 → 238 → 240 → 241 → 242 → 244) and the bug was never where I thought it was.
