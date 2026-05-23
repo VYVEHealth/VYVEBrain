@@ -1,3 +1,51 @@
+## 2026-05-23 PM-242 — Connect fade actually scrolls with content (PM-238 mental model, finally working) [vyve-site `f8f08a91`]
+
+Five attempts at this seam now. PM-241 fixed the visibility problem (fade was painting) but Dean's screenshot showed the consequence: fixed-position fade band stayed put as content scrolled past, so the fade ended up cutting through the middle of the check-in card. Wrong feel. Dean's original ask was right: the fade belongs to the content tile and scrolls with it.
+
+### The chain so far
+
+| PM | Approach | Why it failed |
+|---|---|---|
+| 237 | Two-layer gradient on hero overlay, theme-aware | Painted on fixed photo, didn't scroll. Dean's preference: should belong to content. |
+| 238 | Background gradient on `.wrap` top | Wrap top sat flush below photo; gradient painted in air, both endpoints same colour. Invisible. |
+| 240 | Pull wrap up 80px with negative margin to overlap photo | WKWebView paint-order weirdness — gradient invisible on device despite stacking being correct on paper. |
+| 241 | Body-level fixed-position fade element | Visible at last, but fixed = didn't scroll. Cut through content mid-page. |
+| **242** | **Absolute-positioned child of `.wrap` + bump `main` z-index** | **Works.** |
+
+### What made PM-242 different
+
+Three things together:
+
+1. **`main { z-index: 1 → 2 }`.** Removed the DOM-order tie-break dependency. Hero is z-index:1 fixed at body. Main is now z-index:2 relative — main definitively beats hero in body stacking. The whole scrolling content layer paints unambiguously above the hero. No WKWebView paint-order surprises possible.
+
+2. **`.connect-hero-fade` as absolute child of `.wrap`.** `position:absolute; top:0; left:0; right:0; height:80px; transform:translateY(-100%)`. Anchors against `.wrap` (which has `position:relative`). The translateY lifts the band 80px ABOVE wrap's top edge — into the photo's bottom 80px. Because it's positioned absolutely inside the scrolling document, it scrolls with the document.
+
+3. **DOM relocated** from body-level (PM-241) to first child of `.wrap`. Now lives in document flow.
+
+### Why PM-240 (which looked nearly identical on paper) failed
+
+PM-240 manipulated `.wrap`'s own box: `margin-top:-80px` to lift the wrap, `padding-top:80px` to keep content position, gradient as a background-image on `.wrap`. Same overall geometry as PM-242, but the gradient was a property of `.wrap` not a standalone child element. WKWebView seems to handle paint order more reliably for dedicated positioned elements than for backgrounds-on-elements-overlapping-fixed-siblings. Generalisable lesson, codified.
+
+### Files
+
+- `connect.html` 93260 → 93780 bytes (+520). main z-index bump (one char), fade CSS rewritten (~10 lines), DOM element moved.
+- `sw.js` cache `pm241-hero-fade-band-fixed-a` → `pm242-fade-scrolls-with-content-a`.
+- `index.html` vbb-marker 122 → 123.
+
+### §23 candidate — promote if it happens once more
+
+After the dead-end chain on this seam, the principle is clear enough to codify if it bites again:
+
+**"Soft seams between a position:fixed photographic hero and scrolling content should use a dedicated positioned DOM element, not a property of the content wrapper. Property-based approaches (backgrounds, ::before, gradient masks on overlapping containers) are unreliable on WKWebView when they overlap a fixed sibling with its own stacking context. Dedicated element + explicit z-index on the ancestor that beats the hero unambiguously is the durable shape."**
+
+Won't promote to §23 yet — one resolved case isn't a pattern. But the pattern is one bite away from being a rule. Worth flagging that the WKWebView paint-order anxiety is real and recurring (codified in PM-220.x already).
+
+### Lesson for myself
+
+Dean's "this should scroll with content" was correct from PM-238 onward. I spent three commits trying to make property-based approaches work, then one commit accepting they wouldn't and going fixed-position, then this one finally implementing the original ask with a different shape. The right move was probably to jump straight to dedicated-element-inside-wrap at PM-238 instead of layering tricks onto `.wrap`'s background. **When the design ask is "scrolls with X", the implementation should look like "a positioned element inside X", not "a clever background trick on X".**
+
+---
+
 ## 2026-05-23 PM-241 — Connect hero fade: dedicated body-level fixed band + shorter hero (36vh) [vyve-site `74bfc0af`]
 
 Dean ran PM-240 on device and the fade was still invisible — solid hard seam where photo met page bg. Screenshot confirmed: razor-sharp horizontal line, no softening. Three commits in (237 → 238 → 240) chasing the same target, time to step out of the rabbit hole.
