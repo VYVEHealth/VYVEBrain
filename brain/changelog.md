@@ -1,3 +1,73 @@
+## 2026-05-23 12:08 — PM-212.3 → 212.6 Podcast hub iteration: logo fallback fixed, skeleton paint, Drive thumbnail SW cache, transparent V-mark fallback [vyve-site `38c64631` → `17f49276`]
+
+Four-commit iteration arc on the podcast hub thumbnail/loading experience driven by Dean's device feedback. Captured here as a single brain entry because the four ships are best understood together — each one diagnosing the previous attempt's weakness on device.
+
+### PM-212.3 (`d2c9a322`) — failed first attempt at /logo.png fallback
+
+After PM-212.2 shipped the Playfair "V" character fallback (because PM-212.1's `filter: brightness(0) invert(1)` on `<img src="/logo.png">` rendered invisibly on device), Dean called the V-glyph substitute out as exactly what he hadn't asked for. Reverted to using `/logo.png` directly with new CSS positioning (padding container + max-width/max-height + object-fit:contain + filter brightness(0) invert(1) again). Reasoned the original render failure had been a positioning bug, not a filter bug.
+
+On device: still wrong. The filter approach was producing a solid white rounded-square silhouette, not the V-mark glyph. Investigation revealed why: **the `logo.png` file in the repo isn't a standalone V-mark — it's a rounded teal app-icon container with the V-mark formed by a lighter shade of teal inside it, not by transparent negative space.** Filter applied to the full opaque region therefore flattened both the dark-teal background AND the lighter-teal V-mark to white, producing a featureless white rounded square. The "fix" had been chasing the wrong root cause across three commits.
+
+### PM-212.4 (`ca145636`) — generated `/logo-white.png` (still wrong asset shape)
+
+Built a pre-baked white version of logo.png server-side via Pillow: opaque pixels → (255,255,255,a), transparent edges preserved. Saved as `/logo-white.png` (7.8KB), shipped to repo, switched podcast.html to use it without any filter. Same outcome: solid white rounded square, no V-mark. The bug was the source asset, not the colour conversion.
+
+### Diagnostic that unlocked the real fix
+
+After Dean's "still the same" feedback, I dumped the logo.png opacity map at coarse resolution: revealed it as a fully-opaque rounded square with light-teal V-mark formed by colour variation inside (the V exists as a pixel-luminance difference, not as transparent negative space). Then sampled icon-192.png and icon-512.png — same artwork but with full-square geometry showing the dark-teal background body + lighter-teal V-mark glyph visibly. **The V-mark is in the asset, just hidden behind the rounded brand container.**
+
+### PM-212.5 (`b863c04d`) — skeleton-first paint + Drive thumbnail SW cache + icon-192 fallback
+
+Two changes Dean specifically asked for after the logo question got resolved enough to move past:
+
+(1) **Skeleton-first paint.** Page now renders 4 + 6 placeholder cards synchronously at script execution (before Dexie open), each carrying the brand-tile thumb, three pulsing text bars where title/description/desc-2/desc-3 will be, and three pill outlines for the action buttons. Same dimensions as real card → zero layout shift on swap. Real cards replace skeletons once Dexie hydrates (10ms warm, 50-200ms cold). `paint(rows)` guarded to only replace lists when rows.length > 0 so an empty Dexie call doesn't blow away the skeleton during cold-first-visit sync. Real thumbnails layered on top start `opacity:0` and gain `.loaded` class via `onload="this.classList.add('loaded');"` → 180ms fade-in. Never see a half-loaded image.
+
+(2) **Service worker runtime cache for Drive thumbnails.** sw.js fetch handler now intercepts `drive.google.com/thumbnail` URLs before the same-origin gate: cache-first against dedicated `vyve-drive-thumbs-v1` cache, `fetch(req, {mode:'no-cors'})` for the cross-origin request producing opaque responses that are still renderable by `<img>` and cacheable by SW (just not readable in JS). Drive thumbnail URLs are immutable per Drive file ID, so cache-first with no expiry is correct. Activate handler `PRESERVE` Set extended to include `vyve-drive-thumbs-v1` so deploy-driven CACHE_NAME bumps don't nuke the thumbnail cache. Result: second visit onward, all 28 episode thumbnails paint from local cache with zero network.
+
+Brand fallback in this commit was switched from `/logo-white.png` (the broken pre-baked white silhouette) to `/icon-192.png`, the canonical VYVE app icon already in repo and SW-precached.
+
+### PM-212.6 (`17f49276`) — transparent V-mark `/logo-mark.png`
+
+Dean reported icon-192 didn't blend in dark mode — its own dark-teal rounded-square background read as a foreign sticker pasted onto the card surface, hard edge visible. Generated `/logo-mark.png` (192×192, 641 bytes): inset crop 15% to drop the rounded-square edge ring, luminance threshold > 80 to keep the light-teal V-mark glyph and drop the dark teal background, recolour kept pixels to white preserving original alpha. Result: pure white V-mark on transparent background. `.logo-fallback` CSS adjusted: `padding:18px` for breathing room (the V-mark fills the available content area rather than the full tile), `object-fit:contain` instead of cover. Now the fallback renders as a white V on the card's own teal gradient — blends seamlessly in both dark and light modes, no foreign edges.
+
+### What's live at session end
+
+vyve-site main: `17f49276`. Member experience on podcast.html now:
+
+- **First visit:** skeleton tiles paint immediately at script execution, real cards replace within 10-200ms as Dexie hydrates. Real thumbnails (28 of 40 episodes) load over network and fade in. Fallback V-mark visible for 12 (now 13 with Louis NULLed) episodes without Drive thumbnails — clean white V on teal gradient.
+- **Second visit onward:** all previously-seen Drive thumbnails paint from local SW cache with zero network. Skeleton-real swap still happens but on Dexie-only latency (sub-10ms warm), so visually almost imperceptible.
+
+### Lessons / what's now obvious
+
+- I should have inspected the logo.png asset shape before the first filter attempt. Three failed ships (212.1 filter, 212.2 V-glyph substitute, 212.3 filter again, 212.4 white silhouette) all stem from assuming the V-mark existed as transparent negative space when it actually existed as a colour variation inside a full opaque rounded-square container. A 30-second `python3 -c 'from PIL import Image; ...'` on the source file at PM-212.1 would have caught it.
+- "Generate the white version of the asset" was the right *kind* of fix — owning the asset rather than fighting the source — but I generated it from the wrong source file. logo.png is the rounded brand container; icon-192.png contains the actual V-mark glyph that needed extracting. Different asset trees serve different purposes; should have inspected both before committing to a path.
+- Dean's "use the logo" instruction was correct and I substituted my own judgement (Playfair V-glyph) when I should have debugged the asset path properly. The lesson is to take constraint inputs literally and debug toward them, not redefine them.
+- When `paint(rows)` is the only thing that writes to a container, and it's called both at boot and on every sync event, an empty-rows call will silently clobber a skeleton that's already there. Guard with `if (rows.length)` to keep the skeleton up until real data lands.
+
+### Tooling discipline
+
+PAT-direct throughout (Composio still 401 from 21 May incident, ~37 hours). Each ship was a clean atomic commit via Git Data API: §23.41 pre-tree HEAD refresh on every commit, §23.52(a) blob bodies via `/tmp` files + `--data-binary @file`, §23.52(c) SHA shape-asserted, §23.53 response bodies to disk before parse, §23.52(b) post-commit `files[].status` verified. Two parallel-drift events handled cleanly (PM-220.x Connect parallax landing between PM-212.3 and .5, PM-221/222 Connect frosted-glass landing between .5 and .6) — both detected via pre-tree HEAD refresh and merged-against-current rather than blindly committing on stale parent. No new §23 rules earned.
+
+### Files changed across the four ships
+
+vyve-site main: `38c64631` → `d2c9a322` → `ca145636` → `b863c04d` → `17f49276`
+- podcast.html (modified 4 times — net +~300 lines across the four commits including the failed iterations)
+- sw.js (modified 4 times — cache key bumps, Drive runtime cache, PRESERVE Set)
+- index.html (modified 4 times — vbb-marker 83 → 84 → 96 → 97 → 101)
+- /logo-white.png (added in `ca145636`, still in repo though no longer referenced — leftover artifact, can prune in next cleanup)
+- /logo-mark.png (added in `17f49276`, currently in use)
+
+Supabase: `podcast_episodes.thumbnail_url` set to NULL for `ep_louis_watkins` in PM-212.2.
+
+### What's still on the deferred list
+
+- **Migrate the 28 Drive thumbnails to Supabase Storage `podcast-thumbs` bucket** (v1.1). Self-hosted, correctly-oriented (pre-processed for EXIF), `Cache-Control: public, max-age=31536000`, same domain as the rest of the catalogue API. Eliminates Drive rate-limit risk, fixes Louis's EXIF rotation in the process, and means the SW Drive thumbnail cache becomes a transitional optimisation that becomes irrelevant once everything is same-origin and CDN-cached.
+- **Per-episode artwork for the 13 fallback episodes** (post-v1.1 thumb migration). Either commission/source proper thumbnails or build a per-guest initials pattern. The V-mark fallback works fine but isn't differentiated content.
+- **Prune `/logo-white.png` from the repo** — leftover from PM-212.4, no longer referenced. Low priority, just hygiene.
+- **In-app audio player** (v2, post-trial-launch). Capacitor background-audio plugin, `audio_url` column on `podcast_episodes`, `podcast_views` activity table with cap-2/day mirroring workouts/cardio, new Achievement track for listening. Unchanged from earlier plan.
+
+---
+
 ## 2026-05-23 14:25 — PM-222 Revert PM-221/221.1 frosted-glass + replace hero images [vyve-site `2811566f`]
 
 ### What happened
