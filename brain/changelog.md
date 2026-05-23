@@ -1,3 +1,70 @@
+## 2026-05-23 PM-233 → PM-239 — Avatar persistence + crop modal + optimistic-first upload [vyve-site `e3823f71` `d40099b0` `fc3f756b` `a1c2926c` `994e5d9b`]
+
+Five-ship cascade tonight chasing the avatar "feels broken" thread through to "paints instantly, changes instantly, loads instantly". Dean tested each ship on device and fed back the next failure mode. Logging the sequence because the architectural lesson at the end (optimistic-first persist-then-upload) earns a §23 rule.
+
+### The sequence
+
+**PM-233 `e3823f71` — Instant-paint on return.** Dean reported the avatar disappearing when navigating back to settings. Three fixes shipped together. (1) `populateFromCache` was setting `profile-avatar.textContent = initials` unconditionally on cold-paint, ignoring any `member.avatar_url` in the cache — so even when localStorage had the URL, cold-paint always showed initials. Made it check avatar_url and render the photo. (2) sw.js gained a `vyve-avatars-v1` runtime cache, stale-while-revalidate on any URL under `ixjfklpckgxrwjlfsaaz.supabase.co/.../member-avatars/`. Cache key strips `?v=timestamp` querystring so cache-busted URLs still hit. First visit fetches+stores, second onward serves from SW cache instantly + refreshes in background. (3) The avatar IIFE's `DOMContentLoaded` Dexie-read handler wasn't firing because `window.vyveCurrentUser` is only set by auth.js after deferred boot — DOMContentLoaded fired first, email was null, read aborted. Added `vyveAuthReady` event listener and a localStorage `vyve_auth` parsing fallback.
+
+**PM-234 `d40099b0` — Crop modal (option A).** Dean wanted a real crop tool, not blind centre-crop. Built a 300×300 stage modal with circular mask overlay (radial-gradient outside + circle border on top), 1-finger pan / 2-finger pinch-zoom / mouse-drag / wheel-zoom / slider — all paths converge on the same `tx`/`ty`/`scale` transform state. Confirm bakes the visible 300×300 region into a 512×512 JPEG at q=0.85 via offscreen canvas, then passes the blob to the existing upload pipeline. The zoom-around-anchor maths matters: when pinching, `tx_new = midX - (midX - tx_old) * (newScale / oldScale)` keeps the pixel under the touch midpoint anchored. minScale = `max(STAGE/imgW, STAGE/imgH)` guarantees the crop circle is always fully covered (no transparent gaps). Clamp on every apply prevents over-panning past the image edges. ~286 lines added to settings.html.
+
+**PM-236 `fc3f756b` — Cold-boot cache patch.** Dean noticed that closing the app, reopening, going to settings → the old photo flashes for 1-3s before the new one paints. Root cause: `vyve_settings_cache` localStorage was only written inside `loadProfile()` AFTER the network round-trip; uploads bypassed it. So cold-boot read held the pre-upload `avatar_url`, painted old photo, then `loadProfile()`'s network call eventually overwrote. Fix: `persistAvatarUrl` now also patches `vyve_settings_cache.member.avatar_url` (mirrors the persona-change cache-patch pattern at L1252). Plus defensive measure: `populateFromCache` un-awaitedly cross-checks Dexie, and if Dexie holds a fresher URL than the cache, swaps it in + re-patches the cache. (PM-235 number was claimed by a parallel Replay Playlists ship, hence the jump from 234 to 236.)
+
+**PM-238 `a1c2926c` — Synchronous paint-first IIFE.** Cold-boot still flashed because `populateFromCache` only fires if `vyve_settings_cache` exists; first-ever visit or any cache clear → no synchronous paint, full network wait. Fix: added a `paintAvatarFirst()` IIFE at the top of the inline script, runs before `paintCacheEarly()`. Reads a dedicated single-key cache `vyve_avatar_url_<email>` (separate from the multi-KB `vyve_settings_cache` blob — faster read, no JSON parse). `persistAvatarUrl` and `loadProfile` both keep this key in sync. The dedicated key is just the URL string, nothing else; one localStorage read, immediately slammed onto `profile-avatar` as an `<img>`. (PM-237 number was claimed by a parallel Connect hero ship.)
+
+**PM-239 `994e5d9b` — Optimistic-first upload.** The breakthrough ship. Dean reported the actual upload was taking 30 seconds — Storage CDN cold-start to the EU-Ireland region — and during those 30 seconds, nothing visible was changing. Worse: if he navigated away during upload, the dedicated localStorage key hadn't been written yet (it only got written when `persistAvatarUrl` completed), so the new photo was lost client-side. The fix flipped the entire pipeline: crop confirm now does `blobToDataUrl(croppedBlob)` synchronously, paints + persists the data URL to Dexie + the dedicated key + `vyve_settings_cache` IMMEDIATELY, then toasts "Photo updated ✓" — all before any network call. The upload + PATCH run in a fire-and-forget background IIFE; when the Supabase public URL returns, it swaps the data URL for the canonical one in all three caches and re-renders (which primes the SW runtime cache with the canonical bytes). If the upload later fails, the photo stays painted from the local data URL — member can retry. If they navigate away mid-upload, the photo persists because it's already in local caches before the upload started.
+
+### Dean's report after PM-239: "paints instantly changes instantly and also loads instantly on load"
+
+### §23.56 New hard rule — Optimistic-first persist-then-upload pattern
+
+**For any write that combines remote storage (slow CDN) + a local-render artefact:**
+
+1. **Produce a local representation first.** For images, `URL.createObjectURL(blob)` or `blobToDataUrl(blob)` — data URL preferred because it survives page reload, createObjectURL does not.
+2. **Paint the UI from the local representation immediately.** No spinner, no "Saving…" toast, no awaiting. The user's mental model is "I changed this and it changed."
+3. **Persist the local representation to all client-side caches that any subsequent read might consult.** For VYVE that's Dexie + every relevant localStorage key + every relevant page-scoped cache (e.g. `vyve_settings_cache`). The fact that the representation is local-only (data URL with no canonical server URL yet) is irrelevant — it renders fine in `<img>`, the persistence layer doesn't care.
+4. **Confirm + toast immediately** — "Photo updated ✓", not "Saving…".
+5. **Run the network write in a fire-and-forget IIFE.** No `await` from the calling scope.
+6. **On network success, swap the local representation for the canonical server URL** in all the same caches. Re-render with the canonical URL so the browser primes the SW runtime cache with the canonical bytes (the data URL was inline, never went through the SW). Future cold-boots read the smaller canonical URL not the multi-KB data URL.
+7. **On network failure, keep the local representation painted.** Toast "Saved locally — sync failed, will retry on next change". Member's next save attempt re-runs the optimistic flow with a fresh blob. No lost work.
+
+**Anti-pattern this replaces:** the old `await uploadAvatar → await persistAvatarUrl → renderAvatar → showToast` chain. Critical-path network write blocks UI, leaves cold-boot stale if member navigates away mid-upload.
+
+**Applies to:** avatar upload (shipped PM-239), any future file/photo upload (Connect post media when shipped, custom workout photos if added, podcast cover art uploads if exposed to members, etc.).
+
+**Doesn't apply to:** writes that NEED server confirmation before UI changes (payment, account deletion, persona change where AI recommendations depend on persona — those still await server response because the UI state IS derived from server state, not from a local artefact).
+
+### Parallel-session drift report
+
+Tonight saw five parallel-session number collisions on cache keys:
+- PM-235 cache key claimed by Replay Playlists; my avatar coldboot bumped to PM-236
+- PM-237 cache key claimed by Connect hero fade; my avatar instant bumped to PM-238
+- PM-238 cache key ALSO claimed by Connect hero fade follow-up; collision resolved by mine being sequential
+- PM-239 was clean
+
+§23.41 fresh re-fetch right before each commit caught each one. No file conflicts because all parallel sessions touched different files (replays.html, connect.html) and only collided on cache key + vbb-marker bumps. Brain side stayed clean — last brain commit was `6d637042` for PM-232 from this session, then parallel sessions made their own brain commits which I'll now build on top of with this entry. Discipline note: when cache key bumping involves `sed -i` matching a literal previous key, always grep-verify the prev key on the freshly-fetched file before sed-ing; if no match, the parallel ship already moved the key.
+
+### §23.41 amendment — Cache key bump verification
+
+When bumping sw.js cache key via `sed -i s|old|new|`, always:
+1. `grep "CACHE_NAME = " /tmp/...sw.js` on the freshly-fetched file FIRST to read the current key
+2. Use that literal current key as the `sed` `old` pattern, not whatever you thought it was
+3. After sed, grep again to confirm the bump landed
+
+Tonight I had two `sed` no-ops where I assumed the previous cache key, ran sed, got no error, and only caught the no-op by re-grepping. If I'd committed without the re-grep, the SW would never have refreshed on devices.
+
+### Files in this cascade
+
+| Ship | settings.html | sw.js | index.html | Brain |
+|------|---------------|-------|------------|-------|
+| PM-233 | +31/-5 | +29/-2 | marker bump | — |
+| PM-234 | +286/-8 | marker bump | marker bump | — |
+| PM-236 | +43/-2 | marker bump | marker bump | — |
+| PM-238 | +28/-1 | marker bump | (parallel)  | — |
+| PM-239 | +59/-7 | marker bump | marker bump | this commit |
+
+settings.html size journey tonight: 100105 (PM-228) → 99287 (PM-232) → 100677 (PM-233) → 114234 (PM-234, +crop modal) → 116243 (PM-236) → 117495 (PM-238) → 120224 (PM-239).
+
 ## 2026-05-23 PM-240 — Connect wrap fade fix: pull wrap up 80px so band overlaps photo [vyve-site `f72ffb8b`]
 
 Dean reported PM-238 wasn't visible — the photo had no fade painted on it any more (correct intent) but the page background still met the photo at a hard top edge (wrong outcome). PM-238 was right in concept, wrong in geometry.
