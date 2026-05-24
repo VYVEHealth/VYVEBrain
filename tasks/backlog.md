@@ -497,7 +497,11 @@ Three items deferred from PM-256 (home redesign atomic ship), all on the same su
 
 ---
 
-## Added 23 May 2026 PM — PM-215 — YouTube broadcast-creation cron (paired with PM-251 consumer contract)
+## ✅ SHIPPED 24 May 2026 PM-286 — PM-215 YouTube broadcast-creation cron (paired with PM-251 consumer contract)
+
+**SHIPPED 24 May 2026 (PM-286).** `session-publish` EF v1 + `session_categories` table + `session-publish-hourly` pg_cron job. End-to-end verified against the live VYVE YouTube channel. See PM-286 changelog entry for full detail. The spec below describes what was built; preserved for reference.
+
+
 
 **Status.** Data contract now defined by PM-251. PM-251 added `youtube_broadcast_id TEXT NULL` back to `calendar_occurrences`; live pages will activate UPCOMING/PRE_ROLL/LIVE/JUST_ENDED states the moment this cron starts populating broadcast IDs. Until then, all 8 categories show QUIET state (latest replay from `replay_playlists`).
 

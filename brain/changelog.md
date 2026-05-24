@@ -1,3 +1,62 @@
+## 2026-05-24 PM-286 — PM-215 cron SHIPPED + architecture correction (one channel, not nine)
+
+### What landed (build)
+
+PM-215 cron is **live in production**, scheduled hourly via pg_cron `session-publish-hourly` (cron.job id 27, schedule `5 * * * *`). End-to-end test passed on the live VYVE channel: created a real broadcast (id `Q6bOcA-p-S4`), bound it to the Yoga stream key, auto-added it to the Yoga playlist, wrote `youtube_broadcast_id` back to `calendar_occurrences`, all in 2.6s. Idempotency confirmed — second invocation skipped the now-populated row. Test broadcast + occurrence purged.
+
+**Supabase deliverables:**
+
+- `public.session_categories` table (NEW) — 8 rows, maps `category` → `youtube_stream_id` + `youtube_playlist_id` + `riverside_studio_name` + `default_privacy` (locked `unlisted` per Lewis 24 May). Single source of truth for the cron's routing decisions. Seeded directly from PM-279 + yt-channel-audit verified data.
+- `session-publish` EF v1 (NEW) — verify_jwt=false, OAuth via Vault, walks `calendar_occurrences` for next 60 minutes, creates broadcast → binds to stream → adds to playlist → patches row. Per-row failures isolated. Playlist failure non-fatal (replay still surfaces via refresh-replay-videos hourly cron). 5KB EF.
+- `cron.job` row `session-publish-hourly` — runs at HH:05 every hour to offset from other crons. Active.
+- `yt-channel-audit` EF (NEW, diagnostic) — kept for inspection.
+- `yt-broadcast-delete` EF (NEW, ops tool) — kept for cleanup.
+
+### Architecture correction — the brain was wrong, this commit fixes it
+
+**PM-191 captured "9 separate YouTube channels under one Google account" as the architecture.** Verified live today via `yt-channel-audit`: that is factually incorrect. **There is one channel.** `UCuptZFgSk0ZmNnE2IbYBdtg` "VYVE". That's it. Only channel visible to the OAuth principal `team@vyvehealth.co.uk`.
+
+**The real architecture:**
+
+- **One YouTube channel** (VYVE) — all broadcasts live here, period.
+- **Nine reusable RTMP stream keys**, all on that one channel — one per category (Yoga / Mindfulness / Workouts / Weekly Check-In / Group Therapy / Events / Education / Podcast / spare). Different keys = different routing destinations within the same channel. Each key was set up once and configured into the matching Riverside studio.
+- **Eight playlists**, all on that one channel — one per category. PM-215 cron `playlistItems.insert` auto-tags new broadcasts into the matching playlist. Replay surfaces correctly per category.
+- **PM-279's 9 stream IDs are correct**; they're not 9 channels, they're 9 keys on 1 channel.
+
+**Why the brain was wrong.** PM-191 (22 May talk-first session) captured the *design conversation* — Dean said "9 channels" colloquially when he meant "9 streams on the channel". The actual build (PM-215 manual test on 23 May with the "PM-215 stream test" broadcasts) went one-channel from the start. The brain entry pre-codified the wrong thing because no one had verified against the live YouTube account between the design conversation and the build.
+
+**Brain corrections shipping in this commit:**
+- master.md §5 Streaming row corrected
+- master.md §22.x channel architecture description rewritten
+- changelog PM-191 entry NOT amended (it's history; this entry supersedes)
+- changelog PM-279 entry NOT amended (the 9 stream IDs are correct, just on one channel — same data, clearer framing)
+- backlog PM-215 entry marked SHIPPED
+
+### Other lockings in this commit
+
+**Privacy.** All broadcasts hard-coded to `unlisted` in `session-publish` EF. Cannot be set to `public` from the cron. To override (rare — for marketing surfaces), Lewis must manually edit the broadcast in YouTube Studio after creation. Locked per Lewis decision 24 May.
+
+**Castr integration model.** Operationally clean now: Castr account connects to the one VYVE channel via "Connect to YouTube Events" once, then per-session Castr scheduled streams point at the appropriate RTMP stream key (one of the 9 in `session_categories`). Castr Starter $19.99/mo monthly is the chosen plan (PM-279.2 decision). When Lewis transitions to Riverside-live later, the same stream keys work for Riverside studios — no schema change needed, just `source_type='live_riverside'` on the relevant `calendar_occurrences` rows.
+
+**Playbook updated.** `playbooks/live-sessions-operations.md` rewritten to reflect: one channel, the 9-stream-key model, Castr as primary scheduler, PM-215 cron as the broadcast-creation engine, the Portal Admin UI as no-SQL editor. The intake spec (8 fields per session) unchanged. Stream ID reference table preserved (still canonical, just reframed as "9 keys on one channel" not "9 channels"). Portal Admin spec refreshed to match shipped state.
+
+### Tooling discipline
+
+§23.45 PAT-direct path (Composio still 401). §23.41 fresh-HEAD re-fetched mid-session after a parallel commit (PM-285.1) landed during this work — caught it before the multi-file commit shipped. §23.53 strict=False JSON parsing applied throughout. New EF deployment via Supabase MCP, not Composio. End-to-end test executed via `net.http_post` from Postgres (bash sandbox can't reach Google APIs — same constraint codified in PM-279).
+
+### What's next
+
+1. **Castr free trial signup + 7-day validation test** — push real MP4 through Castr → YouTube via the cron-created broadcast, confirm end-to-end works with a real video stream (not just an empty bound broadcast as today's test).
+2. **Lewis populates first week of `calendar_occurrences`** for the June 1st launch.
+3. **`session_categories.riverside_studio_name`** populated with actual Riverside studio identifiers once Lewis confirms which studio is paired to which stream key.
+4. **Portal Admin UI MVP build** — sequenced after PM-215 (now done) + ~1 month of operational learnings (post-launch).
+
+### No new §23 rule
+
+Considered §23.61 ("verify upstream architecture against the actual API before building, not against design notes") after the one-channel-vs-nine confusion. Held back — the existing §23.45 (Vault PAT direct) and §23.52 (file-based JSON) patterns are what caught this; codifying "don't trust your own brain entries about external systems" would be too broad. The right discipline is to spot-check via diagnostic EFs before committing significant build work, which is what happened here. Worth noting as a recurring pattern but not yet a hard rule.
+
+---
+
 ## 2026-05-25 PM-285 — Engagement Score v2 design session + /page-docs/ folder opens [design-only]
 
 Design-locked the full rewrite of the VYVE engagement score with Dean over a single talk-first session. No code shipped. Spec written, mockup built, /page-docs/ folder opened with engagement.md as first member-readable page doc. Tomorrow's session implements behind `?score=v2` flag after the wider Dexie-write audit closes out.

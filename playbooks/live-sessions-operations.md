@@ -1,90 +1,54 @@
 # Live Sessions — End-to-End Operations Playbook
 
-**Owner:** Lewis (commercial / scheduling) + Dean (technical / cron infra) · **Last updated:** 24 May 2026 (PM-279.2) · **Status:** Phase 1 manual / Phase 2 autonomous (PM-215 cron pending). Privacy locked to `unlisted` per Lewis decision 24 May.
+**Owner:** Lewis (commercial / scheduling) + Dean (technical / cron infra) · **Last updated:** 24 May 2026 (PM-286) · **Status:** PM-215 cron LIVE. Castr trial pending. Content recording in progress.
 
 ---
 
 ## The model in one paragraph
 
-A live session is a row in `calendar_occurrences` with `type='live_session'`, a `category` (Yoga / Mindfulness / Workouts / Weekly Check-In / Group Therapy / Events & Run Club / Education & Experts / Podcast), a `starts_at` / `ends_at` timestamp, and — once a broadcast is created — a `youtube_broadcast_id`. The member-facing live page (`/yoga-live.html`, `/mindfulness-live.html` etc.) reads this row from Dexie, looks at the clock, and renders the right state: countdown card 10+ min out, pre-roll iframe ≤10 min out, live iframe inside the window, just-ended replay banner ≤30 min after, latest replay card otherwise. **All the live page needs to go live is `youtube_broadcast_id IS NOT NULL` on the right row at the right time.** The whole operational question is: how does that ID get there.
+A live session is a row in `calendar_occurrences` with `type='live_session'`, a `category` (one of the 8 canonical strings), `starts_at` / `ends_at` timestamps, and once a broadcast is created — a `youtube_broadcast_id`. The hourly `session-publish` cron walks future rows, creates the YouTube broadcast, binds it to the category's reusable RTMP stream key, adds it to the category's replay playlist, and writes the broadcast id back. The member-facing live page (PM-251 state machine) reads this row from Dexie, looks at the clock, and renders the right state: countdown card 10+ min out, pre-roll iframe ≤10 min out, live iframe inside the window, just-ended replay banner ≤30 min after, latest replay card otherwise. Lewis (or Castr scheduled stream) pushes RTMP to the right stream key at the scheduled time. Replays auto-archive to the category playlist. Members see them on the replay page within an hour via `refresh-replay-videos` cron. **Operationally fully automated end-to-end from `calendar_occurrences` row to member-visible live session and replay.**
 
 ---
 
-## The 9 reusable streams (canonical reference)
+## Channel + stream architecture (the corrected version, PM-286)
 
-Each YouTube channel has a **persistent reusable stream key** — one per category, configured once in Riverside as that studio's RTMP destination, never touched again. New broadcasts bind to the same stream key each time. This is the architecture that solved the historical "use the same YouTube link" problem.
+**One YouTube channel.** `UCuptZFgSk0ZmNnE2IbYBdtg` "VYVE". Every live session and every replay lives on this one channel. The OAuth principal `team@vyvehealth.co.uk` manages this channel. There are no other VYVE channels.
 
-| Category (matches `service_catalogue.category`) | Stream title | `youtube_stream_id` | Riverside studio (paired) |
+**Nine reusable RTMP stream keys, all on that one channel.** Each key routes RTMP traffic to a specific category's broadcasts. Configured once into the matching Riverside studio; never touched again. PM-279 verified all 9 keys are `isReusable=true`. They can be re-used across unlimited broadcasts over time.
+
+**Eight playlists, all on that one channel.** One per category. PM-215 cron auto-adds each new broadcast video to its category's playlist via `playlistItems.insert`, so replays auto-categorise on the portal.
+
+### The canonical stream + playlist routing (`session_categories` table — single source of truth)
+
+| Category | Stream key (RTMP destination) | Playlist (replay destination) | Riverside studio |
 |---|---|---|---|
-| Yoga, Pilates & Stretch | VYVE Yoga, Pilates & Stretch | `uptZFgSk0ZmNnE2IbYBdtg1773787341014499` | Yoga studio |
-| Mindfulness & Mindset | VYVE Mindfulness & Mindset | `uptZFgSk0ZmNnE2IbYBdtg1773787428540514` | Mindfulness studio |
-| Workouts | VYVE Workouts | `uptZFgSk0ZmNnE2IbYBdtg1773787528049051` | Workouts studio |
-| Weekly Check-In | VYVE Weekly Check-In | `uptZFgSk0ZmNnE2IbYBdtg1773787612302221` | Check-in studio |
-| Group Therapy | VYVE Group Therapy | `uptZFgSk0ZmNnE2IbYBdtg1773787742902658` | Therapy studio |
-| Events & Run Club | VYVE Events | `uptZFgSk0ZmNnE2IbYBdtg1773787842061692` | Events studio |
-| Podcast | VYVE Podcast | `uptZFgSk0ZmNnE2IbYBdtg1773787932659198` | Podcast studio |
-| Education & Experts | VYVE Education and Experts | `uptZFgSk0ZmNnE2IbYBdtg1773786554581556` | Education studio |
-| _(spare)_ | Default stream key | `uptZFgSk0ZmNnE2IbYBdtg1773786332742438` | unmapped — ad-hoc use |
+| Yoga, Pilates & Stretch | `uptZFgSk0ZmNnE2IbYBdtg1773787341014499` | `PLyaCafiXVsshk0I0Z9ii4qeT7CSItwgU2` | Yoga, Pilates & Stretch |
+| Mindfulness & Mindset | `uptZFgSk0ZmNnE2IbYBdtg1773787428540514` | `PLyaCafiXVssjw0wn0ECO8Rh6_kme91MLV` | Mindfulness & Mindset |
+| Workouts | `uptZFgSk0ZmNnE2IbYBdtg1773787528049051` | `PLyaCafiXVsshhnwd6-Hfyxn1Z2OKNCLfM` | Workouts |
+| Weekly Check-In | `uptZFgSk0ZmNnE2IbYBdtg1773787612302221` | `PLyaCafiXVssiL0asHJhhwTE-78PX7Ut4m` | Weekly Check-In |
+| Group Therapy | `uptZFgSk0ZmNnE2IbYBdtg1773787742902658` | `PLyaCafiXVssjAUHO8SN5l9K1zqlNWVlTU` | Group Therapy |
+| Events & Run Club | `uptZFgSk0ZmNnE2IbYBdtg1773787842061692` | `PLyaCafiXVssiPt5whqWDiK0EVTMYxbCyh` | Events |
+| Podcast | `uptZFgSk0ZmNnE2IbYBdtg1773787932659198` | `PLyaCafiXVssjZdvH9iqA7A5-l5KQZUINU` | Podcast |
+| Education & Experts | `uptZFgSk0ZmNnE2IbYBdtg1773786554581556` | `PLyaCafiXVssj7hcKLfbS32n0xf6prOysa` | Education & Experts |
 
-All 9 verified `isReusable=true` on 24 May 2026 via the `yt-stream-diag` EF. None will ever need rotating unless a Riverside studio is rebuilt.
+A 9th stream key (`...1773786332742438` "Default") exists but is unmapped — spare for ad-hoc use.
+
+To update: `UPDATE public.session_categories SET youtube_stream_id = '...' WHERE category = '...';` — no code change needed; cron picks up the new value on next hourly run.
 
 ---
 
 ## What you do, weekly — the human steps
 
-1. **Build / approve the timetable.** Decide what's airing in the coming 1–4 weeks. Most categories recur weekly at the same slot (Yoga Mon/Wed/Fri 06:00, Workouts Tue/Thu 07:30, etc.); a few are ad-hoc (Events, Education guest spots, Podcast drops).
-2. **Make sure rows exist in `calendar_occurrences` for each session.** Lewis adds these via Supabase dashboard SQL editor today (see "Add a session manually" below). Once Portal Admin ships (backlog), this becomes a UI.
-3. **Be at the right Riverside studio at the scheduled time, press Go Live.** That's it. No link creation, no copy-paste of stream keys, no per-session Riverside config — every studio is already paired to its category's persistent stream.
+1. **Build / approve the timetable.** Decide what's airing in the coming 1–4 weeks. Most categories recur weekly at the same slot (Yoga Mon/Wed/Fri 06:00, Workouts Tue/Thu 07:30, etc.); a few are ad-hoc (Events, guest spots, Podcast drops).
+2. **Get `calendar_occurrences` rows populated.** Today via SQL handover; soon via Portal Admin UI.
+3. **Get content into Castr** — upload MP4s, schedule against the category's stream key, point at the YouTube destination.
+4. **(Optional, Phase 2)** Be in the matching Riverside studio at the scheduled time and press Go Live for genuinely-live sessions.
 
-Once PM-215 cron is live (next build session), step 2 stays the same but you stop having to think about step 4 below — broadcasts auto-create themselves 6 min before each `starts_at`. Until then, see "Phase 1" below.
-
----
-
-## Phase 1 — Manual broadcast creation (today, before PM-215 cron ships)
-
-Until the hourly cron is live, broadcasts have to be created on demand. Two ways:
-
-### Path A — Ask Claude in a session (recommended)
-
-Once a week, paste your timetable into a Claude chat:
-
-> _"Create YouTube broadcasts for this week's live sessions:_
-> _Monday 06:00 — Yoga — Morning Flow with Emma_
-> _Monday 12:00 — Mindfulness — Midday Reset with James_
-> _Tuesday 07:30 — Workouts — Full Body Strength with Calum_
-> _… etc"_
-
-Claude will:
-1. For each session, INSERT (or UPDATE) the row in `calendar_occurrences` with `starts_at`, `ends_at`, `category`, `session_title`, `host_name` (defaults to "Lewis Vines" if not specified — see `default_host_name` on `service_catalogue`).
-2. Call YouTube `liveBroadcasts.insert` for each row, with privacy=`unlisted` — **canonical, locked by Lewis 24 May**. Members reach the broadcast only via the embedded iframe in the live page; nothing is discoverable on YouTube search or via the channel page. Public is never used.
-3. Call `liveBroadcasts.bind` to wire the new broadcast to the matching category's persistent `youtube_stream_id`.
-4. UPDATE `calendar_occurrences.youtube_broadcast_id` with the returned broadcast ID.
-5. Report back what got scheduled and what didn't.
-
-You can ask Claude to do it for a week, a month, or a single ad-hoc session.
-
-### Path B — Manual SQL only (rows but no broadcast IDs)
-
-If you just want to schedule the calendar but not create the YouTube broadcasts yet (e.g. timetable is provisional, broadcasts will be created closer to the date), insert the rows with `youtube_broadcast_id = NULL`. The live page will sit in the QUIET state and show the latest replay until you (or PM-215 cron) populates the broadcast ID.
-
-This is the right shape when you're sketching a month ahead but don't want 30 unused YouTube broadcasts cluttering the channel.
+That's the entire weekly loop. Steps 1-3 are batch work, done once a week. Step 4 is per-session and only applies to live (not Castr-scheduled) sessions.
 
 ---
 
-## Phase 2 — Autonomous (after PM-215 cron ships)
-
-Once the cron is built, the loop becomes:
-
-1. Lewis (or Portal Admin UI) adds `calendar_occurrences` rows for the upcoming month with `youtube_broadcast_id = NULL`.
-2. **Hourly cron** walks `calendar_occurrences WHERE starts_at BETWEEN now() AND now() + interval '1 hour' AND youtube_broadcast_id IS NULL AND active=true AND type='live_session'`. For each match: creates the broadcast, binds to the stream, writes the ID back.
-3. Members see the page transition QUIET → UPCOMING (10–60 min before) → PRE_ROLL (≤10 min) → LIVE (when Riverside starts pushing RTMP) → JUST_ENDED (≤30 min after) → QUIET.
-4. Lewis turns up at the studio and presses Go Live. End of operational involvement.
-
-No per-session Claude prompt. No manual API calls. The schedule is the only input.
-
----
-
-## Session intake spec — what we need from Lewis per session
+## Session intake spec — what we need per session
 
 For every session — recurring or one-off — we need this row. Most rows are recurring (same category, host, slot week-to-week) so per-row entry collapses to whatever's actually changing.
 
@@ -92,101 +56,146 @@ For every session — recurring or one-off — we need this row. Most rows are r
 |---|---|---|---|
 | **Category** | Yes | `Yoga, Pilates & Stretch` | Must match one of the 8 canonical strings exactly. Drives stream binding + replay playlist. |
 | **Start** | Yes | `2026-05-26 06:00` | Local time (BST/GMT auto-handled). Stored as UTC in `starts_at`. |
-| **Duration (mins)** | Yes | `45` | Used to compute `ends_at = starts_at + duration`. |
-| **Session title** | Yes | `Morning Flow` | The episode/session name; what members see on the card and live page. Max ~60 chars. |
-| **Description** | Yes | `A grounding flow to start the day strong.` | 1–2 sentences, max ~140 chars. Shown under title on live page. |
+| **Duration (mins)** | Yes | `45` | Used to compute `ends_at = starts_at + duration`. Trial sessions typically 30-40 min. |
+| **Session title** | Yes | `Morning Flow` | The episode/session name. Max ~60 chars (YouTube caps title at 100). |
+| **Description** | Yes | `A grounding flow to start the day strong.` | 1–2 sentences, max ~140 chars. Shown under title on live page + on YouTube. |
 | **Host name** | Yes | `Emma Clarke` | Person leading the session. |
 | **Host role** | Optional | `Yoga Lead` | Defaults to `service_catalogue.default_host_role` if blank. |
-| **Host photo URL** | Optional | `https://.../emma.jpg` | Bucket URL. Lewis curates 4–5 instructor photos once; thereafter it inherits from catalogue. |
+| **Host photo URL** | Optional | `https://.../emma.jpg` | Bucket URL. Lewis curates 4–5 instructor photos once; thereafter inherits from catalogue. |
 
 ### Preferred handover format
 
-A pasted block in chat, one line per session, pipe-delimited:
+A pasted block in chat, one line per session:
 
 ```
 Mon 26 May 06:00 · 45min · Yoga · "Morning Flow" · Emma Clarke · A grounding flow to start the day strong.
 Wed 28 May 06:00 · 45min · Yoga · "Power Flow" · Emma Clarke · A stronger flow to build heat and capacity.
-Tue 27 May 07:30 · 60min · Workouts · "Full Body Strength" · Calum Denham · Compound lifts and accessories.
-Thu 29 May 12:00 · 30min · Mindfulness · "Midday Reset" · James Reid · Five-minute breathwork plus seated meditation.
-Wed 28 May 09:00 · 30min · Weekly Check-In · "Monday Check-In" · Lewis Vines · Five-minute reflection on last week and intent for this week.
+Tue 27 May 07:30 · 40min · Workouts · "Full Body Strength" · Calum Denham · Compound lifts and accessories.
+Thu 29 May 12:00 · 30min · Mindfulness · "Midday Reset" · James Reid · Breathwork plus seated meditation.
 ```
 
-Claude parses, validates the category against the 8 canonical strings, computes `ends_at`, inserts/updates `calendar_occurrences` rows in one turn. A Google Sheet or CSV with the same columns also works — just paste it.
+Claude parses, validates against the 8 canonical categories, computes `ends_at`, inserts/updates `calendar_occurrences` rows in one turn. **PM-215 cron then picks up the row at HH:05 in the hour before `starts_at` and creates the broadcast automatically.** Lewis never touches YouTube directly.
 
 ### Cadence
 
-**Monthly batches.** End of each month, Lewis and Dean agree the next month's timetable, paste it into a chat, Claude populates the rows. Ad-hoc sessions (guest spots, special events) added as they come up. Once PM-215 cron is live, broadcast creation is autonomous — you never touch the YouTube API or stream keys.
-
-### Host photo bucket
-
-A small set of instructor photos (4–5 people, square crop, ~400×400px) lives in Supabase Storage. Lewis curates these once, gets the bucket URLs, sets them as `service_catalogue.default_host_photo_url` per category. After that, the photo just inherits — only set the per-row `host_photo_url` override if the session has a guest instructor for that week.
-
-### What goes in the host name field today
-
-Until per-category hosts are confirmed and instructor photos are uploaded, `default_host_name='Lewis Vines'` is the universal fallback. Lewis to confirm with Emma / Calum / James / Phil over the coming weeks, then we backfill `service_catalogue.default_host_*` per category once. After that, per-row `host_name` is only needed for guest spots.
+**Monthly batches.** End of each month, Lewis and Dean agree the next month's timetable, paste into chat, Claude populates rows. Ad-hoc sessions added as they come up.
 
 ---
 
-## What goes on the air — the data model
+## How content gets streamed (Castr, today's primary path)
 
-Each `calendar_occurrences` row carries the data the live page renders. Field resolution chain: **per-occurrence override → catalogue default → literal fallback**.
+**Castr Starter monthly $19.99/mo.** Chosen 24 May 2026 (PM-279.2). 7-day free trial available before paying. Monthly billing for trial flexibility — can cancel anytime as the model evolves toward genuinely-live sessions.
 
-| Field | Per-occurrence override | Catalogue default | Notes |
-|---|---|---|---|
-| Title | `session_title` | `service_catalogue.session_title` | e.g. "Morning Flow", "Midday Reset" |
-| Description | `session_description` | `service_catalogue.session_description` | 1–2 sentences shown under title |
-| Host name | `host_name` | `service_catalogue.default_host_name` | Backfilled to "Lewis Vines" universally; Lewis edits per category once instructors confirmed (Emma / Calum / James / Phil) |
-| Host role | `host_role` | `service_catalogue.default_host_role` | e.g. "Yoga Lead", "Performance Coach" |
-| Host photo | `host_photo_url` | `service_catalogue.default_host_photo_url` | Bucket-served, square crop |
-| Image | `image_url` | `service_catalogue.image_url` | Card thumbnail, gradient fallback if null |
-| Category | `category` | _(required)_ | Drives stream binding + replay playlist |
-| Window | `starts_at` / `ends_at` | _(required)_ | UTC stored, local rendered |
-| Broadcast | `youtube_broadcast_id` | _(populated by cron / Claude)_ | NULL = QUIET state on page |
+### One-time Castr setup
 
-**Per-occurrence overrides exist for the cases where the session is a one-off** — a guest yoga teacher one week, a special podcast episode topic, etc. Most sessions inherit the catalogue default cleanly.
+1. Sign up for Castr Starter (trial first, paid after validation).
+2. Connect to YouTube Events for the VYVE channel (single one-time OAuth).
+3. Confirm Castr can target individual RTMP stream keys (each session's Castr scheduled stream uses the matching category's stream key from the table above).
 
----
+### Per-session (weekly batch in Castr)
 
-## Add a session manually (Supabase SQL editor)
+1. In Castr dashboard → Pre-recorded Streams → New Pre-recorded Stream.
+2. Upload the MP4 (or import from Google Drive/Dropbox).
+3. Schedule for the matching `calendar_occurrences.starts_at` time.
+4. Set destination = the category's RTMP stream key (from the table above) OR connect to the matching YouTube event (PM-215 cron will have created it by then if the session is within 60 min).
+5. Save. Castr automatically pushes RTMP at the scheduled time.
+6. YouTube receives RTMP, broadcast goes live (PM-215 has already created the broadcast and bound it to the stream).
+7. Members see the live session at `online.vyvehealth.co.uk/{category}-live.html` via the iframe rendered by `session-live.js`.
 
-```sql
-INSERT INTO calendar_occurrences (
-  type, category, starts_at, ends_at,
-  session_title, session_description,
-  host_name, host_role,
-  active
-) VALUES (
-  'live_session',
-  'Yoga, Pilates & Stretch',
-  '2026-05-26 06:00:00+01',  -- BST
-  '2026-05-26 06:45:00+01',
-  'Morning Flow',
-  'A grounding flow to start the day strong.',
-  'Emma Clarke',
-  'Yoga Lead',
-  true
-);
+### How PM-215 + Castr stack together
+
+```
+  Lewis adds calendar_occurrences row (Mon 09:00 Yoga, MP4 ready)
+            │
+   (at HH:05 in the hour before)
+            ▼
+  PM-215 cron (session-publish EF)
+   ├─ Creates youtube broadcast (unlisted)
+   ├─ Binds to Yoga stream key
+   ├─ Adds to Yoga playlist
+   └─ Writes broadcast_id back to row
+            │
+   (at scheduled starts_at)
+            ▼
+  Castr scheduled stream fires
+   └─ Pushes RTMP to Yoga stream key
+            │
+            ▼
+  YouTube broadcast goes LIVE
+            │
+            ▼
+  Live page (yoga-live.html) renders iframe
+   └─ Member watches live
+            │
+   (when stream ends)
+            ▼
+  YouTube auto-archives video
+   └─ Already in Yoga playlist (PM-215 added it pre-broadcast)
+            │
+   (within 1 hour)
+            ▼
+  refresh-replay-videos cron picks up new video
+   └─ Replay surface updates on portal
 ```
 
-Once PM-215 cron is live, the row above is everything you need. The cron picks it up 6 min before `starts_at`, creates the broadcast, and the live page goes live the moment Riverside starts pushing RTMP.
-
-Today (Phase 1), follow up with Path A or Path B above to create the broadcast.
+**No manual YouTube step. Ever.** Lewis only touches: the `calendar_occurrences` row (or Portal Admin UI), and Castr.
 
 ---
 
-## At-the-studio checklist (the only thing that's truly manual, ever)
+## Future path — genuinely live sessions via Riverside
 
-1. Be in the right Riverside studio 5 min before the session starts. _(Riverside studios are 1:1 with categories — Yoga studio for Yoga sessions, Workouts studio for Workouts, etc.)_
-2. Riverside's RTMP destination is already set to the category's persistent stream key. **Do not touch it.** It's correct.
-3. At `starts_at` or just after, click Go Live in Riverside.
-4. Riverside pushes RTMP to YouTube. YouTube's `livestream` resource transitions to `streamStatus=active`.
-5. The bound `liveBroadcast` auto-transitions to `lifeCycleStatus=live` (if `selfDeclaredMadeForKids=false`, `enableAutoStart=true`, which we set at insert).
-6. The member's live page iframe (already loaded in PRE_ROLL state ≤10 min before) starts playing the live video.
-7. Run the session.
-8. Click End Broadcast in Riverside when finished. YouTube auto-archives the recording to the category's replay playlist within ~minutes.
-9. The replay surfaces in `replay_playlists` cache via PM-235b hourly refresh — no manual step.
+When Lewis is ready to do genuinely-live sessions (e.g. June+ as instructors come on):
 
-Total operational involvement per session: be in the studio, click two buttons.
+1. Set `calendar_occurrences.source_type = 'live_riverside'` (when this column ships).
+2. Lewis at the matching Riverside studio at `starts_at` and presses Go Live.
+3. Riverside pushes RTMP to the same stream key the cron already bound.
+4. Member sees live broadcast just like Castr-scheduled.
+
+**Zero code change required between Castr and Riverside modes.** Same stream keys, same broadcasts, same iframe, same replay flow. The only difference is what's pushing RTMP at the scheduled time.
+
+---
+
+## The manual-add backend — Portal Admin UI (NOT YET BUILT)
+
+The intake spec above describes the **data we need**. The Portal Admin UI is the **interface for entering it without writing SQL or pasting into a Claude chat**.
+
+**Status.** Spec defined here; build deferred until after ~1 month of operational learnings via the pasted-timetable path. Reason: build the UI with usage data, not without it.
+
+**Where it lives.** New page in the existing `VYVEHealth/vyve-command-centre` admin app at `admin.vyvehealth.co.uk/calendar`. Same magic-link auth, same Supabase client. No new infrastructure.
+
+### MVP scope (~1 session, Claude-assisted)
+
+1. **List view** — chronological `calendar_occurrences WHERE active=true AND starts_at > now()`. Each row: date · time · category · title · host · state badge (UPCOMING / LIVE / past) · `youtube_broadcast_id` status (pending / created) · edit/cancel buttons.
+2. **Add new session form** — 8 intake fields. Category is a dropdown (8 canonical strings, no free text). Date picker, time input, duration in mins. Submit POSTs to `calendar_occurrences` via service-role.
+3. **Edit form** — same form pre-filled. Locked once `starts_at <= now()` (no mid-session edits per playbook do-not list).
+4. **Cancel** — sets `active=false`. If `youtube_broadcast_id` already exists, optional "Delete broadcast from YouTube too?" with a one-click delete via `yt-broadcast-delete` EF.
+
+### Phase 2 (~half session)
+
+5. **Bulk add for recurring** — "every Mon/Wed/Fri at 06:00 for 4 weeks, this category, this host, this title". Generates N rows in one transaction.
+
+### What it does NOT do
+
+- No YouTube broadcast management UI. PM-215 cron handles all broadcast creation automatically. Lewis never sees a broadcast ID or stream key.
+- No Riverside integration. Studios pre-paired to persistent streams; never touched.
+- No host photo upload — paste URL only (Phase 3 if needed).
+- No replay management. Replays auto-surface via `replay_playlists` + PM-235b cron.
+- No Castr integration. Castr is a separate dashboard Lewis uses directly.
+
+---
+
+## At-the-Castr-dashboard checklist (weekly)
+
+1. Open Castr → Pre-recorded Streams.
+2. For each session in next week's timetable:
+   - New Pre-recorded Stream
+   - Upload MP4 (or pull from Google Drive)
+   - Set scheduled date/time matching `calendar_occurrences.starts_at`
+   - Set destination = matching category's RTMP stream key
+   - Toggle on
+3. Done — Castr handles everything else.
+
+Total time per week: ~10-15 minutes for 7-10 sessions.
 
 ---
 
@@ -195,96 +204,74 @@ Total operational involvement per session: be in the studio, click two buttons.
 ### Members report "the live page just shows the replay, not the live video"
 
 `youtube_broadcast_id` is missing on the active `calendar_occurrences` row. Either:
-- The cron hasn't run yet (check `cron.job_run_details` for the cron name).
+- The cron hasn't run yet (check `cron.job_run_details` for `session-publish-hourly`).
 - The row wasn't inserted for this slot.
-- The row was inserted but the broadcast-creation API call failed (check EF logs for the cron).
+- The row was inserted but the broadcast-creation API call failed.
 
-Quick fix: ask Claude in a session "create the broadcast for the current/next Yoga session" — Claude will populate `youtube_broadcast_id` manually and the page will pick it up on the next 5-min Dexie sync (or immediately via the fallback REST GET that fires inside the pre-roll/live window when broadcast_id is null).
+**Quick fix:** invoke `session-publish` EF manually:
+```sql
+SELECT net.http_post(
+  url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/session-publish',
+  body := '{}'::jsonb,
+  timeout_milliseconds := 60000
+);
+```
+Then check `net._http_response` for the result body.
 
-### Riverside studio went live but the YouTube broadcast didn't transition to LIVE
+### Castr pushed RTMP but YouTube didn't show live
 
-Either the broadcast was created with `enableAutoStart=false` (shouldn't happen — our cron defaults it to true), OR the studio is pushing RTMP to the wrong stream key. Check Riverside's destination matches the category's `youtube_stream_id` from the table above.
+Either the broadcast was created with `enableAutoStart=false` (shouldn't happen — cron defaults to true), OR Castr is pushing to the wrong stream key. Check Castr's destination matches the category's `youtube_stream_id` from the table above.
+
+### Replay not appearing on portal after session ends
+
+`refresh-replay-videos` cron runs hourly. Up to 1 hour delay is expected. If it's been longer:
+- Check YouTube channel directly — is the video archived?
+- Check `replay_playlists.last_refreshed_at` — when did the cron last run?
+- Manually invoke `refresh-replay-videos` to force a refresh.
 
 ### Wrong host / wrong title showing on the live page
 
-Edit the `calendar_occurrences` row's per-occurrence override fields (`session_title`, `host_name`, `host_role`, `host_photo_url`). The page repaints from Dexie within 5 min, or instantly with a pull-to-refresh.
+Edit the `calendar_occurrences` row's per-occurrence override fields (`session_title`, `host_name`, etc.). Live page repaints from Dexie within 5 min, or instantly with pull-to-refresh.
 
 ### Need to cancel a session
 
-Set `active = false` on the row. Page returns to QUIET state for that category until the next active row's window opens. If a broadcast was already created, it'll sit unused on YouTube — harmless but worth deleting via `liveBroadcasts.delete` if it'll cause member confusion.
+Set `active = false` on the row. Page returns to QUIET state. If a broadcast was already created, delete it via:
+```sql
+SELECT net.http_post(
+  url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/yt-broadcast-delete',
+  body := '{"broadcastId":"<the_id>"}'::jsonb,
+  timeout_milliseconds := 15000
+);
+```
 
 ---
 
-## What we **never** do
+## What we never do
 
-- **Never create broadcasts from YouTube Studio UI.** The UI defaults to per-broadcast unique streams, which breaks the reusable-stream pattern. Always go through the API path (Claude or PM-215 cron).
-- **Never touch the persistent stream keys in Riverside.** Each studio's RTMP destination is locked-in correct. Re-pairing them is unnecessary work and risks breaking the binding.
-- **Never edit `calendar_occurrences` after a broadcast goes live** (i.e. while `starts_at` ≤ now ≤ `ends_at`). The state machine reads the row continuously; mid-session edits can cause flicker. Edit before or after the window.
-- **Never delete past `calendar_occurrences` rows.** They're our record of what aired and when. Set `active=false` if needed, but keep the history.
-
----
-
-## The manual-add backend — Portal Admin UI
-
-The intake spec above describes the **data we need**. The Portal Admin UI is the **interface for entering it without writing SQL or pasting into a Claude chat**. It exists so Lewis (or anyone running ops) can add, edit, and cancel sessions through a web form, not a SQL editor or a chat handover.
-
-### What it is, at MVP
-
-A new page in the existing `VYVEHealth/vyve-command-centre` admin app, at `admin.vyvehealth.co.uk/calendar` (or `/sessions`). Same magic-link auth pattern Command Centre already uses for Lewis. Same Supabase client setup. **No new infrastructure, no new repo, no new domain — it's a page added to a thing that already exists.**
-
-### Pages
-
-1. **List view (default).** Chronological list of upcoming `calendar_occurrences` rows where `active=true` and `starts_at > now()`. Each row shows: date, time, category, session title, host name, status (UPCOMING / LIVE NOW / past), and edit + cancel buttons.
-2. **Add new session.** Form with the 8 intake fields above. Category is a dropdown of the 8 canonical strings (no free text — prevents typos that would break stream binding). Date is a calendar picker, time + duration are number inputs, the rest are text fields. Submit POSTs to `calendar_occurrences` via Supabase client with service-role bypass (admin app only).
-3. **Edit existing session.** Same form, pre-filled from the row. Editable up until `starts_at` ≤ now. After that the row is read-only (mid-session edits are forbidden per the playbook do-not list).
-4. **Cancel a session.** Sets `active=false`, returns the page to QUIET. If `youtube_broadcast_id` already exists (cron has run or someone created it manually), shows a warning: "Broadcast already created — also delete from YouTube?" with a button that calls `liveBroadcasts.delete`. Default behaviour: leave the broadcast (harmless).
-
-### Phase 2 add (post-MVP)
-
-5. **Bulk add (recurring).** A second form for "every Monday at 06:00 for 4 weeks, this session". Generates 4 rows in one transaction. Most of Lewis's data entry is recurring patterns — this is the high-leverage feature. Skipped for MVP because pasting a block into Claude works fine in the meantime.
-
-### Auth + permissions
-
-- Magic-link auth via Supabase Auth (Command Centre pattern). Same `admin_users` allowlist.
-- All writes from the admin app go through service-role; never through the member-facing portal client.
-- RLS on `calendar_occurrences` already prevents members from writing — admin reads/writes via service-role bypass.
-
-### What it does NOT do
-
-- **No YouTube broadcast management UI.** PM-215 cron handles all broadcast creation hourly. Lewis never sees a broadcast ID, never copies a stream key, never touches Riverside config from the UI. Broadcasts are a side effect of `calendar_occurrences` rows, fully automated.
-- **No Riverside integration.** Riverside studios are pre-configured with persistent stream keys (the 9 reusable streams above) and never touched again. The admin UI knows nothing about Riverside.
-- **No host photo upload.** Phase 1 ships with a static set of instructor photos uploaded once to Supabase Storage; the admin UI lets Lewis paste a URL but doesn't upload files. Phase 2 can add direct upload if photo rotation becomes frequent.
-
-### Build estimate
-
-Claude-assisted: **~1 session for MVP** (list + add + edit + cancel), **~half a session for Phase 2 bulk-add**. The auth, the Supabase client, the form patterns — all already exist in Command Centre. This is mostly composing existing primitives, not new infrastructure.
-
-### Order of operations recommendation
-
-**PM-215 cron FIRST**, Portal Admin UI second. Reason: the cron is the high-value piece that removes per-session manual work entirely. The UI is convenience for batch-adding — pasting blocks into Claude works fine in the meantime, and after running a month of sessions through the manual-paste path we'll know exactly what UI affordances actually matter. Building the UI before the cron means we'd be building it without operational learnings, and the cron is the thing that fundamentally changes the day-to-day workflow.
-
-**Sequence:**
-
-1. PM-215 cron build (~1 session) → autonomous broadcast creation
-2. 1 month of operations via pasted timetable + Claude (lets us learn what Lewis actually does day-to-day)
-3. Portal Admin UI MVP (~1 session) with that month's learnings in hand
-4. Bulk-add (~half a session) once MVP has been used for a few weeks
+- **Never create broadcasts from YouTube Studio UI.** The UI defaults to per-broadcast unique streams, breaking the reusable-stream pattern. Always go through PM-215 cron OR ask Claude to call the API.
+- **Never touch the persistent stream keys in Riverside or Castr destinations.** Set up once, locked-in correct.
+- **Never edit `calendar_occurrences` after a broadcast goes live** (while `starts_at` ≤ now ≤ `ends_at`). State machine reads continuously; mid-session edits cause flicker.
+- **Never delete past `calendar_occurrences` rows.** They're our record. Set `active=false` to hide.
+- **Never set broadcast privacy to `public`** from `session-publish` cron — it's hard-coded to `unlisted`. To override (rare, for marketing surfaces), edit the broadcast in YouTube Studio after creation.
 
 ---
 
-## The build state today (24 May 2026)
+## The build state today (24 May 2026 PM-286)
 
-✅ **8 live page shells** (`/yoga-live.html` + 7 siblings) — PM-251, complete state machine
-✅ **`calendar_occurrences` table** with override columns — PM-251 migration
-✅ **`service_catalogue` defaults** for host + description — PM-251 migration
+✅ **8 live page shells** (`/yoga-live.html` + 7 siblings) — PM-251
+✅ **`calendar_occurrences` table** with override columns — PM-251
+✅ **`service_catalogue` defaults** for host + description — PM-251
 ✅ **5-state engine** in `session-live.js` — UPCOMING / PRE_ROLL / LIVE / JUST_ENDED / QUIET
 ✅ **Iframe embed** wired — auto-renders when `youtube_broadcast_id` populates
-✅ **9 reusable streams verified** — PM-279 diagnostic
-✅ **`replay_playlists` + PM-235b cron** — recordings surface to replay tiles automatically
-⏳ **PM-215 cron** — next build session (the autonomous broadcast-creation loop)
-⏳ **Portal Admin UI** — backlog, post PM-215 (the no-SQL editor for `calendar_occurrences`; MVP shape captured above)
+✅ **9 reusable streams verified** — PM-279
+✅ **Replay infrastructure** — `replay_playlists` + `refresh-replay-videos` hourly cron
+✅ **PM-215 `session-publish` cron LIVE** — hourly broadcast creation autonomous (PM-286)
+✅ **`session_categories` routing table** — single source of truth for stream + playlist mapping
+✅ **Privacy locked `unlisted`** — hard-coded in cron, cannot be overridden from automation
+✅ **Architecture documented correctly** — one channel, 9 keys, 8 playlists
+⏳ **Castr account + trial** — pending Lewis signup
+⏳ **First trial content** — Calum/Emma/Phil to record
+⏳ **June 1 launch** — first scheduled sessions
+⏳ **Portal Admin UI** — backlog, post first-month of operational learnings
 
-✅ **Privacy policy locked** — all sessions `unlisted` per Lewis 24 May (PM-279.2)
-✅ **Intake spec documented** — 8 fields per session, pasted-block format preferred
-
-Until PM-215 ships, you and Claude are the cron. After it ships, the schedule is the only thing you ever touch. After Portal Admin UI ships, you don't even paste — Lewis types directly into a form.
+Until Portal Admin UI ships, Lewis adds rows via Claude handover. After that, Lewis types into a form. **The cron handles everything else autonomously, indefinitely.**
