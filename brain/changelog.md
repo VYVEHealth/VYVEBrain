@@ -1,3 +1,92 @@
+## 2026-05-24 PM-269 → PM-273 — Today's Focus carousel shipped (5-commit arc, light-mode Option C structural fix mid-arc) [vyve-site `5dd3f090`]
+
+Five-commit arc landing the home Today's Focus carousel and closing the Today's Focus surface-build campaign opened by PM-268's image library. Session shape: ship → device-test → fix → device-test → revert QA flag. End state: production-shape 3-card carousel live, all twelve photographic compositions validated across dark + light by Dean, ready for the `/focus/<slug>.html` page-build campaign next session.
+
+| PM    | Commit       | Change                                                                       |
+|-------|--------------|------------------------------------------------------------------------------|
+| 269   | `894e15d9`   | 3-card snap-scroll carousel + `home-focus-catalogue.js` (21-slot 7×3 grid) + sw bump |
+| 270   | `d208603b`   | Option C structural light-mode rewrite (grid 1fr 1fr) + aspect-ratio 3/2 → 16/9 + dark gradient axis flipped to left-third-horizontal |
+| 271   | `ac6316c4`   | Light-mode subject anchor fix — `background-position: right center` + `background-size: auto 100%` (was 30% center, hid subjects) |
+| 272   | `7669446f`   | `?focus=all` QA flag — paints all 12 cards for Dean's all-themes review     |
+| 273   | `5dd3f090`   | QA flag revert — restore canonical 3-card paint; campaign closed             |
+
+### PM-269 — 3-card carousel ship (3 files, `894e15d9`)
+
+Replaces the single Today's Focus card on home with a horizontal snap-scroll carousel. Three cards (morning / midday / evening) for today, midday auto-centres as current TOD via `scrollIntoView({inline:'center'})`, all three swipeable so members can pick any TOD regardless of time of day. Cards link to `/focus/<slug>.html` (URLs in place, `href="#"` placeholders until pages ship).
+
+New file `home-focus-catalogue.js` — 7-day × 3-TOD grid (21 slots) mapping each slot to one of the twelve PM-268 category slugs. Hand-balanced so no day repeats a category within itself; each of the twelve slugs appears 1-2 times across the week (21 > 12 means rotation, not exhaustion). `window.VYVEFocusCatalogue.getToday()` returns the three entries for today plus `currentTod` marker. `listSlugs()` returns all twelve (consumed by PM-272 QA flag).
+
+Files: `index.html` (`.focus-card` CSS replaced with `.focus-carousel` + paint rewritten), `sw.js` (precache entry + cache bump), `home-focus-catalogue.js` (new). 3-file atomic via Git Data API. Cache `pm268-focus-images-bundle-a` → `pm269-focus-carousel-a`. vbb-marker 153 → 154.
+
+### PM-270 — Option C structural rewrite (2 files, `d208603b`)
+
+Dean's PM-269 device screenshot showed the light-mode card washed out — title disappearing into the photo, "EVENING" pill barely readable, dark gradient overlay leaking through onto the light card. Root cause: I'd written light-mode CSS from a partial recall of the Option C spec rather than re-reading the PM-268 plan. What I shipped was closer to Option B (full-bleed photo + gradient overlay, just with the gradient on the left third). What was actually specced was a structural split.
+
+Dean pasted the spec back from the previous session. The corrected interpretation:
+
+- **Light mode = card becomes structural grid 1fr 1fr.** Left half is a solid `var(--surface)` panel under the copy. Right half is the same photo file (no swap, no filter, no opacity manipulation). White-to-transparent fade bridges the seam.
+- **Dark mode = full-bleed photo + horizontal gradient over the LEFT third for copy protection.** Spec: `linear-gradient(to right, rgba(13,43,43,0.92) 0%, ...0.80 30%, ...0.30 55%, ...0 75%)`. Subject anchored right via `background-position: 70% center`. Copy sits on the protected left strip with the photo cleanly visible to its right.
+
+DOM restructured: card itself becomes a positioning container; new children `.focus-card-photo` (the photo layer — `background-image` lives here, not on the card), `.focus-card-overlay` (dark-mode gradient, hidden in light), `.focus-card-fade` (light-mode seam bridge, hidden in dark). This lets light-mode confine the photo to the right half via `inset: 0 0 0 50%` without re-painting the card itself.
+
+TOD pill light-mode treatment also flipped per spec: solid `var(--vyve-dark)` pill with white text; current-TOD variant becomes solid teal pill (vs frosted dark-mode treatment).
+
+Card depth dropped: `aspect-ratio: 3 / 2` → `16 / 9` per Dean's "too deep, needs to be a little bit shorter". Cards lose ~25% in height while keeping the same width.
+
+Files: `index.html` (+117/-74 lines), `sw.js` (cache bump). Cache → `pm270-focus-option-c-a`. vbb-marker 154 → 155.
+
+### PM-271 — Light-mode subject anchor fix (2 files, `ac6316c4`)
+
+PM-270 used `background-position: 30% center` on the light-mode `.focus-card-photo`. The thinking was "now that only the right half of the card shows the image, shift the anchor leftward so the subject sits centred in the visible region". Wrong direction. Subjects in the twelve photos were Gemini-graded with the subject in the *right* portion of the source (matching dark-mode `70% center` anchor). When the photo is confined to the card's right half and the position is set to `30%`, the visible-region centre points at the *left third* of the source — exactly where there's nothing.
+
+Result on device: Get outside (lake on right) split by the seam, Send a message (two mugs on right) completely hidden behind the copy panel, Sit with the day (journal + mug) cropped.
+
+Fix in one CSS rule: `background-position: right center` + `background-size: auto 100%`. The photo's height fills the right-half panel; its width overflows leftward (clipped naturally by the `inset: 0 0 0 50%` confinement). Subject pins to the right edge of the card, fully visible. Same anchor logic as dark mode — just operating on a different visible region.
+
+Files: `index.html` (CSS one-block change), `sw.js` (cache bump). Cache → `pm271-focus-light-subject-anchor-a`. vbb-marker 155 → 156.
+
+### PM-272 — `?focus=all` QA flag (2 files, `7669446f`)
+
+Dean wanted to validate all twelve photographic compositions across both themes without waiting for the 7-day rotation grid to surface each slug. Added an undocumented URL flag: `online.vyvehealth.co.uk/?focus=all` paints all twelve cards in the carousel (one per slug from `VYVEFocusCatalogue.listSlugs()`) instead of the usual 3-card morning/midday/evening view. Section label flips to "Today's focus · QA (all 12)" so QA mode is obvious from any screenshot.
+
+Normal members see no change — the flag is undocumented and the default paint is identical. Auto-centre-on-current-TOD skipped in QA mode (no current TOD to centre on with 12 cards from 12 slugs).
+
+Files: `index.html` (paintFocus conditional expansion), `sw.js` (cache bump). Cache → `pm272-focus-qa-all-a`. vbb-marker 156 → 157.
+
+### PM-273 — QA flag revert + campaign close (2 files, `5dd3f090`)
+
+Dean reviewed all twelve cards across both themes via the PM-272 flag. Verdict: "all perfect". Reverted the `allMode` branch in `paintFocus()` back to the canonical 3-card today-grid paint. ~40 lines of QA-only conditional dropped.
+
+Production-shape carousel restored. Files: `index.html` (paintFocus revert), `sw.js` (cache bump). Cache → `pm273-focus-qa-revert-a`. vbb-marker 157 → 158.
+
+### Discipline learnings
+
+**Re-read the spec when a multi-session campaign locks an architectural decision.** PM-269 shipped wrong light-mode treatment because I wrote CSS from memory of the Option C spec rather than re-reading the PM-268 plan or the staging mockup before opening my editor. Dean had to paste the spec back from the previous session to get the implementation corrected. The brain-load protocol gets the high-level state into context at session-start, but campaign-specific architectural specs need a deliberate re-read before writing code in their domain. Earned as §23.63 in master tonight.
+
+**Multibyte first-N-chars verification is a false-positive trap.** §23.52(b) post-commit verification at PM-269 used `local_first100 = f.read(100)` vs `remote_first100 = resp.read(100).decode()`. The local read returns 100 *characters* via Python's UTF-8 text-mode file IO; the remote read calls `.decode()` on 100 *bytes*, which returns ~94-98 characters depending on how many em-dashes / fancy quotes are in the prefix. Strings diverge cleanly even though content is identical. Caught immediately by realising md5 matched and only the chars-count differed. Patched into §23.52(b) corollary tonight: always use md5 (or full bytewise compare) for post-commit verification, never first-N-chars on UTF-8 files.
+
+### State after this arc
+
+- vyve-site main: `5dd3f0905fbea45af75230b589192ddb94c67877`
+- VYVEBrain main: (this commit — TBD by ref-update)
+- sw cache key: `pm273-focus-qa-revert-a`
+- vbb-marker: Update 158
+- Today's Focus carousel: production-shape, 3-card morning/midday/evening, midday auto-centred, snap-scroll
+- All 12 photographic compositions validated dark + light across both themes
+- `home-focus-catalogue.js` live; 21-slot grid rotating daily
+- Card destinations: `href="#"` placeholders, twelve `/focus/<slug>.html` pages remain to ship
+- Composio still 401 (~3 days since 21 May incident); Vault PAT direct used throughout all 5 commits
+
+### Discipline honoured (all 5 commits)
+
+§23.41 (fresh HEAD twice per commit — all five matched no parallel session writes during the build window), §23.45 (Vault-PAT direct path used throughout; zero fresh Composio attempts this session), §23.52(a)+(a)-corollary (pure-Python urllib commit pipeline on all 5 commits, no bash argv path), §23.52(b)+new corollary (md5 verification post-commit on PMs 270-273, first-N-chars trap caught and patched at PM-269), §23.52(c) (all blob/tree/commit SHAs asserted non-empty 40-char hex before downstream use), §23.53 (JSON parse from file via urllib response object, never `python3 -c | $(...)`), §23.60 (PAT re-exported in every bash_tool call needing it).
+
+### Next session opens with
+
+The `/focus/<slug>.html` page-build campaign — PM-274 onwards. Twelve destinations now exist as `link_url:"#"` placeholders in the catalogue, waiting to become live pages. The PM-268 plan called for two production-quality reference impls (Reset for breathing, Movement for walk with two states + HealthKit snapshot-on-completion) plus ten plausible scaffolds with shared chrome (`focus.css` + `focus-shell.js`) and working `log-activity` wiring. Lewis's copy pass and HAVEN-style clinical sensitivity check on the relevant slugs (Reset, Restore, Sleep) come in a follow-up.
+
+---
+
 ## 2026-05-24 PM-268 — Today's Focus image library shipped (12 photographic JPGs into sw precache) [vyve-site `aac2b10f`]
 
 Asset-only commit, sequel to PM-261b → PM-267b. Twelve 384×256 q82 progressive JPEGs landed at vyve-site root and added to sw precache, ready for consumption by the upcoming `/focus/<slug>.html` campaign. No code references the images yet — they sit idle in cache until the Today's Focus pages ship in the next session.

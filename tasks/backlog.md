@@ -1,16 +1,14 @@
-## Added 24 May 2026 PM — PM-269 onwards: Today's Focus pages campaign (NEXT SESSION)
+## Added 24 May 2026 PM — PM-274 onwards: `/focus/<slug>.html` page builds (NEXT SESSION)
 
-**Status.** Image library shipped at PM-268 (`aac2b10f`). Architectural decisions all made (see brain/changelog.md PM-268 entry + brain/master.md §19). Ready to build next session.
+**Status.** Today's Focus carousel shipped PM-269 → PM-273 (vyve-site `5dd3f090`). All twelve photographic compositions validated dark + light. Card destinations are `href="#"` placeholders pointing at `/focus/<slug>.html` URLs that don't exist yet — tapping a card does nothing. This is the campaign that gives them life.
 
 ### Scope
 
-Replace the current Today's Focus placeholder card on `index.html` with:
-
-1. **3-card horizontal carousel** at the top of home content area (between hero and Today's Habits) — morning / midday / evening, snap-scroll, midday auto-centred as current TOD, swipeable to morning/evening. Tapping any card navigates to `/focus/<slug>.html`.
-2. **`/focus/<slug>.html` × 12** — one HTML page per category. Two built to production quality as reference impls (Reset + Movement); ten ship as scaffolds with the shared chrome + working complete-button + `log-activity` wiring, content polished over following weeks.
-3. **Shared chrome.** `focus.css` (typography, glass effects, motion primitives, theme-aware composition) and `focus-shell.js` (back nav, theme.js wire-up, auth check, sw, complete-logging) — single source of truth for all twelve pages.
-4. **`home-focus-catalogue.js`** — JSON-in-code catalogue of `{ slug, eyebrow, title, body, image, tod, day_of_week, duration_min, link_url }`. Lewis populates copy in a follow-up pass. Migrates to a Supabase `daily_focus` table when admin console catches up.
-5. **HealthKit on Movement** — snapshot-on-completion v1 (query HealthKit at walk start, again at end, diff = walk data). Live polling upgrade as v2 follow-up. Cohort-aware UI: iPhone+HealthKit shows live data, iPhone-no-HealthKit shows "Connect Apple Health →" link, Android hides the indicator entirely until Health Connect ships.
+1. **`focus.css` + `focus-shell.js`** — shared chrome for all twelve pages. focus.css owns typography (Playfair for large numerals, Inter with 0.22em eyebrow letter-spacing), glass effects (`backdrop-filter: blur(12px)` on back button + CTA pills), motion primitives, theme-aware composition (dark = full-bleed photographic ground with radial dimming gradient + film grain, light = photo as header band + solid panel below per PM-268 recommendation). focus-shell.js owns back nav (route to /index.html), theme.js wire-up, auth check (redirect to login if no session), sw registration, `log-activity` on completion.
+2. **`/focus/<slug>.html` × 12** — one HTML page per category slug. The twelve slugs and their first-pass copy live in `home-focus-catalogue.js` already; each page reads its own entry via the existing `VYVEFocusCatalogue.getEntry(slug)` helper. Two pages built to production quality as reference impls per PM-268 plan: **Reset** (breathing orb with multi-ring system, photographic ground, glass chrome, Playfair timer, sticky CTA) and **Movement** (two-state idle/active, duration picker, HealthKit indicator pill for opted-in iPhone cohort, snapshot-on-completion via Capgo plugin). The other ten ship as plausible scaffolds with the shared chrome + working complete-button + log-activity wiring; content polished over weeks.
+3. **`home-focus-catalogue.js` `link_url` swap** — change every `link_url: "#"` to `link_url: "/focus/<slug>.html"`. Carousel cards become live taps once the pages exist.
+4. **HealthKit on Movement** — snapshot-on-completion v1 (query HealthKit at walk start, again at end, diff = walk data). Live polling upgrade as v2 follow-up. Cohort-aware UI: iPhone+HealthKit shows live data, iPhone-no-HealthKit shows "Connect Apple Health →" link, Android hides the indicator entirely until Health Connect ships.
+5. **Bundle into Capacitor `www/`** — `npx cap sync` to pull the twelve new HTML files + focus.css + focus-shell.js into the iOS+Android binary for the next cut (Dean's stated "next couple of days" submission). Bundled-cohort members get the pages in-binary, not just via Capawesome OTA.
 
 ### Reference materials
 

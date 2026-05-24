@@ -861,9 +861,15 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
-## 19. Current status — 24 May 2026 PM-268 (Today's Focus image library shipped — 12 photographic JPGs at vyve-site root, all added to sw precache. Asset-only commit ready for the Today's Focus pages campaign starting next session. 14-file atomic commit `aac2b10f` via Vault PAT direct, total payload 205KB across all 12 images. sw cache `pm268-focus-images-bundle-a`, vbb-marker 153.)
+## 19. Current status — 24 May 2026 PM-273 (Today's Focus carousel shipped — 3-card snap-scroll on home, midday auto-centred, structural Option C light-mode split, all 12 photographic compositions validated dark + light. 5-commit arc PM-269 → PM-273 closes the surface-build phase opened by PM-268's image library. Next: `/focus/<slug>.html` page builds. sw cache `pm273-focus-qa-revert-a`, vbb-marker 158, vyve-site `5dd3f090`.)
 
-**PM-268 (24 May 2026 PM, vyve-site `aac2b10f`).** Twelve photographic category images shipped as bundled assets for the upcoming Today's Focus pages campaign. No code references them yet — they sit idle in sw cache until the home carousel + `/focus/<slug>.html` pages arrive (next session).
+**PM-269 → PM-273 (24 May 2026 PM, vyve-site `5dd3f090`).** Today's Focus carousel landed across five commits. Production state: 3-card horizontal snap-scroll between hero and Today's Habits on home, morning / midday / evening for today, midday auto-centres as current TOD, all three swipeable. Daily rotation through twelve category slugs via `home-focus-catalogue.js` (7-day × 3-TOD grid, 21 slots, hand-balanced so no day repeats and each slug surfaces 1-2 times per week). Card destinations are `href="#"` placeholders until `/focus/<slug>.html` pages ship in the next campaign.
+
+**Option C structural light-mode (locked PM-268, implemented PM-270 after a PM-269 misfire).** Card becomes a grid 1fr 1fr in light mode. Left half = solid `var(--surface)` panel under the copy. Right half = same photo file as dark mode (no swap, no filter, no opacity manipulation), anchored `background-position: right center` so the subject pins to the right edge of the card (PM-271 fix). White-to-transparent fade element bridges the seam. Dark mode keeps the full-bleed photo + horizontal gradient over the left third for copy protection, subject anchored right via `background-position: 70% center`. Same source file in both modes — only the framing changes by theme. TOD pill becomes solid `var(--vyve-dark)` pill with white text in light mode, solid teal pill in current-TOD slot; frosted treatment retained in dark mode.
+
+**Card aspect-ratio 16:9 (PM-270 fix to PM-269's 3:2).** Dean's PM-269 device review called the cards "too deep". Dropped ~25% in height while keeping width unchanged. Cards now sit cleanly between hero and Today's Habits without dominating the viewport.
+
+**PM-268 (24 May 2026 PM, vyve-site `aac2b10f`).** Twelve photographic category images shipped as bundled assets for the Today's Focus pages campaign. All twelve consumed by the PM-269 → PM-273 carousel via `home-focus-catalogue.js`. Each slug carries: `eyebrow`, `title`, `body`, `duration_min`, `image`, `link_url`. Lewis to do the copy pass once `/focus/<slug>.html` pages ship.
 
 **The twelve.** `reset` (steaming cup by window), `movement` (woodland path with golden light), `reflection` (open journal + mug), `hydration` (water glass + mint + lemon), `sleep` (candle + knitted throw + book), `morninglight` (sunlit windowsill + plant), `gratitude` (ceramic bowl with stone + leaf + rosemary), `focus` (dark desk + notebook + lamp), `restore` (misty hills at golden hour), `connect` (two mugs by window), `fuel` (sourdough + blueberries + almonds), `outdoors` (misty mountain loch with pines). All Gemini-generated to a shared shell prompt: 1536×1024 landscape, deep teal + forest green tones with warm highlights, subject in right two-thirds, quiet darker left third for copy overlay, no people facing camera, no text/logos, slight grain for warmth. Downscaled to 384×256 q82 progressive JPEG. Total 205KB.
 
@@ -3091,6 +3097,35 @@ The first is cleaner — preferred. The second is acceptable when iterating on a
 **Why this is a corollary and not its own rule.** §23.52(a) already says "never substitute large file bodies into bash argv via `-d \"$body\"`". The corollary extends the same logic to *any* mechanism that puts file content in bash argv — including `python3 -c "...$base64..."`. Same failure mode (silent argv overflow), same recovery shape (re-issue via pure Python), same audit signal (multiple blob SHAs identical when files differ).
 
 **Audit signal.** After every blob create batch, sanity-check that all returned SHAs are distinct (unless two files genuinely have identical content, which is rare). Pure Python urllib bypasses argv entirely — JSON body lives in a Python dict, gets serialised in-memory, sent as request body via `urllib.request.urlopen(req, data=...)`.
+
+
+
+### §23.52(b) corollary — first-N-chars verification on UTF-8 files is a false-positive trap; use md5 (PM-269, 24 May 2026)
+
+**Earned PM-269.** Post-commit verification script used `f.read(100)` (Python text-mode, returns 100 characters via UTF-8 decode) on the local side and `urlopen(...).read(100).decode('utf-8')` (binary read of 100 bytes, then decode) on the remote side. The two values diverged cleanly even though the files were identical — local got 100 characters, remote got however-many-characters 100 bytes decoded into (~94-98 in practice, less if there's an em-dash, smart quote, or other multibyte char in the prefix). Triggered a false MISMATCH warning that almost masked the underlying success.
+
+**Rule.** Post-commit verification on text files must use full-content md5 (or full bytewise compare) against the repo at the new commit SHA. Never first-N-chars on UTF-8 content; the byte-to-char count mismatch makes the assertion fundamentally unsound. Pattern: `hashlib.md5(local_bytes).hexdigest() == hashlib.md5(remote_bytes).hexdigest()`. Reference implementation in `/home/claude/work/commit_pm270.py` onwards.
+
+**Why this is a corollary and not its own rule.** §23.52(b) already mandates post-commit verification via `commits/{sha}` files[].status array + content re-fetch. The corollary is about *how* the content re-fetch comparison is done — md5/full-byte, never first-N-chars on text files.
+
+**Audit signal.** If first-N-chars verification reports MISMATCH but md5 matches and the file sizes match, the cause is multibyte-char accounting; the file is actually fine. The fix is to delete the chars-count branch and only md5-compare.
+
+### §23.63 — Re-read campaign specs before writing code in their domain; brain-load is not sufficient (PM-269 → PM-270, 24 May 2026)
+
+**Earned PM-269 → PM-270.** PM-269 shipped a broken light-mode treatment on the Today's Focus carousel because I wrote CSS from partial recall of the Option C spec rather than re-reading the PM-268 plan or the `staging/focus-card-mockup.html` reference before opening the editor. What landed was closer to Option B (gradient overlay on full-bleed photo) than Option C (structural grid 1fr 1fr split). Dean had to paste the spec back from the previous session to correct the implementation. PM-270 then shipped the right architecture.
+
+**Rule.** When a multi-session campaign locks an architectural decision (e.g. "Light mode = Option C"), the next session that touches that surface must re-read the spec from the brain or staging *before* writing code in its domain — not from session-start brain-load memory. Brain-load gets the high-level state into context, but campaign-specific architectural specs (CSS treatments, DOM structures, data shapes) need a deliberate fetch + re-read before implementation, especially when the spec is detailed enough that "from memory" reconstruction is plausible but inevitably lossy.
+
+**Pattern.** For any campaign that locked a non-trivial architectural decision in a previous session:
+
+1. Identify the campaign's spec source — usually a brain/master.md §19 entry, a staging mockup file, or a playbook in `/playbooks/`.
+2. Re-read the spec end-to-end before writing the first line of CSS/JS in that campaign's domain.
+3. If the spec references a mockup that may have been built in-chat (not committed), ask Dean for it before improvising.
+4. Quote the spec back in the commit message if any deviation was made, with reasoning.
+
+**Audit signal.** If a campaign produces device-test feedback like "this isn't what we agreed" or "did you forget the X part of the spec", the next implementation in that campaign should re-read the spec source explicitly before touching the editor — and the commit message should reference the spec section that was re-checked.
+
+**Why this matters beyond CSS.** Same failure mode could bite on data shape (forgetting a column in a Supabase write), DOM structure (omitting a wrapper element required by another script), or behavioural contract (wrong cohort gating on a feature flag). The discipline is medium-wide: re-read before implementing, regardless of the layer.
 
 
 
