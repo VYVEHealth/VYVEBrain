@@ -26,15 +26,48 @@ The 5 progress rings on home (Hydration teal / Movement green / Mind purple / Nu
 
 `?debug=build` should show the build banner with vbb-marker + sw cache key. HTML element + JS wire are still in `index.html` (L1077-1110 inspected at PM-293) but the banner doesn't appear. Most likely cause: a CSS specificity issue from the PM-256 rewrite is overriding the `style.display = 'block'` set by JS, OR the localStorage flag check at L1086 is silently failing. Dean: "I haven't seen the banner on this since we did the whole change to the index. But it's been working pretty well in terms of it's been updating pretty quick." Not a launch blocker — just a diagnostic affordance lost. Fix path: run `?debug=build` in Safari with DevTools open, see why `vyve-build-banner` element doesn't render, fix the spec collision or restore the JS hook.
 
-### Settings habit-save Supabase write failure — SHIPPED PM-296 (25 May 2026, vyve-site `a737efbd`)
+### Settings habit-save Supabase write failure — SHIPPED + VERIFIED PM-298 (25 May 2026, vyve-site `3a23ac3d`)
 
-**Status.** Shipped this session. See PM-296 changelog for full diagnosis + fix. Three-part fix on `settings.html` (L1052 strict-equality filter relaxed to truthy; `keepalive: true` + `res.clone().text()` capture on both PATCH removal + POST add). Cache key `pm295-habits-save-keepalive-a`; vbb-marker Update 185.
+**Status.** Closed. PM-296 (keepalive + filter fix + error capture) + PM-298 (on_conflict + merge-duplicates) together restore the save path end-to-end. Device-verified on test1 at 23:11 BST: no failure toast, Supabase row landed via merge-overwrite of a previously-removed habit, settings header count matches Supabase truth. See PM-296 and PM-298 changelog entries.
 
-**Pending device verification.** Dean to repro the original Caffeine curfew flow on iOS after WKWebView cache cycles to Update 185. If the failure mode disappears, the WKWebView-teardown hypothesis is locked. If it persists, the new console.error surfaces the response body on next failure — re-diagnose from there.
+**Lesson codified.** Any fire-and-forget POST against a PostgREST table with a UNIQUE constraint MUST name the conflict columns in the URL (`?on_conflict=col1,col2`) AND use `Prefer: resolution=merge-duplicates` (or `ignore-duplicates` if the use case truly wants skip-on-conflict). Bare `Prefer: resolution=*` without on_conflict is silently ignored — server returns 409. Worth a §23 candidate after the forward-sweep audit confirms the pattern occurs elsewhere; track here and earn rule status if a second instance turns up during the sweep.
 
-**Open follow-up — `keepalive: true` forward-sweep audit.** PM-296 fixed `saveHabits` only. Every other fire-and-forget POST/PATCH/DELETE in the codebase against PostgREST is a candidate for the same hardening. Surfaces to audit when picked up: every page-local `supaFetch(...)` in an un-awaited IIFE (settings.html `savePersona`, `saveGoal`, custom-habit create/delete; nutrition.html food log; weight_logs; any `:logged` write-path that doesn't go through `VYVEData.write` or `vyve-offline.js`'s outbox). One audit pass after PM-296 device-verifies. Schedule alongside the §23.65 forward-sweep + Dexie-write audit pass tomorrow.
+### PostgREST upsert hardening forward-sweep — keepalive + on_conflict audit
 
-**Fold-in NOT done — `:failed` subscriber wiring.** Per diagnosis, this would mask the symptom rather than fix the cause. If `keepalive` proves the cause, no subscriber needed. Defer until device-verify clarifies.
+**Owner.** Backlog, paired with the §23.65 envelope-subscriber sweep tomorrow.
+
+PM-296 + PM-298 hardened `settings.html saveHabits` only. Every other un-awaited PostgREST write in the codebase needs the same two hardening points: `keepalive: true` on the fetch options, and `?on_conflict=<cols>` + `resolution=merge-duplicates` (or `ignore-duplicates`) wherever the table has a UNIQUE constraint that could plausibly be hit by a re-add path.
+
+**Audit signal.** `grep -nE "supaFetch\(['"]/[a-z_]+.*method:\s*'(POST|PATCH)'" *.html *.js` for un-awaited or IIFE-wrapped calls. For each, check the target table's `pg_constraint` UNIQUE constraints; if any can be hit by user action (re-tick, re-submit, re-add), apply the on_conflict idiom.
+
+**High-suspicion surfaces to check first:**
+- `settings.html savePersona` (members PATCH — no unique conflict, but worth keepalive)
+- `settings.html saveGoal` (same)
+- `settings.html` custom habit create/delete (`habit_library` POST — has `(habit_pot, habit_title)` partial-unique? need to check schema)
+- `cardio.html`, `workouts.html`, `mind activities` writes (likely have natural-key uniqueness on activity_date + member + type that could collide on rapid re-tick)
+- `wellbeing-checkin.html` (UNIQUE on `(member_email, iso_week)` — if a member re-submits same week, will it 409?)
+- `nutrition_logs` / `log-food.html` writes
+- `weight_logs` (already has upsert-on-conflict per master.md mention — confirm)
+
+**Out of scope:** Edge Function writes, server-internal writes, sync.js's `replaceForMember` (server-pull-driven, not user-write-driven).
+
+**Estimate.** One audit pass + targeted patches per surface. Probably 1-2 sessions Claude-assisted if more than 3-4 surfaces need fixes.
+
+### Home Today's Habits paints inactive rows as if active — diagnose
+
+**Owner.** Backlog, low-priority — not user-facing in fresh-member case (members at launch have no accumulated inactive rows).
+
+**Symptom (PM-298 device verification, 23:11 BST).** test1@test.com had 4 active member_habits rows in Supabase (cardio, Walk 8k, Walk 10k, Complete workout). Settings showed "4 habits currently assigned" correctly. Home Today's Habits showed 8 cards — the 4 active ones PLUS 4 habits that are `active=false` in Supabase (Screen-free wind-down, Pre-sleep wind-down, Morning light exposure, Sleep 7+ hours).
+
+**Hypothesis space.** Settings reads via `VYVELocalDB.member_habits.allFor(email)` (integer-`[email,1]` index match) and shows 4 — so Dexie agrees with Supabase. Home is reading from somewhere else and getting 8. Three candidates:
+
+1. **localStorage cache** painted before sync.js's `replaceForMember` ran most recently. Look for any `vyve_*_habits*` or `vyve_home_*` localStorage key that holds denormalised habit cards.
+2. **Different join path on home** — Today's Habits might render via daily_habits joined to habit_library (showing any habit ever logged) rather than via member_habits. Would explain the 8 cards if 4 inactive habits were logged at some point.
+3. **PM-291 habits-on-home wiring reads from a different Dexie store / different query.** PM-291 was the cross-page sync ship that hub-page-pots subscribe to. Possible its data source is `daily_habits` rolled up, not `member_habits` filtered.
+
+**Diagnostic path.** Easiest first: open Safari Web Inspector on test1 → grep for `Today's Habits` in index.html source → identify the data source. If localStorage cache, clear the relevant key and confirm. If daily_habits join, decide whether that's the intended product behaviour (show any habit currently active OR previously logged) or a bug (show only currently active).
+
+**Not launch-blocking.** Fresh members at 31 May launch have no accumulated `active=false` rows — they'll see whatever's in member_habits, which equals their full picker selection. The drift only manifests after a member removes a habit and continues using the app. Worth fixing for clean state but not blocking ship.
 
 ### §23.65 forward-sweep audit (envelope-trusted subscribers)
 

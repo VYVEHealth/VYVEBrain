@@ -1,3 +1,63 @@
+## 2026-05-25 PM-298 — habits save root cause was 409 (missing on_conflict), not keepalive [vyve-site `3a23ac3d`]
+
+PM-296 keepalive was the right hygiene but the wrong root-cause hypothesis. The moment keepalive let the request actually reach PostgREST, the API log immediately showed **`POST | 409 | /rest/v1/member_habits`** on Dean's first repro tap post-PM-296 ship. The `res.clone().text()` console.error I added in PM-296 was working exactly as designed — surfacing the next-step diagnostic — and the API-log timestamp at 22:43:37 (5 minutes after PM-296 verification) caught it cleanly.
+
+### The actual mechanic
+
+`member_habits` has `UNIQUE(member_email, habit_id)`. Any habit the member previously removed (`active=false` row) blocks a re-add. The `Prefer: resolution=ignore-duplicates` header was being **ignored entirely** by PostgREST because the `on_conflict` query parameter wasn't named alongside it — PostgREST honours `Prefer: resolution=*` ONLY when paired with `?on_conflict=<columns>`. Without it, conflict → hard 409.
+
+This explains the brain's earlier mystery: only 2 `assigned_by='self'` rows ever landed historically (`test1@test.com` on 16 May). Those 2 were FIRST-time adds — no prior row, no conflict, plain insert worked. Every re-add since 16 May has 409'd silently. test1 had accumulated 9 inactive rows over time (3 admin + 6 onboarding); every habit the member tried to re-tick collided with one of those.
+
+### The fix (vyve-site `3a23ac3d`)
+
+Two changes on settings.html `saveHabits` add-path POST:
+
+1. URL: `/member_habits` → `/member_habits?on_conflict=member_email,habit_id`
+2. Header: `Prefer: 'resolution=ignore-duplicates,return=minimal'` → `Prefer: 'resolution=merge-duplicates,return=minimal'`
+
+`merge-duplicates` (not `ignore-duplicates`) is correct because re-add SHOULD overwrite the stale row — the new POST payload carries `active:true`, fresh `assigned_at`, `assigned_by:'self'`, which is exactly the state the row should land in. Ignoring duplicates would leave `active=false` intact, which is wrong shape for "user just re-added this". For first-time adds (no prior row), both resolutions behave identically — plain insert.
+
+PM-296's `keepalive: true` and `res.clone().text()` capture kept (good hygiene regardless of the 409 issue). PM-296's L1052 strict-equality filter fix also stays — that was an independent secondary bug, real and correctly diagnosed in its own right.
+
+Cache key `pm297-tracker-jwt-fix-a` → `pm298-habits-upsert-onconflict-a`; vbb-marker Update 187 → Update 188.
+
+### Device verification (Dean, 23:11 BST)
+
+- No "Some changes did not save" toast on save. ✓
+- Supabase row count for test1 (after one re-tick of an already-existing habit): 3 active → 4 active. Row landed with `active=true`, `assigned_by='self'`, fresh `assigned_at`, via merge-overwrite of the stale 16 May `dc7a9f68` inactive row. ✓
+- Settings header "**4 habits currently assigned**" matches the Supabase row count. ✓
+
+**Launch blocker closed.** The save path now works end-to-end.
+
+### Discovered during verification — new (separate) bug: home Today's Habits shows 8 cards, Supabase has 4
+
+Dean's home screenshot shows 8 cards under Today's Habits (30 mins cardio, Screen-free wind-down, Walk 10k, Pre-sleep wind-down, Morning light exposure, Sleep 7+ hours, Complete a workout, Walk 8k). Supabase has 4 active rows: 30 mins cardio, Walk 8k, Walk 10k, Complete workout. The 4 extra cards (Screen-free, Pre-sleep, Morning light, Sleep 7+) correspond to habits that are `active=false` in Supabase — but live as orphan rows in Dexie or are joined onto daily_habits somewhere that renders them as if active.
+
+Hypotheses for the next diagnostic pass (NOT in this commit):
+
+- **Stale Dexie rows.** sync.js `replaceForMember` for member_habits does `delete WHERE member_email AND active=true ... bulkPut(rows)` — but the REST query in sync.js L168-170 filters `&active=eq.true` server-side, so inactive rows are simply absent from the pull. The `delete()` in `replaceForMember` wipes the WHOLE member set (no active filter on the delete itself), then bulkPuts the active set. **So inactive rows in Dexie SHOULD be wiped on next hydrate.** Either the hydrate hasn't run since the deactivations happened, or there's a path that re-adds inactive rows to Dexie (e.g. `member_habits.upsert({active:false})` from saveHabits removal path L1548 — which writes the inactive row LOCALLY for optimistic UX, but server's active=true-filtered pull won't bring it back, so subsequent replaceForMember should drop it).
+- **Home reading from daily_habits + habit_library join.** Today's Habits on home might be rendering "any habit_id ever logged in daily_habits for this member, joined to habit_library for display" rather than "rows in member_habits where active=true". A different data source. Worth grep'ing index.html for what Today's Habits actually subscribes to and joins.
+- **localStorage habit cache.** PM-228+ avatar work added several caches; possible a settings cache or home-state cache is holding stale denormalised rows.
+
+Settings reads `_currentHabitIds` from Dexie via `allFor` which gates on `[email,1]` integer match (PM-296 trust path) — and Dean's settings shows 4, which matches Supabase. So **whatever's painting home is NOT the Dexie `allFor` path the picker uses**. That narrows the search.
+
+Logged as a new backlog item below. Not launch-blocking — the save path that was the actual blocker is closed. Members would never see this state in the wild (every member is freshly onboarded, has no previously-removed habits accumulating as inactive rows). Pure dev-test artefact.
+
+### Tooling
+
+§23.66 caught HEAD drift twice during PM-298 work alone: PM-297 (replay-tracker JWT fix from parallel session) landed in the gap between PM-296 ship and PM-298 draft, bumping sw.js cache + vbb-marker. Rebased onto live HEAD content before commit; settings.html unchanged by PM-297, so PM-296 baseline + the on_conflict edit applied cleanly. §23.66 has now earned its keep 4× in this single session — promotion to hard rule at PM-296 was timely.
+
+### What this commit is NOT
+
+- Not a forward-sweep audit of `keepalive: true` + `on_conflict` across every other PostgREST upsert in the codebase. PM-296 backlog entry covers the keepalive sweep; on_conflict is now a sibling audit item. Both fold into one pass post device-verify of PM-298.
+- Not a fix for the home Today's Habits 8-vs-4 discrepancy. Diagnosed enough to know it's a paint-source-conflation issue (NOT a write-path issue, NOT a Dexie integrity issue per settings reading correctly from the same Dexie). Diagnostic pass deferred.
+
+### Process note
+
+PM-296 + PM-298 is the textbook two-commit shape of a §23.7.4 diagnose-first cycle when the first diagnosis is plausible but wrong: ship the disciplined fix with diagnostic capture (keepalive + console.error) on the best hypothesis, let device-test surface the actual response body, then ship the targeted fix. PM-296 was not "wasted work" — it was the diagnostic shipping vehicle, and both hygiene improvements (keepalive, error capture) stay. The lesson: the `res.clone().text()` discipline from PM-289 paid off again here. Future PostgREST writes in fire-and-forget IIFEs should ship with that capture on day one, not retrofitted later.
+
+---
+
 ## 2026-05-25 PM-296 — settings habit-save write failure diagnosed + fixed (keepalive + active-filter) [vyve-site `a737efbd` — commit-message-labelled PM-295; renumbered PM-296 in brain after parallel-session collision]
 
 Dean opened the session with the launch-blocker `tasks/backlog.md` "Settings habit-save Supabase write failure — DIAGNOSTIC SESSION OWED" entry as the brief, with full repro + hypothesis around (a) where the Supabase write fails, (b) whether settings.html's read-back path overwrites Dexie, (c) whether wiring the existing `habits:set-changed:failed` subscriber on home/habits.html would help. Per §23.7.4 — diagnose first, one shipped fix, no speculative patches.
