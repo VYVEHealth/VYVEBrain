@@ -1,3 +1,27 @@
+## Added 24 May 2026 — PM-283 focus done-state device validation + edge cases
+
+**Status.** PM-283 shipped to vyve-site at `eb7562e8` — body.is-completed now auto-stamped via `wireCompletionSlide` MutationObserver in `focus-shell.js`, covering both post-Save and page-reopen paths across all 12 focus pages. Same commit tightened `.focus-hero` max-height (45vh → 40vh) and reset `.focus-cta-wrap` to static (no sticky, no gradient) in is-completed state. ~60px viewport reclaimed.
+
+**Validate on device.**
+
+1. ?debug=build to confirm Update 170 picked up after SW cache bumped from `pm282-done-viewport-fit-a` → `pm283-done-class-stamp-a`. If stuck on Update 169, hard-reload or wait one navigation cycle (stale-while-revalidate may need one round-trip to pick up the new shell).
+2. `/focus/reflection.html` with a journal entry already logged today — this is the path that was broken across PM-280/281/282. Expect: photo at top (40vh max), orb + LOGGED + "Today's reflection is saved." + sub + (optional quote) + Back-to-today CTA + Open-journal ghost link, all fitting on iPhone 13 viewport without scroll. No "5 min · Journal" eyebrow above orb. No "Today's reflection" title above orb. Tight margins throughout.
+3. **Audit the other 11 focus pages on device.** All should inherit the fix automatically via shared chrome — `connect`, `fuel`, `gratitude`, `hydration`, `morninglight`, `restore`, `outdoors`, `reset`, `movement`, `sleep`, `focus`. Each one has a page-reopen done path that wasn't stamping is-completed; all 11 now do via the observer. Quick device walk: log each one once, navigate back, reopen — confirm done-state composition matches reflection.html.
+
+**Watch items — secondary tightens if device shows them.**
+
+- **Quote-overflow on long entries.** Done-quote uses `white-space: pre-wrap; word-wrap: break-word;` — a 4-5 line entry could push the layout. Math currently gives ~25px headroom on iPhone 13. If a real entry overflows, next tighten: cap quote-body to 3 lines with `-webkit-line-clamp: 3` + faded edge. Defer until measured.
+- **iPhone SE2 (375×667).** Shorter screen, smaller content room. Hero at 40vh = 267px, leaving 400px for content. Tight against the ~280px no-quote content stack + safe-area. May need 35vh cap on shorter viewports via `@media (max-height: 700px)`. Defer until tested.
+- **iPhone 15 Pro Max (430×932).** Longer screen. Hero at 40vh = 373px, leaving 559px. Plenty of room. Probably fine but quote case still want to scan.
+- **Dark/light mode parity.** All is-completed rules are theme-token-driven; `.focus-cta-wrap` `background:none` override applies to both modes (kills the gradient in both). Verify the light-mode `:root[data-theme="light"] .focus-cta-wrap` gradient is correctly overridden by the is-completed reset (specificity calc confirms it is, but visual check on device is the proof).
+
+**Architectural follow-through.**
+
+- `focus-shell.complete()` still calls `document.body.classList.add('is-completed')` directly at line 295 — redundant with the observer now, but harmless and worth keeping as belt-and-braces against any future code path that bypasses `swapView('view-done')`. Document this duplication in the focus-shell header comment on next touch.
+- Consider whether `body.is-removed-completed` (or class-remove on view-done deactivation) is needed if any focus page ever flips back from done → idle. Currently no page does this; the only exit from done is navigation, which resets body. Leave un-implemented until a use case exists.
+
+**No further CSS surgery on done-state until device review confirms PM-283 actually landed.** §23.64 codifies this discipline.
+
 ## Added 24 May 2026 — Portal Admin UI for `calendar_occurrences` (sequenced after PM-215 cron)
 
 **Status.** Spec defined in `playbooks/live-sessions-operations.md`. Build deferred until after PM-215 cron has shipped + ~1 month of operational learnings via the manual pasted-timetable path. Reason captured in PM-279.2 changelog: build the UI with usage data, not without.

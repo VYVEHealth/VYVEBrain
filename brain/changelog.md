@@ -1,3 +1,93 @@
+## 2026-05-24 PM-283 — Focus done-state body-class auto-stamp on page-reopen path [vyve-site `eb7562e8`]
+
+Three prior sessions (PM-280, PM-281, PM-282) shipped progressively tighter CSS for the focus-page done-state composition. **None landed on device.** Each session reviewed the prior session's commit, concluded the spec needed further tightening, shipped another CSS pass. The done state still felt "too spread out", with big gaps between page heading and orb, and didn't fit the iPhone 13 viewport.
+
+### Root cause — the CSS spec was correct, the hook wasn't landing
+
+The PM-282 spec was actually solid:
+
+- `body.focus-page.is-completed` → `height:100dvh`, flex column, `overflow:hidden`
+- `.focus-hero` → `position:relative`, `flex:1 1 auto`, `max-height:45vh` (converted from `position:fixed` 35vh idle band)
+- `main` → `padding-top:0`, `flex:0 0 auto` (eliminates the 35vh push that idle state needs)
+- `.focus-panel-eyebrow + .focus-panel-title` → `display:none` (page title hidden on done state per Dean's direction)
+- Internal margins on `.focus-done-glow`, `.focus-done-orb`, `.focus-done-title`, `.focus-done-sub`, `.focus-done-quote`, `.focus-cta-wrap` all tightened ~30% vs idle.
+
+Math against iPhone 13 (390×844): hero 380px max + content stack ~280px without quote = ~660px against ~770px usable viewport. Should fit comfortably. With quote shown, ~140px more content overflowed by ~36px.
+
+But none of this was running. The `body.is-completed` class — the hook the entire block hangs off — was only being added in one of two code paths:
+
+1. **Post-Save path** — `focus-shell.complete()` runs Dexie upsert → bus publish → `document.body.classList.add('is-completed')`. CSS applies.
+2. **Page-reopen path** — every focus page's `boot()` queries Dexie for today's entry; if present, calls `renderDoneFromEntry()` → `swapView('view-done')`. **No body class added.** All 12 focus pages have this exact shape (confirmed by audit: `has_view-done=3 reopen_paths=1 stamps_is-completed=0` across all 12).
+
+When Dean opened `/focus/reflection.html` to review the done state, he was on the page-reopen path almost every time. The is-completed CSS block was inert. The page rendered with idle composition — fixed 35vh photo, main `padding-top:max(250px,35vh)` pushing content way down, `.focus-fade` visible, panel eyebrow `5 min · Journal` + title `Today's reflection` rendered above the orb, internal margins at idle (loose) sizing. **Exactly the "too spread out" symptom Dean described.**
+
+### Diagnosis path
+
+1. Pulled live `focus.css` + `focus-shell.js` at HEAD `897bfdd4` (PM-282) — confirmed PM-282 spec actually shipped, not lost in commit drift.
+2. Read `focus-shell.complete()` — class stamp is at line 295, runs after Dexie upsert resolves.
+3. Read `focus/reflection.html` `boot()` and `renderDoneFromEntry()` — confirmed page-reopen path goes straight to `swapView('view-done')` with no class touch.
+4. Grep-audited all 12 focus pages — same shape across all of them. Universal bug, not reflection-specific.
+
+### Fix — centralise the hook in shared chrome JS, not per-page
+
+The naïve fix is 12 separate per-page edits to add `document.body.classList.add('is-completed')` to each page's `renderDoneFromEntry()`. Maintenance debt: every new focus page must remember the same one-liner, drift inevitable.
+
+The architectural fix: hook into the **existing `wireCompletionSlide` MutationObserver in `focus-shell.js`**. That observer was added at PM-276 to scroll the orb into view when view-done becomes active. It already:
+
+- Watches the page's `#view-done` for class changes (`attributeFilter: ['class']`).
+- Has an `onDoneActive` callback that fires when `.is-active` is present.
+- Has an initial-paint hook (`onDoneActive()` called at observer setup) for pages that render view-done as initial state.
+
+Adding `document.body.classList.add('is-completed')` to `onDoneActive` covers **both** code paths — post-Save AND page-reopen — across **all 12 focus pages** with **zero per-page edits**. No drift surface. No maintenance debt.
+
+```js
+function onDoneActive() {
+  if (!doneView.classList.contains('is-active')) return;
+  // PM-283: stamp body.is-completed so focus.css can re-style the page
+  // composition (zero-scroll viewport fit). Previously this was only
+  // stamped inside complete() — the post-Save path. On page-reopen
+  // ("already done today" guard), view-done was activated WITHOUT
+  // body.is-completed, so the photo stayed fixed at 35vh, main kept
+  // its big padding-top, panel eyebrow + title stayed visible, and
+  // the layout looked "too spread out".
+  try { document.body.classList.add('is-completed'); } catch (_) {}
+  // (PM-276 scroll-into-view continues below — unchanged)
+  ...
+}
+```
+
+The body-class add is idempotent — `complete()` still calls it directly on the post-Save path, and the observer also calls it via class-change mutation. Both adds are no-ops the second time.
+
+### Secondary tighten — quote-overflow case + premium cta-wrap reset
+
+With is-completed actually applying, the no-quote case fits with ~103px headroom. The done-quote case (shown when member has an existing journal entry from earlier today) was still overflowing by ~36px because the quote adds ~140px of content. Two cheap savings shipped same commit:
+
+1. **`.focus-hero` max-height 45vh → 40vh in is-completed.** Saves ~43px on iPhone 13. Photo stays large (~337px) but content has more room.
+2. **`.focus-cta-wrap` full reset in is-completed.** Idle state needs `position:sticky` + a fade-in gradient + 14px top / (safe-area+18px) bottom padding to mask scroll content beneath sticky CTAs. Done state has no scroll, no content to mask — all that is dead weight consuming ~52px of bottom padding. Reset to `position:static`, `background:none`, `padding: 8px 20px max(env(safe-area-inset-bottom, 0px), 12px)`. Saves ~18px and gives the CTA a tighter, more premium-feeling proximity to the safe-area edge.
+
+Net ~60px of viewport reclaimed. Done-quote case now fits with ~25px headroom.
+
+### Shipped — 4 files atomic via Git Data API (Composio still 401)
+
+- `focus-shell.js` — body-class stamp added to `onDoneActive` (formerly `maybeScroll`, renamed for clarity); doc comment updated.
+- `focus.css` — `.focus-hero` 45vh → 40vh in is-completed; `.focus-cta-wrap` full reset in is-completed (static + no gradient + tight padding).
+- `sw.js` — cache key `pm282-done-viewport-fit-a` → `pm283-done-class-stamp-a`.
+- `index.html` — vbb-marker `Update 169` → `Update 170`.
+
+Base: `897bfdd4` (PM-282). New commit: `eb7562e8`. Clean fast-forward, no sibling drift. Brain HEAD did drift (`db8cea41` → `51a322db` from sibling-session PM-279.2) but in a non-overlapping repo; §23.41 fresh-HEAD-of-ref + post-commit signal-string verification confirmed each file landed correctly at commit SHA.
+
+### §23.64 earned
+
+Codified: **when a CSS-only fix doesn't land on device, the next session's first diagnostic step is verifying the hook the CSS depends on is actually present at runtime on every code path, not shipping another CSS iteration.** Full rule text in master §23.64. Audit signal: if you find yourself shipping the 3rd CSS-only iteration on the same surface without device confirmation between rounds, stop and look for the hook.
+
+### On the horizon
+
+- **Device test.** ?debug=build to confirm Update 170 picked up, then `/focus/reflection.html` with an entry already logged today. If composition still looks wrong, tune by measurement on device (we have the architectural fix, only fine-tuning remains).
+- **Quote-overflow case.** ~25px headroom is tight. If real-world iPhone variants (Pro Max long-screen with smaller safe-area / SE2 short-screen with longer multi-line quotes) still overflow, the next tighten is `.focus-hero` max-height conditional on quote presence — but defer until measured.
+- **Audit the other 11 focus pages.** All inherit the fix automatically via shared chrome. Verify on device that no page has a non-standard composition that breaks against the new is-completed CSS.
+
+---
+
 ## 2026-05-24 PM-279.2 — Live sessions ops playbook expanded (privacy locked, intake spec, Portal Admin shape)
 
 Three operational decisions landed and codified in `playbooks/live-sessions-operations.md`:
