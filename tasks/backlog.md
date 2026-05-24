@@ -5054,3 +5054,7 @@ Calum (Physical Health Lead) has delivered the spec, scoring data, and QA framew
 - Onboarding field audit — 7 new columns (11 April)
 - VAPID web push (11 April)
 - Brevo email logo update (13 April)
+### Added 24 May 2026 — PM-289 follow-up
+
+**Optimistic-write reconciliation watchdog (§23 candidate).** Tonight's PM-289 found that `connect_checkins` POSTs had been silently failing in iOS WKWebView for days — the optimistic Dexie write held the UI in a confident "posted" state with no diagnostic surface at all, even though server never received the row. Read paths have §23.46 ("paint truth, not placeholders") to keep them honest; write paths have no equivalent. Worth a §23 hard rule once this pattern recurs: every optimistic-first write must have a reconciliation watchdog that, within N seconds of the optimistic Dexie write, verifies the row exists server-side and surfaces a visible failure banner if not. PM-289 only fixes the iOS race (keepalive + awaited navigation) — if POSTs still fail in the wild after this ship, the new `console.error` on 4xx will show what's actually rejecting. Hold the §23 rule until we see one more occurrence to confirm the failure mode generalises.
+
