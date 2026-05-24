@@ -1,3 +1,163 @@
+## 2026-05-24 PM-285 → PM-293 — Habits-on-home polish + cross-page sync (six-commit arc, parallel-session collision recovery, §23.65 earned)
+
+[vyve-site `1332aeaa` → `4f2d105c` → `6eb59d7c` → `eb3b9a49` → `e9b72611` → `58c01d3c`]
+
+Six-commit arc reshaping the habit surface on home (`index.html`) into its production form, plus closing two cross-page state-sync gaps that had been latent since PM-257's home redesign. All six commits were mine; the other Claude session (engagement-v2 + connect hydration campaign) shipped four interleaved commits in the same window, triggering §23.14 fresh-HEAD-recheck four times and one §23.14 violation by the other session (PM-290 fetched stale HEAD and overwrote PM-291; their PM-292 was a recovery commit restoring the erased content). All my work survived the collision intact.
+
+### PM-285 (`1332aeaa`) — mood panel in-flow
+
+Pre-change: `.mood-panel` was `position:fixed`, anchored to the hero base at `top:calc(max(250px, 35vh) - 100px)`, ignored scroll. Member could scroll past the hero and the mood card stayed glued to the same screen position — fine when it was the first thing they saw, less fine when other content scrolled behind it. Dean's brief: keep it at the top of the scroll content but let it scroll with everything else; existing show/collapse states unchanged.
+
+Fix shape: DOM-moved the panel from body-level (between hero and `<main>`) into `<main><div class="wrap">` as the first content child immediately after `.index-hero-fade`. CSS: `position:fixed` → `position:relative` with `margin: 14px 0 18px`. Added a `[data-theme="light"]` background override (existing `rgba(20,52,52,0.55)` reads correctly on dark only — light theme needed `rgba(255,255,255,0.72)` glass with `rgba(13,43,43,0.10)` border). Existing `.hidden`/`.collapsing` classes still handle the 2.4s thanks display → 0.4s fade → 0.3s height collapse on submit/skip. Long-press-V-logo reset still works.
+
+Dean's intro mental model had this as `position:relative` already and "switch to position:sticky" — caught the drift via a live-state read of `index.html` L622 before touching code, surfaced it before edit per §23.14. Cheap to read the file; expensive to ship against a wrong assumption.
+
+### PM-286 (`4f2d105c`) — Lucide habit icons
+
+Pre-change: home's habit list rendered emoji icons (💧👟😴🌬️📔📖🧘🥗💪☀️❄️📵🌿) via `iconForHabit()` keyword regex. Mockup Dean shared showed SVG icons in the same shape as the rest of the design system. Emoji read inconsistently across platforms, can't take `currentColor`, and looked cheap against the Playfair/Inter type scale.
+
+Fix shape: fetched 36 Lucide SVGs (lucide-icons/lucide@main raw via raw.githubusercontent.com — jsdelivr/unpkg both 403'd after the first burst, raw worked single-shot per icon), built a `<svg width="0" height="0"><defs>...<symbol id="hi-{name}">...</symbol></defs></svg>` block (9.3KB) injected after `<body class="home-page hub-page">`. Rewrote `iconForHabit(title, pot)` with a 4-level lookup: (1) exact title match against the 34-habit map from `habit_library` query, (2) keyword regex fallback for legacy/non-library titles, (3) pot fallback (mindfulness→brain, movement→activity, nutrition→salad, sleep→moon, social→users), (4) generic `circle-dashed`. Render emits `<svg><use href="#hi-{name}"/></svg>` instead of emoji text. `loadHabits` extended to pull `habit_pot` from Dexie + the REST fallback `habit_library(habit_title,habit_pot)` embed.
+
+Mapping coverage: all 34 active habits in `habit_library` (queried live from Supabase before drafting the map) get a name-matched icon. `stairs` was the only first-pick that doesn't exist in Lucide — substituted `chevrons-up`. Compound habits like "Walk 10,000 steps" and "Walk 8,000 steps" both route to `footprints`.
+
+Same commit: trimmed render from "always slice(0,5)" to "uncompleted-first sort then slice(0,5)" so completed habits sink to the bottom of the visible 5 — eye-level real estate for things still to do, ticks cluster underneath as a reward signal. "See all ›" link now always visible (was `>5` count-gated), routes to `/habits.html`. Wired `VYVEBus.subscribe('habits:set-changed', loadHabits)` so settings-page habit add/remove repaints home instantly without reload (settings.html L1564 was publishing the event, home wasn't subscribing — a real gap, not theoretical).
+
+### PM-287 (`6eb59d7c`) — pot-coloured tiles
+
+Dean's review on PM-286: "a little bit of colour in there would be nice." Original mockup showed all-teal icons; the colour came from the progress rings below. Decision: tint the habit tile by `habit_pot` to match the progress-ring palette and give the list visual variety without becoming noisy. Five distinct colours, distributed naturally because real members have habits across pots.
+
+Fix shape: `renderHabitList` emits `data-pot="{lowercase pot}"` on each `.habit-row`. CSS rules:
+
+```css
+.habit-row[data-pot="mindfulness"] .habit-ic{ background:rgba(155,111,181,0.18); color:#B186C9; }  /* purple — Mind ring */
+.habit-row[data-pot="movement"]    .habit-ic{ background:rgba(111,168,76,0.18);  color:#8FC470; }  /* green — Movement ring */
+.habit-row[data-pot="nutrition"]   .habit-ic{ background:rgba(184,118,58,0.18);  color:#D89760; }  /* deep amber — gold reserved for done */
+.habit-row[data-pot="sleep"]       .habit-ic{ background:rgba(77,170,170,0.18);  color:var(--teal-lt); }  /* teal — Hydration ring */
+.habit-row[data-pot="social"]      .habit-ic{ background:rgba(232,131,74,0.18);  color:#F0A075; }  /* orange — Sessions ring */
+```
+
+Specificity-stacked: pot rule below default `.habit-ic`, done-state rule below pots. Lucide icons inherit `currentColor` so each glyph's stroke picks up the pot tint automatically — zero per-icon work.
+
+Catch: nutrition pot would naturally take gold (matches Nutrition ring), but gold is reserved for the universal done indicator. Resolved with deep amber `#D89760` for nutrition-pot default — same family but distinct enough that ticking a nutrition habit visibly shifts to gold. Single-colour-meaning-one-thing discipline preserved.
+
+### PM-288 (`eb3b9a49`) — done-state teal, light/dark split
+
+Dean's review on PM-287: "once thicked, they should turn to the five teal." Initial proposal was VYVE teal `#1B7878`, then I flagged that this reads muted against dark and offered teal-light `#4DAAAA` as Option B. Dean: "I would go with option B, but option B looks good on dark mode, it doesn't look good on light mode. So... option A on light mode and option B on dark mode."
+
+Theme-conditional CSS via existing `[data-theme]` attribute, no JS, swap is instant on theme flip:
+
+```css
+.habit-row.done .habit-ic{
+  background: rgba(77,170,170,0.20);
+  color: var(--teal-lt);              /* #4DAAAA */
+}
+[data-theme="light"] .habit-row.done .habit-ic{
+  background: rgba(27,120,120,0.14);
+  color: var(--teal, #1B7878);
+}
+```
+
+Gold retired from the done indicator entirely. Backlog logged: if a different "earned" signal is needed for streak milestones or achievement-tier markers in the future, gold becomes available for that meaning.
+
+### PM-291 (`e9b72611`) — home↔habits.html sync + overflow expander
+
+Two unrelated-but-cohabiting issues, shipped together. Total 30 minutes.
+
+**Issue A — habit:logged not published from home.** Dean reported: "if I complete the habits on the homepage, they don't complete on the habits page and vice versa." Audit revealed `togglePill()` in index.html wrote to Dexie + Supabase but never called `VYVEBus.publish('habit:logged', ...)`. habits.html had been publishing this event since the §23.7.6 ship (PM-98), and its envelope schema (`kind:'canonical'`, `habit_id`, `is_yes`, `logged_at`, `synthetic_key`, `sign`) is the cross-page contract. Home was one-way: it subscribed to events from habits.html but never published its own. Mirror direction (home's `habit:logged` subscriber called `_rerenderHome` which rebuilt the legacy dashboard via `buildHomeFromDexie` — but didn't refresh `__habits`, the new vertical-list state).
+
+Fix: `togglePill()` now publishes after each branch's Dexie write — tick branch emits `is_yes:true, sign:+1`, untick branch emits `is_yes:null, sign:-1`, matching habits.html's schema exactly. Recorded canonical via `VYVEBus.recordCanonical('daily_habits', synthKey)` before publish so realtime echoes don't double-fire on the writing device (10s TTL per §23 canonical-suppress rule). Mirror: added a second `habit:logged` subscriber on home that calls `loadHabits(email)` alongside the existing `_rerenderHome` subscriber, so `__habits` refreshes from Dexie after a remote write.
+
+**Issue B — overflow expander.** Dean had manually assigned 7 habits via settings; home rendered only the first 5 (slice cap, uncompleted-first sorted) with no surface for the other 2. "See all" routed to /habits.html which works but means leaving the page. Three options considered (horizontal carousel, nested vertical scroll, inline expander); inline expander picked for the simplest gesture model.
+
+Implementation: when `sorted.length > 5`, render a dashed pill button at the bottom: `+ {N} more ▾` collapsed, `Show less ▴` expanded. State held in `window.__habitsExpanded`, in-memory only — resets on each page boot so home stays glanceable by default on every visit. CSS theme-conditional border colour (teal-light on dark, teal on light). Tap toggles, re-renders the list with the full sort.
+
+### PM-293 (`58c01d3c`) — untick race fix
+
+Dean's device test after PM-291: home→habits sync worked, but habits→home untick had a visible lag. Root cause from reading habits.html undo path (L772): `VYVELocalDB.daily_habits.delete()` is **fire-and-forget** — the promise is not awaited. The `VYVEBus.publish('habit:logged', { sign:-1 })` fires synchronously after, so by the time home's subscriber called `loadHabits()` and re-read Dexie, the row was still there. By the time Dexie completed the delete (~10-50ms later), home had already painted with stale data.
+
+Fix: envelope-aware subscriber. Trust the envelope's `sign` and `habit_id` rather than re-reading Dexie. Apply the change to `__habits` synchronously in the subscriber, re-render, THEN call `loadHabits()` as a belt-and-braces second pass for any state not in the envelope (e.g. assignment-set changes). By the time the second-pass Dexie read fires, the fire-and-forget delete has usually completed.
+
+Concretely:
+```js
+window.VYVEBus.subscribe('habit:logged', function (envelope) {
+  if (envelope && envelope.habit_id && Array.isArray(__habits)) {
+    var nextDone = envelope.sign === -1 || envelope.is_yes === null ? false : true;
+    for (var i = 0; i < __habits.length; i++) {
+      if (__habits[i].habit_id === envelope.habit_id) {
+        __habits[i].doneToday = nextDone;
+        break;
+      }
+    }
+    renderHabitList();
+  }
+  if (typeof loadHabits === 'function') loadHabits(email);
+});
+```
+
+Earns §23.65 — envelope-trusted subscriber pattern when publishing surface uses fire-and-forget Dexie writes.
+
+### Parallel-session collision arc (§23.14 in action)
+
+Four §23.14 fresh-HEAD-recheck firings across the six-commit arc:
+
+| Commit attempt | Pre-commit HEAD | Drift detected | Action |
+|---|---|---|---|
+| PM-285 | `897bfdd4` expected (intro) | Found `234e7a3d` (other session shipped PM-283 + PM-284) | Re-fetched, rebased mentally, PM-285 numbered cleanly |
+| PM-286 | `1332aeaa` (my PM-285) | No drift | Shipped clean |
+| PM-287 | `4f2d105c` (my PM-286) | No drift | Shipped clean |
+| PM-288 | `6eb59d7c` (my PM-287) | No drift | Shipped clean |
+| PM-289 (mine) | `eb3b9a49` (my PM-288) | Found `ccd1af98` (other session shipped PM-289 Elite hero + PM-286 Engagement v2) | Renumbered to PM-291, rebased |
+| PM-291 retry | `ccd1af98` | Found `ddbfc99c` (other session shipped PM-286 polish) | Bumped vbb 178→179, rebased |
+| PM-293 | `f770d696` | No drift on commit, but BRAIN HEAD had drifted (other session brain-committed PM-290/292) | Shipped clean against vyve-site main |
+
+Then PM-290 from the other session (`2d8a0dee`) was a §23.14 violation — fetched HEAD before my PM-291 landed (or didn't refresh before commit) and the resulting tree didn't include my PM-291 changes. PM-292 (`3cefbfdb`) was their recovery commit, message line "PM-292 — recovery: restore PM-291 content erased by PM-290 (3 files)". My work was restored cleanly. Verified all six commits' content present in current HEAD via grep before brain-committing.
+
+Lesson for parallel work: §23.14 fresh-HEAD-recheck is non-negotiable, but its protection is one-way — it stops *my* commit from clobbering theirs. Their commit clobbering mine relies on *their* discipline. The detection-and-recovery loop worked (PM-292 caught the erasure quickly because the other session re-ran their own audit), but the latency between erasure and recovery was ~90 seconds where main was missing my PM-291 content. If Dean's device had pulled in that window it would have seen the rollback.
+
+### Backlog items logged this arc
+
+- **Calorie-target habit** (PM-286.x) — new `habit_library` row "stay within calorie allowance" or "hit calories", reading from `members.daily_calorie_target` and `nutrition_logs`. Persona-conditional assignment (NOVA/SAGE/SPARK fat-loss or muscle-gain goals only; never RIVER/HAVEN). Needs Phil sensitivity sign-off for wording (restriction-framed vs performance-framed). New autotick rule on `nutrition_logs` totals. Dean's request, parked pending nutrition surface maturity.
+- **Nav-icon refresh** (PM-286.y) — separate pass touching every page's bottom nav. Dean: "I don't like our nav icons. I feel like they need to change. I think they look really poor." Same Lucide approach as habit icons would work but is a 6-page audit/swap.
+- **Progress-pill palette alignment** — bring the 5 progress rings (Hydration / Movement / Mind / Nutrition / Sessions) into colour harmony with the pot-tile palette set in PM-287. Dean: "we'll match this to the progress pills, but let's just start with this now."
+- **Build banner restoration** — `?debug=build` shows the banner with vbb-marker + sw cache key. JS wire still present at L1081-1110, HTML element at L1077-1080. Broken since PM-256 (the index.html rewrite). Most likely a CSS specificity issue overriding the `style.display = 'block'` JS sets. Not blocking — Dean reported updates land fast enough without it.
+- **Settings habits Supabase write failure (CRITICAL — launch blocker)** — Dean reported: tick a new habit in settings, tap Save, toast says "Some changes did not save. Check your connection." Home renders the new habit (Dexie write succeeded), but returning to settings shows it unticked (re-fetch from Supabase, where the row never landed), which then propagates back to home as a removal on next re-entry. Diagnose-before-fix per §23.7.4. Likely culprits: RLS policy on `member_habits` insert (08 May PM-8 audit wrapped auth functions in subqueries, possible regression), payload-shape mismatch, or 409 conflict mistreated as fail. Dean to diagnose in a separate fresh chat with a focused prompt (provided at session close).
+
+### §23.65 — Envelope-trusted subscriber when publishing surface uses fire-and-forget Dexie writes
+
+When subscribing to a `<event>:logged` bus event from another page, the subscriber MUST NOT trust Dexie alone to reflect the state change the event describes. The publishing surface may have queued a fire-and-forget Dexie write *before* the publish (correct optimistic-first ordering per §23.39 from the publishing side), but the subscriber arrives in a window where Dexie still holds the old state. Re-reading Dexie produces stale data; the user-visible effect is the active surface refusing to reflect the change until ~10-50ms later, often manifest as "the tick stayed on" or "the delete didn't take" on cross-page transitions.
+
+The fix shape: subscribers MUST apply the envelope's `sign` and primary-key payload to the in-memory state of the active surface synchronously, render, AND THEN re-read Dexie for completeness (assignment-set changes, related rows, etc.). The synchronous mutation discharges the user-perceived state-change contract; the Dexie re-read discharges the "is anything else I don't know about also stale" contract. Both run.
+
+**The pattern:**
+
+```js
+VYVEBus.subscribe('<event>:logged', function (envelope) {
+  if (envelope && envelope.<primary_key>) {
+    // 1. Synchronous in-memory mutation from envelope
+    var change = decodeChangeFromEnvelope(envelope);  // sign:-1 → delete, sign:+1 → upsert, etc.
+    applyToActiveState(change);
+    renderActiveSurface();
+  }
+  // 2. Second pass — re-read Dexie for state not in envelope
+  if (typeof reloadActiveData === 'function') reloadActiveData(email);
+});
+```
+
+**The audit signal:** any `VYVEBus.subscribe('<x>:logged', fn)` where `fn` calls a `loadX()` / `fetchX()` style helper as its only state-update path needs upgrading. Search: `grep -nE "VYVEBus\.subscribe\(['\"][a-z_]+:logged" *.html *.js`. For each match, audit whether the subscriber will run before the publishing surface's Dexie write completes. If yes (publishing surface awaits the Dexie write before publish — uncommon, slow), the loadX path is sufficient. If no (publishing surface uses fire-and-forget Dexie, the default for premium-feel UX), the subscriber needs envelope-aware mutation.
+
+**Distinct from §23.7.6** — §23.7.6 covers the *active surface* synchronously mutating its own state on local tap. §23.65 covers *cross-page* subscribers reacting to remote publishes. Both are about closing the same class of race ("publish fires, downstream reads stale data"), but the active-surface case is solved by the publisher doing the sync mutation itself; the cross-page case requires the *subscriber* to do the sync mutation because the publisher's Dexie write isn't awaitable from the subscriber's perspective.
+
+**Forward sweep on other surfaces** — apply to any subscriber that watches a `<event>:logged` event today and calls a Dexie-reread helper as its only state-update path:
+- `engagement.html` ← subscribes to `habit:logged`, `workout:logged`, `cardio:logged` etc. for the activity score recompute. Lower priority — score lag isn't user-perceived the way a tile flip is.
+- `connect.html`, `mind.html`, `exercise.html` — hub pages with subscribers to surface counts. Audit pending.
+- Any future surface that subscribes to a cross-page activity event.
+
+### Session metrics
+
+Six commits (`1332aeaa`, `4f2d105c`, `6eb59d7c`, `eb3b9a49`, `e9b72611`, `58c01d3c`). +6 sw cache bumps. +6 vbb-marker bumps from 169 → 183 (other session bumped four times in the same window — explains the +8 gap above the +6 mine took). Final state: `58c01d3c`, sw `pm293-habit-untick-race-a`, vbb-marker 183.
+
+Composio still 401 — entire arc used the Vault PAT direct path (Supabase MCP `vault.decrypted_secrets` → bash curl direct vs GitHub Git Data API for atomic multi-file commits). PAT-direct path now battle-tested across six consecutive commits with §23.14 firing four times and recovering cleanly each time. The pattern is stable.
+
 ## 2026-05-25 PM-295 — Engagement Score v2 implementation (Phases 1-4 + polish + in-app link + centred hero) [vyve-site `ccd1af98` → `ddbfc99c` → `fb9adda0` → `d0a880ed` — commit messages labelled PM-286; renumbered PM-295 in brain]
 
 Implementation ship of the PM-285 design. Four vyve-site commits across the session — initial v2 ship, in-app chip link (Capacitor wrap has no URL bar so `?score=v2` redirect was unreachable from the iOS app), polish pass (color/30-day-log/sheet z-index/mind count from device review), and centred hero with how-it-works moved into eye-icon sheet.

@@ -1,3 +1,57 @@
+## Added 24 May 2026 — PM-285 → PM-293 backlog items (home habit surface)
+
+### Calorie-target habit (PM-286.x)
+
+**Owner.** Dean to scope; Phil clinical sign-off + Lewis copy required before ship.
+
+**Dean's request.** Add a habit to `habit_library` that auto-ticks when the member is within their daily calorie target. Source data: `members.daily_calorie_target` × `nutrition_logs` total per day.
+
+**Why parked.** Three blockers: (1) wording is clinically sensitive — "stay within calorie allowance" frames it as restriction (problematic for RIVER/HAVEN members), "hit your protein and calorie targets" frames it as performance (fine for NOVA/SAGE/SPARK fat-loss or muscle-gain goals). Phil's sign-off on the copy is mandatory; (2) persona-conditional assignment logic doesn't exist — needs a new rule in the onboarding/recommendation flow saying "never auto-assign to RIVER/HAVEN regardless of goal_focus"; (3) autotick rule via `habit_library.health_rule jsonb` doesn't currently support `nutrition_logs` totals — existing autotick is HealthKit-driven (steps, sleep, weight). New evaluator code path or extend the existing one. Carry as a single tracked item, not a sub-thread.
+
+### Nav-icon refresh (PM-286.y)
+
+**Owner.** Dean — separate session.
+
+Dean's review during PM-286: "I don't like our nav icons. I feel like they need to change. I think they look really poor." Different surface from habit icons; bottom-nav icons appear on every portal page (Home / Body / Mind / Sessions / More). Same Lucide approach as habit-icons would work but is a multi-page audit and swap — touches `index.html` + `exercise.html` + `mind.html` + `sessions.html` + every "More" submenu page. Estimated single-session swap once we commit to the visual direction (probably 30 minutes once the 5 icon picks are confirmed). Hold for a session where icon-design isn't competing with structural work.
+
+### Progress-pill palette alignment (post-PM-287)
+
+**Owner.** Dean — quick visual review session.
+
+The 5 progress rings on home (Hydration teal / Movement green / Mind purple / Nutrition gold / Sessions orange) set the colour language that PM-287's pot-coloured habit tiles now match. Open question whether the rings themselves need any adjustment — the gold ring on Nutrition collides slightly with the gold done-state on habits (PM-288 retired gold from done, but it's still on the Nutrition ring). Decision: do rings stay as-is for now (PM-287 was the alignment ship), or do we eventually deep-amber the Nutrition ring to match the pot tile? Dean: "we'll match this to the progress pills, but let's just start with this now and see how we get on." Defer until the colour relationship has been on device for a few days.
+
+### Build banner restoration (broken since PM-256)
+
+**Owner.** Quick fix, < 15 min when picked up.
+
+`?debug=build` should show the build banner with vbb-marker + sw cache key. HTML element + JS wire are still in `index.html` (L1077-1110 inspected at PM-293) but the banner doesn't appear. Most likely cause: a CSS specificity issue from the PM-256 rewrite is overriding the `style.display = 'block'` set by JS, OR the localStorage flag check at L1086 is silently failing. Dean: "I haven't seen the banner on this since we did the whole change to the index. But it's been working pretty well in terms of it's been updating pretty quick." Not a launch blocker — just a diagnostic affordance lost. Fix path: run `?debug=build` in Safari with DevTools open, see why `vyve-build-banner` element doesn't render, fix the spec collision or restore the JS hook.
+
+### Settings habit-save Supabase write failure — DIAGNOSTIC SESSION OWED (CRITICAL — launch blocker)
+
+**Owner.** Dean to open as a fresh session per the prompt provided at PM-293 session close.
+
+**Symptom.** Member adds a habit in settings (e.g. "Caffeine curfew"), taps "Save habits". Toast: "Some changes did not save. Check your connection." Nav to home — the new habit IS visible (Dexie write succeeded). Nav back to settings — habit is NOT ticked in the picker (re-fetch from Supabase, where the row never landed). Nav back to home — habit has been removed (Supabase truth propagated). Visible state thrash.
+
+**What Dean's noticed.** Repeatable on his account 24 May. Some kind of optimistic write succeeds locally, server write fails, server-truth read clobbers the optimistic state on next entry to settings.
+
+**Likely culprits (not yet diagnosed).**
+
+1. **RLS regression** — 08 May PM-8 audit wrapped auth functions in `(SELECT auth.email())` subqueries to fix the planner regression. Possible that the `member_habits` insert policy was mis-rewritten. Check `pg_policies WHERE tablename = 'member_habits'`.
+2. **Payload shape mismatch** — settings.html `saveHabits` at L1480 does `supaFetch('/member_habits', {method:'POST', body:JSON.stringify({...})})`. Schema may have shifted under it.
+3. **409 conflict mistreated as fail** — if a member's habit assignment row exists with `active=false`, the INSERT should be UPSERT or PATCH; if it's a raw INSERT, Postgres returns 409 and the page's "Some changes did not save" toast fires. The Dexie write succeeded because that's a direct put, not subject to the conflict.
+
+**Diagnostic protocol per §23.7.4.** Diagnose first, no speculative patches. Pull Supabase logs for the relevant POST timestamps when reproducing on Dean's account. Confirm where the failure is (RLS / 409 / payload / EF) before shipping a fix.
+
+**Fold-in opportunity.** settings.html already publishes `habits:set-changed:failed` event (L1630) on save failure. Home + habits.html don't currently subscribe to the `:failed` event — when wired, the optimistic local state could be reverted on failure rather than living on as a lie until re-read clobbers it. Possibly the right shape for the fix even if the root cause is server-side.
+
+### §23.65 forward-sweep audit (envelope-trusted subscribers)
+
+**Owner.** Backlog, picks up alongside the PM-274 phase 2 / `playbooks/full-app-wiring-audit.md` work.
+
+PM-293 fixed the home `habit:logged` subscriber to be envelope-aware. Same pattern applies to any other cross-page subscriber watching `<event>:logged` from a publishing surface that uses fire-and-forget Dexie writes (the §23.39 default). Audit signal: `grep -nE "VYVEBus\.subscribe\(['\"][a-z_]+:logged" *.html *.js`. For each match, check whether the subscriber's only state-update path is a `loadX()`/`fetchX()` Dexie re-read. If yes, upgrade to envelope-aware pattern per §23.65.
+
+Surfaces likely to need it: `engagement.html` (subscribes to most `:logged` events for score recompute), `mind.html`, `connect.html`, `exercise.html` (hub surface counts). Lower priority than the home fix because hub-page lag is less user-perceived than the active row that just got tapped. Schedule alongside the wider Dexie-write audit Dean has flagged for tomorrow.
+
 ## Added 24 May 2026 PM — PM-294 follow-ups (enabled by per-video replay attribution)
 
 PM-294 (24 May 2026 PM, vyve-site `f770d696`, commit-labelled PM-292) shipped per-video replay watch-time attribution via the YouTube IFrame API tracker. New `replay_video_views` table now collects engagement-grade data on every replay watched ≥ 30s. Three follow-ups are enabled by the data shape but were intentionally non-goals for v1:
