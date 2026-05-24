@@ -861,6 +861,82 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 24 May 2026 PM-275 → PM-275.2 (Focus pages composition arc — three-commit refinement closing the focus-page surface build. PM-275.0 reshaped to canonical §23.55 hub-hero pattern (photo as fixed top band at max(250px,35vh), §23.57 fade band into solid var(--bg) panel below, both themes use the same structural composition); PM-275.1 moved page title from photo band onto panel after Dean's device review flagged title clipping the §23.57 fade seam + invisibility against light photo zones in light mode; PM-275.2 promoted panel heading to a proper big page-heading (eyebrow tag + 2.4rem Playfair title as first two lines on the panel) after Dean flagged the photo-band eyebrow clipping behind back button. End state: photo band carries only photo + glass back button, heading lives at top of panel as eyebrow → big Playfair title → description → input/CTA, reads cleanly in both modes. sw cache `pm275-2-panel-heading-a`, vbb-marker 162, vyve-site `b9ffeb33`.)
+
+**PM-275 → PM-275.2 (24 May 2026 PM, vyve-site `b9ffeb33`).** Three-commit composition arc closing the Today's Focus page surface build. PM-274 phase 1 (earlier today, `0074a887`) shipped 12 pages with shared chrome + §23.39 Dexie wiring; this arc refined the visual composition to match the canonical hub-page pattern, with two device-review iterations bringing the heading hierarchy into final shape.
+
+**The arc commits.**
+
+| PM     | Commit       | Change                                                                       |
+|--------|--------------|------------------------------------------------------------------------------|
+| 275.0  | `824ded45`   | Reshape focus pages to §23.55 hub-hero canonical (photo top band + §23.57 fade + var(--bg) panel below); both themes use same composition |
+| 275.1  | `51ef8f44`   | Move page title from over-photo to panel below (was clipping fade seam + invisible in light mode against lighter photo zones) |
+| 275.2  | `b9ffeb33`   | Promote panel heading to big proper page-heading (eyebrow tag + 2.4rem Playfair on panel; photo band carries no text); was photo-band eyebrow clipping in corner behind back button |
+
+**PM-275.0 (24 May 2026 PM, vyve-site `824ded45`).** Reshape to canonical §23.55 hub-hero pattern. Replaces the PM-274 phase 1 composition which had dark mode = full-bleed photographic ground with content over photo + light mode = header band with solid panel below. That split meant the two themes were structurally different pages, and the dark photos washed badly against light-mode text. New composition: photo as fixed top band at `max(250px, 35vh)` matching the hub pattern (`mind.html`, `exercise.html`, `connect.html`), §23.57 fade band (80px, 3-stop rgba `(10,31,31)` dark / `(240,250,248)` light) bridging into solid `var(--bg)` scroll panel below. Same structural composition in both themes — dark mode flows photo into dark teal panel, light mode flows photo into cream panel. All interactive content (orb, timer, textarea, CTA) uses theme tokens (`var(--text)`, `var(--surface)`, `var(--text-muted)`) instead of hardcoded white-on-dark. 15 files atomic. focus-shell.js byte-identical to PM-274 (JS contract unchanged; only CSS + markup composition shifts). Existing 384×256 photos fit the 35vh band size naturally on phones — no upscaling needed for the new composition. sw cache `pm274-focus-pages-a` → `pm275-focus-hub-hero-a`. vbb-marker 159 → 160. **Discipline:** §23.41 fresh HEAD (parent matched `0074a887`), §23.55 longhand position + translateZ(0) + will-change + background-image-not-img, §23.57 dedicated fade element with `translateY(-100%)`, §8 paired-values invariant (`.focus-hero` height ↔ `body.focus-page main` padding-top).
+
+**PM-275.1 (24 May 2026 PM, vyve-site `51ef8f44`).** Title moves from hero band onto panel. Dean's device review flagged two issues with PM-275.0: (1) page title was overlapping the §23.57 fade seam at the bottom of the photo band — `justify-content: center` on `.focus-hero-content` put the title near the bottom edge at 35vh on tall phones, exactly where the fade band started eating it; (2) white-on-photo title was invisible against lighter photo zones in light mode (e.g. the misty `/focus-outdoors.jpg` lake reflection). Both were caught on iPhone screenshots showing "Sit with the day", "Send a message", "Get outside" half-eaten by the fade. **Fix:** title moves onto the `var(--bg)` panel as new `.focus-panel-title` class (2rem Playfair, `var(--text)`, centered, padded), reads cleanly in both modes (white on dark / dark teal on cream). Hero band keeps only the small eyebrow tag anchored top-left of the band well clear of the fade. Matched the hub composition more faithfully than PM-275.0 (exercise.html: eyebrow "Body" + small headline tagline on photo, content-bearing surface lives on panel below). 15 files atomic. Python sweep moved `<h1 class="focus-hero-title">` out of hero markup and injected `<h1 class="focus-panel-title">` at top of `.focus-body` in all 12 pages. `.focus-hero-title` retained as `display:none` for backwards-compat. sw cache `pm275-focus-hub-hero-a` → `pm275-1-panel-title-a`. vbb-marker 160 → 161.
+
+**PM-275.2 (24 May 2026 PM, vyve-site `b9ffeb33`).** Panel heading promoted to big proper page-heading. Dean's second device review flagged the hero-band eyebrow was clipping in the top-left corner of the photo, partially obscured by the 44px back button at `top: env(safe-area-inset-top) + 14px, left: 14px` — visible as "...N · REACH OUT" and "...IN · OUTSIDE" in the screenshots. Also wanted the title to read as a proper big page header above the description, not a smaller sub-title. **Fix:** photo band now carries no text at all (just photo + glass back button). The heading lives at the top of the panel as a two-line stack: `.focus-panel-eyebrow` (0.78rem, 0.22em uppercase, `var(--teal)`, centered — `5 MIN · REACH OUT`) above `.focus-panel-title` bumped 2rem → 2.4rem with tighter `-0.015em` letter-spacing (`Send a message`). Clean hierarchy: eyebrow → big title → description → input/CTA. `.focus-hero-eyebrow` now `display:none`. 15 files atomic. Python sweep injected `<div class="focus-panel-eyebrow">` above the existing `<h1 class="focus-panel-title">` in all 12 pages. sw cache `pm275-1-panel-title-a` → `pm275-2-panel-heading-a`. vbb-marker 161 → 162.
+
+**Composition at end of arc.**
+
+```
+┌────────────────────────────────────────┐
+│  [back]                                │  ← 44px glass back btn, top-left
+│                                        │
+│         photo hero band                │  ← max(250px, 35vh)
+│         (no text, just photo)          │     §23.55 fixed band
+│                                        │     background-cover + center
+│                                        │
+└────────── §23.57 fade band ────────────┘  ← 80px, theme-aware rgba
+                                            
+       5 MIN · REACH OUT                  ← .focus-panel-eyebrow
+                                            (var(--teal) uppercase tag)
+       Send a message                     ← .focus-panel-title
+                                            (2.4rem Playfair var(--text))
+
+   Tell someone you're thinking of them.  ← .focus-intro (var(--text-muted))
+   Connection takes less than you think.
+
+   ┌──────────────────────────────────┐
+   │ Who did you reach out to?        │  ← input / orb / timer per page shape
+   │ (Optional)                       │
+   │                                  │
+   └──────────────────────────────────┘
+
+                                        
+              ╭────────────────╮
+              │  Mark complete │       ← sticky CTA pill
+              ╰────────────────╯       (safe-area-inset honoured)
+```
+
+**Why three commits not one.** Dean's mockup-before-code discipline applied at session scale — ship the composition, device-test, refine. PM-275.0 caught the structural problem (dark/light split was wrong); PM-275.1 caught the title placement problem (clipping + invisibility); PM-275.2 caught the eyebrow corner problem (back-button clash) + escalated the title weight to "this is the page heading" treatment. Three commits because each shipped at the cost of the next not being designable-without-device feedback. Each was a ~5-15 minute Python sweep + atomic ship cycle, total ~45 mins from PM-275.0 to PM-275.2.
+
+**No new §23 hard rule earned.** All three commits used existing patterns end-to-end. §23.39 optimistic-first (unchanged), §23.41 fresh HEAD (3×), §23.45 Vault PAT direct (Composio still 401 ~3 days), §23.52(a)(b)(c) pure-Python urllib + md5 verify + SHA shape (3×), §23.53 JSON parse, §23.55 hub-hero composition pattern adopted more faithfully each iteration, §23.57 fade band element honoured, §8 paired-values invariant honoured, §23.60 absolute paths. Lesson worth noting for next session but not yet a §23 rule: when adopting a canonical pattern (hub-hero here, copied from exercise.html), read the reference impl markup-first not CSS-first. PM-275.0 over-faithfully copied the CSS but didn't notice exercise.html actually puts the eyebrow at 1.6rem and the headline at 1.1rem — exercise treats the *eyebrow* as the page name and the *headline* as a small tagline. I had it backwards. Reading the markup would have caught that in one pass.
+
+**State after this arc.**
+
+- vyve-site main: `b9ffeb33f42204b4eef9a30676e127994007609d`
+- sw cache key: `pm275-2-panel-heading-a`
+- vbb-marker: Update 162
+- 12 focus pages × shared chrome (`focus.css` + `focus-shell.js`) live with §23.55 + §23.57 canonical composition
+- Composio still 401 (~3 days since 21 May incident); Vault PAT direct used throughout
+- §23 hard rules unchanged (last addition was §23.63 in PM-269)
+
+**Pending for tomorrow (unchanged from PM-274 phase 1 backlog).**
+
+- Pass A: hub catch-all subscriptions (4 hubs subscribe `vyve-localdb-table-pulled`)
+- Pass B: `engagement.html` Variety + `mind:logged`
+- Pass C: `nutrition.html` food subscription
+- Pass D: `index.html` `daily_habits` typo
+- Cap-rejection skew decision on cardio focus pages
+- Lewis copy pass on `home-focus-catalogue.js` COPY[]
+- Capacitor bundle (`npx cap sync`) for next binary cut
+- Larger-resolution photo regen (1170×2532 portrait) deferred — current 384×256 set works fine at the 35vh band size, no longer urgent
+
+---
+
 ## 19. Current status — 24 May 2026 PM-274 phase 1 (Today's Focus pages campaign opens — twelve `/focus/<slug>.html` pages shipped in one atomic 17-file commit. Reset + Movement to production quality, the other ten as plausible scaffolds with working complete-button + §23.39 Dexie-write dispatch via shared `focus-shell.js`. Shared chrome `focus.css` carries theme-aware composition: dark mode full-bleed photographic ground + radial dim + film grain, light mode photo header band + solid panel below per PM-268 Option C applied at page scale. `home-focus-catalogue.js` gained `write_target` field per slug (drives Dexie table + bus event without a per-slug switch) + `link_url` swap from `"#"` to `/focus/<slug>.html`. Hydration page writes to `mind_activities` (kind:'hydration') as v1 stub until proper `hydration_logs` table lands. Phase 2 deliverable `playbooks/full-app-wiring-audit.md` shipped same session to drive tomorrow's hub-subscription gap-fixing work. sw cache `pm274-focus-pages-a`, vbb-marker 159, vyve-site `0074a887`.)
 
 **PM-274 phase 1 (24 May 2026 PM, vyve-site `0074a887`).** Today's Focus pages campaign opens with the full surface-build delivered atomically. Twelve `/focus/<slug>.html` files plus shared `focus.css` (18.8KB) and `focus-shell.js` (20.8KB), home catalogue updated to drive both the carousel link_url AND the page-side Dexie wiring contract via new `write_target` field, sw cache key bumped + 14 new precache entries, vbb-marker bumped. 17 files atomic, all md5-verified at commit SHA. Parent matched session start (no parallel drift). Composio still 401 (~3 days since 21 May incident); Vault PAT direct used throughout (§23.45 pattern from playbook).

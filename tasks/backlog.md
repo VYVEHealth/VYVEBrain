@@ -1,6 +1,8 @@
 ## Added 24 May 2026 PM — PM-274 phase 2: full-app Dexie wiring audit (NEXT SESSION)
 
-**Status.** PM-274 phase 1 shipped (vyve-site `0074a887`) — twelve `/focus/<slug>.html` pages live with shared chrome + §23.39 Dexie-write dispatch. Home carousel taps now route to functional pages. **Phase 2 is the wiring audit** that closes the hub-subscription gaps surfaced when the focus pages started publishing bus events that no hub listens for.
+**Status.** PM-274 phase 1 shipped (vyve-site `0074a887`) — twelve `/focus/<slug>.html` pages live with shared chrome + §23.39 Dexie-write dispatch. **PM-275 arc shipped same evening** (vyve-site `b9ffeb33`, three commits PM-275.0/.1/.2) — composition refined to canonical §23.55 + §23.57 hub-hero pattern with heading hierarchy promoted to proper big page-header. Home carousel taps now route to functional pages, both themes render cleanly, headings are properly readable. **Phase 2 is the wiring audit** that closes the hub-subscription gaps surfaced when the focus pages started publishing bus events that no hub listens for.
+
+**Starting state for next session.** vyve-site main at `b9ffeb33` (PM-275.2). sw cache `pm275-2-panel-heading-a`. vbb-marker 162. Brain at this commit captures the full PM-274 → PM-275.2 arc plus the audit playbook.
 
 ### Scope
 
