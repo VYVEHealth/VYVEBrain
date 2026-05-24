@@ -30,6 +30,8 @@
 
 **Status.** Tomorrow's session opens with this. Pre-requisite for PM-286 v2 score implementation.
 
+**Discipline locked PM-285 — page-docs ship with audit.** Per §11B as-you-go rule, every page touched in this audit pass earns its `/page-docs/<page>.md` draft in the same atomic commit as the audit verification. By session close, every activity-logging surface is both Dexie-write audit-clean AND has a first-draft member-readable doc. Avoids the documentation-backfill failure mode.
+
 **Scope.** Every page that writes activity. Verify each write surface:
 
 1. Dexie write fires optimistically per §23.39 BEFORE network POST.

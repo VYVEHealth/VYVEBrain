@@ -682,6 +682,8 @@ New top-level folder in VYVEBrain repo, opened PM-285 (25 May 2026). One markdow
 
 **Maintenance.** Each doc is updated when the page itself meaningfully changes — new sections, new mechanics, new copy direction. The doc captures the *member experience* of the page, which moves more slowly than the implementation. Pages shipped without a doc earn a follow-up task on the next session that touches them.
 
+**As-you-go discipline (locked PM-285, 25 May).** When a session touches a page — for any reason, architecture audit, feature build, bug fix, copy pass — the corresponding `/page-docs/<page>.md` ships in the same commit as the code change, drafted or refreshed to match the page's current state. The discipline avoids the documentation-deferred-forever failure mode where pages drift from their docs and the whole folder becomes untrusted. If the page-doc doesn't exist yet, this is the session that creates it. If it exists, this is the session that updates it. A whole-session pass to backfill page-docs across the portal is acceptable as a session theme, but no individual page change ships without its doc being touched.
+
 **Current state.** `page-docs/README.md` (folder intro + maintenance convention + current-docs index) + `page-docs/engagement.md` (drafted alongside PM-285 v2 score design so the new architecture lands documented from day one). All other pages remain to be documented — Lewis decides priority order based on what he needs to explain externally first.
 
 ---
