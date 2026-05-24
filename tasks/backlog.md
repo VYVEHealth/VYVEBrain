@@ -385,7 +385,20 @@ Three items deferred from PM-256 (home redesign atomic ship), all on the same su
 
 **Source.** Spec backwards-derived from PM-251 consumer surface. OAuth credentials provisioned 23 May AM (3 Vault secrets: `YOUTUBE_OAUTH_CLIENT_ID`, `YOUTUBE_OAUTH_CLIENT_SECRET`, `YOUTUBE_OAUTH_REFRESH_TOKEN`). Refresh token currently on 7-day cadence pending Google consent-screen verification submission.
 
-**Prerequisite — reusable streams diagnostic.** Before this cron can run, the 9 brand-account stream keys need verifying as `isReusable=true` via `liveStreams.list?part=contentDetails&managedByMe=true`. Dean's prior experience suggests they're one-shot streams. Either flip them via `liveStreams.update` or create fresh reusable streams via `liveStreams.insert`. See changelog 23 May 03:15 entry for full diagnostic plan.
+**Prerequisite — reusable streams diagnostic.** ✅ COMPLETE 24 May (PM-279). All 9 brand-account `liveStreams` confirmed `isReusable=true` via `yt-stream-diag` EF (`liveStreams.list?part=contentDetails,snippet,cdn,status&mine=true`). Zero Riverside-side rework needed. Stream IDs per category captured in PM-279 changelog entry — copy into `session_categories` table at build time.
+
+**Stream ID reference (copy into `session_categories` seed):**
+
+| Category | `youtube_stream_id` |
+|---|---|
+| Yoga, Pilates & Stretch | `uptZFgSk0ZmNnE2IbYBdtg1773787341014499` |
+| Mindfulness & Mindset | `uptZFgSk0ZmNnE2IbYBdtg1773787428540514` |
+| Workouts | `uptZFgSk0ZmNnE2IbYBdtg1773787528049051` |
+| Weekly Check-In | `uptZFgSk0ZmNnE2IbYBdtg1773787612302221` |
+| Group Therapy | `uptZFgSk0ZmNnE2IbYBdtg1773787742902658` |
+| Events & Run Club | `uptZFgSk0ZmNnE2IbYBdtg1773787842061692` |
+| Podcast | `uptZFgSk0ZmNnE2IbYBdtg1773787932659198` |
+| Education & Experts | `uptZFgSk0ZmNnE2IbYBdtg1773786554581556` |
 
 **What the cron does.**
 
