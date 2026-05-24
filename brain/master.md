@@ -861,6 +861,24 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 24 May 2026 PM-258 (Mood selector SVG faces + hero image lifted ~15%. Same-night small-touch ship after Dean device-tested PM-257 — mood selector going from emoji to custom inline-SVG line-drawn faces (no Unicode glyph rendering, no platform-emoji inconsistency); hero `background-position` lifted from `70% center` to `70% 65%` so the photo fills the lower two-thirds of the band and the dead-sky strip at top shrinks. 2-file atomic commit `95e840cd`, sw cache `pm258-mood-svg-faces-a`, vbb-marker 143.)
+
+**PM-258 (24 May 2026, vyve-site `95e840cd`).** Two-touch refinement on top of PM-257 — mood selector visual swap + hero image position tune.
+
+**Mood faces — emoji to inline SVG.** Dean called out that emoji aren't acceptable for the mood selector (platform rendering inconsistency, mixed-vendor design language). Looked at the mockup again and the "mood emojis" in image 1 are actually line-drawn faces inside circles, not Unicode glyphs — I'd misread them. PM-258 ships custom inline SVG faces matching that style. Each face: two `<circle>` eyes at `(8,9)` `(14,9)` r=1.1, single `<path>` mouth varying per mood (frown / flat / gentle smile / broader smile / widest smile), all `stroke-width:1.5 stroke-linecap:round` inheriting colour from `.mood-icon` via `currentColor`. Default: dim-white stroke on subtle white-tint background circle. Selected: bright teal stroke on tinted-teal background circle plus glow shadow. Tap interaction: visual `.selected` class applied immediately for 350ms before the thanks-state swap fires, so the member sees their selection register before the panel transitions away. Mood-icon size bumped 30 → 32px to give the line stroke breathing room.
+
+**Hero image lifted ~15%.** Dean's PM-257 screenshot showed a noticeable dark-sky strip between the iOS status bar and the "Good evening" greeting on the night-hero photo. Root cause: `background-position: 70% center` was placing the photo's vertical centre at the container's vertical centre, which left ~50% sky above the figure. Patched to `background-position: 70% 65%` — lifts the photo focal point so the lower two-thirds (figure + loch + valley) fill the band and the top of the photo (sky) overflows above the visible container. Same value applied to all three TOD photos (consistent crop across morning / afternoon / night).
+
+**Files (2).** `index.html` (84178 → 84887 bytes), `sw.js` (cache key bump only). vbb-marker `Update 142` → `Update 143`.
+
+**Verified.** node --check clean on all 9 inline `<script>` blocks. Tag balance 26/26. §23.41 fresh-HEAD checked twice (pre-tree at `b633cb02`, pre-ref-update at `b633cb02` — no parallel ship). §23.52(a)(c) every blob via `--data-binary @file`, SHAs 40-char hex. §23.53 commit + ref responses parsed from file. Post-commit first-100-char re-fetch matched on both files.
+
+**Composio still 401** (~3 days since 21 May incident). PAT-direct via Supabase Vault throughout per §23.45.
+
+**No new §23 hard rule earned.** Small visual refinement — established doctrine throughout.
+
+---
+
 ## 19. Current status — 24 May 2026 PM-257 (Home redesign iteration — mood check-in + Today's Habits list + Live carousel + bug fixes. Three device-visible PM-256 bugs fixed (greeting z-index bleed, hero bg-position, brand mark, bell colour, TOD pill). New transient `daily_mood_checkins` mechanic on hero. 2-file atomic commit `b633cb02`, sw cache `pm257-home-mood-habits-a`, vbb-marker 142. Supabase migration `pm257_create_daily_mood_checkins` applied first.)
 
 **PM-257 (24 May 2026, vyve-site `b633cb02`, supabase migration `pm257_create_daily_mood_checkins`).** Same-night iteration on PM-256 after Dean's device-test feedback + mockup re-review. Three bugs visible on the screenshots from PM-256 + the five mockup gaps that didn't make tonight's first ship.

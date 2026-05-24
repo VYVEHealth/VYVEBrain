@@ -1,3 +1,88 @@
+## 2026-05-24 PM-258 — Mood selector SVG faces (no emoji) + hero image lifted ~15% [vyve-site `95e840cd`]
+
+### What shipped
+
+Atomic 2-file commit to `vyve-site` `main`: `95e840cdf7c5d1e9fe7bf8ae8411936fbd6451c4`, parent `b633cb02` (PM-257 home iteration). Same-night refinement on top of PM-257 — two touches Dean called out after device-testing the PM-257 build.
+
+### Mood selector — emoji to inline SVG line-drawn faces
+
+PM-257 shipped the mood selector with Unicode emoji glyphs (😔 😐 🙂 😊 🤩). Dean came back: "we can't have emojis". Looked at the original Apple-Fitness-style mockup image again and what I'd read as emojis were actually **line-drawn faces inside circles, not Unicode glyphs**. PM-258 ships custom inline SVG faces matching that style.
+
+**SVG shape.** Each face is a `<svg viewBox="0 0 22 22">` with three elements:
+- Two `<circle>` eyes at `(8,9)` and `(14,9)`, `r=1.1`, `fill=currentColor`
+- One `<path>` mouth varying per mood, `fill=none stroke=currentColor stroke-width=1.5 stroke-linecap=round`
+- No outer circle border on the SVG — that comes from the `.mood-icon` container
+
+**Per-mood mouth curves** (drawn in 22×22 viewBox, mouth zone y=13-18):
+
+| # | Mood       | Mouth path                              | Shape    |
+|---|------------|-----------------------------------------|----------|
+| 1 | Not great  | `M7 17 Q11 14 15 17`                    | Frown    |
+| 2 | Meh        | `M7.5 15 L14.5 15`                      | Flat     |
+| 3 | Good       | `M7 14 Q11 17 15 14`                    | Smile    |
+| 4 | Great      | `M6.5 13.5 Q11 17.5 15.5 13.5`          | Broad smile |
+| 5 | Amazing    | `M6 13 Q11 18 16 13`                    | Widest smile |
+
+**States.**
+- **Default:** `.mood-icon` background `rgba(255,255,255,0.06)`, border `rgba(255,255,255,0.10)`, color `rgba(255,255,255,0.55)` (dim white stroke).
+- **Selected:** background `rgba(77,170,170,0.30)`, border `rgba(77,170,170,0.55)`, color `var(--teal-lt)` (bright teal stroke), `box-shadow: 0 0 18px rgba(77,170,170,0.55)` glow.
+- **Container** `.mood-icon` size 30 → 32px to accommodate the line stroke without crowding.
+
+**Tap-to-confirm interaction.** PM-257's mood handler called `moodSubmit()` directly on tap → no visual confirmation of which mood was chosen before the panel swapped to the thanks state. PM-258 adds a 350ms beat between tap and thanks-swap: tap applies `.selected` class to the chosen face immediately (visible teal glow), 350ms later `moodSubmit()` fires (panel transitions to thanks). Total flow: tap → 350ms selected highlight → 2.4s thanks state → 0.4s fade → 0.3s collapse.
+
+### Hero image lifted ~15%
+
+Dean's PM-257 device screenshot (night hero) showed a thick dead-space dark sky strip between the iOS status bar and the "Good evening" greeting. The figure-on-rock subject was sitting low, the loch was barely visible.
+
+Root cause: `background-position: 70% center` (which is `70% 50%`) placed the photo's vertical centre at the container's vertical centre. For a 1024×1024 photo cropped to a 48vh-tall container (~410px), the centre-aligned crop left roughly half the visible band as sky.
+
+Fix: `background-position: 70% 65%`. Shifts the photo's focal point from 50% to 65% of its height — image lifts ~15% within the container, dead sky strip shrinks, figure + loch + valley now fill the lower two-thirds. Same value across all three TOD photos (consistent crop morning / afternoon / night).
+
+### Files (2)
+
+- `index.html` (84178 → 84887 bytes) — 5 patches: emoji DOM → SVG, .mood-icon CSS expanded, .mood.selected expanded, 350ms tap-confirm wired into moodShowPanel, hero bg-position lifted
+- `sw.js` (cache key bump `pm257-home-mood-habits-a` → `pm258-mood-svg-faces-a`)
+- `index.html` vbb-marker `Update 142` → `Update 143`
+
+### Discipline honoured
+
+§23.41 fresh-HEAD discipline: refreshed `vyve-site` HEAD twice (pre-tree-create at `b633cb02`, pre-ref-update at `b633cb02` — no parallel ship in build window).
+
+§23.45 PAT-direct path throughout (Composio still 401, now ~3 days since 21 May incident). PAT pulled from `vault.decrypted_secrets` via Supabase MCP.
+
+§23.52(a) both blobs via `curl --data-binary @file` (smaller payloads tonight, ~86KB and ~16KB — still routed through file payload paths as a discipline default).
+
+§23.52(c) both blob SHAs 40-char hex before tree creation.
+
+§23.53 commit + ref responses parsed via `json.load(open(file))`.
+
+### Verified
+
+- `node --check` clean on all 9 inline `<script>` blocks
+- Tag balance 26/26 (script open/close)
+- Pre-commit visual preview rendered to `mood-faces-preview.html` showing all 5 default + selected + per-state — confirmed by Dean
+- Post-commit fetch at `95e840cd`: first-100-char match on both files
+
+### No new §23 hard rule earned
+
+PM-258 exercises established doctrine: §23.41 (parallel-session safety), §23.45 (PAT-direct fallback), §23.46 (honest paint — default-dim mood selector is the truthful first frame, member taps to choose), §23.52(a)(c), §23.53. Small visual refinement, no new architecture.
+
+### State after this commit
+
+- vyve-site main: `95e840cd`
+- Dean's dev iPhone: picks up Update 143 on next WKWebView cache cycle (2-15 min)
+- Bundled members: still on `83874dd5` from PM-115/116; see PM-258 on next Capawesome OTA
+- Composio: still 401 (no fresh attempt this session)
+
+### What's next on this surface
+
+- **Focus card hero imagery.** Gemini prompts still in Dean's hands (morning forest path / midday windowsill / evening candle). Replace gradient art block when those land.
+- **Pillar realignment of My Progress rings** (Habits/Body/Mind/Connect/Check-ins) — separate campaign per PM-198.
+- **Real per-track progress data on My Progress rings** (currently placeholder zeros).
+- **Mood trend visualisation for Lewis** — defers to PM-214 admin console.
+
+---
+
 ## 2026-05-24 PM-257 — Home redesign iteration: mood check-in + Today's Habits list + Live carousel + bug fixes [vyve-site `b633cb02`, supabase migration `pm257_create_daily_mood_checkins`]
 
 ### What shipped
