@@ -1,3 +1,38 @@
+## Added 25 May 2026 — Haptics incremental adoption across portal pages (PM-278 follow-up)
+
+**Status.** `VYVEHaptics` bridge shipped PM-278 (commit `db8cea41`). Globally available wherever `haptics.js` is loaded. Loaded by `index.html` only at ship. Each portal page touch is an opportunity to wire one or more haptic calls into the page's existing handlers and add `<script src="/haptics.js" defer></script>` to its head if not already inherited.
+
+**Not a campaign.** Don't open a session for this. It's surface-by-surface opportunistic adoption — when next touching habits.html for any reason, drop in `VYVEHaptics.success()` on the log tap. Each addition is 1-2 lines and ships with whatever the session's main work is.
+
+**High-value adoption surfaces, ranked by impact-per-line:**
+
+1. **`habits.html` — habit log tap** → `VYVEHaptics.success()` on the optimistic Dexie write success branch. Most-fired button in the whole app; member taps this multiple times per day. Single biggest premium-feel win available.
+2. **`index.html` PM-259 long-press V-logo reset** → migrate `navigator.vibrate(35)` to `VYVEHaptics.medium()`. The current vibrate call is a no-op on iOS Safari today, so this fix actually makes the gesture *feel* like it worked on iOS.
+3. **`workouts.html` — exercise set logged** → `VYVEHaptics.light()` in the `workouts-notes-prs.js` set-logged handler. Reinforces the "rep counted" affordance.
+4. **`engagement.html` — achievement earned (Phase 3 grid)** → `VYVEHaptics.success()` or `.heavy()` on first reveal of an unseen tier. Stack with the existing toast.
+5. **`nutrition.html` stepper +/-** for hydration counter and weight log increments → `VYVEHaptics.selection()`. Very Apple-feeling tick on each tap.
+6. **Swipe-to-delete confirm** (workouts custom list, exercise_logs) → `VYVEHaptics.medium()` at threshold crossed.
+7. **Settings toggle switches** (theme, notification preferences) → `VYVEHaptics.selection()`.
+8. **`breathwork.html` phase transitions** (per the PM-173-followup spec already in backlog) → `VYVEHaptics.light()` on each inhale→hold→exhale→hold boundary. Spec called this out explicitly.
+9. **Pull-to-refresh threshold** (PF-26, when built) → `VYVEHaptics.light()` at the snap-into-loading point.
+
+**Adoption checklist (when touching a portal page for any other reason):**
+
+- [ ] Page loads `haptics.js`? If not, add `<script src="/haptics.js" defer></script>` near the other deferred shims (after `healthbridge.js` is the canonical slot per index.html).
+- [ ] Identify the tap/log/confirm handlers in the page's JS.
+- [ ] Drop in the appropriate `VYVEHaptics.X()` call at the success branch (never on click — only after the action confirms).
+- [ ] No try/catch needed at the call site — the shim is internally try/catch-wrapped.
+
+**Verifying it works on device.**
+
+- iOS device must have silent switch OFF and Settings → Sounds & Haptics → System Haptics ON. Both are user-controlled — never code around them.
+- `window.VYVEHaptics._platform()` from devtools returns `'native' | 'android-web' | 'silent' | 'unknown'`. Useful sanity check during testing.
+- iOS Safari (not Capacitor) intentionally returns `'silent'` and no-ops. Testing-on-device-via-mobile-Safari will feel no haptics — that's correct. Must be tested through the Capacitor TestFlight binary to confirm native path.
+
+**Files that would touch on each adoption (per page).** Just the page's own HTML/JS + sw.js cache key bump per §23.42. No new shared infra needed — bridge is shipped.
+
+**Tracking — no formal list.** As pages adopt, mention in the relevant PM changelog entry. No need to keep a checklist of "what's adopted" — `grep -l VYVEHaptics vyve-site/*.html` answers it anytime.
+
 ## Added 24 May 2026 PM — Future-vision: local-sunset-aware hub hero rotation (no build commitment)
 
 **Origin.** Dean question during PM-274 phase 1 wrap, looking at the index hub hero on his iPhone. Today's three-state photo swap (morning / afternoon / night) is driven by the §23.55 pre-paint inline IIFE on `getHours()` with hardcoded boundaries 05-11 / 11-19 / 19-05 — same shape across index, exercise (Body), mind, connect. The boundary "19:00 = night" is wrong for half the user base half the year. London in June: actual sunset ~21:30, so night photo appears 2.5 hours early. Edinburgh in December: actual sunset 15:40, so afternoon photo persists ~3.5 hours past dark. Stockholm winter: night at 14:45. Currently a real UX miss, not a nitpick — just not high enough impact to act on now.

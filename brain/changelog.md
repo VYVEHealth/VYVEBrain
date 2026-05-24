@@ -1,3 +1,51 @@
+## 2026-05-25 PM-277 + PM-278 — Haptics bridge shipped (with §23.58 recurrence recovery) [vyve-site `01e42835` → `db8cea41`]
+
+`VYVEHaptics` global shim shipped. `haptics.js` (NEW, 6767 bytes) exposes a Capacitor-Haptics-shaped API — `light()`, `medium()`, `heavy()`, `success()`, `warning()`, `error()`, `selection()` — that fans out per platform: Capacitor native iOS/Android use `window.Capacitor.Plugins.Haptics.impact/notification/selectionStart` directly (plugin already in `vyve-capacitor` `package.json` since the 1.2 binary); Android web falls back to `navigator.vibrate(ms)` with tuned durations (10/20/35ms impact, multi-pulse patterns for notification, 5ms selection tick); iOS Safari + desktop silent no-op. All call sites wrapped in try/catch — never throws.
+
+Loaded by `index.html` only for now. Other portal pages adopt incrementally as their tap handlers get touched — the long-press V-logo `navigator.vibrate(35)` from PM-259 (which is a no-op on iOS Safari today) is the obvious first migration target on next index.html touch.
+
+Closes the bridge half of PF-17 (premium pre-launch haptics). Surface-by-surface wiring (habit log success, achievement earned, stepper +/-, swipe-to-delete, breathwork phase transitions, etc.) remains as opportunistic adoption — not a campaign.
+
+### Platform contract — Capacitor plugin already in binary
+
+The `@capacitor/haptics@^8.0.2` plugin was already in `vyve-capacitor` `package.json` and shipped in iOS 1.2 (28 April) + Android 1.0.3. Capacitor auto-registers all plugins in the dependency tree; no Swift bridge needed. The shim probes `window.Capacitor.isNativePlatform()` + presence of `window.Capacitor.Plugins.Haptics` at load time, caches the platform branch ('native' | 'android-web' | 'silent'), and dispatches accordingly. The bridge is OTA-able via vyve-site alone — no Capawesome bundle needed.
+
+### iOS device-setting respect
+
+The plugin call is a no-op when iPhone silent-switch is OFF or "System Haptics" is disabled in Settings → Sounds & Haptics. That's the correct behaviour — never try to detect-and-warn.
+
+### §23.58 recurrence + recovery
+
+First commit (`01e42835`) silently clobbered 5604 bytes of sibling-session work on `index.html`. A parallel Claude session shipped `950a726f` (PM-277, Focus carousel completed-today tick + dim state) between session-start HEAD fetch and my commit time. My commit script did §23.41 fresh-HEAD-of-ref correctly, saw HEAD had moved from `fa2cd908` to `950a726f`, but **only re-fetched the ref — not the file bodies**. The Git Data API tree-build then used the sibling's `base_tree` (correct) but my three named blobs (index.html, sw.js, haptics.js) — my session-start `index.html` blob wholesale-replaced the sibling's just-shipped 17-occurrence `.is-completed` / `getCompletedFocusSlugsToday` work.
+
+**This is exactly the §23.58 failure mode** earned at PM-244 → PM-246 on 23 May, where avatar work whole-file-clobbered same-day connect.html changes. §23.58 rule 4 is explicit: "the §23.41 fresh-HEAD discipline applies to EVERY file in the commit batch, not just the file the session 'is about'" — and the rule was written exactly to prevent this. Tonight's failure is a discipline lapse, not a new gotcha.
+
+**Recovery.** Detected within minutes via post-commit content-byte audit on the live `main` index.html (grep for `.is-completed`, count 0 vs sibling's 17). Refetched `index.html` from sibling commit SHA `950a726f` as new base, re-applied only the haptics script tag + vbb-marker bump (164 → 165), bumped sw.js cache key from `pm277-haptics-bridge-a` to `pm278-haptics-bridge-recovery-a` (PM number skip to disambiguate from the collision), re-validated all JS syntax + 9 inline blocks, re-committed via the same Python urllib pipeline. Final commit `db8cea41` byte-equal verified at the commit SHA for all three files. Sibling work fully preserved (17 markers retained), my work cleanly layered on top.
+
+**Lesson logged below under §23.58 recurrence.** No new rule earned — §23.58 covered this; just discipline.
+
+### Surfaces lined up for incremental adoption (no commitment, just notes for next touch)
+
+- `habits.html` tap → `VYVEHaptics.success()` on log
+- `workouts.html` exercise set logged → `VYVEHaptics.light()`
+- `engagement.html` achievement earned → `VYVEHaptics.heavy()` or `.success()`
+- `nutrition.html` / hydration stepper +/- → `VYVEHaptics.selection()`
+- `index.html` PM-259 long-press V-logo reset → migrate `navigator.vibrate(35)` to `VYVEHaptics.medium()`
+- `breathwork.html` phase transitions → `VYVEHaptics.light()` per PM-173-followup backlog spec
+- Pull-to-refresh trigger point (PF-26) → `VYVEHaptics.light()` at threshold
+
+### Tooling
+
+§23.45 PAT-direct (Composio still 401 from 21 May incident, ~4 days now). §23.52(a) all blob bodies via JSON file + urllib — no inline argv. §23.52(b) post-commit full byte-equal + first-100-char verify at commit SHA on all three files in both commits. §23.52(c) all SHAs asserted 40-char hex.
+
+### Files shipped
+
+| File | Bytes | Note |
+|---|---|---|
+| `haptics.js` (NEW) | 6767 | `window.VYVEHaptics` with native + vibration + no-op branches |
+| `sw.js` | 18312 | Cache key `pm276-focus-keyboard-slide-a` → `pm278-haptics-bridge-recovery-a`; `/haptics.js` added to precache list next to healthbridge.js |
+| `index.html` | 101292 | `<script src="/haptics.js" defer>` next to healthbridge.js; vbb-marker 164 → 165; sibling's PM-277 focus-tick work preserved |
+
 ## 2026-05-24 PM — Future-vision parked: local-sunset-aware hub hero rotation [brain-only]
 
 Brain-only entry. No code shipped. Dean question during PM-274 phase 1 wrap on whether the three-state hub hero photo swap (morning/afternoon/night, currently hardcoded `getHours()` boundaries 05-11/11-19/19-05 per §23.55) could rotate against local sunset instead of a global 19:00 wall. Answered: yes, doable in ~2 hours via Path 1 (geocode onboarding city → cached `members.lat/lng` → pre-paint NOAA solar calc, no network/permissions/flash), and worth doing eventually because 19:00 is wrong for half the cohort half the year (London June: sunset ~21:30, Edinburgh December: 15:40, Stockholm winter: 14:45). Dean's call: park as future-vision, no build commitment. Full spec added to `tasks/backlog.md` covering three solution paths, effort estimate (~2 hours single session), data-quality flag on free-text city geocoding, Stripe-country fallback pragmatism, and the four files that would touch when built.
