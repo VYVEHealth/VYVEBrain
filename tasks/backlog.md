@@ -1,3 +1,11 @@
+## Added 25 May 2026 — PM-309 Achievements design session prep
+
+**Standing prompt drafted at `brain/staging/achievements-deepdive-prompt.md`.** Self-loading prompt for a fresh chat. 5 phases: Supabase enumeration -> member-action enumeration -> design framework -> visual direction -> persona awareness. Paste-and-go when ready.
+
+Soft-trigger reminder from the Achievements overhaul campaign entry: wait at least 5 days of v2 device time before starting. We've had v2 device time since PM-295 (24 May 2026). Earliest sensible start: 29 May 2026.
+
+---
+
 ## Added 25 May 2026 — PM-307 brain close (Movement first-class + PM-308 next steps)
 
 **Movement track is now first-class.** `movement_activities` table live with 24 rows migrated, RLS + triggers set up to match `mind_activities` shape. `movement.html` rewritten single-table, `movement-history.html` simplified, `engagement-v2.html` BODY metric extended to sum workouts+cardio+movement. Bus event taxonomy locked — `movement:logged` from movement.html only. See §19 PM-307 narrative for the full mechanics.
