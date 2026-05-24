@@ -1,3 +1,17 @@
+## Added 24 May 2026 PM — PM-294 follow-ups (enabled by per-video replay attribution)
+
+PM-294 (24 May 2026 PM, vyve-site `f770d696`, commit-labelled PM-292) shipped per-video replay watch-time attribution via the YouTube IFrame API tracker. New `replay_video_views` table now collects engagement-grade data on every replay watched ≥ 30s. Three follow-ups are enabled by the data shape but were intentionally non-goals for v1:
+
+**1. Continue Watching UI tile.** The `replay_video_views_member_last_updated` index already powers the query — `SELECT youtube_video_id, watch_seconds, title FROM replay_video_views WHERE member_email = X AND completed = false ORDER BY last_updated_at DESC LIMIT 3`. UI shape: a horizontal carousel on `replays.html` (above the playlist tiles), three cards showing "Resume from MM:SS" with thumbnail + remaining time. Tap = mountPlayer with `startSeconds` param via YT IFrame API. Mockup-first before build. Sequence after the soft-launch trial data confirms the carousel is wanted — premature to ship before we know whether members care about resume vs restart.
+
+**2. Per-instructor drop-off analytics.** `host_name` is denormalised on every row; a simple SQL `GROUP BY host_name, ROUND(watch_seconds * 100.0 / NULLIF(total_seconds, 0)) ORDER BY 2` gives drop-off curves trivially. Consumer surface: internal-only dashboard tile in `vyve-command-centre/admin.vyvehealth.co.uk` (Lewis/Calum/Phil). Not member-facing. Build sequenced after first month of trial-scale data accumulates (need ~30 watches per instructor for any signal). Tooling-wise it's a single Edge Function + a dashboard tile — no Supabase schema change.
+
+**3. Replay-aware charity math (NEEDS LEWIS).** Currently the 30-activities-per-month charity counter reads from legacy `replay_views` (page-presence attribution from the old per-category pages, dormant since PM-235). PM-294's `replay_video_views` is a more honest signal — members who actually watch a replay vs members who happened to be on the replay page. Question for Lewis: should charity math switch to the new table, or stay on the legacy one to avoid breaking the existing 30-activities denomination mid-trial? Sub-question: minute-weighted charity attribution (1 charity month per N total watch-minutes rather than per N completed views) is technically possible via `SUM(watch_seconds)` but is a different mechanic that needs Lewis's call. Park until post-trial review.
+
+**Non-goals (explicitly out of scope per PM-294 spec — listed here so they don't accidentally creep into a sibling backlog).** Leaderboard wiring of `replay_video_views` (deferred to pillar-realignment campaign per §22). Employer-dashboard `replay_video_views` (no enterprise live yet). Migrating or deprecating legacy `replay_views` (Dean's spec said dormant, not deleted — UNION in `refresh_member_home_state` still references it). Touching the eight `*-live.html` shells (live attribution unchanged, untouched by PM-294).
+
+---
+
 ## Added 25 May 2026 — PM-286 Engagement Score v2 implementation (PM-285 design ships)
 
 **Status.** Design locked PM-285 (25 May). Full spec in Claude session artefact `/home/claude/work/engagement-score-spec.md`. Member-readable doc at `/page-docs/engagement.md`. Mockup at `/home/claude/work/engagement-mockup.html`. Implementation tomorrow following Dexie-write audit close.
