@@ -1,3 +1,32 @@
+## 2026-05-25 PM-306 — Home hero -10px tighten [vyve-site `9c561e98`]
+
+Single-surface visual tighten on `index.html` per Dean's device review. The hero photo position and composition are correct as-is; the ask was for everything below the hero to sit 10px higher — i.e. tighten the band itself by 10px so the content below floats up.
+
+**The change.** Two paired CSS values dropped from `max(250px, 35vh)` to `max(240px, calc(35vh - 10px))` per §8 paired-values invariant: (1) `.index-hero { height: ... }` and (2) `body.home-page main { padding-top: ... }`. Both must change together or content overlaps the photo / a gap appears. Per-pillar hub heroes (Body / Mind / Connect) intentionally untouched at the canonical `max(250px, 35vh)` from PM-247 — only Home tightens. The vw fallback floor moves 250px → 240px to match the calc on small phones where 35vh < 250px.
+
+**Why Home specifically and not the others.** Audit during this session against Dean's screenshots of all four hubs:
+
+- Body, Connect: photo terminates at ~36-37% of viewport — at spec
+- Mind: photo terminates at ~40% of viewport — at spec; composition makes the lake feel heavier than the band actually is
+- Home: photo terminates at ~58% of viewport — at spec (35vh) plus the figure-on-rock composition extending into the lower half plus the greeting text overlaying down to ~mid-screen
+
+Home was the only one with a genuine ask. Initial diagnosis in-chat had Mind as the offender; pulling source confirmed all three secondary hubs are already at 35vh per PM-247 and the visual difference is composition not size. Caught the misdiagnosis before shipping a no-op commit.
+
+**Files (3, atomic via Git Data API, §23.45 PAT-direct since Composio still 401).**
+- `index.html` (119980 → 120114 bytes): hero height + main padding both -10px paired, vbb-marker 195 → 196
+- `settings.html`: settings-vbb-marker 194 → 195
+- `sw.js`: CACHE_NAME `pm305-engagement-redirect-a` → `pm306-home-hero-tighten-a`
+
+**Verified.** node --check clean on all 9 inline JS blocks in index.html (CSS-only change, JS untouched, belt-and-braces). §23.41 fresh-HEAD checked twice — pre-tree at `fd7ffb23`, pre-ref-update at `fd7ffb23` — no parallel ship. §23.52(a) all 3 blob bodies via `/home/claude/ship/blobs/*.json` + `curl --data-binary @file`. §23.52(c) all 3 blob SHAs 40-char hex asserted. §23.53 commit + ref responses parsed from file not pipe. Post-commit first-200-char byte-match on all 3 files at new commit SHA + key-string spot-check on remote.
+
+**Composio still 401** (~5 days since 21 May security incident). Vault PAT direct via Supabase MCP throughout per §23.45 — Vault path stable across the entire session.
+
+**No new §23 rule earned.** Pure visual tighten using established doctrine (§8 paired-values invariant, §23.41, §23.45, §23.52, §23.53).
+
+**State after this commit.** vyve-site main HEAD `9c561e98fdc313439819b6b96fd04219696b19b4`. sw cache key `pm306-home-hero-tighten-a`. vbb-marker 196. Dean's dev iPhone picks up on next WKWebView cache cycle (2-15 min per §23.29). Bundled members frozen at the same pre-PM-256 SHA until next OTA — Home hero tighten reaches them via Capawesome push only.
+
+**What didn't ship this session.** Active.md §2 not refreshed (next session-end task). Master.md §19 cleared to a single PM-306 entry on this same brain commit per §19 single-entry discipline (PM-305 + earlier entries roll forward into changelog history only). Page-doc updates not in scope — no page semantics changed.
+
 ## 2026-05-25 PM-305 — Retire v1 engagement.html, redirect to engagement-v2.html [vyve-site `fd7ffb23`]
 
 v1 `engagement.html` (106KB v1 score + trophy cabinet, untouched since PM-280s) replaced by `engagement-v2.html` (the Your Journey page) as the canonical engagement surface. All inbound links updated in the same commit so members tap directly into v2 with no redirect round-trip.
