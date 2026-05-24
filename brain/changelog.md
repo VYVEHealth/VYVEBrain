@@ -1,3 +1,17 @@
+## 2026-05-24 PM-261 — Backlog item logged: native binary cut for OS-layer portrait lock (Monday session) [brain only]
+
+Dean device-tested PM-250's portrait lock and confirmed the device still rotates freely. Traced through: PM-250 shipped the right work in both halves — `vyve-site` `6b61d95d` deleted the JS overlay + CSS rule, and `vyve-capacitor` `4f5f55ae` set `Info.plist UISupportedInterfaceOrientations = [UIInterfaceOrientationPortrait]` + `AndroidManifest.xml screenOrientation="portrait"`. But native manifest files are baked into the IPA/AAB and Capawesome OTA only ships web assets, so the cohort members and Dean run still rotates. No JS/CSS hack fixes it from inside the WebView — the hardware-level rotation event has to be blocked at the OS layer, which requires a new binary cut.
+
+Discussed in chat — strict-portrait (current `vyve-capacitor` `main`, route 1) vs portrait-locked-with-landscape-allowed-for-video (route 2, what YouTube/Instagram/TikTok do). Route 2 recommended for premium-app north-star — members will want fullscreen rotation on replay videos and live session embeds, ~30 min native work to add the `supportedInterfaceOrientationsFor` override on iOS and the fullscreen-event orientation swap on Android.
+
+Logged to `tasks/backlog.md` as a Monday-session item under the new heading "Added 24 May 2026 PM — Native binary cut: ship PM-250 OS-layer portrait lock + video-fullscreen landscape exception [Monday session]". Includes both routes spelled out, Dean's call on route 1 vs route 2 still pending, pairing opportunity with the existing PM-193 splash/icon polish + PM-250 follow-up `@capacitor/browser` external-link wiring flagged.
+
+No code shipped. No new §23 rule earned. §23.59 (PM-250 native-app polish doctrine) already covers the orientation doctrine; this entry is logistics on getting the existing fix into the cohort.
+
+**Files patched.** `tasks/backlog.md` (prepend new entry, lines 1-50). `brain/changelog.md` (prepend this entry). `brain/master.md` untouched.
+
+---
+
 ## 2026-05-24 PM-260 — Crop top 20% of hero images to remove dead-sky band [vyve-site `d050a8e9`]
 
 ### What shipped

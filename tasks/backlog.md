@@ -1,3 +1,42 @@
+## Added 24 May 2026 PM — Native binary cut: ship PM-250 OS-layer portrait lock + video-fullscreen landscape exception [Monday session]
+
+**Status.** PM-250 (23 May) deleted the web-shell "rotate your phone back to portrait" overlay AND made the matching `vyve-capacitor` commit `4f5f55ae` locking portrait at the OS layer (`Info.plist UISupportedInterfaceOrientations = [UIInterfaceOrientationPortrait]` on iPhone, `AndroidManifest.xml MainActivity android:screenOrientation="portrait"`). The web side is live for everyone via OTA. But native files are baked into the IPA/AAB and Capawesome only ships web assets — so the binary cohort members and Dean are running still rotates freely, with no overlay to hide it. Dean confirmed on device 24 May PM ("you can still turn the app to the side").
+
+**Why this is binary-only.** Discussed in chat — every browser-layer option (`screen.orientation.lock()`, CSS landscape-media overlay, `@capacitor/screen-orientation` plugin) either doesn't work in WKWebView or only hides content rather than blocking rotation. The hardware-level "screen does not rotate" behaviour only comes from the native manifest files, which need a fresh binary cut.
+
+**Design decision pending — strict portrait vs video-landscape exception.**
+
+Two routes for the cut:
+
+1. **Strict portrait everywhere** — current state of `vyve-capacitor` `main` (PM-250). Full-screen video plays letterboxed in portrait. Simpler, consistent.
+2. **Portrait-locked app, landscape allowed for video only** — what YouTube / Instagram / TikTok do. Add `UIInterfaceOrientationLandscapeLeft`/`Right` back to `Info.plist`, then override `supportedInterfaceOrientations` on the main `CAPBridgeViewController` subclass to `.portrait` so the app itself stays portrait-locked. Native fullscreen video presents its own view controller that opts into landscape. Android equivalent: keep manifest `screenOrientation="portrait"` and use `activity.setRequestedOrientation()` swaps tied to the WebView's HTML5 fullscreen API events.
+
+**Claude recommendation:** Route 2. Premium-app north-star, members will want to rotate when they tap fullscreen on a replay video or a live session embed. Native `vyve-capacitor` work is ~30 min:
+
+- `ios/App/App/Info.plist`: add `UIInterfaceOrientationLandscapeLeft` + `UIInterfaceOrientationLandscapeRight` back to the supported orientations array.
+- `ios/App/App/AppDelegate.swift`: override `application(_:supportedInterfaceOrientationsFor:)` to return `.portrait` for the main window. iOS fullscreen video presents its own modal view controller which is not constrained by this.
+- `android/app/src/main/AndroidManifest.xml`: keep `screenOrientation="portrait"` on MainActivity. Wire a small bridge plugin or listen for the WebView's fullscreen change event in `MainActivity.java` to call `setRequestedOrientation(SCREEN_ORIENTATION_SENSOR)` on enter-fullscreen and revert to `SCREEN_ORIENTATION_PORTRAIT` on exit-fullscreen.
+
+**Plan.**
+
+1. Dean confirms route 1 vs route 2 (recommend 2).
+2. If route 2: native edits per above on `vyve-capacitor` `main`, atomic commit.
+3. `npx cap sync ios && npx cap sync android` to pull the latest bundled web assets into the binary.
+4. iOS: bump to 1.3, archive in Xcode, upload to App Store Connect, submit for review (~24-48h Apple turnaround based on recent submissions).
+5. Android: bump to 1.0.4, generate signed AAB, upload to Play Console (~1-3h Google review).
+6. Update §23.42 cohort tracking — once both binaries approved, the new "current" IPA/AAB cohort gets the orientation lock; older cohort members remain rotating until they update. Capawesome can't fix that.
+7. Brain changelog entry + this backlog item moved to Shipped on commit.
+
+**Estimate.** Native code edits ~30 min Route 2 / ~5 min Route 1. Binary cut + submit ~30 min per store. Apple review window is the long pole — submit Monday AM, likely approved Tuesday/Wednesday.
+
+**Dependency.** None — `vyve-capacitor` is on its own cadence, no pending vyve-site work blocks this.
+
+**Pairing opportunity.** If we're cutting binaries anyway, candidates to bundle into the same iOS 1.3 / Android 1.0.4 cut:
+
+- Anything else queued in "PM-193 follow-up: native splash + app-icon polish (Monday bundle session)" — already on the Monday list.
+- Check the @capacitor/browser external-links wiring from "PM-250 follow-up — Wire @capacitor/browser for external links inside the app" — that's a web-shell change so it can OTA, but if it's also queued for Monday it's worth landing on the same day.
+
+---
 ## Added 24 May 2026 PM — PM-257 follow-ups
 
 Three items deferred from PM-257 (home iteration ship), all on the same home surface.
