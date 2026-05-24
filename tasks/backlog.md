@@ -1,26 +1,32 @@
-## Added 24 May 2026 — PM-283 focus done-state device validation + edge cases
+## Added 24 May 2026 — PM-283 + PM-284 focus done-state device validation + edge cases
 
-**Status.** PM-283 shipped to vyve-site at `eb7562e8` — body.is-completed now auto-stamped via `wireCompletionSlide` MutationObserver in `focus-shell.js`, covering both post-Save and page-reopen paths across all 12 focus pages. Same commit tightened `.focus-hero` max-height (45vh → 40vh) and reset `.focus-cta-wrap` to static (no sticky, no gradient) in is-completed state. ~60px viewport reclaimed.
+**Status.** PM-283 shipped at `eb7562e8` (body.is-completed auto-stamp via MutationObserver, hero 45vh→40vh, cta-wrap static reset). PM-284 shipped at `234e7a3d` (page-reopen done-restore in shared chrome covering all 4 target Dexie tables + reflection.html prompt context line). Together they close the "done state doesn't persist + done state has no context" device review.
 
 **Validate on device.**
 
-1. ?debug=build to confirm Update 170 picked up after SW cache bumped from `pm282-done-viewport-fit-a` → `pm283-done-class-stamp-a`. If stuck on Update 169, hard-reload or wait one navigation cycle (stale-while-revalidate may need one round-trip to pick up the new shell).
-2. `/focus/reflection.html` with a journal entry already logged today — this is the path that was broken across PM-280/281/282. Expect: photo at top (40vh max), orb + LOGGED + "Today's reflection is saved." + sub + (optional quote) + Back-to-today CTA + Open-journal ghost link, all fitting on iPhone 13 viewport without scroll. No "5 min · Journal" eyebrow above orb. No "Today's reflection" title above orb. Tight margins throughout.
-3. **Audit the other 11 focus pages on device.** All should inherit the fix automatically via shared chrome — `connect`, `fuel`, `gratitude`, `hydration`, `morninglight`, `restore`, `outdoors`, `reset`, `movement`, `sleep`, `focus`. Each one has a page-reopen done path that wasn't stamping is-completed; all 11 now do via the observer. Quick device walk: log each one once, navigate back, reopen — confirm done-state composition matches reflection.html.
+1. ?debug=build to confirm Update 171 picked up after SW cache bumped from `pm283-done-class-stamp-a` → `pm284-reopen-restore-a`. If stuck on Update 170/169, hard-reload or wait one navigation cycle.
+2. `/focus/connect.html` with today's `connect_checkins` row already in Dexie. Expect: view-done active, body.is-completed stamped, photo at 40vh, tight done composition, no "Mark complete" idle CTA visible. **This is the PM-284 fix — was rendering idle pre-fix.**
+3. `/focus/reflection.html` with today's `mind_activities (kind=journal)` row in Dexie. Expect: prompt question line (italic Playfair, teal) above orb, "Today's reflection is saved." title, "Open the journal..." sub, member's-words quote below. **The prompt-context line is the PM-284 reflection fix.**
+4. Walk through the other 9 focus pages (fuel, gratitude, hydration, morninglight, restore, outdoors, sleep, focus, reset). Each one — complete it once, navigate back to home, navigate back to the page, confirm view-done active.
 
 **Watch items — secondary tightens if device shows them.**
 
-- **Quote-overflow on long entries.** Done-quote uses `white-space: pre-wrap; word-wrap: break-word;` — a 4-5 line entry could push the layout. Math currently gives ~25px headroom on iPhone 13. If a real entry overflows, next tighten: cap quote-body to 3 lines with `-webkit-line-clamp: 3` + faded edge. Defer until measured.
-- **iPhone SE2 (375×667).** Shorter screen, smaller content room. Hero at 40vh = 267px, leaving 400px for content. Tight against the ~280px no-quote content stack + safe-area. May need 35vh cap on shorter viewports via `@media (max-height: 700px)`. Defer until tested.
-- **iPhone 15 Pro Max (430×932).** Longer screen. Hero at 40vh = 373px, leaving 559px. Plenty of room. Probably fine but quote case still want to scan.
-- **Dark/light mode parity.** All is-completed rules are theme-token-driven; `.focus-cta-wrap` `background:none` override applies to both modes (kills the gradient in both). Verify the light-mode `:root[data-theme="light"] .focus-cta-wrap` gradient is correctly overridden by the is-completed reset (specificity calc confirms it is, but visual check on device is the proof).
+- **Quote-overflow on long reflection entries.** Done-quote uses `white-space: pre-wrap; word-wrap: break-word;` — a 4-5 line entry could push the layout. Math currently gives ~25px headroom on iPhone 13. With the new `.focus-done-prompt` line eating ~25-30px more, this could now overflow on 3-4 line entries. If a real entry overflows, next tighten: cap quote-body to 3 lines with `-webkit-line-clamp: 3` + faded edge. Defer until measured.
+- **iPhone SE2 (375×667).** Shorter screen, smaller content room. Hero at 40vh = 267px, leaving 400px for content. With prompt line added, content stack closer to ~310px without quote, ~440px with quote. May need 35vh cap on shorter viewports via `@media (max-height: 700px)`. Defer until tested.
+- **iPhone 15 Pro Max (430×932).** Longer screen. Probably fine but worth a scan.
+- **Dark/light mode parity.** All is-completed rules + new prompt rule are theme-token-driven. Verify on device in both modes.
+- **`cardio_type` literal coupling.** PM-284's `cardio` table query filters by `cardio_type === wt.cardio_type`. If cardio.html or any other writer changes the canonical "Walking" / "Outdoor walk" strings, focus-movement and focus-outdoors silently fail to restore done state. Mitigation: keep `cardio_type` literals in catalogue write_target identical across all writers. Future audit pass when cardio surfaces are touched.
+- **`nutrition_logs` meal_label coupling.** Same shape — `meal_label === 'Mindful meal'` filter on focus-fuel. If log-food.html or nutrition.html ever writes a row with that label, it would falsely restore done. Low risk (`Mindful meal` is a focus-fuel-specific label) but worth noting.
+- **PM-279.2 (sibling-session ops playbook expansion)** documented in master §19 + PM-283 changelog — non-overlapping with PM-283/PM-284.
 
 **Architectural follow-through.**
 
-- `focus-shell.complete()` still calls `document.body.classList.add('is-completed')` directly at line 295 — redundant with the observer now, but harmless and worth keeping as belt-and-braces against any future code path that bypasses `swapView('view-done')`. Document this duplication in the focus-shell header comment on next touch.
-- Consider whether `body.is-removed-completed` (or class-remove on view-done deactivation) is needed if any focus page ever flips back from done → idle. Currently no page does this; the only exit from done is navigation, which resets body. Leave un-implemented until a use case exists.
+- `focus-shell.complete()` still calls `document.body.classList.add('is-completed')` directly at line 295 — redundant with the PM-283 observer but harmless and worth keeping as belt-and-braces.
+- `reflection.html` `getTodaysJournalEntry` is dead code post-PM-284 — local helper retained, no functional risk.
+- Consider removing the `view-done.is-active` flip from the page-side `swapView('view-done')` calls in pages other than reflection — could simplify, but they're harmless and the duplication is intentional defensive layering. Leave.
 
-**No further CSS surgery on done-state until device review confirms PM-283 actually landed.** §23.64 codifies this discipline.
+**§23.64 confirmed correct discipline.** PM-284 didn't tighten a single CSS rule — it ensured the trigger conditions (view-done.is-active) land on every relevant code path. Same shape of fix as PM-283. The rule paid off within one session of being codified.
+
 
 ## Added 24 May 2026 — Portal Admin UI for `calendar_occurrences` (sequenced after PM-215 cron)
 

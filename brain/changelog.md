@@ -1,3 +1,79 @@
+## 2026-05-24 PM-284 — Focus pages: page-reopen done-restore + reflection prompt context [vyve-site `234e7a3d`]
+
+Two device-review issues raised against the PM-283 ship:
+
+1. **Done state didn't persist across navigation on 10 of 12 focus pages.** Member taps "Send a message" carousel card → opens `/focus/connect.html` → types something (optional, this slug accepts empty body) → taps Mark complete → view-done renders → navigates back to home → taps card again → opens connect.html → sees "Mark complete" idle CTA again. The `connect_checkins` row exists in Dexie for today, but the page doesn't query it on boot. Only reflection.html (PM-279), reset.html, and movement.html had per-page boot-time done detection. The other 9 (connect, fuel, gratitude, hydration, morninglight, restore, outdoors, sleep, focus) all just call `VYVEFocusShell.init({slug}) + wireUp()` with no Dexie query — always render idle.
+
+2. **reflection.html done state had no prompt context.** "Today's reflection is saved." sub "Open the journal to read or add more." Member can't recall which question they reflected on. Need the prompt question shown alongside the confirmation.
+
+### Fix (1) — centralised page-reopen done-restore in `focus-shell.js`
+
+Same architectural pattern as PM-283: don't add per-page wiring across 10 pages — put the behaviour in shared chrome.
+
+Two new internal helpers:
+
+**`queryTodaysRow(slug, memberEmail)`** — reads `VYVEFocusCatalogue.getEntry(slug).write_target` to know which Dexie table + key to use, returns a Promise resolving to today's row or null. Handles all 4 target tables the focus pages write to:
+
+| Table | Query strategy |
+|---|---|
+| `mind_activities` (8 slugs: reset, reflection, hydration, sleep, morninglight, gratitude, focus, restore) | Compound index `[member_email+kind+activity_date]` — exact match by slug-derived kind + today's date |
+| `connect_checkins` (1 slug: connect) | Compound index `[member_email+checkin_date]` — one row per member per day natural |
+| `cardio` (2 slugs: movement, outdoors) | Compound index `[member_email+activity_date]` → JS filter by `cardio_type` to discriminate Walking vs Outdoor walk |
+| `nutrition_logs` (1 slug: fuel) | Compound index `[member_email+activity_date]` → JS filter by `meal_label` |
+
+Falls back to null on any error (catalogue missing, Dexie not opened, table missing, query throws). Never blocks page boot.
+
+**`restoreDoneIfFoundRow(row)`** — idempotent flip. If view-done is already active (page-side check beat the shell), no-op. Otherwise removes `is-active` from view-idle and adds it to view-done. The PM-283 `wireCompletionSlide` MutationObserver catches the class change and stamps `body.is-completed`, layout snaps to the viewport-fit done composition automatically.
+
+Wired into `init()`'s `ready()` callback — after auth resolves and SW registers, queries Dexie, restores done if found, then resolves the init Promise. Init promise payload extended:
+
+```js
+{ memberEmail, slug, todaysRow }
+```
+
+where `todaysRow` is the matched row or null. Reflection.html `boot()` refactored to consume `ctx.todaysRow` instead of running its own duplicate `getTodaysJournalEntry()` query — same effect, one less Dexie hit.
+
+**Zero per-page concession.** Every focus page already calls `VYVEFocusShell.init({slug})`. Every focus page already has standardised view-idle / view-done DOM convention from PM-274. The shell does the rest. Future focus pages added to `home-focus-catalogue.js` with a `write_target` inherit page-reopen done-restore automatically.
+
+**Idempotency on reflection.html.** Page still calls `paintTodaysPrompt() + wireUp()` first, then awaits `init()` which may flip view-done before resolve. Reflection's own `renderDoneFromEntry()` then re-calls `swapView('view-done')` (no-op since it's already active) and populates the quote body. Both paths converge safely.
+
+### Fix (2) — `.focus-done-prompt` element in reflection.html
+
+Added between `.focus-done-title` and `.focus-done-sub` in view-done markup:
+
+```html
+<p class="focus-done-prompt" id="done-prompt"></p>
+```
+
+Styled in the page's inline CSS block — italic Playfair, `var(--teal-lt)` (light theme: `var(--teal-dark)`), centred, `font-size: 1.05rem`, max-width 32ch, hidden by default (`display:none`).
+
+Populated in `paintTodaysPrompt()`, the same function that already pulls today's prompt from `VYVEJournalPrompts.getToday()` and applies it to the panel title + intro. Once it has the prompt object, it also sets `done-prompt`'s textContent and removes the `display:none`. Runs once on boot, regardless of which path activates view-done later.
+
+`.focus-done-prompt` also gets a tightened rule in `body.focus-page.is-completed` — `font-size: 0.95rem`, `margin: 0 auto 8px` — to fit the new line into the viewport-fit done composition without breaking the PM-283 math.
+
+### Implementation discipline
+
+Follows §23.64 — the prior session's PM-280/281/282 cycle (3 rounds of CSS-only fixes) failed because the trigger condition (`body.is-completed`) wasn't actually being met on the path Dean was viewing. PM-284 doesn't tighten any CSS rules; it ensures the trigger conditions land on every relevant code path. Same shape of fix, different surface.
+
+### Shipped — 5 files atomic via Git Data API
+
+- `focus-shell.js` — added `queryTodaysRow` + `restoreDoneIfFoundRow` helpers; wired into `init()` ready(); extended resolve payload with `todaysRow`.
+- `focus.css` — added `.focus-done-prompt` tightening rule in is-completed state.
+- `focus/reflection.html` — added `.focus-done-prompt` element + inline CSS rule; `paintTodaysPrompt()` extended; `boot()` refactored to use `ctx.todaysRow`.
+- `sw.js` — cache key `pm283-done-class-stamp-a` → `pm284-reopen-restore-a`.
+- `index.html` — vbb-marker Update 170 → Update 171.
+
+Base: `eb7562e8` (PM-283). New commit: `234e7a3d`. Clean fast-forward. All 5 files verified via post-commit signal-string re-fetch at commit SHA.
+
+### On the horizon
+
+- **Device test PM-283 + PM-284 together.** ?debug=build to confirm Update 171. Open /focus/connect.html with today's `connect_checkins` row present — expect view-done active + body.is-completed stamped + viewport-fit done composition. Open /focus/reflection.html with today's `mind_activities (kind=journal)` row present — expect the prompt question above the orb, the quote (member's words) below.
+- **Audit the other 9 focus pages on device.** All should auto-restore done state from Dexie via shared chrome. Quick walk: complete each, navigate home, navigate back, confirm done view.
+- **Sibling failure mode to watch.** `cardio` filter is `cardio_type === wt.cardio_type` — strict equality. If a member logs a cardio session via cardio.html (which may use different cardio_type strings like "Run", "Bike", "HIIT") on the same day as a focus-movement Walking, the focus page won't see the other entry as matching — that's correct. But if cardio.html ever changes the canonical "Walking" string (e.g. to "walking" lowercase) the focus page silently won't restore done state. Mitigation: keep `cardio_type` literals in catalogue write_target identical to what cardio.html / focus-shell complete() writes. Worth a future audit pass.
+- **`getTodaysJournalEntry` dead code in reflection.html.** Local helper retained as dead code. Could be removed in a future cleanup pass; no functional risk in keeping it.
+
+---
+
 ## 2026-05-24 PM-283 — Focus done-state body-class auto-stamp on page-reopen path [vyve-site `eb7562e8`]
 
 Three prior sessions (PM-280, PM-281, PM-282) shipped progressively tighter CSS for the focus-page done-state composition. **None landed on device.** Each session reviewed the prior session's commit, concluded the spec needed further tightening, shipped another CSS pass. The done state still felt "too spread out", with big gaps between page heading and orb, and didn't fit the iPhone 13 viewport.
