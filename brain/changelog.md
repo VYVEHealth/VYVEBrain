@@ -1,3 +1,31 @@
+## 2026-05-24 PM-290 + PM-292 — connect.html hydration wiring + §23.41 violation recovery [vyve-site `2d8a0dee` then `3cefbfdb`]
+
+### What happened
+
+Dean (test1@test.com on iOS) reloaded after PM-289, dot strip now visible but still showing **0 days** despite server having `overall_streak_current=5` (3 real connect_checkins on 21/22/23 May + other activity). PM-289 fixed the render bug but the data wasn't reaching the render. Diagnosis: connect.html's bus subscriber block in `paintAll()` did not subscribe to the actual hydration event sync.js dispatches. Stale comment in `loadStreakFromDexie` referenced `home-state:hydrated` which never existed — that event was assumed in the original code but never published anywhere. The real hydration signal is `window.dispatchEvent(new CustomEvent('vyve-localdb-hydrated', ...))` fired from sync.js after `runWithConcurrency(tasks, HYDRATE_CONCURRENCY)` resolves. Without a listener, `paintAll()` runs once at boot against possibly-empty Dexie (streak 0), and never re-runs when sync.js subsequently lands server check-ins into Dexie.
+
+**PM-290 fix:** Added `window.addEventListener('vyve-localdb-hydrated', function () { repaintDebounced(); })` alongside the existing bus subscribers. Stale comment corrected to reference the actual event.
+
+### The §23.41 violation
+
+PM-290 committed against locally-cached `index.html` + `sw.js` from session start, not against live HEAD. Between PM-289 ship and PM-290 ship, another session shipped **PM-291** (habit sync home<->habits.html + overflow expander, +131 lines CSS on index.html + 1 new precache entry on sw.js + cache key bump + vbb-marker 176→179). My PM-290 commit fetched the live commit SHA before committing (§23.41 SHA check passed), but the blob content I committed was from session-start cache, not from re-fetched-at-commit-time live HEAD. PM-291's 131 lines vanished. Bare §23.41 SHA refresh is not enough — must also fetch each file's live HEAD content immediately before committing and diff against the working copy, or do a three-way merge.
+
+**PM-292 recovery:** Restored PM-291's canonical index.html + sw.js content from the commit SHA, re-applied vbb-marker bump (179 → 180) and new cache key (pm292-hydrate-listener-a). connect.html kept my PM-290 hydration listener wiring (PM-291 didn't touch connect.html — diff vs PM-289 was 0 bytes — so no rebase needed there). Net effect for the user: PM-290's hydration fix preserved + PM-291's habit work restored.
+
+### §23 candidate — pre-commit content rebase
+
+**Proposed rule:** Before committing a multi-file change via Git Data API, fetch the live HEAD content of every file being committed and compare against the working copy's expected base. If they differ, abort the commit and either three-way merge or re-apply patches against the live content. This is one step beyond §23.41 (fresh SHA check on the ref): §23.41 catches *that* HEAD moved; this catches *what changed* in the files you're about to overwrite. Hold the formal §23 rule until I see one more occurrence to confirm the pattern, but this is the second parallel-session collision in two weeks (PM-275/PM-275.0 fan-out + tonight's PM-290/PM-291) so the threshold is probably already met. Worth codifying now.
+
+### Files
+
+`connect.html` (PM-290 add `window.addEventListener('vyve-localdb-hydrated', repaintDebounced)` + stale comment fix), `index.html` (PM-292 restore PM-291 habit-expander markup + vbb-marker 180), `sw.js` (PM-292 restore PM-291 precache entry + cache key `pm292-hydrate-listener-a`). vyve-site commits: PM-290 `2d8a0dee` (broken — overwrote PM-291), PM-292 `3cefbfdb` (recovery — restores PM-291 + keeps PM-290 fix).
+
+### Tooling
+
+§23.45 PAT direct (Composio still 401). §23.41 SHA refresh passed both times but content-rebase missed first time round. Recovery commit verified by post-commit diff against PM-291 — habit-expander CSS restored (9 refs), engagement-v2 precache restored (1 ref), connect.html hydration listener intact (3 refs). No new functional regression.
+
+---
+
 ## 2026-05-24 PM-289 — Elite hero dot strip missing on first paint + connect-checkin POST race [vyve-site `1476b28f`]
 
 Two bugs on the Connect hub Elite section, found via Dean's screenshot tonight. The Elite hero showed "0 DAYS / 30 DAYS" end-cap numerals but **no dot strip between them** — the 10 dots that should sit there were entirely absent. Worse, despite the pencil card showing "CHECKED IN TODAY" with the tick state, Dean's actual `overall_streak_current` in `member_home_state` was 0. Server inspection showed `connect_checkins` table was **empty for every real member** — only `test1@test.com` had rows from the smoke test on 21–23 May. The PM-198 wiring was correct end-to-end: the SQL migration (`refresh_member_home_state_v1_internal` extends the streak UNION with `connect_checkins.checkin_date`) was applied, `home-state-local.js` includes `connect_checkins.allFor(email)` in the parallel-load Promise.all and projects rows into the activity shape before the local streak compute. Proven by direct SQL: inserted today + yesterday rows for Dean, ran `refresh_member_home_state('deanonbrown@hotmail.com')`, `overall_streak_current` jumped to 2 and `overall_streak_best` to 15 (the function picked up pre-existing activity from other sources too — only the check-in path was failing to land). The read path is correct; only the write side was broken.
