@@ -1,3 +1,81 @@
+## 2026-05-24 PM-261b → PM-267b — Home hero polish arc, 7 vyve-site commits (structural fix via §23.55/§23.57) [vyve-site `309be80e`]
+
+> **PM number collision note.** This session's seven vyve-site commits shipped to production with commit messages naming them PM-261 through PM-267. A parallel brain-only session also numbered itself PM-261 (the immediately preceding changelog entry — "Backlog item logged: native binary cut for OS-layer portrait lock"). Both are real; the on-disk vyve-site commit messages already carry the PM-261/-262/-263/-264/-265/-266/-267 numbers and can't be rewritten. This entry uses suffix-`b` (PM-261b...) in the changelog header to distinguish from the brain-only PM-261 logistics entry. The §23.57-codified PM-XXX placeholder discipline didn't fire because the two sessions didn't share a build window — by the time the parallel session logged its PM-261 to brain, my session had already shipped PM-261 through PM-267 to vyve-site, so the freshly-claimed-number check via `vyve-site` commit messages didn't surface the brain-side number. Worth thinking about whether the discipline should extend to brain-only entries; leaving as observation rather than a §23 patch.
+
+### Session arc
+
+Seven-commit iteration on the home hero, sequel to tonight's earlier PM-256 → PM-260 home redesign campaign. Started with Dean's PM-260 device check ("crop didn't help, the image stayed the same size you just zoomed in") and ended with a structural fix that mirrors Connect's canonical §23.55 + §23.57 doctrine. Net learning: when a hub page has established doctrine, apply it before improvising. The negative-margin band-aid I used across PM-264/-265/-266 was three commits papering over a problem that §23.57's existing fade element was designed to solve — I just couldn't see it because I'd never compared home against Connect side-by-side.
+
+| PM        | Commit       | Change                                                                   |
+|-----------|--------------|--------------------------------------------------------------------------|
+| 261b      | `99a27c7b`   | Shrink hero band 48vh → 40vh, restore 1024×1024 source JPGs (revert PM-260 crop) |
+| 262b      | `25a2a602`   | Fix build-banner SW handshake (page sent `GET_CACHE_NAME`, SW listened `GET_CACHE_KEY` — never connected) |
+| 263b      | `56db3bd6`   | Push hero image up: `background-position 70% center` → `70% 85%`         |
+| 264b      | `5c02b9c4`   | Greeting up 20px (66px), mood panel down 96px (clear of greeting), focus up 30px (negative margin on `.wrap`) |
+| 265b      | `926e1813`   | Mood up 20px more (-120px), focus up 20px more (margin -50px)            |
+| 266b      | `c5723612`   | Mood down 10px (-110px), focus up 30px more (margin -80px)               |
+| 267b      | `309be80e`   | **Structural fix**: hero 40vh → 35vh, kill negative margin, let §23.57 fade do the seam (canonical hub-page proportions matching Connect/Mind/Body) |
+
+(The "b" suffix is brain-changelog only — vyve-site commit messages carry the bare PM-261...PM-267 numbers, see "PM number collision note" above.)
+
+### PM-261b — Shrink hero, restore originals
+
+PM-260's source-crop didn't help on device — same band size, just less detail. Dean's correction: shrink the hero itself. Three coupled sites updated together per §23.55 invariant: `.index-hero` height, `body.home-page main` padding-top, `.mood-panel` anchor calc. All went from `max(360px, 48vh)` to `max(300px, 40vh)`. Also restored the three 1024×1024 source JPGs from PM-256 `135f4e33` (originals before the misguided PM-260 crop), giving the new smaller band the full source detail to work with. SW cache → `pm261-hero-shrink-a`, vbb-marker → Update 146.
+
+### PM-262b — Build-banner handshake fix
+
+Dean asked for an always-visible build pill so device-side cache state is legible at a glance. Discovered the existing PM-126/PM-127 build banner already exactly matched the gated cohort-on-device shape we wanted (gated by `?debug=build` URL param + localStorage self-persistence), but the `sw` cache key field always showed "checking…" because page-side and SW-side message types never matched: page sent `{ type: 'GET_CACHE_NAME' }` listening for `{ type: 'CACHE_NAME', cacheName }`, while SW listened for `{ type: 'GET_CACHE_KEY' }` and replied via `event.ports[0]` with `{ cacheKey }`. Two protocols, no handshake. Page-side rewritten to match SW's documented protocol (MessageChannel + port reply). Display trimmed to last 24 chars (drops verbose timestamp prefix). Resilience added: retry on `navigator.serviceWorker.ready` (first-ever-load no-controller case) + on `controllerchange` (SW swap mid-session).
+
+### PM-263b — Background-position up
+
+Single one-line CSS fix to push the photo up so the top ~15% of the source goes off the visible band: `background-position: 70% center` → `70% 85%`. Y='85%' aligns the image's 85%-line to container's 85%-line, shifting the image upward in the visible band. Figure-with-loch fills the band properly, dead sky strip cropped off the top. **This was the right tonal move for the photographic composition; the structural problem still loomed underneath.**
+
+### PM-264b / -265b / -266b — Negative-margin band-aid trilogy
+
+Three iterations of negative `margin-top` on `body.home-page .wrap` to pull Today's Focus visually higher. Started at -30px, escalated to -50px, then -80px. Each iteration also fiddled with mood panel anchor and greeting position. Visible improvement on first ship, diminishing returns thereafter, and Dean's PM-266 device screenshot finally surfaced what was actually wrong: the mood panel moved every iteration (because its anchor calc was being updated directly) but Today's Focus appeared not to move — because the negative margin was pulling the *whole wrap*, including the §23.57 `.index-hero-fade` element that sits as the wrap's first child. The fade was being yanked up into the photo zone where it had nothing to fade into. We were destroying the very tool that would have solved the problem.
+
+Important sub-discovery during PM-265: caught a §23.60-class issue when `$PAT` was lost between bash_tool invocations (each call is a fresh shell). Manifested as inconsistent 401s on the fetch path that worked moments earlier. Misdiagnosed for one tool call as "PAT rotation" before checking verbose curl output showed `[authorization: Bearer ]` — empty. Already codified in §23.60; worth noting that the failure mode still bites when you forget to re-`export` per-call.
+
+### PM-267b — Structural fix (the right move)
+
+Dean called the pattern explicitly: "look at connect and how that works and mirror it for [home]." Pulled up `connect.html`, found the §23.57 canonical scrolling-fade recipe (PM-237 → PM-244 origin), then audited home against it. Home already had the fade CSS + DOM in place from PM-256 — the fade was just being defeated by the negative-margin shift. Three coupled structural changes:
+
+1. **Hero band 40vh → 35vh.** Three coupled sites moved together per §23.55: `.index-hero` height, `main` padding-top, `.mood-panel` anchor calc. Matches Connect / Mind / Body canonical hub-hero proportions.
+2. **Negative margin gone.** The PM-264/-265/-266 saga deleted in one swipe. The §23.57 fade element does the seam bridge now, as intended.
+3. **Greeting +66px → +56px** to maintain visual balance with the smaller hero.
+4. **Mood panel anchor recalculated** for the 35vh hero (still at `hero-base - 100px`; on iPhone ~300px hero - 100px = ~200px from top, below the greeting+tagline).
+
+vbb-marker Update 152, sw cache `pm267-structural-hero-shrink-a`.
+
+### Discipline honoured (all 7 commits)
+
+§23.41 (parallel-session HEAD recheck twice per commit — and the brain commit at session close caught the parallel-session collision documented above), §23.45 (PAT-direct via Vault — Composio still 401 ~3 days post 21 May incident; no fresh Composio attempts tonight, Vault path stable across all seven), §23.52(a) (PM-261b had three binaries over 95KB each routed via file payload, no `python3 -c argv` overflow this time — but the first commit attempt did expose a related failure mode where `python3 -c` was called inside a shell loop with embedded base64 of larger files and silently fell back to the previous payload, fixed by moving the whole commit flow to pure Python urllib — see "§23.52(a) corollary" patch in master), §23.52(b)(c), §23.53.
+
+### New / patched §23 hard rules
+
+**§23.62 added** — Hub-page doctrine adherence: when a page is one of the four hubs (Home / Body / Mind / Connect), audit it against `playbooks/hub-page-hero-doctrine.md` + §23.55 + §23.57 before reaching for ad-hoc CSS solutions on the hero band. The seven-commit arc tonight would have collapsed to one structural commit if I'd diffed home against Connect at PM-261b rather than at PM-267b. Full text in master.md §23.
+
+**§23.52(a) corollary patched into master** — when a commit flow combines bash and Python in the same script, do the whole flow in pure Python urllib. Bash `for` loops with embedded base64 of multiple files via `python3 -c` can silently reuse the previous payload's content when argv overflows — exact symptom seen in PM-261b first-attempt: blobs created for sw.js + 3 JPGs all had the same SHA (index.html's), because the embedded base64 in argv was rejected, the python3 invocation never ran, and curl re-sent the previous payload. Caught immediately by §23.52(b) post-commit md5 verify (all four would-be blob SHAs identical = obvious failure mode). Reference implementation `/home/claude/commit.py` already follows pure-Python; the dash-vs-bash detour was the trap.
+
+### State after the seven commits
+
+- vyve-site main: `309be80e304f5775e00bfa97cbd1f92f212c123f`
+- Dean's dev iPhone: picks up Update 152 on next WKWebView cache cycle (2-15 min)
+- Bundled cohort: still on `83874dd5` from PM-115/116; sees all seven commits on next Capawesome OTA
+- Composio: still 401-ing (~3 days since 21 May incident); no fresh attempts tonight
+- §23 hard rules: §23.62 added (was at §23.61)
+- Hub-hero campaign: still closed at the campaign level; tonight's work is asset/position refinement on a shipped hub-hero. PM-267b brings the home hero into full §23.55 + §23.57 compliance for the first time (PM-256 originally shipped the structure but with non-canonical 48vh proportions — PM-267b standardises).
+
+### What's next on this surface
+
+Per backlog (Added 24 May PM after PM-257):
+- **Focus card hero imagery** (3 Gemini prompts in Dean's pocket — morning forest path / midday sunlit windowsill / evening candle). Replace gradient art block.
+- **Real per-track progress data on My Progress rings** (currently placeholder zeros — `home-state-local.js` compute path).
+- **Pillar realignment of My Progress rings** to Habits / Body / Mind / Connect / Check-ins per PM-198 — separate campaign touching achievement engine + cert naming.
+- **Mood panel scroll behaviour** — Dean flagged in PM-265b: panel is `position: fixed`, so as the page scrolls the panel stays pinned mid-screen over Today's Habits. Open question whether intentional (one-tap-then-dismiss commitment) or a bug (should scroll with hero, dismiss on out-of-view). Added to backlog.
+
+---
+
 ## 2026-05-24 PM-261 — Backlog item logged: native binary cut for OS-layer portrait lock (Monday session) [brain only]
 
 Dean device-tested PM-250's portrait lock and confirmed the device still rotates freely. Traced through: PM-250 shipped the right work in both halves — `vyve-site` `6b61d95d` deleted the JS overlay + CSS rule, and `vyve-capacitor` `4f5f55ae` set `Info.plist UISupportedInterfaceOrientations = [UIInterfaceOrientationPortrait]` + `AndroidManifest.xml screenOrientation="portrait"`. But native manifest files are baked into the IPA/AAB and Capawesome OTA only ships web assets, so the cohort members and Dean run still rotates. No JS/CSS hack fixes it from inside the WebView — the hardware-level rotation event has to be blocked at the OS layer, which requires a new binary cut.

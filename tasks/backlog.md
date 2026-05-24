@@ -1,3 +1,36 @@
+## Added 24 May 2026 PM — PM-267b follow-ups (home hero polish arc closer)
+
+The seven-commit hero arc (PM-261b → PM-267b — see changelog for b-suffix explanation; on-disk vyve-site commits are PM-261 through PM-267) brought home into full §23.55 + §23.57 hub-page compliance. Three follow-ups deferred from the arc, plus the PM-257 follow-ups below remain open.
+
+### Mood panel scroll behaviour — fixed vs scrolls-with-hero
+
+**Status.** `.mood-panel` is `position: fixed` with `top: calc(max(250px, 35vh) - 100px)`. As the member scrolls down, the hero scrolls away (its image is `background-attachment` painted on a fixed element body-level) but the mood panel stays pinned mid-screen and ends up floating over Today's Habits. Dean's PM-265b device screenshot showed this clearly — panel overlapping the habit list with no clear dismiss affordance.
+
+**Open question.** Is this intentional or a bug?
+
+- **Intentional reading.** The mood panel is a one-tap-then-collapse commitment surface. Pinning it in viewport while the member scrolls past the hero ensures they can't avoid the prompt by scrolling. Skip button + auto-collapse after submit are the documented dismiss paths.
+- **Bug reading.** It should scroll *with* the hero (not be `position: fixed`) and disappear from view when the member scrolls past it. Same prompt visibility on first paint, but doesn't obstruct content once scrolled past. Member never has to interact with it to keep using the page.
+
+**Plan if "bug" wins:** change `position: fixed` to `position: absolute` (anchored to hero band), keep the same `top:` calc, drop the `z-index: 6` to `z-index: 3` so wrap content covers it on scroll like all other hero-zone elements.
+
+**Estimate if "bug":** ~10 min, single CSS edit + cache bump. No JS changes (the panel's lifecycle is already correct — opens on first visit per day, collapses on submit, doesn't repaint).
+
+**Decision triggers:** Dean's next device session. Worth asking explicitly.
+
+### Mood panel - greeting visual relationship verification
+
+**Status.** PM-267b puts the mood panel at hero-base - 100px (relative to a 35vh hero ~300px on iPhone, so panel at ~200px from top). Greeting at safe-area + 56px (~103px on iPhone with default 47px safe-area). Tagline below greeting ends around ~140-150px. Mood panel starts at 200px = ~50-60px clearance below tagline.
+
+**Plan.** Verify on device that the clearance reads cleanly. If panel overlaps tagline at any iPhone height (XS/Mini/etc. with smaller viewports), adjust the `100px` offset.
+
+**Estimate:** Device-only check, no code unless overlap reproduces. ~5 min review.
+
+### Backlog audit: home hero canonical compliance verified
+
+PM-267b closes the §23.55 / §23.57 non-compliance the original home redesign (PM-256) shipped with. Home is now structurally equivalent to Mind / Body (exercise.html) / Connect at the hero band. No further hero-area structural work expected — only tonal refinements (photographic backgrounds, color grading, copy tweaks).
+
+---
+
 ## Added 24 May 2026 PM — Native binary cut: ship PM-250 OS-layer portrait lock + video-fullscreen landscape exception [Monday session]
 
 **Status.** PM-250 (23 May) deleted the web-shell "rotate your phone back to portrait" overlay AND made the matching `vyve-capacitor` commit `4f5f55ae` locking portrait at the OS layer (`Info.plist UISupportedInterfaceOrientations = [UIInterfaceOrientationPortrait]` on iPhone, `AndroidManifest.xml MainActivity android:screenOrientation="portrait"`). The web side is live for everyone via OTA. But native files are baked into the IPA/AAB and Capawesome only ships web assets — so the binary cohort members and Dean are running still rotates freely, with no overlay to hide it. Dean confirmed on device 24 May PM ("you can still turn the app to the side").

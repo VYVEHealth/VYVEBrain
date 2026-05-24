@@ -3042,6 +3042,37 @@ The first is cleaner — preferred. The second is acceptable when iterating on a
 **Cross-reference.** §8 hub-page hero pattern (which references all three: connect.html, mind.html, exercise.html). §23.57 fade recipe applies to all three.
 
 
+### §23.62 — Hub-page doctrine adherence: audit against `playbooks/hub-page-hero-doctrine.md` + §23.55 + §23.57 before improvising (PM-261b → PM-267b, 24 May 2026)
+
+**Earned PM-261b → PM-267b** (seven vyve-site commits — see brain/changelog.md 2026-05-24 entry for the b-suffix explanation). A seven-commit arc on the home hero that should have been one commit. PM-260 left the home page with non-canonical hero proportions (`max(360px, 48vh)`, then `max(300px, 40vh)`) vs Connect's canonical `max(250px, 35vh)`. Dean's "the hero has too much dead space" feedback should have triggered an immediate diff of home against `connect.html`. Instead it triggered five iterations of *positional* fixes (background-position, negative margin on `.wrap`, mood-panel anchor recalcs, greeting top offsets) — each individually defensible but collectively three commits papering over the structural issue. The §23.57 fade element was already in the home page's CSS + DOM (shipped in PM-256) but was being dragged out of its useful position by the negative-margin band-aid, so it had nothing to fade into. PM-267b closed the arc by deleting the band-aid and standardising the hero to canonical hub-page proportions.
+
+**Rule.** When working on a page that is one of the four hubs (Home / Body / Mind / Connect) and a hero-area change is requested:
+
+1. Before touching CSS, read `playbooks/hub-page-hero-doctrine.md` and re-confirm §23.55 (hub-hero layout invariants) + §23.57 (scrolling-fade recipe) + §23.61 (Body = exercise.html). These three sections together are the canonical contract.
+2. **Diff the target hub page against a known-canonical hub page** — Connect is the reference implementation, since it earned the §23.57 fade across PM-237 → PM-244 and the §23.55 layout across PM-216 → PM-226. Mind and Body inherited from Connect. Home shipped a hub-hero in PM-256 but with non-canonical 48vh / 40vh proportions; PM-267b brought it into the standard.
+3. **If the page is already §23.55/§23.57-compliant** and the request is purely a tonal refinement (image swap, background-position tweak, eyebrow text change), proceed normally.
+4. **If the page deviates from canonical** (different hero height, missing fade element, fade element in the wrong place, ad-hoc margin tricks on `.wrap`/`main`), the first commit must restore canonical compliance. Subsequent commits do the tonal work on top.
+
+**Anti-pattern.** Negative `margin-top` on the `body.<hub>-page .wrap` selector. The wrap is the §23.57 fade element's anchor — pulling the wrap upward pulls the fade upward with it, into the photo zone where it has nothing to fade. If the dead space between hero and content feels wrong, the answer is one of: (a) hero band too tall — shrink to canonical 35vh; (b) fade element missing or wrongly positioned — add per §23.57 recipe; (c) sec-label margins too generous — adjust the `.sec-label` rule, not the wrap. *Never* `.wrap { margin-top: -Npx }`.
+
+**Audit signal.** Any commit that adds `margin-top` with a negative value to a hub-page wrap selector is a §23.62 smell. Search `git diff` for `margin-top: -` before approving any hero-area commit.
+
+**Why this rule was missed for so long.** The hub-page doctrine is well-documented (master.md §23.55, §23.57, §23.61 + dedicated playbook) but the documentation is scattered across multiple §23 sections and a playbook file. There's no single "check this first" entry point for hub-page work. §23.62 is that entry point.
+
+**Related rules.** §23.55 (hub-page hero layout invariants), §23.57 (scrolling-fade recipe), §23.61 (Body = exercise.html), §23.42 (every vyve-site commit needs sw.js + vbb-marker bumped together).
+
+### §23.52(a) corollary — bash `for` loops with embedded base64 of multiple files via `python3 -c` silently reuse previous payload (PM-261b, 24 May 2026)
+
+**Earned PM-261b first commit attempt.** Five-file commit (3 binary JPGs over 95KB each + 2 text files) issued through a bash `for` loop that embedded each file's base64 content into a `python3 -c` argv to write the JSON blob payload. argv overflow on files >~32KB caused `python3 -c` to abort silently with `/bin/sh: python3: Argument list too long`. The shell loop continued. The curl POST that followed re-sent the previous request body (which still pointed at /tmp/blob_payload.json containing index.html's content). Result: sw.js + 3 JPG blobs all returned the same SHA as index.html — caught immediately by §23.52(b) post-commit md5 verify, which would have shipped corrupt files otherwise.
+
+**Rule (corollary to §23.52(a)).** When a commit flow needs to create multiple blobs from files of varied size, do not embed file content in bash argv at any stage. The entire commit pipeline must be a single Python process (urllib.request) — blobs, tree, commit, ref update, post-commit verify, all in one script. Reference implementation `/home/claude/commit.py`. The dash-vs-bash, `python3 -c` embedded payload, and `for fn in ...; do create_blob` loop patterns are all forbidden for multi-file commits.
+
+**Why this is a corollary and not its own rule.** §23.52(a) already says "never substitute large file bodies into bash argv via `-d \"$body\"`". The corollary extends the same logic to *any* mechanism that puts file content in bash argv — including `python3 -c "...$base64..."`. Same failure mode (silent argv overflow), same recovery shape (re-issue via pure Python), same audit signal (multiple blob SHAs identical when files differ).
+
+**Audit signal.** After every blob create batch, sanity-check that all returned SHAs are distinct (unless two files genuinely have identical content, which is rare). Pure Python urllib bypasses argv entirely — JSON body lives in a Python dict, gets serialised in-memory, sent as request body via `urllib.request.urlopen(req, data=...)`.
+
+
+
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.
