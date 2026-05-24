@@ -1,3 +1,63 @@
+## 2026-05-24 PM-268 — Today's Focus image library shipped (12 photographic JPGs into sw precache) [vyve-site `aac2b10f`]
+
+Asset-only commit, sequel to PM-261b → PM-267b. Twelve 384×256 q82 progressive JPEGs landed at vyve-site root and added to sw precache, ready for consumption by the upcoming `/focus/<slug>.html` campaign. No code references the images yet — they sit idle in cache until the Today's Focus pages ship in the next session.
+
+### Session arc — planning, image generation, and architectural decisions
+
+Three-phase session that started as a "what's next on the home surface" conversation and ended with a deliberate architectural decision and the visual assets shipped.
+
+**Phase 1 — Gap analysis.** Dean shared three device screenshots (target design + current state). Identified gaps: Today's Focus card is a teal+emoji placeholder, "What's On Next" rail is missing entirely, My Progress rings show placeholder zeros, mood panel question (`position: fixed` vs scrolls-with-hero). Confirmed via target reference that mood panel SHOULD stay pinned over the hero (intentional, matches design). Closes that backlog question.
+
+**Phase 2 — Today's Focus design discussion.**
+
+- **Daily-nudge model chosen** over weekly-theme model and persona-driven model. v1 = 2-10 minute action that varies by day + TOD.
+- **Twelve category model** chosen over a 3-photo TOD model — scales without rework as Lewis populates copy.
+- **Inline-action over per-page initially recommended** by Claude, then **reversed to per-page after Dean pushed back on "edit one thing" maintainability concern**. The reasoning that flipped it: a polished premium experience per category benefits from a clean-slate page environment (no parent CSS cascade, page-level transitions, easier full-screen immersive states), and shared `focus.css` + `focus-shell.js` give the same global-edit ergonomics the sheet pattern offered.
+- **3:2 landscape (1536×1024)** chosen over 1:1 square — matches the reference design's card slot proportions, gives more usable canvas for future card-size growth.
+- **Light-mode strategy Option C** (theme-aware card composition with photo-right + solid-panel-left in light mode) chosen over Option A (separate dark/light image sets — too much Gemini work) and Option B (CSS overlay on dark photos in light mode — washed-out compromise look).
+- **HealthKit treatment honest across cohorts**: timer-first, sensor-second. Walk sheet always shows beautiful countdown; HealthKit/Health Connect data appears as enrichment if available, hidden entirely if not (no "—" placeholders). Movement is the *only* of the twelve categories that benefits from a sensor — the other eleven are sensor-free by design.
+
+**Phase 3 — Image generation and ship.**
+
+- 12 prompts written and given to Dean — each used a shared "1536×1024 landscape, deep teal + forest green tones, subject in right two-thirds, quiet left third for copy overlay, no people facing camera, no text/logos, slight grain" shell with category-specific subject prompts.
+- Dean generated all 12 via Gemini; all came back to spec on first try.
+- Processed via Python/PIL: crop ~4.5% off bottom to remove Gemini sparkle watermark, centre-crop to 3:2, downscale 384×256 LANCZOS, save q82 progressive JPEG, optimize.
+- Two images (sleep, fuel) needed a second pass at 10% bottom crop because Gemini placed the watermark slightly higher than usual on those.
+- Total payload: 205KB across 12 images. Final sizes range 11.5KB (sleep, outdoors) to 31.1KB (movement, the woodland path with most detail).
+- Atomic 14-file commit to vyve-site via Vault PAT direct (Composio still 401 ~3 days post 21 May incident). Git Data API path: blobs → tree → commit → ref. §23.52(a) corollary respected — pure Python urllib throughout, no bash/Python hybrid script. §23.52(b) first-100-bytes post-commit verification on all 14 files: all matched.
+
+### State after this commit
+
+- vyve-site main: `aac2b10fd768069b5abef39bfdf98a3242a59d00`
+- sw cache key: `pm267-structural-hero-shrink-a` → `pm268-focus-images-bundle-a`
+- vbb-marker: Update 152 → Update 153
+- 12 new files at vyve-site root: `/focus-reset.jpg`, `/focus-movement.jpg`, `/focus-reflection.jpg`, `/focus-hydration.jpg`, `/focus-sleep.jpg`, `/focus-morninglight.jpg`, `/focus-gratitude.jpg`, `/focus-focus.jpg`, `/focus-restore.jpg`, `/focus-connect.jpg`, `/focus-fuel.jpg`, `/focus-outdoors.jpg`
+- All 12 added to sw.js precache (after the `index-hero-night.jpg` block)
+- Dean's dev iPhone: picks up Update 153 on next WKWebView cache cycle (2-15 min)
+- Bundled cohort: still on `83874dd5` from PM-115/116; will get images + Today's Focus pages together on next Capawesome OTA, plus full bundle into the next iOS/Android binary cut (planned by Dean for "next couple of days")
+
+### Discipline honoured
+
+§23.41 (fresh HEAD twice — once at session-start brain read, once at vyve-site commit time, both matched the brain state `309be80e`), §23.45 (Vault-PAT direct path used throughout — no fresh Composio attempts this session), §23.52(a) (pure Python urllib commit pipeline, no bash/Python hybrid trap), §23.52(b) (first-100-bytes post-commit verification on all 14 files), §23.60 (no `cd` reliance across bash_tool calls — absolute paths throughout the image-processing pipeline), §23.62 (didn't touch the home hero this session — images are downstream assets for a future page-build campaign, not hero-area work).
+
+### No new §23 hard rule earned
+
+PM-268 is an asset-ship and a planning artefact. The architectural decisions (per-page over inline-sheet, twelve-category over three-TOD, photographic over emoji, dark-mode-anchored with light-mode panel-split, HealthKit-honest-across-cohorts) are doctrine for the next campaign — the Today's Focus page build — and will earn their §23 entries when that campaign closes, not before.
+
+### What's next on this surface
+
+The Today's Focus pages campaign — PM-269 onwards. See `tasks/backlog.md` for full scope. Headline shape:
+
+- Bundle the 12 images into Capacitor `www/` on next sync (so the bundled cohort gets them in-binary too, not just via sw precache OTA)
+- `home-focus-catalogue.js` — JSON-in-code catalogue of TOD × day-of-week × category × copy
+- `focus.css` + `focus-shell.js` — shared chrome (back button, glass UI, theme-aware composition)
+- `/focus/<slug>.html` × 12 — one HTML page per category, all scaffolded together so home carousel has no dead links
+- Two pages built to production quality (Reset + Movement as reference impls); other ten ship as scaffolds with working complete-button + log-activity wiring, content polished over the following weeks
+- Home `index.html` Today's Focus card replaced with 3-card carousel linking to `/focus/<slug>.html`
+- HealthKit integration on Movement page via existing Capgo plugin path (snapshot-on-completion v1, polling upgrade as v2 follow-up)
+
+---
+
 ## 2026-05-24 PM-261b → PM-267b — Home hero polish arc, 7 vyve-site commits (structural fix via §23.55/§23.57) [vyve-site `309be80e`]
 
 > **PM number collision note.** This session's seven vyve-site commits shipped to production with commit messages naming them PM-261 through PM-267. A parallel brain-only session also numbered itself PM-261 (the immediately preceding changelog entry — "Backlog item logged: native binary cut for OS-layer portrait lock"). Both are real; the on-disk vyve-site commit messages already carry the PM-261/-262/-263/-264/-265/-266/-267 numbers and can't be rewritten. This entry uses suffix-`b` (PM-261b...) in the changelog header to distinguish from the brain-only PM-261 logistics entry. The §23.57-codified PM-XXX placeholder discipline didn't fire because the two sessions didn't share a build window — by the time the parallel session logged its PM-261 to brain, my session had already shipped PM-261 through PM-267 to vyve-site, so the freshly-claimed-number check via `vyve-site` commit messages didn't surface the brain-side number. Worth thinking about whether the discipline should extend to brain-only entries; leaving as observation rather than a §23 patch.

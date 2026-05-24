@@ -1,3 +1,67 @@
+## Added 24 May 2026 PM — PM-269 onwards: Today's Focus pages campaign (NEXT SESSION)
+
+**Status.** Image library shipped at PM-268 (`aac2b10f`). Architectural decisions all made (see brain/changelog.md PM-268 entry + brain/master.md §19). Ready to build next session.
+
+### Scope
+
+Replace the current Today's Focus placeholder card on `index.html` with:
+
+1. **3-card horizontal carousel** at the top of home content area (between hero and Today's Habits) — morning / midday / evening, snap-scroll, midday auto-centred as current TOD, swipeable to morning/evening. Tapping any card navigates to `/focus/<slug>.html`.
+2. **`/focus/<slug>.html` × 12** — one HTML page per category. Two built to production quality as reference impls (Reset + Movement); ten ship as scaffolds with the shared chrome + working complete-button + `log-activity` wiring, content polished over following weeks.
+3. **Shared chrome.** `focus.css` (typography, glass effects, motion primitives, theme-aware composition) and `focus-shell.js` (back nav, theme.js wire-up, auth check, sw, complete-logging) — single source of truth for all twelve pages.
+4. **`home-focus-catalogue.js`** — JSON-in-code catalogue of `{ slug, eyebrow, title, body, image, tod, day_of_week, duration_min, link_url }`. Lewis populates copy in a follow-up pass. Migrates to a Supabase `daily_focus` table when admin console catches up.
+5. **HealthKit on Movement** — snapshot-on-completion v1 (query HealthKit at walk start, again at end, diff = walk data). Live polling upgrade as v2 follow-up. Cohort-aware UI: iPhone+HealthKit shows live data, iPhone-no-HealthKit shows "Connect Apple Health →" link, Android hides the indicator entirely until Health Connect ships.
+
+### Reference materials
+
+- `staging/focus-card-mockup.html` (if uploaded) — dark/light card composition reference (Option C: photo-right + solid-panel-left in light mode)
+- `staging/premium-focus-mockup.html` (if uploaded) — production-quality reference for Reset (breathing) and Movement (walk idle + active states). Demonstrates the photographic-ground, glass-chrome, Playfair-large-numerals, multi-ring orb pattern.
+- Both mockups built in chat during PM-268 planning session. Dean approved the premium-mockup as "pretty good" quality bar; concern that flipped the route from inline-sheets to per-page was "easier just to edit one thing" maintainability + "each page can be a little bit more premium" ceiling.
+
+### Build order for next session
+
+1. Read brain (master + changelog + backlog) per session-load protocol
+2. Confirm vyve-site HEAD still at `aac2b10f` (no parallel session activity)
+3. Bundle the 12 images into Capacitor `www/` via `npx cap sync` for the upcoming binary cut (Dean mentioned "next couple of days" for full bundle submission to Apple)
+4. Build `focus.css` + `focus-shell.js`
+5. Scaffold all 12 `/focus/<slug>.html` pages — even minimal — so home carousel has no dead links
+6. Polish `/focus/reset.html` to production quality (breathing orb with multi-ring system, photographic ground, glass chrome, Playfair timer, sticky CTA)
+7. Polish `/focus/movement.html` to production quality (two-state idle/active, duration picker, HealthKit indicator pill, snapshot-on-completion via Capgo plugin)
+8. Replace home Today's Focus card with 3-card carousel in `index.html`
+9. `home-focus-catalogue.js` with placeholder copy in Lewis-voice-draft style
+10. sw.js cache key bump + precache the 12 focus pages + `focus.css` + `focus-shell.js` + `home-focus-catalogue.js`
+11. Bump vbb-marker
+12. Atomic commit via Vault PAT (Composio likely still 401)
+
+### Estimated session size
+
+~5-7 hours Claude-assisted. Larger than the typical single-session ship, but split-able if context runs tight: phase 1 (scaffolds + carousel + Reset polish + commit), phase 2 (Movement polish + remaining 10 page content + Lewis copy + second commit).
+
+### Decisions already made (don't re-litigate)
+
+- ✅ Per-page route (NOT inline sheets)
+- ✅ Twelve categories (NOT three TOD-only)
+- ✅ Photographic (NOT emoji + gradient)
+- ✅ Bundle into binary (Dean confirmed next-day cut anyway)
+- ✅ Light mode = Option C (photo-right + panel-left)
+- ✅ HealthKit = timer-first, sensor-second, snapshot-on-completion v1
+- ✅ Two polished + ten scaffolds for first ship; content polish over weeks
+- ✅ Carousel auto-centres on current TOD but all three swipeable
+
+---
+
+## Closed 24 May 2026 PM — Resolved during PM-268 planning session
+
+### ✅ Focus card hero imagery (PM-257 follow-up) — RESOLVED via PM-268
+
+Twelve photographic JPGs shipped at PM-268 (`aac2b10f`). Originally scoped as three TOD photos (morning forest / midday windowsill / evening candle) — expanded to twelve-category model during PM-268 planning to scale without rework as Lewis adds copy. All twelve at vyve-site root + sw precache. **Page-build campaign opens at PM-269 (see top of backlog).**
+
+### ✅ Mood panel scroll behaviour — RESOLVED as intentional
+
+Backlog question from PM-267b follow-ups: is `position: fixed` on the mood panel intentional (one-tap-then-dismiss commitment surface pinned to viewport) or a bug (should scroll with hero, disappear out of view)? Reference target image from PM-268 planning settles it: target has mood panel pinned over the hero photo with the five face emojis, scrolls-with-page-content NOT viewport-fixed. **Confirmed: current `position: fixed` matches the target. No change needed.** Closing the follow-up.
+
+---
+
 ## Added 24 May 2026 PM — PM-267b follow-ups (home hero polish arc closer)
 
 The seven-commit hero arc (PM-261b → PM-267b — see changelog for b-suffix explanation; on-disk vyve-site commits are PM-261 through PM-267) brought home into full §23.55 + §23.57 hub-page compliance. Three follow-ups deferred from the arc, plus the PM-257 follow-ups below remain open.

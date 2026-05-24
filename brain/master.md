@@ -861,6 +861,27 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 24 May 2026 PM-268 (Today's Focus image library shipped — 12 photographic JPGs at vyve-site root, all added to sw precache. Asset-only commit ready for the Today's Focus pages campaign starting next session. 14-file atomic commit `aac2b10f` via Vault PAT direct, total payload 205KB across all 12 images. sw cache `pm268-focus-images-bundle-a`, vbb-marker 153.)
+
+**PM-268 (24 May 2026 PM, vyve-site `aac2b10f`).** Twelve photographic category images shipped as bundled assets for the upcoming Today's Focus pages campaign. No code references them yet — they sit idle in sw cache until the home carousel + `/focus/<slug>.html` pages arrive (next session).
+
+**The twelve.** `reset` (steaming cup by window), `movement` (woodland path with golden light), `reflection` (open journal + mug), `hydration` (water glass + mint + lemon), `sleep` (candle + knitted throw + book), `morninglight` (sunlit windowsill + plant), `gratitude` (ceramic bowl with stone + leaf + rosemary), `focus` (dark desk + notebook + lamp), `restore` (misty hills at golden hour), `connect` (two mugs by window), `fuel` (sourdough + blueberries + almonds), `outdoors` (misty mountain loch with pines). All Gemini-generated to a shared shell prompt: 1536×1024 landscape, deep teal + forest green tones with warm highlights, subject in right two-thirds, quiet darker left third for copy overlay, no people facing camera, no text/logos, slight grain for warmth. Downscaled to 384×256 q82 progressive JPEG. Total 205KB.
+
+**Architectural decisions captured for next session's build campaign.** Per-page route chosen (`/focus/<slug>.html` × 12 with shared `focus.css` + `focus-shell.js`) over inline-sheet pattern, after Dean pushed back on the "edit one thing" maintainability question. Reasoning: shared CSS/JS gives the same global-edit ergonomics as the sheet pattern offered, while standalone pages give a higher per-page premium ceiling (no parent CSS cascade, page-level transitions, easier full-screen immersive states) and URL-addressability as a bonus. Light-mode strategy = Option C (theme-aware card composition with photo-right + solid-panel-left), see `staging/focus-card-mockup.html` for the dark/light card composition reference. HealthKit treatment = timer-first, sensor-second across all cohorts (iPhone-HealthKit / iPhone-no-HealthKit / Android / desktop), no degraded-experience placeholders — Movement is the only of the twelve categories that benefits from a sensor, so we solve it once properly there and the other eleven are sensor-free by design.
+
+**No new §23 hard rule earned.** PM-268 is an asset-ship plus planning artefact. Architectural decisions will earn their §23 entries when the next campaign (Today's Focus pages) closes, not before.
+
+**State after this commit.**
+
+- vyve-site main: `aac2b10fd768069b5abef39bfdf98a3242a59d00`
+- sw cache key: `pm268-focus-images-bundle-a`
+- vbb-marker: Update 153
+- 12 new image files at vyve-site root, all in sw precache
+- Composio still 401 (~3 days since 21 May incident); Vault PAT direct used throughout
+- §23 hard rules unchanged (last addition was §23.62 in PM-267b)
+
+---
+
 ## 19. Current status — 24 May 2026 PM-258 (Mood selector SVG faces + hero image lifted ~15%. Same-night small-touch ship after Dean device-tested PM-257 — mood selector going from emoji to custom inline-SVG line-drawn faces (no Unicode glyph rendering, no platform-emoji inconsistency); hero `background-position` lifted from `70% center` to `70% 65%` so the photo fills the lower two-thirds of the band and the dead-sky strip at top shrinks. 2-file atomic commit `95e840cd`, sw cache `pm258-mood-svg-faces-a`, vbb-marker 143.)
 
 **PM-258 (24 May 2026, vyve-site `95e840cd`).** Two-touch refinement on top of PM-257 — mood selector visual swap + hero image position tune.
