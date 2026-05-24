@@ -1,3 +1,27 @@
+## 2026-05-25 PM-309 — Grace-day streak rule (Duolingo-style, both SQL + client) [vyve-site `23d2fc9f`]
+
+**The bug.** Dean's streak showed 11/30 around 22:30 BST. At 00:00 it dropped to 0/30 — the calendar ticked over to 25 May, today's date wasn't in the active-day set yet, and `WHERE run_end = v_today` returned no row from the runs CTE. COALESCE → 0. The streak compute was treating midnight as a punishment moment: log nothing in the first hour of a new day and you lose your streak. Dean's exact ask: "doesn't reset until the day goes to midnight midnight" — i.e. Duolingo's rule, where today's window is yours to use, the streak only drops if you let a whole day pass empty.
+
+**The fix.** Grace-day rule applied to both `refresh_member_home_state_v1_internal` SQL function and `home-state-local.js` client compute. Every `WHERE run_end = v_today` became `WHERE run_end IN (v_today, v_today - 1) ORDER BY run_end DESC LIMIT 1`. Same shape for the per-type streaks (habits, workouts, cardio, sessions) and the overall streak. Wellbeing weekly streak got the iso-week analog: `run_end IN (v_cur_wkidx, v_cur_wkidx - 1)`. JS computeStreak/computeWeeklyStreak follow the same logic. Best values unchanged — best is longest run ever.
+
+**Verified end-to-end.** test1@test.com at 00:29 London on 25 May. Last activity 23:29 on 24 May. Pre-PM-309: overall_streak_current would have returned 0 (today has no activity, yesterday's run not eligible). Post-PM-309: returns 6 (the 20→25 run, today included because a sub-second post-midnight log already stamped 2026-05-25 in the active-day set; if today were genuinely empty, yesterday's run-of-5 would have been picked up instead).
+
+**Caveats logged for follow-up.**
+
+1. **movement_activities table from PM-307 is not in the streak union yet.** PM-307 added a new first-class table for movement events but didn't extend `refresh_member_home_state_v1_internal`'s UNION to include it. So a future workflow where someone logs movement-only via the new table won't extend their streak until PM-307's integration finishes. Filed as backlog. The other Claude session owns the movement_activities path; I'll flag to them via brain.
+
+2. **Push notification path deferred.** Dean asked for a 7/8/9pm push reminder when at-risk-of-losing-streak. Needs Capacitor push-notifications plugin audit (iOS APNs key in vault, Android FCM credentials), a daily cron at ~19:00 UTC computing at-risk members (streak ≥3 AND no activity today AND no activity yesterday), Lewis-owned copy, and a Brevo-or-native dispatch path. Filed for PM-310+. Not appropriate as a tack-on at 00:35 BST.
+
+3. **Certificates path remains idempotent.** Member could see 30 days both today and tomorrow morning until they lapse — certificate-checker v9 dedupes on (member_email, track, tier) so the cert fires once at first 30-day crossing regardless. No downstream regression.
+
+4. **Leaderboard tie-break behaviour improves.** Two members tied at N days no longer break on "who logged first today" — they tie genuinely until one lapses. Cleaner.
+
+**Tooling.** Other Claude session shipped PM-303 through PM-308 in the 30 minutes I was working on grace-day (notably PM-304 took on the YouTube IFrame live-session attribution that I had explicitly parked earlier as PM-295+ scope — good, that's the cleaner path long-term and now lives). HEAD churn handled cleanly via §23.41 + §23.66 pre-commit content-rebase: re-fetched sw.js + index.html from live HEAD immediately before building blobs, applied single-line cache-key + vbb-marker bumps to fresh content (not session-cached versions). 4 diff lines each, bounded. HEAD steady at `32bbb49d` (PM-308 engv2-header-cleanup) through commit. SQL migration applied via Supabase MCP atomically — full function replacement.
+
+PM number jumped from my planned PM-303 to PM-309 because PM-303 through PM-308 were taken in flight. §23.14 fresh-HEAD-recheck caught it before commit, no collision.
+
+---
+
 ## 2026-05-25 PM-309 — Achievements deep-dive prompt drafted into brain/staging/
 
 [brain `(this commit)`, no vyve-site change]

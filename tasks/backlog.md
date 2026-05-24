@@ -5328,3 +5328,36 @@ Calum (Physical Health Lead) has delivered the spec, scoring data, and QA framew
 
 **Optimistic-write reconciliation watchdog (§23 candidate).** Tonight's PM-289 found that `connect_checkins` POSTs had been silently failing in iOS WKWebView for days — the optimistic Dexie write held the UI in a confident "posted" state with no diagnostic surface at all, even though server never received the row. Read paths have §23.46 ("paint truth, not placeholders") to keep them honest; write paths have no equivalent. Worth a §23 hard rule once this pattern recurs: every optimistic-first write must have a reconciliation watchdog that, within N seconds of the optimistic Dexie write, verifies the row exists server-side and surfaces a visible failure banner if not. PM-289 only fixes the iOS race (keepalive + awaited navigation) — if POSTs still fail in the wild after this ship, the new `console.error` on 4xx will show what's actually rejecting. Hold the §23 rule until we see one more occurrence to confirm the failure mode generalises.
 
+
+### Added 2026-05-25 — PM-309 follow-ups
+
+**1. movement_activities table integration into streak/engagement (PM-307 follow-up).**
+PM-307 shipped `movement_activities` as a first-class table but did not extend
+`refresh_member_home_state_v1_internal`'s UNION to include it. Currently the streak
+compute still reads from the legacy `workouts` + `cardio` tables only. When
+movement_activities becomes canonical (or in parallel), the SQL function's UNION
+needs extending with `SELECT activity_date FROM movement_activities WHERE member_email = e`
+in three places: per-type streak compute (probably a new movement_cur block),
+overall_streak union, and active_days_30 union. Also `home-state-local.js`
+computeHomeStateFromDexie needs an `allFor(email)` call to a VYVELocalDB.movement_activities
+table (if/when sync.js syncs that table to Dexie). Co-ordinate with whoever owns
+PM-307 — likely the other Claude session.
+
+**2. At-risk-of-losing-streak push notifications (PM-309 follow-up).**
+Dean's ask: 19:00/20:00/21:00 BST push notification "you're about to lose your
+X-day Elite streak" when a member is at-risk. Definition: streak ≥ 3 AND no
+activity today AND (under grace-day rule) yesterday's date IS in the active-day
+set — i.e. tomorrow's tick will drop them. Requires:
+- Capacitor push-notifications plugin status check (iOS APNs key on brain backlog
+  as accepted risk; Android FCM credentials need audit).
+- New cron at ~19:00 UTC running a query to enumerate at-risk members from
+  member_home_state (overall_streak_current ≥ 3 AND last_activity_at::date < CURRENT_DATE).
+- Native push dispatch path — Brevo is email-only. Need to decide: APNs/FCM direct
+  from Edge Function via REST, or a third-party service (OneSignal, Pusher Beams).
+- Lewis-owned copy template. Concise, action-oriented, no emojis ("Your 11-day
+  streak is at risk. Log anything to keep it alive."). Multiple variants for
+  streak length brackets (3-6, 7-13, 14-29, 30+) to feel less generic.
+- Settings.html notification toggle row for opt-out.
+
+Scope estimate: 2-3 hour build once Lewis has copy + Capacitor push plugin is
+confirmed installed. Hold pending those gates.
