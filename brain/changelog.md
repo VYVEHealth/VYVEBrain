@@ -1,3 +1,91 @@
+## 2026-05-24 PM-260 — Crop top 20% of hero images to remove dead-sky band [vyve-site `d050a8e9`]
+
+### What shipped
+
+Atomic 5-file commit to `vyve-site` `main`: `d050a8e963f533feb1d6e6387bde9582e470fd22`, parent `4a0e6e95` (PM-259 mood reset gesture). Same-session continuation after Dean device-tested PM-258 + PM-259 — mood selector working as designed, but a substantial dark sky strip still sat above the moon on the night hero (Dean's `02:44`-clock-stamped screenshot).
+
+### Why the previous fix wasn't enough
+
+PM-258 shifted `background-position` from `70% center` to `70% 65%`. That moved the photo's focal point down in the visible band — image lifted, more of the lower portion (figure + loch) visible. But there's a ceiling on how far you can shift before the moon disappears off the top entirely. `70% 65%` was roughly the upper bound. The result: less dead sky than PM-257, but still substantial because **the source images themselves had the moon positioned ~20-30% from the top with sky above it**.
+
+Three options walked through with Dean:
+- (a) Shrink hero height `max(360px, 48vh)` → `max(280px, 38vh)`. Cheap, addresses proportions but not source-image composition.
+- (b) Lift bg-position further toward `top` (~`70% 20%`). Moon sits at top of band, but the figure subject gets clipped at the bottom.
+- (c) Crop the source images. Permanent, no CSS gymnastics, source images now have correct composition baked in.
+
+Dean picked (c).
+
+### What ships
+
+Each of the three hero JPGs cropped:
+- **Top 20% removed** from each source image (1024×1024 → 1024×820, 5:4 aspect)
+- Re-saved at JPEG q82 progressive per §23.55 canonical hero specs
+- Cropped images now have sky+moon band near the top edge of the image, so the moon naturally sits at the top of the visible hero band with the figure in the lower-right
+
+**Sizes.**
+- `index-hero-morning.jpg`: 100043 → 95589 bytes (-4.5%)
+- `index-hero-afternoon.jpg`: 155980 → 142040 bytes (-9%)
+- `index-hero-night.jpg`: 137094 → 108250 bytes (-21%)
+
+Smaller because there's literally less image data — the cropped sky band was where most of the JPEG variance lived (gradient cloud + star data).
+
+**CSS revert.** `background-position: 70% 65%` (PM-258) → `70% center`. No longer need the position offset now that the image itself is pre-cropped. Restores the canonical `70% center` value (which PM-257 originally used).
+
+### Files (5)
+
+- `index-hero-morning.jpg` (replaced, 1024×820)
+- `index-hero-afternoon.jpg` (replaced, 1024×820)
+- `index-hero-night.jpg` (replaced, 1024×820)
+- `index.html` (89308 → 90667 bytes — bg-position revert + vbb-marker bump only)
+- `sw.js` (cache key bump `pm259-mood-reset-gesture-a` → `pm260-hero-crop-a`)
+- `index.html` vbb-marker `Update 144` → `Update 145`
+
+### Discipline honoured
+
+§23.41 fresh-HEAD discipline: refreshed `vyve-site` HEAD twice (pre-tree-create at `4a0e6e95`, pre-ref-update at `4a0e6e95` — no parallel ship in build window).
+
+§23.45 PAT-direct path throughout (Composio still 401, now ~3 days since 21 May incident). PAT pulled from `vault.decrypted_secrets` via Supabase MCP.
+
+§23.52(a) every blob via `curl --data-binary @file` — **three binaries over 95KB each, exactly the size class that bricked PM-209.1 / PM-228 inline-d**. Routing every payload via file is now muscle memory; no near-miss this session.
+
+§23.52(b) post-commit verification: text first-100-char match on `index.html` + `sw.js`, md5 match on all three JPGs.
+
+§23.52(c) all 5 blob SHAs validated as 40-char hex before tree creation.
+
+§23.53 commit + ref responses parsed via `json.load(open(file))`.
+
+### Verified
+
+- `node --check` clean on all 9 inline `<script>` blocks
+- Pre-tree HEAD recheck at `4a0e6e95`, pre-ref-update recheck at `4a0e6e95` — both clean
+- Post-commit `files[]` status array confirmed `{modified: index.html, sw.js, index-hero-morning.jpg, index-hero-afternoon.jpg, index-hero-night.jpg}`
+- First-100-char re-fetch matched on text files; md5 matched on all three binaries at commit SHA `d050a8e9`
+
+### No new §23 rule earned
+
+PM-260 exercises established doctrine: §23.41, §23.45, §23.52(a)(b)(c), §23.53. The "source image is the wrong shape — fix the source not the CSS" pattern is well-precedented (PM-247 body-hero crop work was similar). Not a new rule, but worth noting: **before reaching for CSS gymnastics to fix composition issues, consider whether the source asset has the wrong aspect / focal point and should be re-cropped**. Saves the round-trip.
+
+### State after this commit
+
+- vyve-site main: `d050a8e9`
+- Dean's dev iPhone: picks up Update 145 on next WKWebView cache cycle (2-15 min)
+- Bundled members: still on `83874dd5` from PM-115/116; see PM-260 on next Capawesome OTA
+- Composio: still 401 (no fresh attempt this session — Vault PAT stable through 4 commits tonight)
+- §23 hard rules: unchanged at §23.61
+- Hub-hero campaign: still closed. PM-260 is asset refinement on a shipped hub-hero, not new hub-hero work.
+
+### Session summary (4 commits tonight)
+
+- **PM-256** (`135f4e33`) — Full home redesign first ship: cinematic TOD hero, 3-state photographic backgrounds, dropped activity score + tracks + check-in. Wrote `index-hero-{morning,afternoon,night}.jpg` to repo.
+- **PM-257** (`b633cb02`) — Iteration: mood check-in mechanic (new `daily_mood_checkins` table + RLS + index), Today's Habits as vertical list, Live Sessions This Week carousel, restored My Progress rings. Bug fixes for greeting z-index bleed, brand mark, bell colour, TOD pill removal.
+- **PM-258** (`95e840cd`) — Mood selector emoji → inline SVG line-drawn faces. Hero bg-position lift `70% center` → `70% 65%`.
+- **PM-259** (`4a0e6e95`) — Long-press V logo (1.5s) → reset today's mood check-in (clears localStorage + deletes DB row + re-shows panel + haptic + toast).
+- **PM-260** (`d050a8e9`) — Crop top 20% off the three hero JPGs to remove dead-sky band. Revert bg-position to canonical `70% center`.
+
+All five commits verified end-to-end via Git Data API blob+tree+commit path, with §23.41 parallel-session safety checks before every ref update. No new §23 hard rule earned across the five.
+
+---
+
 ## 2026-05-24 PM-259 — Long-press V logo to reset today's mood check-in [vyve-site `4a0e6e95`]
 
 Same-night dev/testing affordance. Long-press (1.5s) the hero brand mark V logo and the mood check-in for today resets — localStorage markers cleared, DB row deleted, panel re-shown from scratch. Tiny "Mood reset" toast confirms. Haptic feedback on native iOS via `navigator.vibrate(35)`.
