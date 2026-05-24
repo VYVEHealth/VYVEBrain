@@ -1,3 +1,45 @@
+## 2026-05-25 PM-309 — Achievements deep-dive prompt drafted into brain/staging/
+
+[brain `(this commit)`, no vyve-site change]
+
+Drafted the standing prompt for the Achievements overhaul design session. File location: `brain/staging/achievements-deepdive-prompt.md`. Purpose: when Dean opens a fresh Claude conversation to do the Achievements deep-dive, this prompt is what he pastes in. It's self-loading (asks the new Claude to load brain first), structured around 5 phases (Supabase enumeration → action enumeration → design framework → visual direction → persona awareness), and shaped to give the new chat enough context to start the work without Dean re-explaining the project.
+
+**Why a separate file rather than inlining into backlog.** Three reasons:
+
+1. The prompt is ~7KB of Dean-voice first-person prose. Inlining that into `tasks/backlog.md` as a backlog entry would bloat the backlog with content that's neither task list nor reference material — it's a *session-prep document* for a future conversation, a distinct artefact type.
+2. `brain/staging/` already exists for documents-in-progress and session-prep artefacts (per the brain structure described in master.md). This is exactly that kind of document.
+3. Future Claudes loading the brain DON'T need to read this file by default. It's only relevant when Dean is preparing to start the design session. Putting it in staging keeps it out of the default load path. Backlog entries get read every session; staging is on-demand.
+
+**Soft-trigger reminder.** Per the backlog Achievements overhaul campaign entry: don't start this campaign until at least 5 days of v2 device time confirms the new pillar shape is settled. We've now had v2 device time since PM-295 (24 May). 5 days from there = 29 May or later. The prompt is sitting in staging, ready when Dean is.
+
+**Files committed in this PM:** `brain/staging/achievements-deepdive-prompt.md` (NEW), `brain/changelog.md` (this entry), `tasks/backlog.md` (cross-reference note pointing at the staging file).
+
+---
+
+## 2026-05-25 PM-308 — engagement-v2.html header cleanup (drop v1-preview vestiges) [vyve-site `32bbb49d`]
+
+Removes three leftover elements from the page header that were inherited from when v2 was an opt-in preview alongside the live v1 page:
+
+1. Eyebrow line "Your Score · v2 Preview" — no longer a preview; this IS the canonical engagement surface as of PM-305.
+2. Sub-copy "A snapshot of your VYVE engagement over the last 7 days" — inaccurate now that the page also covers Progress (cumulative metric tracks) and Achievements (overhaul pending). Considered replacing with three-clause copy ("Where you are, how you're growing, what you've earned") but Dean's call: just remove it, tab content explains itself.
+3. "← Back to current score" link pointing at `/engagement.html` — that page is now a redirect that bounces straight back here. Tapping it produced a pointless round-trip. Removed.
+
+Page header now: page-title "Your Journey" + tab strip immediately below. Minimum chrome above the active content. -1401 bytes net on engagement-v2.html.
+
+**Should have been caught during the PM-305 v1 retirement audit.** The page-header transition-state UI (the "v2 Preview" eyebrow + "Back to current score" link) existed specifically because v2 was opt-in and members had an escape hatch back to v1. When PM-305 retired v1, the escape hatch became architectural dead weight. PM-305 audit caught the inbound link updates (nav.js More menu, index.html See all + hub pills) but missed the outbound link FROM v2 BACK TO the dead page.
+
+**§23 candidate — surface-retirement two-way link audit.** When retiring a surface, audit BOTH directions: surfaces that link TO the retired one (caught by PM-305) AND links FROM the retired-replacement page BACK to the retired one (missed by PM-305, caught by Dean's "back to current scores" speech-to-text report). The dead-link pattern is the same in both directions, but the audit grep is different — one searches for `href.*retired-surface` across the codebase, the other searches for `href.*retired-surface` specifically within the replacement surface. Hold the formal §23 codification pending one more occurrence to confirm pattern.
+
+**Tooling note.** Speech-to-text on Dean's "back to current score" came through as "back to current stores" with a trailing S. Took one round of clarification to track down. No code action required — just flagging that voice-input commands carry transcription noise, and confirming context (which page, which area) before grepping blindly is the right discipline.
+
+Portal deployment:
+- sw.js cache: `pm307-movement-activities-table-a` -> `pm308-engv2-header-cleanup-a`
+- vbb-marker: 197 -> 198
+
+**§23.41/§23.66/§23.68 discipline.** HEAD verified at PM-307 (`ba172e94`) immediately before blob build. Fresh fetch of all three live target files. Surgical edits — engagement-v2.html -1401 bytes (header block shrunk), sw.js 1-line cache key change, index.html 1-line vbb-marker bump. No parallel session activity since PM-307.
+
+---
+
 ## 2026-05-25 PM-306 — Home hero -10px tighten [vyve-site `9c561e98`]
 
 Single-surface visual tighten on `index.html` per Dean's device review. The hero photo position and composition are correct as-is; the ask was for everything below the hero to sit 10px higher — i.e. tighten the band itself by 10px so the content below floats up.

@@ -1,3 +1,11 @@
+## Added 25 May 2026 — PM-309 Achievements design session prep
+
+**Standing prompt drafted at `brain/staging/achievements-deepdive-prompt.md`.** Self-loading prompt for a fresh chat. 5 phases: Supabase enumeration -> member-action enumeration -> design framework -> visual direction -> persona awareness. Paste-and-go when ready.
+
+Soft-trigger reminder from the Achievements overhaul campaign entry: wait at least 5 days of v2 device time before starting. We've had v2 device time since PM-295 (24 May 2026). Earliest sensible start: 29 May 2026.
+
+---
+
 ## Added 25 May 2026 — PM-306 brain close (PM-300 / PM-301 / PM-305 + §23.67 / §23.68 codified)
 
 **Three vyve-site PMs landed this session in single-engineer arc:**
