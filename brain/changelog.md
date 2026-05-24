@@ -1,3 +1,40 @@
+## 2026-05-24 PM-259 — Long-press V logo to reset today's mood check-in [vyve-site `4a0e6e95`]
+
+Same-night dev/testing affordance. Long-press (1.5s) the hero brand mark V logo and the mood check-in for today resets — localStorage markers cleared, DB row deleted, panel re-shown from scratch. Tiny "Mood reset" toast confirms. Haptic feedback on native iOS via `navigator.vibrate(35)`.
+
+### Why this exists
+
+Dean was testing the PM-258 mood selector and wanted to see the panel again after having tapped it earlier in the session. Previous reset path was either Safari devtools console one-liner or clearing site data (which also kicks the auth + Dexie cache). Long-press on the V logo is permanent, non-destructive, members would never trigger by accident, doubles as a Dean/team-level testing affordance going forward.
+
+### What ships
+
+- Touch+mouse `start`/`cancel` listener pair on `.ih-brand`. 1500ms timer; on completion fires `resetMoodCheckin()`, on cancel clears.
+- `resetMoodCheckin()` clears every `vyve_mood_checked_in_<email>_*` localStorage key (today + any past dates still cached), sends `DELETE /daily_mood_checkins?member_email=eq.X&mood_date=eq.<today>` via REST, then re-shows the mood panel by un-collapsing it, resetting the choose/thanks state, clearing `.selected` classes, and re-calling `moodShowPanel(email)`.
+- Click swallow: if `mousedown→mouseup` duration exceeded 1.2s, the click handler `preventDefault()`s the brand anchor's `href="/index.html"` navigation. Normal taps still navigate as before.
+- Tiny toast top-of-screen `"Mood reset"`, removed after 1.5s.
+
+### Files (2)
+
+- `index.html` (86228 → 89308 bytes)
+- `sw.js` (cache key bump `pm258-mood-svg-faces-a` → `pm259-mood-reset-gesture-a`)
+- `index.html` vbb-marker `Update 143` → `Update 144`
+
+### Discipline honoured
+
+§23.41 pre-tree-create HEAD recheck confirmed `95e840cd` unchanged. §23.45 PAT-direct via Vault (Composio still 401). §23.52 + §23.53 throughout.
+
+### Verified
+
+- `node --check` clean on all 9 inline `<script>` blocks (10 functions added, including `resetMoodCheckin()` and the press-listener IIFE)
+- Tag balance 26/26
+- Post-commit first-100-char match on both files at SHA `4a0e6e95`
+
+### No new §23 rule earned
+
+Small permanent dev/testing affordance, no architectural doctrine. The "long-press brand mark to access debug surface" pattern is precedented by `settings.html`'s 7-tap App version reveal (PF-14 spike toggle) and 5-tap dev panel — both unlock affordances buried in chrome elements. PM-259 follows that convention.
+
+---
+
 ## 2026-05-24 PM-258 — Mood selector SVG faces (no emoji) + hero image lifted ~15% [vyve-site `95e840cd`]
 
 ### What shipped
