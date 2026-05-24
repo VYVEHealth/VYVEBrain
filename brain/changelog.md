@@ -1,4 +1,119 @@
-## 2026-05-24 PM-269 → PM-273 — Today's Focus carousel shipped (5-commit arc, light-mode Option C structural fix mid-arc) [vyve-site `5dd3f090`]
+## 2026-05-24 PM-274 phase 1 — Today's Focus pages campaign opens (12 pages atomic + shared chrome + Dexie wiring contract) [vyve-site `0074a887`]
+
+Twelve `/focus/<slug>.html` pages shipped atomic, plus the shared chrome (`focus.css` + `focus-shell.js`), plus `home-focus-catalogue.js` upgraded from carousel-only to carousel + page-Dexie-wiring contract. Reset and Movement to production quality; ten plausible scaffolds in three shapes (textarea / timer / one-tap) cover the other categories with working complete-button + §23.39 Dexie-write dispatch. 17 files atomic via pure-Python urllib pipeline, all md5-verified at commit SHA. Composio still 401 from 21 May incident (~3 days); Vault PAT direct used throughout.
+
+End state: home carousel taps now route to functional category pages. Members can complete a Reset, Reflection, Gratitude, Sleep wind-down, Morning Light tick, Deep Work session, Restore pause, Hydration tap, Connect ping, Mindful Meal log, Walk (with HK enrichment if iOS-connected), or Outdoor walk — all writing to the correct Dexie table + firing the canonical bus event + queueing the Supabase POST. Phase 2 deliverable (`playbooks/full-app-wiring-audit.md`) drives tomorrow's hub-subscription gap-fixing work.
+
+### Files shipped (17, atomic at `0074a887b0b8fd2ebf7f878566a4ea75ec12836a`)
+
+| File                              | Bytes  | Note                                                           |
+|-----------------------------------|--------|----------------------------------------------------------------|
+| `home-focus-catalogue.js`         | 9134   | + `write_target` per slug; `link_url` "#" → `/focus/<slug>.html` |
+| `focus.css` (NEW)                 | 18768  | Shared chrome: dark full-bleed photo + dim + grain, light header band + solid panel |
+| `focus-shell.js` (NEW)            | 20791  | `VYVEFocusShell.{init, complete, toast, hkCohort}`; §23.39 optimistic-first |
+| `sw.js`                           | 18004  | Cache `pm273-focus-qa-revert-a` → `pm274-focus-pages-a`; +14 precache entries |
+| `index.html`                      | 95604  | vbb-marker 158 → 159 (catalogue already drove `link_url`)      |
+| `focus/reset.html` (NEW)          | 14680  | Production: box-breathing 4-4-4-4, 6 rounds, multi-ring SVG orb |
+| `focus/movement.html` (NEW)       | 15685  | Production scaffold: two-state idle/active, HK snapshot         |
+| `focus/reflection.html` (NEW)     | 4411   | Scaffold (textarea shape)                                       |
+| `focus/hydration.html` (NEW)      | 3600   | Scaffold (one-tap shape, v1 stub kind:'hydration')             |
+| `focus/sleep.html` (NEW)          | 3592   | Scaffold (one-tap shape, kind:'wind_down')                     |
+| `focus/morninglight.html` (NEW)   | 3638   | Scaffold (one-tap shape, kind:'morning_light')                 |
+| `focus/gratitude.html` (NEW)      | 4414   | Scaffold (textarea shape, kind:'gratitude')                    |
+| `focus/focus.html` (NEW)          | 6616   | Scaffold (timer shape, kind:'deep_work')                       |
+| `focus/restore.html` (NEW)        | 6592   | Scaffold (timer shape, kind:'restore')                         |
+| `focus/connect.html` (NEW)        | 4430   | Scaffold (textarea shape, writes to connect_checkins)          |
+| `focus/fuel.html` (NEW)           | 3604   | Scaffold (one-tap shape, kcal:0 stub, writes to nutrition_logs)|
+| `focus/outdoors.html` (NEW)       | 6597   | Scaffold (timer shape, writes to cardio, type:'Outdoor walk')  |
+
+### `home-focus-catalogue.js` — `write_target` contract
+
+Each slug's entry now carries a `write_target` field that `focus-shell.js` reads to know which Dexie table to upsert into. Four shapes:
+
+```js
+mind_activities → { table, kind, duration_seconds }
+cardio          → { table, cardio_type, default_minutes, hk_enrich }
+connect_checkins→ { table, focus_tag }
+nutrition_logs  → { table, meal_label }
+```
+
+Eight of the twelve slugs write to `mind_activities` (incl. hydration as v1 stub). Six new `kind` discriminator values introduced: `gratitude`, `wind_down`, `morning_light`, `deep_work`, `restore`, `hydration`. No client-side schema change needed (kind column is free text). Server-side may want a CHECK-constraint update — deferred as backlog. The `link_url` swap from `"#"` to `/focus/<slug>.html` means the home carousel taps now route into the new pages; catalogue + paint code unchanged from PM-269.
+
+### `focus-shell.js` — the §23.39 dispatch ladder
+
+```
+VYVEFocusShell.complete({slug, payload})
+  → catalogue.getEntry(slug).write_target            # what table + how
+  → ROW_BUILDERS[target.table](slug, target, payload, memberEmail)
+  → VYVELocalDB[table].upsert(row)                   # synchronous Dexie
+  → VYVEBus.publish(TABLE_TO_BUS_EVENT[table], {...}) # bus event
+  → dispatchEvent('vyve-localdb-table-pulled', {...}) # catch-all
+  → return { ok, client_id, table, row }              # callback
+  → (background, un-awaited:)
+    fetch(SUPA_URL + '/rest/v1/' + table, POST)
+      .then(handle 4xx → publish focus:write_failed bus event)
+      .catch(network error → VYVEData.writeQueued(...))
+```
+
+Reference impl is `journal.html`'s `saveEntry()`. The `focus_slug` column is stripped from the POST body server-side (server doesn't have the column yet); the Dexie row retains it for any client-side observability work. Adding `focus_slug` as a nullable text column across the writable tables (mind_activities, cardio, connect_checkins, nutrition_logs) is a deferred Supabase migration.
+
+### Shared chrome composition (`focus.css`)
+
+Mirrors the PM-268 Option C decision applied at page scale instead of card scale. Dark mode is full-bleed photographic ground + radial dim + film grain layered z-index 0/1/2, content sits over translucent dark surface that lets the photo bleed through. Light mode swaps the same photo into a 40vh header band (min 280, max 360) with a soft white-to-bg fade band bridging the seam to a solid panel below. Same `data-theme="light"` selectors gate all the switches via `position: fixed` (dark) → `position: absolute` (light). Glass back button at top-left, sticky CTA pill at bottom with safe-area-inset honoured + linear-gradient fade-up off content underneath. `.focus-view.is-active` controls multi-state pages (Reset has intro / session / done; Movement has idle / active / done).
+
+### Reset (production reference impl)
+
+Box breathing — `Inhale 4 → Hold 4 → Exhale 4 → Hold 4`, six rounds, 96 seconds + a 3:00 marketing claim that rounds to "3 min" on the home card. Multi-ring SVG orb (280×280, viewBox 280×280, radius 130 circle for ring track + ring progress, separate `<circle r="58">` breath orb with radial gradient `focusOrbGrad`). Phase progress ring: `stroke-dasharray="816.8"` (2πr), `stroke-dashoffset` animates 816.8 → 0 across each 4-second phase, transition `200ms linear`. Breath orb scale: 1.0 baseline, 1.6 on inhale-hold-pair, 1.0 on exhale-hold-pair, transition `1000ms ease-in-out`. Playfair Display 3rem countdown ("4 → 1") above the orb. Round-dot row (6 dots, current is teal+scale 1.4+glow). Visibility-change handler pauses the tick interval when backgrounded, resumes on visible. End-early ghost CTA lets members exit at any time; the Dexie write captures `rounds_completed` + `rounds_total` + a `full_session` boolean in the JSON content field.
+
+### Movement (production scaffold)
+
+Two real states — idle (duration picker + HK pill + Start CTA) and active (timer countdown + done-when-ready + Cancel ghost). Duration picker uses 5/10/15/20-minute pills, default 10. HK pill shape three-way: `ios_connected` → "Apple Health connected" static pill (teal dot); `ios_disconnected` → "Connect Apple Health →" link to /settings.html; `android` + `web` → pill hidden entirely (no degraded-state messaging). HK snapshot-on-completion: on `Start`, `healthBridge.sync({silent:true})` + read today's `member_health_samples` from Dexie, store steps + distance_m baseline; on `Done`, same path, compute deltas, write `cardio.steps` + `cardio.distance_km` (from delta_m / 1000). If healthBridge or Dexie surface isn't wired, snapshot silently no-ops and the cardio row gets `null` for steps + distance. Done view stat grid shows steps + distance if either delta is non-null. Imperfect for v1 (counts background walking inside the window) but honest — we've shipped honest before flag-checked.
+
+### Ten scaffolds via generator
+
+Three shapes via `gen_scaffolds.py` (kept in `/home/claude/work/` as session reference, not committed). **textarea** (reflection, gratitude, connect): single textarea + save CTA, min_chars 0 for connect (optional) and 1 for reflection/gratitude. **timer** (focus, restore, outdoors): duration-picker pills with per-slug option set (focus: 10/15/25/45, restore: 5/8/15/20, outdoors: 10/15/20/30) + countdown + I'm done / Cancel. **one_tap** (hydration, sleep, morninglight, fuel): single CTA tap → done state, writes `duration_seconds` from catalogue. All ten render properly, all ten write to the right Dexie table, all ten publish the right bus event. They are not yet "premium" — they're competent. Lewis copy pass + per-page polish (illustrations, secondary affordances, completion celebrations) is the post-trial design work.
+
+### Tooling discipline
+
+- §23.41 fresh HEAD fetch immediately before tree create (one Python process). Parent matched `5dd3f090` from session start; no parallel drift.
+- §23.45 Vault PAT direct (Composio still 401 ~3 days). `SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name='GITHUB_PAT_CLAUDE'` on project `ixjfklpckgxrwjlfsaaz`.
+- §23.52(a) corollary: pure-Python `urllib.request` only, never bash argv with file content. Reference impl `/home/claude/work/commit_pm274.py`.
+- §23.52(b) corollary: md5 full-content verification post-commit on every file (not first-N-chars). All 17 files verified.
+- §23.52(c) every SHA asserted non-empty + 40-char hex. SHA-to-content cardinality (17 ↔ 17) checked to catch any argv-overflow contamination.
+- §23.53 JSON parsed from in-memory dicts via `json.loads`, never shell pipeline.
+- §23.60 absolute paths throughout.
+
+### What didn't ship in PM-274 phase 1
+
+- Server-side Supabase migration for `focus_slug` column on mind_activities/cardio/connect_checkins/nutrition_logs — parked as backlog.
+- Server-side CHECK-constraint update for new `kind` values (gratitude, wind_down, morning_light, deep_work, restore, hydration) on mind_activities — parked as backlog.
+- Hub-subscription gap fixes (the Pass A/B/C/D/E work catalogued in `playbooks/full-app-wiring-audit.md`) — tomorrow's session.
+- Cap-rejection skew decision on `/focus/movement.html` + `/focus/outdoors.html` (whether to roll back Dexie on 409 over-cap) — tomorrow's call.
+- Lewis copy pass on COPY[] block in `home-focus-catalogue.js` — separate workstream.
+- Capacitor bundle of new focus pages into iOS+Android binaries — Dean's `npx cap sync` at `~/Projects/vyve-capacitor` ahead of next binary cut.
+- `proper hydration_logs` table + migration of `nutrition.html` water-tracker localStorage + `/focus/hydration.html` re-pointing — full follow-up campaign, not blocking.
+- Capgo HealthKit live-polling upgrade on `/focus/movement.html` (v2 follow-up; v1 ships snapshot-on-completion).
+- Achievement evaluator updates for new mind_activity kinds — out of scope per master, post-trial overhaul work.
+
+### Phase 2 deliverable — `playbooks/full-app-wiring-audit.md` (shipped this session)
+
+Same brain commit as this changelog entry. 13 table-by-table inventories covering every member-data write path in the app, with writers + bus events + should-subscribe surfaces + ⚠ gap markers. Five cross-cutting findings:
+
+- **A.** Hub pages don't subscribe across activity types. `exercise.html` (Body hub) subscribes to nothing; `mind.html` only to `mind:*`; `connect.html` not to `habit:logged`; `index.html` not to `mind:logged`. **Proposed fix:** all four hubs subscribe to `vyve-localdb-table-pulled` catch-all with domain-filtered re-render — focus-shell already publishes this event.
+- **B.** `engagement.html` Variety component missing `mind:logged`. **Proposed fix:** add `mind:logged` to engagement subscription set + map to mindfulness bucket.
+- **C.** `nutrition.html` doesn't subscribe to `food:logged`/`food:deleted`. **Proposed fix:** add subscription + re-pull today's totals from Dexie.
+- **D.** `index.html` has a `VYVEBus.subscribe('daily_habits', ...)` literal (no colon). **Likely typo — verify + fix.**
+- **E.** `focus-shell.js` publishes `vyve-localdb-table-pulled` catch-all but no hub subscribes. **Captured by fix A.**
+
+Tomorrow's session shape proposed in the playbook: 7 passes (hub subscriptions, engagement variety, nutrition food sub, daily_habits typo, cap decision, Lewis copy pass, Capacitor bundle). Total estimate: 4-6 hours if "go" mode, longer if Pass A.
+
+### No new §23 hard rule earned
+
+PM-274 phase 1 used already-codified patterns end-to-end. §23.39 optimistic-first, §23.41 fresh HEAD, §23.45 Vault PAT, §23.48 catalogue + bus, §23.52(a)(b)(c) pipeline + verification + SHA shape, §23.53 JSON parse, §23.55 hub-composition principles re-applied at page scale, §23.60 absolute paths. PM-274 phase 2 (audit + fixes) may earn a §23 rule around hub-subscription patterns once the fixes ship.
+
+---
+
+
 
 Five-commit arc landing the home Today's Focus carousel and closing the Today's Focus surface-build campaign opened by PM-268's image library. Session shape: ship → device-test → fix → device-test → revert QA flag. End state: production-shape 3-card carousel live, all twelve photographic compositions validated across dark + light by Dean, ready for the `/focus/<slug>.html` page-build campaign next session.
 

@@ -1,54 +1,64 @@
-## Added 24 May 2026 PM — PM-274 onwards: `/focus/<slug>.html` page builds (NEXT SESSION)
+## Added 24 May 2026 PM — PM-274 phase 2: full-app Dexie wiring audit (NEXT SESSION)
 
-**Status.** Today's Focus carousel shipped PM-269 → PM-273 (vyve-site `5dd3f090`). All twelve photographic compositions validated dark + light. Card destinations are `href="#"` placeholders pointing at `/focus/<slug>.html` URLs that don't exist yet — tapping a card does nothing. This is the campaign that gives them life.
+**Status.** PM-274 phase 1 shipped (vyve-site `0074a887`) — twelve `/focus/<slug>.html` pages live with shared chrome + §23.39 Dexie-write dispatch. Home carousel taps now route to functional pages. **Phase 2 is the wiring audit** that closes the hub-subscription gaps surfaced when the focus pages started publishing bus events that no hub listens for.
 
 ### Scope
 
-1. **`focus.css` + `focus-shell.js`** — shared chrome for all twelve pages. focus.css owns typography (Playfair for large numerals, Inter with 0.22em eyebrow letter-spacing), glass effects (`backdrop-filter: blur(12px)` on back button + CTA pills), motion primitives, theme-aware composition (dark = full-bleed photographic ground with radial dimming gradient + film grain, light = photo as header band + solid panel below per PM-268 recommendation). focus-shell.js owns back nav (route to /index.html), theme.js wire-up, auth check (redirect to login if no session), sw registration, `log-activity` on completion.
-2. **`/focus/<slug>.html` × 12** — one HTML page per category slug. The twelve slugs and their first-pass copy live in `home-focus-catalogue.js` already; each page reads its own entry via the existing `VYVEFocusCatalogue.getEntry(slug)` helper. Two pages built to production quality as reference impls per PM-268 plan: **Reset** (breathing orb with multi-ring system, photographic ground, glass chrome, Playfair timer, sticky CTA) and **Movement** (two-state idle/active, duration picker, HealthKit indicator pill for opted-in iPhone cohort, snapshot-on-completion via Capgo plugin). The other ten ship as plausible scaffolds with the shared chrome + working complete-button + log-activity wiring; content polished over weeks.
-3. **`home-focus-catalogue.js` `link_url` swap** — change every `link_url: "#"` to `link_url: "/focus/<slug>.html"`. Carousel cards become live taps once the pages exist.
-4. **HealthKit on Movement** — snapshot-on-completion v1 (query HealthKit at walk start, again at end, diff = walk data). Live polling upgrade as v2 follow-up. Cohort-aware UI: iPhone+HealthKit shows live data, iPhone-no-HealthKit shows "Connect Apple Health →" link, Android hides the indicator entirely until Health Connect ships.
-5. **Bundle into Capacitor `www/`** — `npx cap sync` to pull the twelve new HTML files + focus.css + focus-shell.js into the iOS+Android binary for the next cut (Dean's stated "next couple of days" submission). Bundled-cohort members get the pages in-binary, not just via Capawesome OTA.
+Defined in detail in `playbooks/full-app-wiring-audit.md` (shipped same brain commit as phase 1 changelog). Five cross-cutting fixes proposed:
 
-### Reference materials
+- **Pass A — Hub catch-all subscriptions.** All four hubs (`index.html`, `exercise.html`, `mind.html`, `connect.html`) subscribe to `vyve-localdb-table-pulled` with domain-filtered re-render. Closes the biggest single gap (`exercise.html` subscribes to nothing today). Focus-shell already publishes the event.
+- **Pass B — `engagement.html` Variety component.** Add `mind:logged` to subscription set + map to mindfulness bucket so breathwork/journal/etc. count as distinct activity types in the 7-day Variety score.
+- **Pass C — `nutrition.html` food subscription.** Add `food:logged`/`food:deleted` listeners + re-pull today's totals from Dexie. Currently fuel.html writes don't show up in nutrition until page reload.
+- **Pass D — `index.html` `daily_habits` typo.** Subscription `VYVEBus.subscribe('daily_habits', ...)` has no colon — looks malformed against every other event name. Verify + fix.
+- **Pass E — Captured by Pass A.** focus-shell publishes the catch-all event but no hub subscribed before Pass A.
 
-- `staging/focus-card-mockup.html` (if uploaded) — dark/light card composition reference (Option C: photo-right + solid-panel-left in light mode)
-- `staging/premium-focus-mockup.html` (if uploaded) — production-quality reference for Reset (breathing) and Movement (walk idle + active states). Demonstrates the photographic-ground, glass-chrome, Playfair-large-numerals, multi-ring orb pattern.
-- Both mockups built in chat during PM-268 planning session. Dean approved the premium-mockup as "pretty good" quality bar; concern that flipped the route from inline-sheets to per-page was "easier just to edit one thing" maintainability + "each page can be a little bit more premium" ceiling.
+Plus two design-level calls:
+
+- **Cap-rejection skew decision (cardio §3 in audit).** Server caps cardio at 2/day. A 3rd walk via focus-page produces optimistic Dexie row that's right for the member but ignored server-side for charity/achievements. Decide: roll back Dexie on 409 (clean) or accept skew (member-friendly).
+- **Lewis copy pass on `home-focus-catalogue.js` COPY[].** Eyebrow / Title / Body across all twelve slugs. Separate workstream from the wiring fixes. focus-shell.js doesn't change.
+
+Plus the Capacitor bundle:
+
+- **`npx cap sync` at `~/Projects/vyve-capacitor`** to pull 12 new focus HTML files + focus.css + focus-shell.js into iOS+Android binary for next cut. Dean's dev iPhone reaches the pages already (server.url dev-loop); bundled cohort (iOS 1.3 / Android 1.0.3 from PM-115/116) only sees them after binary cut OR OTA via Capawesome (app `f9961f66`, prod channel `89e12796`).
 
 ### Build order for next session
 
-1. Read brain (master + changelog + backlog) per session-load protocol
-2. Confirm vyve-site HEAD still at `aac2b10f` (no parallel session activity)
-3. Bundle the 12 images into Capacitor `www/` via `npx cap sync` for the upcoming binary cut (Dean mentioned "next couple of days" for full bundle submission to Apple)
-4. Build `focus.css` + `focus-shell.js`
-5. Scaffold all 12 `/focus/<slug>.html` pages — even minimal — so home carousel has no dead links
-6. Polish `/focus/reset.html` to production quality (breathing orb with multi-ring system, photographic ground, glass chrome, Playfair timer, sticky CTA)
-7. Polish `/focus/movement.html` to production quality (two-state idle/active, duration picker, HealthKit indicator pill, snapshot-on-completion via Capgo plugin)
-8. Replace home Today's Focus card with 3-card carousel in `index.html`
-9. `home-focus-catalogue.js` with placeholder copy in Lewis-voice-draft style
-10. sw.js cache key bump + precache the 12 focus pages + `focus.css` + `focus-shell.js` + `home-focus-catalogue.js`
-11. Bump vbb-marker
-12. Atomic commit via Vault PAT (Composio likely still 401)
+1. Read brain (master + changelog + backlog) per session-load protocol — see PM-274 phase 1 state markers.
+2. Confirm vyve-site HEAD still at `0074a887` (or rebase if parallel session activity).
+3. Read `playbooks/full-app-wiring-audit.md` for the full table-by-table inventory.
+4. Pass A (hubs) — 4 files, single atomic commit
+5. Pass B (engagement) — 1 file, may fold into Pass A commit
+6. Pass C (nutrition) — 1 file, may fold into Pass A commit
+7. Pass D (index typo) — 1 file, fold into Pass A commit
+8. Cap-rejection skew — discuss with Dean before any code
+9. Lewis copy pass — separate workstream
+10. Capacitor bundle — `npx cap sync` for next binary cut
 
 ### Estimated session size
 
-~5-7 hours Claude-assisted. Larger than the typical single-session ship, but split-able if context runs tight: phase 1 (scaffolds + carousel + Reset polish + commit), phase 2 (Movement polish + remaining 10 page content + Lewis copy + second commit).
+~4-6 hours Claude-assisted if "go" mode (deterministic execution of the audit playbook). Longer if Dean wants review-mode passes.
 
-### Decisions already made (don't re-litigate)
+### Decisions already made
 
-- ✅ Per-page route (NOT inline sheets)
-- ✅ Twelve categories (NOT three TOD-only)
-- ✅ Photographic (NOT emoji + gradient)
-- ✅ Bundle into binary (Dean confirmed next-day cut anyway)
-- ✅ Light mode = Option C (photo-right + panel-left)
-- ✅ HealthKit = timer-first, sensor-second, snapshot-on-completion v1
-- ✅ Two polished + ten scaffolds for first ship; content polish over weeks
-- ✅ Carousel auto-centres on current TOD but all three swipeable
+- ✅ Hub catch-all subscription pattern (focus-shell already publishes `vyve-localdb-table-pulled`)
+- ✅ Audit document captured as durable playbook — reference for future surface campaigns
+- ⏸ Cap-rejection skew decision deferred to next session
+- ⏸ `focus_slug` server-side column migration deferred (Supabase backlog)
+- ⏸ New `mind_activity.kind` discriminator CHECK-constraint update deferred (Supabase backlog)
+- ⏸ Proper `hydration_logs` table migration deferred (separate campaign, post-trial)
+- ⏸ Capgo HealthKit live-polling upgrade on Movement deferred (v2 follow-up)
 
 ---
 
-## Closed 24 May 2026 PM — Resolved during PM-268 planning session
+## Closed 24 May 2026 PM — Resolved during PM-274 phase 1 session
+
+### ✅ PM-274 onwards: `/focus/<slug>.html` page builds — RESOLVED via PM-274 phase 1
+
+Twelve focus pages shipped atomic at vyve-site `0074a887`. Reset + Movement to production quality, ten plausible scaffolds with working complete-button + §23.39 Dexie-write dispatch. Shared chrome (`focus.css` + `focus-shell.js`) carries theme-aware composition per PM-268 Option C applied at page scale. `home-focus-catalogue.js` gained `write_target` field per slug (drives Dexie table + bus event without per-slug switch). `link_url` swap from `"#"` → `/focus/<slug>.html` makes the home carousel taps live. **Page-build campaign closed. Wiring audit campaign opens at PM-274 phase 2 (see top of backlog).**
+
+---
+
+
 
 ### ✅ Focus card hero imagery (PM-257 follow-up) — RESOLVED via PM-268
 
