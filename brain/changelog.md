@@ -1,3 +1,145 @@
+## 2026-05-25 PM-311 — Live-tracker work duplicated in a parallel session; orphan `live_video_views` table dropped; §23.69 codified [brain-only]
+
+**The collision.** Dean opened this session at ~23:00 BST with a brief asking for "what PM-294 did for replays" — i.e. per-broadcast watch-time attribution via the YouTube IFrame API — on the eight `*-live.html` shells. He explicitly framed it as new work, and his session-end brain catch-up for the replay-tracker arc (PM-296/297/299) + the engagement-v2 arc (PM-300/301) hadn't happened yet at session start either, so the brain corroborated the picture: most-recent entries were PM-298 and PM-296, no PM-304 visible. Architecture talked through and approved (separate table, same 30s threshold, all 8 shells in one ship). Build progressed end-to-end across ~90 minutes:
+
+- Supabase migration `pm304_create_live_video_views` applied (16-col table, RLS, FKs to `members` + `calendar_occurrences`).
+- `live-tracker.js` written (562 lines, copy-fork of `replay-tracker.js`).
+- `session-live.js` patched (4 edits: iframe gets `enablejsapi=1`+`origin`+stable id; Quiet-poster swap gets enablejsapi+`VYVEReplayTracker` init for Quiet-state replay attribution bonus; top-of-`paint()` flush+destroy of any prior tracker; end-of-`paint()` `VYVELiveTracker` init when state is LIVE/JUST_ENDED).
+- `db.js` SCHEMA_V14 + `db.version(14)` + `makeTable('live_video_views')` consumer.
+- `sync.js` member-scoped pull + `CURSOR_COL['live_video_views']='last_updated_at'`.
+- `vyve-offline.js` sessions-bucket URL detect + `FAILURE_TABLE_MAP['live_video_views']` entry.
+- `engagement.html` additive `allFor` + `addLog(liveVideoViews, 'sessions')` in the Variety bucket.
+- 8 `*-live.html` shells: `<script src="/live-tracker.js" defer></script>` above the `session-live.js` include.
+- sw.js cache key drafted `pm304-live-tracking-yt-api-a`; index.html + settings.html vbb-marker drafted 193 → 194.
+
+All `node --check` clean across 6 JS files and the inline blocks in `engagement.html`. ~22 KB of new code + ~5 KB of edits across 14 files.
+
+**The §23.66 pre-commit content-rebase check, run immediately before commit, surfaced the collision.** Re-fetched HEAD: vyve-site had moved from PM-303 (my session-start baseline) all the way to PM-310 — six PMs (304→310) shipped during the build. The parallel session's **PM-304 (`7764e863`) was the same feature**: "Live-session per-broadcast watch-time attribution via YouTube IFrame API (refactored unified `player-tracker.js`)", 20 files atomic via Git Data API. Their table is `session_live_views` (migration `pm299_create_session_live_views` — claimed two PM-numbers early in their session, rebased twice during §23.66 catches, name diverged but migration names are append-only Supabase history). Their refactor is arguably the cleaner long-term shape — `replay-tracker.js` collapsed into `player-tracker.js` polymorphic on `mode='replay'|'live'`. `window.VYVEReplayTracker` preserved as a back-compat alias for `replays.html` / `replay-category.html`; new live wiring goes through `VYVEPlayerTracker.init({mode:'live', occurrenceId, broadcastId, ...})`. The shape they shipped supersedes mine.
+
+**Shipped this commit (PM-311):**
+
+- `DROP TABLE public.live_video_views` via migration `pm311_drop_orphan_live_video_views`. Zero rows existed; no FKs reference it; no consumers in vyve-site main. Clean drop. `session_live_views` (theirs, canonical) intact and untouched.
+
+**Shelved permanently (NOT pushed):**
+
+- `live-tracker.js`, the `session-live.js` patches, the `db.js` / `sync.js` / `vyve-offline.js` additions, the 8 shell edits, the cache-key + vbb bumps, the `engagement.html` additive read. All sat in Claude's working directory; deleted at session end. The parallel ship is canonical; cherry-picking would have created a confusing dual-implementation risk (`live-tracker.js` + `player-tracker.js` both shipped, both referenced from `*-live.html` shells) for a marginal gain on one detail (the Quiet-poster `VYVEReplayTracker` init, which their PM-304 may or may not have wired — verifying that and writing a single one-line surgical patch is a follow-up, not a co-shipped artefact).
+
+**How the brief came to be framed as new work despite a 30-minute-prior ship of the same feature.** Dean briefed this session before reloading his own context. The session-end brain catch-up for PM-296/297/299/300/301 hadn't happened yet either — that's been ~10 hours of un-brained vyve-site work today across both Claude sessions. By the time the brief was written, the work was 30 minutes done in the other session. §23.66 caught the collision, but only after ~90 minutes of build effort had been spent. Cheaper to catch at session start.
+
+### §23.69 — Feature-level collision detection at session start (PM-311, 25 May 2026)
+
+**Status: HARD RULE.** Codified at first occurrence because the magnitude of the prevented waste is high and the check itself is cheap.
+
+**The rule.** At session start, after brain load, before any code work, if the brief implies a coding deliverable, message-scan the last 15 vyve-site commits for feature keywords drawn from the brief. Any hits get surfaced to Dean before the design conversation opens.
+
+**Mechanism.**
+
+```python
+# After brain load, before code work, when brief implies a build:
+keywords = extract_feature_keywords(brief)
+# e.g. brief mentions "live sessions tracker YouTube IFrame attribution"
+# → ['live', 'live-tracker', 'live_video_views', 'session_live_views',
+#    'YouTube', 'IFrame', 'iframe_api', 'player-tracker', 'broadcast',
+#    'session-live', 'enablejsapi']
+recent = github.get_commits('vyve-site', branch='main', per_page=15)
+hits = [c for c in recent
+        if any(k.lower() in c.commit.message.lower() for k in keywords)]
+if hits:
+    surface_to_dean({
+        'collision_risk': True,
+        'matching_commits': hits,
+        'recommended_action': 'verify the parallel ship before building'
+    })
+```
+
+**Cost.** One GitHub API call (`GET /repos/.../commits?per_page=15`, ~5 KB response) + a substring grep. Sub-second wall-clock. Two tool calls of context budget.
+
+**Benefit.** This session: would have caught PM-304 (`7764e863`, "Live-session per-broadcast watch-time attribution via YouTube IFrame API") on the FIRST grep against the brief's keywords (`live`, `tracker`, `YouTube`, `IFrame`). ~90 minutes of parallel build effort prevented.
+
+**Sibling to §23.66 + §23.68.**
+
+- §23.66 fires at COMMIT time, catches content drift. Caught tonight's collision but only after the work was wasted.
+- §23.68 fires at PM-NUMBER CLAIM time, catches identifier collisions. Necessary but doesn't help with feature collisions.
+- §23.69 fires at SESSION START, catches feature-scope collisions. Prevents the work entirely.
+
+All three checks compose. Run all three at every commit-boundary commit; run §23.69 ADDITIONALLY at every session-start that has a code-touching brief.
+
+**When §23.69 doesn't apply.**
+
+- Pure design / talk-first sessions where no code will ship: skip the keyword scan. Brain-load is sufficient.
+- Sessions that explicitly continue parallel work (Dean opens with "continue PM-X"): the user has acknowledged the parallel context.
+- Diagnostic / debug sessions where the deliverable is a fix on a known surface: scan applies but is unlikely to surface anything (parallel sessions are usually on different surfaces). Still cheap to run.
+
+**Edge case.** If the recent-commits scan returns a hit on something that LOOKS like the briefed feature but is actually different (e.g. PM-307 `movement_activities` table during a session brief about "movement library backlog" — same word, different intent), the hit gets surfaced to Dean as a question, not as a stop. Dean's call whether to proceed.
+
+**Audit signal.** Any brain-changelog entry that includes the phrase "duplicated", "parallel re-implementation", "orphan table", "shelved", or "supersedes mine" in the context of a feature ship — that's a §23.69 violation in the session that produced it. Pattern-match for it post-hoc.
+
+### Session-coordination note
+
+The §23 doctrine assumes parallel sessions exist; tonight is the second feature-level near-miss in a week (PM-294/PM-295 PM-number cluster a few days ago, PM-304/PM-311 tonight). Dean's intro brief was true at the moment it was written and false 30 minutes later because vyve-site moves fast in high-velocity windows. §23.69 helps Claude catch this at session start; an additional helpful pattern would be Dean opening high-velocity sessions with "what's shipped today" rather than a specific build brief, letting Claude surface the recent commits before any work is scoped. Not a §23 rule (it's a behavioural pattern, not a Claude-enforceable check), but worth flagging in the changelog so future Claudes know to suggest it when the recent-commits scan reveals heavy parallel activity.
+
+---
+
+## 2026-05-25 PM-310 — Live-tracker debug strip ALWAYS-ON (PM-304 follow-up, Capacitor has no URL bar) [vyve-site `4c8b93e8`]
+
+**The miss.** PM-304's live tracker shipped with a `?debug=tracker`-gated debug strip mirrored from the PM-296 replay-tracker pattern. Capacitor app has no URL bar — Dean can't add a query string in-app — so the gated debug strip was effectively dark on the actual device. Symmetric to PM-296's own diagnostic-strip lesson but in the opposite mistake: `?debug=X` works for browser-side dev, dies silently for Capacitor verification.
+
+**The fix.** Strip rendered unconditionally whenever the tracker is mounted, no flag check. Removes itself on unmount via the same lifecycle hook PM-296 uses for the replay-tracker strip. Single-edit pass touching `index.html`, `session-live.js`, `settings.html`, `sw.js`. sw cache → `pm310-tracker-debug-always-on-a`; vbb-marker 195 → 196.
+
+**The pattern this codifies.** Any device-side diagnostic affordance that depends on a URL parameter, localStorage flag (settable only via web), or any other browser-only toggle should be EITHER always-on OR triggered by an in-app affordance (settings toggle, long-press gesture). The Capacitor app's lack of address bar makes URL-param gating a dead pattern for production diagnostics. Worth adding to §23.59 ("VYVE is a native app, not a browser") as a sub-rule — held back from formal codification pending one more occurrence to confirm the pattern (one is enough for a candidate; two earns the rule).
+
+**Backlog note (revisited from PM-296).** The "remove diagnostic strip once verified working" conversation is now owed for BOTH PM-296 (replay-tracker) and PM-310 (live-tracker via the unified `player-tracker.js`). Both are useful enough that "leave it on" has so far won the argument; both stay until a member surfaces them as visual clutter, or until a §11 page-doc pass introduces a dedicated debug toggle.
+
+---
+
+## 2026-05-25 PM-299 — settings.html Build row + memory rule for vbb-marker +1 per commit [vyve-site `1a902171`]
+
+Dean asked for a visible build number on the settings page — the old debug banner only shows with `?debug=build` which he can't trigger in-app (sibling lesson to PM-310). New row between "App version" and the end of the Profile section: title "Build", right-side value shows the static vbb-marker (`Update N`) lifted from a new `<span id="settings-vbb-marker">`, row-sub shows the live sw cache key pulled via the existing MessageChannel pattern that `index.html` already uses (mirrored on `settings-vbb-sw`).
+
+The vbb-marker static `Update N` value is the source of truth. **Every vyve-site commit MUST bump it +1 in lockstep with the sw.js cache key suffix, on BOTH `index.html` (`<span id="vbb-marker">`) and `settings.html` (`<span id="settings-vbb-marker">`), in the SAME commit.** Stale marker = Dean can't verify the update landed on device. Memory rule codified alongside this ship; pick the next monotonic integer above live HEAD at commit time per §23.41.
+
+PM-298 (`habits-upsert-onconflict-a`) landed during the build touching the same 3 files; rebased onto PM-298 HEAD via §23.41 fresh-content-of-ref before committing. sw cache `pm298-habits-upsert-onconflict-a` → `pm299-build-marker-a`; vbb-marker 188 → 189.
+
+---
+
+## 2026-05-25 PM-297 — replay-tracker.js JWT acquisition fix (PM-294 silent-failure root cause) [vyve-site `0b2361c9`]
+
+PM-296 debug strip on device surfaced the actual failure: `SUPA_ANON_KEY: MISSING` + `JWT: NOT FOUND`, despite player + state machine working perfectly (`watchSeconds` ticking, `ready=true`, `lastState=1 PLAYING`). The tracker was bailing on `writeRow` because of the missing auth. Player working + zero writes = the diagnostic strip earned its keep on the first device boot.
+
+**Root cause.** PM-294 assumed `window.SUPA_ANON_KEY` exists on `window`. It doesn't. Every other write surface in vyve-site (`habits.html`, `cardio.html`, etc.) **hardcodes the anon key locally** as `SUPA_ANON` and gets the JWT via `window.vyveSupabase.auth.getSession()`. `auth.js` exposes `window.vyveSupabase` (the supabase-js client) but never sets a global `window.SUPA_ANON_KEY`. PM-294 had been treating a non-existent global as the canonical anon source.
+
+**The fix — replicate the canonical pattern.**
+
+1. Hardcode `SUPA_ANON` at module scope (same string value as `habits.html` etc.).
+2. New `refreshJwt(session)` helper calls `window.vyveSupabase.auth.getSession()` and caches `access_token` on `session.cachedJwt`.
+3. JWT primed on `init()`; refreshed every ~60s inside the polling tick (long replays could otherwise hit access-token expiry mid-session — replays are up to 60-90 min, JWT default lifetime is 1h, mid-session refresh is mandatory).
+4. `writeRow` now reads `session.cachedJwt` + uses `SUPA_ANON` for the `apikey` header + sets `Authorization: Bearer <jwt>` (missing entirely in PM-294).
+
+The PM-296 debug strip + tracker `_debug()` were updated to surface `cachedJwt` + `vyveSupabase` presence so the fix landing was visible on device on next boot.
+
+§23.41 fresh-HEAD check passed steady. sw cache `pm296-tracker-debug-a` → `pm297-tracker-jwt-fix-a`; vbb-marker 186 → 187.
+
+**Note for PM-304 unified-tracker readers.** This PM-297 JWT fix carried forward into `player-tracker.js` automatically — the JWT cache + refresh pattern is in the shared session shape, not in mode-specific dispatch. Future tracker bugs at this layer get fixed once.
+
+---
+
+## 2026-05-25 PM-296 — on-device debug strip for PM-294 silent-failure diagnosis [vyve-site `556a756a`]
+
+PM-294 replay attribution shipped zero rows on device. Server-side `pg_stat_statements` showed reads but no INSERT/PATCH attempts — the tracker wasn't even attempting writes. Dean can't use Safari devtools (in-app only via Capacitor WKWebView), so we need on-screen visibility into tracker state.
+
+Adds an always-on visible debug strip beneath the player card on `replays.html` whenever a video is mounted. Polls `VYVEReplayTracker._debug()` every 500ms and displays:
+
+- **Module-loaded flags:** `VYVEReplayTracker` / `VYVEData` / `VYVELocalDB` / `YT` / `YT.Player` presence
+- **Auth state:** `email` / `SUPA_ANON_KEY` / `JWT` presence
+- **Active-session state:** `videoId` / `client_id` prefix / `ready` / `lastState` / `watchSeconds` / `lastWrittenSeconds` / `hasFirstWrite`
+
+Removes itself on `unmountPlayer`. Single-file edit to `replays.html` — the tracker module already exposes `_debug()`, no change needed there. Standard sw.js cache key bump (`pm295-habits-save-keepalive-a` → `pm296-tracker-debug-a`) and vbb-marker (185 → 186).
+
+This is a diagnostic-only ship — non-prod tooling that surfaces tracker internals on the actual device for debugging. PM-310 later promoted the live-tracker's equivalent strip from `?debug=tracker`-gated to always-on for the same reason; this PM-296 strip set the precedent.
+
+**The pattern this ship codifies.** When a write path silently fails on device and devtools aren't available, the canonical debugging affordance is an on-screen `_debug()` poll strip — same shape Capacitor's own DevServer banner uses. Inexpensive to add to any module that exposes a `_debug()` getter. Carries the same diagnostic value as a Web Inspector console without needing Safari attached.
+
+---
 ## 2026-05-25 PM-309 — Grace-day streak rule (Duolingo-style, both SQL + client) [vyve-site `23d2fc9f`]
 
 **The bug.** Dean's streak showed 11/30 around 22:30 BST. At 00:00 it dropped to 0/30 — the calendar ticked over to 25 May, today's date wasn't in the active-day set yet, and `WHERE run_end = v_today` returned no row from the runs CTE. COALESCE → 0. The streak compute was treating midnight as a punishment moment: log nothing in the first hour of a new day and you lose your streak. Dean's exact ask: "doesn't reset until the day goes to midnight midnight" — i.e. Duolingo's rule, where today's window is yours to use, the streak only drops if you let a whole day pass empty.

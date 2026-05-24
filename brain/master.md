@@ -3646,3 +3646,55 @@ Apply to every module surface added or removed by a refactor. Pair with `§23.41
 
 **This rule earned itself.** PM-306 originally drafted as a §23.67 (PM-number rule) plus a §23.67-prime (script-tag rule, my version, would have collided). Pre-commit §23.68 check (which the rule itself describes) caught the collision before commit, my script-tag duplicate got dropped, and the PM-number rule shifted to §23.68. The mechanism the rule defines is the mechanism that protected the rule's own codification.
 
+### §23.69 — Feature-level collision detection at session start (PM-311, 25 May 2026)
+
+**Status: HARD RULE.** Codified at first occurrence because the prevented waste is large (~90 minutes of build effort tonight) and the check itself is sub-second.
+
+**Earned.** PM-311 — entire live-tracker feature re-implemented in parallel with `7764e863` PM-304 (parallel session's unified `player-tracker.js` ship). Both Claude sessions had the same brief shape (Dean briefed mine from a context that pre-dated the parallel ship by 30 minutes). §23.66 caught the collision at COMMIT TIME, after ~90 minutes of build was already spent. §23.69 fires earlier — at SESSION START — and prevents the work from happening at all.
+
+**The rule.** At session start, after brain load, before any code work, if the brief implies a coding deliverable, message-scan the last 15 vyve-site commits for feature keywords drawn from the brief. Any hits get surfaced to Dean before the design conversation opens.
+
+**Mechanism.**
+
+```python
+# After brain load, before code work, when brief implies a build:
+keywords = extract_feature_keywords(brief)
+# e.g. brief mentions "live sessions tracker YouTube IFrame attribution"
+# → ['live', 'live-tracker', 'live_video_views', 'session_live_views',
+#    'YouTube', 'IFrame', 'iframe_api', 'player-tracker', 'broadcast',
+#    'session-live', 'enablejsapi']
+recent = github.get_commits('vyve-site', branch='main', per_page=15)
+hits = [c for c in recent
+        if any(k.lower() in c.commit.message.lower() for k in keywords)]
+if hits:
+    surface_to_dean({
+        'collision_risk': True,
+        'matching_commits': hits,
+        'recommended_action': 'verify the parallel ship before building'
+    })
+```
+
+**Cost.** One `GET /repos/.../commits?per_page=15` (~5 KB response) + a substring grep. Sub-second wall-clock. Two tool calls of context budget.
+
+**Benefit.** PM-311 retrospect: would have caught PM-304 (`7764e863`) on the first grep against the brief's keywords (`live`, `tracker`, `YouTube`, `IFrame`). ~90 minutes of parallel build effort prevented.
+
+**Sibling to §23.66 and §23.68.**
+
+- §23.66 fires at COMMIT time → catches content drift. Necessary; caught tonight's collision but only after work was spent.
+- §23.68 fires at PM-NUMBER CLAIM time → catches identifier collisions. Necessary but tangential to feature-scope.
+- §23.69 fires at SESSION START → catches feature-scope collisions. Prevents the work entirely.
+
+All three checks compose. Run §23.69 at session start whenever the brief implies a code-touching deliverable; run §23.66 + §23.68 at every commit boundary.
+
+**When §23.69 doesn't apply (skippable cases).**
+
+- Pure design / talk-first sessions where no code will ship. Brain-load is sufficient.
+- Sessions that explicitly continue parallel work ("continue PM-X"). Dean has acknowledged the parallel context.
+- Diagnostic / debug sessions where the deliverable is a fix on a known surface. Scan applies but is unlikely to surface anything (parallel sessions are usually on different surfaces). Still cheap to run.
+
+**Edge case — false-positive hits.** If the recent-commits scan returns a hit on something that LOOKS like the briefed feature but is actually different (e.g. PM-307 `movement_activities` table during a session brief about "movement library backlog" — same word, different intent), the hit gets surfaced to Dean as a question, not as a stop. Dean's call whether to proceed.
+
+**Audit signal.** Any brain-changelog entry that includes the phrase "duplicated", "parallel re-implementation", "orphan table", "shelved", or "supersedes mine" in the context of a feature ship — that's a §23.69 violation in the session that produced it. Pattern-match for it post-hoc when reviewing parallel-session sessions.
+
+**Ordering note.** §23.69 lands after §23.68, which itself sits outside the §23 chapter (after the §24 chapter heading) per the placement drift §23.68's own commit logged. Future housekeeping pass should move §23.67 + §23.68 + §23.69 back to their proper position immediately before "## 24. Premium Feel Campaign". Tracked as backlog candidate (sibling to the existing §23.67/§23.68 housekeeping note).
+
