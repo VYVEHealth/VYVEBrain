@@ -3611,3 +3611,31 @@ done
 Apply to every module surface added or removed by a refactor. Pair with `§23.41`'s fresh-HEAD-before-commit check at the same checkpoint — both protect against silent regressions that look fine in a single-file diff review.
 
 **Why a single grep wasn't part of code review until now.** Tooling: vyve-site is many HTML shells with `defer`'d script tags; the dependency graph is implicit through `window.VYVE*` global names. There's no build-time check. The fastest path to enforcement is a pre-commit grep across the dependency set whenever a script's surface area expands. Worth scripting as `playbooks/script-tag-audit.sh` next session.
+### §23.68 — PM-number brain-HEAD recheck before claiming a number (PM-306, 25 May 2026)
+
+**Earned across PM-235, PM-294, PM-295, PM-302, PM-306.** A persistent pattern of PM-number collisions when multiple Claude sessions ship concurrently. Five collisions in three days finally crossed the codification threshold:
+- PM-235 cluster on 23 May (three sequential renames per §23.14-rule-3 narrative)
+- PM-294 renumber on 24 May (YT IFrame replay-attribution work landed in vyve-site labelled PM-292 in its commit message because session-start brain cache hadn't seen the parallel session's PM-290/PM-292 brain commits 9 minutes earlier)
+- PM-295 renumber on 24 May (Engagement Score v2 implementation landed across 4 vyve-site commits all labelled PM-286, because session start had treated "PM-286 Engagement Score v2 implementation" from backlog.md as the claimable number, not realising PM-286 had already landed earlier the same day for cron work)
+- PM-302 §23 number mismatch on 24 May (entry self-described "Codifying §23.66 now" but §23.66 was already taken; correction landed in PM-304 brain commit which retroactively codified the script-tag rule as §23.67)
+- PM-306 §23 number near-miss on 25 May (this session pre-built a §23.67 entry for the same script-tag rule; pre-commit §23.68 fresh-HEAD check caught that the parallel session had codified §23.67 ~30 seconds earlier; my section was dropped before commit and renumbered to §23.68 for the PM-number rule it was actually claiming)
+
+**Sibling to §23.41/§23.66.** §23.41 is the vyve-site analogue: fetch live `main` HEAD before committing code, rebase against any commits the parallel session shipped between fetch and commit. §23.66 strengthens that to content-diff, not just SHA-diff. §23.68 is the brain analogue: fetch live `brain/changelog.md` HEAD and `brain/master.md` HEAD before claiming a PM number OR a §23 rule number, recompute the next-safe claim against the most recent entries.
+
+**Rule.** Before assigning a PM number to any new ship — vyve-site commit message, brain changelog entry, Supabase migration name, backlog line item — Claude MUST:
+
+1. Re-fetch `VYVEHealth/VYVEBrain` `brain/changelog.md` HEAD pinned to live commit SHA (NOT `?ref=main` which is CDN-cached and may be stale by up to ~5 minutes per §23.41).
+2. Re-fetch `VYVEHealth/vyve-site` recent commit message history (last 20 commits via `/commits?sha=main&per_page=20`) to catch PM numbers that were used in vyve-site commit messages but haven't yet been brain-committed.
+3. Compute next-safe PM number as `max(highest PM in brain changelog, highest PM in vyve-site commit messages) + 1`. The vyve-site history matters because a parallel session may have committed code with a PM number without yet brain-committing the narrative.
+4. Use that number for the new ship. If the new ship will not commit for several minutes (e.g. mid-session work), re-run the check immediately before the actual commit, not just at claim time.
+
+**Same rule applies to §23 rule numbers.** When codifying a new §23 rule, re-check `brain/master.md` for the highest currently-codified §23.X number, including any rules added by parallel sessions since session start. PM-306's near-miss is the canonical example.
+
+**Note on §23.67 ordering drift.** Inspection during PM-306 brain commit revealed that §23.67 currently sits AFTER §24 chapter heading in master.md, not in §23.X numeric order. This was a placement error by the PM-304 brain commit (insertion at end-of-file rather than before the §24 boundary). §23.68 is placed immediately after §23.67 to preserve numeric ordering relative to §23.67, accepting that both §23.67 and §23.68 currently sit outside the §23 chapter's normal location. A future brain housekeeping pass should move §23.67 and §23.68 back to their proper position immediately before "## 24. Premium Feel Campaign". Tracked as backlog candidate.
+
+**Implementation cost.** Two cheap `curl` calls before commit. The full check including the PM-number computation is ~3 seconds of wall-clock and ~2 tool calls of context. The cost of a renumber after the fact — broken vyve-site ↔ brain chain, manual narrative reconciliation, footnotes explaining "commit messages say PM-X, brain renumbers to PM-Y" — is much higher every time. This evening alone (PM-294, PM-295, PM-302, PM-304, PM-306) generated five renumber footnotes the brain will carry forever.
+
+**Distinct from §23.66 but enforced together.** §23.66 prevents content collisions (parallel session's work being silently overwritten). §23.67 prevents silent script-tag regressions. §23.68 prevents identifier collisions (two sessions claiming the same PM number or §23 number). Different mechanisms, same root cause: parallel-session state can drift between fetch and commit. Run all three checks together at every commit boundary.
+
+**This rule earned itself.** PM-306 originally drafted as a §23.67 (PM-number rule) plus a §23.67-prime (script-tag rule, my version, would have collided). Pre-commit §23.68 check (which the rule itself describes) caught the collision before commit, my script-tag duplicate got dropped, and the PM-number rule shifted to §23.68. The mechanism the rule defines is the mechanism that protected the rule's own codification.
+

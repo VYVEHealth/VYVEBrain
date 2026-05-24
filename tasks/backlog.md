@@ -1,3 +1,94 @@
+## Added 25 May 2026 — PM-306 brain close (PM-300 / PM-301 / PM-305 + §23.67 / §23.68 codified)
+
+**Three vyve-site PMs landed this session in single-engineer arc:**
+- PM-300 — engagement-v2.html three-tab shell (Score / Progress / Achievements)
+- PM-301 — Your Journey rename + count hero promotion + charity callout
+- PM-305 — v1 engagement.html retired, redirect-only file, all inbound links updated
+
+**One §23 rule codified (and one near-miss caught by the rule itself):**
+- (§23.67 was codified by parallel session in PM-304 brain commit — script-tag inclusion auditing rule, same root cause from PM-302/PM-294; my pre-built duplicate was dropped at pre-commit §23.68 check)
+- §23.68 — PM-number brain-HEAD recheck before claiming a number (earned across PM-235, PM-294, PM-295, PM-302, PM-306 — five collisions in three days; PM-306 itself was a near-miss caught by the rule it was codifying)
+
+## Achievements overhaul campaign (added PM-301, expanded PM-306)
+
+**Status.** Tab 3 of `engagement-v2.html` is a placeholder card pending overhaul. The v1 trophy cabinet on `engagement.html` was retired in PM-305 — no longer reachable from the portal. The Achievements surface has no functional content right now; the placeholder explicitly tells members the rebuild is coming.
+
+**Why this is its own campaign, not a single-session ship.** The v1 trophy cabinet was designed against the pre-PM-285 pillar set (Habits / Workouts / Cardio / Sessions / Check-ins). The v2 pillar set is different (Focus / Habits / Body / Mind / Connect / Check-ins) and the score model is different (Activity Score v2 with multipliers, 50-100 floor). A verbatim port would land debt the rewrite then has to undo. Full redesign needs its own session.
+
+**Design questions to answer before any code. These are the strategic decisions; everything else falls out of them.**
+
+1. **What IS an achievement?** Three candidate definitions, not mutually exclusive:
+   - Milestone (quantitative): "30 workouts logged," "10 weeks of check-ins," "100 mind sessions"
+   - Behavioural (qualitative): "First 7-day habits streak," "Used all 5 pillars in one week," "Hit a Powerhouse score," "Logged before 8am five days in a row"
+   - Charity-linked (social): "Donated your first month," "5 months donated," "Hit a track that someone before you completed"
+   Best surfaces probably blend all three but the dominant flavour shapes the visual language. v1 was almost purely milestone (30/60/90 of each metric).
+
+2. **Are achievements scored against the new v2 pillars (Focus / Habits / Body / Mind / Connect / Check-ins) or orthogonal to them?**
+   - If scored-against — they slot naturally next to the Progress metric cards and reuse the same compute layer
+   - If orthogonal — they need their own taxonomy (e.g. "consistency wins," "diversity wins," "social wins")
+   - Hybrid: certificate tier achievements are scored-against (Habits 30, 60, 90), behavioural achievements are orthogonal
+
+3. **Do v1 certificate names (Architect / Warrior / Relentless / Elite / Explorer) survive?**
+   - Keep: members may already be attached; consistent with certificates.html
+   - Retire: they were named against the old pillar set; cleaner to rename for the new shape
+   - Compromise: keep for the existing tracks, name new ones for the new pillars
+
+4. **Is there a "current achievement to chase" surfacing on home?** PM-285 home redesign has a slot for it but it's currently unused. Driver should be: nearest unlocked achievement to the member's current state. Caveat: persona-aware. RIVER/HAVEN members shouldn't see "Push 5 workouts this week" framing. If yes, this needs a per-member ranking algorithm to pick the right "next" achievement to show.
+
+5. **HAVEN/persona awareness.** Achievements framing must respect persona context. RIVER and HAVEN members shouldn't see achievements built on "harder, faster, more" language. SAGE members should get evidence-flavoured framing. Three options:
+   - Persona-conditional achievement set (some achievements only show to NOVA/SPARK; others only to RIVER/HAVEN)
+   - Persona-conditional copy on the same achievement (everyone sees the same milestone, the framing language changes)
+   - Universal achievements with neutral framing across the board
+
+6. **Visual language.** v1 was a trophy-cabinet shelf with SVG cup-and-laurel illustrations. Three directions:
+   - Trophy cabinet retained but redrawn for new metrics — feels familiar, risks looking dated
+   - Card grid like the Progress tab metric cards — consistent with rest of v2, less iconic
+   - Something new — earned badges with iconography matching the pillar accent colours, list-with-progress style
+
+7. **Surfacing strategy.** Where do achievements live beyond the Achievements tab? Home page nearest-to-unlock teaser? Most recent unlock? Push notification on unlock? Email inclusion in weekly progress email?
+
+8. **Cross-page consistency.** `certificates.html` currently owns Architect / Warrior / etc. naming. The Achievements tab on engagement-v2 will overlap conceptually with this page. Either:
+   - Achievements tab IS certificates.html surfaced inline (deprecate certificates.html)
+   - Achievements tab is broader than certificates (includes behavioural achievements); certificates.html stays as a downloadable-PDF surface for the milestone subset
+   - Achievements tab is broader; certificates.html merges into it; PDFs become a side-feature
+
+**Dependencies before rebuild can ship.**
+- Decision tree on the 8 questions above (Dean + Lewis joint call; Phil sign-off on any HAVEN-related copy)
+- Achievement data model (Supabase table or pure-compute from existing tables?)
+- Visual design — mockup before code per usual
+- Charity mechanic mapping confirmed for the new metric shape (already started in PM-301 charity callout)
+
+**Estimated build time once design is settled.** Probably 3-4 sessions:
+- Session 1: data model + Dexie shape + compute layer
+- Session 2: card / list / cabinet rendering on Achievements tab
+- Session 3: home-page surfacing (if decided yes) + cross-page wiring
+- Session 4: persona-conditional copy pass + Lewis voice review + ship
+
+**Soft trigger.** Don't start this campaign until at least 5 days of v2 device time confirms the new pillar shape is settled and the Activity Score numbers feel right to Dean. Designing achievements against a shape that's still moving is wasted work.
+
+## Engagement v1 redirect file removal (post-PM-305)
+
+**Owner.** Dean — single-commit follow-up once cache cycle stabilises.
+
+PM-305 left `/engagement.html` as a 2KB redirect file. Three things need to happen before deleting it entirely:
+1. Confirm via service-worker logs (or device sampling) that no devices are hitting `/engagement.html` directly anymore — they should all be going to `/engagement-v2.html` from the updated nav.js + index.html
+2. Remove `/engagement.html` from sw.js precache list
+3. Delete the file itself
+
+Earliest sensible time: ~1 week after PM-305 ships (gives the slowest device a cache cycle or two). Mark on calendar for early June.
+
+## "You've been away" Score copy state
+
+**Owner.** Dean — small ship, ~20 min when picked up.
+
+Considered in PM-301 but not built: a copy-only state on the Score band detecting members who haven't logged anything for 5+ days. Instead of the standard band copy (Quiet week / Building / etc.), show a warm welcome-back framing: "Welcome back. Your floor's still at 50, your streaks held what they could, here's where to start."
+
+Implementation: in `renderScore()`, check `engagement_days_since_last_log` (would need to add to v2 compute or read from Dexie directly). If ≥5, override `scoreBandSub` text with the welcome-back copy. No structural change to the page. Lewis voice pass on the actual copy required before shipping.
+
+Defer until at least one member-side report of "I came back from holiday and the page felt cold" to confirm the problem is real rather than theoretical.
+
+---
+
 ## Added 24 May 2026 — PM-285 → PM-293 backlog items (home habit surface)
 
 ### Calorie-target habit (PM-286.x)

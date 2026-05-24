@@ -1,3 +1,124 @@
+## 2026-05-25 PM-305 — Retire v1 engagement.html, redirect to engagement-v2.html [vyve-site `fd7ffb23`]
+
+v1 `engagement.html` (106KB v1 score + trophy cabinet, untouched since PM-280s) replaced by `engagement-v2.html` (the Your Journey page) as the canonical engagement surface. All inbound links updated in the same commit so members tap directly into v2 with no redirect round-trip.
+
+**The retirement shape.** Five file changes, atomic commit:
+
+1. `engagement.html` — replaced with a 2KB thin redirect page. `<meta http-equiv="refresh" content="0; url=/engagement-v2.html">` plus a JS `location.replace` fallback that preserves search params and hash. The 106KB of v1 score code, trophy cabinet CSS (`.trophy-svg`, `.shelf`, `.ach-*`), `.tab-strip` JS, and `achievements.js` loader is gone from the live surface. Inline comment in the new file documents why it's still there at all (external bookmarks, stale SW caches, third-party deep links) and that it can be deleted entirely once members have rolled past PM-305 + one cache cycle.
+
+2. `nav.js` — four surgical changes:
+   - Page-title map: `'engagement': 'Activity Score'` → `'engagement': 'Your Journey'`; added `'engagement-v2': 'Your Journey'` so the back-button title resolver works on both routes
+   - More-menu entry: `{ href: '/engagement.html', label: 'Activity Score' }` → `{ href: '/engagement-v2.html', label: 'Your Journey' }`
+   - Prefetch URL map: added `'/engagement-v2.html': 'engagement'` alongside the existing `/engagement.html` entry so both surfaces get prefetched during the transition cycle (the prefetch payload key is shared because they serve the same underlying data shape)
+   - Top-of-file sub-pages comment updated
+
+3. `index.html` — two link href updates plus the standard vbb-marker bump:
+   - "See all ›" link in My Progress section → `/engagement-v2.html`
+   - Hub pill template href in `renderPills` → `/engagement-v2.html`
+   - vbb-marker 194 → 195 (per the PM-299 +1-per-commit rule)
+
+4. `sw.js` — cache key bump `pm304-live-tracker-a` → `pm305-engagement-redirect-a`. Both `engagement.html` and `engagement-v2.html` stay in the precache list so cached devices can resolve either route without a network round-trip during the transition.
+
+**Why the redirect file stays at all.** Three reasons it earns its 2KB:
+- External bookmarks members may have saved
+- Stale service-worker caches on devices that haven't pulled PM-305 yet — they navigate to `/engagement.html` from cached JS still pointing there, the SW serves the new redirect file, the redirect bounces them to v2 cleanly
+- Any third-party deep link or notification URL that still contains `/engagement.html`
+
+The redirect file can be deleted entirely in a future commit once cache cycle confirms no devices are hitting it. Backlog candidate.
+
+**Achievements tab.** Still shows the empty-state placeholder shipped in PM-300. v1's trophy cabinet is no longer reachable from the portal — its CSS and JS shipped to no one after PM-305. The Achievements overhaul campaign owns the eventual rebuild. See backlog entry added in this brain ship.
+
+**§23 discipline this round.** HEAD verified at PM-304 (`7764e863`) immediately before blob build. Single fresh fetch of all four live target files. Surgical diffs across every changed file (sw.js 1 line; index.html 3 lines; nav.js 4 changes; engagement.html full-file replace from 106KB to 2KB — the only non-surgical change, and intentional). No parallel session activity between fresh fetch and commit. Ref update non-force, succeeded first try.
+
+**Files committed:** `engagement.html` (replaced, 106498 → 2134 bytes), `nav.js` (+81 bytes), `index.html` (vbb-marker + 2 link hrefs, +6 bytes net), `sw.js` (cache key, +7 bytes).
+
+---
+
+## 2026-05-25 PM-301 — Your Journey rename + count hero promotion + charity callout [vyve-site `5ad70c83`]
+
+Three surgical changes on `engagement-v2.html`, all driven by Dean's device feedback after sitting with the PM-300 three-tab ship for ~30 minutes.
+
+**1. Page title rename.** "Activity Score" no longer described the page now that Score + Progress + Achievements all live here. New title: "Your Journey". Reflects the scope and matches the brand voice (Help yourself. Help others. Change the world.) without being twee. Also updated the `<title>` tag for iOS shell consistency on the home-screen-installed PWA shell, where the title shows in the multitasking switcher.
+
+Considered and rejected: "Engagement" (flat, descriptive but lifeless), "Progress" (collides with the tab name), "Your Impact" (charity-mechanic-forward, would fit better once Achievements ships its full charity narrative; too narrow now).
+
+**2. Metric card count promotion.** Dean's feedback: "the score 11/30 looks too small, should be bigger." Original PM-300 layout had the count as a label in the top-right of the progress-head row — a small `<strong>11</strong> / 30` next to the "Next certificate" title. The count is the headline of the card; it shouldn't read like a label.
+
+New shape: dedicated `.metric-cert-section` block, top-bordered, containing:
+- `.metric-cert-label` ("Next certificate" eyebrow, small caps)
+- `.metric-cert-count` (hero 2.6rem accent-coloured count number + small "/ 30" muted unit)
+- `.metric-progress-bar` (existing, decoration under the number)
+- `.metric-progress-foot` (existing, copy under the bar)
+
+All five metric cards restructured. Same IDs (`mp{Metric}Count`, `mp{Metric}Fill`, `mp{Metric}Foot`) so the `renderMetric()` data-flow JS from PM-300 is untouched. Pure markup + CSS change.
+
+**3. Charity callout block.** Dean: "there really needs to be a bit of information about the help yourself help others, about the charity incentive in there." Added a gold-accented panel at the top of the Progress tab, above the metric list. Copy:
+
+> ✦ Help yourself. Help others.
+>
+> Every **30 logs** on a metric earns a **free month of VYVE** for someone who needs it. Your effort funds their access — five tracks, five chances to give back.
+
+Gold palette (`#C9A84C` family, `rgba(201,168,76,0.10)` background, gold border) ties to the brand's charity/social-impact colour. Placeholder copy flagged in commit body — Lewis voice pass still pending — but this is closer-to-ship-ready than the empty-state placeholder text PM-300 carried.
+
+**Considered and not done.** Dean raised "maybe the 7-day window for Score should be 30 days because holidays" — pushed back successfully. The 7-day window is the Score's design DNA: the 50-floor handles the holiday case (member comes back to a still-respectable number, single log starts pulling it up immediately), and widening the window makes the Score inert (a member's brilliant week can't move the number against a bad fortnight ten days ago). Score stays 7-day. A "you've been away" copy state on the Score band (detecting 5+ days of no logs and showing warm welcome-back copy instead of the standard band sub) is a backlog candidate but not built tonight.
+
+**§23 discipline.** HEAD verified stable at PM-300 (`0292a760`) before blob build. Single fresh fetch of live sw.js + index.html immediately before patch. Surgical 1-line edits on both. No JS changes — only markup + CSS. Cache key `pm300-engagement-tabs-a` → `pm301-progress-count-promote-a`. vbb-marker 190 → 191.
+
+**Files committed:** `engagement-v2.html` (+2429 bytes), `sw.js` (cache key), `index.html` (vbb-marker).
+
+---
+
+## 2026-05-25 PM-300 — engagement-v2.html three-tab shell + Progress metric cards + page-doc [vyve-site `0292a760`]
+
+The headline ship of the session. `engagement-v2.html` restructured from a single-page scroll into a three-tab shell: **Score** (existing v2 content, untouched) / **Progress** (new build, 5 metric cards) / **Achievements** (placeholder pending overhaul). Plus a new page-doc at `/page-docs/engagement.md` (didn't exist before — created fresh).
+
+**The brief and the back-and-forth.** Dean's initial intro framed this as "three-tab rebuild" with several sub-items including Achievements full port from v1, Lucide nav.js icon swap, breakdown rebadge (Habits / Mind / Body / Cardio / Check-ins). After a couple of clarification rounds where I twice misread the brief, the locked plan emerged: **don't rebuild Achievements tonight** (full rewrite needs its own session against the new pillar shape — Architect/Warrior/Relentless/Elite/Explorer were named against pre-PM-285 metrics; a verbatim port would land debt), **don't touch nav.js Lucide swap** (deferred to a follow-up), **don't change the breakdown grid on Score** (Dean's later message clarified the breakdown stays as it is), **build the three tabs** with Progress as the substantive new work.
+
+Two misreads worth noting because they bear on §23.63 / mockup-before-code discipline:
+
+1. First mockup pass proposed a "5-card breakdown rebadge" (Habits / Mind / Body / Cardio / Check-ins, Connect removed from cards) on the Score tab. Dean's clarification: the rebadge is on Progress, not Score. Score breakdown stays as it was (Habits / Body-combined / Mind / Connect / Check-ins).
+
+2. First mockup also proposed cumulative-totals cards on Progress without streaks. Dean's correction: "I just want it to be like the fucking original engagement page where it's just one to thirty streaks, common streak, longest streak." So Progress cards needed current streak + longest streak + 1-30 to next certificate, NOT cumulative-total + streaks. Different layout.
+
+Lesson: when a brief touches multiple surfaces, restate which surface each sub-item lands on in the mockup before drafting. I conflated "rebadge the breakdown" (Score tab) with "restructure Progress" (Progress tab) on first pass.
+
+**Tab strip implementation.** Lifted the `.tab-strip` / `.tab-btn` / `.tab-pane` CSS pattern verbatim from v1 `engagement.html:140-143` — already proven on device, theme-aware. Sticky directly under the page header (`position:sticky; top:0; z-index:50`) because Capacitor wrap has no URL bar to anchor against; the tab affordance has to stay visible regardless of scroll position. Three buttons, three panes, JS adapted from v1's pattern.
+
+**Tab 1 Score.** Untouched — existing PM-295 ship content wrapped in `<div id="tab-score" class="tab-pane is-active">`.
+
+**Tab 2 Progress.** Five metric cards in a vertical stack. Each card has:
+- Accent-coloured metric name + 1-phrase sub-label
+- Info button (`ⓘ`) opens existing bottom sheet with copy explaining what counts and the daily/weekly cap
+- Two streak cells side-by-side: Current streak, Longest streak (with auto-singular units — `day` vs `days`)
+- Progress bar showing 1-30 toward next certificate (mod 30 so it resets after each milestone)
+- Foot copy stating certificates earned + count to next
+
+Per-metric definitions with day caps applied at compute time:
+
+| Metric | What counts | Cap | Dexie source |
+|---|---|---|---|
+| Habits | Any daily habit tap | 1 per day | `daily_habits` |
+| Mind | Breathwork, journal, meditation, affirmations, visualisations | 2 per day | `mind_activities` |
+| Body | Movement, workouts, cardio (combined) | 2 per day | `workouts` + `cardio` |
+| Connect | Community check-ins, live session views, replay views | 2 per day | `connect_checkins` + `session_views` + `replay_video_views` |
+| Check-ins | Weekly wellbeing check-in | 1 per week | `wellbeing_checkins` |
+
+Caps applied at compute time, not write time — members can log as many habits as they want, only the first N each day count toward certificate progress. Eight parallel Dexie reads. `computeStreaks` walks the date set for consecutive-days; `computeWeekStreaks` handles ISO weeks (Check-ins only). Cap logic applies per-day per-metric before summing the total.
+
+Lazy-loaded: data fetch fires only on first tab open. Cached for session lifetime via `window.__vyveProgressLoaded` flag. Bus events for score-affecting actions invalidate by re-running `renderProgressTab` if the tab has been opened.
+
+**Tab 3 Achievements.** Empty-state placeholder card. Trophy emoji + "Achievements are being overhauled" + 1-sentence body explaining the rebuild is coming. Centered, single card. The v1 trophy cabinet code (live until PM-305) had a 5-track shelf with named tiers (Architect / Warrior / Relentless / Elite / Explorer); none of that ships on Tab 3. Overhaul is its own campaign — see backlog entry added in this brain ship.
+
+**Page-doc created.** `/page-docs/engagement.md` didn't exist before — 404 when I checked at session start. Fresh create rather than refresh. Covers: page purpose, three-tab structure, the intentional pillar-vs-breakdown disagreement (six scoring pillars, five breakdown cards), per-metric definitions and caps, the lazy-loading pattern, the bus subscription wiring, and an "Outstanding" section listing the v1 deprecation, Achievements overhaul, persona-aware band copy, and placeholder copy strings. Per §11B as-you-go discipline.
+
+**Bus wiring extension.** `wireBus()` extended so the 50ms debounced `recompute` now also re-runs `renderProgressTab` (if it's been loaded this session) alongside `refreshScore`. Same event set as PM-285 score subscriber; no new event names.
+
+**§23 discipline.** HEAD verified at PM-299 (`1a902171`) before blob build. Multiple fresh fetches during the build as the parallel-session tracker work shipped PM-296/297/298/299 — each rebased via fresh content fetch + surgical patch of sw.js and index.html. No content collisions. Cache key `pm299-build-marker-a` → `pm300-engagement-tabs-a`. vbb-marker 189 → 190.
+
+**Files committed:** `engagement-v2.html` (42KB → 70KB, +27KB net for tab structure + Progress markup + render JS), `sw.js` (cache key), `index.html` (vbb-marker), `page-docs/engagement.md` (NEW, 6KB).
+
+---
+
 ## 2026-05-25 PM-304 — Live-session per-broadcast watch-time attribution (unified player-tracker.js, mode='replay'|'live') [vyve-site `7764e863`]
 
 Sibling of PM-294's replay attribution work. Picks up the parked YT IFrame integration that PM-294 (the live-tracking.js restoration, `537c73b1`) explicitly deferred. Same tracker shape, polymorphic on `mode`. New `session_live_views` Supabase table + Dexie SCHEMA_V14 store + `player-tracker.js` (replaces `replay-tracker.js`, back-compat alias preserved) + `session-live.js` tracker init when iframe mounts in LIVE state + `?debug=tracker` on-page debug strip + additive read in BOTH `engagement.html` Variety AND `engagement-v2.html` Connect metric.
