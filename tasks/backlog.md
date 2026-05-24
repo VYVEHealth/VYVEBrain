@@ -1,3 +1,83 @@
+## Added 24 May 2026 PM — PM-256 follow-ups (home redesign deferred items)
+
+Three items deferred from PM-256 (home redesign atomic ship), all on the same surface family.
+
+### Habit icon redesign campaign
+
+**Status.** Current home renders habit icons via `iconForHabit(habit_title)` — a 12-keyword regex match against `habit_title` with 🌿 fallback for unmatched. Durable for trial-phase 30-habit library, breaks down as the library grows or as Lewis wants per-habit visual identity.
+
+**Plan.**
+
+1. Add `icon TEXT NULL` column to `habit_library` (nullable so existing rows don't need backfill before ship). Comment documents the format: an emoji or `data:image/svg+xml;base64,...` glyph.
+2. Backfill all 30 current `habit_library` rows with curated emoji or SVG glyph. Dean's call on whether to keep emoji (less work, weaker brand) or commission small-scale SVG glyphs (proper brand fit but design + production work).
+3. Replace `iconForHabit()` with direct `habit.icon || iconForHabit(title)` fallback for migration safety.
+4. Dexie `member_habits.allFor` already pulls the full row via `select=habit_library(...)` — only need to add `icon` to the field list in habits.html and index.html.
+
+**Estimate.** Claude-assisted: ~1 hour if Dean picks emoji; ~3-4 sessions if SVG glyphs (design pass + production + library import + backfill).
+
+---
+
+### Fractional-ring v2 for Progress Pills
+
+**Status.** v1 ships boolean rings (empty / full). Real fitness apps render fractional rings against targets ("6,246 / 8,000 steps = 78% ring"). Dean has HealthKit autotick wired since PM-105 cohort-wide; the data is there.
+
+**Plan.**
+
+1. Add `target_unit TEXT NULL` + `target_value NUMERIC NULL` columns to `habit_library`. Examples:
+   - `walk_8000_steps` → `target_unit='steps', target_value=8000`
+   - `hydrate_2L` → `target_unit='ml', target_value=2000`
+   - `breathwork_10min` → `target_unit='minutes', target_value=10`
+   - `sleep_8h` → `target_unit='minutes', target_value=480`
+2. Backfill the ~10-15 habits that have meaningful numeric targets. Habits like "Evening reflection" / "Be kind to yourself" stay NULL (still render as boolean rings).
+3. Add a per-habit data source resolver in `iconForHabit()`'s sibling function `getHabitProgress(habit, memberEmail)`:
+   - HealthKit-backed (steps, sleep, active_energy): read from latest hk_metrics row for today
+   - Water-backed (hydrate): read from water_logs table SUM for today
+   - Time-backed (breathwork, meditation): read from mind_activities SUM for today
+   - Boolean fallback: `doneToday ? 1 : 0`
+4. Ring math becomes `Math.min(1, current / target)` → `offset = C * (1 - progress)`.
+5. Ring caption changes from boolean (just icon) to `current / target` ("6,246/8K") for fractional habits.
+
+**Estimate.** Claude-assisted: ~3-4 hours session (schema + backfill + resolver + render + per-source caching to avoid N+1 fetches on paint).
+
+**Sequencing.** Best after the habit icon redesign campaign — bundle into one trip through habits.html + index.html + habit_library schema migration.
+
+---
+
+### AI-generated daily focus (post-trial)
+
+**Status.** v1 ships static 15-entry persona × TOD lookup in JS. Works fine for trial; doesn't scale to a member feeling like the focus is genuinely personalised over time.
+
+**Plan.**
+
+1. New table `daily_focus_log(member_email, focus_date, persona, time_of_day, content_json, generated_at)`. UNIQUE `(member_email, focus_date, time_of_day)` — one entry per member per (morning/afternoon/evening) trio.
+2. New Anthropic EF `generate-daily-focus` mirroring shape of weekly check-in recs:
+   - Inputs: persona, recent activity rollup (last 3 days), last 3 wellbeing scores, time of day, day of week
+   - Outputs: icon (emoji), eyebrow (`5 min · Breathwork`), title (max 4 words), meta (max 12 words, supportive not prescriptive), href to relevant hub
+3. Trigger: `index.html` boot calls `generate-daily-focus?tod={current}` if no row exists for (member, today, current_tod). Cache result in Dexie + render.
+4. Sub-30s cold-start: optimistic-first paint with static lookup, swap to AI result when it lands.
+5. Cost: ~3 generations × 14 days × 30 members = 1260 calls/month at trial scale. Sonnet 4 cost: trivial (~£3-5/month).
+
+**Estimate.** Claude-assisted: ~2 sessions (EF + table + client wiring + edge case handling for first-day-no-activity members).
+
+**Sequencing.** Post-trial. Static lookup is good enough for the trial cohort.
+
+---
+
+### Tagline `time_of_day` column for TOD-aware rotation
+
+**Status.** PM-225 shipped `public.taglines` table with `text, position, active`. PM-256 currently uses 3 hardcoded JS pools for TOD-aware tagline rotation because the table has no TOD discriminator.
+
+**Plan.**
+
+1. Add `time_of_day TEXT NULL` to `taglines` (NULL = applies to all TODs, matching current behaviour for the 5 PM-225 connect taglines).
+2. Lewis adds 4-6 taglines per TOD via Supabase Studio.
+3. Replace `pickTagline()` in index.html with a Dexie read of `taglines` filtered to `time_of_day = current || time_of_day IS NULL`, then local-midnight-anchored day-index rotation.
+4. `connect.html` / `mind.html` / `exercise.html` keep current behaviour (no TOD filter) since their heroes are TOD-agnostic.
+
+**Estimate.** ~30 min — pure data + 10-line JS swap.
+
+---
+
 ## Added 23 May 2026 PM — PM-215 — YouTube broadcast-creation cron (paired with PM-251 consumer contract)
 
 **Status.** Data contract now defined by PM-251. PM-251 added `youtube_broadcast_id TEXT NULL` back to `calendar_occurrences`; live pages will activate UPCOMING/PRE_ROLL/LIVE/JUST_ENDED states the moment this cron starts populating broadcast IDs. Until then, all 8 categories show QUIET state (latest replay from `replay_playlists`).

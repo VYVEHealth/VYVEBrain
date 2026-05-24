@@ -1,3 +1,99 @@
+## 2026-05-24 PM-256 — Home redesign: cinematic TOD hero + dropped activity score + dropped check-in [vyve-site `135f4e33`]
+
+### What shipped
+
+Atomic 5-file commit to `vyve-site` `main`: `135f4e33a09a6dcf4ccdcebfc6479c75e3719842`, parent `97ae2607` (PM-255 standalone PB+history pages). Last hub-page hero per §23.55 doctrine — index.html joins connect.html, mind.html, and exercise.html as a full §23.55-compliant hub. Hub-hero campaign closes.
+
+Full rewrite of `index.html` (121KB → 63KB, 1849 lines → 1469 lines). The home page is now: photographic hero (3 TOD states) → Today's Focus card → What's on next → 5 Progress Pills (today's daily habits as tap-to-tick rings).
+
+### What's there now
+
+**Three-state cinematic hero.** Morning sunrise / afternoon clarity / night moon, all same composition (figure on rock looking across loch and mountains). `.index-hero.is-morning|is-afternoon|is-night` class swap via pre-paint inline IIFE on `getHours()` — boundaries 05-11 / 11-19 / 19-05. Default class is `is-morning` per §23.46 honest paint (the literal default seen by anyone with a clock skew). Index is the first hub to do 3-state — Body shipped day/night because we had two photos; index has three real photos.
+
+**§23.55 hub-page hero doctrine throughout.** Body-level fixed, longhand top/left/right/height (no `inset:0` shorthand), `translateZ(0)` + `will-change: transform`, `background-image` (never `<img>`), `body.home-page::before { display: none }`, `body.home-page main { padding-top: max(360px, 48vh) }` paired with hero height. z-index hero:1, wrap:2. `body.home-page .mph-page-label { display: none }` suppresses the nav.js topbar page-label.
+
+**Hero height `max(360px, 48vh)`** — taller than other hubs (Body `max(250px, 35vh)`, Connect/Mind older value at `max(280px, 46vh)`, PM-247 canonical `max(250px, 35vh)`). Index is the home + the emotional weight-bearer of the app; a taller hero makes it feel like a destination rather than a feed wrapper.
+
+**Greeting + tagline anchored bottom-left** rather than top-left used on other hubs. Figure stands lower-right in all three photos — copy on the left lets the figure read as visual companion rather than competing. Hero copy: italic Playfair name, `1.6rem` body for greeting, `0.95rem` for rotating tagline.
+
+**§23.57 canonical scrolling-fade band** — `.index-hero-fade` as first child of `.wrap`, absolute `top:0; transform: translateY(-100%); height: 80px`, three-stop rgba gradient hitting opaque at 75% Y, theme-scoped `[data-theme="light"]` override at `rgba(240,250,248,*)`. Fourth application of the recipe after PM-244 (connect), PM-246 (mind recovery), PM-252 (body).
+
+**Today's Focus card** — persona × time-of-day static lookup (15 entries: 5 personas × morning/afternoon/evening). Each entry has icon, eyebrow ("3 min · Breathwork"), title ("Build momentum"), meta (1-line subtitle), href. Tap routes to the relevant hub. v2 deferred: AI-generated daily focus via existing Anthropic pipeline (already used by weekly check-in recs and running plans).
+
+**What's on next** — single card reading `calendar_occurrences` from Dexie. State picker: live (now ∈ [starts_at, ends_at) AND `youtube_broadcast_id IS NOT NULL`), else next future row by `starts_at`. Live state shows green LIVE pill + Join CTA → category live-page via 8-entry CATEGORY_LIVE_PAGE map. Upcoming state shows "Today · HH:MM" or "Day · HH:MM" tag + View CTA → /sessions.html. Empty state (no calendar data, e.g. cold-load) preserves the dashed-border markup honestly per §23.46.
+
+**5 Progress Pills as today's daily habits.** Dean's framing during the design discussion: "those will be daily habits. those five habits will show there, and they can click them and tick them off in that pill." Up to 5 habits rendered; >5 = "See all ›" link to habits.html. Each pill = circular SVG ring (52×52, r=22, dasharray 138.2) + emoji icon (12-keyword `iconForHabit()` against `habit_title`, 🌿 fallback) + label. Ring fill boolean per v1: empty (offset=138.2) or full (offset=0). Done state: teal-light fg → green `#5be78a`, label colour goes from `text-muted` → `text` + weight 600, icon gains green glow.
+
+**Tap-to-tick optimistic-first per §23.39.** Same pattern as habits.html (the canonical impl). On tap: flip `__habits[idx].doneToday`, re-render pills (instant visual update), then in background:
+
+1. **Tick path.** Dexie `daily_habits.upsert({member_email, activity_date, habit_id, logged_at, notes:''})` → `VYVEHomeState.optimisticPatch('daily_habits', {sign:+1})` → `VYVEBus.recordWrite('daily_habits', synthKey)` → REST upsert against `/daily_habits?on_conflict=member_email,activity_date,habit_id` with `Prefer: resolution=merge-duplicates,return=minimal` → `VYVEBus.recordCanonical('daily_habits', synthKey)`.
+2. **Untick path.** Dexie `daily_habits.delete(email, today, habit_id)` → `optimisticPatch({sign:-1})` → REST DELETE → `recordCanonical`.
+3. **Cross-page sync.** Bus subscriber on `daily_habits` triggers `loadHabits(email)` re-pull → re-render. Tap-to-tick on home updates the daily-habits page (and vice versa) on next visit without round-trip.
+
+**Tagline rotation per §23.55** — local-midnight-anchored day-index `Math.floor(Date.UTC(y,m,d) / 86400000) % count`. v1 = 3 hardcoded pools in JS (4 lines each per TOD). v2 = Dexie read of `taglines` table once Lewis populates with a `time_of_day` column for TOD filtering.
+
+### What's removed from `index.html`
+
+- Activity score ring + 4 component bars (Activity / Consistency / Variety / Wellbeing).
+- Daily check-in card + 7-day pill strip (mob-checkin + desktop daily-checkin-card).
+- Mobile score pill (mob-score-pill).
+- Overall streak bar (desktop) + mobile streak row.
+- 5-track progress wall (Daily Habits / Exercise / Cardio / Sessions / Weekly Check-ins). Still lives on engagement.html one tap away via More menu.
+- This-week's-goals strip.
+- Collective Impact charity banner. Lives on give-back marketing page; no portal-side need.
+- Coming-up-this-week list. Replaced by single What's on next card with View All link to sessions.html.
+- Two session-banners (live-now + up-next). Collapsed into the single What's on next card with state-aware presentation.
+- Skeleton timeout monitor (no skeleton-screen DOM anymore — empty-state markup IS the honest first paint per §23.46).
+
+### Files (5)
+
+- `index.html` — full rewrite, 121255 → 64412 bytes, 1849 → 1469 lines
+- `sw.js` — cache key bump `pm255-pb-history-pages-a` → `pm256-home-redesign-a`, 3 new precache entries
+- `index-hero-morning.jpg` NEW (100043 bytes, 1024×1024 progressive JPEG q82)
+- `index-hero-afternoon.jpg` NEW (155980 bytes, 1024×1024 progressive JPEG q82)
+- `index-hero-night.jpg` NEW (137094 bytes, 1024×1024 progressive JPEG q82)
+- `index.html` vbb-marker `Update 140` → `Update 141`
+
+### Discipline honoured
+
+§23.41 fresh-HEAD discipline: refreshed `vyve-site` main HEAD twice — once at session start (`97ae2607`), once between commit-object create and ref-update (`97ae2607` still). No parallel ship collision.
+
+§23.45 PAT-direct path throughout (Composio still 401, now ~3 days since 21 May security incident). PAT pulled from `vault.decrypted_secrets` via Supabase MCP.
+
+§23.52(a)(b)(c) all clean. Five blob bodies via `blobs/{path}.json` files + `curl --data-binary @file`. All 5 SHAs validated as 40-char hex before tree-create. Post-commit `files[]` status array confirmed `{added: 3, modified: 2, removed: 0}`. First-100-char post-commit verification on text files at commit SHA matched; md5 on three binaries matched.
+
+§23.53 response parsing via files throughout — `commit.resp.json` and `ref.resp.json` each read via `json.load(open(...))` in a separate step, not inline `python3 -c` against `$(...)` capture.
+
+### Verified
+
+- `node --check` clean on all 9 inline `<script>` blocks (the rewritten boot script + 8 preserved or new blocks)
+- Tag balance 26/26 (initial assembly had one missing `</script>` from a stripped chunk; caught by automated count and patched before commit)
+- All `getElementById('…')` IDs cross-referenced against DOM (only ghost reference is `skeleton-screen` inside the commented-out legacy monitor block — guarded by `if (!el) return`)
+- Post-commit fetch at commit SHA `135f4e33`: text first-100-char match, binary md5 match on all three JPGs
+- Files in commit per GitHub API: `{added: index-hero-afternoon.jpg, index-hero-morning.jpg, index-hero-night.jpg; modified: index.html, sw.js}`
+
+### No new §23 hard rule earned
+
+PM-256 exercises established doctrine: §23.39 (optimistic-first habit writes), §23.41 (parallel-session safety with HEAD re-check), §23.45 (PAT-direct fallback), §23.46 (honest paint, no skeleton placeholders), §23.48 Pattern 2 (catalogue paint from Dexie with bus-driven re-render), §23.52(a)(b)(c) (`--data-binary @file` for every blob; verify status array post-commit; assert SHAs non-empty + 40-char), §23.53 (parse response from file not inline), §23.55 (hub-page hero doctrine — fourth and final hub), §23.57 (canonical scrolling-fade recipe — fourth application).
+
+### State after this commit
+
+- vyve-site main: `135f4e33`
+- Dean's dev iPhone: picks up Update 141 on next WKWebView cache cycle (2-15 min) via `server.url` dev-loop per §23.42
+- Bundled members: still on iOS 1.3 (2) / Android 1.0.3 (10) at SHA `83874dd5` from PM-115/116; see PM-256 home on next Capawesome OTA bundle ship
+- Composio: still 401 (no fresh attempt this session — Vault PAT path stable)
+- §23 hard rules: unchanged at §23.61. No new doctrine earned.
+- Hub-hero campaign: CLOSED. All 4 hubs (Home/Body/Mind/Connect) now ship §23.55-compliant photographic heroes.
+
+### What's next on this surface
+
+- Habit icon redesign (deferred follow-up campaign). Add proper icon column to `habit_library` so the keyword-match in `iconForHabit()` becomes a direct lookup. Touches the icon design pass + library schema migration + backfill of existing 30 habit rows.
+- Fractional-ring v2 once habit data targets exist (`Walk 8,000 steps` reading from HealthKit against target → 78% ring; `Hydrate 2L` reading water_logs against target). Requires per-habit `target_unit + target_value` columns on `habit_library` + per-habit render-time data source declarations.
+- AI-generated daily focus (post-trial). Anthropic pipeline reuse — same shape as weekly check-in recs.
+- Tagline `time_of_day` discriminator column in Supabase `taglines` table + admin write surface for Lewis. Once populated, swap the hardcoded JS pools to Dexie reads (§23.48 Pattern 2 catalogue).
+
+---
+
 ## 2026-05-24 PM-255 — Standalone PB + Past Sessions pages, bespoke overlays retired [vyve-site `97ae2607`]
 
 ### What shipped
