@@ -26,23 +26,15 @@ The 5 progress rings on home (Hydration teal / Movement green / Mind purple / Nu
 
 `?debug=build` should show the build banner with vbb-marker + sw cache key. HTML element + JS wire are still in `index.html` (L1077-1110 inspected at PM-293) but the banner doesn't appear. Most likely cause: a CSS specificity issue from the PM-256 rewrite is overriding the `style.display = 'block'` set by JS, OR the localStorage flag check at L1086 is silently failing. Dean: "I haven't seen the banner on this since we did the whole change to the index. But it's been working pretty well in terms of it's been updating pretty quick." Not a launch blocker — just a diagnostic affordance lost. Fix path: run `?debug=build` in Safari with DevTools open, see why `vyve-build-banner` element doesn't render, fix the spec collision or restore the JS hook.
 
-### Settings habit-save Supabase write failure — DIAGNOSTIC SESSION OWED (CRITICAL — launch blocker)
+### Settings habit-save Supabase write failure — SHIPPED PM-296 (25 May 2026, vyve-site `a737efbd`)
 
-**Owner.** Dean to open as a fresh session per the prompt provided at PM-293 session close.
+**Status.** Shipped this session. See PM-296 changelog for full diagnosis + fix. Three-part fix on `settings.html` (L1052 strict-equality filter relaxed to truthy; `keepalive: true` + `res.clone().text()` capture on both PATCH removal + POST add). Cache key `pm295-habits-save-keepalive-a`; vbb-marker Update 185.
 
-**Symptom.** Member adds a habit in settings (e.g. "Caffeine curfew"), taps "Save habits". Toast: "Some changes did not save. Check your connection." Nav to home — the new habit IS visible (Dexie write succeeded). Nav back to settings — habit is NOT ticked in the picker (re-fetch from Supabase, where the row never landed). Nav back to home — habit has been removed (Supabase truth propagated). Visible state thrash.
+**Pending device verification.** Dean to repro the original Caffeine curfew flow on iOS after WKWebView cache cycles to Update 185. If the failure mode disappears, the WKWebView-teardown hypothesis is locked. If it persists, the new console.error surfaces the response body on next failure — re-diagnose from there.
 
-**What Dean's noticed.** Repeatable on his account 24 May. Some kind of optimistic write succeeds locally, server write fails, server-truth read clobbers the optimistic state on next entry to settings.
+**Open follow-up — `keepalive: true` forward-sweep audit.** PM-296 fixed `saveHabits` only. Every other fire-and-forget POST/PATCH/DELETE in the codebase against PostgREST is a candidate for the same hardening. Surfaces to audit when picked up: every page-local `supaFetch(...)` in an un-awaited IIFE (settings.html `savePersona`, `saveGoal`, custom-habit create/delete; nutrition.html food log; weight_logs; any `:logged` write-path that doesn't go through `VYVEData.write` or `vyve-offline.js`'s outbox). One audit pass after PM-296 device-verifies. Schedule alongside the §23.65 forward-sweep + Dexie-write audit pass tomorrow.
 
-**Likely culprits (not yet diagnosed).**
-
-1. **RLS regression** — 08 May PM-8 audit wrapped auth functions in `(SELECT auth.email())` subqueries to fix the planner regression. Possible that the `member_habits` insert policy was mis-rewritten. Check `pg_policies WHERE tablename = 'member_habits'`.
-2. **Payload shape mismatch** — settings.html `saveHabits` at L1480 does `supaFetch('/member_habits', {method:'POST', body:JSON.stringify({...})})`. Schema may have shifted under it.
-3. **409 conflict mistreated as fail** — if a member's habit assignment row exists with `active=false`, the INSERT should be UPSERT or PATCH; if it's a raw INSERT, Postgres returns 409 and the page's "Some changes did not save" toast fires. The Dexie write succeeded because that's a direct put, not subject to the conflict.
-
-**Diagnostic protocol per §23.7.4.** Diagnose first, no speculative patches. Pull Supabase logs for the relevant POST timestamps when reproducing on Dean's account. Confirm where the failure is (RLS / 409 / payload / EF) before shipping a fix.
-
-**Fold-in opportunity.** settings.html already publishes `habits:set-changed:failed` event (L1630) on save failure. Home + habits.html don't currently subscribe to the `:failed` event — when wired, the optimistic local state could be reverted on failure rather than living on as a lie until re-read clobbers it. Possibly the right shape for the fix even if the root cause is server-side.
+**Fold-in NOT done — `:failed` subscriber wiring.** Per diagnosis, this would mask the symptom rather than fix the cause. If `keepalive` proves the cause, no subscriber needed. Defer until device-verify clarifies.
 
 ### §23.65 forward-sweep audit (envelope-trusted subscribers)
 

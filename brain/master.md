@@ -3425,6 +3425,41 @@ The two passes serve different purposes: pass 1 discharges the user-perceived st
 
 
 
+### §23.66 — Pre-commit content rebase, not just SHA-rebase (PM-296, 25 May 2026)
+
+**Earned PM-296.** Third occurrence of the same parallel-session collision shape in one week. PM-275/PM-275.0 (fan-out drift), PM-290/PM-291 (PM-291's habit-expander work erased by PM-290 committing against session-start cache despite §23.41 SHA-refresh passing), PM-296/PM-294 (sw.js cache key + index.html vbb-marker bump collided with parallel session's PM-294 ship in the ~30min between draft and commit). Promoted from §23 candidate (logged PM-292) to hard rule on third occurrence.
+
+**The rule.** Before committing a multi-file change via Git Data API, fetch live HEAD content for every file being committed and confirm no drift vs working base. On any drift, rebase patches against live content before commit. This is one step beyond §23.41 (fresh SHA-of-ref check): §23.41 catches *that* HEAD moved; §23.66 catches *what changed* in the files being overwritten.
+
+**Why bare §23.41 is insufficient.** §23.41 fetches the branch SHA and confirms HEAD hasn't drifted. But if HEAD has drifted (which is the common parallel-session case), §23.41 in its bare form doesn't tell you *what files* in the new HEAD differ from your working base. Two failure modes that §23.66 closes:
+
+1. **Content overwrite** (PM-290 → PM-291). My commit blob carried session-start file content for a file the parallel session had since modified. Git's tree-build accepted my blob; my commit's tree pointed at my blob; the merge-commit landed; the parallel session's work in that file vanished. §23.41 passed because the SHA check happened against the working base, not against the live HEAD's per-file content. §23.66 requires per-file content diff before commit.
+
+2. **Adjacent bumps collision** (PM-294 → PM-296). My bumps targeted `sw.js` cache key X → Y, parallel session bumped X → Z, I overwrote Z with Y. §23.41 caught the branch SHA drift but only because I happened to re-check it. §23.66 requires content rebase, which would have surfaced the bump collision automatically.
+
+**Pattern.** Right before the Git Data API blob-create calls (or just before `apply_migration` in Supabase MCP), refresh-fetch live HEAD content for every file path being committed, compare against working-base content. If identical, proceed. If differs:
+
+- Trivial drift (e.g. cache key bumped by another session, vbb-marker bumped): re-fetch live content, re-apply your patches to the live content, continue.
+- Substantial drift (the file changed in regions your patch touches): abort, re-diagnose, prepare a three-way merge by hand. Do NOT commit through the drift — that's the PM-290 mistake.
+
+**Audit signal.** Any session-end commit message that says "restored content erased by [prior commit]" is a §23.66 violation in the prior commit. Pattern-match for it post-hoc in the changelog when reviewing parallel-session sessions.
+
+**Implementation lever.** In Python committing via urllib (the post-Composio-outage commit path), the rebase check is ~6 lines per file:
+
+```python
+for path in files_being_committed:
+    live = req('GET', f'/contents/{path}?ref={BRANCH}', raw=True)
+    if live.content != working_base[path]:
+        # rebase: either re-apply patch onto live, or abort
+        ...
+```
+
+Cheap. Should run on every multi-file commit by default.
+
+**Why it's THREE occurrences before codifying as hard rule.** §23 doctrine: candidate after first, codify after second-or-third when the pattern is clearly recurring (per the brain's general approach to §23 rule promotion). PM-292 was the first explicit codification *as candidate*; today is the third occurrence (and the second since the candidate was logged). Threshold met cleanly. Future Claudes touching multi-file commits: read this rule first.
+
+
+
 ## 24. Premium Feel Campaign — local-first migration (active)
 
 > **Launched 13 May 2026 PM-77.** Target launch 31 May 2026. See `brain/active.md` §3 and `playbooks/premium-feel-campaign.md` for the working details.

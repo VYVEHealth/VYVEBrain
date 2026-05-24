@@ -1,3 +1,61 @@
+## 2026-05-25 PM-296 — settings habit-save write failure diagnosed + fixed (keepalive + active-filter) [vyve-site `a737efbd` — commit-message-labelled PM-295; renumbered PM-296 in brain after parallel-session collision]
+
+Dean opened the session with the launch-blocker `tasks/backlog.md` "Settings habit-save Supabase write failure — DIAGNOSTIC SESSION OWED" entry as the brief, with full repro + hypothesis around (a) where the Supabase write fails, (b) whether settings.html's read-back path overwrites Dexie, (c) whether wiring the existing `habits:set-changed:failed` subscriber on home/habits.html would help. Per §23.7.4 — diagnose first, one shipped fix, no speculative patches.
+
+### Diagnosis
+
+**Bug A — settings.html L1052 strict-equality filter rejects integer-coerced rows.** db.js is internally consistent on `member_habits.active` typing: the `[member_email+active]` compound index uses integer 1/0, `replaceForMember` (server-hydrate path) coerces `r.active === undefined ? 1 : (r.active ? 1 : 0)`, `bulkUpsert` and singular `upsert` both coerce booleans to integers, `allFor(email)` queries `[email, 1]`. Every row in Dexie carries integer `active` post-write. **But settings.html's PF-12 Dexie-first reader at L1052 applied a redundant secondary filter:** `(_dxMh || []).filter(function (h) { return h.active === true; })` — strict triple-equals against boolean true. Every row with `active: 1` (integer) silently dropped from `_filteredMh`. New rows from `saveHabits` bulkUpsert ALL landed correctly in Dexie but were filtered out on settings re-entry, propagating downstream as "Caffeine curfew not ticked in the picker on re-entry" → `sync.js replaceForMember` next pass → Dexie wiped down to Supabase truth → home loses the habit.
+
+**Bug B — the actual write failure.** `assigned_by='self'` CHECK accepts the payload (verified). RLS `member_email = auth.email()` ALL — POST payload matches. No conflicting row exists for the Caffeine curfew habit_id on Dean's member_habits (zero rows; never assigned). The toast "Some changes did not save" fires from `failed = true` in the IIFE — either `!res.ok` or caught fetch exception. **No `/rest/v1/member_habits` POST visible anywhere in 24h of API logs across all members despite Dean's repro.** Only 2 `assigned_by='self'` rows have EVER landed (both test1@test.com on 16 May, PM-151/153 ship day). Zero member_habits writes of any kind since 17 May. The fetch is **throwing client-side** — Postgrest never receives it. Most likely cause per the PM-289 pattern: WKWebView tearing down the un-awaited fetch mid-flight. Same shape as the `connect-checkin.html` fix landed at PM-289. Cannot pin the exact trigger without device console capture (none of the channels surface caught exceptions in the API log).
+
+**Bug C (Dean's third hypothesis) — failure subscriber would be band-aid.** settings.html publishes `habits:set-changed:failed` on L1630. index.html subscribes to `habits:set-changed` (success) at L2316 but NOT `:failed`. habits.html doesn't subscribe to either — it re-reads Dexie when navigated to. Even if `:failed` subscribers reverted the Dexie row, `sync.js replaceForMember` would reconcile Dexie down to server truth on the next hydrate pass regardless. The real fix is making the write reliable, not papering over the failure downstream.
+
+### Shipped (vyve-site `a737efbd`, three files atomic via Git Data API)
+
+**`settings.html`:**
+- L1052 strict-equality filter relaxed to `!!h.active` (truthy test) with PM-295 comment explaining why allFor() already gates and why the secondary filter was rejecting integer-coerced rows.
+- L1608, L1616 (PATCH removal path): `keepalive: true` added to fetch options. 4xx/5xx body capture via `res.clone().text().then(b => console.error(...))` so future server-side rejections surface a response body in the console instead of being silent.
+- L1620, L1631 (POST add path): same `keepalive: true` + `res.clone().text()` capture.
+
+**`sw.js`:** CACHE_NAME bumped `pm294-live-tracking-restored-a` → `pm295-habits-save-keepalive-a` (commit-labelled, brain renumbered to PM-296).
+
+**`index.html`:** vbb-marker bumped Update 184 → Update 185.
+
+### §23.41 caught parallel-session drift mid-commit (third time today)
+
+Drafted patch against session-start HEAD `d0a880ed` (parallel PM-286/295 engagement v2). §23.41 fresh-HEAD-of-ref check before commit revealed HEAD had moved to `537c73b1` — parallel session shipped its renumbered PM-294 (tracking.js restoration) in the ~30min gap, bumping both sw.js cache key + vbb-marker. Rebased: re-fetched live `sw.js` + `index.html`, re-applied my single-line bumps against the new base, settings.html applied cleanly (no parallel-session drift on it). Post-commit byte-equal verification pinned to commit SHA on all 3 files clean.
+
+The PM-292 §23 candidate ("content-rebase before commit, not just SHA-rebase") earned its keep again — bare §23.41 SHA refresh would not have caught the sw.js / index.html content drift since the SHA check would pass (I refreshed HEAD before applying bumps), but the bumps themselves would have collided with the parallel session's bumps. Worth promoting from §23 candidate to hard rule after this third occurrence: PM-275/PM-275.0 fan-out drift, PM-290/PM-291 content overwrite, PM-296/PM-294 cache-key + vbb-marker collision. Three independent occurrences across one week. The rule shape: **before committing a multi-file change via Git Data API, fetch live HEAD content for every file being committed and confirm no drift vs working base; on drift, rebase patches against live content before commit.** Promoting to §23.66 in this commit.
+
+### What's still uncertain
+
+The fetch-throws-client-side hypothesis is the highest-probability cause but unconfirmed. The `res.clone().text()` console.error shipped in this commit will surface the actual response body the next time the failure recurs. Two outcomes:
+
+- **If the failure mode disappears post-ship:** `keepalive: true` was the root cause (WKWebView teardown). Lock as understood — promote the §23.NN "fire-and-forget writes against PostgREST from any Capacitor page MUST set `keepalive: true`" rule. Same shape as PM-289's connect-checkin fix.
+- **If the failure persists with `keepalive: true`:** the new console.error captures the server-side response body. Re-diagnose from there. The fetch is reaching the server but being rejected — likely RLS or trigger-side.
+
+### Device-test handoff
+
+Dean's iPhone via `server.url` dev-loop picks up the new build on next WKWebView cache cycle (2-15min per §23.29). `?debug=build` shows Update 185 to confirm. Repro the original "Caffeine curfew" scenario; expected outcomes:
+
+1. Save habits → toast "X habits saved ✓" (no failure toast).
+2. Nav to home → Caffeine in list (Dexie + Supabase both have it now).
+3. Nav back to settings → picker shows Caffeine ticked (PM-296 fix — strict-equality filter removed).
+4. Nav back to home → Caffeine still in list (no `sync.js replaceForMember` removal because server actually has the row now).
+
+If the toast still says "did not save", open Safari Web Inspector → Console → look for `[saveHabits] add POST 4xx/5xx body:` and that response body is the next-step diagnostic.
+
+### What this commit is NOT
+
+- Not the failure-subscriber wiring (Bug C). Per the diagnosis, that would mask the symptom rather than fix the cause. If `keepalive` proves the cause, no subscriber needed. If it doesn't, the new console.error data drives whatever the next fix is — and only then would `:failed` subscribers earn their place.
+- Not a forward-sweep of `keepalive: true` across every fire-and-forget PostgREST write in the codebase. PM-296 fixes the surface Dean reproduced; a tree-wide audit is a separate backlog item (§23.65 forward-sweep already in flight on the bus-subscriber side; this would be the sibling on the keepalive side). Worth one audit pass after PM-296 device-verifies — track as backlog item below.
+
+### Tooling
+
+§23.45 PAT-direct path end-to-end (Composio still 401 from 21 May incident). §23.41 fresh-HEAD-of-ref + post-commit byte-equal signal-string verification clean. Git Data API multi-file commit (blobs → tree → commit → update ref). `node --check` on 4 extracted inline JS blocks in settings.html — clean. PM number on commit-message says PM-295 due to parallel-session collision; brain canonical PM-296 with renumber note per the PM-294/PM-295 precedent.
+
+---
+
 ## 2026-05-24 PM-294 — Restore tracking.js to all 8 live pages — silent session-views regression since PM-251 [vyve-site `537c73b1`]
 
 **The bleed.** Dean asked tonight whether test1@test.com had any session_views logged today — answer was no. Last row in either `session_views` or `replay_views` for him was **23 May 00:36 UTC** (Yoga, 4.26 min). PM-251 had shipped a complete state-machine rewrite of `session-live.js` at 23 May 22:44 UTC — and along with the structural work, **inadvertently dropped `<script src="/tracking.js" defer></script>` from all 8 live pages**: yoga-live, workouts-live, mindfulness-live, checkin-live, therapy-live, events-live, education-live, podcast-live. Before PM-251 every live page loaded tracking.js which performs 60s-dwell auto-attribution. After PM-251 the new state machine emitted a manual "Mark as completed" CTA only during LIVE/JUST_ENDED states, with logging routed via `log-activity` v6 on tap. No automatic credit, no UI affordance hinting at the change, no rollout note. From PM-251 ship to PM-294 ship, **every member watching a live session earned zero session_views unless they happened to tap the new button** (no one did — there's no learned behaviour for it yet).
