@@ -1,3 +1,63 @@
+## 2026-05-25 PM-304 — Live-session per-broadcast watch-time attribution (unified player-tracker.js, mode='replay'|'live') [vyve-site `7764e863`]
+
+Sibling of PM-294's replay attribution work. Picks up the parked YT IFrame integration that PM-294 (the live-tracking.js restoration, `537c73b1`) explicitly deferred. Same tracker shape, polymorphic on `mode`. New `session_live_views` Supabase table + Dexie SCHEMA_V14 store + `player-tracker.js` (replaces `replay-tracker.js`, back-compat alias preserved) + `session-live.js` tracker init when iframe mounts in LIVE state + `?debug=tracker` on-page debug strip + additive read in BOTH `engagement.html` Variety AND `engagement-v2.html` Connect metric.
+
+### What shipped
+
+**Unified tracker (Dean's mid-session call).** Initial plan was a parallel `live-tracker.js` module. Dean's instinct mid-session: the iframe is a `YT.Player` object regardless of source — state machine, accumulator, 30s threshold, `client_id` stamping, JWT caching, visibility/Capacitor listeners are ALL identical between live and replay. Differences (table name, FK shape, row denormalisation, bus event name, completion rule) localise to a single `MODE_CONFIG` dispatch + one branch in `buildRow`. Refactored `replay-tracker.js` (582 lines) → `player-tracker.js` (644 lines, +62 lines for mode-dispatch plumbing). The PM-297 JWT-caching fix now applies to live attribution automatically; future tracker bugs get fixed once.
+
+**Why two tables (kept separate; tracker unified, records separate).** FK targets differ: `replay_video_views.youtube_video_id → replay_videos`, `session_live_views.occurrence_id → calendar_occurrences(id)` UUID. The product distinction ("watched live during the broadcast window" vs "watched archived solo three days later") is a real engagement signal worth keeping queryable for future leaderboard/employer-dashboard/charity-math decisions. Legacy `session_views` has the 2/day cap trigger from PM-150 (§23.34) which we explicitly do not want on a watch-time table. Both new tables feed the Variety/Connect 'sessions' bucket additively via shared `addLog` lines — same-day dedup preserved across all three sources.
+
+**Threshold 30s** (parity with replays, Dean's call after weighing 60s alternative). Single constant in one place, easy to revisit post-trial-data. **Completion stamped on YT_ENDED in live mode** regardless of `pct_watched` (broadcast over = watched, see PM-303 (mine, not parallel-session PM-303)); `pct >= 90%` rule still ORs in for early-completers when `total_seconds` is known.
+
+**`session_live_views` schema.** 15 user cols + `id` PK. FK `occurrence_id → calendar_occurrences(id) ON DELETE CASCADE`. Denormalised on write: `youtube_broadcast_id` (nullable), `category`, `host_name`, `session_title`, `activity_date` (BST-aware YYYY-MM-DD matching `set_activity_time_fields()` convention so engagement-html date-keyed reads consume the table with one new `addLog` line). RLS SELECT + INSERT + UPDATE on `auth.email() = member_email`. No DELETE policy by design (mirrors `replay_video_views`). Indexes: unique on `(member_email, occurrence_id, client_id)` for outbox-retry dedupe, `(member_email, last_updated_at DESC)` for future Continue Watching equivalent, `(occurrence_id)` for per-broadcast drop-off analytics.
+
+**`session-live.js` tracker lifecycle.** `syncPlayerTracker(state, ctx)` called from `render()` end. Keyed off module-level `_trackerBoundBroadcastId`: outside LIVE → destroy if attached; in LIVE same broadcast → no-op (don't tear down on every ticker pass); in LIVE different/first broadcast → destroy any prior, find `#sl-live-iframe`, init with `{mode:'live', occurrenceId:row.id, broadcastId:row.youtube_broadcast_id, sessionTitle, category, hostName, totalSeconds:(row._end-row._start)/1000}`. The iframe URL gained `enablejsapi=1` + `origin=${window.location.origin}` params (required for `YT.Player` to attach via postMessage; IFrame API security best practice). Stable iframe `id="sl-live-iframe"` for the `getElementById` pickup after `app.innerHTML = ...` lands.
+
+**Debug strip — `?debug=tracker`.** Mirrors PM-296's `replays.html` on-page panel. Fixed-position 240px-max-height box, polled on the existing adaptive ticker (no separate timer). Shows `mode`, `watchSeconds`, `lastWrittenSeconds`, `hasFirstWrite`, `ready`, `lastState`, `cachedJwt`, `vyveSupabase`, `occurrenceId`, `broadcastId`, `category`, truncated `client_id`. Non-negotiable per Dean (no Safari devtools available; on-screen panel is the only diagnostic surface for tracker state on iPhone).
+
+**engagement wiring.** `engagement.html`: `VYVELocalDB.session_live_views.allFor(email)` added to the Variety Promise.all, `addLog(sessionLiveViews, 'sessions')` line. `engagement-v2.html` (PM-300 file): same in Progress tab loaders + `liveViews.forEach` in Connect metric day-sum. Both surfaces consume the new table additively — same-day deduped against existing sessions/replays.
+
+### §23.66 DOUBLE-FIRE in one ship cycle
+
+Parallel-session pressure unusually high tonight. Sequence:
+
+1. **Session start (5ad70c83 — PM-301 engagement-v2 count promote).** Built ~90 minutes against this base.
+2. **Pre-commit fresh-HEAD check #1 fired (a977c749 — parallel-session PM-302 connect.html `home-state-local.js` script tag fix).** They'd bumped sw.js cache key + index.html vbb. Mine collided. Rebased: re-fetched 3 affected files (sw.js, index.html, connect.html), surgically re-applied my edits on top of their content, swept `PM-302 → PM-303` across 7 of my files via sed before commit.
+3. **Pre-commit fresh-HEAD check #2 fired (6e83fbba — parallel-session PM-303 movement.html cache prepend race fix).** They'd ALSO claimed PM-303, ALSO bumped sw.js cache key, ALSO bumped index/settings vbb-markers to 193 (independently arrived at the same drift-catch-up shape — they were bumping settings 189→193 too, same intent as mine). Mine collided on all three. Rebased AGAIN: re-fetched 3 files, re-applied edits, swept `PM-303 → PM-304` across 7 of my files via sed before commit.
+
+Two `§23.66` rebases inside one ship cycle, plus one PM-number-rebase (the candidate from PM-292/PM-294, now proven five times this week). The third HEAD check (between blob create and ref update, post-tree build) was stable — commit landed cleanly.
+
+**Lesson the double-fire crystallises:** the fresh-HEAD check needs to fire BOTH before blob create AND between blob/tree build and ref update — HEAD can move in either window. The non-force ref update would have rejected this commit anyway, but catching drift earlier preserves PM-number monotonicity and avoids cache-key churn that members' WKWebView caches would otherwise have to re-download for nothing. Building this into `§23.66` as an explicit two-checkpoint flow.
+
+### §23.67 codified — script-tag INCLUSION auditing during new-feature ship
+
+Parallel-session PM-302's own commit message flagged this candidate; the pattern earned codification tonight. PM-302 (connect.html missing `/home-state-local.js` script tag — silent feature failure because `window.VYVEHomeStateLocal` was undefined so the function bailed at the guard, dot strip rendered empty, streak stayed at 0) and PM-294-the-live-tracking-restoration (silent regression because `<script src="/tracking.js">` was dropped from 8 live shells during PM-251 refactor) are two occurrences of the same root-shape bug in one night — silent feature/behaviour failure because a script-tag dependency wasn't on a consumer page. Codified as `§23.67`. See master.md.
+
+### The Supabase migration name carries the early PM number
+
+`pm299_create_session_live_views` migration was applied at the start of the session before the two §23.66 rebases. Supabase migration names are append-only history — no rename available. Brain entry calls this out so future readers don't get confused: the migration IS the PM-304 ship's table, but the filename carries the PM number I claimed before the double rebase. Same kind of unavoidable artefact as PM-294's `pm292_create_replay_video_views` migration carrying its mid-session PM-292 number after rename to PM-294.
+
+### Files (20, atomic via Git Data API)
+
+**NEW**: `player-tracker.js` (644 lines, refactored from `replay-tracker.js`). `window.VYVEPlayerTracker` + back-compat alias `window.VYVEReplayTracker` forcing `mode='replay'` for unchanged consumers (`replays.html`, `replay-category.html`).
+
+**CHANGED**: `db.js` (SCHEMA_V14 + `db.version(14)` + `session_live_views: makeTable(...)` consumer), `sync.js` (member-scoped pull entry + `CURSOR_COL` entry — `last_updated_at` cursor), `vyve-offline.js` (sessions-bucket URL detect extended; FAILURE_TABLE_MAP `live:viewed:failed` entry), `session-live.js` (iframe `enablejsapi=1`+`origin`+stable id, `syncPlayerTracker` lifecycle, `renderDebugStrip` on `?debug=tracker`, beforeunload destroy belt-and-braces), `engagement.html` (additive `session_live_views.allFor` + `addLog`), `engagement-v2.html` (additive read in Progress loaders + `liveViews.forEach` in Connect day-sum), `replays.html` + `replay-category.html` (script src swap `/replay-tracker.js` → `/player-tracker.js`, back-compat alias means no init-call changes), 8 live shells (single-line script tag insert above `session-live.js`).
+
+**DEPLOYMENT**: `sw.js` cache key `pm303-movement-cache-race-a` → `pm304-live-tracker-a` (TWICE-rebased), precache list adds `/player-tracker.js` keeps `/replay-tracker.js` for one cycle as recoverable orphan. `index.html` vbb-marker 193 → 194. `settings.html` settings-vbb-marker 193 → 194.
+
+### Tooling
+
+§23.45 PAT-direct (Composio 401 day 4). §23.66 fresh-HEAD fetched THREE times (session start, pre-blob-build, pre-ref-update). §23.52 + §23.53 — 20 blobs base64-encoded via `urllib.request`, never bash argv; JSON parsed from urllib `read()`, never inline shell capture; commit message body written to `/tmp` first then read into the API call. Post-commit md5 verification on all 20 files at commit SHA pinned to `7764e863d1bd92b455ed12da8556b147738ab027` — 20/20 byte-equal.
+
+### What's still owed (next session)
+
+1. **Live device walk (Path C).** Manual `session-publish` EF invocation against a near-now `calendar_occurrences` row (the EF's 60-min lookahead can't reach overnight-scheduled rows). Riverside stream against Yoga RTMP key. Navigate `yoga-live.html?debug=tracker`. Walk through PRE_ROLL → LIVE → tracker attaches → 30s threshold → first row in `session_live_views` → additional 30s → PATCH upsert → broadcast end → `completed=true`.
+2. **Delete `replay-tracker.js` from repo + sw.js precache.** Left in for one cycle as recoverable rollback target. Remove after the device walk confirms `player-tracker.js` works against both surfaces.
+3. **PM-294 follow-up #4 (per-category cumulative watch-time achievements).** Now in backlog as of this commit. Sequenced after ~1 week of trial data so tier thresholds (5/10/15/30/60/120/300 min placeholders) are designed against real distribution.
+
+---
+
 ## 2026-05-24 PM-302 — connect.html missing /home-state-local.js script tag (actual root cause of streak=0, three-strikes retro) [vyve-site `a977c749`]
 
 **The third miss in a single evening.** Dean's streak showed 0/30 on the Elite hero through PM-289, through PM-290, through PM-294 — three real bugs fixed, none of them the actual cause. PM-302 found it: `connect.html` calls `VYVEHomeStateLocal.computeHomeStateFromDexie(memberEmail)` at line 1265 of `loadStreakFromDexie`, but the `<script>` block at the bottom of the page **never includes `<script src="/home-state-local.js" defer></script>`**. `window.VYVEHomeStateLocal` is undefined, the function bails silently at the guard on line 1260, `renderStreak` is never called with real data. The dot strip renders empty (PM-289 ensures that's at least painted), the streak counter stays at 0 (the HTML default), and no amount of bus events, hydration listeners, or sync.js completion will trigger a recompute — the compute module isn't on the page.
