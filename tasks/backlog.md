@@ -1,8 +1,59 @@
+## Added 24 May 2026 PM — Future-vision: local-sunset-aware hub hero rotation (no build commitment)
+
+**Origin.** Dean question during PM-274 phase 1 wrap, looking at the index hub hero on his iPhone. Today's three-state photo swap (morning / afternoon / night) is driven by the §23.55 pre-paint inline IIFE on `getHours()` with hardcoded boundaries 05-11 / 11-19 / 19-05 — same shape across index, exercise (Body), mind, connect. The boundary "19:00 = night" is wrong for half the user base half the year. London in June: actual sunset ~21:30, so night photo appears 2.5 hours early. Edinburgh in December: actual sunset 15:40, so afternoon photo persists ~3.5 hours past dark. Stockholm winter: night at 14:45. Currently a real UX miss, not a nitpick — just not high enough impact to act on now.
+
+**Design tension.** The IIFE runs *before* anything else paints, which is why the swap feels instant with no flash. Any sunset-aware solution has to preserve that pre-paint contract — no async lookups, no network, no Geolocation API prompt at cold launch.
+
+### Three solution shapes, easy to hard
+
+**Path 1 — Cached lat/lng + client-side NOAA solar calculation (recommended).** Geocode the existing onboarding "Where are you based" free-text city → lat/lng at onboarding-EF time, persist to `members.lat numeric, members.lng numeric`. `member-dashboard` returns lat/lng alongside the usual payload, cached in localStorage on first paint. Pre-paint IIFE reads cached lat/lng → runs NOAA solar position algorithm (~40 lines of pure JS, zero dependencies) to derive today's sunrise + sunset → picks photo accordingly. Runs in <1ms, zero network, zero permissions. Falls back to current 19:00 boundary if lat/lng absent (graceful degradation for legacy members until backfill runs).
+
+**Path 2 — Browser Geolocation API.** Ask once, cache forever. Adds a permission prompt (friction), and the first cold launch won't have lat/lng ready in time for pre-paint — you'd get a one-frame flash from the wrong photo to the right one. Worse than Path 1 by every measure.
+
+**Path 3 — IP geolocation server-side.** Edge Function call on every page load to resolve IP → coords → sunset. Network round trip per page, breaks pre-paint contract entirely. Don't do this.
+
+### Path 1 effort estimate (Claude-assisted, sessions/hours)
+
+- Onboarding EF patch — geocode city → lat/lng on submit, persist to `members`. ~30 min. Free geocoder (Nominatim or similar — single call per new member, no rate concern at our scale).
+- Supabase migration: `ALTER TABLE members ADD COLUMN lat numeric, ADD COLUMN lng numeric`. ~5 min.
+- `member-dashboard` v59 returns lat/lng in the cached payload, cache key bumped. ~10 min.
+- NOAA sunset calculator as a tiny shared JS module — `getSunriseSunsetForDate(lat, lng, date)` returning `{sunrise: Date, sunset: Date}`. ~20 min including unit tests against known reference dates (e.g. London 21 June, Stockholm 21 December).
+- Pre-paint IIFE updated in all four hubs (index, exercise, mind, connect) to read cached lat/lng → compute today's sunrise+sunset → derive morning = sunrise → sunset = night-start. Verify §23.55 paint contract holds (still synchronous, still pre-paint). ~30 min.
+- Backfill lat/lng for existing ~15 members via the same geocoder, one-shot SQL ingestion. ~10 min.
+
+**Total: ~2 hours, single long session.** Low risk because the fallback path is literally the current behaviour — anyone without cached lat/lng gets today's 19:00 boundary unchanged.
+
+### Quiet win embedded in this
+
+Sunrise becomes available for free from the same calculation. Morning photo could start at actual local sunrise instead of the 05:00 floor. Stockholm winter members in particular get a much-improved experience — currently they see the "morning" hero from 05:00 against pitch black outside their window until ~09:00. With sunrise-aware boundaries, the morning hero appears when their world is actually getting light.
+
+### Data-quality flag
+
+The onboarding "Where are you based" field is currently free-text (master §9). Geocoding free-text is fuzzy — "London" works, "the shire" doesn't. Two pragmatic options:
+
+1. Tighten onboarding to a typeahead (city autocomplete). More work, cleaner data.
+2. Accept ~10% geocoding failures and fall back to a country-level centroid using the member's Stripe billing country (which is structured ISO-3166). Simpler, ships faster, "good enough" for the lighting-state question (a country centroid is wildly more accurate than `getHours()` for sunset purposes).
+
+Stripe-country fallback is the pragmatic call if this ever leaves the future-vision section.
+
+### Why this stays parked (for now)
+
+- The current 19:00 boundary is correct for ~6 months/year for UK members during normal waking hours. Not a fire.
+- The cohort is small enough (~15 members) that one-off observations of "the night photo came early today" wouldn't surface as feedback yet.
+- Path 1 needs an Edge Function patch + migration + four hub touches — meaningful coordination, not surgical.
+- Higher-impact polish queued ahead of it (PM-274 phase 2 wiring audit, PM-193 native splash Monday session, Premium-Feel skeleton fixes).
+
+Logged for revisit post-trial when premium-feel polish becomes the front-and-centre theme. If the user base reaches Scandinavia or any market with extreme latitude variance, this jumps up the queue immediately.
+
+### Files that would touch (when built)
+
+- `vyve-site`: `index.html` `exercise.html` `mind.html` `connect.html` IIFEs; new `lib/solar.js` shared module; `sw.js` cache key bump + vbb-marker bump (§23.42).
+- `supabase`: one migration; `member-dashboard` EF (next vN); `onboarding` EF (next vN, geocoder call added).
+- `brain`: §23.55 amendment to allow either fixed boundaries OR cached-lat/lng-derived boundaries, with the pre-paint contract preserved either way.
+
 ## Added 24 May 2026 PM — PM-274 phase 2: full-app Dexie wiring audit (NEXT SESSION)
 
-**Status.** PM-274 phase 1 shipped (vyve-site `0074a887`) — twelve `/focus/<slug>.html` pages live with shared chrome + §23.39 Dexie-write dispatch. **PM-275 arc shipped same evening** (vyve-site `b9ffeb33`, three commits PM-275.0/.1/.2) — composition refined to canonical §23.55 + §23.57 hub-hero pattern with heading hierarchy promoted to proper big page-header. Home carousel taps now route to functional pages, both themes render cleanly, headings are properly readable. **Phase 2 is the wiring audit** that closes the hub-subscription gaps surfaced when the focus pages started publishing bus events that no hub listens for.
-
-**Starting state for next session.** vyve-site main at `b9ffeb33` (PM-275.2). sw cache `pm275-2-panel-heading-a`. vbb-marker 162. Brain at this commit captures the full PM-274 → PM-275.2 arc plus the audit playbook.
+**Status.** PM-274 phase 1 shipped (vyve-site `0074a887`) — twelve `/focus/<slug>.html` pages live with shared chrome + §23.39 Dexie-write dispatch. Home carousel taps now route to functional pages. **Phase 2 is the wiring audit** that closes the hub-subscription gaps surfaced when the focus pages started publishing bus events that no hub listens for.
 
 ### Scope
 
