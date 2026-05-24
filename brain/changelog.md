@@ -1,3 +1,36 @@
+## 2026-05-24 PM-279.2 — Live sessions ops playbook expanded (privacy locked, intake spec, Portal Admin shape)
+
+Three operational decisions landed and codified in `playbooks/live-sessions-operations.md`:
+
+1. **Privacy = unlisted, canonical.** Lewis decision 24 May. Every broadcast PM-215 cron creates uses `privacy=unlisted`. Members reach the broadcast only via the live page's embedded iframe; nothing surfaces on YouTube search, channel page, or recommendations. Public is never used. Locked at the playbook level + cron defaults.
+
+2. **Session intake spec.** 8 fields per session — category, start, duration, title, description, host name, host role (optional), host photo (optional). Preferred handover format is a pasted block in chat, pipe-delimited, one line per session; Claude parses + validates + inserts. Monthly batches. CSV/Sheet equally accepted. Ad-hoc sessions added as they come up. Most rows are recurring (same category + host + slot) so practical per-row entry collapses to whichever fields are changing week-to-week.
+
+3. **Portal Admin UI shape defined.** Lives in the existing `vyve-command-centre` repo at `admin.vyvehealth.co.uk/calendar` (or `/sessions`). MVP = list + add + edit + cancel for `calendar_occurrences`. Phase 2 = bulk-add for recurring patterns. Magic-link auth (Command Centre pattern). No YouTube broadcast UI — PM-215 cron handles all of that automatically; Lewis never sees a broadcast ID. No Riverside integration — studios are pre-paired to persistent streams forever. Build estimate: ~1 session MVP + ~half session bulk-add. Both Claude-assisted.
+
+### Order of operations (decided)
+
+PM-215 cron FIRST, then 1 month of pasted-timetable operations to learn what Lewis actually does day-to-day, then Portal Admin UI MVP with those learnings in hand. Reason: the cron is the high-value piece that fundamentally changes the workflow; the UI is convenience layered on top. Building the UI before the cron means building blind to actual usage patterns.
+
+### What this unblocks
+
+- **Lewis can hand over a month's timetable any time.** Format documented; he can start drafting May/June batch whenever.
+- **PM-215 cron has its privacy default locked.** Build can proceed without ambiguity.
+- **Portal Admin UI scoped properly.** When we get to it, it's "compose existing Command Centre primitives", not "design from scratch".
+
+### What remains pending Lewis input (not blocking)
+
+- Confirmed per-category host names (Emma Clarke for Yoga, Calum Denham for Workouts, James Reid for Mindfulness, Phil for Group Therapy / HAVEN-adjacent, etc.) — currently `default_host_name='Lewis Vines'` universally per PM-251 backfill.
+- Instructor photo set — 4–5 squares uploaded once to Supabase Storage, URLs set as `service_catalogue.default_host_photo_url` per category. Until then, host photo space is gradient placeholder.
+
+Neither blocks PM-215 cron build; Lewis can confirm at his pace and we backfill the catalogue rows in one SQL pass when ready.
+
+### No new §23 hard rule
+
+Operational playbook expansion. No new tooling pattern, no new commit discipline, no new architectural primitive. PM-279 base entry already codified the diagnostic-EF-via-net.http_post workaround if it recurs.
+
+---
+
 ## 2026-05-24 PM-279 — Reusable-stream diagnostic green-light (PM-215 unblocked)
 
 Diagnostic ship for the PM-215 cron prerequisite. All 9 brand-account live streams under the `UCuptZFgSk0ZmNnE2IbYBdtg` ("VYVE") channel returned `contentDetails.isReusable=true` against `liveStreams.list?part=contentDetails,snippet,cdn,status&mine=true`. Zero one-shot streams, zero Riverside-side rework needed — PM-215 cron can `liveBroadcasts.bind` against the existing stream IDs without re-auth, re-permission, or stream recreation. This was the only remaining gating question for PM-215, raised against Dean's prior experience that "use the same YouTube link" approaches had historically failed. Diagnosis: those past failures were almost certainly the YouTube Studio UI defaulting to per-broadcast unique streams, not the API path — the API-created reusable streams on this account are correct shape.

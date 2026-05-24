@@ -1,6 +1,6 @@
 # Live Sessions — End-to-End Operations Playbook
 
-**Owner:** Lewis (commercial / scheduling) + Dean (technical / cron infra) · **Last updated:** 24 May 2026 (PM-279) · **Status:** Phase 1 manual / Phase 2 autonomous (PM-215 cron pending)
+**Owner:** Lewis (commercial / scheduling) + Dean (technical / cron infra) · **Last updated:** 24 May 2026 (PM-279.2) · **Status:** Phase 1 manual / Phase 2 autonomous (PM-215 cron pending). Privacy locked to `unlisted` per Lewis decision 24 May.
 
 ---
 
@@ -56,7 +56,7 @@ Once a week, paste your timetable into a Claude chat:
 
 Claude will:
 1. For each session, INSERT (or UPDATE) the row in `calendar_occurrences` with `starts_at`, `ends_at`, `category`, `session_title`, `host_name` (defaults to "Lewis Vines" if not specified — see `default_host_name` on `service_catalogue`).
-2. Call YouTube `liveBroadcasts.insert` for each row, with privacy=`unlisted` (members reach it only via the embedded iframe, not search/discovery).
+2. Call YouTube `liveBroadcasts.insert` for each row, with privacy=`unlisted` — **canonical, locked by Lewis 24 May**. Members reach the broadcast only via the embedded iframe in the live page; nothing is discoverable on YouTube search or via the channel page. Public is never used.
 3. Call `liveBroadcasts.bind` to wire the new broadcast to the matching category's persistent `youtube_stream_id`.
 4. UPDATE `calendar_occurrences.youtube_broadcast_id` with the returned broadcast ID.
 5. Report back what got scheduled and what didn't.
@@ -81,6 +81,49 @@ Once the cron is built, the loop becomes:
 4. Lewis turns up at the studio and presses Go Live. End of operational involvement.
 
 No per-session Claude prompt. No manual API calls. The schedule is the only input.
+
+---
+
+## Session intake spec — what we need from Lewis per session
+
+For every session — recurring or one-off — we need this row. Most rows are recurring (same category, host, slot week-to-week) so per-row entry collapses to whatever's actually changing.
+
+| Field | Required? | Example | Notes |
+|---|---|---|---|
+| **Category** | Yes | `Yoga, Pilates & Stretch` | Must match one of the 8 canonical strings exactly. Drives stream binding + replay playlist. |
+| **Start** | Yes | `2026-05-26 06:00` | Local time (BST/GMT auto-handled). Stored as UTC in `starts_at`. |
+| **Duration (mins)** | Yes | `45` | Used to compute `ends_at = starts_at + duration`. |
+| **Session title** | Yes | `Morning Flow` | The episode/session name; what members see on the card and live page. Max ~60 chars. |
+| **Description** | Yes | `A grounding flow to start the day strong.` | 1–2 sentences, max ~140 chars. Shown under title on live page. |
+| **Host name** | Yes | `Emma Clarke` | Person leading the session. |
+| **Host role** | Optional | `Yoga Lead` | Defaults to `service_catalogue.default_host_role` if blank. |
+| **Host photo URL** | Optional | `https://.../emma.jpg` | Bucket URL. Lewis curates 4–5 instructor photos once; thereafter it inherits from catalogue. |
+
+### Preferred handover format
+
+A pasted block in chat, one line per session, pipe-delimited:
+
+```
+Mon 26 May 06:00 · 45min · Yoga · "Morning Flow" · Emma Clarke · A grounding flow to start the day strong.
+Wed 28 May 06:00 · 45min · Yoga · "Power Flow" · Emma Clarke · A stronger flow to build heat and capacity.
+Tue 27 May 07:30 · 60min · Workouts · "Full Body Strength" · Calum Denham · Compound lifts and accessories.
+Thu 29 May 12:00 · 30min · Mindfulness · "Midday Reset" · James Reid · Five-minute breathwork plus seated meditation.
+Wed 28 May 09:00 · 30min · Weekly Check-In · "Monday Check-In" · Lewis Vines · Five-minute reflection on last week and intent for this week.
+```
+
+Claude parses, validates the category against the 8 canonical strings, computes `ends_at`, inserts/updates `calendar_occurrences` rows in one turn. A Google Sheet or CSV with the same columns also works — just paste it.
+
+### Cadence
+
+**Monthly batches.** End of each month, Lewis and Dean agree the next month's timetable, paste it into a chat, Claude populates the rows. Ad-hoc sessions (guest spots, special events) added as they come up. Once PM-215 cron is live, broadcast creation is autonomous — you never touch the YouTube API or stream keys.
+
+### Host photo bucket
+
+A small set of instructor photos (4–5 people, square crop, ~400×400px) lives in Supabase Storage. Lewis curates these once, gets the bucket URLs, sets them as `service_catalogue.default_host_photo_url` per category. After that, the photo just inherits — only set the per-row `host_photo_url` override if the session has a guest instructor for that week.
+
+### What goes in the host name field today
+
+Until per-category hosts are confirmed and instructor photos are uploaded, `default_host_name='Lewis Vines'` is the universal fallback. Lewis to confirm with Emma / Calum / James / Phil over the coming weeks, then we backfill `service_catalogue.default_host_*` per category once. After that, per-row `host_name` is only needed for guest spots.
 
 ---
 
@@ -181,6 +224,54 @@ Set `active = false` on the row. Page returns to QUIET state for that category u
 
 ---
 
+## The manual-add backend — Portal Admin UI
+
+The intake spec above describes the **data we need**. The Portal Admin UI is the **interface for entering it without writing SQL or pasting into a Claude chat**. It exists so Lewis (or anyone running ops) can add, edit, and cancel sessions through a web form, not a SQL editor or a chat handover.
+
+### What it is, at MVP
+
+A new page in the existing `VYVEHealth/vyve-command-centre` admin app, at `admin.vyvehealth.co.uk/calendar` (or `/sessions`). Same magic-link auth pattern Command Centre already uses for Lewis. Same Supabase client setup. **No new infrastructure, no new repo, no new domain — it's a page added to a thing that already exists.**
+
+### Pages
+
+1. **List view (default).** Chronological list of upcoming `calendar_occurrences` rows where `active=true` and `starts_at > now()`. Each row shows: date, time, category, session title, host name, status (UPCOMING / LIVE NOW / past), and edit + cancel buttons.
+2. **Add new session.** Form with the 8 intake fields above. Category is a dropdown of the 8 canonical strings (no free text — prevents typos that would break stream binding). Date is a calendar picker, time + duration are number inputs, the rest are text fields. Submit POSTs to `calendar_occurrences` via Supabase client with service-role bypass (admin app only).
+3. **Edit existing session.** Same form, pre-filled from the row. Editable up until `starts_at` ≤ now. After that the row is read-only (mid-session edits are forbidden per the playbook do-not list).
+4. **Cancel a session.** Sets `active=false`, returns the page to QUIET. If `youtube_broadcast_id` already exists (cron has run or someone created it manually), shows a warning: "Broadcast already created — also delete from YouTube?" with a button that calls `liveBroadcasts.delete`. Default behaviour: leave the broadcast (harmless).
+
+### Phase 2 add (post-MVP)
+
+5. **Bulk add (recurring).** A second form for "every Monday at 06:00 for 4 weeks, this session". Generates 4 rows in one transaction. Most of Lewis's data entry is recurring patterns — this is the high-leverage feature. Skipped for MVP because pasting a block into Claude works fine in the meantime.
+
+### Auth + permissions
+
+- Magic-link auth via Supabase Auth (Command Centre pattern). Same `admin_users` allowlist.
+- All writes from the admin app go through service-role; never through the member-facing portal client.
+- RLS on `calendar_occurrences` already prevents members from writing — admin reads/writes via service-role bypass.
+
+### What it does NOT do
+
+- **No YouTube broadcast management UI.** PM-215 cron handles all broadcast creation hourly. Lewis never sees a broadcast ID, never copies a stream key, never touches Riverside config from the UI. Broadcasts are a side effect of `calendar_occurrences` rows, fully automated.
+- **No Riverside integration.** Riverside studios are pre-configured with persistent stream keys (the 9 reusable streams above) and never touched again. The admin UI knows nothing about Riverside.
+- **No host photo upload.** Phase 1 ships with a static set of instructor photos uploaded once to Supabase Storage; the admin UI lets Lewis paste a URL but doesn't upload files. Phase 2 can add direct upload if photo rotation becomes frequent.
+
+### Build estimate
+
+Claude-assisted: **~1 session for MVP** (list + add + edit + cancel), **~half a session for Phase 2 bulk-add**. The auth, the Supabase client, the form patterns — all already exist in Command Centre. This is mostly composing existing primitives, not new infrastructure.
+
+### Order of operations recommendation
+
+**PM-215 cron FIRST**, Portal Admin UI second. Reason: the cron is the high-value piece that removes per-session manual work entirely. The UI is convenience for batch-adding — pasting blocks into Claude works fine in the meantime, and after running a month of sessions through the manual-paste path we'll know exactly what UI affordances actually matter. Building the UI before the cron means we'd be building it without operational learnings, and the cron is the thing that fundamentally changes the day-to-day workflow.
+
+**Sequence:**
+
+1. PM-215 cron build (~1 session) → autonomous broadcast creation
+2. 1 month of operations via pasted timetable + Claude (lets us learn what Lewis actually does day-to-day)
+3. Portal Admin UI MVP (~1 session) with that month's learnings in hand
+4. Bulk-add (~half a session) once MVP has been used for a few weeks
+
+---
+
 ## The build state today (24 May 2026)
 
 ✅ **8 live page shells** (`/yoga-live.html` + 7 siblings) — PM-251, complete state machine
@@ -191,6 +282,9 @@ Set `active = false` on the row. Page returns to QUIET state for that category u
 ✅ **9 reusable streams verified** — PM-279 diagnostic
 ✅ **`replay_playlists` + PM-235b cron** — recordings surface to replay tiles automatically
 ⏳ **PM-215 cron** — next build session (the autonomous broadcast-creation loop)
-⏳ **Portal Admin UI** — backlog, post-launch (the no-SQL editor for `calendar_occurrences`)
+⏳ **Portal Admin UI** — backlog, post PM-215 (the no-SQL editor for `calendar_occurrences`; MVP shape captured above)
 
-Until PM-215 ships, you and Claude are the cron. After it ships, the schedule is the only thing you ever touch.
+✅ **Privacy policy locked** — all sessions `unlisted` per Lewis 24 May (PM-279.2)
+✅ **Intake spec documented** — 8 fields per session, pasted-block format preferred
+
+Until PM-215 ships, you and Claude are the cron. After it ships, the schedule is the only thing you ever touch. After Portal Admin UI ships, you don't even paste — Lewis types directly into a form.

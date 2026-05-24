@@ -1,3 +1,35 @@
+## Added 24 May 2026 — Portal Admin UI for `calendar_occurrences` (sequenced after PM-215 cron)
+
+**Status.** Spec defined in `playbooks/live-sessions-operations.md`. Build deferred until after PM-215 cron has shipped + ~1 month of operational learnings via the manual pasted-timetable path. Reason captured in PM-279.2 changelog: build the UI with usage data, not without.
+
+**Repo.** `VYVEHealth/vyve-command-centre` (existing admin app, `admin.vyvehealth.co.uk`). New page at `/calendar` or `/sessions` — final naming TBD; "calendar" reads more natural for the recurring/event mix.
+
+**MVP scope (~1 session, Claude-assisted).**
+
+1. **List view (default route).** Chronological list of `calendar_occurrences WHERE active=true AND starts_at > now()` ordered by `starts_at ASC`. Each row: date · time · category · title · host · state badge · edit/cancel buttons. State badge: UPCOMING / LIVE NOW / past (greyed). 100-row page size with infinite scroll or "show past" toggle.
+2. **Add new session form.** 8 fields per intake spec: category (dropdown, 8 canonical strings — no free text), start date (picker), start time (HH:MM input), duration (mins, number), session title (text, max 60), description (textarea, max 140), host name (text), host role (text, optional), host photo URL (url, optional). Submit POSTs to `calendar_occurrences` via service-role Supabase client. Computes `ends_at = starts_at + duration` server-side or client-side, equivalent.
+3. **Edit form.** Same form pre-filled from row. Locked once `starts_at <= now()` per playbook do-not list (no mid-session edits). Soft lock — disabled-form-and-banner shape, not redirect.
+4. **Cancel.** Sets `active=false` (never deletes — the row is our record). If `youtube_broadcast_id IS NOT NULL`, warn modal: "Broadcast already created at https://youtube.com/watch?v=<id>. Also delete from YouTube?" with explicit Yes/No. Yes calls `liveBroadcasts.delete` via a small admin EF; default is No (broadcast sits unused, harmless).
+
+**Phase 2 scope (~half session, Claude-assisted, after MVP has been used a few weeks).**
+
+5. **Bulk add for recurring.** Form for "every Mon/Wed/Fri at 06:00 for 4 weeks, this category, this host, this title, this description". Generates N rows in one Supabase transaction. Most of Lewis's data entry is recurring patterns; this is the high-leverage feature. Reason it's not in MVP: pasted-block-into-Claude already does this; MVP exists to remove the chat-handoff for ad-hoc + single-row edits first, bulk comes once the daily UI is proven.
+
+**What it explicitly does NOT do.**
+
+- No YouTube broadcast management UI. PM-215 cron creates all broadcasts automatically. Lewis never sees a broadcast ID or stream key from this UI.
+- No Riverside integration. Studios pre-paired to persistent streams; never touched.
+- No host photo upload — paste URL only. Phase 3 if photo rotation becomes frequent.
+- No replay management. Replays auto-surface via `replay_playlists` + PM-235b cron.
+
+**Auth.** Magic-link to Lewis's email (and any other admin in `admin_users` allowlist). Existing Command Centre pattern — `lib/supabase-client.js` already does this. No new auth work.
+
+**Permissions.** All writes via service-role bypass (admin app context only). Members never touch this app. RLS on `calendar_occurrences` already locks members out of writes; this UI bypasses RLS for admin operations only.
+
+**Estimate.** ~1 session MVP + ~half session bulk-add. Both Claude-assisted, both composing existing Command Centre primitives (auth, Supabase client, form patterns). No new infrastructure, no new domain, no new repo.
+
+**Order.** PM-215 cron must ship first (it's the autonomous piece that fundamentally changes the workflow). Then run 1 month of operations via pasted timetable. Then build Portal Admin UI MVP with that month's learnings.
+
 ## Added 25 May 2026 — Haptics incremental adoption across portal pages (PM-278 follow-up)
 
 **Status.** `VYVEHaptics` bridge shipped PM-278 (commit `db8cea41`). Globally available wherever `haptics.js` is loaded. Loaded by `index.html` only at ship. Each portal page touch is an opportunity to wire one or more haptic calls into the page's existing handlers and add `<script src="/haptics.js" defer></script>` to its head if not already inherited.
