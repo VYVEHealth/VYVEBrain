@@ -1,8 +1,49 @@
-## Added 25 May 2026 — PM-309 Achievements design session prep
+## Added 25 May 2026 — PM-307 brain close (Movement first-class + PM-308 next steps)
 
-**Standing prompt drafted at `brain/staging/achievements-deepdive-prompt.md`.** Self-loading prompt for a fresh chat. 5 phases: Supabase enumeration -> member-action enumeration -> design framework -> visual direction -> persona awareness. Paste-and-go when ready.
+**Movement track is now first-class.** `movement_activities` table live with 24 rows migrated, RLS + triggers set up to match `mind_activities` shape. `movement.html` rewritten single-table, `movement-history.html` simplified, `engagement-v2.html` BODY metric extended to sum workouts+cardio+movement. Bus event taxonomy locked — `movement:logged` from movement.html only. See §19 PM-307 narrative for the full mechanics.
 
-Soft-trigger reminder from the Achievements overhaul campaign entry: wait at least 5 days of v2 device time before starting. We've had v2 device time since PM-295 (24 May 2026). Earliest sensible start: 29 May 2026.
+## PM-308 — Cardio walking removal + per-member custom kinds (Dean's next ask)
+
+**Owner.** Dean's call on whether to ship as one session or split. Specced fully here; reading-pass + design-check next session, then build.
+
+**Brief.** Cardio's fixed kind list shrinks to running / cycling / swimming / rowing / other (walking moves out — it lives in Movement now). Plus: members can add their own cardio kinds (Dean's example: "Football" → added once, persists for that member forever, available alongside the fixed list on every subsequent cardio log).
+
+**Schema work.**
+- New table `member_cardio_kinds` (member-scoped, simple): `id` uuid PK, `member_email` text NOT NULL, `kind_label` text NOT NULL, `display_order` int default 0, `created_at` timestamptz default now(). UNIQUE (`member_email`, `kind_label` lower-cased to prevent dupes via case-only).
+- RLS member-scoped single ALL policy on `auth.email() = member_email`.
+- No triggers v1 — pure user prefs.
+- Dexie SCHEMA_V16: `member_cardio_kinds: 'id, member_email, [member_email+kind_label], display_order'`.
+
+**`cardio.cardio_type` value space change.**
+- Fixed values: `running`, `cycling`, `swimming`, `rowing`, `other` (walking removed).
+- Member-defined: `custom:{label_slug}` — e.g. `custom:football`, `custom:tennis`, `custom:tag-rugby`. Slug rules: lowercase, trim, spaces→hyphens, strip non-[a-z0-9-]. Slug for storage; label for display from `member_cardio_kinds`.
+- Backfill audit: any existing `cardio` rows with `cardio_type='walking'` and `logged_via` not 'movement' → these are NOT yet in `movement_activities` (the migration only moved logged_via='movement' rows). Decide migration policy: leave historical walking-in-cardio rows untouched (Dean's earlier call was "clean break" for movement, but cardio-page walks weren't in scope — confirm before shipping).
+
+**`cardio.html` UX work.**
+- Pill row: 4 fixed kinds (run/cycle/swim/row) + N custom kinds + "+ Add" pill at the end.
+- "+ Add" opens a small inline input. Member types "Football", submits. New row inserted into `member_cardio_kinds`, optimistic Dexie write, pill renders immediately. Cap on custom-kind count (10? 20?) — pick a reasonable upper bound.
+- Editing/deleting custom kinds: long-press or "edit kinds" link → tiny management UI. Out of scope v1; add as backlog if Dean wants it.
+- "Other" stays as a fallback — for one-off cardio types the member doesn't want to save.
+
+**`cardio-history.html` + `engagement-v2.html` impact.**
+- `cardio-history.html` icon row needs a generic "Custom" icon for `cardio_type` starting with `custom:`. Label resolution: look up `member_cardio_kinds` by slug.
+- `engagement-v2.html` activity log: Cardio pill still counts all cardio rows regardless of kind. No change to the metric.
+- Variety/streak compute: unchanged — cardio is one bucket.
+
+**Bus events.** No change. `cardio:logged` still the canonical event from cardio.html for any kind (fixed or custom). Custom-kind metadata in the envelope (`cardio_type: 'custom:football'`, `cardio_label: 'Football'`).
+
+**Test plan.**
+- Add "Football", log a session, navigate away, return → pill still there, can log again.
+- Add a custom kind, log multiple sessions → all show in cardio-history.html with the right label.
+- Confirm `cardio.html` shows running/cycling/swimming/rowing/other + Football + "+ Add" in the right order.
+- Confirm walking is GONE from the pill row.
+- Confirm engagement-v2 BODY metric still increments cleanly (workouts + cardio + movement, cap 2/day).
+
+**Cleanup that ships with PM-308.**
+- Remove dead filters from cardio.html (`r => r.logged_via !== 'movement'`), cardio-history.html (`if(r.logged_via==='movement') return;`), workout-history.html (`if(r.plan_name==='Movement') return;`). These were no-ops post-PM-307 migration but should be removed for code clarity.
+- Comment audit: anywhere referencing PM-159 / PM-169 / "movement-page walks live in cardio store" / "plan_name 'Movement'" — replace with PM-307 single-table doctrine reference.
+
+**Estimated build.** ~2-3 sessions. Session 1: schema + db.js + sync.js + cardio.html pill row + add-custom UX. Session 2: cardio-history.html icon + label resolution + cleanup of dead filters across 3 files. Session 3 if needed: edit/delete custom kinds UI + polish.
 
 ---
 
