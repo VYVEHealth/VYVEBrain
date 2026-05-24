@@ -1,3 +1,59 @@
+## 2026-05-24 PM-255 — Standalone PB + Past Sessions pages, bespoke overlays retired [vyve-site `97ae2607`]
+
+### What shipped
+
+Atomic 7-file commit to `vyve-site` `main`: `97ae2607a4cf18f4e8e1a4a94ba287b7d54818c1`, parent `84c94fde` (PM-254 Body wrap top-padding tighten). Lifted the My PBs and Past Sessions UIs out of bespoke `position:fixed` overlay views inside `workouts.html` and into proper standalone pages that match the canonical `page-header` recipe used by `cardio-history.html` and `movement-history.html`.
+
+### The bug Dean reported
+
+Two screenshots from Capacitor iOS showing the My Personal Bests page and the Past Sessions page. On both, the iOS status-bar clock (`00:55`) was collided with the back button and page title — the headers were unreadable. Dean's read: "these pages just need to have a header like other pages."
+
+He was right. The two views were `#prs-view` and `#sessions-history-view` — full-viewport `position:fixed` overlay divs inside `workouts.html`, each with its own `.prs-header` / `.sh-header` sticky strip at `top:0` with `padding:14px 20px`. No `env(safe-area-inset-top)` accommodation. On WKWebView with `apple-mobile-web-app-status-bar-style: black-translucent` (which the portal uses), the body starts at `y=0` underneath the status bar, so the bespoke sticky header sat in the same vertical band as the iOS clock. Web browsers don't reproduce the bug because the body starts below the address bar.
+
+### Why standalone pages, not a band-aid
+
+The right reflex was a safe-area fix on the two headers. The better reflex was the one Dean took: stop maintaining a parallel header pattern. `cardio-history.html` and `movement-history.html` already exist as standalone full-page views with the canonical `.page-header` recipe (eyebrow + title + sub + `nav.js` back), and Dean ships every cardio/movement history visit through them. `workout-history.html` *also* already existed, was Dexie-wired, was precached in `sw.js`, and was already linked from `workouts.html` as a "View all" tail link — but had no per-session exercise breakdown so the overlay couldn't be deprecated yet.
+
+PM-255 closes that feature gap and promotes the two surfaces to first-class pages.
+
+### Files (7)
+
+- **`personal-bests.html`** (NEW, 12.6KB) — Dexie-first PB list keyed off `exercise_logs`. `collectPBs()` reads `VYVELocalDB.exercise_logs.allFor(memberEmail)`, groups by `exercise_name`, picks the best score row per exercise (`weight_kg * reps_completed` for weighted lifts, `reps_completed` for bodyweight). Alphabetical sort. Search box filters in-place. Summary strip shows `Exercises` count + `Heaviest lift` (max `weight_kg`). Empty state has a "Back to Workouts" CTA. `criticalHydrate('exercise_logs')` fires on auth-ready; second render at +1500ms picks up newly-hydrated rows. Derived structurally from `cardio-history.html` — same skeleton, same chrome, same `<main><div class="wrap">` shell, same `page-header` block.
+
+- **`workout-history.html`** (PATCHED, +1.3KB) — per-session exercise breakdown added. New `collectExerciseLogsByDate()` reads `exercise_logs` once into a `Map<activity_date, log[]>`. `rowHTML()` gains a chevron + a `.mvlog-detail` panel; tap toggles `.open` on both. `bestPerExercise(dayLogs)` picks the best row per `exercise_name` (same scoring as personal-bests) for the detail panel. This closes the feature gap from the old overlay — workout-history had day grouping but no per-session detail; the overlay had per-session detail but no day grouping. Now you get both in one page.
+
+- **`workouts-programme.js`** — the two buttons in the programme header (rendered by `renderProgrammeUI`) converted from `onclick="openSessionsHistory()"` / `onclick="openPrsView()"` to `<a href="workout-history.html">` / `<a href="personal-bests.html">`. "My PRs" string renamed to "My PBs" per Dean — the page title was already "My Personal Bests"; the button label was the only place the PR/PB inconsistency lived.
+
+- **`workouts.html`** — 34 lines of overlay CSS stripped + 34 lines of overlay markup stripped (`<div id="prs-view">` + `<div id="sessions-history-view">` blocks including the PM-158 "View all" tail link inside the latter, which now becomes the primary route rather than the secondary). PM-255 marker comments left in place at both removal sites.
+
+- **`workouts-notes-prs.js`** — 8 dead functions removed (`buildPRs`, `openPrsView`, `closePrsView`, `filterPRs`, `renderPRList`, `openSessionsHistory`, `closeSessionsHistory`, `toggleShSession`) and the `let allPRs = []` module-level state. `exerciseHistory` deliberately stays — `checkOverloadNudge` (progressive-overload nudge during a live session) and `updateRestNextSet` (rest-bar next-set hint) both still read it. File size 14.5KB → 9.0KB.
+
+- **`sw.js`** — `/personal-bests.html` added to precache (alongside `movement-history.html`, `cardio-history.html`, `workout-history.html`). Cache key bump `pm254-body-tighten-a` → `pm255-pb-history-pages-a`.
+
+- **`index.html`** — vbb-marker `Update 139` → `Update 140` per portal deployment checklist.
+
+### Discipline honoured
+
+§23.41 fresh-HEAD discipline: refreshed `vyve-site` main HEAD twice — once at session start (`84c94fde`), once immediately before the commit build. PM ceiling held at PM-254; PM-255 free. Sed-resolved `PM-XXX`/`pmxxx` placeholders to `PM-255`/`pm255` across all 7 files in the one pass right before blob creation.
+
+§23.57 placeholder discipline (PM-245): Used `PM-XXX` and `pmxxx-pb-history-pages-a` throughout the build, single sed sweep at commit time. No PM-rename cascades.
+
+### Verified
+
+- `node --check` clean on all 5 JS files + every inline `<script>` block (7 blocks total).
+- Post-commit fetch at commit SHA `97ae2607` returns matching byte counts for all 7 files; first-100-chars match local copies.
+- §23.41 fresh-HEAD recheck immediately before commit confirmed `84c94fde` still the parent. PM-255 was not claimed by any parallel session during the build window.
+
+### Composio outage continued
+
+Composio MCP not loaded this session — `tool_search` for GITHUB_* returned only Google Drive + Claude in Chrome. Fell back to Supabase MCP `execute_sql` → `vault.decrypted_secrets` for `GITHUB_PAT_CLAUDE`, then direct curl via Git Data API (blobs → tree → commit → update ref) per memory #10. First commit attempt failed with `OSError: Argument list too long` because `curl -d @flag` got the index.html body inline (121KB) past the shell arg limit; retried with `curl --data @file` against a temp JSON file holding the body and the commit went through clean. Worth noting as a pattern: any multi-file Git Data API commit through bash curl should default to `--data @tempfile`, not inline `-d`, for any payload over ~100KB.
+
+### What's still on this surface for future work
+
+- The PB list shows alphabetical with search; no sort by date / heaviest / most recent PB. Add when Dean asks.
+- The workout-history detail panel uses `best per exercise` for the day. If Dean wants to see every set, that's a richer per-session expansion (likely a separate session page). Logged conceptually, not in backlog yet — wait for the ask.
+- Personal Bests page has no "share my best lift" affordance. Could plug `navigator.share()` later.
+
 ## 2026-05-24 PM-252 — Body hero: §8 hub-page hero pattern on exercise.html (third hub) [vyve-site `5beef819`]
 
 ### What shipped

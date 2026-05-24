@@ -2022,11 +2022,11 @@ The activity cap was wrongly implemented as `BEFORE INSERT` row-destroying trigg
 
 Per-track cap numbers (cardio/workouts/sessions credit first 2/day; habits + check-ins credit first 1/period) are a product decision — confirm with Lewis, don't change unilaterally.
 
-## Added 17 May 2026 — exercise.html audit commits 6 & 7 still outstanding
+## Added 17 May 2026 — exercise.html audit commits 6 & 7 (Commit 6 closed at PM-255, Commit 7 still open)
 
-Commit 5 (workout-history.html, PM-158) shipped. Commits 6 and 7 did NOT — the session was consumed by the movement/cardio logging bugs.
-- **Commit 6 — Past Sessions Dexie wiring.** `openSessionsHistory` in workouts-notes-prs.js does 2 raw `fetch()` per tap (`workouts` + `exercise_logs`), no Dexie read, no persist. Wire Dexie-first with REST fallback. (My PRs is already Dexie-wired via `loadExerciseHistory` PF-7 — verify-only.) The tap-target CSS fix for the `#prs-view`/`#sessions-history-view` headers shipped separately within PM-166-era work — confirm it's in.
-- **Commit 7 — Browse library prefetch.** workouts-library.js not Dexie-wired; background-prefetch the exercise library so it's warm on tap.
+Commit 5 (workout-history.html, PM-158) shipped. Commit 6 closed by PM-255 (different mechanism than originally scoped — both Past Sessions AND My PRs were promoted to standalone pages instead of Dexie-wiring the overlays). Commit 7 still open.
+- **Commit 6 — Past Sessions + My PRs Dexie wiring. [CLOSED — PM-255, 24 May 2026, vyve-site `97ae2607`].** Rather than Dexie-wire the bespoke `openSessionsHistory` / `openPrsView` overlays inside `workouts.html`, the two surfaces were promoted to standalone pages (`personal-bests.html` new, `workout-history.html` patched with per-session exercise breakdown). Both Dexie-first via `VYVELocalDB.exercise_logs.allFor(memberEmail)` + `criticalHydrate('exercise_logs')`. Old overlay code stripped (34 lines CSS + 34 lines markup from workouts.html, 8 dead JS functions from workouts-notes-prs.js). The original PM-166-era tap-target CSS fix on `.prs-header`/`.sh-header` is now moot — those classes are deleted.
+- **Commit 7 — Browse library prefetch. [OPEN]** workouts-library.js not Dexie-wired; background-prefetch the exercise library so it's warm on tap.
 
 ## Added 17 May 2026 — PM-160 (instant on-device achievements: scoped + designed, ready to build)
 
@@ -2076,12 +2076,9 @@ Dean wants: in the exercise library, when a member switches plan (e.g. Push/Pull
 ### PM-154/155/156/157 — exercise.html paint audit (Body nav + Movement/Cardio logging) [SHIPPED 2026-05-16 — vyve-site `aa525993` + `86cf2c69` + `54096a7a` + `9c0fc648` — device-verification pending]
 Body nav rename + Nutrition fold-in, movement.html Recent Movement log list, cardio.html restyled onto the shared mvlog component, and movement-history.html + cardio-history.html shipped. Full detail in changelog PM-154/155/156/157 + master §19. The exercise.html audit is NOT closed — see the next item.
 
-### exercise.html audit — commits 5–7 outstanding [PENDING — next session, ~1 session]
-Three pieces of the exercise.html audit did not ship and carry to a follow-up:
-- **Commit 5 — workout-history.html + workouts.html view-all.** New full-history page for gym workouts, same day-grouped Dexie-first pattern as movement-history.html / cardio-history.html (derive from one of those as the template). Wherever workouts.html surfaces recent/past sessions, add a "View all" → workout-history.html. Must precache in sw.js `urlsToCache`.
-- **Commit 6 — My PRs Dexie wiring.** workouts-notes-prs.js is NOT Dexie-wired: zero `VYVELocalDB` refs, 6 raw `fetch()` calls against `exercise_logs` / `exercise_notes`, fetch-on-tap. §23.7.1 + §23.12 violation. Wire it to a Dexie-first read with REST fallback + background prefetch so the My PRs sub-tab is instant.
-- **Commit 7 — Browse library prefetch.** workouts-library.js is NOT Dexie-wired (zero `VYVELocalDB`/`hydrate`/`prefetch`; 4 raw `fetch()`; has its own localStorage `cache` layer). Add background prefetch so the exercise library is warm by the time the member taps in (often minutes later). Dean's words: loaded in the background, already there on click.
-Note: workouts-programme.js (Past Sessions) is already Dexie-wired (12 `VYVELocalDB` refs, `criticalHydrate`, `prefetch`) — verify-only, no work expected.
+### exercise.html audit — Commit 7 still outstanding [PENDING — small, next session]
+Commits 5 + 6 shipped. Commit 5 closed at PM-158 (workout-history.html shipped). Commit 6 closed at PM-255 via promotion-to-standalone (both Past Sessions and My PRs lifted out of bespoke overlays into `personal-bests.html` + `workout-history.html`, both Dexie-first). Commit 7 remaining:
+- **Commit 7 — Browse library prefetch. [OPEN]** workouts-library.js is NOT Dexie-wired (zero `VYVELocalDB`/`hydrate`/`prefetch`; 4 raw `fetch()`; has its own localStorage `cache` layer). Add background prefetch so the exercise library is warm by the time the member taps in (often minutes later). Dean's words: loaded in the background, already there on click.
 
 ### Movement as its own activity track [PENDING — own scoped session, needs Dean + Lewis decision]
 movement.html currently routes a logged walk to the `cardio` table and stretch/yoga/pilates/mobility/other to the `workouts` table (PM-47/PM-48). There is no `movement` table, no movement activity cap, no movement certificate track. Dean's direction (16 May): the bigger move is to take certificates OFF the per-activity tracks (Habits/Workouts/Cardio) and onto **pillar-level tracks — Mind / Body / Connect** (or Movement). That restructure is the proper home for "walking counts as Movement, not Cardio". Until it happens, walks stay in `cardio` and credit the cardio track — leave as-is. The restructure touches: table structure, `member-dashboard` EF, activity-score component weighting, the leaderboard metric, the Dexie stores, the bus event taxonomy, and the certificate tracks — all member-facing, Lewis-gated. Scope as its own session; do NOT half-build it inside an audit pass.
