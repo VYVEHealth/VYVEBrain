@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>VYVE — Score (v2 mockup)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+/* ─── VYVE tokens (inlined from theme.css for mockup standalone) ──────── */
+:root{
+  --teal:#1B7878; --teal-lt:#4DAAAA; --teal-xl:#7AC8C8; --teal-dark:#006D6F;
+  --green:#2D9E4A; --amber:#E09B3D; --coral:#E06060; --gold:#C9A84C;
+  --font-head:'Playfair Display',Georgia,serif; --font-body:'DM Sans',system-ui,sans-serif;
+  --vyve-dark:#0D2B2B;
+}
+[data-theme="dark"]{
+  --bg:#0D2B2B; --surface:#143838; --surface-hover:#1a4444; --surface-2:#0a2424;
+  --text:#F0F4F4; --text-muted:#9CB5B5; --text-faint:#6B8585;
+  --border:rgba(255,255,255,0.08); --border-strong:rgba(255,255,255,0.16);
+  --shadow:0 8px 32px rgba(0,0,0,0.4);
+}
+[data-theme="light"]{
+  --bg:#F6F4EE; --surface:#FFFFFF; --surface-hover:#EFEDE6; --surface-2:#EBE9E1;
+  --text:#0D2B2B; --text-muted:#5A6B6B; --text-faint:#8A9999;
+  --border:rgba(13,43,43,0.10); --border-strong:rgba(13,43,43,0.18);
+  --shadow:0 8px 24px rgba(13,43,43,0.10);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font-body); background:var(--bg); color:var(--text);
+  min-height:100vh; overflow-x:hidden; padding-bottom:80px;
+}
+
+/* ─── Page header chrome (matches portal canonical) ────────────────── */
+.topbar{
+  display:flex; align-items:center; gap:12px; padding:14px 20px;
+  background:var(--bg); position:sticky; top:0; z-index:10;
+  border-bottom:1px solid var(--border);
+}
+.back-btn{
+  width:36px;height:36px;border-radius:50%;background:var(--surface);
+  border:1px solid var(--border); display:flex;align-items:center;justify-content:center;
+  color:var(--text); cursor:pointer; flex-shrink:0;
+}
+.back-btn svg{width:18px;height:18px}
+.topbar-title{font-size:0.85rem;font-weight:600;color:var(--text-muted);letter-spacing:0.04em}
+.theme-toggle{
+  margin-left:auto; font-size:0.7rem; padding:6px 10px; border-radius:14px;
+  background:var(--surface); border:1px solid var(--border); color:var(--text-muted);
+  cursor:pointer;
+}
+
+.wrap{max-width:780px; margin:0 auto; padding:24px 20px 40px}
+
+/* ─── Page heading ─────────────────────────────────────────────────── */
+.page-eyebrow{
+  font-size:0.7rem; font-weight:700; letter-spacing:0.16em; text-transform:uppercase;
+  color:var(--text-muted); margin-bottom:8px;
+}
+.page-title{
+  font-family:var(--font-head); font-size:2.4rem; font-weight:800;
+  line-height:1.05; color:var(--text); margin-bottom:6px;
+}
+.page-sub{font-size:0.92rem; color:var(--text-muted); margin-bottom:28px}
+
+/* ─── Hero score card ──────────────────────────────────────────────── */
+.hero-card{
+  background:linear-gradient(155deg, var(--surface) 0%, var(--surface-2) 100%);
+  border:1px solid var(--border); border-radius:24px; padding:28px 24px;
+  box-shadow:var(--shadow); margin-bottom:24px;
+  display:flex; gap:24px; align-items:center;
+}
+.score-ring-wrap{flex-shrink:0; position:relative; width:140px; height:140px}
+.score-ring{transform:rotate(-90deg)}
+.score-ring-track{stroke:var(--border); fill:none; stroke-width:10}
+.score-ring-fill{
+  stroke:url(#scoreGradient); fill:none; stroke-width:10; stroke-linecap:round;
+  transition:stroke-dashoffset 1.2s cubic-bezier(0.4,0,0.2,1);
+}
+.score-ring-inner{
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+}
+.score-num{font-family:var(--font-head); font-size:2.4rem; font-weight:800; line-height:1; color:var(--text)}
+.score-of{font-size:0.7rem; color:var(--text-muted); margin-top:2px; letter-spacing:0.08em}
+.hero-body{flex:1; min-width:0}
+.hero-band{
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:0.72rem; font-weight:700; letter-spacing:0.1em; text-transform:uppercase;
+  color:var(--teal-lt); margin-bottom:8px;
+}
+.hero-band-dot{width:8px;height:8px;border-radius:50%;background:var(--teal-lt)}
+.hero-headline{
+  font-family:var(--font-head); font-size:1.4rem; font-weight:700; line-height:1.15;
+  color:var(--text); margin-bottom:8px;
+}
+.hero-msg{font-size:0.86rem; color:var(--text-muted); line-height:1.5}
+
+/* ─── Multiplier strip ─────────────────────────────────────────────── */
+.mult-strip{
+  display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:24px;
+}
+.mult-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  padding:16px 18px;
+}
+.mult-label{
+  font-size:0.7rem; font-weight:700; letter-spacing:0.12em; text-transform:uppercase;
+  color:var(--text-muted); margin-bottom:6px;
+}
+.mult-value{
+  font-family:var(--font-head); font-size:1.5rem; font-weight:800; line-height:1; color:var(--text);
+  margin-bottom:8px;
+}
+.mult-value .mult-sub{font-family:var(--font-body); font-size:0.78rem; font-weight:500; color:var(--text-muted); margin-left:6px}
+.mult-bar{height:5px; background:var(--surface-hover); border-radius:5px; overflow:hidden; margin-bottom:8px}
+.mult-bar-fill{height:100%; border-radius:5px; transition:width 1.2s cubic-bezier(0.4,0,0.2,1)}
+.mult-desc{font-size:0.74rem; color:var(--text-muted); line-height:1.4}
+
+/* ─── Section title ────────────────────────────────────────────────── */
+.section-head{
+  display:flex; align-items:baseline; justify-content:space-between;
+  margin-bottom:14px; margin-top:8px;
+}
+.section-title{
+  font-family:var(--font-head); font-size:1.3rem; font-weight:700; color:var(--text);
+}
+.section-sub{font-size:0.74rem; color:var(--text-muted); letter-spacing:0.04em}
+
+/* ─── Pillar breakdown ─────────────────────────────────────────────── */
+.pillar-list{display:flex; flex-direction:column; gap:10px; margin-bottom:28px}
+.pillar-row{
+  background:var(--surface); border:1px solid var(--border); border-radius:14px;
+  padding:14px 18px; display:flex; align-items:center; gap:14px;
+}
+.pillar-icon{
+  width:42px; height:42px; border-radius:12px; display:flex; align-items:center;
+  justify-content:center; flex-shrink:0; font-size:1.1rem;
+}
+.pillar-body{flex:1; min-width:0}
+.pillar-name{font-size:0.92rem; font-weight:600; color:var(--text); margin-bottom:4px}
+.pillar-detail{font-size:0.76rem; color:var(--text-muted); line-height:1.35}
+.pillar-pts{
+  font-family:var(--font-head); font-size:1.25rem; font-weight:800; color:var(--text);
+  flex-shrink:0;
+}
+.pillar-pts-unit{font-family:var(--font-body); font-size:0.7rem; font-weight:500; color:var(--text-muted); display:block; text-align:right}
+
+/* Pillar accent colours */
+.pillar-focus  .pillar-icon{background:rgba(201,168,76,0.18); color:var(--gold)}
+.pillar-habits .pillar-icon{background:rgba(77,170,170,0.18); color:var(--teal-lt)}
+.pillar-body   .pillar-icon{background:rgba(224,155,61,0.18); color:var(--amber)}
+.pillar-mind   .pillar-icon{background:rgba(155,122,224,0.18); color:#B496E8}
+.pillar-connect.pillar-row .pillar-icon{background:rgba(224,96,96,0.18); color:var(--coral)}
+.pillar-checkins .pillar-icon{background:rgba(45,158,74,0.18); color:var(--success-soft, #4ADE80)}
+
+/* Greyed out — no points yet from this pillar */
+.pillar-row.is-empty{opacity:0.65}
+.pillar-row.is-empty .pillar-pts{color:var(--text-faint)}
+
+/* ─── How it works section ────────────────────────────────────────── */
+.explain-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  padding:20px 22px; margin-bottom:24px;
+}
+.explain-title{
+  font-family:var(--font-head); font-size:1.1rem; font-weight:700; color:var(--text); margin-bottom:10px;
+}
+.explain-body{font-size:0.86rem; color:var(--text-muted); line-height:1.55}
+.explain-body p{margin-bottom:10px}
+.explain-body p:last-child{margin-bottom:0}
+.explain-body strong{color:var(--text); font-weight:600}
+
+/* ─── 7-day decay strip ───────────────────────────────────────────── */
+.decay-strip{display:flex; gap:6px; margin-top:14px}
+.decay-day{
+  flex:1; height:38px; border-radius:6px; background:var(--surface-hover);
+  display:flex; align-items:center; justify-content:center;
+  font-size:0.62rem; font-weight:600; color:var(--text-muted); position:relative;
+}
+.decay-day-fill{
+  position:absolute; inset:0; border-radius:6px; opacity:0.9;
+  background:linear-gradient(180deg, var(--teal-lt), var(--teal));
+}
+.decay-day-label{position:relative; z-index:1; color:#fff}
+.decay-day.is-empty .decay-day-fill{display:none}
+.decay-day.is-empty .decay-day-label{color:var(--text-faint)}
+
+/* ─── Tabs (preserved from existing page) ─────────────────────────── */
+.tab-bar{
+  display:flex; gap:0; background:var(--surface); border:1px solid var(--border);
+  border-radius:12px; padding:4px; margin-bottom:24px;
+}
+.tab{
+  flex:1; padding:10px 12px; border-radius:9px; font-size:0.82rem; font-weight:600;
+  text-align:center; color:var(--text-muted); cursor:pointer; transition:all 0.2s;
+  border:none; background:transparent;
+}
+.tab.is-active{background:var(--teal); color:#fff}
+</style>
+</head>
+<body>
+
+<!-- ─── topbar ─── -->
+<div class="topbar">
+  <button class="back-btn" aria-label="Back">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6"/></svg>
+  </button>
+  <div class="topbar-title">VYVE Score</div>
+  <button class="theme-toggle" id="themeToggle">Switch theme</button>
+</div>
+
+<div class="wrap">
+
+  <div class="page-eyebrow">Your engagement</div>
+  <div class="page-title">Score</div>
+  <div class="page-sub">A single number that reflects how you're using VYVE this week. Honest, not punishing.</div>
+
+  <!-- ─── tab bar (preserved from existing page) ─── -->
+  <div class="tab-bar">
+    <button class="tab is-active">Score</button>
+    <button class="tab">Achievements</button>
+  </div>
+
+  <!-- ─── HERO score card ─── -->
+  <div class="hero-card">
+    <div class="score-ring-wrap">
+      <svg class="score-ring" width="140" height="140" viewBox="0 0 140 140">
+        <defs>
+          <linearGradient id="scoreGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#4DAAAA"/>
+            <stop offset="100%" stop-color="#1B7878"/>
+          </linearGradient>
+        </defs>
+        <circle class="score-ring-track" cx="70" cy="70" r="62"/>
+        <!-- 78/100 = 78% → 0.78 of (2πr=389.56) = 303.86 filled, offset = 389.56 - 303.86 = 85.7 -->
+        <circle class="score-ring-fill" cx="70" cy="70" r="62" stroke-dasharray="389.56" stroke-dashoffset="85.7"/>
+      </svg>
+      <div class="score-ring-inner">
+        <div class="score-num">78</div>
+        <div class="score-of">/ 100</div>
+      </div>
+    </div>
+    <div class="hero-body">
+      <div class="hero-band"><span class="hero-band-dot"></span>Strong week</div>
+      <div class="hero-headline">You're keeping pace.</div>
+      <div class="hero-msg">Activity from the last 7 days, weighted to recency. Tap once today across any pillar to keep climbing.</div>
+    </div>
+  </div>
+
+  <!-- ─── Multiplier strip ─── -->
+  <div class="mult-strip">
+    <div class="mult-card">
+      <div class="mult-label">Consistency</div>
+      <div class="mult-value">1.18× <span class="mult-sub">6 of 7 days</span></div>
+      <div class="mult-bar"><div class="mult-bar-fill" style="width:73%;background:var(--teal-lt)"></div></div>
+      <div class="mult-desc">Distinct days with at least one log in the last 7. Logging today every day earns the full 1.30× multiplier.</div>
+    </div>
+    <div class="mult-card">
+      <div class="mult-label">Variety</div>
+      <div class="mult-value">1.12× <span class="mult-sub">4 of 5 pillars</span></div>
+      <div class="mult-bar"><div class="mult-bar-fill" style="width:73%;background:var(--amber)"></div></div>
+      <div class="mult-desc">Pillars touched in the last 7: Focus, Habits, Body, Connect. A Mind activity earns 1.20× — try a 10-min meditation.</div>
+    </div>
+  </div>
+
+  <!-- ─── Pillar breakdown ─── -->
+  <div class="section-head">
+    <div class="section-title">Where your score came from</div>
+    <div class="section-sub">Last 7 days</div>
+  </div>
+
+  <div class="pillar-list">
+
+    <div class="pillar-row pillar-focus">
+      <div class="pillar-icon">★</div>
+      <div class="pillar-body">
+        <div class="pillar-name">Today's Focus</div>
+        <div class="pillar-detail">8 focuses completed · capped at 3 per day · max 5pts each</div>
+      </div>
+      <div class="pillar-pts">28<span class="pillar-pts-unit">pts</span></div>
+    </div>
+
+    <div class="pillar-row pillar-habits">
+      <div class="pillar-icon">✓</div>
+      <div class="pillar-body">
+        <div class="pillar-name">Daily Habits</div>
+        <div class="pillar-detail">24 habits logged · capped at 5 per day · 1pt each</div>
+      </div>
+      <div class="pillar-pts">17<span class="pillar-pts-unit">pts</span></div>
+    </div>
+
+    <div class="pillar-row pillar-body">
+      <div class="pillar-icon">↑</div>
+      <div class="pillar-body">
+        <div class="pillar-name">Body</div>
+        <div class="pillar-detail">5 sessions logged · workouts + cardio · capped 2 per day · 2pts each</div>
+      </div>
+      <div class="pillar-pts">9<span class="pillar-pts-unit">pts</span></div>
+    </div>
+
+    <div class="pillar-row pillar-mind is-empty">
+      <div class="pillar-icon">○</div>
+      <div class="pillar-body">
+        <div class="pillar-name">Mind</div>
+        <div class="pillar-detail">No mind activities logged this week · a 10-min meditation earns 2pts and lifts your Variety multiplier</div>
+      </div>
+      <div class="pillar-pts">0<span class="pillar-pts-unit">pts</span></div>
+    </div>
+
+    <div class="pillar-row pillar-connect">
+      <div class="pillar-icon">◇</div>
+      <div class="pillar-body">
+        <div class="pillar-name">Connect</div>
+        <div class="pillar-detail">3 sessions watched · capped 2 per day · 2pts each</div>
+      </div>
+      <div class="pillar-pts">5<span class="pillar-pts-unit">pts</span></div>
+    </div>
+
+    <div class="pillar-row pillar-checkins">
+      <div class="pillar-icon">✎</div>
+      <div class="pillar-body">
+        <div class="pillar-name">Check-ins</div>
+        <div class="pillar-detail">Weekly check-in submitted · monthly check-in not yet this month</div>
+      </div>
+      <div class="pillar-pts">8<span class="pillar-pts-unit">pts</span></div>
+    </div>
+
+  </div>
+
+  <!-- ─── 7-day decay visualisation ─── -->
+  <div class="section-head">
+    <div class="section-title">Your last 7 days</div>
+    <div class="section-sub">Newer activity worth more</div>
+  </div>
+
+  <div class="explain-card">
+    <div class="explain-body" style="margin-bottom:0">
+      <p>Each activity contributes full points when logged today and fades to zero across 7 days. The drift is the signal — new logs replace old ones, your score reflects what you've done <strong>recently</strong>, not ever.</p>
+      <div class="decay-strip">
+        <div class="decay-day"><div class="decay-day-fill" style="opacity:1.0"></div><span class="decay-day-label">Today</span></div>
+        <div class="decay-day"><div class="decay-day-fill" style="opacity:0.86"></div><span class="decay-day-label">−1</span></div>
+        <div class="decay-day"><div class="decay-day-fill" style="opacity:0.71"></div><span class="decay-day-label">−2</span></div>
+        <div class="decay-day is-empty"><span class="decay-day-label">−3</span></div>
+        <div class="decay-day"><div class="decay-day-fill" style="opacity:0.43"></div><span class="decay-day-label">−4</span></div>
+        <div class="decay-day"><div class="decay-day-fill" style="opacity:0.29"></div><span class="decay-day-label">−5</span></div>
+        <div class="decay-day"><div class="decay-day-fill" style="opacity:0.14"></div><span class="decay-day-label">−6</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── How it works ─── -->
+  <div class="section-head">
+    <div class="section-title">How your score works</div>
+  </div>
+
+  <div class="explain-card">
+    <div class="explain-body">
+      <p>Your score runs from <strong>50 to 100</strong>. Everyone starts at 50 — even after a quiet week, the floor holds. The top 50 points come from your activity over the last 7 days.</p>
+      <p><strong>Base points</strong> come from logging activity across six pillars: Today's Focus (5pts each), Daily Habits (1pt each), Body, Mind, and Connect (2pts each), plus your weekly and monthly check-ins. Daily caps apply so a single huge day doesn't dominate.</p>
+      <p><strong>Two multipliers</strong> shape your final score. Consistency (×0.85 to ×1.30) rewards spreading activity across days. Variety (×0.90 to ×1.20) rewards using more than one pillar.</p>
+      <p>You can't game it. If you don't earn base points, the multipliers have nothing to multiply. If you only use one pillar, you cap below the strongest scores. The members at 95+ are the ones genuinely using all of VYVE.</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Theme toggle for mockup demonstration
+  document.getElementById('themeToggle').addEventListener('click', () => {
+    const html = document.documentElement;
+    html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
+  });
+</script>
+
+</body>
+</html>
