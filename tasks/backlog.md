@@ -12,33 +12,60 @@ PM-294 (24 May 2026 PM, vyve-site `f770d696`, commit-labelled PM-292) shipped pe
 
 ---
 
-## Added 25 May 2026 — PM-286 Engagement Score v2 implementation (PM-285 design ships)
+## Added 25 May 2026 — Engagement Score v2 implementation [PARTIALLY DONE — PM-295 25 May, follow-ups below]
 
-**Status.** Design locked PM-285 (25 May). Full spec in Claude session artefact `/home/claude/work/engagement-score-spec.md`. Member-readable doc at `/page-docs/engagement.md`. Mockup at `/home/claude/work/engagement-mockup.html`. Implementation tomorrow following Dexie-write audit close.
+**Status.** Phases 1-4 of the original 5-phase migration shipped as PM-295 (commit messages labelled PM-286). Schema, v2 SQL function alongside v1, JS port with parity proven (JS↔SQL 72/72 on real data), new `engagement-v2.html` behind `?score=v2` flag + in-app chip link, bus subscriber wiring on all score-affecting events. See PM-295 changelog entry for full ship detail.
 
-**Sequencing.** Pre-flight = the wider Dexie-write audit (separate backlog item Dean called out — "tomorrow we're gonna be doing a full audit to make sure that this app works like that and should in every way possible"). Score v2 implementation depends on the audit because the bus-subscriber order issue (recalc must fire AFTER Dexie write subscriber, not before) needs systematic verification across every write surface.
+**Follow-ups owed.**
 
-**5-phase migration (per spec §10).**
+1. **Default flip + v1 cleanup.** After Dean device-verifies v2 for 24-48hr, swap default so `engagement.html` redirects to v2 (or rename v2 over the top of v1). Then drop v1 `compute_engagement_components` SQL function, v1 `compute_engagement_score` SQL function, v1 `member_home_state` columns (`engagement_score`, `engagement_recency`, `engagement_consistency`, `engagement_variety`, `engagement_wellbeing`), and v1 JS `computeEngagementComponents`. One Supabase migration + one vyve-site commit. Single session of work.
 
-1. **Schema migration** — `engagement_v2_schema` adds new `member_home_state` columns (`engagement_focus_points`, `engagement_habits_points`, `engagement_body_points`, `engagement_mind_points`, `engagement_connect_points`, `engagement_checkins_points`, `engagement_consistency_mult`, `engagement_variety_mult`, `engagement_active_days_7`, `engagement_pillars_touched_7`); creates `live_checkin_submissions` + `monthly_checkins` empty tables with RLS; adds `focus_slug` text column to `mind_activities` + `cardio` + `connect_checkins` + `nutrition_logs` (already on PM-274 backlog, promoted here).
-2. **v2 SQL function** — `compute_engagement_components_v2` created alongside v1. Both populate `member_home_state` in parallel — v1 into existing columns, v2 into new columns. `refresh_member_home_state()` extended to call both. Old score still drives existing surfaces unchanged.
-3. **JS port + parity test** — `computeEngagementComponentsV2` added to `home-state-local.js`. Parity test runs both functions against same data across all 32 live members; any drift > 1pt logged for investigation. Diagnostic page surfaces drift for manual inspection.
-4. **New engagement.html UI behind `?score=v2` flag** — full page rewrite per spec §9 + mockup. Score hero + multiplier strip + per-pillar breakdown (6 rows) + Activity Breakdown 5-card grid with ⓘ eye → bottom-sheet explainers + 30-day strip unchanged from v1 + plain-English explanation. Lewis owns eye-popup copy (functional placeholder ships first; he refines in his voice). 24-48hr internal verification.
-5. **Cutover + cleanup** — default flip; drop v1 `compute_engagement_components` function + old `member_home_state` columns + old `computeEngagementComponents` JS function. Update `re-engagement-scheduler` v11+ to read new thresholds. Drop the `?score=v2` flag.
+2. **Activity Breakdown grid rebadge** (Dean's call PM-295). Today: Habits / Body / Mind / Connect / Check-ins. Target: **Habits / Mind / Body / Cardio / Check-ins**. Remove Connect + sessions-bound card, split Body into Body (workouts only) + Cardio (cardio sessions only). Pillar rows above (Focus / Habits / Body / Mind / Connect / Check-ins) stay as-is — they reflect what the score is computed from. Breakdown is a member-facing slice and can differ.
 
-**v2 30-day strip — tap-day-to-expand activity detail.** Parked post-soft-launch. Dean's idea — tap a day on the 30-day strip → bottom sheet shows what specifically was logged that day ("Wednesday 20 May · Mind: Gratitude journal 8:14am, Sleep wind-down 10:32pm · Body: 25-min PPL Push 6:48am"). UX risk = at-a-glance scan vs detail-on-tap conflated; defer until soft-launch data shows whether the curiosity-tap is real behaviour or hypothetical. Same bottom-sheet pattern as the ⓘ eye explainers — chrome already exists.
+3. **Three-tab shell** (Dean's design call PM-295). Engagement page becomes `[ Score ] [ Progress ] [ Achievements ]` sticky tabs under the page header.
+   - **Score tab** — current `engagement-v2.html` content (post grid rebadge).
+   - **Progress tab** — charity mechanic + 5-track milestone progress per §17 + §11A. Five tracks (Architect / Warrior / Relentless / Elite / Explorer) with progress-to-next-30-activity-certificate. Personal contribution to collective charity counter. Personal donated-months count.
+   - **Achievements tab** — port v1 trophy-cabinet block verbatim from `engagement.html` (the §11A achievements UI). Full overhaul of achievements catalog is a separate deferred campaign (see "Achievements overhaul" entry below).
 
-**`/page-docs/` follow-ups.** Each portal page eventually gets a member-readable doc. Priority order = Lewis's call based on what he needs to explain externally. Suggested first batch: `index.md` (home dashboard), `habits.md`, `exercise.md` (Body hub), `mind.md`, `connect.md`, then the focus pages as a single composite or twelve individual docs. Live session pages + sessions.html cluster as one piece since they share most behaviour. Marketing-site pages (vyvehealth.co.uk/*) probably get their own folder eventually — separate from portal page docs.
+4. **`live_checkin_submissions` Dexie registration.** Add to `db.js` SCHEMA_V14 + version chain + makeTable consumer + `sync.js` PULLABLE entry (member-scoped, week_start.gte 12-week lookback, ordered week_start.desc). Not blocking — JS port falls back gracefully when table isn't yet Dexie-registered. Sequence with the live check-in form build when that surface lands.
 
-**Lewis-owned items folded into PM-286 scope.**
-- Eye-popup copy for 5 pillar explainers (Daily Habits, Body, Mind, Connect, Check-ins) on the Activity Breakdown grid.
-- Band-copy lines for the 4 score ranges (Strong week / Steady / Sliding / Quiet) on the hero.
-- Pillar-gap push notification templates — 5 variants, one per pillar that can be empty.
-- Welcome-back copy when a returning member opens engagement.html with score = 50 (no recent activity).
+5. **`re-engagement-scheduler` v11 push thresholds** (originally in PM-285 scope, deferred). Three thresholds reading the new `engagement_score_v2` + `engagement_pillars_touched_7` columns:
+   - **Soft slide.** Score drops below 75 for first time in 14 days → push. 7d cooldown.
+   - **Pillar gap.** Score below 65 for 3 days running → push that names which pillar is empty (uses variety calc, suggests 10-min action). 5d cooldown.
+   - **Re-engagement.** Score below 55 for 7 days running → routes into existing A/B/C1/C2/C3 email streams + push. 14d cooldown.
+   
+   Lewis owns the actual notification copy templates — 5 variants for pillar-gap (one per pillar). Functional placeholders, flag for refinement. Build sequence: after 24-48hr v2 device verification + default flip.
 
-**Out of scope for PM-286.** Achievements catalog rewrite. Certificate name changes. Leaderboard score-based ranking. Content of live + monthly check-in forms (tables ship empty, score credits immediately, forms designed in separate campaign).
+6. **Lewis copy pass — Engagement v2 voice.** All v2 band copy (Powerhouse / Strong week / Building / Quiet week titles + subs), 5 pillar explainer popovers (Habits / Body / Mind / Connect / Check-ins), "How your score works" sheet body, 6 pillar empty-state hints shipped as functional placeholder. Lewis refines in his voice. One copy commit covers it all.
+
+7. **v2 30-day strip — tap-day-to-expand activity detail.** Parked post-soft-launch per PM-285. Dean's idea — tap a day on the 30-day chip-row log → bottom sheet shows what specifically was logged that day ("Wednesday 20 May · Mind: Gratitude journal 8:14am, Sleep wind-down 10:32pm · Body: 25-min PPL Push 6:48am"). UX risk = at-a-glance scan vs detail-on-tap conflated; defer until soft-launch data shows whether the curiosity-tap is real behaviour. Same bottom-sheet pattern as the ⓘ eye explainers — chrome already exists.
+
+8. **`/page-docs/` continued backfill.** Each portal page eventually gets a member-readable doc per §11B as-you-go discipline. `engagement.md` exists from PM-285 + will be patched in the next session as the three-tab shell ships. Suggested first batch beyond engagement: `index.md` (home dashboard), `habits.md`, `exercise.md` (Body hub), `mind.md`, `connect.md`, then the focus pages as a composite or twelve individual docs. Marketing-site pages (vyvehealth.co.uk/*) probably get their own folder eventually.
+
+**Original Lewis-owned items.** Most now satisfied via functional placeholder shipping (PM-295). Outstanding: welcome-back copy when returning member opens engagement.html with score = 50 (no recent activity — currently uses generic "Your floor holds at 50" copy).
 
 ---
+
+## Added 25 May 2026 — Lucide icon swap across nav.js (Dean call PM-295)
+
+**Scope.** Replace the hand-rolled inline SVG icons in `nav.js` with Lucide (https://lucide.dev, MIT, ~1500 icons). Affects bottom-nav 5 icons (Home, Body, Mind, Connect, More) + the More-menu entries.
+
+**Approach.** Inline the chosen Lucide SVG paths only for the icons actually in use — no CDN, no `lucide.min.js` dependency, file size barely moves. Lucide's source SVGs are clean and lint nicely. Pick the icons first, swap inline.
+
+**Sequencing.** Self-contained piece. Doesn't block any other work. Can land any session.
+
+---
+
+## Added 25 May 2026 — Achievements overhaul campaign (full rebuild, deferred from PM-295)
+
+**Trigger.** Dean's call PM-295: "the achievements need a full overhaul as well." This is a campaign-sized piece, not a single-session ship. PM-295 ports the existing v1 trophy-cabinet block onto the new three-tab Engagement page verbatim (in scope as Achievements tab port). The actual catalog/ladder/copy/UX overhaul is its own campaign.
+
+**Scope (high level — needs design session).** Achievements catalog (currently 32 metrics × 327 tiers per §11A) probably needs collapse + reshape. Certificate names + tier counts likely change. Earn cadence likely tightened (some metrics earn too easily, some never earn at trial-scale data). Copy passes deferred to Lewis after structure locked. UX presentation (trophy cabinet vs progress-toward-next vs feed-of-earns vs hybrid) unsettled.
+
+**Sequencing.** No design work yet. Open a design session first. Until then, the v1 catalog stays as-is and the v1 trophy-cabinet block renders on the new Achievements tab.
+
+---
+
 
 ## Added 25 May 2026 — Dexie-write audit pass (pre-PM-286 dependency)
 

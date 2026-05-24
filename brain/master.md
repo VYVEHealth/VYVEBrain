@@ -556,6 +556,7 @@ Open decision in §22.
 | **Achievements System Phase 1** | **LIVE end-to-end (27 April 2026).** Catalog (32 metrics × 327 tier rows, all `copy_status='approved'`) + inline evaluator + sweep cron + dashboard payload + mark-seen EF + 185-tier backfill marked seen. See §11A for full architecture. |
 | **Achievement push fan-out** | **LIVE end-to-end (28 April 2026 PM, Session 2 item 1).** `achievement-earned-push` v1 + `log-activity` v23 (inline path) + `achievements-sweep` v2 (sweep path). One push per earned tier, dedupe-off, in-app suppressed (caller writes `member_notifications` separately). Smoke-tested live on Dean (synthetic earn → APNs HTTP 200) and on Vicki (real `member_days` tier 2 crossed during sweep invoke → push delivered). |
 | Recurring weekly goals (fixed 4-row template, reset Mondays via `seed-weekly-goals` cron) | LIVE — backend prior session, front-end shipped 06 May PM. 3 habits / 3 exercise (workouts+cardio combined) / 2 live sessions / 1 weekly check-in. Computes against `member-dashboard` v57's `goals.{targets,progress}` payload. |
+| **Engagement Score v2** | **LIVE behind `?score=v2` flag + in-app chip link (25 May 2026, PM-295).** Six-pillar base × consistency × variety / 2.5, base 50 floor, ceiling 100. Linear 7-day decay (today 1.0 → day-7 0.0). `compute_engagement_components_v2` SQL function + `computeEngagementComponentsV2` JS port in `home-state-local.js` running in lockstep — JS↔SQL parity proven at 72/72 exact on real member data. v1 path untouched alongside v2. Score recomputes on every score-affecting bus event with 50ms debounce. New page `engagement-v2.html` (centred ring hero + multiplier strip + 6 pillar rows + Activity Breakdown 5-card grid + 30-day chip-row log + eye-icon explainer sheet). Default flip + v1 cleanup deferred to follow-up campaign. See §11C below. |
 | AI weekly goals (phase 1 targets set at onboarding — superseded by fixed template above) | RETIRED |
 | Weekly progress email (Friday, AI-generated, Brevo) | BACKLOG — blocked on Lewis copy template |
 | Persona context modifiers (age 50+, beginner, time-poor, new parent) | BACKLOG |
@@ -686,6 +687,98 @@ New top-level folder in VYVEBrain repo, opened PM-285 (25 May 2026). One markdow
 **As-you-go discipline (locked PM-285, 25 May).** When a session touches a page — for any reason, architecture audit, feature build, bug fix, copy pass — the corresponding `/page-docs/<page>.md` ships in the same commit as the code change, drafted or refreshed to match the page's current state. The discipline avoids the documentation-deferred-forever failure mode where pages drift from their docs and the whole folder becomes untrusted. If the page-doc doesn't exist yet, this is the session that creates it. If it exists, this is the session that updates it. A whole-session pass to backfill page-docs across the portal is acceptable as a session theme, but no individual page change ships without its doc being touched.
 
 **Current state.** `page-docs/README.md` (folder intro + maintenance convention + current-docs index) + `page-docs/engagement.md` (drafted alongside PM-285 v2 score design so the new architecture lands documented from day one). All other pages remain to be documented — Lewis decides priority order based on what he needs to explain externally first.
+
+---
+
+## 11C. Engagement Score v2 architecture (PM-295, 25 May 2026)
+
+Six-pillar base × multipliers, 50 floor, 100 ceiling, 7-day linear decay. Designed PM-285, shipped PM-295 behind `?score=v2` flag + in-app chip link from engagement.html (Capacitor wrap has no URL bar, so the redirect-only path didn't work alone).
+
+### Formula
+
+```
+final_score = 50 + min(50, (base_points × consistency_mult × variety_mult) / 2.5)
+```
+
+Base 50 is a permanent floor. Ceiling at 100. Divisor 2.5 chosen by spec work — 3.7 (originally floated) punished the well-rounded user; 2.5 puts the 5-pillar/7-day user at 85 and the exceptional case at 92 with clean climb to 100.
+
+### Decay
+
+Linear 7-day rolling weighted at `GREATEST(0, (7 - (CURRENT_DATE - activity_date)) / 7.0)`. Today 1.000, day-1 0.857, day-2 0.714, day-3 0.571, day-4 0.429, day-5 0.286, day-6 0.143, day-7+ 0.000.
+
+### The six pillars
+
+| Pillar | Source tables | Per-row pts | Daily cap |
+|---|---|---|---|
+| **Focus** | mind_activities, cardio, connect_checkins, nutrition_logs (rows with `focus_slug IS NOT NULL`) | 5 | 3 |
+| **Habits** | daily_habits | 1 | 5 |
+| **Body** | workouts + cardio (rows with `focus_slug IS NULL`) | 2 | 2 |
+| **Mind** | mind_activities (rows with `focus_slug IS NULL`) | 2 | 2 |
+| **Connect** | connect_checkins (rows with `focus_slug IS NULL`) + session_views | 2 | 2 |
+| **Check-ins** | wellbeing_checkins (8pts/week unique iso_week+iso_year), live_checkin_submissions (4pts/week), monthly_checkins (12pts/month) | varies | n/a (form-level uniques) |
+
+Focus pillar disambiguation: rows with `focus_slug IS NOT NULL` count under Focus ONLY, never under their underlying pillar. Without this, completing a Reset focus (which writes to mind_activities) would credit both Focus 5pts AND Mind 2pts — double-count. Caps applied at compute via LEAST(cap, count) per §23.37 doctrine — raw tables store everything.
+
+### Multipliers — locked curves
+
+**Consistency multiplier** driven by `active_days_7` (distinct activity_dates across all 10 source tables in last 7 days):
+
+| Days | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|---|
+| Mult | 0.85 | 0.90 | 0.95 | 1.00 | 1.08 | 1.15 | 1.23 | 1.30 |
+
+**Variety multiplier** driven by `pillars_touched_7` (count of the 6 pillars with points > 0):
+
+| Pillars | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|---|
+| Mult | 0.90 | 0.90 | 0.95 | 1.00 | 1.07 | 1.14 | 1.20 |
+
+Worked examples (verified during build): workout-only 5 days/week → 53. Well-rounded 7/7 across 5 pillars → 85. Once-a-week struggler → 53 (one tap above base floor). Exceptional week with all check-ins → 92. Inactive 7+ days → 50 (floor holds).
+
+### Wellbeing dropped from the score
+
+Per Dean's call during PM-285 design: submitting an honest "I feel rough today — 3/10" should never penalise the score. The *act* of submitting the check-in earns the 8 points (under Check-ins pillar); the contents inform the AI recommendations not the score. Removes the perverse incentive of inflated wellbeing scores. The v1 `engagement_wellbeing` column is still populated for v1 backwards-compat but plays no role in v2.
+
+### Schema delta (PM-295)
+
+`member_home_state` gained 11 new columns: `engagement_focus_points`, `engagement_habits_points`, `engagement_body_points`, `engagement_mind_points`, `engagement_connect_points`, `engagement_checkins_points`, `engagement_consistency_mult`, `engagement_variety_mult`, `engagement_active_days_7`, `engagement_pillars_touched_7`, `engagement_score_v2`. All exist alongside the v1 columns — v1 untouched, both score paths populated by `refresh_member_home_state()` (v1 path now renamed `refresh_member_home_state_v1_internal`, called as first step of new outer fn that then patches v2 columns).
+
+`live_checkin_submissions` table NEW — RLS-enabled with auth.email() match policies, member+week_start unique, jsonb payload column. Empty at launch; form schema designed when live check-in surface is built.
+
+**Drift findings during build (correcting PM-285 spec).** `monthly_checkins` table was **already shipped** as a fully-built surface (24 columns: 8 pillar scores + matching notes + avg_score + ai_report + goal_progress pair, keyed on iso_month text not month_start date). 3 real rows in production. Not the empty-jsonb stub PM-285 specced — full table reused as-is, score function reads via EXISTS per iso_month. `focus_slug` column also **already present** on all 4 focus-target tables despite PM-285 spec marking it deferred. Both drift items: a prior session shipped them without changelog discipline. Brain entries for those missing PMs (PM-287/288/290/291/292) — see PM-294 entry for an overview of how parallel-session brain drift has been accumulating.
+
+### Compute parity — JS ↔ SQL
+
+`compute_engagement_components_v2(p_member_email text)` SQL function in `public` schema, SECURITY DEFINER, returns 13-field record (per-pillar points + base + mults + days/pillars + raw_score + final_score).
+
+`computeEngagementComponentsV2(tables, today)` in `home-state-local.js` — pure function taking pre-loaded Dexie row arrays + today's date string, returns same 13-field shape. Loader `loadV2Tables(email)` fetches `mind_activities` + `nutrition_logs` + `monthly_checkins` + `live_checkin_submissions` (with graceful fallback when a table isn't yet Dexie-registered) alongside the v1 set already in `computeHomeStateFromDexie`.
+
+Parity proven during build at 72/72 exact match on real test1@test.com 7-day data, every per-pillar field including `consistency_mult=1.23` and `variety_mult=1.14`. Date-window handling matched between JS and SQL after correcting initial test for server timezone (server `CURRENT_DATE` was 2026-05-24 UTC; first JS run used 2026-05-25 BST and was off by one decay step).
+
+### Page architecture (`engagement-v2.html`)
+
+Sticky standalone page behind `?score=v2` redirect from `engagement.html` + in-app chip link "✨ Preview new score (v2) →" in the v1 page header (chip needed because Capacitor wrap has no URL bar). Back-link on v2 returns to v1.
+
+- **Score hero** — ring centred at top of card, band label / title / sub stacked beneath, eye icon (ⓘ) top-right opens "How your score works" bottom sheet with the full explainer
+- **Multiplier strip** — Consistency + Variety as cards with value + detail + progress bar (pct 0.85→1.30 and 0.90→1.20 mapped)
+- **Pillar rows** — 6 rows, each with per-pillar accent colour (Focus #C9A84C, Habits #4DAAAA, Body #E09B3D, Mind #9B7AE0, Connect #E06060, Check-ins #3DB89F), left-edge bar + coloured icon + coloured points. Empty pillars greyed with "try this" hints.
+- **Activity Breakdown** — 5-card grid (currently Habits / Body / Mind / Connect / Check-ins; **scheduled to be rebadged to Habits / Mind / Body / Cardio / Check-ins** per Dean's call this session, queued for next-session work). Each card has count + streak/in-last-7 line + ⓘ corner button opening per-pillar bottom-sheet explainer (z-index 10001, above the nav z-index 9999).
+- **30-day chip-row log** — ported from v1's pattern, reads habits/workouts/cardio/mind/connect_checkins/session_views from Dexie, renders one row per active day with chips per activity type
+- **Persona-aware message slot** — reserved as HTML comment in score-hero markup, parked per Dean's call (not in scope for v2 launch)
+
+Score subscriber on all score-affecting bus events with 50ms debounce: `habit:logged`, `workout:logged`, `set:logged`, `cardio:logged`, `mind:logged`, `mind:unlogged`, `connect:checkin:logged`, `food:logged`, `food:deleted`, `wellbeing:logged`, `session:viewed`, `monthly_checkin:submitted`, `live_checkin:logged`, plus catch-all `vyve-localdb-table-pulled`.
+
+### Push notification thresholds — DEFERRED to follow-up campaign
+
+Re-engagement-scheduler v11 with soft-slide (<75 first time in 14 days, 7d cooldown), pillar-gap (<65 for 3 days, 5d cooldown, pillar-aware), and re-engagement (<55 for 7 days, routes to existing A/B/C1/C2/C3 streams) wiring was originally scoped for PM-295 but deferred — push notifications driven by a score nobody's confirmed on device yet was the wrong sequencing. Cooks after 24-48hr device verification.
+
+### v1 cleanup
+
+Not done. v1 columns (`engagement_score`, `engagement_recency`, `engagement_consistency`, `engagement_variety`, `engagement_wellbeing`), v1 SQL function (`compute_engagement_components` + `compute_engagement_score`), and v1 page (`engagement.html`) all still live and untouched. Default flip + cleanup is a follow-up commit after Dean device-verifies the v2 numbers for a day or two. Plan at that point: redirect both `/engagement.html` and `?score=v2` URLs to `engagement-v2.html`, then `mv engagement-v2.html engagement.html` and drop the redirect. v1 SQL function + v1 columns retained for a further cleanup pass once nothing's reading them.
+
+### Three-tab future shape — DEFERRED to next session
+
+Engagement page is queued to become a three-tab shell (Score / Progress / Achievements) per Dean's design call this session. Score tab = current `engagement-v2.html` content. Progress tab = charity mechanic + 5-track milestone progress (Architect/Warrior/Relentless/Elite/Explorer). Achievements tab = port v1 trophy-cabinet block verbatim (32 metrics × 327 tiers per §11A), full overhaul deferred to its own campaign. See next-session prompt.
 
 ---
 

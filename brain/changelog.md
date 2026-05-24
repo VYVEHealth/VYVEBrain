@@ -1,3 +1,79 @@
+## 2026-05-25 PM-295 — Engagement Score v2 implementation (Phases 1-4 + polish + in-app link + centred hero) [vyve-site `ccd1af98` → `ddbfc99c` → `fb9adda0` → `d0a880ed` — commit messages labelled PM-286; renumbered PM-295 in brain]
+
+Implementation ship of the PM-285 design. Four vyve-site commits across the session — initial v2 ship, in-app chip link (Capacitor wrap has no URL bar so `?score=v2` redirect was unreachable from the iOS app), polish pass (color/30-day-log/sheet z-index/mind count from device review), and centred hero with how-it-works moved into eye-icon sheet.
+
+### What landed
+
+**Schema (Supabase migration `pm286_engagement_v2_schema`).** 11 new columns on `member_home_state`: `engagement_focus_points`, `engagement_habits_points`, `engagement_body_points`, `engagement_mind_points`, `engagement_connect_points`, `engagement_checkins_points`, `engagement_consistency_mult`, `engagement_variety_mult`, `engagement_active_days_7`, `engagement_pillars_touched_7`, `engagement_score_v2`. New table `live_checkin_submissions` with RLS-enabled auth.email() match policies, member+week_start unique constraint, client_id unique, jsonb payload column, two indexes on (member_email, week_start DESC) + (member_email, activity_date DESC). All in one migration applied via Supabase MCP `apply_migration`.
+
+**Drift findings during build (correcting PM-285 spec).** `monthly_checkins` table was **already shipped** as a fully-built surface (24 columns: id, member_email, iso_month text, 8 pillar score smallints — score_wellbeing/energy/stress/physical/sleep/diet/social/motivation — matching note text fields, avg_score, ai_report, goal_progress pair, created_at). 3 real rows in production. Not the empty-jsonb stub PM-285 specced. PM-285 spec was therefore wrong about both shape (jsonb stub vs full schema) and naming convention (month_start date vs iso_month text). Reused as-is, score function reads via EXISTS per iso_month. `focus_slug` column also **already present** on all 4 focus-target tables (mind_activities, cardio, connect_checkins, nutrition_logs) despite PM-285 spec marking it as a deferred migration. 1 focus_slug row already landed in mind_activities yesterday from the PM-274 ship. Both items confirm a prior session shipped these without changelog discipline — see "Brain drift status" below.
+
+**SQL function `compute_engagement_components_v2(p_member_email text)`.** SECURITY DEFINER, returns 13-field record. Reads from 7-day window per member, linear decay weight `GREATEST(0, (7 - (CURRENT_DATE - activity_date)) / 7.0)`, caps applied via LEAST(cap, count). Focus pillar disambiguation: rows with `focus_slug IS NOT NULL` count under Focus only — without this a Reset focus would credit both Focus 5pts AND Mind 2pts. Returns per-pillar points + base + consistency_mult + variety_mult + active_days_7 + pillars_touched_7 + raw_score + final_score.
+
+**SQL function `refresh_member_home_state(p_email text)` updated.** Existing function renamed to `refresh_member_home_state_v1_internal`, new outer function created that calls v1 internal first (populates all existing columns including legacy engagement_score) then patches the 11 v2 columns via `compute_engagement_components_v2()` call + UPDATE. Atomic, both score paths populated, v1 path 100% untouched. Backfilled all 20 members. Smoke test on top 5 most active: test1@test.com v1=88 v2=72 (well-rounded 6-day 5-pillar), vicki.park22 v1=83 v2=53 (4-day 2-pillar), kelly v1=75 v2=54 (2-day 2-pillar). v2 systematically lower than v1 for narrow-engagement members because v2 only counts last 7 days vs v1's 30-day-weighted model — directionally correct per spec, v2 is the harsher honest-read score.
+
+**JS port `computeEngagementComponentsV2` in `home-state-local.js`.** Pure function taking pre-loaded Dexie row arrays + today's date string, returns same 13-field shape as SQL. Loader `loadV2Tables(email)` fetches `mind_activities` + `nutrition_logs` + `monthly_checkins` + `live_checkin_submissions` alongside the v1 set, graceful fallback when `live_checkin_submissions` isn't yet Dexie-registered. `computeHomeStateFromDexie` patched to compute v2 in-place after the v1 return block — converted from direct `return { ... };` to `var result = { ... }; ... result.engagement_* = v2.*; return result;`. Also exposed standalone `computeEngagementV2FromDexie(email)` convenience method.
+
+**Parity proven JS ↔ SQL.** First parity run was off (JS 66, SQL 72) because the JS test ran with `today='2026-05-25'` while Supabase server `CURRENT_DATE` was `2026-05-24` (UTC vs BST boundary). Re-ran with today=2026-05-24 — exact match across all 13 fields: focus 5.00=5.00, habits 13.29=13.29, body 1.71=1.71, mind 12.57=12.57, connect 6.00=6.00, checkins 0=0, cons 1.23=1.23, var 1.14=1.14, final 72=72. Codified: when computing engagement against real DB data, JS and SQL `today` must match the same server timezone.
+
+**Page `engagement-v2.html` NEW (42KB).** Portal-shelled (CSP header, theme.js, auth.js, bus.js, perf.js, db.js, sync.js, firstPaintHydrate.js, home-state-local.js, nav.js, offline-manager.js — full chrome). Sections (after polish + centred-hero passes):
+
+- Page header with eyebrow / title / sub + back-link chip to v1
+- **Score hero (centred stack)** — ring at top centre, band label / title / sub stacked beneath, eye icon (ⓘ) top-right opening the "How your score works" bottom sheet. Ring fill stroke + band label color by band: 90+ #F0C070 (gold), 75-89 #4ade80 (green), 60-74 #4DAAAA (teal-lt), 50-59 #7AC8C8 (teal-xl).
+- **Multiplier strip** — Consistency + Variety as cards with value × multiplier + plain-English detail text + linear bar (cons 0.85→1.30 mapped to 0-100%, var 0.90→1.20 mapped to 0-100%)
+- **Pillar rows (6)** — Focus / Habits / Body / Mind / Connect / Check-ins each with per-pillar accent color (Focus #C9A84C, Habits #4DAAAA, Body #E09B3D, Mind #9B7AE0, Connect #E06060, Check-ins #3DB89F). Left-edge bar + colored icon background + colored points text. Empty pillars greyed with "try this" detail copy.
+- **Activity Breakdown (5-card grid)** — currently Habits / Body / Mind / Connect / Check-ins. Each card has count + streak line + ⓘ corner button opening per-pillar bottom-sheet explainer. Top accent bar per card in pillar color.
+- **30-day chip-row activity log** — port of v1's `TYPE_CONFIGS` pattern reading habits + workouts + cardio + mind + connect_checkins + session_views from Dexie. One row per active day with chips per activity type, color-matched to pillar.
+
+Bus subscriber on all score-affecting events with 50ms debounce: `habit:logged`, `workout:logged`, `set:logged`, `cardio:logged`, `mind:logged`, `mind:unlogged`, `connect:checkin:logged`, `food:logged`, `food:deleted`, `wellbeing:logged`, `session:viewed`, `monthly_checkin:submitted`, `live_checkin:logged`, plus catch-all `vyve-localdb-table-pulled` (focus-shell publishes this on focus completions). Score subscriber registers AFTER Dexie-write subscribers per PM-285 critical ordering rule.
+
+**Bottom sheet z-index pegged at 10001** (above bottom-nav z-index 9999 from nav.js). First device review found the sheet popping under the nav — corrected immediately in polish commit.
+
+**Engagement v1 (`engagement.html`) — minimal touch.** Inline synchronous `?score=v2` redirect at top of head (runs before any portal chrome loads, swaps location.replace to `/engagement-v2.html`). Chip link "✨ Preview new score (v2) →" added to page header (Capacitor wrap has no URL bar, redirect needed an in-app entry point). v1 page otherwise untouched.
+
+**Persona-aware message slot** in score-hero markup is an HTML comment placeholder, parked per Dean's call — not in v2 launch scope.
+
+### Lewis-owned copy as functional placeholder
+
+All band copy (Powerhouse / Strong week / Building / Quiet week) + all 5 info-popover bodies + 6 pillar empty-state hints shipped as functional placeholder. Lewis refines voice in a follow-up — flagged in commit messages, not blocking ship.
+
+### What didn't ship (deferred to follow-up sessions)
+
+- **Default flip** from v1 to v2. Engagement.html still default; v2 reachable only via chip link or `?score=v2`. Flip after Dean device-verifies for 24-48hr.
+- **v1 cleanup**. v1 columns (`engagement_score`, `engagement_recency`, `engagement_consistency`, `engagement_variety`, `engagement_wellbeing`), v1 SQL functions (`compute_engagement_components` + `compute_engagement_score`), v1 page all still live. Cleanup after default flip.
+- **re-engagement-scheduler v11** push thresholds (soft-slide <75 / pillar-gap <65 for 3d / re-engagement <55 for 7d). Original PM-285 scope; deferred because driving notifications off a score nobody's verified yet is the wrong sequencing.
+- **`live_checkin_submissions` Dexie registration** in db.js SCHEMA_V14. Not blocking — JS port gracefully falls back to 0 contribution. Adds when the live check-in form is built.
+- **Activity Breakdown grid rebadge** per Dean's call this session: remove Connect + sessions, add Cardio. Final 5: Habits / Mind / Body / Cardio / Check-ins. Queued for next session.
+- **Three-tab shell** (Score / Progress / Achievements) per Dean's design call. Queued for next session — see next-session prompt.
+- **Achievements ported back onto engagement page** — full overhaul is its own campaign per existing backlog; verbatim port of v1 trophy-cabinet block (per §11A) is the next-session move.
+- **Lucide icon swap across nav.js** (Dean wants to replace hand-rolled SVG icons with Lucide). Self-contained piece, queued.
+
+### Files committed
+
+**vyve-site (4 commits):**
+
+`ccd1af98` (initial Phases 1-4 ship): `engagement-v2.html` NEW (35535 bytes), `engagement.html` (`?score=v2` redirect inline), `home-state-local.js` (computeEngagementComponentsV2 + loadV2Tables + computeEngagementV2FromDexie + computeHomeStateFromDexie patched to populate v2 fields), `sw.js` (cache key + engagement-v2.html added to precache), `index.html` (vbb-marker 175→177 — initial bump 175→176 collided with parallel PM-289 ship, re-rebased atop 176→177 after §23.41 fresh HEAD found PM-288/289 had landed). Sw cache `pm286-engagement-v2-a`. Atomic via Git Data API per §23.45/§23.52.
+
+`ddbfc99c` (in-app v2 link): chip link in `engagement.html` page header + mirror back-link on `engagement-v2.html`, sw cache `pm286-v2-link-b`, vbb-marker 177→178.
+
+`fb9adda0` (polish — color/30-day log/sheet z-index/mind count): per-pillar accent colors on pillar rows + breakdown cards, band-color on score ring + band label, 30-day chip-row log replacing the standalone decay strip section (decay viz moved inside "How your score works" card body), Mind breakdown card populated via direct Dexie query (no v1 column for it), sheet z-index 101→10001 (above bottom nav z-index 9999), and **lots of CSS additions** (.pillar-row::before, .bk-card::before, .activity-log + .log-row + .type-chip + .log-empty patterns ported from v1, .pillar-row[data-pillar="X"] accent palette block, .sheet z-index + box-shadow). sw cache `pm286-v2-polish-c`, vbb-marker 180→181 (§23.41 caught two more ships landing between commits — PM-290 connect-hydrate + PM-291 habit-sync — and rebased).
+
+`d0a880ed` (centred hero + how-it-works → eye sheet): `.score-hero` rewrite from `display:grid grid-template-columns:auto 1fr` to `display:flex flex-direction:column align-items:center` — ring centered at top, meta stacked beneath centred. Eye button `.score-hero-info` added top-right of card. V2_INFO_COPY gained `howItWorks` entry containing the full explainer body (was a standalone card at page bottom, now in the sheet). Standalone "How your score works" section removed. Dead `renderDecayStrip` function + decay-strip CSS block removed. Persona-message slot left as HTML comment in markup. sw cache `pm286-v2-centred-d`, vbb-marker 182→183.
+
+**Supabase:** `pm286_engagement_v2_schema` migration (member_home_state +11 cols, live_checkin_submissions table + RLS + indexes), `compute_engagement_components_v2` function via `pm286_compute_engagement_components_v2`, `refresh_member_home_state` rename + wrap via `pm286_refresh_member_home_state_with_v2`. Backfill across all 20 members.
+
+### Brain drift status (sibling-session ship pile-up)
+
+vyve-site HEAD moved from `6eb59d7c` (session start) to `f770d696` (PM-285→295 ship complete) across multiple parallel sessions. PM numbers shipped in vyve-site commits **without corresponding brain entries** during this session window: PM-287 (pot tiles), PM-288 (habit done state teal colors), PM-290 (connect.html vyve-localdb-hydrated subscription), PM-291 (habit sync home<->habits.html via togglePill bus publish), PM-292 (renumbered PM-294 in brain — replay attribution), PM-293 (habits race, not yet investigated). §23.41 fresh-HEAD-rebase honoured at every vyve-site commit, but the brain didn't track these as they landed. Sweeping them into brain narratively would require examining each vyve-site commit message + diff — out of scope for this PM-295 entry which is already long. **Next session opens with a brain-drift sweep** to backfill PM-287/288/290/291/293 narratives from their vyve-site commit messages + diffs.
+
+### Tooling discipline applied
+
+§23.45 PAT-direct path (Composio still 401 from 21 May incident, now ~3 days). §23.41 fresh-HEAD checked before each of the 4 commits — every check caught a parallel-session ship and triggered a rebase (PM-286 found PM-288/289, PM-link found nothing, PM-polish found PM-290/291, PM-centred found PM-292). §23.52 atomic Git Data API path (blobs → tree → commit → update ref) on all 4 commits + post-commit first-100-char re-fetch verification on every file pinned to commit SHA. `node --check` on all extracted inline `<script>` blocks before each commit — clean every time.
+
+### Numbering note
+
+Commit messages on all 4 vyve-site commits read "PM-286 — Engagement Score v2 …" — that label was claimed at session start from the PM-285 backlog file which described the implementation work as "PM-286 Engagement Score v2 implementation". Brain `changelog.md` already has a PM-286 entry from earlier the same day ("PM-215 cron SHIPPED + architecture correction") so the brain renumbers this work to **PM-295** to preserve narrative integrity. Git commit messages carry the misnamed PM-286 forward; the brain is the authoritative number. This is the third PM-number collision in three days (PM-235 cluster on 23 May, PM-294 renumber yesterday, PM-295 today) — the §23 candidate rule on "pre-commit brain-HEAD re-fetch for PM-number claims" proposed in the PM-294 entry is firmly justified, codified as **§23.65** in next-session's first §23 ship.
+
 ## 2026-05-24 PM-294 — Per-video replay attribution via YouTube IFrame API tracker [vyve-site `f770d696` — commit-message-labelled PM-292; renumbered PM-294 in brain after collision]
 
 ### What shipped
