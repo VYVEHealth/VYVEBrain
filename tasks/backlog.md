@@ -1,3 +1,57 @@
+## Added 25 May 2026 — PM-286 Engagement Score v2 implementation (PM-285 design ships)
+
+**Status.** Design locked PM-285 (25 May). Full spec in Claude session artefact `/home/claude/work/engagement-score-spec.md`. Member-readable doc at `/page-docs/engagement.md`. Mockup at `/home/claude/work/engagement-mockup.html`. Implementation tomorrow following Dexie-write audit close.
+
+**Sequencing.** Pre-flight = the wider Dexie-write audit (separate backlog item Dean called out — "tomorrow we're gonna be doing a full audit to make sure that this app works like that and should in every way possible"). Score v2 implementation depends on the audit because the bus-subscriber order issue (recalc must fire AFTER Dexie write subscriber, not before) needs systematic verification across every write surface.
+
+**5-phase migration (per spec §10).**
+
+1. **Schema migration** — `engagement_v2_schema` adds new `member_home_state` columns (`engagement_focus_points`, `engagement_habits_points`, `engagement_body_points`, `engagement_mind_points`, `engagement_connect_points`, `engagement_checkins_points`, `engagement_consistency_mult`, `engagement_variety_mult`, `engagement_active_days_7`, `engagement_pillars_touched_7`); creates `live_checkin_submissions` + `monthly_checkins` empty tables with RLS; adds `focus_slug` text column to `mind_activities` + `cardio` + `connect_checkins` + `nutrition_logs` (already on PM-274 backlog, promoted here).
+2. **v2 SQL function** — `compute_engagement_components_v2` created alongside v1. Both populate `member_home_state` in parallel — v1 into existing columns, v2 into new columns. `refresh_member_home_state()` extended to call both. Old score still drives existing surfaces unchanged.
+3. **JS port + parity test** — `computeEngagementComponentsV2` added to `home-state-local.js`. Parity test runs both functions against same data across all 32 live members; any drift > 1pt logged for investigation. Diagnostic page surfaces drift for manual inspection.
+4. **New engagement.html UI behind `?score=v2` flag** — full page rewrite per spec §9 + mockup. Score hero + multiplier strip + per-pillar breakdown (6 rows) + Activity Breakdown 5-card grid with ⓘ eye → bottom-sheet explainers + 30-day strip unchanged from v1 + plain-English explanation. Lewis owns eye-popup copy (functional placeholder ships first; he refines in his voice). 24-48hr internal verification.
+5. **Cutover + cleanup** — default flip; drop v1 `compute_engagement_components` function + old `member_home_state` columns + old `computeEngagementComponents` JS function. Update `re-engagement-scheduler` v11+ to read new thresholds. Drop the `?score=v2` flag.
+
+**v2 30-day strip — tap-day-to-expand activity detail.** Parked post-soft-launch. Dean's idea — tap a day on the 30-day strip → bottom sheet shows what specifically was logged that day ("Wednesday 20 May · Mind: Gratitude journal 8:14am, Sleep wind-down 10:32pm · Body: 25-min PPL Push 6:48am"). UX risk = at-a-glance scan vs detail-on-tap conflated; defer until soft-launch data shows whether the curiosity-tap is real behaviour or hypothetical. Same bottom-sheet pattern as the ⓘ eye explainers — chrome already exists.
+
+**`/page-docs/` follow-ups.** Each portal page eventually gets a member-readable doc. Priority order = Lewis's call based on what he needs to explain externally. Suggested first batch: `index.md` (home dashboard), `habits.md`, `exercise.md` (Body hub), `mind.md`, `connect.md`, then the focus pages as a single composite or twelve individual docs. Live session pages + sessions.html cluster as one piece since they share most behaviour. Marketing-site pages (vyvehealth.co.uk/*) probably get their own folder eventually — separate from portal page docs.
+
+**Lewis-owned items folded into PM-286 scope.**
+- Eye-popup copy for 5 pillar explainers (Daily Habits, Body, Mind, Connect, Check-ins) on the Activity Breakdown grid.
+- Band-copy lines for the 4 score ranges (Strong week / Steady / Sliding / Quiet) on the hero.
+- Pillar-gap push notification templates — 5 variants, one per pillar that can be empty.
+- Welcome-back copy when a returning member opens engagement.html with score = 50 (no recent activity).
+
+**Out of scope for PM-286.** Achievements catalog rewrite. Certificate name changes. Leaderboard score-based ranking. Content of live + monthly check-in forms (tables ship empty, score credits immediately, forms designed in separate campaign).
+
+---
+
+## Added 25 May 2026 — Dexie-write audit pass (pre-PM-286 dependency)
+
+**Status.** Tomorrow's session opens with this. Pre-requisite for PM-286 v2 score implementation.
+
+**Scope.** Every page that writes activity. Verify each write surface:
+
+1. Dexie write fires optimistically per §23.39 BEFORE network POST.
+2. Bus event publishes AFTER Dexie write resolves (subscriber order matters).
+3. `VYVEHomeState.optimisticPatch` patches the cache in the same code path.
+4. Engagement score subscriber (when v2 ships) recomputes AFTER Dexie write subscriber, not before.
+5. Network POST runs unawaited in background; outbox fallback on network failure.
+6. Re-paint of dependent surfaces (home rings, engagement.html, hub pages) happens within ~16ms.
+
+**Surfaces in scope.** habits.html, exercise.html (Body hub + workout completion + cardio logging), mind.html (six sub-pages), connect.html, all 12 focus pages (via focus-shell.js), wellbeing-checkin.html, nutrition.html + log-food.html, sessions.html (live join + replay watch).
+
+**Cross-cutting findings from PM-274 phase 2 audit** (`playbooks/full-app-wiring-audit.md`) carry over and need closing:
+- A: hubs don't subscribe across activity types
+- B: engagement.html Variety component missing `mind:logged` (resolves under v2 — variety is computed from row presence not events)
+- C: nutrition.html not subscribed to food:logged/food:deleted
+- D: index.html `daily_habits` literal subscription typo
+- E: focus-shell publishes `vyve-localdb-table-pulled` catch-all but no hub subscribes
+
+Some/all of these likely resolve naturally as part of the v2 implementation since the score recompute reads from Dexie row presence directly, not from event firing. Confirm during audit.
+
+---
+
 ## Added 24 May 2026 — PM-283 + PM-284 focus done-state device validation + edge cases
 
 **Status.** PM-283 shipped at `eb7562e8` (body.is-completed auto-stamp via MutationObserver, hero 45vh→40vh, cta-wrap static reset). PM-284 shipped at `234e7a3d` (page-reopen done-restore in shared chrome covering all 4 target Dexie tables + reflection.html prompt context line). Together they close the "done state doesn't persist + done state has no context" device review.

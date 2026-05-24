@@ -1,3 +1,91 @@
+## 2026-05-25 PM-285 — Engagement Score v2 design session + /page-docs/ folder opens [design-only]
+
+Design-locked the full rewrite of the VYVE engagement score with Dean over a single talk-first session. No code shipped. Spec written, mockup built, /page-docs/ folder opened with engagement.md as first member-readable page doc. Tomorrow's session implements behind `?score=v2` flag after the wider Dexie-write audit closes out.
+
+**The new score formula.**
+
+```
+final_score = 50 + min(50, (base_points × consistency_mult × variety_mult) / 2.5)
+```
+
+Score range [50, 100]. Base 50 is a permanent floor (Dean's call — protects struggling members from a brutal-low return). Top 50pts come from 7-day rolling activity with linear decay, multiplied by Consistency (0.85–1.30) and Variety (0.90–1.20).
+
+**Why multipliers, not components.** The old 4-component model (Activity/Consistency/Variety/Wellbeing × 12.5pts + base 50) double-counted (daily user got credit for being daily AND for being consistent) and was gameable (1 tap per pillar at 11pm maxed Variety regardless of genuine engagement). The multiplier shape neutralises both — you only earn the consistency/variety bonus on top of real base points. Doing nothing × 1.3 × 1.2 = still nothing.
+
+**Wellbeing dropped from the score entirely.** Per Dean: "we don't think that's right for the business." Submitting an honest "I feel rough today — 3/10" should never penalise the score. The *act* of submitting the check-in earns its points; the contents inform the AI recommendations not the score. Removes the perverse incentive of inflated wellbeing scores.
+
+**Base point earners — 6 pillars:** Today's Focus (5pts each, cap 3/day), Daily Habits (1pt each, cap 5/day), Body (2pts each, cap 2/day), Mind (2pts each, cap 2/day), Connect (2pts each, cap 2/day), Check-ins (weekly 8pts / live 4pts / monthly 12pts). Caps apply at compute, not at write (§23.37 doctrine — raw tables store everything).
+
+**Decay function:** linear 7-day rolling. Today 100%, day-1 86%, day-2 71%, day-3 57%, day-4 43%, day-5 29%, day-6 14%, day-7+ 0. New logs continuously displace old; the score drifts as activity ages out, and the drift IS the signal for re-engagement push thresholds.
+
+**Push notification thresholds:**
+
+| Trigger | Condition | Cooldown |
+|---|---|---|
+| Soft slide | Score drops below 75 for first time in 14 days | 7 days |
+| Pillar gap | Score below 65 for 3 days running, pillar-aware | 5 days |
+| Re-engagement | Score below 55 for 7 days running → existing A/B streams | 14 days |
+
+Pillar-gap is the most valuable — uses the variety calc directly to name which pillar is empty and suggest a 10-min action in it.
+
+**Today's Focus disambiguation.** Twelve focus slugs write to four target tables (mind_activities, cardio, connect_checkins, nutrition_logs). Without disambiguation a Reset focus would credit BOTH Focus (5pts) AND Mind (2pts) — double-count. Fix: `focus_slug` column on each target table, rows with `focus_slug IS NOT NULL` count under Focus only. Already on PM-274 backlog; promoted to ship as part of the v2 score migration.
+
+**Two new tables needed.** `live_checkin_submissions` (form embedded in weekly check-in, 4pts, 1/week unique constraint on member+week_start) and `monthly_checkins` (12pts, 1/month unique constraint on member+month_start). Both empty at launch with jsonb payload column — form schemas designed when those check-in surfaces are built. Both wired to the score immediately so first submissions earn points from day one.
+
+**Worked examples confirming the divisor 2.5:**
+
+- *Workout-only 5 days/week:* 7.14 base × 1.05 × 0.90 = 6.75 → ÷2.5 = 2.7 → **Score 53**. Honest read of narrow engagement.
+- *Well-rounded daily user 7/7 across 5 pillars:* 56 base × 1.30 × 1.20 = 87.4 → ÷2.5 = 35 → **Score 85**. Strong but room to climb.
+- *Once-a-week struggler:* 8 base × 0.85 × 1.05 = 7.14 → ÷2.5 = 2.86 → **Score 53**. Gets a tiny lift above base; one more tap pushes 55+.
+- *Exceptional week with all check-ins:* 68 base × 1.30 × 1.20 = 106 → ÷2.5 = 42 → **Score 92**. Caps cleanly with monthly check-in landing in-week pushing toward 100.
+- *Inactive 7+ days:* 0 base → **Score 50**. Base floor holds.
+
+Divisor 2.5 (not the 3.7 first floated) chosen by re-running examples — 3.7 punished the well-rounded user (74 instead of 85) and didn't leave enough ceiling room for the exceptional case. 2.5 puts the great-but-realistic week at 85 and exceptional at 92 with clean climb to 100.
+
+**Page architecture — engagement.html v2.**
+
+- Score hero (ring + band copy)
+- Multiplier strip (Consistency card + Variety card with bars)
+- "Where your score came from" — 6 pillar rows, each shows count + plain-English detail + points. Empty pillars greyed with gentle "try this" hint
+- Activity Breakdown grid — 5 cards (Daily Habits / Body / Mind / Connect / Check-ins) with count + current/best streak. Each card has a ⓘ eye corner-button → bottom-sheet explainer of what counts for that pillar
+- 30-day activity strip retained unchanged from v1 (Dean's call — useful at-a-glance pattern)
+- "How your score works" — plain-English explanation at the bottom
+
+Lewis owns the eye-popup copy (functional placeholder drafted; he writes the voice). v2 of the 30-day strip (tap-day-to-expand showing what specifically was logged) parked in backlog post-soft-launch, not MVP — UX risk of conflating at-a-glance scanning with detail-on-tap unresolved without member-living data.
+
+**Architecture — Dexie-first instant updates.**
+
+Score computed client-side via new `computeEngagementComponentsV2` in `home-state-local.js`. Tap a habit → Dexie write → optimistic patch → bus publish → score subscriber recomputes → ring repaints in ~16ms. Server is backup, not source. New PG function `compute_engagement_components_v2` mirrors the JS in lockstep, drives `member_home_state.engagement_score` and 10 new component columns. Parity test runs both against same data, asserts equivalence.
+
+**Critical wiring detail flagged for tomorrow's audit.** Bus subscriber order matters — the score recalc must fire AFTER the Dexie write subscriber, not before, or the recalc reads stale data. Added to the audit checklist for tomorrow's Dexie-write audit pass.
+
+**Migration plan — 5 phases:**
+
+1. Schema only (new columns on member_home_state + new tables empty + focus_slug columns on focus-target tables). No behaviour change.
+2. v2 SQL function alongside v1. Both populate member_home_state, v2 into new columns. Old score still drives existing surfaces.
+3. JS port + parity test across all live members.
+4. New engagement.html UI behind `?score=v2` flag. 24-48hr internal verification.
+5. Default flip + cleanup (drop v1 function + old columns + old JS function).
+
+Estimated 3-4 Claude-assisted sessions for the full ladder. Tomorrow's session ships Phases 1+2+3 atomic if audit closes early enough, else Phases 1+2 with Phase 3 next.
+
+**/page-docs/ folder opens.** New top-level folder in VYVEBrain repo. Each portal page gets one markdown file describing what the page is, why it exists, what a member sees, how they use it, and what data flows through it. Plain English, member-readable, no SQL, no §23 references. For Lewis/Alan/Calum/Phil/Vicki/Cole + sales prospects + future support team + eventually member help centre. Distinct from `/brain/master.md` which is engineering-context only — Claude reads master for technical work, never these docs. `page-docs/engagement.md` is the first file, drafted alongside the v2 score design so the new architecture lands documented from day one. `page-docs/README.md` explains the folder convention and lists current docs. All other pages remain to be documented — Lewis decides priority order based on what he needs to explain externally first.
+
+**Files committed this session (4):**
+- `brain/master.md` — patched with v2 score architecture in §11 + new §11A page-docs reference
+- `brain/changelog.md` — this PM-285 entry prepended
+- `tasks/backlog.md` — added v2-score ship, page-docs follow-ups, v2 30-day expand
+- `page-docs/README.md` — new folder + intro
+- `page-docs/engagement.md` — first member-readable page doc
+
+5-file atomic via pure Python urllib pipeline per §23.52(a)+(c)+§23.45. Composio still 401 from 21 May incident; Vault PAT direct.
+
+**No new §23 hard rule earned in PM-285** — design-only session, no shipped code earning architecture lessons. The "engagement signals use base × multipliers, not separate components" principle WILL earn §23.NN if it survives a week of soft-launch trial data post-implementation; pre-positioned in master §11 but not codified into §23 yet (rule deferred to PM that ships the live code).
+
+**What didn't happen this session.** No code shipped. No SQL functions written or deployed. No engagement.html touched. Mockup built but not committed to vyve-site repo (lives in Dean's local `/home/claude/work/` as static reference only — implementation pulls from it). Tomorrow's session implements.
+
+---
+
 ## 2026-05-24 PM-284 — Focus pages: page-reopen done-restore + reflection prompt context [vyve-site `234e7a3d`]
 
 Two device-review issues raised against the PM-283 ship:

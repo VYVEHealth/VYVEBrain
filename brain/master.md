@@ -672,6 +672,20 @@ Backed unchanged by `member-achievements` v2 EF — `tiers[].earned_at`, `tiers[
 
 ---
 
+## 11B. Page documentation (`/page-docs/`)
+
+New top-level folder in VYVEBrain repo, opened PM-285 (25 May 2026). One markdown file per portal page describing what the page is, why it exists, what a member sees, how they use it, and what data flows through it. Plain English, member-readable, no SQL, no §23 references.
+
+**Distinction from `/brain/master.md`.** Master is engineering-context only — Claude reads master for technical work, never these docs. The /page-docs/ folder is for Lewis/Alan/Calum/Phil/Vicki/Cole, sales prospects who need to understand the product, support team members onboarding, and ultimately the member-facing help centre.
+
+**File naming.** One file per portal page, lowercase, matching the HTML filename: `engagement.md` for `engagement.html`, `habits.md` for `habits.html`, etc.
+
+**Maintenance.** Each doc is updated when the page itself meaningfully changes — new sections, new mechanics, new copy direction. The doc captures the *member experience* of the page, which moves more slowly than the implementation. Pages shipped without a doc earn a follow-up task on the next session that touches them.
+
+**Current state.** `page-docs/README.md` (folder intro + maintenance convention + current-docs index) + `page-docs/engagement.md` (drafted alongside PM-285 v2 score design so the new architecture lands documented from day one). All other pages remain to be documented — Lewis decides priority order based on what he needs to explain externally first.
+
+---
+
 ## 12. Automated operations — workflows & cadences
 
 ### Daily
@@ -718,7 +732,11 @@ Trial/test data only today. Per-employer Auth-gated URLs (e.g. `/sage`) build wh
 
 Single call to `member-dashboard` v55. Cache-first — renders instantly from localStorage on return visits, skeleton on first load, silent background refresh. Server-authoritative hydration on every page load (HealthKit truthsource is `member_health_connections` row presence in the EF, not localStorage).
 
-Engagement score 0–100 ring. Activity + Consistency + Variety + Wellbeing components (12.5 points each). Base 50.
+**Engagement score — v1 live, v2 design-locked PM-285 (25 May 2026), implementation tomorrow.**
+
+**v1 (currently live).** Engagement score 0–100 ring. Activity + Consistency + Variety + Wellbeing components (12.5 points each) + base 50. Surface dropped from index home page PM-256 (24 May); lives on engagement.html only via the More menu. Dropped from index because PM-256 home redesign chose habits + focus carousel as the visible feedback loop, leaving the score as a deeper internal health signal. Computed both server-side (`compute_engagement_components` Postgres function) and client-side (`computeEngagementComponents` in `home-state-local.js`) in lockstep per PF-11b / PM-89.
+
+**v2 (designed PM-285, implements PM-286+).** Full rewrite. New formula: `final_score = 50 + min(50, (base_points × consistency_mult × variety_mult) / 2.5)`. Wellbeing dropped entirely (the act of submitting a check-in earns its points; the score is not penalised by an honest low self-report). Consistency (0.85–1.30) and Variety (0.90–1.20) become multipliers on base points, not separate components — eliminates double-counting (daily user got credit for being daily AND consistent) and prevents gaming (1 tap per pillar at 11pm maxed Variety regardless of genuine engagement). Six base-point pillars: Today's Focus (5pts each, cap 3/day), Daily Habits (1pt each, cap 5/day), Body (2pts each, cap 2/day), Mind (2pts each, cap 2/day), Connect (2pts each, cap 2/day), Check-ins (weekly 8 / live 4 / monthly 12). 7-day rolling window with linear decay (today 100% → day-7 0%); new logs continuously displace old, score drift IS the re-engagement push trigger. Three push thresholds: soft slide <75 (14d cooldown), pillar gap <65 for 3d (5d cooldown), re-engagement <55 for 7d (14d cooldown). Pillar-gap notification reads variety calc to name which pillar is empty + suggests 10-min action. Two new tables required: `live_checkin_submissions` (form embedded in weekly, 1/week unique) + `monthly_checkins` (1/month unique). Today's Focus disambiguation via `focus_slug` column on target tables — rows with focus_slug counts under Focus only, not double-counted under their underlying pillar. Dexie-first instant updates: score recompute fires on bus events ~16ms after tap, server is backup not source. Bus subscriber order matters — recalc subscribes AFTER Dexie write subscriber (audit checklist item for tomorrow). Migration 5 phases (schema → v2 fn alongside v1 → JS port + parity → UI behind `?score=v2` flag → cutover). UI surfaces score hero + multiplier strip + per-pillar breakdown + Activity Breakdown 5-card grid (Daily Habits/Body/Mind/Connect/Check-ins, each with ⓘ eye → bottom-sheet explainer) + 30-day strip unchanged from v1. Lewis owns eye-popup copy. v2 30-day-tap-expand parked post-soft-launch. Full spec in Claude's `/home/claude/work/engagement-score-spec.md` session artefact; member-readable version at `/page-docs/engagement.md` (see §11A).
 
 5 progress tracks: Daily Habits (The Architect), Workouts (The Warrior), Cardio (The Relentless), Sessions Watched (The Explorer), Weekly Check-ins (The Elite). 30-activity milestone certificates.
 
