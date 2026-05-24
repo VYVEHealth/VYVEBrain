@@ -861,6 +861,47 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ---
 
+## 19. Current status — 24 May 2026 PM-257 (Home redesign iteration — mood check-in + Today's Habits list + Live carousel + bug fixes. Three device-visible PM-256 bugs fixed (greeting z-index bleed, hero bg-position, brand mark, bell colour, TOD pill). New transient `daily_mood_checkins` mechanic on hero. 2-file atomic commit `b633cb02`, sw cache `pm257-home-mood-habits-a`, vbb-marker 142. Supabase migration `pm257_create_daily_mood_checkins` applied first.)
+
+**PM-257 (24 May 2026, vyve-site `b633cb02`, supabase migration `pm257_create_daily_mood_checkins`).** Same-night iteration on PM-256 after Dean's device-test feedback + mockup re-review. Three bugs visible on the screenshots from PM-256 + the five mockup gaps that didn't make tonight's first ship.
+
+**Bugs fixed.**
+- **Hero copy z-index bleed.** Greeting text was painting over Today's Habits row on long scroll (visible in Dean's screenshots). Root cause: `.index-hero-copy` was `position:absolute` body-level at `z-index:5`, while `.wrap` was at `z-index:2`. When wrap scrolled past the hero base, hero copy stayed visible above the wrap content. Fix: `.index-hero-copy` switched to `position:fixed` pinned to top of hero band at `z-index:1`; `.wrap` at `z-index:2` now unambiguously covers it on scroll. Greeting also re-anchored to top-of-hero rather than bottom (matches the new mockup composition).
+- **Hero background-position.** Was `center bottom`. Figure-on-rock subject is in the lower-right of all 3 photos; center-bottom was cropping the figure on portrait viewports. Changed to `70% center` — keeps the figure in frame and shows sky on the upper third where copy sits.
+- **Brand mark.** Was a Playfair "V" character. Now real `/logo.png` via `<a><img></a>`. Matches the rest of the portal chrome.
+- **Bell badge colour.** Was gold `#C9A84C`. Now `var(--teal-lt)`. Bell badge is a soft notification indicator, not an alert flag.
+- **TOD pill removed.** "Morning"/"Afternoon"/"Evening" pill dropped from hero top-right. Greeting copy already carries the time of day; the pill was redundant.
+
+**Mood check-in mechanic.** Transient glass-overlay panel on hero base. 5-mood emoji row (Not great / Meh / Good / Great / Amazing). On tap: panel swaps to confirmation state ("Thanks for checking in, Dean."), holds 2.4s, fades 0.4s, height collapses 0.3s. Total dismiss arc: 3.1s. localStorage key `vyve_mood_checked_in_<email>_<date>` caches the checked-in state for paint-fast decision — subsequent same-day visits paint without the panel, no flash. Skip button does the same dismiss flow but with no DB row (panel still gone for the day). Synchronous localStorage check before paint — honest first-frame behaviour, no flicker.
+
+**New Supabase table `daily_mood_checkins`** (applied via migration `pm257_create_daily_mood_checkins` before code ship). One row per member per day with UNIQUE(member_email, mood_date) so re-taps update rather than duplicate. Columns: `id uuid PK`, `member_email text NOT NULL`, `mood_date date NOT NULL`, `mood_value smallint NOT NULL CHECK (1..5)`, `mood_label text NOT NULL`, `created_at`, `updated_at` with SECURITY DEFINER trigger. Full RLS — 4 policies (select/insert/update/delete) scoped to `auth.email() = member_email`. Partial index `idx_daily_mood_checkins_member_date` on `(member_email, mood_date DESC)` for trend queries Lewis will run later.
+
+**Mood write path** follows §23.39 optimistic-first contract — UI flips to thanks state immediately, localStorage marker written immediately, server upsert in background via `/daily_mood_checkins?on_conflict=member_email,mood_date` with `Prefer: resolution=merge-duplicates,return=minimal`. On failure: localStorage marker stays, member doesn't get re-prompted today. Next-day boundary naturally clears the date-keyed key.
+
+**Today's Habits restructured from 5-ring boolean tap-to-tick to vertical list** per mockup. Each row = icon + name + sub-line + check toggle. Tap anywhere on row toggles. Sub-line generated from habit_title via keyword match (`subForHabit()` — 13 keywords + empty fallback). Same §23.39 optimistic-first write path as PM-256 — togglePill() now re-renders renderHabitList() instead of renderPills(). >5 habits → See all link to habits.html.
+
+**Live Sessions This Week — new horizontal carousel** reading `calendar_occurrences` from Dexie, fall through to 4 placeholder cards when Dexie is empty (honest paint per §23.46 — placeholders carry category + time-of-day text labels like "Tonight 20:00" and "Tomorrow 17:30", not LIVE labels). 78% card width, snap-x scroll, aspect-ratio 2:1, gradient thumbnail variants (candle/zen/dawn) until real `image_url` photo data lands. Real broadcast data takes over the moment PM-251 calendar_occurrences hydrates + PM-215 cron writes broadcast IDs.
+
+**My Progress section restored** — 5 rings with current labels (Hydration/Movement/Mind/Nutrition/Sessions). Painted with placeholder zero values for now (`PROGRESS_TRACKS` const inline). Members tap → engagement.html drilldown. Real per-track progress wiring + pillar realignment (rings → Habits/Body/Mind/Connect/Check-ins) is a separate campaign per Dean's note — this surface stays stable until then.
+
+**Section order on home now:** Hero → Today's Focus → Today's Habits (list) → Live Sessions This Week (carousel) → My Progress (rings). Mood panel is overlay on hero, dismissed for the day after tap or skip.
+
+**Files (2)** — `index.html` (63335 → 82821 bytes, 1469 → 1959 lines), `sw.js` (cache key bump `pm256-home-redesign-a` → `pm257-home-mood-habits-a`). vbb-marker `Update 141` → `Update 142`. No new image assets — focus card hero imagery is the obvious follow-up but ships when Dean generates the Gemini prompts I gave him.
+
+**Verified.** node --check clean on all 9 inline `<script>` blocks. Tag balance 26/26. getElementById cross-check: 3 benign missing IDs (ring-val-css is existence-check before creation; next-slot lives in dead-code-after-return inside neutered paintWhatsNext; skeleton-screen lives in PM-256 commented-out legacy block). §23.41 fresh-HEAD checked twice (pre-tree-create at `135f4e33`, pre-ref-update at `135f4e33` — no parallel ship). §23.52(a)(c) every blob via `--data-binary @file`, both SHAs 40-char hex. §23.53 commit + ref responses parsed from file. Post-commit first-100-char re-fetch at commit SHA `b633cb02` matched on both files.
+
+**Composio still 401** from 21 May security incident (now ~3 days). PAT-direct via Supabase Vault throughout per §23.45.
+
+**No new §23 hard rule earned.** PM-257 exercises established doctrine: §23.39 (optimistic-first), §23.41 (parallel-session safety), §23.45 (PAT-direct fallback), §23.46 (honest paint), §23.52(a)(c), §23.53, §23.55 (hub-page hero), §23.57 (canonical scrolling-fade recipe).
+
+**What didn't ship in PM-257.**
+- Focus card hero imagery (gradient placeholder stays). Dean has Gemini prompts for 3 small photo cards (morning forest path, midday windowsill, evening candle). Follow-up commit when those land.
+- Pillar realignment for My Progress rings (Habits/Body/Mind/Connect/Check-ins). Separate campaign — touches achievement engine + cert naming.
+- Habit icon redesign (proper icon column on habit_library). Keyword match in iconForHabit() + subForHabit() stays as v1 fallback.
+- AI-generated daily focus content. v1 stays as persona × TOD static lookup.
+- Focus carousel (3-card horizontal scroll). Dean was stuck between carousel-vs-single-changing-card; I argued for and shipped single-changing-card. Worth a re-look on device.
+- Real per-track progress data on My Progress rings. Currently zero placeholders.
+
 ## 19. Current status — 24 May 2026 PM-256 (Home redesign — cinematic time-of-day hero, dropped activity score + tracks + check-in. Last hub-page hero per §23.55. `index.html` full rewrite 121KB → 63KB / 1849 → 1469 lines. 5-file atomic commit `135f4e33`, sw cache `pm256-home-redesign-a`, vbb-marker 141. Three hero JPGs (morning sunrise / afternoon clarity / night moon) at 1024×1024 q82.)
 
 **PM-256 (24 May 2026, vyve-site `135f4e33`).** Last hub-page hero shipped — the cinematic time-of-day index.html redesign Dean signed off via mockup-first review. `index.html` full rewrite: hero + Today's Focus card + What's on next + 5 Progress Pills (today's daily habits as tap-to-tick rings). Five surfaces dropped from current home: activity score ring + components, daily check-in card (mob-checkin + desktop daily-checkin-card + 7-day pill strip), overall streak bar, 5-track progress wall, weekly goals strip, collective impact charity banner, coming-up-this-week list. Two session-banners (live-now + up-next) collapsed into single What's on next card with state-aware presentation.

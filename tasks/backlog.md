@@ -1,3 +1,72 @@
+## Added 24 May 2026 PM — PM-257 follow-ups
+
+Three items deferred from PM-257 (home iteration ship), all on the same home surface.
+
+### Focus card hero imagery
+
+**Status.** PM-257 ships the focus card with a teal gradient + emoji icon placeholder. Mockup shows photographic backgrounds (forest path, sunlit windowsill, candle). Dean has 3 Gemini prompts (logged in chat — morning forest path with golden light through trees; midday sunlit windowsill with plant + mug; evening candle on side table with knitted throw).
+
+**Plan.**
+
+1. Dean generates 3 images in Gemini.
+2. Resize each to 256×256 q82 progressive JPEG (256 is plenty — the focus art block on home is ~64×64 displayed size, 256 covers retina + future card-size growth).
+3. Save as `/focus-morning.jpg`, `/focus-midday.jpg`, `/focus-evening.jpg` at vyve-site repo root.
+4. Replace `.focus-art` emoji rendering with `background-image` per the active TOD slot. Falls back to gradient if image fails to load (§23.49 onerror pattern).
+5. Add 3 precache entries to sw.js. Bump cache key.
+
+**Estimate.** ~30 min once Dean ships the images. Single atomic commit.
+
+---
+
+### Real per-track progress on My Progress rings
+
+**Status.** PM-257 paints the 5 rings with `PROGRESS_TRACKS` placeholder zero values. The rings have current labels (Hydration / Movement / Mind / Nutrition / Sessions) but no real data.
+
+**Plan.**
+
+1. Wire `home-state-local.js` compute functions into the renderPills call path. The module is already loaded (script tag preserved from PM-256); just needs the home page to call it.
+2. Each ring's `value/target` reads from member's monthly count of the relevant activity stream.
+3. Mapping decisions for the 5 current labels:
+   - Hydration → `daily_habits` count where habit_title matches hydration keyword
+   - Movement → `workouts` + `cardio` combined count
+   - Mind → `mind_activities` count
+   - Nutrition → `daily_habits` where habit_title matches nutrition keyword
+   - Sessions → `session_views` count
+4. Target stays at 30 for all (matches current certificate milestone threshold).
+
+**Estimate.** ~1-2 hours Claude-assisted. Single atomic commit.
+
+**Sequencing.** Probably best to do this AFTER pillar realignment (rings → Habits/Body/Mind/Connect/Check-ins) lands, otherwise we wire the math twice. But if Dean wants the rings showing real numbers in the meantime, the temporary mapping above is reasonable.
+
+---
+
+### Focus carousel re-consideration
+
+**Status.** PM-257 ships single Today's Focus card that changes content by hour boundary (morning 5-11, midday 11-19, evening 19-5). Dean was previously stuck between carousel (3 cards horizontally scrollable) and single-shifting-card; my argument for single won. Worth a device-review now that it's live.
+
+**Plan.** If Dean wants the carousel after device review:
+
+1. Restructure `.focus-card` from single anchor to `.focus-carousel` container with 3 cards.
+2. Cards: Morning ("Build momentum") / Midday ("Stay balanced") / Evening ("Reset & unwind") all always visible, swipeable.
+3. Active card derives from TOD on first render (current TOD card visible in viewport at scroll position 0; others to the right).
+4. Same content source either way — `FOCUS_LIBRARY` const just renders 3 cards instead of 1.
+
+**Estimate.** ~45 min. Pure UI restructure, no data layer change.
+
+**Decision triggers reviewing this:** Dean prefers the menu shape on device, or doesn't.
+
+---
+
+### Mood trend visualisation for Lewis
+
+**Status.** `daily_mood_checkins` table is queryable. Lewis has no surface to see member mood trends yet — would live in admin console (PM-214 surface, not yet built).
+
+**Plan.** Out-of-scope for the trial; capture here as a marker so when the PM-214 admin console campaign starts, the mood-trend chart is a known input. Simple shape: weekly average mood per member, 30-day rolling trend, optional company-aggregate when employer member counts get high enough to be non-identifying.
+
+**Estimate.** Defer until PM-214 admin console build starts.
+
+---
+
 ## Added 24 May 2026 PM — PM-256 follow-ups (home redesign deferred items)
 
 Three items deferred from PM-256 (home redesign atomic ship), all on the same surface family.
