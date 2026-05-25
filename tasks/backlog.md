@@ -1,3 +1,19 @@
+## Shipped 25 May 2026 — PM-392 — Connect feed prefetch + cache-first paint (closes Connect tab-in two-paint flicker) [vyve-site `624552ce`]
+
+Boot-time prefetch fires from index.html at L2403 (1200ms after first paint), warms `VYVELocalDB._kv['connect_feed_preview_v1']` (existing PM-201 cache slot). connect.html paintAll now reads cache first; on <90s fresh hit, paints community feed instantly without EF call; on miss/stale falls through to EF fetch + writes cache. Module-scoped `__cacheBypassOnce` invalidates cache on member's own check-in / reaction action so next paint refetches fresh. Cross-member updates lag up to 90s — acceptable at cohort scale.
+
+Follow-on banked: connect-feed.html + connect-checkin.html could read the same cache slot, same shape as connect.html consumer. Free win on top of existing prefetch when next touching either page. Not pressing.
+
+---
+
+## Shipped 25 May 2026 — PM-391 — Revert PM-390 reaction-subscriber double-mutation (closes reaction-tap +2 flicker) [vyve-site `e98e67fe`]
+
+PM-390's envelope-trusted upgrade was a §23.65 misapplication on in-page same-surface subscribers. toggleReaction() already mutates reactionsByCheckin synchronously before publishing connect:reaction:logged; subscriber re-applied the +1 → +2 flicker until 150ms repaint reconciled. Both reaction subscribers reverted to bare `function () { repaintDebounced(); }`. Inline comment documents the in-page-vs-cross-page distinction so future audits don't reintroduce the bug. Other 4 PM-390 connect.html subscribers (connect:checkin:logged + :failed flag, aggregate signals) untouched.
+
+§23 candidate banked: §23.65 audit signal should check whether the same file ALSO contains a matching `VYVEBus.publish` for the event — if yes, it's an in-page subscriber and §23.65 does NOT apply (bare repaint is correct). Codifying on next recurrence.
+
+---
+
 ## Shipped 25 May 2026 — PM-390 — §23.65 envelope-trusted subscriber sweep on connect.html + mind.html, engagement-v2 L1682 dead subscribe converted, events-rp.html unified onto canonical session-rp shell [vyve-site `f2f07b99`, brain close PM-390.b]
 
 Closes Audit PM-379 P0-5 + §23.65 sweep for Connect / Mind. connect.html: 4 of 6 subscribers upgraded (connect:checkin:logged + :failed, connect:reaction:logged + :cleared) — connect:challenge:progress + connect:hydrated + mind:logged + body:logged kept as pure Dexie re-read (aggregate signals, race-immune by design). mind.html: all 3 subscribers upgraded with module-scoped `__mindDeltas` map keyed by client_id + 3 helpers, `readMindActivities` overlays `mergeMindDeltasInto(base)` so renderProgress sees envelope-confirmed activity before Dexie/REST converge. engagement-v2.html L1682: VYVEBus.subscribe('vyve-localdb-table-pulled', recompute) → window.addEventListener('vyve-localdb-table-pulled', recompute) (Audit Flag 14 — no colon, never registered, signal was always a window CustomEvent). events-rp.html: full replacement of standalone 17.6KB self-rendered page with canonical 2.5KB session-rp shell, joining the other 7 replay-category shells. Side fixes baked into the migration: stale playlist ID swapped to canonical `PLyaCafiXVssiPt5whqWDiK0EVTMYxbCyh` from replay_playlists.slug='events', theme.js now loaded (theme tokens reach the page), embedded YouTube API key removed from this surface.
