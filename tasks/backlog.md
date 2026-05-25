@@ -1,42 +1,53 @@
-## Added 25 May 2026 — PM-328 — Achievements v2 items C+D done; A+B still open
+## Added 25 May 2026 — PM-329 — Achievements v2 UI build (data layer done, UI pending)
 
-**Status update on PM-322 closeout.** Items C (migration map) and D (data-model decision) shipped this session — see PM-328 changelog entry. Build remains BLOCKED on A (Lewis copy pass) and B (Phil sign-off). Schema delta SQL is ready to apply; not yet applied — applying it before Lewis writes the new tier copy would litter `achievement_tiers` with placeholder rows that look "approved" against an empty title. Cleaner to apply the schema delta + insert new tier rows together at the start of the build session.
+**Status update.** PM-328 part 2 (this evening) shipped the full data layer to live Supabase: schema delta, all new metric rows, 211 placeholder tier rows, gate flags (`phil_approved`, `wired`) applied. UI rewrite is the remaining major piece and was carved out to a fresh chat to avoid mid-build compaction. Handover prompt at `brain/staging/handover-pm329.md` — paste verbatim into a new chat.
 
-**Item D — DONE. Decision: D1 (extend existing tables).** Schema delta drafted at `brain/staging/PM-322-achievements-v2-schema.sql`. Adds 4 nullable columns to `achievement_metrics` (`pillar`, `hidden`, `icon_slug`, `is_cross_cutting`); leaves `achievement_tiers` and `member_achievements` untouched. 345 existing earns preserved zero-loss.
+**What's left:**
 
-**Item C — DONE. Migration map at `brain/staging/achievements-migration-map.md`.** All 32 v1 metrics explicitly mapped: 9 KEEP, 3 RENAME, 4 EXTEND, 4 COLLAPSE, 12 RETIRE-LEGACY. Three open mapping questions surfaced for Dean (see migration map document).
+A. **Evaluator wiring** — `supabase/functions/_shared/achievements.ts`. 65 metrics currently flagged `wired=false`. Source-table inventory needed before code:
+   - Movement metrics need `movement_activities` table (PM-307 — confirm schema)
+   - Mind metrics need `mind_activities` table (PM-173 — confirm `kind` column values)
+   - Focus metrics need focus_cards/focus_completions tables — CONFIRM EXISTENCE before wiring; if unshipped, leave `wired=false` and surface in backlog
+   - Connect new metrics need reactions + session_minutes_by_category — confirm tables
+   - Checkins new metrics need daily_mood_checkins table — confirm
+   - Body behavioural needs workouts.completed_at, exercise_logs sanity caps (reps≤100, weight_kg≤500), distinct date sequences
 
-**Item A — STILL OPEN. Lewis-owned. Carve into a Lewis ticket.** Hand Lewis the merged catalog (`brain/staging/achievements-catalog-v1.md`) and the migration map. Ask for:
-1. Keep/extend approval on each surviving v1 tier name. 327 existing approved tier rows; the `copy_status='approved'` gate protects them from overwrite — Lewis is just confirming they fit the new pillar/icon shape and don't need rename.
-2. New copy for ~80-90 net-new tier rows across ~13 net-new metrics (Mind 13 metrics × variable tiers ≈ 46 tiers, Focus 8 metrics × variable tiers ≈ 24 tiers, plus net-new Body/Habits/Connect/Check-ins metrics). Estimate 80-90 new tier-row copy entries total.
-3. Display-name confirmation for new metrics — the schema delta has working titles ("Mind Sessions", "Breathwork Sessions", etc.) but Lewis should pass these.
+B. **member-achievements EF update.** Return shape: `{ hero: {memberDays, streakOverall}, pillars: {body, habits, mind, connect, checkins, focus}, hidden, legacy }`. Filter: pillar grid uses `WHERE pillar IS NOT NULL AND wired AND (phil_approved OR is_admin)`. Phil-pending Mind metrics stay dark until Phil signs.
 
-Voice rules already locked (no emojis, 3-6 word titles, 10-20 word bodies, no fitness-influencer tone, globally-unique titles, distinct streak-vs-count body voice). Same validation gate as the v1 batches 1-7 applies — programmatic check before commit.
+C. **UI rewrite — Direction C + Path B on engagement.html achievements tab.** Mockups in vyve-site (`/achievements-mockup-c.html`, `/achievements-mockup-pathb.html`) are paste-in starting points. Six pillar cards (collapsed by default, tap to expand), Pattern 3 metric rows with icon-in-tier-frame badges, gemstone colour ladder (bronze→silver→gold→sapphire→ruby→emerald→amethyst→pearl→obsidian→diamond), gold dots underneath rows for earned tiers, dashed frame + faded icon for locked. Hidden achievements drawer separate. Legacy badges drawer for member's pillar=NULL earned rows.
 
-**Item B — STILL OPEN. Phil-owned. Carve into a Phil ticket.** Specific achievements needing HAVEN-aware review before copy ships:
-- All of MIND pillar (M1-M13) — voice review even where mechanics are fine
-- `honest_checkin_tier5` (HD1) — therapeutic soundness of rewarding low-wellbeing submission
-- `weekly_score_climb` (K7) and `monthly_avg_improved` (K8) — improvement-based metrics could feel punitive in low weeks
-- `streak_saver` (HD7) — implies pressure, needs gentle framing
-- `came_back` (HD2) — first message after a long absence; framing matters
+D. **Lewis copy pass — parallel, non-blocking.** 211 placeholder tier rows currently carry working copy that follows the voice rules (no emojis, 3-6 word titles, 10-20 word bodies). Lewis can swap freely — placeholder→approved is a one-row UPDATE per tier and doesn't require code change. Hand him the catalog (`brain/staging/achievements-catalog-v1.md`) and a SQL query to UPDATE specific rows.
 
-**Open mapping questions for Dean** (in migration map doc):
-1. `workouts_shared` 11 earns sit on a 10-tier v1 ladder; v2 collapses to 2 tiers. Preserve v1 as legacy + fire v2 fresh, or re-issue v2 tier 2 to v1 tier 3+ earners? *Recommended: preserve v1 + fire v2 fresh.*
-2. `healthkit_connected` — salvage as v2 behavioural one-shot or retire? *Recommended: salvage, costs nothing.*
-3. `is_cross_cutting` modelling for `member_days`/`streak_overall` confirmed in this session's schema delta — no further action unless overruled.
+E. **Phil sign-off — parallel.** 18 metrics gated by `phil_approved=false` (Mind pillar + 5 sensitive). Phil reviews copy for any framing that could hurt a HAVEN member in a low week. Once signed, UPDATE `phil_approved=true` per metric.
 
-**Updated sequencing.** A and B parallel, both Lewis/Phil pace (1-2 weeks). When A returns: schema delta apply + Lewis tier inserts as one transaction; B may not block this if Phil's review only touches Mind/Check-ins (those can ship in a second pass). Build session for the v2 UI grid opens after A is in.
+**Open mapping questions (recommendations exist; defaults if no answer):**
 
-**Reference artefacts** in `brain/staging/`:
-- `achievements-catalog-v1.md` — full pillar-by-pillar catalog (this session)
-- `achievements-migration-map.md` — explicit v1→v2 mapping (this session)
-- `PM-322-achievements-v2-schema.sql` — ready-to-apply schema delta (this session)
-- `achievements-deepdive-prompt.md` — pre-design-session prompt, historical
-- `achievements-tier-design.md` — referenced in PM-322 changelog but NOT actually committed there; full visual spec exists only in PM-322 changelog entry text (10-tier gemstone ladder, Path B icon-in-frame). Worth re-extracting into its own file at the start of the build session if the spec needs separate reference.
+1. workouts_shared 11 earns sit on a 10-tier v1 ladder; v2 collapses to 2-tier `workouts_shared_v2`. Recommendation: preserve v1 as legacy + fire v2 fresh. Default if no answer: take recommendation.
 
-Plus the two mockups in vyve-site root: `/achievements-mockup-c.html` and `/achievements-mockup-pathb.html`.
+2. healthkit_connected — salvage as v2 body behavioural or retire? Recommendation: salvage, costs nothing. Default: take recommendation.
+
+3. volume_lifted_total had 21 earns in DB despite §11A saying "not yet wired". Marked `wired=true` based on observed behaviour. PM-329 evaluator pass should confirm by reading `_shared/achievements.ts` and either update brain to reflect reality or zero the rogue earns.
+
+**Sequencing recommendation for PM-329 session:**
+1. Inspect evaluator + EF + engagement.html structure (~15 min)
+2. Confirm Focus pillar data layer (~5 min)
+3. Evaluator wiring for confirmed-source metrics (~60-90 min)
+4. member-achievements EF update (~30 min)
+5. UI rewrite using mockups as paste-in (~90-120 min)
+6. Brain close + atomic commit (~15 min)
+
+Realistic timeline: one focused session (~4 hours) end-to-end. If Focus pillar data layer doesn't exist, defer those 8 metrics to a follow-up — they stay in catalog with wired=false, UI shows them as "Coming soon".
+
+**Reference artefacts** (all in `brain/staging/`):
+- `achievements-catalog-v1.md` — full pillar-by-pillar catalog
+- `achievements-migration-map.md` — explicit v1→v2 mapping
+- `PM-322-achievements-v2-schema.sql` — historical record (schema already applied)
+- `handover-pm329.md` — paste-ready prompt for the build session
+
+Plus vyve-site `/achievements-mockup-c.html` and `/achievements-mockup-pathb.html` (deletable post-ship).
 
 ---
+
 
 
 ## Added 25 May 2026 — PM-319 mind tracker follow-ups

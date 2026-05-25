@@ -1,3 +1,41 @@
+## 2026-05-25 PM-328 PART 2 — Achievements v2 data layer SHIPPED to live Supabase [data layer only — UI build pending]
+
+**Scope expansion mid-session.** PM-328 part 1 (earlier today, commit d8942703) delivered the items C+D paperwork: migration map + D1 schema decision + ready-to-apply SQL. After Dean pushed back on treating Lewis copy + Phil sign-off as hard blockers, the session pivoted into shipping the data layer with placeholder copy and gate flags. UI build is the only remaining piece and was carved out as PM-329 handover (see `brain/staging/handover-pm329.md`).
+
+**Applied to live DB (project ixjfklpckgxrwjlfsaaz) via two Supabase migrations:**
+- `pm328_achievements_v2_schema_delta` — ALTER `achievement_metrics` ADD COLUMN pillar / hidden / icon_slug / is_cross_cutting + pillar enum CHECK + partial index on pillar
+- `pm328_achievements_v2_gate_columns` — ALTER `achievement_metrics` ADD COLUMN phil_approved (DEFAULT true) / wired (DEFAULT false), then UPDATE phil_approved=false on Mind pillar + 5 sensitive metrics, UPDATE wired=true on 22 metrics currently firing in production
+
+**Catalog state — 107 metric rows, 538 tier rows:**
+- 80 v2 active pillar rows: body 22, habits 11, mind 13, connect 17, checkins 9, focus 8
+- 10 hidden cross-pillar (all one-shot, `hidden=true`, pillar=NULL): honest_checkin_tier5, came_back, full_house, first_light, owl, reciprocity, streak_saver, anniversary, quiet_wins, comeback_PB
+- 2 cross-cutting (`is_cross_cutting=true`, pillar=NULL): member_days, streak_overall
+- 15 retire-legacy (pillar=NULL, NOT cross-cutting, NOT hidden): exercises_logged, meals_logged, weights_logged, custom_workouts_created, workouts_shared, lifetime_steps (v1), lifetime_distance_hk, lifetime_active_energy (v1), nights_slept_7h, tour_complete, healthkit_connected, persona_switched, full_five_weeks, charity_tips (v1), personal_charity_contribution (v1)
+- Tier rows: 327 v1 approved (untouched) + 211 v2 placeholder = 538 total. v1 copy is protected by the `copy_status='approved'` upsert gate; new copy carries `copy_status='placeholder'` so Lewis's pass can overwrite freely.
+- member_achievements: 345 earns preserved zero-loss. Audit query confirms (321 land on active v2 rows / wired=true cohort; 24 become legacy badges visible in all-time view).
+
+**Gate flag distribution:**
+- wired=true: 22 metrics (all v1 metrics with non-zero earns + cross-cutting) — these fire today
+- wired=false: 65 metrics — UI shows them but they don't unlock until evaluator wiring lands (PM-329 item A)
+- phil_approved=false: 18 metrics (all 13 Mind + weekly_score_climb + monthly_avg_improved + honest_checkin_tier5 + streak_saver + came_back) — UI hides until Phil signs
+
+**Placeholder tier copy.** 211 rows of working titles + bodies written this session following the locked voice rules (no emojis, 3-6 word titles, 10-20 word bodies, no fitness-influencer tone, globally-unique titles). Lewis can swap any time — overwriting placeholder rows doesn't trip the copy_status='approved' protection because new rows are all placeholder. 12 title collisions with existing v1 approved titles were detected pre-insert and renamed (e.g. "First Workout Logged" → "Your First Workout In"). Final uniqueness: 202 distinct new titles + 327 distinct v1 titles, with "Hidden Achievement" intentionally shared across the 10 hidden cards as the public mask.
+
+**Surprises surfaced:**
+- volume_lifted_total has 21 earns across 6 members despite §11A documenting it as "not yet wired in evaluator". Either the wiring shipped without brain update, or a one-time backfill fired. Marked `wired=true` based on observed behaviour. Flagged for `_shared/achievements.ts` audit during PM-329 evaluator pass.
+- The PM-322 brain commit (fedadb2e, 27 April) referenced three staging artefacts that never made it into the tree. Today's part-1 commit (d8942703) finally landed two of them (catalog + migration map). Third (handover-pm329.md) lands in this commit.
+
+**Build still blocked on (carved into PM-329 handover):**
+- A. Evaluator wiring in `supabase/functions/_shared/achievements.ts` for 65 wired=false metrics
+- B. member-achievements EF v2 update to filter by pillar + serve hero/grid/hidden/legacy buckets
+- C. UI rewrite of engagement.html achievements tab — Direction C (Hero + 6 pillar cards) + Path B (Lucide icon-in-tier-frame badges, Pattern 3 levels-up rows)
+- D. Lewis copy pass on the 211 placeholder rows (parallel, non-blocking — copy can swap any time)
+- E. Phil sign-off on Mind + sensitive metrics (gates UI display via phil_approved column)
+
+**Why the data layer shipped now without UI:** Dean explicitly asked to push the build forward in the same session. The compaction-risk call was made to ship the data layer and SQL migration safely (atomic) and hand off the UI build to a fresh session with full context budget. UI is ~3-4 hours of focused work and the mockups at `/achievements-mockup-c.html` + `/achievements-mockup-pathb.html` are visual paste-in starting points.
+
+**HEAD bump.** Live Supabase carries the schema. vyve-site untouched this session — UI build will be the next vyve-site commit. Brain commits this turn for the data layer + handover + this changelog entry.
+
 ## 2026-05-25 PM-328 — Achievements v2 schema delta locked (D1) + migration map produced (PM-322 items C+D) [brain]
 
 **Scope.** PM-322 closeout left four pre-build dependencies (A Lewis copy, B Phil sign-off, C migration map, D data-model decision). This session resolved D and produced C. A and B remain Lewis-/Phil-owned.
