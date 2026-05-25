@@ -47,13 +47,16 @@ Session opened with a Claude-authored brief proposing four tiers of catalogue mi
 
 **Refiled (do NOT do as Tier 1.1)**: The brief proposed `sessions-data.js` → `service_catalogue` as Tier 1.1. PM-190.d + PM-333 retreated from this path twice in the last four days for valid flash-of-empty UX reasons. The **correct version** of this work is already on the backlog as **PM-211** (below) — single-source-of-truth collapse with a materialiser EF that hydrates `calendar_occurrences` from a recurring-pattern source. PM-211 is the ship that retires `sessions-data.js` cleanly; the brief's framing was a partial / wrong-shape version of it. Treat brief's Tier 1.1 as a misnamed PM-211 reference and do PM-211.
 
-**Next natural ship (Tier 4 of the brief)**: `how-to-pdfs.html` + `how-to-videos.html` are 2.7KB Coming-Soon placeholders. Build them right from day one as catalogue reads off a new `how_to_resources` table with `kind IN ('pdf','video')` discriminator. Avoids the bake-then-migrate cycle the brief correctly flagged.
+**~~Next natural ship (Tier 4 of the brief)~~**: ~~`how-to-pdfs.html` + `how-to-videos.html`~~ **SHIPPED PM-377 (25 May 2026, vyve-site `c00a24ca`)**. `public.how_to_resources` table live; both pages now catalogue-read with empty-state fallback. Lewis adds PDFs/videos via Supabase Studio. CHECK constraint enforces payload validity (PDF needs `url`; video needs `url` OR `youtube_video_id`).
+
+**Next two natural ships from the audit queue (un-blocked, ship when Dean wants):**
+- Tier 4 podcast.html platform links → `podcast_platforms` table (or `platform_links` jsonb on a singleton row). Smallest remaining surface, ~30 mins. Spotify / Apple / Amazon Music URLs — pattern is identical to `how_to_resources`.
+- Tier 2.3 `checkin_questions` table → versioned slider questions for weekly + monthly check-ins. Schema + Dexie read path can ship without Lewis; he populates wording when ready. ~1 hour.
 
 **Banked (no current pain)**: 
 - `mind-journal-prompts.js` → `journal_prompts` table. 40 prompts work fine as-is; not blocking anything. Brief overstated the marker count (2 file-header `COPY_LEWIS_REVIEW` comments, not per-entry).
 - `home-focus-catalogue.js` → `daily_focus` table (or 2-table split: 21-slot grid + COPY[]). Real talk-first needed on shape if/when prioritised.
 - Achievement tier copy (528 rows) — backlog PM-358 above is the canonical owner of this.
-- `weekly_checkin_questions` table — open backlog item (slider wording mirroring onboarding), Lewis-blocked on wording.
 - Tier 3 items (`workouts-library.js` category labels, `breathwork.html` thumbMap, workouts-programme metadata): all real but no current friction. Defer until first request from Calum or Lewis for content edit.
 
 **Brief-vetting protocol candidate.** When Dean opens a session with a multi-stage build brief sourced from another Claude session, run the audit pattern before code: cross-reference every claimed file/PM/state against live repo + brain, treat strategic ordering as a recommendation not a directive, and surface conflicts back to Dean before cutting code. PM-372 caught a Tier 1.1 reversal pre-build that would have re-opened a paid-for UX fix. Worth codifying as `/playbooks/content-surface-audit.md` next session if Dean wants the pattern preserved.
