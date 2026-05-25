@@ -1,3 +1,62 @@
+## 2026-05-25 PM-369 — Settings toggle haptics: 11 new wires on settings.html, palette now fully populated [vyve-site `026dee9e`]
+
+**Scope.** Closes out backlog item #7 from the PM-278 haptics adoption list (settings toggle switches). `settings.html` had 2 pre-existing PM-359 wires (`vyveSetTheme` + `handleToggle`, both `selection()`). This commit adds 11 more across every meaningful write/toggle surface on the page, bringing the file to 13 haptic call sites total.
+
+**The wires:**
+
+`setDisplayNamePref(pref)` — leaderboard name privacy buttons (anonymous/initials/first_name/full_name):
+- Synchronous flip → `selection()` immediately after `markActiveNamePrefBtn(pref)` — locks to the gesture, NOT the awaited `supaFetch` PATCH (PM-368 lesson). A no-op guard added (`if (pref === prev) return`) — tapping an already-active button no longer fires a haptic.
+- Revert path on `supaFetch` failure → `error()`. UI undoes itself; the haptic confirms the failure to the member who's already moved their attention elsewhere.
+
+`savePersona()` — persona commit:
+- Haptic placed at the synchronous bus-publish moment (line ~1330, BEFORE the Dexie `await` at line ~1347 which can stall on iOS WKWebView per PM-368). `success()` — persona switch is a meaningful configuration commit, not a low-stakes toggle.
+- The button's disabled+spinner state visually carries the "saving" affordance during the post-haptic Dexie wait. The haptic itself confirms the gesture committed.
+
+`toggleHabit(id)` — habit picker modal selection:
+- Both add and remove branches → `selection()` (picker semantics, both directions get the same tick — no winner).
+- Cap-reached path (`_selectedHabitIds.size >= 10`) → **`warning()` — FIRST USE in the codebase.** Bridge has had `warning()` since PM-277 but nothing has called it. Bridge docs: "caution". Fits the cap-rejection cleanly. Closes the "warning unused" caveat noted in PM-365's brain entry — the palette is now fully populated.
+
+`saveHabits()` — habits commit:
+- Modal-close moment (line ~1707, after Dexie/bus/cache writes complete) → `success()`. Per §23.39 / PM-151: network is fire-and-forget background. Haptic locks to the perceived "saved" moment.
+- Background-write failure publishes `habits:set-changed:failed` and `habits.html` handles the optimistic revert silently. No counter-haptic — the member has already moved on; surfacing the failure haptically on a now-closed modal would be confusing.
+
+`saveCustomHabit()`:
+- Optimistic-render success (form close + new habit appears in list) → `success()`. Mirrors PM-365 log-food add pattern.
+- `catch` path → `error()`.
+
+`deleteCustomHabit()`:
+- Optimistic delete-render → `medium()`. Matches PM-366 `deleteCustomWorkout` pattern. Note unlike PM-366: this flow's `renderHabitsList()` runs AFTER the awaited `supaFetch` DELETEs (not before). Acceptable because delete latency on small Supabase rows is typically <100ms and the `confirm()` dialog is the user's real commitment gate.
+- `catch` path → `error()`.
+
+**Skipped surfaces.** `toggleCreateForm()` (the open-the-create-form gesture, no write) — too low-value, would over-buzz. Auth/sign-out — security-critical surfaces shouldn't have feedback that could be confused with a "saved" signal.
+
+**Files (3, atomic at `026dee9e`):**
+- `settings.html` — 11 new haptic wires + 1 no-op guard added to `setDisplayNamePref`
+- `index.html` — vbb-marker 252 → 253
+- `sw.js` — cache `pm368-home-habit-haptic-realign-a` → `pm369-settings-toggle-haptics-a`
+
+**Marker invariant recovered.** PM-367 (parallel session, mind-videos) and PM-368 (mine, habit haptic realign) both bumped 251 → 252, leaving marker 252 dual-claimed in the brain narrative. PM-369 → 253 restores per-PM uniqueness for the marker semantics going forward. Cache key (pm369-...) is unambiguous as always.
+
+**Verification.** All 4 inline JS blocks `node --check` clean. sw.js standalone parse clean. §23.41 first-100 verify all 3 files at SHA `026dee9e` clean. Remote `VYVEHaptics` call-site count in settings.html = 13 (expected 13). §23.70 PM-claim fired correctly: parent `f33a231a` (PM-368) → claim 369, no parallel-session drift in the commit window.
+
+**Palette codification — §23.74 candidate banked.** With PM-369 the haptic palette is now consistently used across **7 PMs and 8 surfaces** with no internal contradictions:
+
+| Method | Use case | First PM | Last PM |
+|---|---|---|---|
+| `selection()` | pickers, toggles, stepper +/- | PM-359 | PM-369 |
+| `light()` | un-ticks, optimistic deletes from a list | PM-364 | PM-368 |
+| `medium()` | destructive commits, confirmations | PM-366 | PM-369 |
+| `success()` | additive logs | PM-359 | PM-369 |
+| `heavy()` | achievement tier reveal | PM-363 | (single) |
+| `error()` | failure paths | PM-365 | PM-369 |
+| `warning()` | caution / rejection | PM-369 | (just landed) |
+
+Rule shape proposal for next codification pass: "These are the seven haptic call shapes; use the closest semantic match. Reach for a heavier band only when the moment is qualitatively heavier (additive log ≠ destructive commit ≠ achievement reveal). Reach for a lighter band when the action is a correction or chrome interaction." Codifying as §23.74 (the prior §23.73-candidate PM-356-banked "helper-context-extension" lesson is still on the bench; it gets §23.75 when codified).
+
+**No additional new §23 hard rule earned this commit.** The PM-368-lesson "haptic at synchronous UI-flip site" was applied repeatedly here (`setDisplayNamePref`, `savePersona`) but is still single-occurrence at the codification threshold. Banked.
+
+---
+
 ## 2026-05-25 PM-368 — Home habit haptic re-aligned: synchronous tap-flip site + untick branch added [vyve-site `f33a231a`]
 
 **Dean's report.** "haptics aren't on the habits on index yet" — said after PM-360 had already shipped a wire in `index.html` `togglePill()`. Investigation showed PM-360's haptic was placed at line 2270, **after** `await VYVELocalDB.daily_habits.upsert(...)`. On iOS WKWebView the indexedDB transaction can queue and the await stall 100-400ms. The haptic landed long after the tap, decoupled from the gesture, so Dean's read was correct: from the user's POV nothing fired.
