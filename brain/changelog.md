@@ -1,3 +1,21 @@
+## 2026-05-25 PM-360 — Home-page habit tick haptic [vyve-site `11229513`]
+
+**Scope.** Dean tested PM-359 on device — habits.html log felt good ("brilliant ... feels really good actually"), V-logo long-press now triggers properly on iPhone, settings toggles + theme buttons tick correctly. One miss: tapping habits **from the home page** didn't haptic. PM-359 wired the renderer in `habits.html` but missed that `index.html` has its own home-page habit renderer at the same time (line ~1576 `// Renders up to 5 habits as tap-to-tick rings`) — two independent code paths to the same user-visible feature.
+
+**Fix.** `index.html` line ~2270: `VYVEHaptics.success()` fires immediately after the optimistic upsert + before `optimisticPatch` sign:+1, matching the pattern from PM-359 habits.html exactly. Undo branch at line ~2313 (sign:-1) intentionally NOT wired — you don't celebrate correcting a mistake; the visual unticking is feedback enough.
+
+**Lesson.** "Wire the success branch in habits.html" sounded complete because that's the page the feature is named after. But this is the second time (after PM-319 `mind:*` bus events) where a feature looks page-local but has a sibling renderer elsewhere. **Rule of thumb earned:** before claiming a haptic wiring complete, grep for the underlying data write — here, `VYVEHomeState.optimisticPatch('daily_habits'` returns *two* hits (habits.html + index.html), one per renderer. Both need the haptic. Same logic likely applies to workouts.html / index.html workout summary, nutrition steppers on home vs nutrition page, etc — audit each before claiming a surface done.
+
+**Files changed.**
+
+| File | Bytes | Change |
+| --- | --- | --- |
+| `index.html` | 129646 | `VYVEHaptics.success()` on home-page habit tick success branch (sign:+1); vbb-marker 245 → 246 |
+| `settings.html` | 130696 | settings-vbb-marker 245 → 246 (lock-step rule) |
+| `sw.js` | 18926 | Cache key `pm359-haptics-pass1-a` → `pm360-haptics-home-habit-a` |
+
+**Next sweep candidate.** The "two-renderer" pattern. Surfaces likely affected: workouts.html set-logged vs any home-page workout quick-log; nutrition.html steppers vs home hydration stepper (line 2407 home rerender hint); achievement tap on home vs engagement.html grid. Worth a deliberate audit pass before continuing opportunistic adoption — could batch 3-4 surface haptics in one pass.
+
 ## 2026-05-25 PM-359 — Haptics wiring pass 1: habits log + V-logo long-press + settings toggles/theme [vyve-site `d4a6dcae`]
 
 **Scope.** First adoption pass of the `VYVEHaptics` bridge (shipped PM-278). Three highest-value, lowest-risk surfaces wired in one atomic commit:
