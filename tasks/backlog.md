@@ -1,3 +1,38 @@
+## Added 25 May 2026 — PM-327 live tracker `ready:false` handoff [HIGH PRIORITY — wanted for tomorrow's bundle ship]
+
+**Status.** Session-published live broadcasts in the iOS app show video correctly but YT IFrame API `onReady` never fires. Zero rows have ever landed in `session_live_views`. Patches PM-315/320/323/326/327 each diagnosed something real but the underlying bug (postMessage handshake silently dropped at WKWebView ↔ YouTube boundary) remains unfixed. See changelog PM-327 entry for full chain.
+
+**Hand-off prompt for next session.** Saved at `brain/staging/live-tracker-ready-false-handoff.md`. Paste contents into a fresh session after "Load VYVE brain". The prompt explicitly forbids patches without devtools attached — first action is reading current code + walking through Safari Web Inspector setup.
+
+**Diagnostic options ranked (next session should weigh, not just pick first):**
+
+1. **Safari Web Inspector against the device.** Requires enabling Web Inspector on iPhone (Settings → Safari → Advanced → Web Inspector) and Develop menu on Mac. Plug iPhone in, launch app, page should appear in Develop → \[iPhone name\] → live page. Gives real console, network, JS evaluation against the running WKWebView. This is the only tool that can actually see the postMessage layer.
+
+2. **`window.addEventListener('message', ...)` debug logger surfaced on debug strip.** Cheap to ship, tells us whether YouTube's iframe is sending ANY postMessages to the parent. If zero received, that's the answer — WKWebView is dropping them and the fix is in `capacitor.config.json` (or accept that the IFrame API path is dead and use a different attribution mechanism).
+
+3. **Capacitor config audit.** `~/Projects/vyve-capacitor/capacitor.config.json` + `ios/App/App/capacitor.config.json`. Look for: `server.url` value, `iosScheme`, `limitsNavigationsToAppBoundDomains`, App Transport Security exceptions, content blockers.
+
+4. **Bypass IFrame API entirely.** Visibility API (`document.visibilityState === 'visible'`) + interval timer + manual "Mark as complete" CTA + heuristic "broadcast was live during user's session window" attribution. Good enough for the 15-20 person trial. Cuts the whole WKWebView-postMessage debugging problem out of the critical path. Probably the right call for the trial; revisit IFrame API for v2.
+
+**Bundle-ship recommendation (PM-327 author opinion).** Tomorrow's ship goes ahead with manual CTA only. Watch-time attribution is a nice-to-have that costs more time than it's worth right now. The trial cohort (15-20 people) will not generate enough watch-time data for the attribution accuracy to matter for product decisions. Reframe `session_live_views` as a manual-CTA-only table for the trial, design proper attribution post-trial when the cohort is 100+.
+
+**Live test rows to clean up before next walk.** All in `calendar_occurrences`:
+- `c22031a5-ae60-402e-97ad-0fb131c77699` — yoga, already ended.
+- `d64fa9e1-ee97-4f19-a50d-345aeac97dc9` — yoga, broadcast `HDq2NAjOmkY`.
+- `24274286-5936-455b-81e3-3268d6b297f6` — workouts, broadcast `A9jLtg2WuQw`.
+
+Soft-delete or set `cancelled_at = now()` and `active = false` before next session to avoid picker contamination.
+
+**Files to revisit (no reverts needed):**
+- `player-tracker.js` — PM-327 added API-constructed live path. Keep.
+- `session-live.js` — PM-327 changed live render to `<div>` placeholder. Keep.
+- All 8 `*-live.html` shells — PM-323 added static `<script src=youtube.com/iframe_api>`. Keep.
+- `sw.js` — cache key `vyve-cache-v2026-05-25-pm327-api-constructed-yt-player-a`. Will get bumped by whatever next session ships.
+
+**Lesson for the brain.** §23.71 codified: when two patches in a row don't move the diagnostic needle, stop patching and attach real devtools. Tonight ate 3 hours and shipped 5 patches without fixing the actual bug; §23.71 would have called it at PM-323.
+
+---
+
 ## Added 25 May 2026 — PM-322 Achievements design closeout — next-session asks
 
 **Status of PM-309 campaign.** Design phase COMPLETE. Five phases of decisions locked (see changelog 25 May PM-322 entry). All structural choices in place. Build is BLOCKED on items A/B/C/D below — none of which is a build task, all are design/decision deliverables that have to land before any code is written.

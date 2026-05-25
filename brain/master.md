@@ -3731,3 +3731,24 @@ All three checks compose. Run §23.69 at session start whenever the brief implie
 
 **Companion to memory #6 (PM-XXX placeholders).** PM-XXX placeholders solve the source-code-rename cascade. §23.70 solves the commit-message ambiguity. Both are needed when parallel sessions are active: write `PM-XXX` in source files, sed-sweep AFTER the §23.70 final PM-number claim. One sed pass touches both source and the staged commit message.
 
+
+### §23.71 — When two patches in a row don't move the diagnostic needle, stop patching and attach devtools (PM-327, 25 May 2026)
+
+**Status: HARD RULE.** Earned at high cost — 4 patches in ~90 minutes (PM-315, PM-320, PM-323, PM-326, PM-327) failed to fix `ready: false` on the live tracker. The bug is in the WKWebView ↔ YouTube postMessage bridge layer, which is invisible to on-page debug strips.
+
+**The pattern.** A device bug presents with a clear on-page diagnostic signature (e.g. `ready: false`, no console errors). Claude ships a patch addressing the obvious-from-the-strip cause. The diagnostic state advances slightly (e.g. `ytLoaded` flips false→true). The actual failure (`ready: false`) doesn't move. Claude ships another patch. Same shape. Repeats N times.
+
+**Why this is wrong.** Each patch costs ~15-20 minutes of Dean's evening (build, ship, force-refresh, walk, screenshot, diagnose). When the bug is upstream of everything visible from the page itself — in WKWebView config, in iOS App Transport Security, in cross-origin postMessage handling — no amount of in-page patching can reach it. The patch-and-walk loop is the wrong tool.
+
+**Rule.** If two consecutive patches both ship cleanly, both advance some diagnostic (cache key bumps, marker bumps, file MD5 confirmed) but the **primary failure mode does not change**, STOP. Don't ship a third. Surface to Dean explicitly: "Two patches haven't moved the needle. The bug is likely outside the layer I can see from the debug strip. We need [Safari Web Inspector / Android adb / Charles proxy / device console capture]. Do you want me to walk you through attaching that, or call it for the session?"
+
+**Concrete escalation paths for a WKWebView/Capacitor bug:**
+1. Safari Web Inspector → Develop menu → \[iPhone name\] → live page. Real DevTools console + network panel against the running app.
+2. `window.addEventListener('message', e => surfaceToDebugStrip(e))` — confirms whether postMessage events are reaching the parent context at all.
+3. `capacitor.config.json` inspection — `server`, `iosScheme`, `limitsNavigationsToAppBoundDomains`.
+4. Bypass the IFrame API entirely (Visibility API timer + manual CTA) when the bridge is broken and the trial doesn't justify a deep WKWebView debugging sprint.
+
+**Distinct from §23.66/§23.68/§23.69.** Those rules prevent collisions between parallel sessions. §23.71 prevents wasted patches within a single session when the diagnostic surface is too shallow.
+
+**The cost of not having this rule.** PM-315 through PM-327 ate ~3 hours of Dean's evening and ~1500 lines of brain narrative — useful diagnosis was extracted (we know WKWebView silently drops dynamically-injected scripts; PM-320), but the actual bug remains unfixed and the next session has to restart with a different tool. Two patches in, the right call would have been to stop and attach devtools.
+

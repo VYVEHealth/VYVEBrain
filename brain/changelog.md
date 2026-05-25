@@ -1,3 +1,71 @@
+## 2026-05-25 PM-327 — Live tracker `ready:false` saga: 4 patches, still broken, full handoff [vyve-site 15b3a431 + 4c4a46c1 + 122fbe21 + fd5479ee + b70ae42d + brain]
+
+**The bug.** Live session iframe loads YouTube video successfully on device, but `YT.Player.onReady` never fires. No `session_live_views` rows have ever landed in the table — feature has been silently broken since PM-251 introduced the 5-state machine on 23 May, possibly back to PM-61 (Layer 4 tracking) on 11 May. The visible failure mode is the debug strip showing `ready: false` and `lastState: -1 (unstarted)` despite `ytLoaded: true`, `playerConstructed: true`, video playing in the iframe.
+
+**Patch sequence shipped tonight (each diagnosed something real, none fixed it):**
+
+1. **PM-315 `15b3a431` — CSP allows YT IFrame API.** Added `https://www.youtube.com https://s.ytimg.com` to `script-src` on all 8 `*-live.html` shells. Was a real bug — IFrame API script was being blocked. After this fix `ytLoaded` became achievable in principle. Did not fix `ready`.
+
+2. **PM-320 `4c4a46c1` — Diagnostics on YT API loader.** Added module-level `ytApiTimeline[]` capturing every stage of `loadYTApi()`: `entered → priorOnReadySnapshot → appendingScript → scriptAppendedToHead → script_onload → onYouTubeIframeAPIReady_fired → windowYT_resolved_OK`. Plus a 10s watchdog. Surfaced on the debug strip. Walk revealed: `appendingScript + scriptAppendedToHead` at +0ms then **nothing else fires.** `script.onload` never called, `script.onerror` never called. `window.YT` stays `undefined`. **WKWebView silently ignores dynamically-injected script tags from cross-origin sources even when CSP allows them.** Confirmed empirically. Not a known WebKit bug as far as I'm aware — worth a search before shipping more fixes.
+
+3. **PM-323 `122fbe21` — Static `<script src="https://www.youtube.com/iframe_api">` in all 8 live shells.** Hypothesis: static script tags go through a different load path than dynamically-appended ones in WKWebView. Confirmed correct — next walk showed `windowYTAlreadyPresent` at +0ms in the timeline. `window.YT` was an `object` before player-tracker ran. **Fixed the API-load problem.** Did not fix `ready`.
+
+4. **PM-326 `fd5479ee` — Drop `&origin=window.location.origin` from embed URL.** Hypothesis: postMessage origin enforcement was blocking the parent↔iframe handshake. Walk showed no change — `ready` still false, `playerConstructed: true`, `lastState: -1`. **Did not fix the bug.** Possibly hurt nothing but didn't help.
+
+5. **PM-327 `b70ae42d` — API-constructed player (div placeholder, YT mints its own iframe).** Architectural shift away from the "wrap-existing-iframe" pattern. session-live.js now renders `<div id="sl-live-iframe"></div>` instead of an `<iframe>`. player-tracker.js (mode=live only) calls `new YT.Player(divId, { videoId, playerVars, events })` and the API constructs its own iframe with postMessage wired correctly. Added a 5s `onReady` watchdog. **Did not fix `ready: false`.** Confirmed by Dean post-ship.
+
+**What we know definitively after 4 attempts:**
+- The YT IFrame API loads and `window.YT.Player` is callable.
+- `new YT.Player()` does not throw — `playerConstructed: true`, `ytConstructError: null`.
+- The video plays in the iframe (autoplay works, native YouTube controls work).
+- `onReady`, `onStateChange`, `onError` callbacks **never fire** in Capacitor's WKWebView, in both wrap-existing-iframe (PM-326 and earlier) and API-constructs-iframe (PM-327) modes.
+- This is true with `origin` parameter present (PM-323) and absent (PM-326).
+- This is true for newly-bound live broadcasts created tonight via `session-publish` v2.
+- Zero rows have ever landed in `session_live_views` — confirmed empty table, never had a successful first write.
+
+**Strong working hypothesis (untested, candidates for next session):**
+The postMessage handshake from YouTube's iframe to the parent page is being silently dropped by WKWebView. Suspects:
+1. **WKWebView's `WKWebViewConfiguration` lacks the `userContentController` script message handlers** that YouTube's embed-side wrapper expects. Standard iframe API works in Safari but Capacitor's WKWebView config may be missing pieces. Investigate `capacitor.config.json` and the iOS WKWebView config.
+2. **Cross-origin postMessage `targetOrigin` mismatch.** YouTube's embed sends messages targeted at the parent's `window.location.origin`. If Capacitor reports a non-https origin to the iframe context (capacitor://, https://, file://), the postMessage gets silently dropped at the WKWebView boundary.
+3. **WebKit has a Content Blocker or App Bound Domain restriction** that's stopping postMessage from `*.youtube.com` to the app origin. Check iOS App Transport Security exceptions and any content-blocking extensions in the Capacitor build.
+4. **The Capacitor iOS plugin doesn't forward postMessage events to the WKWebView in a way YT can address.** Worth checking if Capacitor itself proxies/filters cross-frame messaging.
+
+**Diagnostics in place for next session:**
+- PM-310/315 always-on debug strip on every `*-live.html`, no URL param gating.
+- PM-320 `ytApiTimeline` showing full API-load stages with ms timestamps, surfaced on strip.
+- PM-327 `onReadyTimedOut` flag + `msFromConstructToReady` timing, surfaced on strip.
+- PM-324 write-status diagnostics on the tracker (won't fire because no writes attempted).
+- All errors caught and stored on `activeSession.ytLoadError / ytConstructError / ytError`.
+
+**What the next session must do — instead of patching:**
+- Open the WKWebView remote inspector against Dean's iPhone and watch the console + network panel during a live walk. Run `window.YT.Player.prototype` inspections at the breakpoint after construction. This has not been done at all tonight — every diagnosis was via on-page debug strip alone. Cannot continue with on-page-only diagnostics; the next answer requires real DevTools attached to the live device.
+- Check `capacitor.config.json` and `ios/App/App/capacitor.config.json` for WKWebView config (especially `server`, `allowsLinkPreview`, `limitsNavigationsToAppBoundDomains`, `iosScheme`).
+- Verify `window.location.origin` value in the running app via debug strip (not assumed).
+- Add a `window.addEventListener('message', ...)` debug logger that records every postMessage received, surfaced on the debug strip. If we see zero messages from youtube.com origin, that's the answer.
+- Consider that the IFrame API path may be fundamentally broken in this Capacitor config and the right move is a different attribution mechanism entirely (Visibility API + interval timer + manual "completed" CTA + heuristic "user was on page during broadcast window" = good enough).
+
+**Architectural decisions tonight (not reverted):**
+- PM-315 CSP keep — still needed for any path that loads the IFrame API.
+- PM-323 static iframe_api script tag in all 8 shells — still correct, leave in place.
+- PM-326 dropped `&origin=` — harmless, keep dropped.
+- PM-327 div-placeholder + API-constructed live player — keep; it's the documented happy path.
+
+**Don't revert anything. The bug is upstream of all of these.**
+
+**Session-publish v2 ships unchanged from PM-310.** `enableAutoStop=false` preserved.
+
+**Test rows still live in DB (clean up before next walk):**
+- `c22031a5-ae60-402e-97ad-0fb131c77699` (yoga, ended 00:26:48) — already retired
+- `24274286-5936-455b-81e3-3268d6b297f6` (workouts, ends 01:23:26) — currently active broadcast `A9jLtg2WuQw`
+- `d64fa9e1-ee97-4f19-a50d-345aeac97dc9` (yoga, ends 00:57:48) — broadcast `HDq2NAjOmkY`, may still be live
+
+**Cache key at ship: `vyve-cache-v2026-05-25-pm327-api-constructed-yt-player-a`. Build marker: 214.**
+
+**Process notes from tonight:**
+- §23.41/§23.66/§23.68/§23.69 collision discipline held cleanly across 5 ships interleaved with PM-321/324/325 from a parallel session. No collisions, no overwrites. Pre-commit fresh-HEAD + PM-claim-at-commit-time worked exactly as designed.
+- §23.70-style PM number claim drift caught twice (PM-320 → effectively kept; PM-323 vbb-marker started at stale 209 when fresh was 210, corrected pre-commit).
+- 4 patches in ~90 minutes, each with full diagnostic round-trip via on-device walk. This was the wrong cadence — patch-and-walk loop without devtools attached is too slow when the bug is in the WKWebView↔YouTube bridge layer. Lesson: when 2 patches in a row don't move the needle, stop patching and add devtools to the workflow.
+
 ## 2026-05-25 PM-322 — Achievements design session complete (PM-309 closeout) [vyve-site ae4ef72b + brain]
 
 **Scope.** Full design lock for the Achievements overhaul (campaign opened PM-301, expanded PM-306, soft-triggered PM-309). Five-phase design session ran to completion: (1) enumeration of trackable data — 110 live tables, 14 per-row activity tables + 4 form-cadence + 8 lifecycle, with all 5 v2 pillars (Mind/Movement/Connect/Focus/Monthly check-ins) now first-class; (2) member-facing action mapping; (3) catalog framework — pillar-first × type-within (cumulative/single-session/streak/behavioural/hidden); (4) visual direction — Direction C (Hero + Map) over Trophy wall (B) and Pillar shelves (A); (5) tier system — Pattern 3 (levels-up rows) + Path B (icon-in-tier-frame badge).
