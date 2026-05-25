@@ -1,3 +1,34 @@
+## 2026-05-25 PM-348 — Reorder Exercises drag shows live destination slot [vyve-site 3c14226]
+
+**Scope.** Dean's feedback on the Reorder Exercises modal: "it's a drag and drop and it feels a little bit off… all we need to fix it so that as you're dragging it, it fits in so you can know where you're dragging that exercise to." Considered the alternative he suggested (replace drag with up/down arrow buttons) but landed on fixing the drag rather than removing it — drag is the iOS-native pattern members already expect (Reminders, Lists, Settings all use it). The actual defect was missing visual feedback, not the gesture itself.
+
+**Root cause.** The old `pointerdown → pointermove → pointerup` shape (workouts-exercise-menu.js, pre-PM-348 lines 101-148):
+- Created a static dashed placeholder at the dragged row's *original* position and never moved it.
+- Used `transform: translateY(deltaY)` on the dragged row, which floats it over other rows but leaves the other rows unmoved — no visual indication of "where will this land".
+- Only computed the target slot on `pointerup` (closest-midpoint search), so until release, the member is guessing.
+- Result: the row appears to float in space disconnected from the list; you find out where it landed only after dropping it, often needing a second drag to correct.
+
+**New shape.** Three changes, all in `pointerdown`/`rOnMove`/`rOnUp`:
+1. **Lifted floating tile.** `pointerdown` switches the source row to `position: fixed` at its current viewport coordinates with `scale(1.02)` + `box-shadow: 0 8px 24px rgba(0,0,0,0.35)` + `opacity: 0.96` + `pointer-events: none`. Reads clearly as "in motion" while the list below remains stable.
+2. **Travelling placeholder.** A dashed teal "destination slot" `<div>` is inserted where the source row was. `rOnMove` recomputes target index every pointer-move by finding which other row's midpoint the pointer is now above (pointer-y < otherRow midpoint = insert before). When the target changes, the placeholder is moved with `insertBefore`/`appendChild` to the new slot. Other rows naturally reflow CSS-side. The placeholder is the visual contract: "release now and the row lands here."
+3. **Final commit.** `rOnUp` no longer re-runs closest-midpoint search — it trusts `rTargetIdx` (the placeholder's current position) and splices the source row into `reorderExercises[rTargetIdx]`. Index conversion verified for top/middle/bottom/end-of-list cases (otherRows excludes source → splicing source out makes otherRows order match reorderExercises order, so rTargetIdx directly = insertion index).
+
+**Index conversion verification.** `[A, B, C, D]`, drag B (idx 1), otherRows = `[A, C, D]`:
+- Drop before A: rTargetIdx=0 → splice B out → `[A,C,D]` → insert at 0 → `[B,A,C,D]` ✓
+- Drop before C: rTargetIdx=1 → `[A,C,D]` → insert at 1 → `[A,B,C,D]` (no-op) ✓
+- Drop before D: rTargetIdx=2 → `[A,C,D]` → insert at 2 → `[A,C,B,D]` ✓
+- Drop after D: rTargetIdx=3 (otherRows.length) → `[A,C,D]` → insert at 3 → `[A,C,D,B]` ✓
+
+**iOS interrupt safety.** Added `pointercancel` listener routing to `rOnUp` so an incoming call / app backgrounding mid-drag cleans up state and falls back to the source row's original position rather than leaving an orphaned floating tile with `position:fixed`.
+
+**Scroll behaviour notes.** `.reorder-item` already has `touch-action: none` (workouts.html:163), so the row itself doesn't initiate page scroll on touch. The dragged row being `position: fixed` is unaffected by `.reorder-list`'s `overflow-y:auto`. Placeholder positioning uses `getBoundingClientRect` (viewport-relative), correct under any scroll state.
+
+**Limitation noted, not fixed.** No auto-scroll of `.reorder-list` when dragging near top or bottom of visible area. For sessions ≥8 exercises where not all rows fit in the modal viewport, the member has to release, scroll, re-grab. Acceptable for current typical 4-6 exercise PPL sessions; iOS-Reminders does have this auto-scroll behaviour and it's worth adding eventually. Backlog candidate.
+
+**Ship details.** vyve-site `3c142262`. sw cache `pm347-ach-toast-deeplink-a` → `pm348-reorder-live-slot-a`. vbb 234 → 235 on both index.html and settings.html. Atomic 4-file commit via Git Data API. §23.66/§23.70 fired once mid-build — initial claim PM-347 collided with parallel session's ach-toast-deeplink ship that landed between my fresh-HEAD check at session start and the actual commit. Clean sed-sweep PM-347 → PM-348 in source + re-fetch of live sw.js/index.html/settings.html (rebased markers from 233 → 235 since parallel had already taken 234), cache key swap. §23.41 first-100 verify on all 4 files at commit SHA matched.
+
+**No new §23 rule earned** — UI polish on existing infrastructure, nothing procedural to codify. The "fix the gesture, don't replace it" call is worth banking as a general principle but doesn't need a hard rule.
+
 ## 2026-05-25 PM-346 — Exercise picker thumbnail tap-to-preview [vyve-site 2b1a3db]
 
 **Scope.** Dean's feedback: "they sit behind the thumbnail and if they click it the video loads. With signal it should be close to instant — it's a short video." The exercise picker (swap modal + builder multi-select modal) showed static thumbnails that were inert — no way to preview the actual movement before selecting a replacement or adding to a custom workout. Demo videos exist on `workout_plans.video_url` for 168/297 rows (~57%) and the in-session card thumbnails already opened them via `openVideoFullscreen()` (workouts-programme.js:335-346), but the picker rows had no wiring.
