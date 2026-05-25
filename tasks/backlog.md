@@ -1,3 +1,29 @@
+## NEXT FOCUS — 25 May 2026 PM (Dean) — finish in-app feature completeness
+
+Dean's call: park the v4 / architecture work (Dexie audit, offline-first verification, performance audit, Capacitor release, etc.) until in-app features are functionally complete. The trial cohort needs to land on a finished-feeling app, not a half-wired one. Priority order:
+
+**1. Weekly check-in (next session)** — `wellbeing-checkin.html`. Sliders question updates outstanding (see §22 open decisions in master.md — slider questions need to mirror the initial onboarding questionnaire wording). AI recommendation rendering already live via `wellbeing-checkin` EF v19/v21. Lewis copy pass on slider questions probably blocks completion; ship the structure first, swap copy later via single UPDATE.
+
+**2. Monthly check-in (next session, paired)** — needs audit: does `monthly_checkins` table exist and is the page wired? Backlog line at 2935 says monthly check-ins currently earn ZERO credit (no counter trigger, no charity trigger) — this gap is real and needs closing. Bus event for `monthly_checkin:logged` should exist already (achievements evaluator handlers `monthly_checkins_completed`, `monthly_avg_improved` reference it per PM-342). Check what's actually firing.
+
+**3. Certificates → leaderboard (after check-ins land)** — `certificates.html` works (certificate-checker v9 + certificate-serve v7 EFs). Outstanding: ladder UI parity with engagement-v2 (matched palette, real progress against 30-activity milestone, charity-month tally). Pull `certificates[]` from `member-dashboard` v19/v21 response — already there.
+
+**4. Your Journey** — surface still needs a scope decision. Likely a chronological "this is your VYVE story so far" timeline pulling from activities + check-ins + certificates earned + focus completions. Big design talk before any build; not next-session.
+
+**Parked until 1-4 complete:**
+- Dexie audit (data integrity verification across all 35 tables)
+- Offline-first verification (every page survives airplane mode)
+- Performance audit
+- Replay backup investigation
+- Production readiness sweep
+- Onboarding walkthrough flow
+- Capacitor release prep + device testing matrix
+- Achievements tier copy review (proposed P0 above — defer until check-ins land; Lewis can review in parallel without blocking Claude work)
+
+This block is the canonical NEXT pointer; ignore stale P0 labels lower in the file.
+
+---
+
 ## Added 25 May 2026 PM-346 — Exercise demo video coverage fill
 
 129 of 297 rows in `workout_plans` have NULL `video_url` (43%). After PM-346 wired the picker thumbnails to open the fullscreen player, members will see dimmed thumbs on those rows = "no preview available". Honest UX but a visible gap.

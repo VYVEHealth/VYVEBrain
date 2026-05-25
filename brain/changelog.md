@@ -1,3 +1,16 @@
+## 2026-05-25 PM — Session close: focus pivot to in-app feature completeness [brain hygiene]
+
+Dean's call at session wind-down: park the v4 architecture work (Dexie audit, offline-first, performance, Capacitor release) until in-app features are functionally complete. Priority order locked for the next several sessions:
+
+1. **Weekly check-in** (`wellbeing-checkin.html`) — slider questions to mirror onboarding questionnaire wording
+2. **Monthly check-in** (paired with weekly) — audit current state; backlog line 2935 flags zero-credit gap (no counter trigger, no charity trigger on `monthly_checkins`)
+3. **Certificates leaderboard** — `certificates.html` ladder UI parity with engagement-v2 (palette, milestone progress, charity-month tally)
+4. **Your Journey** — chronological story timeline; needs scope decision before build
+
+Backlog top updated with a `NEXT FOCUS` marker block; ignore stale P0 labels lower in the file (the Achievements tier copy review proposal lives at top of the campaign-close section but is now parked until check-ins land — Lewis can review in parallel without blocking Claude work).
+
+This session's vyve-site ships (PM-349 nav reorder, PM-354 leaderboard avatars) and brain hygiene (PM-341/342/343 retro entries + §23.58 recovery for PM-354/PM-355 entries) all closed cleanly. No outstanding vyve-site work from this session.
+
 ## 2026-05-25 PM-357 — Custom workout delete purges Dexie mirror [vyve-site 7795deb]
 
 **Scope.** Dean: "in my workouts it won't let me delete my custom workout." Tapped delete, confirmed the dialog, and the workout reappeared (because it never actually disappeared from the rendered list).
