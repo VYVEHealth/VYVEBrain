@@ -1,3 +1,52 @@
+## 2026-05-25 PM-357 — Custom workout delete purges Dexie mirror [vyve-site 7795deb]
+
+**Scope.** Dean: "in my workouts it won't let me delete my custom workout." Tapped delete, confirmed the dialog, and the workout reappeared (because it never actually disappeared from the rendered list).
+
+**Root cause.** `deleteCustomWorkout` in workouts-builder.js was Supabase-only:
+
+```js
+async function deleteCustomWorkout(id, name) {
+  if (!confirm(...)) return;
+  await fetch(`${SUPA_URL}/rest/v1/custom_workouts?id=eq.${id}`, { method: 'DELETE', ... });
+  await loadCustomWorkouts();
+}
+```
+
+The DELETE hits Supabase and succeeds. Then `loadCustomWorkouts()` runs — and that function (workouts-programme.js:430-475) is local-first:
+
+```js
+const rows = await VYVELocalDB.custom_workouts.allFor(memberEmail);
+if (rows && rows.length) {
+  customWorkouts = rows;
+  renderCustomWorkouts();
+  return;  // ← short-circuits before any Supabase pull
+}
+```
+
+Dexie still has the row (never purged). Function returns early with stale data. List re-paints with the still-present row. To Dean it looks like delete did nothing.
+
+This is the canonical Dexie-first read + server-only write anti-pattern. Every write path needs to purge the local mirror in the same operation, otherwise the next read serves stale.
+
+**Fix.** Rewrite `deleteCustomWorkout` (workouts-builder.js:138-178):
+1. Confirm dialog (unchanged)
+2. DELETE on Supabase with `Prefer: return=minimal` for slightly cheaper response
+3. **Check `res.ok`** — if the DELETE failed (RLS block, JWT expired, network), surface an alert and stop. Previous code swallowed errors silently.
+4. **Purge Dexie**: `VYVELocalDB.custom_workouts.delete(id)` — uses the makeTable `.delete(key)` factory (db.js:485-493), single-arg primary-key path since `id` is the PK per schema string `'id, member_email, workout_name'`.
+5. **Flush VYVEData cache** for the legacy fall-through path: `VYVEData.invalidate('custom_workouts:${memberEmail}')`. Defensive `typeof` check — VYVEData doesn't currently expose `invalidate` (only `fetchCached` + `writeQueued`), so this is a no-op today but future-proofs.
+6. **Optimistic in-memory drop**: `customWorkouts = customWorkouts.filter(w => w.id !== id)` + immediate `renderCustomWorkouts()` so the row vanishes from the UI before any async pull settles.
+7. **Background re-pull**: `await loadCustomWorkouts()` reconciles state with server truth (now Dexie is clean, so this paints correctly).
+8. Catch block around the whole thing surfaces network errors with an alert.
+
+**Why optimistic + background re-pull, not just optimistic.** The optimistic local drop is for the visual "felt instant" outcome. The `loadCustomWorkouts()` re-pull is the safety net — if anything else mutated `custom_workouts` between Dean's click and now (e.g. a shared workout invite landed via Realtime), we reconcile to the actual server state. Cheap insurance.
+
+**Latent risk surfaced but not yet fixed — sync.js may re-pull deleted rows.** PM-125's un-awaited `criticalHydrate('workouts')` (workouts-programme.js:441) fires every time `loadCustomWorkouts` runs. If `sync.js`'s `custom_workouts` table uses upsert-only hydration (not replace-for-member), a stale REST snapshot could in theory re-insert the deleted row into Dexie a few seconds later. Need to verify which mode this table is configured in. Audit candidate for §23.41 portal-write surface: every member-scoped table needs to confirm its hydrate mode matches its write semantics (upsert vs replace-for-member). Not blocking this ship — even if the re-insert happens, the next manual reload picks up the server truth. Worth a 5-min audit next session.
+
+**Pattern banking — §23 candidate.** Every Dexie-first read path needs a matching local-purge in the corresponding write path. This is the second occurrence (first was PM-153 optimistic INSERT FAT rows for denormalised stores, §23.7.9). Promote to hard rule on next occurrence:
+- §23.7.9 (existing): optimistic INSERT rows must be FAT for denormalised stores
+- §23.7.10 (candidate): server-only DELETE/UPDATE must purge corresponding Dexie row(s) before next read
+
+**Ship details.** vyve-site `7795deb5`. Single-file behavioural rewrite (`workouts-builder.js` `deleteCustomWorkout` function), plus the §23.41 portal triplet. sw cache `pm356-video-hide-modal-a` → `pm357-custom-workout-delete-purges-dexie-a`. vbb 242 → 243 on both marker files. Atomic 4-file commit via Git Data API. §23.41 first-100 verify on all 4 files at commit SHA matched. No parallel collision.
+
 ## 2026-05-25 PM-356 — Fullscreen video hides picker view (z-index bump didn't beat iOS compositor) [vyve-site 6ed2a4f]
 
 **Scope.** PM-355's z-index 2000 → 20000 didn't work. Dean confirmed running build 242 (sw.js cache `pm355-...` on device, verified via Settings vbb-marker reading "Update 241") and the video was STILL rendering behind the picker. Z-index alone is insufficient under iOS WKWebView when the modal above is an opaque fullscreen layer the compositor has promoted to its own GPU layer.
