@@ -1,3 +1,30 @@
+## 2026-05-25 PM-355 — Fullscreen video overlay raised above swap modal [vyve-site 7894a3e]
+
+**Scope.** Dean confirmed PM-352's tap-to-preview rewire is now firing — the click handler runs, the video element gets created and starts playing — but the video opens *behind* the swap exercise modal so the screen still appears unchanged. Only after backing out of the picker does the video become visible (already playing). Closes the loop on the PM-346 → PM-352 → PM-355 chain.
+
+**Root cause.** Z-index stacking conflict. The fullscreen video overlay (`openVideoFullscreen` in workouts-programme.js) was created at `z-index: 2000`. The exercise search modal (`#exercise-search-view` in workouts.html:170) sits at `z-index: 10000` — five times higher. The video element rendered to the DOM correctly, played correctly, and emitted audio correctly, but was visually occluded by the picker above it.
+
+**Other modal z-index values for reference** (workouts.html):
+- `body::before` background: 0
+- `main`: 1
+- `session-view`: 500
+- `ex-menu-backdrop`: 800
+- `ex-menu-sheet`: 801
+- `reorder-modal`: 900
+- `exercise-search-view`: 10000 ← the offender
+
+**Fix.** Overlay z-index 2000 → 20000, close button z-index 2001 → 20001. Picked 20000 (not 10001) to leave clear headroom above any future modal — z-index 10000 on the picker is already aggressive; we don't want to keep chasing the ceiling on every conflict.
+
+**Why this didn't surface before PM-346.** Pre-PM-346, `openVideoFullscreen` was only callable from the in-session card thumbnails inside the regular workout view — at that point no fullscreen modal was open. The video overlay's 2000 was always above the session-view (500) and any visible UI. PM-346 added a new caller from inside the picker modal, which has dramatically higher z-index than anything that existed at the time `openVideoFullscreen` was originally designed. The function pre-dates the picker modal entirely; its z-index was set against the world that existed then.
+
+**Three-strike retro for the PM-346 feature.** Started with the wiring (PM-346 — inline onclick + ex.video_url). Bug shape #1: thumb tap didn't trigger handler reliably under iOS WKWebView. Then PM-351: close button untappable under iOS notch (latent bug surfaced by increased video-player usage). Then PM-352: rewrite to addEventListener + getVideoUrl normalisation to fix #1. Now PM-355: z-index conflict, the *third* manifestation of "the player wasn't designed to be opened from inside a higher-priority modal."
+
+**§23 candidate — bank.** When wiring a pre-existing helper to be called from a new context, audit the helper's assumptions against the new context (z-index, scroll context, focus trap, escape-key handler ownership). For PM-346 specifically, `openVideoFullscreen` carried assumptions baked in May 2026 about modal layering that no longer matched May 2026 reality. Banking but not promoting — closely related to PM-352's "copy working mechanism" insight; want to see another instance before formalising.
+
+**Ship details.** vyve-site `7894a3e9`. Two-line code change in `workouts-programme.js` (z-index values) plus the §23.41 portal triplet. sw cache `pm354-leaderboard-avatars-a` → `pm355-video-overlay-zindex-a`. vbb 240 → 241 on both marker files. §23.66/§23.70 fired once — initial PM-353 claim collided with parallel session's Fuel-focus-retired ship which had just landed, then PM-354 leaderboard avatars also landed; sed-rebase PM-353 → PM-355 with marker rebase 239 → 241 + cache key swap. §23.41 first-100 verify on all 4 files at commit SHA matched.
+
+**No new §23 hard rule promoted** — banking the "audit helper assumptions when adding new caller contexts" pattern but not yet codifying.
+
 ## 2026-05-25 PM-352 — Picker thumb tap-to-preview made robust (PM-346 → PM-352 follow-up) [vyve-site 3ae13c7]
 
 **Scope.** Dean's report after PM-346 + PM-351 shipped: "I still can't watch the videos when swapping an exercise." His screenshot from the swap modal (16:44) showed play icons on EVERY thumbnail including Box Jump — which has `video_url = NULL` and SHOULD have been dimmed to `opacity: 0.55` per the PM-346 dim-no-video cue. The absence of dimming on Box Jump was the diagnostic tell: **PM-346's code path either wasn't running, or `ex.video_url` was always falsy in the picker's `allExercises` array** so every row took the no-video branch (which paints the play icon via CSS pseudo-element regardless).
