@@ -3700,3 +3700,21 @@ All three checks compose. Run §23.69 at session start whenever the brief implie
 
 **Ordering note.** §23.69 lands after §23.68, which itself sits outside the §23 chapter (after the §24 chapter heading) per the placement drift §23.68's own commit logged. Future housekeeping pass should move §23.67 + §23.68 + §23.69 back to their proper position immediately before "## 24. Premium Feel Campaign". Tracked as backlog candidate (sibling to the existing §23.67/§23.68 housekeeping note).
 
+§23.70 — Claim your PM number at commit time, not at rebase time (PM-319, 25 May 2026)
+
+**Status: HARD RULE.** Earned PM-319.
+
+**The collision.** §23.66 pre-commit rebase caught one drift correctly (parallel session shipped PM-315 + PM-316 between my session-start fetch and my rebase at ~00:25). I correctly renumbered my work from PM-315 → PM-317 at rebase time. Then between the rebase and the actual `POST /git/commits` call (~8 minutes later), parallel session shipped TWO MORE commits: `b890dbb` "PM-317 movement.html cold-load mirrors cardio.html" at 00:25, then `ec79135` PM-318 at 00:32. Git Data API parent_sha was correct at commit moment (`ec79135`), so the commit landed cleanly — but the message body still said "PM-317", and so does theirs. Two distinct commits in the repo share the PM-317 label.
+
+**The rule.** When a parallel session is active and shipping fast (signalled by ≥2 commits during the build window), re-fetch the commits list IMMEDIATELY before `POST /git/commits`, not just at rebase time. Claim the next monotonic PM number from that final fetch. If even one commit landed between the rebase and the commit-list refetch, recompute. This is cheap (one curl) and prevents commit-message ambiguity. The atomic ref-update at the end of the Git Data API flow protects against content collisions; this rule protects against label collisions.
+
+**Why §23.66 alone isn't enough.** §23.66 (pre-commit content rebase) merges parallel content; it runs once near the start of the commit prep window. If commit prep takes minutes (long edit sweep, large blob uploads, slow tree creation), parallel commits can land in the gap. §23.66 handles the file content via merge; §23.70 handles the PM number via re-claim.
+
+**Implementation.** Right before the `POST /git/commits` call, fetch `GET /commits?sha=main&per_page=5`. Parse `commit.message` first lines for `^PM-(\d+)`. Set my own PM number to `max(seen) + 1`. If that differs from the PM number in my draft commit message, sed-sweep my staged files + commit message before posting. Costs one round-trip; saves forensic confusion forever.
+
+**Audit signal.** Two `b3f72f7`-style commits sharing the same PM-N label in `git log` history. Pattern-match for repeated PM-N strings in commit messages within a 30-minute window when reviewing brain entries for parallel-session collision damage.
+
+**Forensic mapping for PM-317 collision** (the one that earned this rule): `b890dbb` (00:25, +4 files, movement.html) is the parallel session's PM-317; `b3f72f7` (00:33, +5 files, mind.html + player-tracker.js + 3 markers) is my PM-317 — canonically renumbered PM-319 in the brain.
+
+**Companion to memory #6 (PM-XXX placeholders).** PM-XXX placeholders solve the source-code-rename cascade. §23.70 solves the commit-message ambiguity. Both are needed when parallel sessions are active: write `PM-XXX` in source files, sed-sweep AFTER the §23.70 final PM-number claim. One sed pass touches both source and the staged commit message.
+

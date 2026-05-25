@@ -1,3 +1,17 @@
+## Added 25 May 2026 — PM-319 mind tracker follow-ups
+
+**Achievement evaluator subscribe to `mind:viewed`.** When the Achievements overhaul lands post-trial (memory rule re §23.51 et al.), the `mind:viewed` event is the right hook for any "X minutes of meditation/sleep/visualisation across a week" or "completed N visualisation sessions" metric. Carries `watch_seconds`, `completed`, `kind`, `pct_watched`. Distinct from `mind:logged` (which fires for every mind-pillar activity including journal/affirmations/breathwork, no watch-time semantic).
+
+**Backfill old `duration_seconds:30` rows?** Pre-PM-319, every mind_activities row was stamped `duration_seconds=30` regardless of actual watch. Currently those rows have `watch_seconds=NULL`. If a future drop-off-curve analysis needs them treated as "at least 30s watched", a one-time `UPDATE mind_activities SET watch_seconds = duration_seconds WHERE watch_seconds IS NULL AND ref_id IS NOT NULL` would backfill. Defer until Achievements / analytics demand it. Trial members won't generate enough pre-PM-319 rows to matter.
+
+**Remove the PM-310-style always-on debug strip after device walk passes.** Currently visible under the modal on every video open. Once Dean confirms a real device walk shows `watch_seconds` climbing in PLAYING state and `mind_activities` row PATCHes correctly, hide behind a `vyve_debug_mind_tracker` localStorage flag (mirrors the planned cleanup for session-live's PM-310 strip).
+
+**Sister-page consolidation candidate.** meditation.html, sleep.html, visualisation.html, breathwork.html all duplicate the PM-180/PM-183 setTimeout pattern that mind.html just retired. Each is a candidate for the same `VYVEPlayerTracker({mode:'mind'})` swap. Deferred to a follow-up sprint — mind.html is the hub these pages link to and was the highest-impact target.
+
+**Migration name mismatch.** Supabase migration `pm315_mind_activities_watch_tracking` filename doesn't match the canonical PM-319 brain entry. Migration names are append-only in Supabase. Accepted as cosmetic drift; documented in PM-319 changelog. No follow-up action.
+
+---
+
 ## Added 25 May 2026 — PM-315 brain close (live tracker device-walk validation + PM-316+ state-machine fix)
 
 PM-315 (25 May 2026, vyve-site `15b3a431`) shipped the CSP fix for YouTube IFrame API on all 8 *-live.html shells (root cause of PM-304 silent failure). Two follow-ups owed.
