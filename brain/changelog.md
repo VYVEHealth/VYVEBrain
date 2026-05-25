@@ -1,3 +1,48 @@
+## 2026-05-25 PM-395.b brain close — Reaction-tap cache mutation pattern: keep paintAll on Path A through reaction taps to eliminate the tap-time own-only fallback flicker (vyve-site PM-395 `aba703ab`)
+
+**Scope.** Closes the visible glitch Dean reported on device at Update 276: tab into Connect → 3 cards (cache hit, instant, no flicker — PM-393 working as designed) → tap heart on a card → lower 2 cards disappear → reappear ~500ms later. PM-393's known-remaining: PM-392's `__cacheBypassOnce` subscriber wire forced reaction taps onto Path B, which rendered the own-only Dexie fallback first (just the member's own check-in, 1 row) before the EF fetch landed and Path B's upgrade paint restored the community feed.
+
+**Cross-repo PM-394 collision.** Parallel session shipped brain-only PM-394 (`b4354876`) at premium-feel tab-flicker architectural sequencing while this fix was being prepared. PM-394 is strategic — multi-chat plan for Option 1 (snapshot-first paint per hub) + Option 4 (View Transitions API) over all 5 hubs in a 4-chat sequence. PM-395 is tactical — surgical fix for the specific connect.html reaction-tap path. Complementary, not contradictory. When the parallel session's chat 4 (Connect + View Transitions) lands, the snapshot-first architecture will likely subsume PM-395's cache-mutation pattern; until then PM-395 closes the immediate visible glitch. §23.74 cross-repo scan at commit time caught the collision (vyve-site max=393, brain max=394), claim swept PM-394 → PM-395 in 4 staged files before commit.
+
+**Fix shape.** Reaction subscribers previously set `__cacheBypassOnce = true` then called `repaintDebounced`. Now they sync the in-memory reaction state to the cached snapshot via a new helper `syncReactionStateToCache(checkinId)`:
+
+```js
+function syncReactionStateToCache(checkinId) {
+  VYVELocalDB._kv.get(FEED_PREVIEW_KV_KEY).then(cached => {
+    var idx = cached.checkins.findIndex(c => c.id === checkinId);
+    if (idx === -1) return;  // not in cache — let natural staleness handle it
+    cached.checkins[idx].reaction_counts = reactionsByCheckin[checkinId].reaction_counts;
+    cached.checkins[idx].my_reaction     = reactionsByCheckin[checkinId].my_reaction;
+    // computed_at_ms UNCHANGED — surgical patch, 90s TTL stays anchored
+    VYVELocalDB._kv.set(FEED_PREVIEW_KV_KEY, cached);
+  });
+}
+```
+
+toggleReaction has already updated reactionsByCheckin synchronously by the time the bus event fires, so the helper just copies that live state back into the cache. The repaintDebounced call then triggers paintAll, which goes Path A (no bypass), reads the now-correct cache, renders all 3 check-ins with updated counts in a single paint. No own-only fallback, no EF round-trip, no flicker.
+
+**Why not also do this for connect:checkin:logged?** Posting a new check-in produces a row that isn't in the existing cache (it's brand-new) — there's nothing to mutate, the cache genuinely needs a refetch. `__cacheBypassOnce` stays on the connect:checkin:logged subscriber.
+
+**Edge case (handled).** If the reacted card is NOT in cache (own-only Dexie row that EF didn't include in its top-3), syncReactionStateToCache returns early. The own-only paint then stays as the visible state with no community rows to flash, no flicker on the own card. Next 90s TTL rotation refreshes naturally.
+
+**Ship details.** vyve-site `aba703ab`. 4 files atomic. connect.html (subscriber pair rewrite + new syncReactionStateToCache helper, +~50 lines), sw.js (cache `pm393-cache-first-paint-ordering-a` → `pm395-reaction-tap-cache-mutate-a`, note PM-394 cache key never existed in vyve-site since parallel ship was brain-only), index.html (vbb 276 → 277), settings.html (settings-vbb 276 → 277). 3 inline JS blocks + sw.js standalone node --check clean. §23.41 byte-perfect verify clean on all 4 files at commit SHA. §23.74 cross-repo scan caught the parallel brain-only PM-394 at claim time — staged files swept PM-394→PM-395 before commit, cache key swept pm394-→pm395- in same sweep. PAT-direct via Vault (Composio still down).
+
+**Connect-hub flicker arc summary (PM-390 → PM-395).** Five ships in one session iterating toward a clean tap-in / tap experience:
+
+- PM-390 — §23.65 envelope-trusted subscriber sweep (over-applied to in-page subscriber, produced +2 reaction flicker)
+- PM-391 — surgical revert of PM-390's reaction double-mutation
+- PM-392 — boot prefetch + cache slot read in paintAll (only skipped EF, didn't skip own-only paint, tab-in flicker remained)
+- PM-393 — inverted paintAll's paint ordering, Path A skips own-only entirely on cache hit (tab-in flicker fixed)
+- PM-395 — reaction-tap mutates cache directly to stay on Path A (tap flicker fixed)
+
+Arc earns a §23 candidate (NOT codifying solo): when a render path has multiple paint sites, audit ALL of them before claiming a fast-path fix is complete. PM-393's brain entry already banked this once. Same shape recurred in PM-395 (the reaction-tap path was a separate paint trigger that PM-393's tab-in fix didn't reach). Second occurrence in two ships. Promote to hard rule on third independent occurrence per §23 doctrine.
+
+**Verification expected on device at Update 277.** (1) Force-quit + reopen. (2) Tab into Connect → 3 community check-ins instantly (PM-393, unchanged). (3) **Tap a reaction on any card → counter updates immediately, NO disappearance/reappearance of the other 2 cards.** (4) Untap the same reaction → counter goes back, no flicker. (5) Cross-member updates (Lewis taps a reaction) still surface within 90s on cache TTL rotation or on any local tap.
+
+**Next.** PM-394's parallel architectural arc (Option 1+4 across 4 chats) is the strategic path forward — PM-395 doesn't conflict but will eventually be superseded. Audit PM-379 queue effectively closed apart from low-urgency follow-ons. NEXT FOCUS still monthly check-in DB triggers per backlog.
+
+---
+
 ## 2026-05-25 PM-394 — Premium-feel tab-flicker architectural decision: ship Option 1 (snapshot-first paint) + Option 4 (View Transitions API) over Option 3 (persistent-shell SPA) — brain-only architectural lock
 
 **Context.** Dean raised two pre-binary concerns this session: (1) debug surfaces currently shipping to members (Settings Reset Achievements button, Settings Force Refresh App button, PM-310 always-on live-tracker debug strip on the 8 `*-live.html` shells, `?debug=tracker` mind-video strip), and (2) the quarter-to-half-second flicker on tab-in to Home (and by extension the other hubs) where the skeleton paints for one frame before `paintCacheEarly()` swaps in real content.

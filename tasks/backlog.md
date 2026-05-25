@@ -1,3 +1,15 @@
+## Shipped 25 May 2026 — PM-395 — Reaction-tap cache mutation pattern (closes tap-time own-only fallback flicker) [vyve-site `aba703ab`]
+
+Closes the last visible flicker in the Connect-hub arc (PM-390→PM-395, 5 ships). PM-392's `__cacheBypassOnce` wire on reaction subscribers forced paintAll onto Path B every tap, which rendered own-only Dexie fallback (1 check-in) before EF upgrade restored the community feed (3 check-ins) — visible as "lower 2 cards disappear then reappear" on every tap. PM-395 keeps paintAll on Path A through reaction taps by syncing the in-memory reaction state to the cached snapshot directly: new `syncReactionStateToCache(checkinId)` helper copies `reactionsByCheckin[checkinId]` back into `cached.checkins[idx]` and writes the cache with computed_at_ms UNCHANGED (surgical patch, 90s TTL anchored). No bypass, no EF round-trip on tap.
+
+Cross-repo PM-394 collision noted at commit time — parallel session shipped brain-only PM-394 at strategic 4-chat architectural sequencing for tab-flicker (Option 1 snapshot-first + Option 4 View Transitions). PM-395 is tactical, complementary; will likely be subsumed when their chat 4 (Connect + View Transitions) lands. §23.74 caught the collision, swept PM-394→PM-395 in staged files pre-commit.
+
+connect:checkin:logged retains `__cacheBypassOnce` — new check-ins aren't in cache to mutate.
+
+§23 candidate strengthening (NOT codifying solo, second occurrence): audit ALL paint sites in a render path before claiming a fast-path fix is complete. PM-393 already banked this once; PM-395 is the second occurrence in same session (the reaction-tap path was a separate paint trigger PM-393 didn't reach). Promotes on third independent occurrence.
+
+---
+
 ## Shipped 25 May 2026 — PM-393 — Real fix to Connect tab-in flicker via inverted cache-first paint ordering [vyve-site `184e7bd3`]
 
 PM-392's cache-first paint only skipped the EF round-trip on cache hit; the own-only Dexie paint at the top of paintAll's Promise.all .then handler still fired UNCONDITIONALLY, producing the 1→3 flicker on every tab-in. PM-393 inverts the order: read cache first, branch on freshness. Path A (cache fresh, no bypass): single render from cache, no own-only paint, no flicker. Path B (miss/stale/bypass): own-only fallback + EF upgrade + cache populate.
