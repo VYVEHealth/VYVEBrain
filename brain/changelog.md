@@ -1,3 +1,41 @@
+## 2026-05-25 PM-388.b brain close — Mood check-in faces swapped to canonical Lucide glyphs (vyve-site PM-388 `4882baec`)
+
+**Scope.** 5 mood buttons on `index.html` (home mood check-in panel surfaced via `moodShowPanel` after first paint) — face SVGs swapped from PM-258's hand-rolled line-drawn faces to canonical Lucide icons. Mapping (Dean's call):
+- 1 / "Not great" → `frown`
+- 2 / "Meh" → `annoyed`
+- 3 / "Good" → `smile`
+- 4 / "Great" → `smile-plus`
+- 5 / "Amazing" → `laugh`
+
+viewBox bumped `22 22` → `24 24` to host Lucide canonical geometry; `stroke-width` retained at 1.5 (not Lucide-canonical 2) to match the surrounding glyph weight Dean tuned at 30px container size in PM-258. `stroke="currentColor"` + `fill="none"` inheritance preserved so the existing `.mood-icon` CSS palette (dim-white default, bright teal on `.selected` with glow shadow) carries through unchanged.
+
+**Zero behavioural delta.** Tap interaction, `.selected` visual hold, 350ms-before-thanks-swap arc, `localStorage` `vyve_mood_checked_in_<email>_<date>` gate, optimistic-first §23.39 write to `daily_mood_checkins` via `?on_conflict=member_email,mood_date` with `Prefer: resolution=merge-duplicates,return=minimal` — all unchanged. This is a single visual swap, no JS touched. Closes the last bespoke-SVG island on home: every other glyph on the page is already Lucide-canonical (habit icons PM-286, bottom nav PM-376, progress pills, etc.).
+
+**§23.70 fired loud.** First commit attempt (`011be99f`) created with parent `f5d8401294` (PM-386) and message "PM-387 — Mood check-in faces…". Ref PATCH returned 422 Unprocessable Entity because a parallel session shipped their own PM-387 (`bf5109bf`, JS twins of PM-386 SQL fix + Activity Breakdown tile parity for Body/Connect) in the gap between my §23.41 HEAD recheck and the `PATCH /git/refs/heads/main` call. Orphan commit `011be99f` exists in the dangling-blob space but isn't reachable from any ref.
+
+Recovery path:
+1. Re-fetched all 3 staged files at new HEAD `bf5109bf` — parallel session had bumped vbb-marker 269 → 270 + cache key `pm386-id-handshake-and-reentrancy-a` → `pm387-js-twins-pm386-body-connect-tile-a`. Mood block was untouched (their surface was `home-state-local.js` + engagement-v2 tiles).
+2. Re-applied mood SVG swap on fresh content.
+3. Bumped vbb 270 → 271 + cache key → `pm388-mood-faces-lucide-a`.
+4. Re-claimed PM-388 per §23.74 cross-repo PM scan at commit time (vyve-site max-PM=387, brain max-PM=386.b, cross-repo max=387, claim 388).
+5. Re-issued blobs (new SHAs because Git's content-addressed — same logical content but new parent tree means new tree which means new commit which means new blob refs in the tree object, though blob SHAs themselves are content-only and would be identical to the orphan's blobs).
+6. New commit `4882baec` against parent `bf5109bf`, ref PATCH clean.
+
+Total wall-clock cost of the collision: ~90 seconds. §23.70 mechanic worked exactly as codified — fresh-HEAD recheck IMMEDIATELY before commit caught it; the recheck-to-PATCH window is the irreducible race surface and the recovery is deterministic. No new §23 rule earned.
+
+**Verification.** §23.41 byte-perfect post-commit verify on all 3 files at commit SHA via Contents API with `Accept: application/vnd.github.raw`:
+- `index.html` 130766 bytes, sha256 `516932cbe841…`
+- `settings.html` 134417 bytes, sha256 `66ed67ccbd32…`
+- `sw.js` 19240 bytes, sha256 `7c88936f41ed…`
+
+All three matched local staged versions byte-for-byte. First-100-byte comparison via Python (`urlopen` + `read()` against `open('rb').read()`) — no text-mode normalisation hazard per the post-commit verification lesson from PM-384.
+
+**JS sanity.** 9 inline `<script>` blocks in index.html node --check clean. 4 inline blocks in settings.html clean. sw.js standalone node --check clean.
+
+**Tooling.** Composio still down per memory #8 fallback — direct PAT via `vault.decrypted_secrets` → `bash_tool` curl. Git Data API path: `POST /git/blobs` (×3) → `POST /git/trees` with `base_tree` from parent commit's tree SHA → `POST /git/commits` with parent array → `PATCH /git/refs/heads/main` with `force:false`. The 422 on first ref PATCH is the documented behaviour for non-fast-forward without `force:true` — confirming the orphan commit's parent was no longer reachable from main.
+
+**Files atomic at vyve-site `4882baec`** (3): `index.html`, `settings.html`, `sw.js`.
+
 ## 2026-05-25 PM-387.b brain close — JS twins of PM-386 SQL fix + Activity Breakdown tile parity for Body/Connect (vyve-site PM-387 `bf5109bf`)
 
 **Scope.** Dean's device walk on test3 after PM-386 surfaced two surviving symptoms on engagement-v2.html: (1) "Where your score came from" → Body shows 0pts with the copy "No workouts or cardio logged this week" even though Body is shown 1/30 on the home pill and the walk is in `movement_activities`; (2) Activity Breakdown → Connect tile reads 0 in last 7 days even though a Connect check-in is in `connect_checkins`. Server data was correct in both cases (the PM-386 SQL function patch is doing its job). Bug was on the CLIENT side: PM-386 patched the SQL function but missed two of its twin JS surfaces.
