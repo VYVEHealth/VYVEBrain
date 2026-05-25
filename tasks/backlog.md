@@ -63,6 +63,27 @@ Session opened with a Claude-authored brief proposing four tiers of catalogue mi
 
 ---
 
+## Added 25 May 2026 PM-376 follow-on — Background audio play for video catalogue (parked, post-trial decision)
+
+**Question raised by Dean (25 May 2026 PM).** Can we get background-audio playback on the YouTube embeds we use across the mind/meditation/sleep/visualisation catalogue + sessions replays + podcast tab so members can lock their phone and keep listening?
+
+**Answer: not viable on YouTube IFrame embeds.** YouTube's ToS explicitly disallows audio-only/background playback for free embedders. The IFrame Player API pauses on `visibilitychange:hidden`, and on iOS specifically the WKWebView (which Capacitor wraps) suspends JS timers + pauses `<video>` the moment the app backgrounds. Even if we could keep JS alive via a Capacitor background task, the embed self-pauses by design. YouTube enforces this server-side — Premium subscribers get background play in their own app but never in a third-party embed. Attempting to ToS-violate around this risks our YouTube API access being revoked, which would break every video surface across the app, not just the workaround.
+
+**Three real options exist for post-trial:**
+
+1. **Tell members to get YouTube Premium.** Background play works in their YouTube app, but never in our embeds. Zero engineering, zero risk, but solves nothing for our retention experience.
+2. **Self-host the audio.** Re-encode the audio track from each video, upload to Supabase Storage, build a native HTML5 `<audio>` player wired with `MediaSession` API + Capacitor [`@capacitor-community/background-media-controls`](https://capacitorjs.com/) (or the equivalent). iOS `UIBackgroundModes: [audio]` in Info.plist + Android `FOREGROUND_SERVICE_MEDIA_PLAYBACK` permission + foreground service manifest entry — same plumbing as the post-trial v2 podcast player bundle already in this backlog. Lock-screen controls + scrubber come for free with `MediaSession`. New iOS / Android store submission required.
+3. **Build audio-first content for the mind/sleep tracks** — drop the video format entirely for the surfaces where audio is the actual product (HAVEN meditations, breathwork, sleep wind-downs, visualisation). Record audio-first, host on Supabase Storage, same player infra as (2). Cleanest end state for content that's audio-led anyway.
+
+**Decision deferred until:** trial engagement data tells us which mind content members actually want to background. Mental health + sleep + visualisation are where this matters. Performance workouts, mobility sessions, and live-session replays — you watch those, you don't background them. The investment ranges from "host 30 audio files" (light) to "rebuild the mind catalogue as audio-first" (heavy), and we shouldn't commit to either without knowing which subset earns it.
+
+**Shape when it un-parks:** consolidates with the existing **Deferred to post-trial v2 (the in-app player bundle)** section in this backlog (around L1542) — that section is the podcast audio player spec, this is the meditation/sleep audio player spec, and they share the same Capacitor plumbing + Supabase Storage pattern + `MediaSession` wire. When either ships, the other becomes a 1-day follow-on. Folding them into one campaign at unpark time gives a single store-submission cycle, single iOS/Android entitlement audit, single new activity-table shape (probably `audio_views` rather than `podcast_views`, generalised across podcast + meditation + sleep audio).
+
+**Out of scope to even consider now:** licensing for re-encoding the existing YouTube content. Most of our mind catalogue is third-party (Headspace-style guided content from creators we found on YouTube), not Lewis-recorded. Path (3) — record audio-first VYVE-original — sidesteps the whole licensing question and probably wins on content quality anyway since the production target is audio not video.
+
+
+---
+
 ## Added 25 May 2026 PM-358 — Achievement tier curve + naming overhaul (P1, post-trial)
 
 **Surfaced from Lewis's review of `brain/staging/tier-copy-review-pm354.csv`.** Two distinct problems with the current tier set, separate from per-tier copy:
