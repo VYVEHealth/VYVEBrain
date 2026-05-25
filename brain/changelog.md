@@ -1,3 +1,24 @@
+## 2026-05-25 PM-346 — Exercise picker thumbnail tap-to-preview [vyve-site 2b1a3db]
+
+**Scope.** Dean's feedback: "they sit behind the thumbnail and if they click it the video loads. With signal it should be close to instant — it's a short video." The exercise picker (swap modal + builder multi-select modal) showed static thumbnails that were inert — no way to preview the actual movement before selecting a replacement or adding to a custom workout. Demo videos exist on `workout_plans.video_url` for 168/297 rows (~57%) and the in-session card thumbnails already opened them via `openVideoFullscreen()` (workouts-programme.js:335-346), but the picker rows had no wiring.
+
+**Implementation.** Single-file patch in `workouts-exercise-menu.js` `renderExerciseList()` (the function that paints every row in the picker, used by both swap and builder modes). For each row:
+
+- If `ex.video_url` is present: add `onclick="event.stopPropagation(); openVideoFullscreen('${safeVideoUrl}')"` + `cursor:pointer` to the `.es-ex-thumb` div. `stopPropagation` is the key bit — the row's outer `onclick="selectExercise(...)"` would otherwise also fire on thumbnail tap, conflating preview with select. In builder mode the row click is a multi-select toggle, same propagation hazard, same fix.
+- If no `video_url`: dim the whole thumb to `opacity:0.55` as a visual cue that this exercise has no demo to preview. The play-icon `::after` pseudo-element in `.es-ex-thumb` CSS (workouts.html:183) already paints on every thumb regardless; the opacity cascade dims image + pseudo together so faded thumb = "no preview" reads clearly.
+
+No new CSS, no new modal, no new JS function — reuses the existing `openVideoFullscreen()` overlay verbatim. The overlay creates a `<video controls autoplay playsInline>` taking max viewport with a close button at top-right; same behaviour members already see when they tap an in-session card thumbnail. Backend (Supabase Storage URLs on `workout_plans.video_url`) unchanged.
+
+**Why the patch is so small.** All the heavy lifting was already shipped: `workout_plans` schema has both `video_url` and `thumbnail_url`; `loadAllExercises` already SELECTs both into `allExercises`; the Dexie path via `VYVELocalDB.workout_plans.allFor()` returns full rows including `video_url`; `openVideoFullscreen` is global because all three workout JS files load as top-level `<script>` tags in workouts.html. The only missing wire was the picker-row tap → open. Surface area: 12 net lines added (4 of which are the JSDoc comment).
+
+**Data gap surfaced.** 129 of 297 `workout_plans` rows have NULL `video_url` (43%). Members will see dimmed thumbs on those exercises, which is honest but suboptimal UX. Pre-existing data-completion task, not a regression — flagging for backlog as "fill video_url across remaining 129 workout_plans rows" (likely scoped per programme: PPL has higher coverage than Home Workouts / Movement & Wellbeing). Out of scope for this ship.
+
+**Builder-mode behaviour.** Verified the picker is used in both `mode === 'swap'` and `mode === 'builder'` (workouts-exercise-menu.js:208 — multi-select toggle path). Preview tap with `stopPropagation` correctly bypasses both selection paths. Selection only fires when the row text/area is tapped, not the thumbnail.
+
+**Ship details.** vyve-site `2b1a3db8`. sw cache `pm345-swap-preserves-progress-a` → `pm346-picker-thumb-tap-preview-a`. vbb 232 → 233 on both index.html and settings.html. Atomic 4-file commit via Git Data API (memory #11 — Composio still not loading via tool_search this session). §23.41 first-100 verify on all 4 files at commit SHA matched.
+
+**No new §23 rule earned** — behavioural addition reusing existing infrastructure; nothing procedural to codify.
+
 ## 2026-05-25 PM-345 — Workout swap preserves in-flight session state [vyve-site d296abf]
 
 **Scope.** Mid-session exercise swap was destroying in-flight progress across the whole workout, not just the swapped slot. Dean's feedback: "if you swap out an exercise, it resets the workout. So it removes all of your, like, sets of reps completed." Verified the report and found the bug was actually broader than reported — every unticked kg/reps input across every card was being wiped on swap, not only the swapped exercise's state. Plus the swapped slot's `sessionLog` entry was orphaned, and `completedSetsCount` (the in-session counter) wasn't reconciled when ticks were dropped.

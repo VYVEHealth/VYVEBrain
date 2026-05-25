@@ -1,3 +1,13 @@
+## Added 25 May 2026 PM-346 — Exercise demo video coverage fill
+
+129 of 297 rows in `workout_plans` have NULL `video_url` (43%). After PM-346 wired the picker thumbnails to open the fullscreen player, members will see dimmed thumbs on those rows = "no preview available". Honest UX but a visible gap.
+
+Likely distribution (not verified): PPL + Upper/Lower programmes have high coverage from the original library build; Home Workouts and Movement & Wellbeing have the gaps. Worth a quick `GROUP BY plan_type` to confirm before scoping.
+
+Action: query workout_plans grouped by plan_type for NULL video_url ratio, then prioritise filming/sourcing in priority order. Could also be a partial fix using existing footage with new metadata if some are already filmed but unlinked.
+
+Out of scope for PM-346 (which was wiring only); flagging here so it surfaces next time someone touches workout content.
+
 ## Added 25 May 2026 PM — PM-335 — Achievements v3 — Dexie-first evaluator rollout
 
 **Status.** PM-335 shipped the new architecture + Habits pillar end-to-end (11 metrics wired client-side, instant on threshold cross). Body / Mind / Connect / Check-ins pillars are the remaining wireable work; Focus is blocked behind a separate data-layer campaign.
