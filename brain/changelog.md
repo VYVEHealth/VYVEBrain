@@ -1,3 +1,89 @@
+## 2026-05-25 PM-337 — tracking.js resume heartbeat on visibilitychange-visible (single-hide killed attribution for 35min sessions) [vyve-site e61857ec]
+
+**Scope.** Live-tracker root-cause work that ran PM-330 → PM-332 chasing a YouTube IFrame API postMessage bridge bug ended when Dean asked "but tracking.js should send info to Supabase" — and the answer was yes, it does, but it stopped after 1.05 minutes of a 35-minute session. Diagnosing the truncation found the real bug had nothing to do with the YT bridge: tracking.js v9's `visibilitychange → hidden` handler was wired to `onPageExit` which `clearInterval`'d the heartbeat *permanently*, with no corresponding resume on `visible`. First incoming notification, app switcher peek, control centre swipe, or lock-screen flicker killed attribution for the rest of the session.
+
+**Root cause analysis.** tracking.js v9 had three lifecycle entry points wired to identical handlers:
+
+```js
+window.addEventListener('pagehide',     onPageExit);
+window.addEventListener('beforeunload', onPageExit);
+window.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') onPageExit();
+});
+```
+
+`onPageExit` did the right thing for genuine unload (PATCH final minutes, clear heartbeat), but visibilitychange-hidden is **not** a genuine unload signal in iOS Capacitor — WKWebView fires it on every transient interruption. The handler was correct for browser-tab-closing semantics and catastrophically wrong for Capacitor-app-on-iOS semantics. Dean's test row at 01:35 UTC tonight: 1.05 minutes inserted, then a single visibility-hide (almost certainly the notification-centre swipe he used to screenshot the debug strip) PATCHed 1.05min as final and killed the heartbeat. The subsequent ~34 minutes of foreground watching produced **zero further patches**. Server saw 1.05min for a 35-minute session.
+
+**The fix — split visibility-hide from genuine unload.** Two new handlers replace the single onPageExit branch on visibilitychange:
+
+1. `onVisibilityHide()` — PATCH current `totalMinutes()`, collapse the just-completed foreground segment into module-state `baseMinutes` so the running total is preserved both server-side and locally, clear the heartbeat timer, null `visitStartTime`. Critically does NOT permanently kill — module state is still alive, ready to resume.
+2. `onVisibilityShow()` — defensive no-op if a heartbeat is already running (paranoid against double-fire), else re-stamp `visitStartTime = Date.now()` and restart the heartbeat in the correct mode. Branching mirrors `onVisitStart`: pre-threshold uses `onHeartbeat` (insertSession on threshold cross), post-threshold uses the direct `patchSession(totalMinutes(), false)` path.
+
+`pagehide` and `beforeunload` continue routing to `onPageExit` unchanged — those ARE genuine unload signals and should kill the tracker. Added a defensive `heartbeatTimer = null` after the existing clearInterval in onPageExit so a double-fire from pagehide → beforeunload chain doesn't crash on re-clear.
+
+`minutesThisVisit()` now counts only the current foreground segment (returns 0 when `visitStartTime` is null between hide and show), `totalMinutes()` = `baseMinutes + minutesThisVisit()` stays accurate across arbitrarily many hide/show cycles. Server upserts on `(member_email, category, activity_date)` so PATCH from resume keeps the same row updated.
+
+**Device verification.** Test row `dc50efc1` (Therapy, 2026-05-25 broadcast id swapped from JEFNPGKhQqY → jfKfPfyJRdk → aqz-KE-bpKQ over the night). Pre-fix: 01:35 UTC → 1.05 min logged, then no further patches despite 35min watch. Post-fix (Build 224): Dean watched and intentionally backgrounded the app multiple times across ~45 minutes; final row at 02:20 UTC showed **`minutes_watched: 45.99`**. Same row, same `activity_date`, upsert path working, hide/show cycles aggregating cleanly.
+
+**Same fix applies to replay tracking.** tracking.js is the unified live + replay watch-time writer (PM-61). Same handler shape on every replay page (the replays.html shell loads tracking.js too). PM-337 fixes both surfaces in one go.
+
+**Limitation acknowledged.** tracking.js v10 still measures **page foreground time**, not "actively watching." A member who opens the live page and walks away with the app foregrounded earns minutes_watched even with a black screen. That's tracking.js's design ceiling — it's a dwell heuristic, not a player-state heuristic — and Lewis already accepts it on cardio/workout pages. Per-broadcast precision attribution (occurrence_id + broadcast_id + actual player-state seconds via `session_live_views`) is the v2 ask deferred to post-trial; see backlog "Live tracker per-broadcast attribution (Phase 2)."
+
+**Pre-existing concern partially resolved.** Backlog line 3020 ("tracking.js v9's dwell accumulator resets on page unload — sub-60s visits don't sum") is a different bug class — that's about cross-session-load accumulation, where `baseMinutes` itself resets on full page reload because it's in-memory only. PM-337 fixes WITHIN a single page load. The cross-load case remains open and is honestly fine for trial: members watching a live session don't navigate away mid-broadcast typically.
+
+**Build / ship.** vyve-site `e61857ec`. sw cache `pm336-movement-icons-history-dedupe-a` → `pm337-tracking-resume-on-visible-a`. vbb 223 → 224 on both index.html + settings.html. Atomic 4-file commit via Git Data API (Composio still down per memory #8 fallback; PAT direct path used throughout the night). §23.66 fired hard — parallel session shipped PM-333/334/335/336 during the live-tracker chain (Home pills, Habits pillar evaluator, movement icons + dedupe); rebased sw.js + index.html + settings.html at fresh HEAD `e509ac69`, tracking.js untouched by any of them. §23.41 first-100 verify all 4 files clean.
+
+**§23 candidate — codified as §23.72.** "visibilitychange-hidden in WKWebView fires on transient phone events, not just genuine page exit. Handlers MUST be paired with visibilitychange-visible resume." See master.md §23.72 for full rule.
+
+## 2026-05-25 PM-332 — YT.ready() + referrerpolicy mirror replays.html working path [vyve-site 739660cb]
+
+**Scope.** Second of two patches in tonight's live-tracker bridge work. PM-330 restored the pre-baked iframe approach with explicit origin on both src URL and YT.Player playerVars; PM-330 succeeded at making the iframe attach and video play but `ready` stayed `false`, `lastState: -1`, `YT postMessage count: 0`. Two new hypothesis paths drawn from a byte-level comparison of replays.html (working since PM-294) against the live shells.
+
+**Hypothesis 1 — YT.Player constructed before postMessage dispatcher bootstrapped.** PM-323's static `<script src="https://www.youtube.com/iframe_api">` tag in all 8 live shells makes `window.YT.Player` callable as soon as the script parses. `loadYTApi()` was resolving on `window.YT && typeof window.YT.Player === 'function'`, which is *truthy* before the API's internal postMessage dispatcher is fully initialized. Construct against a half-bootstrapped API → constructor returns OK, iframe URL has `autoplay=1` so the video plays, but onReady/onStateChange never fire because the dispatcher isn't wired yet. Replays.html doesn't hit this — it uses runtime script injection (no static tag), so its `onYouTubeIframeAPIReady` callback fires *after* full bootstrap.
+
+Fix: when `window.YT.Player` is already truthy on entry to `loadYTApi`, call `YT.ready(cb)` and resolve in the callback. `YT.ready` is YouTube's undocumented-but-stable "fully bootstrapped" signal. Falls back to immediate resolve if `YT.ready` is somehow missing (defensive — shouldn't happen with current API). Diagnostic strip's PM-320 YT API load timeline now shows the new path: `windowYTAlreadyPresent_waitingForReady` → `YTready_fired`.
+
+**Hypothesis 2 — Missing `referrerpolicy="strict-origin-when-cross-origin"` on the live iframe.** Replays iframe has it (replays.html line 631). YouTube's embed page uses the parent's referrer header during postMessage handshake — without strict-origin, WKWebView's default referrer policy may strip or downgrade the referrer, and YouTube drops the parent during handshake.
+
+Fix: add `referrerpolicy="strict-origin-when-cross-origin"` to the live iframe markup in `buildVideoArea`. Mirrors replays exactly.
+
+**Device verification result — mixed.** Dean walked the build (Build 219). Strip showed `YTready_fired` (PM-332 fix working as designed), Big Buck Bunny playing in the iframe, but `ready: false` + `lastState: -1` + `YT postMessage count: 0` still. The two PM-332 fixes were each addressing real problems but the underlying bug — YouTube's embed iframe in this WKWebView not opening a postMessage channel to the parent — remained. The bridge is genuinely broken below the layer we can patch from the page.
+
+**Decision pivot point.** After PM-332's failed walk, Dean asked "but tracking.js should send info to supabase" — which redirected the entire investigation. session_views table check found a row at 01:35 UTC with 1.05min for the Therapy walk. tracking.js was already writing attribution; the per-broadcast precision we'd been chasing via YT IFrame was a nice-to-have, and the truncation to 1.05min was a SEPARATE bug (PM-337 — visibility-hide tearing down heartbeat). Two more patches (PM-330 + PM-332) shipped after §23.71 was codified at PM-327 — each fixed a real problem but didn't move the primary failure mode, vindicating the §23.71 rule that next time we should attach devtools sooner.
+
+**Build / ship.** vyve-site `739660cb`. sw cache `pm331-home-pills-cert-carousel-parity-a` → `pm332-yt-ready-referrerpolicy-a`. vbb 218 → 219. Atomic 5-file commit via Git Data API (session-live.js, player-tracker.js, sw.js, index.html, settings.html). §23.66 caught parallel PM-331 (Home pills, marker-only collision); clean rebase of sw/index/settings at fresh HEAD `af32355a`. §23.41 first-100 verify clean.
+
+**No new §23 rule earned at this commit — §23.71's existing rule was the relevant lesson and was already codified at PM-327. PM-330 + PM-332 are the "second and third patches that didn't move the diagnostic needle" that the rule predicts.**
+
+## 2026-05-25 PM-330 — revert PM-327, restore pre-baked iframe + explicit origin on both sides [vyve-site a9a98ac3]
+
+**Scope.** First patch in tonight's live-tracker bridge work. Started session reading PM-327's handoff (`brain/staging/live-tracker-ready-false-handoff.md`) — pre-PM-327 state had video playing in a pre-baked iframe but `onReady` silent and zero rows in session_live_views. PM-327 then switched to API-constructs-iframe via `<div id="sl-live-iframe">` placeholder, which made things worse: video went black because `new YT.Player(divId, ...)` returned without throwing but **silently never replaced the div with an iframe**. Diagnostic instrumentation added at PM-328 (origin / postMessage probe on the live debug strip — no patch, instrumentation only) confirmed:
+
+```
+window.location.origin: https://online.vyvehealth.co.uk  (FINE)
+window.YT.loaded: 1                                       (FINE)
+#sl-live-iframe tag: DIV (398x224)                        (BUG)
+iframe src: -                                             (BUG)
+YT postMessage count: 0                                   (BUG)
+```
+
+Origin was a valid https origin (capacitor://localhost hypothesis ruled out — server.url config keeps Dean's iPhone at https origin). YT API loaded. The div had correct dimensions. But YT.Player wouldn't mint an iframe inside it. Tested with three broadcast IDs (`JEFNPGKhQqY` original, `jfKfPfyJRdk` lofi-girl permanent live, `aqz-KE-bpKQ` Big Buck Bunny VOD) — same DIV-stays-DIV result on all three. Bug isn't broadcast id, isn't origin, isn't YT API loading.
+
+**The PM-326 origin-dropping reversal.** PM-326 (lost-to-brain-churn changelog entry, but the commit exists) dropped `&origin=` from the YT embed URL, reasoning that origin enforcement was what was killing postMessage. That was the wrong direction — per YT IFrame API docs, when `enablejsapi=1`, you MUST stamp origin on BOTH the iframe src URL AND in YT.Player playerVars; without origin on both sides, YouTube's postMessage origin check on the embed side silently drops every event sent to the parent. PM-326 made the bridge less likely to work, not more.
+
+**The fix.** Revert PM-327's div placeholder back to pre-baked iframe (the PM-294 replay-tracker shape, which has worked end-to-end since 22 May), BUT with origin explicitly restored on both sides:
+
+- `session-live.js` `buildVideoArea` LIVE branch: emits `<iframe class="sl-iframe" id="sl-live-iframe" src="https://www.youtube.com/embed/{vid}?autoplay={0|1}&rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin={encodeURIComponent(window.location.origin)}" ...></iframe>`. The pre-baked iframe URL contains everything YouTube needs to bootstrap.
+- `player-tracker.js` mode=live branch: `new YT.Player(iframeId, { playerVars: { origin: window.location.origin, enablejsapi: 1 }, host: 'https://www.youtube.com', events: commonEvents })`. No videoId, no autoplay — all that lives on the iframe URL. The constructor's job is wrapping an existing iframe and registering event handlers; the playerVars are just the matching-on-both-sides origin enforcement YT needs to accept postMessages from this parent.
+
+This makes live mode identical in shape to replay mode (wrap existing iframe) — the only difference is buildVideoArea stamps the right origin into the URL. The unified player-tracker now does the same thing for both modes.
+
+**Device verification result.** Build 217. Iframe attached, Big Buck Bunny started playing, `#sl-live-iframe tag: IFRAME` confirmed. PM-327's "DIV-stays-DIV" bug fully fixed. But: `ready: false` + `YT postMessage count: 0` (then count went to 3 in a subsequent lofi reload, then back to 0 on the bunny reload — flaky), `lastState: -1`. The iframe attachment problem was solved; the postMessage handshake completion was not. Continued to PM-332 with two more hypotheses.
+
+**Build / ship.** vyve-site `a9a98ac3`. sw cache `pm329-movement-debug-strip-out-no-plan-copy-out-lucide-icons-a` → `pm330-live-iframe-restore-explicit-origin-a`. vbb 216 → 217. Atomic 5-file commit via Git Data API (session-live.js, player-tracker.js, sw.js, index.html, settings.html). §23.66 caught parallel PM-329 (movement.html cleanup, marker-only collision); clean rebase of sw/index/settings at fresh HEAD `7e271150`. §23.41 first-100 verify clean.
+
+**No new §23 rule earned — §23.71 was already in force from PM-327 and PM-330 is one of the patches it was warning about.**
+
 ## 2026-05-25 PM-348 — Reorder Exercises drag shows live destination slot [vyve-site 3c14226]
 
 **Scope.** Dean's feedback on the Reorder Exercises modal: "it's a drag and drop and it feels a little bit off… all we need to fix it so that as you're dragging it, it fits in so you can know where you're dragging that exercise to." Considered the alternative he suggested (replace drag with up/down arrow buttons) but landed on fixing the drag rather than removing it — drag is the iOS-native pattern members already expect (Reminders, Lists, Settings all use it). The actual defect was missing visual feedback, not the gesture itself.

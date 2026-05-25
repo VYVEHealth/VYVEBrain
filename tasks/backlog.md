@@ -61,9 +61,41 @@ PM-340+ — **Focus pillar**. BLOCKED until focus completion data layer ships (n
 
 ---
 
-## Added 25 May 2026 — PM-315 brain close (live tracker device-walk validation + PM-316+ state-machine fix)
+## Added 25 May 2026 — PM-337 brain close (Live tracker overnight chain — per-broadcast attribution deferred to v2 post-trial)
 
-PM-315 (25 May 2026, vyve-site `15b3a431`) shipped the CSP fix for YouTube IFrame API on all 8 *-live.html shells (root cause of PM-304 silent failure). Two follow-ups owed.
+PM-330 → PM-337 (25 May 2026) resolved the live-session attribution crisis differently than expected. The YT IFrame API postMessage bridge in WKWebView is genuinely broken at a layer below what's patchable from the page — PM-330 (pre-baked iframe + explicit origin on both sides) and PM-332 (`YT.ready()` gating + `referrerpolicy="strict-origin-when-cross-origin"`) each fixed real problems but did not move `ready: false` / `session_live_views` empty. The actual trial-blocking bug was elsewhere entirely: tracking.js's `visibilitychange → hidden` handler tearing down the heartbeat permanently. PM-337 fixed that, tracking.js v10 now writes correct per-category-per-day attribution to `session_views` across arbitrary visibility cycles, and **trial cohort attribution is unblocked**.
+
+### Live tracker per-broadcast attribution — v2 post-trial
+
+The original PM-304 ambition (per-broadcast precision attribution via `session_live_views` keyed on `occurrence_id` + `member_email` + `client_id`, with `watch_seconds` derived from YT.Player state events) requires the WKWebView ↔ YouTube postMessage bridge to be functional. PM-330 and PM-332 confirmed it isn't. The bridge falls below the layer we can fix from the page.
+
+**What we have today (PM-337 baseline):** `session_views` writes via tracking.js v10. Granularity: `(member_email, category, activity_date)` with `minutes_watched` accumulating across foreground time. Daily 2/day cap via PM-150's `update_cert_sessions_count` trigger. Replay attribution shares the same writer. Engagement.html, engagement-v2.html, employer-dashboard, and certificate-checker all consume `session_views` natively.
+
+**What we don't have:** Per-broadcast-id attribution. Can't answer "how many of the 47 members watching Tuesday's mindfulness session stayed to the end" — only "47 people watched mindfulness on Tuesday." For trial cohort (15-20 members) that's enough; for v2 / employer-dashboard depth analytics post-trial, it isn't.
+
+**Three v2 paths to evaluate (no prescription yet):**
+
+1. **Safari Web Inspector deep dive.** Attach DevTools to the running Capacitor iOS app, inspect what's actually happening to YouTube's outbound postMessage. May reveal a `capacitor.config.json` setting (App Bound Domains? `iosScheme`? `limitsNavigationsToAppBoundDomains`?) that's blocking cross-origin postMessage to YouTube specifically. If fixable, the existing PM-304 / PM-330 / PM-332 code path becomes the answer — turn it on, ship `session_live_views` writes. Per §23.71, this is the right thing to do when "two patches don't move the needle" — escalate the diagnostic surface.
+
+2. **YouTube Data API server-side polling.** EF cron polls `liveBroadcasts.list?part=liveStreamingDetails` every 60s for active occurrences, reads `actualStartTime` / `actualEndTime` to bound broadcast lifecycle, reads `concurrentViewers` for an aggregate-without-attribution signal. Doesn't give per-member-per-broadcast watch-time but DOES give per-broadcast-aggregate engagement (peak viewers, total minutes-of-broadcast-live-while-people-watched). Lewis can correlate against `session_views` to estimate per-broadcast member attribution. Cheap, no client changes.
+
+3. **PostHog event taxonomy (originally suggested at PM-337 mid-session).** Frontend fires `live_session_entered` / `live_session_heartbeat` / `live_session_left` events with `occurrence_id` + `broadcast_id` payload. PostHog dashboards give per-broadcast aggregates without going through Supabase. Tradeoff: attribution lives in PostHog not session_live_views, so doesn't roll up into engagement.html or employer-dashboard natively. Could mirror via a PostHog → Supabase sync job if needed. Cleanest separation of concerns.
+
+**Sequence.** Start with (1) — Safari Web Inspector — as a one-session investigation. If the postMessage bridge can be unblocked via a Capacitor config tweak, the entire existing PM-304 code path snaps on. If it can't, (2) is the cheap fallback (server-side YouTube API, zero client changes), and (3) is the deeper rebuild if Lewis needs per-broadcast-per-member precision for v2 employer dashboards.
+
+**Don't ship before:** trial cohort (15-20 members) has run for ≥2 weeks. Real engagement distribution will reveal whether per-broadcast attribution is actually a need or a nice-to-have. Currently it's an unvalidated assumption that Lewis will want this depth.
+
+**Code state to preserve:** PM-330 + PM-332's pre-baked iframe with explicit origin + `YT.ready()` gating + `referrerpolicy` are KEPT IN PLACE. They do no harm sitting there with `ready: false` — they just don't accomplish anything until the WKWebView bridge is unblocked. If a future Capacitor config change fixes the bridge, the existing code path will start working without modification. The `session_live_views` table also stays — empty for now, but ready to receive writes when the bridge is functional.
+
+**§23.72 visibility-resume audit candidate.** Other surfaces with `visibilitychange` handlers should be audited for the same single-fire-no-resume bug class PM-337 fixed in tracking.js. Quick grep: `grep -rn "visibilitychange" --include="*.js" --include="*.html"` in vyve-site. Known surfaces beyond tracking.js: replay-tracker.js (probably routes through tracking.js — verify), sync.js (Supabase Realtime channels — check if they get torn down on hide), any in-session timers (rest-timer in workouts.html, breathing-pattern timer in mind/breathwork.html). Audit pass before bundle ship if time permits; defer to next maintenance session otherwise.
+
+## Added 25 May 2026 — PM-315 brain close (live tracker device-walk validation + PM-316+ state-machine fix) [PARTIALLY SUPERSEDED BY PM-337]
+
+**SUPERSEDED.** The "Live tracker end-to-end validation walk" item below was the next-session-resumption procedure for the PM-304 → PM-315 chain. PM-330 → PM-332 attempted that walk and confirmed the bridge bug is below the layer we can fix from the page. PM-337 found a different bug (visibility-hide truncation) that was actually trial-blocking, fixed it, and rerouted attribution to tracking.js / `session_views`. Per-broadcast attribution via `session_live_views` is now an explicit v2 post-trial item — see "Live tracker per-broadcast attribution — v2 post-trial" above.
+
+The PM-316+ state-machine subsection below (LIVE state should override clock-time when broadcast is actually live ahead of schedule) is NOT superseded. Still a real bug, still worth fixing — but lower priority now that `session_views` via tracking.js doesn't depend on the LIVE state machine for attribution. Defer until v2 work begins.
+
+
 
 ### Live tracker end-to-end validation walk (immediate, next session)
 
