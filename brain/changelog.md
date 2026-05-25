@@ -1,3 +1,27 @@
+## 2026-05-25 PM-371 — Weekly check-in recap: rolling-7 window clamped both sides + habitDays Math.min(7) belt [vyve-site `3244e596`]
+
+**Surfaced bug.** Recap card on `wellbeing-checkin.html` showed 8 days under Daily Habits in what's documented as a rolling 7-day window. Mathematically impossible by definition. Supabase truth for the member (`deanonbrown@hotmail.com`) for the last 8 days: 2 distinct dates (13 ticks across 25 May and 19 May). The 8 came from the PF-10 Dexie-first read path on line 1185–1238 of `wellbeing-checkin.html` — there's a ghost row in local IndexedDB that lexically passes the lower-bound `>= weekStart` filter but isn't one of the 7 real dates in the window.
+
+**§23.70 collision caught.** A parallel session shipped PM-370 (habits.html difficulty-tag strip + settings habit picker, `5703c9da`) ~90 seconds before my pre-commit recheck. PM-370 modified index.html + settings.html + sw.js — three of the four files I had locally staged from the post-PM-369 fresh-HEAD fetch. Per §23.70, re-fetched all three files from the new post-PM-370 HEAD, replayed the marker bumps (254 → 255) on the fresh content, swept PM-370 → PM-371 in `wellbeing-checkin.html` source comments. wellbeing-checkin.html itself was not in PM-370's file set, so the substantive edits there carried forward cleanly without rebase. The §23.70 pre-commit recheck did its job — without it the commit would have either failed on stale parent SHA or, worse, succeeded with stale base_tree and silently reverted PM-370's habits.html changes.
+
+**Three changes in `wellbeing-checkin.html` shape() helper (lines 1080–1183).**
+
+1. **Window upper bound.** `weekEnd = new Date().toISOString().slice(0, 10)` added alongside `weekStart`. `inWindow` updated from `r[dateCol] >= weekStart` to `r[dateCol] >= weekStart && r[dateCol] <= weekEnd`. Closes the future-date class — any Dexie row with a tomorrow-or-later `activity_date` (clock skew at write time, timezone roll, malformed sync envelope) no longer passes the local string filter regardless of how badly Dexie has drifted.
+
+2. **habitDays clamped to 7.** `const habitDays = Math.min(7, new Set(habits.map(h => h.activity_date)).size)`. Mathematical truth as belt-and-braces: a rolling-7 window contains at most 7 distinct dates by definition, so clamping is free and catches future regressions (a filter typo, a Supabase URL that drops the gte/lte combo, a malformed date string that lexically passes both bounds but isn't one of the 7 actual dates). Cheaper than another diagnostic round in three months.
+
+3. **No change to body/mind/connect totals.** Those pillars sum raw activity counts (not distinct days) so the 7-day-cap doesn't apply, and the raw counts were correct. The same `inWindow` upper-bound fix protects all four pillars from the same ghost-row class — habits is just where the bug surfaced first because `distinct days` makes a phantom date instantly visible.
+
+**Architectural follow-up banked (NOT actioned this session).** PF-10 Dexie-first reads have no equivalence check against Supabase canonical truth at read time. Sync brings new rows in but doesn't reconcile (a) deletions, (b) stale state from a write the server later rejected, (c) clock-skew ghosts. This same class of drift will surface on engagement-v2, home pills, scoring, anywhere PF-10 is the read source. The right architectural fix is a Dexie reconciliation pass on `visibilitychange` — full member-scoped fetch of the last 30 days from Supabase, replace Dexie rows for that window. Banked to backlog as PF-30+ companion. Until then, every PF-10 surface needs defensive bounds at the read site, like this recap.
+
+**§23 candidate — defensive bounds on PF-10 reads.** Banking the principle: any PF-10 Dexie-first read that filters by a date range MUST bound both sides (`>= start && <= end`) at the client filter, not just lower-bound. Reason: Dexie is a write-through local store with no integrity check at read time, so a stale or future-dated row passes lower-bound-only filters silently. This is the second drift bug surfaced in PF-10 reads after the engagement-v2 stale-row class — promoting to a §23 rule after one more independent occurrence per §23 hard-rule promotion criteria.
+
+**Files.** wellbeing-checkin.html (window math, 3 edits), sw.js (CACHE_NAME → `pm371-recap-window-clamp-a`), index.html (vbb-marker 255), settings.html (settings-vbb-marker 255). 4-file atomic commit via Git Data API blobs/tree/commit/ref sequence — the `GITHUB_COMMIT_MULTIPLE_FILES` Composio path was unavailable this session (tool_search returned no Composio surface), fell back to direct PAT-from-Vault per memory #8.
+
+---
+---
+
+---
 ## 2026-05-25 PM-370 — Strip easy/medium/hard difficulty tags from Settings habit picker + bring habits.html icons to parity with home (Lucide per-habit glyphs) [vyve-site `5703c9da`]
 
 **Scope.** Two unrelated UI cleanups on a single shipping branch — Dean's brief covered both, ships atomically.
@@ -1247,30 +1271,6 @@ All three checks compose. Run all three at every commit-boundary commit; run §2
 ### Session-coordination note
 
 The §23 doctrine assumes parallel sessions exist; tonight is the second feature-level near-miss in a week (PM-294/PM-295 PM-number cluster a few days ago, PM-304/PM-311 tonight). Dean's intro brief was true at the moment it was written and false 30 minutes later because vyve-site moves fast in high-velocity windows. §23.69 helps Claude catch this at session start; an additional helpful pattern would be Dean opening high-velocity sessions with "what's shipped today" rather than a specific build brief, letting Claude surface the recent commits before any work is scoped. Not a §23 rule (it's a behavioural pattern, not a Claude-enforceable check), but worth flagging in the changelog so future Claudes know to suggest it when the recent-commits scan reveals heavy parallel activity.
-
----
-## 2026-05-25 PM-371 — Weekly check-in recap: rolling-7 window clamped both sides + habitDays Math.min(7) belt [vyve-site `3244e596`]
-
-**Surfaced bug.** Recap card on `wellbeing-checkin.html` showed 8 days under Daily Habits in what's documented as a rolling 7-day window. Mathematically impossible by definition. Supabase truth for the member (`deanonbrown@hotmail.com`) for the last 8 days: 2 distinct dates (13 ticks across 25 May and 19 May). The 8 came from the PF-10 Dexie-first read path on line 1185–1238 of `wellbeing-checkin.html` — there's a ghost row in local IndexedDB that lexically passes the lower-bound `>= weekStart` filter but isn't one of the 7 real dates in the window.
-
-**§23.70 collision caught.** A parallel session shipped PM-370 (habits.html difficulty-tag strip + settings habit picker, `5703c9da`) ~90 seconds before my pre-commit recheck. PM-370 modified index.html + settings.html + sw.js — three of the four files I had locally staged from the post-PM-369 fresh-HEAD fetch. Per §23.70, re-fetched all three files from the new post-PM-370 HEAD, replayed the marker bumps (254 → 255) on the fresh content, swept PM-370 → PM-371 in `wellbeing-checkin.html` source comments. wellbeing-checkin.html itself was not in PM-370's file set, so the substantive edits there carried forward cleanly without rebase. The §23.70 pre-commit recheck did its job — without it the commit would have either failed on stale parent SHA or, worse, succeeded with stale base_tree and silently reverted PM-370's habits.html changes.
-
-**Three changes in `wellbeing-checkin.html` shape() helper (lines 1080–1183).**
-
-1. **Window upper bound.** `weekEnd = new Date().toISOString().slice(0, 10)` added alongside `weekStart`. `inWindow` updated from `r[dateCol] >= weekStart` to `r[dateCol] >= weekStart && r[dateCol] <= weekEnd`. Closes the future-date class — any Dexie row with a tomorrow-or-later `activity_date` (clock skew at write time, timezone roll, malformed sync envelope) no longer passes the local string filter regardless of how badly Dexie has drifted.
-
-2. **habitDays clamped to 7.** `const habitDays = Math.min(7, new Set(habits.map(h => h.activity_date)).size)`. Mathematical truth as belt-and-braces: a rolling-7 window contains at most 7 distinct dates by definition, so clamping is free and catches future regressions (a filter typo, a Supabase URL that drops the gte/lte combo, a malformed date string that lexically passes both bounds but isn't one of the 7 actual dates). Cheaper than another diagnostic round in three months.
-
-3. **No change to body/mind/connect totals.** Those pillars sum raw activity counts (not distinct days) so the 7-day-cap doesn't apply, and the raw counts were correct. The same `inWindow` upper-bound fix protects all four pillars from the same ghost-row class — habits is just where the bug surfaced first because `distinct days` makes a phantom date instantly visible.
-
-**Architectural follow-up banked (NOT actioned this session).** PF-10 Dexie-first reads have no equivalence check against Supabase canonical truth at read time. Sync brings new rows in but doesn't reconcile (a) deletions, (b) stale state from a write the server later rejected, (c) clock-skew ghosts. This same class of drift will surface on engagement-v2, home pills, scoring, anywhere PF-10 is the read source. The right architectural fix is a Dexie reconciliation pass on `visibilitychange` — full member-scoped fetch of the last 30 days from Supabase, replace Dexie rows for that window. Banked to backlog as PF-30+ companion. Until then, every PF-10 surface needs defensive bounds at the read site, like this recap.
-
-**§23 candidate — defensive bounds on PF-10 reads.** Banking the principle: any PF-10 Dexie-first read that filters by a date range MUST bound both sides (`>= start && <= end`) at the client filter, not just lower-bound. Reason: Dexie is a write-through local store with no integrity check at read time, so a stale or future-dated row passes lower-bound-only filters silently. This is the second drift bug surfaced in PF-10 reads after the engagement-v2 stale-row class — promoting to a §23 rule after one more independent occurrence per §23 hard-rule promotion criteria.
-
-**Files.** wellbeing-checkin.html (window math, 3 edits), sw.js (CACHE_NAME → `pm371-recap-window-clamp-a`), index.html (vbb-marker 255), settings.html (settings-vbb-marker 255). 4-file atomic commit via Git Data API blobs/tree/commit/ref sequence — the `GITHUB_COMMIT_MULTIPLE_FILES` Composio path was unavailable this session (tool_search returned no Composio surface), fell back to direct PAT-from-Vault per memory #8.
-
----
----
 
 ## 2026-05-25 PM-310 — Live-tracker debug strip ALWAYS-ON (PM-304 follow-up, Capacitor has no URL bar) [vyve-site `4c8b93e8`]
 
