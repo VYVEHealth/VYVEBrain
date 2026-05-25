@@ -1,3 +1,64 @@
+## Added 25 May 2026 — PM-315 brain close (live tracker device-walk validation + PM-316+ state-machine fix)
+
+PM-315 (25 May 2026, vyve-site `15b3a431`) shipped the CSP fix for YouTube IFrame API on all 8 *-live.html shells (root cause of PM-304 silent failure). Two follow-ups owed.
+
+### Live tracker end-to-end validation walk (immediate, next session)
+
+Status: PM-315 fix not yet device-validated. Hypothesis-confirmed by PM-311 diagnostics (strip showed `ytLoadError: Failed to load YT IFrame API script` — exactly the failure mode CSP produces, fix is the obvious correlate), but not actually walked.
+
+Resumption procedure:
+1. Schedule fresh `calendar_occurrences` test row with `starts_at = now() + 30 seconds`, `ends_at = now() + 30 minutes`, `youtube_broadcast_id = NULL`. Use the existing test row `c22031a5-ae60-402e-97ad-0fb131c77699` (yoga category, "PM-304 tracker walk") or create new.
+2. Invoke `session-publish` EF via `pg_net.http_post` to bind a fresh broadcast (EF v2 now uses `enableAutoStop=false` so broadcasts won't auto-kill mid-flow).
+3. Dean force-refreshes app via Settings → Force refresh app (PM-312 button), navigates to yoga-live.
+4. Dean starts Riverside stream. YouTube `enableAutoStart=true` flips broadcast to live the moment RTMP ingest reaches YouTube.
+5. **Expected debug strip state** (always-on PM-310 strip):
+   - Header: `PM-315 live tracker debug`
+   - Page state: `LIVE` (after clock-time `starts_at` passes — see PM-316+ state-machine bug below)
+   - `bound broadcast: <broadcast_id>` matching `row.broadcast_id`
+   - `mode: live`
+   - `iframeId: sl-live-iframe`
+   - **`ytLoaded: true`** ← validates PM-315 CSP fix
+   - **`playerConstructed: true`**
+   - `ready: true` once YT.Player's `onReady` fires
+   - `lastState: -1 → 3 (buffering) → 1 (playing)` as YouTube embeds and plays
+   - `watchSeconds: 0 → 30+`
+   - At 30s threshold: `hasFirstWrite: true`, first row appears in `session_live_views` for that occurrence_id + member_email + client_id
+6. Confirm Supabase: `SELECT * FROM session_live_views WHERE occurrence_id = '<row_id>' ORDER BY created_at DESC` returns Lewis's row. PATCH cadence every 30s thereafter (watch `last_updated_at` advance).
+7. End Riverside stream → YouTube transitions broadcast to `complete` after ~30s idle. State machine flips LIVE → JUST_ENDED. Tracker destroys cleanly via syncPlayerTracker.
+
+If `ytLoaded: false` STILL with `ytLoadError: Failed to load YT IFrame API script` — CSP fix didn't take effect; check the live shell on the CDN actually has `https://www.youtube.com` in script-src (use `curl -sL https://online.vyvehealth.co.uk/yoga-live.html | grep script-src`).
+
+If `ytLoaded: true` but `playerConstructed: false` with `ytConstructError` — YT.Player constructor threw; surface error from the strip and diagnose.
+
+If `playerConstructed: true` but `ready: false` indefinitely — onReady not firing; likely iframe-handshake race (the WKWebView-on-Capacitor case PM-294 warned about). May need to defer YT.Player init until iframe's own load event fires.
+
+If everything green but no rows in `session_live_views` — JWT path issue or RLS policy on the new table; check PostgREST 4xx in browser dev tools (force-refresh button works but devtools don't on Capacitor; may need network-log surfacing in the debug strip).
+
+Post-validation cleanup:
+- Delete the test `calendar_occurrences` row `c22031a5-ae60-402e-97ad-0fb131c77699` (and its bound broadcast on YouTube — `unlisted` but should be tidied).
+- Delete orphan `replay-tracker.js` from repo + sw.js precache (PM-304 retained as back-compat, but the polymorphic `player-tracker.js` window.VYVEReplayTracker alias supersedes it; one session of work).
+- Hide debug strip behind a settings flag or remove entirely once tracker is proven on live. Current always-on visibility is intentional for the walk; should not ship to members long-term.
+
+### PM-316+ — LIVE state machine: broadcast-live should override clock-time
+
+Status: PM-304 walk surfaced this as a real bug.
+
+**Problem.** `session-live.js` state machine resolves LIVE strictly on clock-time: `row._start <= now < row._end`. So if YouTube's `enableAutoStart=true` flips a broadcast to live BEFORE the scheduled `starts_at` (e.g. instructor starts Riverside early, or test rows nudge `starts_at` 30s into the future to dodge the EF's `starts_at >= nowIso` filter), the page sits in PRE_ROLL even though YouTube is broadcasting live. Tracker doesn't attach (lifecycle gates on LIVE state). Page shows "Going live soon" countdown overlaid on a working video iframe. Confusing UX, broken attribution if test windows are tight.
+
+**Workaround (memory #23).** Schedule test rows with `starts_at = now()` or `now+30s`, never `now+10min`. Skip the PRE_ROLL gap entirely. Production sessions are scheduled ahead so clock-time matches broadcast-start; the bug is only visible in testing.
+
+**Architectural fix shape.** State machine queries YouTube broadcast `lifecycleStatus` (live / liveStarting / ready) via the existing `session-publish` OAuth path, and flips LIVE state when broadcast is `live` regardless of clock-time. Three options:
+
+1. **Cron-driven flag on `calendar_occurrences`.** New column `broadcast_lifecycle` enum, populated by `session-publish` cron each hour (or a separate `session-status` cron polling every 5 min for upcoming/active occurrences). Page reads the flag from Supabase row alongside `starts_at` / `ends_at`. Pro: zero client-side YouTube API exposure, fits existing data model. Con: 5-min cron lag means the page can be up to 5min behind reality.
+
+2. **Client-side YouTube embed status probe.** When in PRE_ROLL near `starts_at` (last 5min), iframe is mounted with `enablejsapi=1`. YT.Player.getPlayerState() can be polled — state 3 (buffering) or 1 (playing) ≠ -1 (unstarted) indicates the broadcast is live. Page flips LIVE on first non-(-1) state. Pro: real-time, no server round-trip. Con: requires iframe to be loaded earlier than current PRE_ROLL CSS hides it (currently iframe is in DOM during PRE_ROLL but it shows the broadcast's "scheduled" poster overlay, not the live stream — need to verify the player-state probe works through the overlay).
+
+3. **Hybrid.** Cron flag for primary, client probe as fallback / fast-confirm.
+
+Pick option after a sketch session. Likely option 2 (lowest server complexity, matches the "player is already there" reality on `*-live.html` pages). Sequence after PM-315 device-walk validates the basic happy path.
+
+**Out of scope for this fix.** Late instructor / instructor never starts — separate problem (no broadcast goes live, page stays in PRE_ROLL forever, currently no fallback). Handle with a JUST_ENDED-style "Looks like this session didn't start" state if `now > starts_at + 10min` AND no broadcast went live. Deferred.
+
 ## Added 25 May 2026 — PM-309 Achievements design session prep
 
 **Standing prompt drafted at `brain/staging/achievements-deepdive-prompt.md`.** Self-loading prompt for a fresh chat. 5 phases: Supabase enumeration -> member-action enumeration -> design framework -> visual direction -> persona awareness. Paste-and-go when ready.
