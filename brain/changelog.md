@@ -1,3 +1,33 @@
+## 2026-05-25 PM-352 — Picker thumb tap-to-preview made robust (PM-346 → PM-352 follow-up) [vyve-site 3ae13c7]
+
+**Scope.** Dean's report after PM-346 + PM-351 shipped: "I still can't watch the videos when swapping an exercise." His screenshot from the swap modal (16:44) showed play icons on EVERY thumbnail including Box Jump — which has `video_url = NULL` and SHOULD have been dimmed to `opacity: 0.55` per the PM-346 dim-no-video cue. The absence of dimming on Box Jump was the diagnostic tell: **PM-346's code path either wasn't running, or `ex.video_url` was always falsy in the picker's `allExercises` array** so every row took the no-video branch (which paints the play icon via CSS pseudo-element regardless).
+
+**Diagnostic walk.** Traced the data flow:
+- Live `main` branch: PM-346 code IS deployed (verified via raw fetch).
+- `allExercises` populated by `loadAllExercises` (workouts-programme.js:240). Two paths:
+  - Path A: localStorage cache `vyve_exercise_library_v2` — if cached payload pre-dates v2 select-with-video_url, would be missing. But cache key was bumped to v2 simultaneously with the select change, so this should be safe.
+  - Path B: Dexie via `VYVELocalDB.workout_plans.allFor()`. Sync uses `select=*` (sync.js:424), so all columns including `video_url` flow through.
+- In-session card thumbnails (which Dean confirmed working) use `loadSessionVideos` (workouts-programme.js:317-333) — `thumb.onclick = () => openVideoFullscreen(videoUrl)` via direct JS closure, NOT inline string onclick.
+- Picker thumbnails (PM-346) used `onclick="event.stopPropagation(); openVideoFullscreen('${url}')"` inline string — different mechanism, different fragility profile.
+
+**Two hypotheses, both addressed by the same fix:**
+1. **Lazy-loaded `<img>` covers the parent div's tap region.** The `<img class="es-lazy-thumb">` has `width:100%; height:100%; object-fit:cover` and lives inside `.es-ex-thumb`. iOS WKWebView has documented intermittent issues where bubbled clicks from image children don't fire the parent's inline `onclick=` attribute (works in dev, fails in production WKWebView builds). Behaviour is most visible on lazy-loaded images where the bubble path becomes async-ish.
+2. **`ex.video_url` mismatch via en-dash vs hyphen.** The catalogue uses en-dash (–, U+2013) in names like "Bench Press – Dumbbell" while some upstream paths might compare against hyphens. `getVideoUrl()` (workouts-programme.js:306) has a `normaliseExName` step that handles all dash variants + parens + whitespace. The PM-346 path bypassed this and read `ex.video_url` directly.
+
+**Fix shape (single-function rewrite of `renderExerciseList` in `workouts-exercise-menu.js`):**
+1. Replace `ex.video_url` direct read with `getVideoUrl(ex.exercise_name)` — the same normalised lookup the in-session cards use. If `getVideoUrl` is unavailable (defensive), fall back to `ex.video_url || null`.
+2. Drop inline `onclick=` strings entirely. Store exercise name in `data-ex-name` and video URL in `data-video-url`, then attach `addEventListener('click', ...)` post-render in a `querySelectorAll` loop. Pattern mirrors the working in-session-card path.
+3. Add `pointer-events: none` to the inner `<img>` and `<svg>` so taps always fire on the thumb div itself, never on the child. Eliminates the iOS WKWebView bubble-through ambiguity entirely.
+4. HTML-encode the exercise name (`"` → `&quot;`) for safe round-trip through the dataset attribute. The previous quote-escape (`'` → `\'`) was correct for the inline-onclick path but wrong for the dataset path — fixed.
+
+**Hit rate after fix.** Even if hypothesis 1 was wrong on this device, hypothesis 2's normalised lookup catches every name-mismatch row that PM-346 missed. Net coverage strictly increases.
+
+**Misread retro.** PM-346 shipped a working *implementation* of tap-to-preview but used a fragile *binding pattern* (inline onclick strings) that doesn't match the rest of the codebase's wiring style. The pre-existing `loadSessionVideos` had been quietly working with `addEventListener` for months — the right call would have been to copy that pattern verbatim from the start, not invent a new inline-string variant. Bank for future: when a similar mechanism already works elsewhere in the codebase, ship the copy of that mechanism, not a fresh design.
+
+**Ship details.** vyve-site `3ae13c71`. Single source-file change (`workouts-exercise-menu.js`) plus the §23.41 portal triplet. sw cache `pm351-fullscreen-video-x-safe-area-a` → `pm352-picker-thumb-click-robust-a`. vbb 238 → 239 on both marker files. Atomic 4-file commit via Git Data API (memory #11). §23.41 first-100 verify on all 4 files at commit SHA matched.
+
+**§23 candidate — bank.** "When a similar mechanism already works elsewhere in the codebase, copy that mechanism verbatim rather than designing a fresh variant." Strong signal but tied to one occurrence pattern — won't promote to a hard rule yet, watching for a second instance to confirm it's a recurring class. Adjacent to §23.71 (stop patching when not moving the needle) and §23.66 (rebase to live before commit) but distinct: this is about pattern reuse at design time.
+
 ## 2026-05-25 PM-351 — Fullscreen video close × clears iOS safe-area inset [vyve-site 9bef8bc]
 
 **Scope.** Dean's report after testing PM-346: "the X is too high in the corner that I can't actually click it to cancel off the video." The close button on the fullscreen exercise demo player (used by both in-session card thumbnails since the original feature shipped, and now the picker thumbnails since PM-346) sat at `top: 16px` — i.e. 16px from the top of the viewport. On every iPhone with a notch / Dynamic Island (every model from XS forward), the iOS status bar + safe-area inset takes ~47-50px before usable content area begins. The 40x40 button at top:16px was rendering *behind* the status bar, untappable.
