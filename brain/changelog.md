@@ -1,3 +1,105 @@
+## 2026-05-25 PM-385.b brain close — tracking.js retired from 8 *-live.html shells (vyve-site PM-385 `abd2fadd`) [Audit P1-4 closed]
+
+**Scope.** Closes Audit PM-379 P1-4. PM-251 brain entry claimed tracking.js was retired; live state pre-this-ship showed it loaded on all 8 `*-live.html` shells (yoga / mindfulness / workouts / therapy / events / podcast / education / checkin) AND all 8 `*-rp.html` shells AND sessions.html — 17 loads total, contra the brain's PM-251 claim. Every live session was running two trackers in parallel: legacy `tracking.js` writing `session_views` with 30s heartbeats, and PM-304's unified `player-tracker.js` writing `session_live_views` with 30s heartbeats. Aggregator reads handled the overlap via dedupe-by-(activity_date, category) per PM-294/PM-304 + the wellbeing-checkin recap card, so members saw no broken state — pure battery / data / write-volume waste on every live page. PM-385 retires tracking.js from the 8 live shells; rp shells unchanged per audit guidance.
+
+**Scope decision — 8 live shells only (not rp).** Audit P1-4 explicitly carved rp shells out: per-replay attribution doctrine is not finalised. PM-294 introduced `replay_video_views` as the engagement-grade per-video table, but the legacy `replay_views` table is still referenced in `refresh_member_home_state` UNION semantics. Replay-side retirement is a sequencing call (which table is canonical for replay attribution, what happens to UNION semantics, what migrates the historical `replay_views` data if anything) that this PM doesn't make. Live retirement is clean because `session_live_views` is unambiguously the engagement-grade canonical table for live sessions — PM-294 design called it out as the live-side replacement, no legacy `session_views` UNION dependency. Rp retirement banked on the backlog as a follow-on PM gated on doctrine clarification.
+
+**Per-shell change.** Single-line strip on every live shell, identical line 42 across all 8:
+
+```html
+<script src="/tracking.js" defer></script>
+```
+
+removed. `player-tracker.js` (line 42 in 7/8 shells, line 43 in checkin-live where ordering differs by one) remains in place and continues to write `session_live_views` as the sole tracker. No JS, CSS, or markup changes required — player-tracker.js covers everything tracking.js did on live shells with a better data shape (per-video attribution via `session_live_views.broadcast_id` column from PM-294, accurate join semantics).
+
+**Pre-strip audit (mandatory per §23.67-reverse).** Confirmed all 8 shells:
+- Load tracking.js at line 42 (identical script tag across all 8 — `  <script src="/tracking.js" defer></script>`, 45 bytes inc. indent + newline)
+- Load player-tracker.js (precondition for safe retirement — if any shell loaded tracking.js but NOT player-tracker.js, stripping tracking.js would leave that shell with zero tracker coverage; none of the 8 are in that state)
+
+**Post-strip verification.** All 8 shells: 0 tracking.js references remaining, player-tracker.js still loaded. Byte deltas exactly 45b on each shell (yoga 3607→3562, mindfulness 3632→3587, workouts 3545→3500, therapy 3618→3573, events 3616→3571, podcast 3607→3562, education 3640→3595, checkin 3590→3545). Identical edit pattern = clean atomic.
+
+**§23.67 extension candidate banked (NOT codifying solo).** §23.67 (PM-304) is the script-tag inclusion audit for new-feature ADD — "a new module's script tag missing from a consuming shell". P1-4's pattern is the reverse — "a retiring module's script tag still loaded on shells where the new module already covers it". Same grep mechanics (grep across consuming shells before / after ship, confirm exact set), opposite direction. Single occurrence so far (P1-4 is the first explicit application), banked here on the candidate list. Promotes to a §23 entry when a second retirement of this shape recurs (e.g. an upcoming module deprecation that needs the same audit).
+
+**Tooling discipline.**
+- §23.69 (collision scan at session start): clean — last 8 vyve-site commits showed no parallel tracking.js / live-shell work since session start.
+- §23.66 (content rebase pre-commit): caught the PM-383 ship that landed during this session — vbb-marker 265→266 + sw cache key bumped by movement.html dual-write retire (`feab6546`). Three of my staged files (sw.js, index.html, settings.html) needed rebase from the stale 265→266 plan to the live 267 state. db.js + sync.js for Commit 1 were untouched by PM-383. 8 live shells untouched by PM-383 (it touched movement.html + focus-shell.js).
+- §23.74 (cross-repo PM scan at commit time, Commit 2): vyve-site max-PM=384 (post-Commit 1), VYVEBrain max-PM=382, cross-repo max=384, claim PM-385.
+- §23.41 (fresh-HEAD + post-commit byte-perfect verify): parent `aa43aa49` (Commit 1's PM-384 SHA), all 11 staged files byte-perfect matched at commit SHA `abd2fadd`. Memory #10 dual-marker invariant held (vbb-marker 267→268 on both index.html span + settings.html div). Memory #14 cache key lockstep (`pm384-checkin-questions-a` → `pm385-tracking-retire-live-a`).
+
+**Walk test scope for Dean.** Open any live session in-app (yoga-live, mindfulness-live, or wait for next scheduled). Let it run for >30 seconds. In Supabase Studio:
+- `session_live_views`: SHOULD get a new row from this device after 30s (player-tracker.js still firing)
+- `session_views`: SHOULD NOT get a new row (tracking.js is gone)
+
+The `session_views` absence is the proof point. Memory #25 reminder: native iOS Capacitor app, no URL bar — open the page in-app via the More menu or session entry.
+
+**Next from the audit queue.** P0-5 (events-rp.html missing `session-rp.js` + `theme.js` + `session-rp.css`) is a single-file add — convenient to bundle with the next replay-related ship. P0-4 (focus-shell pluralised `TABLE_TO_BUS_EVENT` dead entries) shipped with PM-383 alongside the movement dual-write retire. P1-3 audit closed with negative result this session (see PM-384.b below). Audit queue now exhausted apart from P0-5 + post-trial banked items.
+
+---
+
+## 2026-05-25 PM-384.b brain close — checkin_questions catalogue (Tier 2.3 from PM-379 audit): schema + Dexie sync + read path (vyve-site PM-384 `aa43aa49`) [P1-3 closed negative]
+
+**Scope.** Closes Audit PM-379 Tier 2.3 (the last unblocked content-surface audit queue item from PM-372) AND closes P1-3 with a clean negative result. Two distinct strands batched into one code commit because they're independent surfaces with no overlap and would otherwise need duplicate marker/cache bumps.
+
+**Tier 2.3 — checkin_questions catalogue.** Versioned slider questions for weekly + monthly check-ins. Lewis (or eventually the Command Centre) authors rows in Supabase Studio; bump `version` to roll wording without breaking historical answers (check-in submissions reference question_id from the version they were written against, not the current one — versioning is the contract that lets wording evolve without invalidating historical analysis).
+
+**Schema (`public.checkin_questions`, Supabase migration `pm383_create_checkin_questions`).** Migration name retained for migration immutability — once `apply_migration` lands a name in the migration history, renaming requires a new migration. The canonical PM at commit time is 384 per cross-repo §23.74 claim (parallel session shipped PM-383 movement dual-write retire during this build). Schema:
+
+```
+id                BIGINT IDENTITY PK
+slug              TEXT NOT NULL
+survey_type       TEXT CHECK IN ('weekly','monthly')
+version           INTEGER DEFAULT 1
+display_order     INTEGER DEFAULT 100
+question_text     TEXT NOT NULL
+question_subtitle TEXT
+min_label / max_label TEXT
+min_value / max_value INTEGER (CHECK min_value < max_value)
+default_value     INTEGER (CHECK NULL OR in [min_value, max_value])
+active            BOOLEAN DEFAULT true
+active_from / active_until TIMESTAMPTZ
+created_at / updated_at TIMESTAMPTZ + trigger
+```
+
+UNIQUE (survey_type, slug, version) at the server lets Lewis roll versions without collisions. CHECK constraints on slug + question_text non-empty after trim refuse Studio rows someone half-filled. RLS enabled, single `SELECT TO authenticated WHERE active=true` policy — no INSERT/UPDATE/DELETE policies, table is service-role-curated. Partial read index on `(survey_type, display_order, version DESC) WHERE active=true` for the catalogue pull ordering (latest live version of each slot floats to the top during transition windows when multiple versions are active at once).
+
+**Sync wiring (db.js + sync.js — eighth application of §23.49 + §23.50 catalogue pattern after service_catalogue PM-190, replay_playlists PM-235, replay_videos PM-245, mind_videos PM-367, persona_welcome_copy PM-372, how_to_resources PM-377, podcast_platforms PM-378).**
+- `db.js` SCHEMA_V21 adds `checkin_questions: '&id, survey_type, slug, version, display_order, active'`
+- `db.version(21).stores(SCHEMA_V21)` registered
+- Consumer registered via `makeCatalogueTable('checkin_questions')`
+- `sync.js` catalogue plan entry hitting `/checkin_questions?active=eq.true&select=*&order=survey_type.asc,display_order.asc,version.desc` (server-side composite sort so page-side filter is single `.filter()` with no resort)
+- `CATALOGUE_FRESH_TABLES` extended (5-min stale window)
+- `CATALOGUE_INVALIDATION_KEY` bumped `pm383-movement-dual-write-retire` → `pm384-checkin-questions` per §23.50
+
+**Surfacing — explicitly out of scope this PM.** wellbeing-checkin.html + monthly-checkin.html continue to render their existing hardcoded slider questions. Surfacing the catalogue is a follow-on touch on those two pages — needs Lewis to populate at least one row first (otherwise the page would render an empty slider, worse UX than the existing hardcoded fallback). The rails are in place: as soon as Lewis adds a row marked `active=true`, devices pick it up within the 5-min CATALOGUE_FRESH_TABLES window. Surfacing PM lands wellbeing-checkin.html + monthly-checkin.html reading from `VYVELocalDB.checkin_questions.allFor()` with the existing hardcoded slider as `FALLBACK_QUESTIONS` const for cold paint, mirroring PM-378 podcast_platforms shape.
+
+**Operational implication for Lewis.** Add a weekly slider: `INSERT INTO public.checkin_questions (slug, survey_type, version, display_order, question_text, min_label, max_label, default_value) VALUES ('overall-wellbeing', 'weekly', 1, 10, 'How are you feeling this week?', 'Struggling', 'Thriving', 7);`. Roll wording without breaking history: `INSERT` a new row with same slug + bumped version + `active=true`, then `UPDATE … SET active=false WHERE slug='overall-wellbeing' AND version=1`. Historical check-in submissions still resolve question text by question_id (referencing the v1 row, still in the table, just not in the live catalogue pull). Devices pick up new active version within 5 min.
+
+**P1-3 audit — closed negative.** Audit P1-3 asked for a §23.65 envelope-trusted subscriber sweep on workouts-session.js's publish surface. workouts-session.js publishes `set:logged` (L425), `workout:logged` (L676), `body:logged` (L692, PM-382 ship), `workout:failed` (L826), `workout:shared` (L911, L961). Only own internal subscriber is `workout:failed` at L1023 — pure envelope-trusted by design (failure-revert path, calls `VYVEHomeState.revertPatch('workouts', { loggedAt: envelope.logged_at })` synchronously from envelope; no Dexie re-read). Cross-page subscribers for `set:logged` (6 sites via GitHub code search):
+
+- `workouts.html` L571 — calls only `VYVEAchievements.evaluate()` (debounced 1.5s, per inline comment NEVER re-reads exerciseHistory mid-session because nudges compare against previous sessions not today's just-logged sets). **§23.65 SAFE by explicit design.**
+- `index.html` L2664 — `_rerenderHome` recomputes from Dexie. **§23.65 surface — but this is the home-state coherence pattern shared across every `_rerenderHome` subscriber, not workouts-session-specific.** Belongs to a separate home-state sweep, out of P1-3 scope.
+- `engagement-v2.html` L1626 / L2641 — both lists end in `setTimeout(repaint, 150)`. **§23.65 workaround pattern (debounce instead of envelope) — the 150ms wait absorbs the fire-and-forget Dexie commit window** for the engagement-v2 score ring where 150ms of stale paint is invisible. SAFE.
+- `achievements-evaluator.js` L1301 — server-side-style metric eval registration (not a render subscriber, reads aggregates not the new row). **Not §23.65 surface.**
+- `auth.js` L155-167 — Realtime bridge (publishes from server-side rows, fires `deliverLocal` bypassing the race). **Not §23.65 surface.**
+
+**Conclusion.** Zero envelope-trusted retrofits needed on workouts-session.js's publish surface specifically. The only real §23.65 surface in the set (index.html `_rerenderHome` on set:logged) is part of the broader home-state sweep, not workouts-session-scoped. P1-3 closed clean.
+
+**§23.65 follow-on still open.** mind.html (6 publishers all using §23.39 fire-and-forget Dexie writes, subscribers re-read Dexie) and connect.html (3 publishers, headline §23.65 risk per audit Flag 15) remain on the §23.65 sweep backlog. Both are larger sweeps that warrant their own session per file. Per audit, connect.html sweep is gated on Chat 9 / P0-2 having landed (now done — PM-382), so the connect.html §23.65 sweep is unblocked as the next audit item if Dean wants it.
+
+**Tooling discipline.**
+- §23.69 (collision scan at session start): clean — keywords `workouts-session`, `set:logged`, `tracking.js`, `live shell`, `checkin_questions`, `Tier 2.3` returned zero hits in the last 8 vyve-site commits.
+- §23.66 (content rebase pre-commit): **fired loud** — parallel PM-383 ship (movement.html dual-write retire) landed during this build, bumping vbb-marker 265→266 + sw cache key while I was working. Three of my five Commit-1 staged files (sw.js, index.html, settings.html) needed rebase. db.js + sync.js for Commit 1 were untouched by PM-383, my patches applied cleanly to those without rebase. Single sed-sweep `PM-383 → PM-384` in db.js + sync.js comments per §23.70 PM-claim recompute (2 occurrences each).
+- §23.74 (cross-repo PM scan at commit time): vyve-site max-PM=383 (post-PM-383 ship), VYVEBrain max-PM=382, cross-repo max=383, claim PM-384.
+- §23.41 (post-commit byte-perfect verify): all 5 staged files byte-perfect at commit SHA `aa43aa49`. Initial first-100-char check showed false MISMATCH on db.js + sync.js because the verification script opened local file in text mode (newline normalisation) while comparing against bytes from the API — re-verified at byte level, full md5 match on both. Tooling lesson banked: post-commit verification scripts must compare bytes-to-bytes, not text-to-bytes. Not promoting to §23 hard rule — single occurrence, single tooling fix.
+
+**Ship details — Commit 1 (PM-384, `aa43aa49`).** 5 files atomic via Git Data API (Composio still down 4 days post-incident; PAT-direct via Supabase Vault per memory #20). Files: db.js (+18 lines for SCHEMA_V21 block + db.version(21) + consumer registration), sync.js (+11 lines for catalogue plan entry + invalidation key bump + fresh-tables extension), sw.js (cache `pm383-movement-dual-write-retire-a` → `pm384-checkin-questions-a`), index.html (vbb 266 → 267), settings.html (settings-vbb 266 → 267). All inline JS clean (index 9 blocks, settings 4 blocks). db.js + sync.js standalone node --check clean. Memory #10 dual-marker invariant held.
+
+**§23.58 brain close discipline.** Brain master.md / changelog.md / backlog.md re-fetched immediately before composing this entry. No drift since session start — last brain commit was PM-382.b at 21:04 UTC, before my session began. Cross-repo brain close PM for this commit: PM-384.b + PM-385.b (companion-to-canonical convention per §23.74, both code ships covered in a single brain close commit).
+
+**Next.** Audit queue effectively closed apart from P0-5 (events-rp.html missing `session-rp.js` + `theme.js` + `session-rp.css` — single-file add, bundle with next replay-related ship). §23.65 follow-on sweeps (mind.html, connect.html) remain on the backlog, each a separate session's work.
+
+---
+
 ## 2026-05-25 PM-382.b brain close — body:logged aggregator publish from the three Body publishers (vyve-site PM-382 `124f78f9`) [Audit P0-2 closed]
 
 **Scope.** Closes Audit PM-379 P0-2. Three Connect surfaces (`connect.html:2071`, `connect-feed.html:944`, `connect-challenge.html:586`) have subscribed to `body:logged` for months with zero publishers — Connect tile counters stayed stale after a Body activity log until a page nav, `sync.js` hydrate, or auth-ready re-fire triggered a repaint. Now they refresh in-session the moment a workout / cardio / movement log lands.
