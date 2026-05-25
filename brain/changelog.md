@@ -1,3 +1,54 @@
+## 2026-05-25 PM-374 — Food log locked Coming Soon (soft lockdown): nutrition.html CTA → coming-soon card, log-food.html cover + boot suppressed [vyve-site `761a027c`]
+
+**Scope.** Soft lockdown of food-logging UX surfaces ahead of trial launch. PM-353 had already retired the `fuel` focus + `nutrition_logs` from Focus pillar source-table reads. PM-374 closes the entry-point loop — `log-food.html` is no longer reachable from `nutrition.html` and direct-link / cached-SW navigation hits a cover, not the live UI. No DB, EF, or bus changes. Substantive UX surfaces preserved (Nutrition page macros / TDEE / hydration / weight tracker unchanged).
+
+**Dean's brief.** "Food logging needs to be locked as coming soon." Decided on **soft lockdown** over hard lockdown: keep the page and the underlying write paths intact in repo, just block reach. Reversibility is one-commit. Matches the PM-353 pattern for the Focus-level retire.
+
+**Surface 1 — `nutrition.html` CTA replacement.**
+
+The `<a id="food-coming-soon" href="/log-food.html" class="food-log-link fade-up-3">` block (L544-552 in pre-PM-374) is replaced with a `<div id="food-coming-soon" class="coming-soon fade-up-3">` using the existing house `.coming-soon` CSS already sitting at L217-219 (dashed border, muted text, centered) — same idiom as `connect-feed.html` Following v1 (PM-shipped placeholder for unbuilt social graph) and `connect-challenge.html` `.no-challenge` empty state.
+
+Critical preservation: `id="food-coming-soon"` retained verbatim. There's a skeleton-control routine at L913 that iterates `['cal-main-card','cal-stats-row','explainer-box','recalc-wrap','food-coming-soon']` and toggles `display` on `mode==='off'`. Changing the id would silently break the Off-mode toggle. The element type changed (anchor → div) but the id and class-list survive that routine unchanged.
+
+Wording: "Food log — coming soon" / "Detailed meal logging is coming in a future update. For now, focus on your calorie and macro targets." — sentence case, no exclamation, leans the member back to the macros and water UI which are the productive parts of the surface.
+
+**Surface 2 — `log-food.html` full-page cover + boot suppression.**
+
+The file already had `<div id="app" style="display:none">` as its root content wrapper — auth.js flips this to visible after auth success (the standard PWA reveal pattern). The cover takes advantage of this: a `<div id="food-coming-soon-cover">` is inserted between `<body>` and `<div id="app">`, with a self-contained `<style>` block immediately above it (no dependency on the page's main stylesheet so it paints instantly even on a cold cache). Z-index 10000 sits above any modal/sheet the page might raise.
+
+The cover is full-viewport, includes a top-bar back-link to `/nutrition.html`, a centered teal-tinted icon tile, "Food log — coming soon" headline in Playfair Display, body copy in Inter muted, and a single `.fcs-cta` button styled to match the existing `.empty-cta` pattern on nutrition.html (linear-gradient teal-to-dark, gold-ish border accent, uppercase 0.85rem letter-spaced) → also routes to `/nutrition.html`. Member never reaches dead UI.
+
+Even with the cover, the page's existing scripts would otherwise execute and (a) pre-paint cached diary state inside `#app`, (b) wire bus subscribers, (c) issue Supabase fetches on auth-success, (d) fire a skeleton-timeout false-positive alert to `platform-alert` EF after 10s (because `getComputedStyle` on `diary-skeleton` returns `display:block` even though its ancestor `#app` is hidden). Four boot points gated on `document.getElementById('food-coming-soon-cover')`:
+
+1. `paintLogFoodCacheEarly()` IIFE (~L530) — early-return before any DOM read/write, no Dexie cache hydration, no diary-content reveal attempt.
+2. `loadPage()` async function (~L555) — early-return before reading memberEmail. No Supabase fetches. No bus event publishing.
+3. `DOMContentLoaded` listener for the `food:failed` revert subscriber (~L1605) — early-return before registering. The page cannot publish `food:logged` / `food:deleted` events from anywhere (since loadPage never runs), so wiring the revert subscriber would be inert. Skipping cleanly avoids any subscriber-count diagnostics drifting.
+4. Skeleton-timeout watchdog IIFE (~L1596) — early-return before the 10s setTimeout. Prevents false-positive `skeleton_timeout_log-food` severity:high alerts to `platform-alert` EF that would otherwise spam the alert channel for every direct visitor.
+
+All four guards use the same idiom: `if (document.getElementById('food-coming-soon-cover')) return;`. Reversal is a single sed sweep on that string. No JS logic was deleted or modified — every gate is a no-op when the cover isn't present, so the file behaves identically to its pre-PM-374 state if the cover is removed.
+
+**Files committed atomically (5):**
+- `nutrition.html` — CTA replacement (~95KB, blob `4c9e8a63`)
+- `log-food.html` — cover + style block prepended; 4 boot gates added (~91KB, blob `cb21ce54`)
+- `index.html` — vbb-marker 257 → 258 (130KB, blob `873df01a`)
+- `settings.html` — settings-vbb-marker 257 → 258 (134KB, blob `17ffd76c`)
+- `sw.js` — CACHE_NAME → `pm374-food-log-coming-soon-a` (18.9KB, blob `3a65b4d0`)
+
+Git Data API atomic blobs/tree/commit/ref at vyve-site `761a027c` (parent `90d92495`).
+
+**§23.70 fired clean.** Session start saw vyve-site HEAD at `3244e596` (PM-371). Between mockup approval and the pre-commit recheck, two parallel sessions shipped: PM-372 (`30c2d23b` — hydration COPY_TABLE → persona_welcome_copy catalogue) and PM-373 (`90d92495` — habits.html tile palette parity with index.html PM-287). Both touched `index.html`, `settings.html`, `sw.js` — three of my five staged files. PM-claim recomputed from 372 → 374. Re-fetched index/settings/sw.js at the new HEAD, replayed marker bumps on the post-PM-373 content (255 → 258, not 255 → 256). Source-comment sweep `PM-372 → PM-374` across nutrition.html (1 ref) + log-food.html (5 refs). `nutrition.html` and `log-food.html` were not in either parallel commit's file set — substantive edits carried forward without rebase. The recheck-before-commit window saved the ship; without §23.70 the commit would have either parent-SHA-failed or, worse, succeeded against stale base_tree and silently reverted both parallel sessions' marker bumps + habits/hydration work.
+
+**§23.58 fired clean on brain commit.** Brain HEAD was `cafa5dfe` (PM-371) at session start; by brain-commit time two parallel brain commits had landed — `ae3d1381` (PM-372 brain) and `1da18a3f` (PM-373 brain). Re-fetched master.md + changelog.md + backlog.md at current HEAD before composing edits. changelog.md (2.48MB) exceeds GitHub Contents API inline-content limit (~1MB) — `content` field returned empty with `size:2487209` and a `download_url`. Switched to the Git Blob API (`/git/blobs/{sha}`) which returns base64-encoded content regardless of size. Codification: §23.79 candidate banked below.
+
+**§23 candidate banked (NOT codified — first occurrence): >1MB file reads via Git Blob API, not Contents API.** GitHub Contents API silently truncates inline `content` to empty string for files >1MB; the file metadata (sha, size, download_url) returns normally so a naive caller writes an empty file to disk and proceeds. changelog.md is currently 2.48MB and growing; master.md (684KB) and backlog.md (734KB) are still under the cap but trending up. Discipline going forward: any brain file read should either use the Git Blob API directly (`GET /repos/.../git/blobs/{sha}`, base64-decode regardless of size) or check `size > 1_000_000` and route to Blob API conditionally. Promotion to §23 hard rule after a second occurrence — single instance for now since this was a first encounter on this codebase. Memory-side workaround: the `download_url` field works for files of any size if you switch protocols to `raw.githubusercontent.com`, but that route has CDN cache lag (§23.41 forbids using raw for post-commit verify; same hazard applies to mid-session re-reads of just-committed files). Blob API is the authoritative read path.
+
+**Reversal recipe.** When food log is ready to ship widely: (1) in `log-food.html`, delete the `<style>` + `<div id="food-coming-soon-cover">` blocks between `<body>` and `<div id="app">`; (2) delete the four `// PM-374 Coming Soon lock` early-return lines (one in paintLogFoodCacheEarly, one in loadPage, one in DOMContentLoaded for bus subscribers, one in the skeleton-timeout IIFE); (3) in `nutrition.html`, replace the `<div id="food-coming-soon" class="coming-soon fade-up-3">` block with the original `<a id="food-coming-soon" href="/log-food.html" class="food-log-link fade-up-3">` anchor + sub-elements. No DB rollback, no EF redeploy, no bus subscriber re-registration — every code path is identical to pre-PM-374 once the four gate-lines and the cover block are deleted.
+
+**Out of scope (deferred to backlog).** Bus event scrubbing — `food:logged` / `food:deleted` subscribers in `engagement-v2.js`, `achievements-evaluator.js`, and `home-state-local.js` remain registered. They cannot fire (no publisher reachable to members) but the dead subscriber wiring is cosmetic clutter to clean up if PM-374 is ever made permanent rather than coming-soon. Hard-lockdown follow-up would address this; for now, soft lockdown is intentionally reversibility-first.
+
+**Verification.** 7 inline JS blocks node --check clean (3 nutrition.html + 4 log-food.html). sw.js standalone parse clean. First-100-char + byte-size post-commit re-fetch on all 5 files via Contents JSON (Blob API not needed for these — all under 1MB). Commit ref update returned 200 with new HEAD `761a027c`.
+
+---
 ## 2026-05-25 PM-373 — habits.html icon tile palette brought to exact parity with index.html PM-287 [vyve-site `90d92495`]
 
 **Surfaced.** PM-370 inlined Lucide glyphs into habits.html cards but kept the OLD POT_CONFIG palette for tile colours (sleep #6366B8 / movement #4DAAAA / nutrition #2D9E4A / mindfulness #5BA8D9 / social #E879A3) wired via inline `style="background:${pot.color}1A;color:${pot.color}"`. Dean tapped habits.html on device, compared to home, asked for palette parity. Index.html PM-287 uses an entirely different palette matched to the progress-ring colours — mindfulness #B186C9 purple / movement #8FC470 green / nutrition #D89760 deep amber / sleep teal-lt / social #F0A075 orange — plus a teal done-state override regardless of pot.

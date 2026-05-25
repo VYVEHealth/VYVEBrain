@@ -98,6 +98,7 @@ Out of scope for PM-346 (which was wiring only); flagging here so it surfaces ne
 - PM-347 `d9f53c56` — Toast deep-link routing
 - PM-350 `1ee4c49c` — Focus pillar live via `focus_slug` source-table reads
 - PM-353 `f27b198f` — Fuel focus retired (Food Log deferred)
+- PM-374 `761a027c` — Food log entry-point locked Coming Soon (soft lockdown; reversible single-commit; bus subscribers retained as dead wiring)
 
 **Mind UI no longer gated.** Dean called the release in PM-347 session — 13 Mind metrics flipped `phil_approved=true` via direct MCP UPDATE. Visible after fresh catalog fetch (Reset achievements debug button or 24hr cache expiry).
 
