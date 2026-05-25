@@ -1,3 +1,38 @@
+## 2026-05-25 PM-359 — Haptics wiring pass 1: habits log + V-logo long-press + settings toggles/theme [vyve-site `d4a6dcae`]
+
+**Scope.** First adoption pass of the `VYVEHaptics` bridge (shipped PM-278). Three highest-value, lowest-risk surfaces wired in one atomic commit:
+
+- **`habits.html`** — `<script src="/haptics.js" defer></script>` added next to achievements.js. `VYVEHaptics.success()` fires inside the manual-log `if (window.VYVEBus)` block, immediately before `optimisticPatch` — success branch only, never on tap. Auto-tick site (line ~1122) intentionally skipped: auto-tick fires silently on page load when activity-derived completions are detected, so a haptic there would buzz the device unprompted (wrong UX). Manual log is the most-fired button in the app per backlog priority #1.
+- **`index.html`** — PM-259 long-press V-logo reset migrated from `navigator.vibrate(35)` → `VYVEHaptics.medium()`. The old vibrate call was a silent no-op on iOS Safari and Capacitor iOS (Safari doesn't implement vibrate, Capacitor iOS doesn't either — only Android `navigator.vibrate` does anything). Now the bridge routes it through `@capacitor/haptics` `impact({style:'MEDIUM'})` natively on iOS Capacitor — first time this gesture actually feels like it worked on iPhone.
+- **`settings.html`** — `<script src="/haptics.js" defer></script>` added next to healthbridge.js. `VYVEHaptics.selection()` fires inside `handleToggle()` (both notif toggles) and inside the `window.vyveSetTheme` override (theme button taps). `.selection()` is the right tap-tick feel here — not `.success()`, which is reserved for state-changing wins like a habit log.
+
+**Why selection vs success vs medium.** The backlog spec calls out which API to use per surface, but the underlying mental model: `.success()` = "you accomplished something" (habit logged, achievement unlocked); `.selection()` = "you picked something" (toggle, segmented control, theme); `.medium()`/`.heavy()` = punctuation on a non-success interaction (long-press confirmation, swipe-to-delete threshold). Got this right first time — easy mistake to use `.success()` for settings toggles because the toast says "enabled", but the user didn't *succeed* at anything, they just flipped a switch.
+
+**Mechanics.** All call sites `try {} catch (_) {}` wrapped + guarded with `if (window.VYVEHaptics)` — never throws, no-ops cleanly if the script hasn't loaded. The bridge's internal platform probe handles native iOS / Android web / silent fallback; nothing page-specific needed.
+
+**Not in scope (backlog).** Other targets from line 581 of backlog.md:
+- `workouts.html` exercise set logged → `.light()` — when next touching workouts-notes-prs.js
+- `engagement.html` achievement-earned first-reveal → `.success()`/`.heavy()`
+- `nutrition.html` hydration stepper + weight increments → `.selection()`
+- Swipe-to-delete confirm (workouts custom list, exercise_logs) → `.medium()` at threshold
+- `breathwork.html` phase transitions → `.light()` per existing PM-173-followup spec
+- Pull-to-refresh threshold (PF-26, when built) → `.light()`
+
+These remain opportunistic — drop in when next touching each file properly, not a campaign.
+
+**§23.41 + §23.70 + §23.58 + portal checklist all observed.** sw.js cache key `pm358-builder-header-safearea-lucide-dumbbell-a` → `pm359-haptics-pass1-a`. vbb-marker 244 → 245 in both `index.html` (`<span id="vbb-marker">`) AND `settings.html` (`<span id="settings-vbb-marker">`). Fresh HEAD re-fetched immediately before commit (still PM-358, PM-359 claim held). Brain re-fetched immediately before brain commit. Inline JS syntax validated via `node --check` for all 3+9+4 = 16 inline script blocks across the three HTML files. Atomic 4-file commit via Git Data API (blobs → tree → commit → ref update); byte-exact blob sizes verified at the commit SHA (94834 / 128009 / 129268 / 18651).
+
+**Testing on device.** Dean must test through the Capacitor TestFlight binary (iOS 1.2/1.3) — mobile Safari intentionally no-ops. Sanity: open devtools (or remote debug WebKit), call `window.VYVEHaptics._platform()` → should return `'native'` on the iOS Capacitor build. iPhone must have silent switch OFF and Settings → Sounds & Haptics → System Haptics ON for haptics to fire (Apple-controlled, never code around).
+
+**Files changed.**
+
+| File | Bytes | Change |
+| --- | --- | --- |
+| `habits.html` | 94834 | `<script src="/haptics.js" defer>` + `VYVEHaptics.success()` on manual log success branch |
+| `index.html` | 128009 | `navigator.vibrate(35)` → `VYVEHaptics.medium()` on PM-259 long-press; vbb-marker 244 → 245 |
+| `settings.html` | 129268 | `<script src="/haptics.js" defer>` + `.selection()` in handleToggle + .selection() in vyveSetTheme override; settings-vbb-marker 244 → 245 |
+| `sw.js` | 18651 | Cache key `pm358-builder-header-safearea-lucide-dumbbell-a` → `pm359-haptics-pass1-a` |
+
 ## 2026-05-25 PM-358 — Workout builder header safe-area + Lucide dumbbell empty-state [vyve-site 245a8af]
 
 **Scope.** Dean confirmed PM-357 worked ("that worked", screenshot showing "No custom workouts yet" empty state). Same screenshots surfaced two follow-ups: (1) Cancel button on the New Workout builder overlaps with the iOS status bar/clock — header `padding:0 20px` + fixed `height:60px` with no safe-area-inset; (2) the empty-state dumbbell glyph is the old hand-rolled SVG (rounded rectangles), not the Lucide canonical dumbbell used everywhere else (PM-336/338, exercise.html `ico-dumbbell`).
