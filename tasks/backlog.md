@@ -1,3 +1,32 @@
+## Added 25 May 2026 — PM-322 Achievements design closeout — next-session asks
+
+**Status of PM-309 campaign.** Design phase COMPLETE. Five phases of decisions locked (see changelog 25 May PM-322 entry). All structural choices in place. Build is BLOCKED on items A/B/C/D below — none of which is a build task, all are design/decision deliverables that have to land before any code is written.
+
+**Item D — Data model decision (next-session item #1).** Two options:
+
+*Option D1: extend existing tables.* `achievement_metrics` gets new rows (~60 net new), existing 32 rows stay. `achievement_tiers` similarly extended. `member_achievements` untouched — existing 344 earns preserved automatically. Schema delta: maybe `category` column needs new enum values for the new pillar shapes; maybe `pillar` column added to `achievement_metrics` (currently implied via category). Cleanest for member-data preservation. Dirtier for the catalog header rows — old metric_slugs sit alongside new ones forever.
+
+*Option D2: new tables + migration.* `achievement_metrics_v2` / `achievement_tiers_v2` / `member_achievements_v2`. Clean slate naming. Migration script reads v1 rows, writes v2 rows according to the item C map. Risk: any miss in the map = lost earns. Risk: dual-path code during transition. Cleaner long-term, more work + more risk short-term.
+
+Dean's call. Probably Option D1 for the same pragmatic reason PM-305 left engagement.html as a redirect rather than deleting it — preserving member-side history beats schema cleanliness here.
+
+**Item C — Migration map (next-session item #2, parallel to D).** Explicit table of every existing v1 metric_slug × tier_index combination, with its v2 mapping (or "no v2 home → keep as legacy / collapse / drop"). 32 metrics × ~10 tiers = ~327 mapping decisions. Most are mechanical (workouts_logged stays as-is). The interesting cases are the metrics that DON'T survive (e.g. v1 `kahunas_checkins` is a legacy thing; collapsed into `weekly_checkins_total`?). Claude builds this table once D is decided.
+
+**Item A — Lewis copy pass (parallel, Lewis-owned).** Once items C+D are locked, hand Lewis the merged catalog and ask for: (1) keep/extend approval on each surviving v1 tier name; (2) new copy for ~13 net-new metrics × variable tier counts (estimate ~80-90 new tier rows of copy). Lewis voice rules already locked (no emojis, 3-6 word titles, 10-20 word bodies, no fitness-influencer tone). Existing 327 approved tiers should not be re-litigated — `copy_status='approved'` gate protects them.
+
+**Item B — Phil sign-off (parallel, Phil-owned).** Achievements in Mind / Check-ins pillars where HAVEN persona framing matters. Explicit ask: any achievement copy that would feel wrong to a HAVEN member in a low week. The `honest_checkin_tier5` hidden achievement especially — Phil's call on whether rewarding submission-with-low-wellbeing is therapeutically sound.
+
+**Sequencing recommendation.** D first (1 session). C second (parallel with A, A blocks until C is done). B parallel with A. Build session opens once A+B come back signed. Realistic timeline: design closeout this week, A and B over 1-2 weeks (Lewis + Phil pace), build session early-mid June.
+
+**Reference artefacts.** All in `brain/staging/`:
+- `achievements-catalog-v1.md` — pillar breakdown, tier counts, hidden list
+- `achievements-tier-design.md` — 10-tier badge visual spec
+- `achievements-handover-pm322.md` — paste-ready prompt for next chat
+
+Plus the two mockups in vyve-site root: `/achievements-mockup-c.html` and `/achievements-mockup-pathb.html`.
+
+---
+
 ## Added 25 May 2026 — PM-319 mind tracker follow-ups
 
 **Achievement evaluator subscribe to `mind:viewed`.** When the Achievements overhaul lands post-trial (memory rule re §23.51 et al.), the `mind:viewed` event is the right hook for any "X minutes of meditation/sleep/visualisation across a week" or "completed N visualisation sessions" metric. Carries `watch_seconds`, `completed`, `kind`, `pct_watched`. Distinct from `mind:logged` (which fires for every mind-pillar activity including journal/affirmations/breathwork, no watch-time semantic).

@@ -675,6 +675,19 @@ Backed unchanged by `member-achievements` v2 EF — `tiers[].earned_at`, `tiers[
 
 ---
 
+
+### PM-322 status update (25 May 2026) — design lock
+
+PM-309 deep-dive design session closed. Catalog locked at 90 achievements / ~282 tiers across 6 pillars + 10 hidden (Body 22 / Habits 11 / Mind 13 / Connect 17 / Check-ins 9 / Focus 8). Layout locked at Direction C (Hero + Map). Tier pattern locked at Pattern 3 (levels-up rows, gold dots showing earned tiers underneath). Badge visual locked at Path B (Lucide icon inside 10-tier gemstone-coloured frame: bronze → silver → gold → sapphire → ruby → emerald → amethyst → pearl → obsidian → diamond).
+
+v1 catalog (the §11A architecture documented above) is being **kept** through migration — 344 existing earns across 20 members must survive. Item C in `tasks/backlog.md` PM-322 will produce the explicit v1→v2 mapping table.
+
+Build BLOCKED on: (A) Lewis copy pass extending 327 v1 tier rows to fit new shape + writing ~80-90 new tier copy rows; (B) Phil HAVEN sign-off on Mind/Check-ins framing; (C) migration map; (D) data-model decision (extend existing tables vs new tables + migrate).
+
+Reference artefacts: `brain/staging/achievements-catalog-v1.md`, `brain/staging/achievements-tier-design.md`, `brain/staging/achievements-handover-pm322.md`. Mockups: vyve-site `/achievements-mockup-c.html` (commit a6e91b7e) and `/achievements-mockup-pathb.html` (commit ae4ef72b).
+
+---
+
 ## 11B. Page documentation (`/page-docs/`)
 
 New top-level folder in VYVEBrain repo, opened PM-285 (25 May 2026). One markdown file per portal page describing what the page is, why it exists, what a member sees, how they use it, and what data flows through it. Plain English, member-readable, no SQL, no §23 references.

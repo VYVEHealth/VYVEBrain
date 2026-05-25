@@ -1,3 +1,39 @@
+## 2026-05-25 PM-322 — Achievements design session complete (PM-309 closeout) [vyve-site ae4ef72b + brain]
+
+**Scope.** Full design lock for the Achievements overhaul (campaign opened PM-301, expanded PM-306, soft-triggered PM-309). Five-phase design session ran to completion: (1) enumeration of trackable data — 110 live tables, 14 per-row activity tables + 4 form-cadence + 8 lifecycle, with all 5 v2 pillars (Mind/Movement/Connect/Focus/Monthly check-ins) now first-class; (2) member-facing action mapping; (3) catalog framework — pillar-first × type-within (cumulative/single-session/streak/behavioural/hidden); (4) visual direction — Direction C (Hero + Map) over Trophy wall (B) and Pillar shelves (A); (5) tier system — Pattern 3 (levels-up rows) + Path B (icon-in-tier-frame badge).
+
+**Catalog locked.** 90 achievements, ~282 tiers. Body 22 / Habits 11 / Mind 13 / Connect 17 / Check-ins 9 / Focus 8 + 10 hidden cross-pillar. PBs explicitly removed from catalog (inline-post-set is the right home, Strava-style). Confirmed hidden list: honest_checkin_tier5, came_back, full_house, first_light, owl, reciprocity, streak_saver, anniversary, quiet_wins, comeback_PB.
+
+**Tier visual locked.** 10-tier gemstone ladder: bronze → silver → gold → sapphire → ruby → emerald → amethyst → pearl → obsidian → diamond. Each metric has its own Lucide icon (dumbbell/footprints/wind/activity/route/trophy/timer/sunrise enumerated for Body; remaining pillars to be picked at build time). Icon stays the same as member climbs; frame evolves through tiers. Tier number in corner pip. Locked tier = dashed frame, faded icon. Path A (commissioned illustration per achievement) explicitly deferred to v2 budget cycle — Path B ships now as the "almost premium" intermediate that doesn't require commissioned art.
+
+**Decision: keep v1 catalog data, migration policy TBD.** Live DB confirmed 32 achievement_metrics + 327 achievement_tiers (all copy_status='approved') + 344 member_achievements rows across 20 members. PM-305 promise that member data is preserved means we cannot wipe — migration map needs to be explicit (next session, item C).
+
+**Pre-build dependencies — none of these are built yet, all carved out as next-session work:**
+A. Lewis copy pass — extend v1 327-tier approved copy to new ~282-tier shape, write copy for ~13 net-new metrics.
+B. Phil sign-off on HAVEN-relevant framing (Mind/Check-ins pillars + honest_checkin hidden achievement).
+C. Migration map — explicit v1 → v2 slug+tier_index mapping; policy for orphan earns.
+D. Data model decision — extend existing 3 tables vs new tables + migration.
+
+**Soft-trigger update.** PM-309 backlog entry specified "wait 5 days of v2 device time before designing." Strict reading was not met (1 day) but the design session attacked structural decisions, not threshold tuning, so the moving-target concern didn't bite. Threshold tuning explicitly still waits for device data.
+
+**Mockup artefacts shipped.**
+- vyve-site `/achievements-mockup-c.html` (a6e91b7e earlier in session) — Direction C structure
+- vyve-site `/achievements-mockup-pathb.html` (ae4ef72b) — Path B icon+tier-frame badges
+- Both can be deleted once build ships.
+
+**Brain artefacts (this commit).**
+- `brain/staging/achievements-catalog-v1.md` — full per-pillar achievement list with tier counts
+- `brain/staging/achievements-tier-design.md` — 10-tier visual spec
+- `brain/staging/achievements-handover-pm322.md` — paste-ready prompt for next chat
+- `tasks/backlog.md` PM-322 section — next-session asks structured around items A/B/C/D
+- `brain/master.md` §11A — annotated to reflect campaign now in implementation-planning phase, v1 catalog/copy/earns preserved status
+
+**§23 rules.** No new rules earned this session. The PM-309 soft-trigger interpretation (design vs threshold-tuning) is worth noting for future campaigns but doesn't rise to a §23 hard rule yet — too campaign-specific.
+
+**Composio fallback used throughout.** Composio GitHub tools didn't load via tool_search; PAT-direct via Supabase Vault per memory entries #8/#9. Worked clean. One regex bug on the first vyve-site commit left a "PM-1"-labelled artefact (1bf1a5ae) that was amended (ae4ef72b) by re-PUT with the existing file SHA — no orphan history. Pattern worth remembering: when extracting PMs from the commits list endpoint, the endpoint shape is single-commit at `/commits/main` vs list at `/commits?sha=main` — confused this in flight, cost one tool call to debug.
+
+---
+
 ## 2026-05-25 PM-319 — mind.html video watch-time tracking (renumbered from PM-317 due to parallel-session commit-message collision); §23.70 codified [vyve-site b3f72f7 + brain]
 
 **Scope.** mind.html ships truer watch-time signal. PM-183 setTimeout-based 30s engagement gate retired in favour of PLAYING-state-accumulated `watch_seconds` via the unified `VYVEPlayerTracker` (PM-304). New `mind` mode added to MODE_CONFIG; buildRow / PATCH-strip / init-validation / bus-payload / `_debug` all extended polymorphically. Three trackers branching from one MODE_CONFIG stays clean. mind.html keeps its modal but the iframe now carries `enablejsapi=1` + page-origin + stable id (mandatory for `YT.Player` to attach).
