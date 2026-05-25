@@ -1,3 +1,121 @@
+## 2026-05-25 PM-366 — Custom workout delete haptics: medium() on confirmed delete, error() on failure [vyve-site `61876943`]
+
+**Scope.** Backlog line 581 listed "swipe-to-delete confirm on the custom workouts list" as a haptic target. Audit revealed the swipe gesture itself isn't built yet — current shipped flow is a × button + native `confirm()` dialog. Wired the haptics into what's actually there now; the threshold-crossing haptic for the eventual swipe gesture will be a one-line add at the gesture-confirm callback when the gesture lands.
+
+**Build.** Single function patched (`deleteCustomWorkout` in `workouts-builder.js` lines 138-205). Three haptic call sites:
+- Server reject (`!res.ok`) → `VYVEHaptics.error()` before the failure alert
+- Server 2xx → optimistic in-memory filter + `renderCustomWorkouts()` → `VYVEHaptics.medium()` at the visual flip
+- `catch` block (network throw) → `VYVEHaptics.error()` before the catch alert
+
+The visual flip is the perceived "deleted" moment — the row vanishes from the list. Fired there, NOT after the background `loadCustomWorkouts()` reconcile, because on slow networks the reconcile can take 200-500ms and a haptic at that point would feel uncoupled from the original tap. Native `confirm()` is the user's commitment gate; once they confirm and the server says OK, the haptic locks to the row-vanish.
+
+**Style choice — why `medium()`.** Heavier than the `light()` set-untick on `workouts-session.js` because deletion is a destructive commit; lighter than `success()` which we now reserve for additive logs (food, weight, set-tick, TDEE save) — that reservation is implicit in PM-363/364/365's pattern and is starting to look like a real palette. Matches the bridge's documented "long-press confirm" energy band. Destructive commits and confirmations cluster at medium.
+
+**Files (4, atomic at `61876943`):**
+- `workouts-builder.js` — 3 try/catch single-line haptic calls inserted, narrative comments above each
+- `index.html` — vbb-marker 250 → 251
+- `settings.html` — settings-vbb-marker 250 → 251
+- `sw.js` — cache `pm365-nutrition-haptics-a` → `pm366-custom-workout-delete-haptic-a`
+
+**Verification.** `node --check` clean on workouts-builder.js (parses standalone — it's a script-tag loadee). First-100-char post-commit re-fetch on all 4 files pinned to commit SHA `61876943` — all match. `VYVEHaptics.medium` + `.error` × 2 confirmed in remote at line 160 / 185 / 191. Cache key confirmed. workouts.html loads workouts-builder.js (line 518) AND loads haptics.js (PM-364 sweep) — wiring is live.
+
+**No new §23 hard rule earned.** PM-359-style "wire what's actually shipped, not what's on the backlog" lesson reinforces a discipline already implicit in §23.69 (feature-collision detection); the inverse-direction case (backlog item references a gesture that doesn't exist yet, don't go build the gesture as a side-quest) is just a corollary. Worth a one-line addition to §23.69 next time it's touched, not a separate rule.
+
+---
+
+## 2026-05-25 PM-365 — Nutrition + food-log haptics: water stepper, weight log, TDEE save, food add/delete [vyve-site `d328c9c7`]
+
+**Scope.** Wires `VYVEHaptics` to the write actions on `nutrition.html` and `log-food.html` now that the bridge is loaded platform-wide (PM-364). Strict scope: write actions and their outcomes only. Mode toggles, range tabs (7d/30d/90d), unit buttons (kg/st/lb), and goal/activity pills left bare — wiring every UI control would over-buzz the page.
+
+**Investigation surfaced one architectural correction.** Brain referenced a home-page hydration sibling at `index.html ~line 2407` needing a parallel wire. There isn't one. Line 2407 is a Dexie-hydrate `vyve-localdb-table-pulled` comment (table hydration), not water-hydration UI. The only water/weight UI lives on `nutrition.html`. **`hydration.js`** is the PF-13 Dexie-hydration welcome overlay (PM-92 — persona greeting + COPY_TABLE awaiting Dean finalisation), completely unrelated to water tracking. Naming clash flagged here so future sessions don't hunt for a phantom renderer. See §23.73 codification below for the broader bridge-load lesson.
+
+**Wires on `nutrition.html`:**
+- `adjustWater(+/-)` → `selection()` per tap (bridge's documented stepper use case — subtle, members tap 4-8× to fill the day, heavier haptic would over-buzz). Threshold-crossing tap (`willHitTarget` guard ensures it fires exactly once on the tap that crosses target, not every tap once at target) upgrades to `success()`.
+- `logWeight()` success → `success()` at the optimistic chart-paint moment (saveWtLog returns post-Dexie-patch, before network; PM-60 local-first contract — haptic locked to paint, not network resolve).
+- `logWeight()` catch → `error()`.
+- `saveTargets()` success → `success()` (TDEE/configuration commit — heavier than per-stepper selection because this is a real commit moment).
+- `saveTargets()` catch → `error()`.
+
+**Wires on `log-food.html`:**
+- Food add: optimistic `renderDiary()` at line ~1232 → `success()`. Fires regardless of online/offline since the optimistic paint is identical in both paths. `food:failed` dead-letter revert (PM-62 in writeQueued tail) does NOT get a counter-haptic — silent recovery contract.
+- Food delete: optimistic `renderDiary()` at line ~814 → `light()`. Lower-energy than the insert `success()` — mirrors the workouts-session.js untick `light()` pattern.
+
+**Files (5, atomic at `d328c9c7`):**
+- `nutrition.html` — 7 haptic call sites total (3 in adjustWater, 2 in logWeight, 2 in saveTargets)
+- `log-food.html` — 2 haptic call sites (1 in food add success path, 1 in food delete optimistic path)
+- `index.html` — vbb-marker 249 → 250
+- `settings.html` — settings-vbb-marker 249 → 250
+- `sw.js` — cache `pm364-haptics-sweep-a` → `pm365-nutrition-haptics-a`
+
+**Verification.** 7 inline scripts across both files `node --check` clean. First-100 re-fetch all 5 files at SHA `d328c9c7` clean. Spot-checked `VYVEHaptics.selection|success|error|light` all present at expected lines. Cache key + marker bumps verified.
+
+**Emerging haptic palette (worth noting for future surfaces).** Looking across PM-359/360/363/364/365/366:
+- `selection()` → stepper/picker/toggle ticks (water +/-)
+- `light()` → un-ticks, optimistic deletes from a list (food-row, workout-set untick)
+- `medium()` → destructive commits, confirmations (custom workout delete)
+- `success()` → additive logs (set logged, food logged, weight logged, TDEE saved, habit ticked)
+- `heavy()` → achievement tier reveal (one moment, big feel)
+- `error()` → failure path
+- `warning()` → not yet used anywhere — reserved for "are you sure?" pre-confirm states
+
+This isn't yet a rule, but it's consistent across six PMs of wiring. Promote to a §23-banked palette doc on next haptic ship if the pattern holds.
+
+---
+
+## 2026-05-25 PM-364 — Haptics bridge swept to 38 activity surfaces + workouts-session set-tick wired [vyve-site `ddba1577`]
+
+**The bug PM-363 surfaced.** PM-359/360 wired `haptics.js` into `index.html` / `habits.html` / `settings.html` only — 3 pages. The bridge was loaded on 3 surfaces and silently absent on every other surface. PM-363 (this same session, shipped 50 minutes earlier) wired `VYVEHaptics.heavy()` at the `achievements.js` `showNext()` chokepoint — a global wire that fires from any activity surface when an achievement lands. Bridge-load gap meant the toast haptic was only haptically alive on the same 3 pages. Wire global, bridge local. Silent failure mode everywhere else — calls to `window.VYVEHaptics.heavy()` no-op'd because the object simply wasn't defined.
+
+**Discovery.** Audit during PM-364 prep: grepped `haptics.js` references across every root-level HTML in `vyve-site`. Hit-count 3. Reality-check on what PM-363 was supposed to cover: every page that can earn a tier — every activity surface. Mismatch.
+
+**Fix.** Single atomic 42-file commit. `<script src="/haptics.js" defer></script>` inserted immediately after the existing `/theme.js` tag on each of 38 candidate pages. theme.js chosen as the anchor because it's present on 38/38 candidates (with `engagement.html` excluded — pure redirect stub to `engagement-v2.html`, no UI). Indentation preserved per page. Idempotent: pages that already had the tag (index/habits/settings) skipped. No CSP issues — all pages use `script-src 'self'` or no CSP.
+
+**Surfaces gaining the bridge (38):** activity, affirmations, apple-health, breathwork, cardio, cardio-history, certificates, connect, connect-calendar, connect-challenge, connect-checkin, connect-feed, engagement-v2, exercise, journal, leaderboard, log-food, meditation, mind, mind-insights, mind-library, monthly-checkin, movement, movement-history, nutrition, nutrition-setup, personal-bests, podcast, replay-category, replays, running-plan, sessions, settings-account, sleep, visualisation, wellbeing-checkin, workout-history, workouts.
+
+**Workouts set-tick wired in the same commit.** `workouts-session.js` `tickSet()` has two branches: tick (set logged) and untick (correction). Pre-PM-364 both branches were silent.
+- Tick → `VYVEHaptics.success()` (matches PM-359 daily-habits log-success precedent)
+- Untick → `VYVEHaptics.light()` (gentle, smaller correction)
+
+Fired adjacent to the `.ticked` class flip (lines 332 and 346) so haptic and visual land together. NOT in `saveExerciseLog()` or the `set:logged` bus publish — those fire after the network/Dexie round-trip and feel uncoupled from the original tap. State-restoration path in `restoreDom` (line 161) intentionally bypasses — programmatic restore, not a user gesture.
+
+**Method (atomic 42-file commit via Git Data API):**
+1. Parallel fetch of all 42 candidate HTMLs (10 workers, ~3s)
+2. Anchor regex `(?m)^([ \t]*)(<script[^>]*\bsrc\s*=\s*["\']/?theme\.js["\'][^>]*></script>)\s*$` — captures indent
+3. Per-file insert post-anchor-line, idempotency guard via `if 'haptics.js' in c: skip`
+4. 42 blobs → tree → commit → ref via Git Data API (direct PAT, Composio still down per memory #8)
+
+**Files (42, atomic at `ddba1577`):** 38 HTML inserts + `workouts-session.js` patch + `index.html` marker (249) + `settings.html` marker (249) + `sw.js` cache (`pm364-haptics-sweep-a`).
+
+**Verification.** Sample first-100 char re-fetch on 6 representative files (activity, nutrition, engagement-v2, sw, workouts-session, settings) — all match. Targeted spot-check on nutrition.html: line 20-21 shows `<script src="/theme.js" defer>` followed by `<script src="/haptics.js" defer>`. workouts-session.js `VYVEHaptics.light` + `.success` confirmed at lines 336 and 358.
+
+**Lesson banked → §23.73 below.** When wiring a cross-cutting capability behind a bridge, audit bridge-load coverage on every target surface BEFORE claiming any per-surface wire complete. PM-359/360 retros only counted the success-branch wire; the bridge-load gap was invisible because every call site was guarded with `if (window.VYVEHaptics)` — the no-op was silent. Codification earned by tonight's three-step retro: wire-PM (silent no-op everywhere except 3 surfaces) → discover during downstream PM → sweep-PM unblocks the original.
+
+---
+
+## 2026-05-25 PM-363 — Haptic at achievement tier reveal: single wire in achievements.js showNext() chokepoint [vyve-site `db9ae1e8`]
+
+**Scope.** First haptic wire from tonight's PM-361 multi-surface pass plan. Targets the achievement-earned toast — the moment a tier reveals — across the entire platform via the single visible-toast chokepoint in `achievements.js`. Plan was: highest-ROI per line, one wire fires from every metric ladder (32 metrics × 327 tiers).
+
+**The chokepoint.** Every tier reveal — whether from a fresh inline-evaluator hit, a replay of unseen-cache entries on page boot, or a manual `VYVEAchievements.queueEarned([...])` call — flows through `queueEarned()` → `showNext()`. Inside `showNext()` the toast is built, appended, and then animated up via a double `requestAnimationFrame` (one frame to flush the offscreen DOM insert, one to start the opacity+transform transition). Haptic wired inside the inner rAF — the moment the toast starts its rise. NOT on `appendChild` (one frame too early — DOM exists but isn't yet visible). NOT after the 320ms transition completes (uncoupled from the user-perceived arrival).
+
+**Style.** `VYVEHaptics.heavy()` — per the bridge's own documented intent in `haptics.js` comments: "strong feedback, e.g. achievement earned". Literal documented use case. Tier reveal is the heavier moment in the haptic palette; per-log success-ticks (food, set, weight, habit) sit at `success()`. Two energy bands cleanly separated by which surface fires them.
+
+**Build.** Single 4-line try/catch insertion inside the inner rAF callback at `showNext()`:
+```js
+try { if (window.VYVEHaptics) window.VYVEHaptics.heavy(); } catch(e) {}
+```
+Guard pattern matches the in-place `_publishSetLogged()` style elsewhere — defensive null-check on the namespace, swallowed throws. Bridge itself wraps every method in `try/catch` already (per `haptics.js` SAFETY block) so the call never escapes — the outer try/catch here is belt-and-braces for the namespace presence.
+
+**Files (4, atomic at `db9ae1e8`):** `achievements.js` (single rAF insertion + narrative comment), `index.html` (vbb-marker 247 → 248), `settings.html` (settings-vbb-marker 247 → 248), `sw.js` (cache `pm362-weekly-checkin-recap-pillars-a` → `pm363-haptic-tier-reveal-a`).
+
+**Verification.** `node --check` clean on achievements.js + sw.js. First-100-char re-fetch all 4 files at SHA `db9ae1e8` — clean. `VYVEHaptics.heavy` confirmed at line 157 of achievements.js post-commit.
+
+**Latent bug discovered downstream (fixed PM-364).** `achievements.js` is loaded across all 38 activity surfaces (confirmed via code search post-ship), but `haptics.js` was only loaded on index/habits/settings. So this wire fired correctly on those 3 surfaces and silently no-op'd everywhere else. The bridge-load gap was the actual scope of the failure mode; PM-364 swept the bridge platform-wide and retroactively unblocked PM-363's intent. §23.73 codified to prevent recurrence.
+
+**Process note.** §23.70 PM-claim-at-commit-time fired — parallel session shipped TWO PM-362 commits (`6037f3cc` weekly-checkin-recap + `22885751` connect-checkin-flip) between session-start max-PM check (361) and commit time. Our claim re-computed to PM-363. Without §23.70 we would have collided.
+
+---
+
 ## 2026-05-25 PM-362.b — Weekly check-in recap rebuilt: canonical 4 pillars (Habits/Body/Mind/Connect) + rolling 7-day window + kind-aware drilldown + Lucide pillar icons [vyve-site `6037f3cc`]
 
 **Why this label is .b.** Parallel session shipped a different PM-362 (Connect check-in optimistic-flip, `22885751`) between my §23.70 fresh-HEAD recheck (at which point max-PM was 361) and my actual blob-tree-commit-ref sequence. Both sessions independently incremented to 362. The parallel session's brain entry shipped first; mine prepends here as PM-362.b per the §23.70 brain-narrative-collision precedent (PM-294 case). Code-level: both bumped Update 247 → 248 independently and both arrived at the same number; both bumped sw.js cache key (last-writer-wins, mine is live as `pm362-weekly-checkin-recap-pillars-a` — parallel session's `pm362-connect-checkin-optimistic-flip-a` was overwritten, which is benign for cache-bust semantics). Files touched were disjoint (mine: wellbeing-checkin.html + sw.js + index.html + settings.html; theirs: connect-checkin.html + sw.js + index.html + settings.html), so the base-tree-merge model gave a clean superset with no content collision.

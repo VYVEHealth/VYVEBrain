@@ -580,25 +580,25 @@ Some/all of these likely resolve naturally as part of the v2 implementation sinc
 
 ## Added 25 May 2026 — Haptics incremental adoption across portal pages (PM-278 follow-up)
 
-**Status.** `VYVEHaptics` bridge shipped PM-278 (commit `db8cea41`). Globally available wherever `haptics.js` is loaded. Loaded by `index.html` only at ship. Each portal page touch is an opportunity to wire one or more haptic calls into the page's existing handlers and add `<script src="/haptics.js" defer></script>` to its head if not already inherited.
+**Status.** `VYVEHaptics` bridge shipped PM-278 (commit `db8cea41`). **PM-364 swept the bridge platform-wide** (`<script src="/haptics.js" defer></script>` now loaded on 41 activity surfaces). The page-load gate is gone — `window.VYVEHaptics` is available everywhere a member can trigger a write. Wires are now per-surface plumbing only; no more script-tag adds needed.
 
 **Not a campaign.** Don't open a session for this. It's surface-by-surface opportunistic adoption — when next touching habits.html for any reason, drop in `VYVEHaptics.success()` on the log tap. Each addition is 1-2 lines and ships with whatever the session's main work is.
 
 **High-value adoption surfaces, ranked by impact-per-line:**
 
-1. **`habits.html` — habit log tap** → `VYVEHaptics.success()` on the optimistic Dexie write success branch. Most-fired button in the whole app; member taps this multiple times per day. Single biggest premium-feel win available.
-2. **`index.html` PM-259 long-press V-logo reset** → migrate `navigator.vibrate(35)` to `VYVEHaptics.medium()`. The current vibrate call is a no-op on iOS Safari today, so this fix actually makes the gesture *feel* like it worked on iOS.
-3. **`workouts.html` — exercise set logged** → `VYVEHaptics.light()` in the `workouts-notes-prs.js` set-logged handler. Reinforces the "rep counted" affordance.
-4. **`engagement.html` — achievement earned (Phase 3 grid)** → `VYVEHaptics.success()` or `.heavy()` on first reveal of an unseen tier. Stack with the existing toast.
-5. **`nutrition.html` stepper +/-** for hydration counter and weight log increments → `VYVEHaptics.selection()`. Very Apple-feeling tick on each tap.
-6. **Swipe-to-delete confirm** (workouts custom list, exercise_logs) → `VYVEHaptics.medium()` at threshold crossed.
+1. ~~**`habits.html` — habit log tap** → `VYVEHaptics.success()` on the optimistic Dexie write success branch.~~ **SHIPPED PM-359.** Plus PM-360 added the home-page sibling renderer (§23.69 caught the miss).
+2. ~~**`index.html` PM-259 long-press V-logo reset** → migrate `navigator.vibrate(35)` to `VYVEHaptics.medium()`.~~ **SHIPPED PM-359.**
+3. ~~**`workouts.html` — exercise set logged** → `VYVEHaptics.*()` in the set-logged handler.~~ **SHIPPED PM-364** in `workouts-session.js` `tickSet()`: tick → `success()` at the .ticked class flip, untick → `light()`. (The spec referenced `workouts-notes-prs.js` but the live tick handler is in `workouts-session.js`; spec stale, code correct.)
+4. ~~**Achievement earned tier reveal** → `VYVEHaptics.success()` or `.heavy()` on first reveal of an unseen tier.~~ **SHIPPED PM-363** at the `achievements.js` `showNext()` chokepoint — a single wire fires for every metric × tier across the platform, not just on engagement.html. Initially silently no-op'd on 38 surfaces because the bridge wasn't loaded there; PM-364 sweep unblocked. §23.73 codified to prevent recurrence.
+5. ~~**`nutrition.html` water stepper +/-** → `VYVEHaptics.selection()`.~~ **SHIPPED PM-365.** Plus weight log + TDEE save wired with success/error, plus `log-food.html` food add (success) and food delete (light) wired in the same commit. Note: there is no home-page water sibling — earlier scope brief referenced `index.html ~2407` but that's a Dexie-hydrate comment, not water UI. `hydration.js` is the PF-13 welcome overlay, NOT water tracking — naming clash to remember.
+6. **Swipe-to-delete confirm** (workouts custom list, exercise_logs) → `VYVEHaptics.medium()` at threshold crossed. **PM-366 PARTIAL — button + confirm() flow wired** in `workouts-builder.js` `deleteCustomWorkout()` (server 2xx → optimistic render → `medium()`; failure → `error()`). Swipe gesture itself isn't built yet on the custom workouts list; threshold-crossing haptic is a one-line add at the gesture-confirm callback when the swipe ships.
 7. **Settings toggle switches** (theme, notification preferences) → `VYVEHaptics.selection()`.
 8. **`breathwork.html` phase transitions** (per the PM-173-followup spec already in backlog) → `VYVEHaptics.light()` on each inhale→hold→exhale→hold boundary. Spec called this out explicitly.
 9. **Pull-to-refresh threshold** (PF-26, when built) → `VYVEHaptics.light()` at the snap-into-loading point.
 
 **Adoption checklist (when touching a portal page for any other reason):**
 
-- [ ] Page loads `haptics.js`? If not, add `<script src="/haptics.js" defer></script>` near the other deferred shims (after `healthbridge.js` is the canonical slot per index.html).
+- [x] Page loads `haptics.js`? **YES — PM-364 swept the bridge to all 41 activity surfaces.** This step is no longer needed on existing pages; only relevant for genuinely new pages added to the portal.
 - [ ] Identify the tap/log/confirm handlers in the page's JS.
 - [ ] Drop in the appropriate `VYVEHaptics.X()` call at the success branch (never on click — only after the action confirms).
 - [ ] No try/catch needed at the call site — the shim is internally try/catch-wrapped.
