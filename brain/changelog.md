@@ -1,3 +1,33 @@
+## 2026-05-25 PM-334 — Home pills count match engagement-v2 Progress tab maths exactly [vyve-site 2f0762d1]
+
+**Bug.** Dean reviewed PM-333 on device: pills painted but **certificate stars were firing across Mind/Body/Connect** despite him being well under 30 *days* of activity in those buckets. Root cause: PM-331's `loadPillarCounts` used raw row counts (e.g. `mind_activities.allFor(email).length`) — tables that accept multiple rows per day (Mind/Body/Connect at 2/day cap, plus rows-per-tap on Connect via session_views + replays + live_views) blew past 30 fast.
+
+**Fix.** Strict mirror of engagement-v2.html `renderProgressTab` (lines 970-1078). The canonical Progress tab maths:
+
+| Pillar | Cap | Formula |
+|---|---|---|
+| Habits | 1/day | distinct activity_date days |
+| Mind | 2/day | Σ min(2, dayCount) over `mind_activities` |
+| Body | 2/day | Σ min(2, dayCount) over `workouts + cardio + movement_activities` merged |
+| Connect | 2/day | Σ min(2, dayCount) over `connect_checkins + session_views + replay_video_views + session_live_views` merged |
+| Check-ins | 1/week | distinct ISO weeks via `wellbeing_checkins` |
+
+`loadPillarCounts` now reads the same 10 tables engagement-v2 pulls. Day-key extraction identical (`activity_date` primary, falling back to `checkin_date` / `logged_date` / `submitted_at` / `created_at` per table). ISO week key derivation identical (Jan 4 anchor, 7-day floor). The `dayKey()` helper inlined to keep the home implementation self-contained.
+
+**Doctrine.** Home pills and engagement-v2 Progress tab must never disagree. The maths is currently duplicated rather than factored into a shared module because engagement-v2.html ships it inline. Worth flagging for a future refactor: lift the pillar maths into `pillar-math.js` so both surfaces consume the same code. Until then, every engagement-v2 maths change needs a matching home patch (and vice versa).
+
+**Where Dean's stated model diverges from canonical.** Dean's brief: "Habits 1/day, Mind 2/day, Body 2/day, Connect 2/day, Check-ins = 1 weekly wellbeing + 1 live session weekly + 1 monthly per month." Engagement-v2 currently only counts unique weeks of `wellbeing_checkins` for the Check-ins bucket — it doesn't add the live session weekly check-in or the monthly_checkins. PM-334 ships the engagement-v2 behaviour exactly because home should never be ahead of the canonical surface. If Dean's stated model is the destination, engagement-v2 changes first (or both together via the proposed shared helper) — banked for a future ship.
+
+**Table-pulled handler extended.** Added `session_views`, `replay_video_views`, `session_live_views` to the list of tables that trigger a `loadPillarCounts` refresh — needed since the new Connect maths reads from those three.
+
+**Tooling.** §23.41 fresh-HEAD clean twice (pre-blob, pre-tree, no drift across the build window). §23.52(a) all three blob bodies via base64-encoded urllib JSON. §23.52(c) all SHAs 40-char hex asserted. §23.52(b) post-commit `files[].status` `{modified: 3, added: 0, removed: 0}`. §23.53 first-100-char re-fetch on all three files at committed SHA matched. 9 inline scripts `node --check` clean. Tag balance 29/29.
+
+**Files.** vyve-site `2f0762d1`. `index.html` 125544 → 129334 bytes (+3790; engagement-v2 mirror logic is longer than the prior row-count version). `sw.js` cache key bump. `settings.html` vbb-marker 220 → 221.
+
+**No new §23 hard rules earned.** Lesson worth banking (not rule-shaped yet): *"row count is never activity count — always match the canonical surface's dedupe/cap maths"*. PM-334 is the second time this same class of bug has hit (the first was PM-159 — engagement v1 over-counting workouts before the source-aware cap). Pattern repeats whenever a new surface reads from raw `.length` instead of the per-day-capped formula. Worth a §23 if it recurs once more.
+
+---
+
 ## 2026-05-25 PM-333 — Home pills bigger + Mind before Body + carousel switched to VYVE_SESSIONS [vyve-site 65038984]
 
 **Scope.** Three small follow-ups to PM-331's home dashboard ship after Dean reviewed on device.
