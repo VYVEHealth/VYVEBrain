@@ -1,3 +1,28 @@
+## 2026-05-25 PM-368 — Home habit haptic re-aligned: synchronous tap-flip site + untick branch added [vyve-site `f33a231a`]
+
+**Dean's report.** "haptics aren't on the habits on index yet" — said after PM-360 had already shipped a wire in `index.html` `togglePill()`. Investigation showed PM-360's haptic was placed at line 2270, **after** `await VYVELocalDB.daily_habits.upsert(...)`. On iOS WKWebView the indexedDB transaction can queue and the await stall 100-400ms. The haptic landed long after the tap, decoupled from the gesture, so Dean's read was correct: from the user's POV nothing fired.
+
+**Root cause.** §23.39-adjacent. The optimistic-first contract says "flip UI synchronously, then un-awaited background work." PM-360 followed the data half correctly (Dexie + REST optimistic) but stitched the haptic to the awaited Dexie branch instead of to the synchronous UI flip. The haptic IS part of the UI flip — it belongs in the same animation frame as the `.classList.add('ticked')` (workouts precedent) or the `renderHabitList()` (home precedent). Treating the haptic as post-write feedback breaks the immediacy.
+
+**Fix.** Moved haptic dispatch to fire IMMEDIATELY after `renderHabitList()` at line 2253, before any await begins. Same animation frame as the visual flip. Both branches haptic'd:
+- Tick   (`next === true`) → `VYVEHaptics.success()` — matches habits.html PM-359 manual-flow pattern (Dean's "feels really good" reference)
+- Untick (`next === false`) → `VYVEHaptics.light()` — overrides PM-360's deliberate "untick stays silent" call
+
+PM-360's "don't celebrate correcting a mistake" rationale loses out to "a dead-feeling untick tap is the bigger UX problem". The workouts-set-untick precedent (PM-364) has settled at `light()` and the home habit untick should match. Removed the now-redundant PM-360 haptic call at the old line 2270.
+
+**Files (3, atomic at `f33a231a`):**
+- `index.html` — `togglePill()` rewrite, haptic block inserted at synchronous flip site, old wire removed
+- `settings.html` — settings-vbb-marker 251 → 252
+- `sw.js` — cache `pm366-custom-workout-delete-haptic-a` → `pm368-home-habit-haptic-realign-a`
+
+**Verification.** 9 inline JS blocks node --check clean. First-100 post-commit re-fetch on all 3 files at SHA `f33a231a` clean. Targeted lookup confirms `VYVEHaptics.success()` + `.light()` dispatch at line 2253-2264; old PM-360 haptic site at line 2270 gone.
+
+**Process notes.** §23.70 fired at commit-time. Parallel session shipped PM-367 (Mind videos Supabase catalogue, vyve-site `5fb88b63`) between session restart and HEAD recheck — PM claim re-computed 367→368. Verified PM-367's 4-file touch on mind.html / meditation.html / sleep.html / visualisation.html did NOT drop my PM-364 haptics.js inserts (base-tree-merge held; all 4 still have haptics.js refs). **Marker collision noted**: both PM-367 and PM-368 bumped 251 → 252. Live marker is 252, but it now covers two ship narratives. Cache key (`pm368-...`) is unambiguous; only the vbb-marker UI string is dual-claimed. Next vyve-site commit should bump to 253 to recover per-PM uniqueness.
+
+**Lesson — not yet a §23 rule.** "Haptic dispatch belongs at the synchronous UI-flip site, not gated behind an awaited write." Single-occurrence right now (PM-360 → PM-368 is the only instance), so banking rather than codifying. If a second haptic surface gets this wrong it earns a §23 entry — would probably be a sharpening of §23.39 explicitly listing haptics as part of the UI-flip phase, not a standalone rule.
+
+---
+
 ## 2026-05-25 PM-367 — Mind videos Supabase catalogue: mind.html / meditation.html / sleep.html / visualisation.html read from mind_videos table [vyve-site `5fb88b63`]
 
 **Scope.** Dean's call: "I need it linked so that, um, if I wanna update the videos in the future, I can just do it because eventually we're gonna just be uploading and uploading our own links rather than, um, doing it through, like, hard coordinate into the page." Mind v1 (PM-173 → PM-183, 20 May) shipped with the YouTube IDs / titles / sub-copy / duration / hero status baked into HTML literals across four files — the meditation.html / sleep.html / visualisation.html hero blocks + streams grid plus mind.html's FOCUS_POOL daily rotation. Lewis/Calum will eventually replace these with real produced content; in the meantime Dean wants to edit live in Supabase without a vyve-site commit per swap.
