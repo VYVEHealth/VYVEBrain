@@ -11,21 +11,21 @@ The contract being inventoried (one-line summary): every member-facing write is 
 ## 1. Headline numbers
 
 - **Write-surface HTML pages inventoried:** 38 (covering all six pillars + check-ins + workouts/cardio/movement + nutrition + sessions/replays + settings + focus pages)
-- **Distinct VYVEBus events found:** **43** (full table in §3 below)
+- **Distinct VYVEBus events found:** **45 real + 5 dead pluralised** (full table in §3 below). _**PM-379 correction:** initial inventory missed `live:viewed`, `mind:viewed`, `workouts:logged`, `nutrition:logged`, `habits:logged`, `live_checkin:logged`. The last four are publish-only with zero subscribers (dead pluralised focus-shell names — see Flag P0-4 in audit). Original count of 43 stands for real-event names with at least one publisher AND subscriber wired correctly._
 - **Distinct `window` CustomEvents found:** **10** (infrastructure layer — table-pulled, outbox, auth-ready, etc.)
 - **Dexie write call sites:** 23 distinct (`VYVELocalDB.<table>.<op>`)
 - **Direct PostgREST writes (`/rest/v1/<table>`):** 26 distinct tables touched
 - **Edge Function calls from client:** 17 distinct EFs called
-- **Outbox writes (`VYVEData.writeQueued`):** 1 caller (`replay-tracker.js` only)
+- **Outbox writes (`VYVEData.writeQueued`):** **8 callers** (PM-379 correction — original grep missed the bulk): `visualisation.html`, `cardio.html`, `workouts-session.js`, `habits.html` (3 sites), `focus-shell.js`, `journal.html` (2 sites), `replay-tracker.js`, `player-tracker.js`
 
 ### Health signals (note inline, not yet judged)
 
-- **3 orphan publishers** (publish, no subscribers): `'replay:viewed'` (replay-tracker), `'avatar:changed'` (settings), `'specific_goal:changed'` (settings), `'focus:write_failed'` (focus-shell)
+- **3 orphan publishers** (publish, no subscribers): `'avatar:changed'` (settings), `'specific_goal:changed'` (settings), `'focus:write_failed'` (focus-shell). _**PM-379 correction:** original list included `'replay:viewed'` as orphan — it is NOT. `player-tracker.js` publishes `'replay:viewed'` via dynamic `cfg.busEvent` indirection (L569) on 11 pages (8 live shells + replays.html + replay-category.html + mind.html). Original grep matched only the literal string and missed the indirection._
 - **3 orphan subscribers** (subscribe, no publishers): `'body:logged'` (3 connect pages — phantom contract), `'connect:hydrated'` (connect.html), `'daily_habits'` (index.html — stray subscribe using a Dexie table name as event name)
-- **`<table-event>:failed`** literal placeholder string in `vyve-offline.js` (1 publish, 0 subs — probably template fragment that escaped)
+- **`<table-event>:failed`** literal string was originally flagged as a template-string interpolation bug. _**PM-379 correction:** NOT a bug. The literal appears only inside a `/* ... */` docblock at `vyve-offline.js` L721 describing the public contract of the outbox dead-letter publish. The actual publish at L796 uses `map.event` (dynamic, from FAILURE_TABLE_MAP). Retract the flag._
 - **`tracking.js` (legacy)** still loaded on 17 `*-live.html` + `*-rp.html` shells. Brain (§23.67, PM-251 retro) claimed PM-251 dropped it; **it did not.** Both legacy `tracking.js` and new `player-tracker.js` are now loaded simultaneously on 8 `*-live.html` shells.
 - **`replay-tracker.js`** is loaded on **zero pages** — orphan module. `player-tracker.js` (PM-304) replaces it, but the old file has not been deleted from the repo.
-- **`events-rp.html`** does NOT load `session-rp.js` or `theme.js`. The other 7 rp shells do. Out-of-band shell.
+- **`events-rp.html`** does NOT load `session-rp.js`, `theme.js`, OR `session-rp.css`. The other 7 rp shells load all three. Out-of-band shell. _**PM-379 correction:** original entry said two missing tags; actual count is three (session-rp.css was missed in initial inventory)._
 - **`prompts.js` and `hydration.js`** are each loaded on only `index.html`. PM-375 brain entry notes this is by design (incremental adoption); flagged here so the auditor knows it's intentional.
 
 ---
@@ -96,7 +96,7 @@ For each event: publishers, subscribers, file:line where they live. Subscriber c
 | `monthly_checkin:failed` | `monthly-checkin.html` | `index.html` | |
 | `session:viewed` | `tracking.js` (legacy) | `index.html`, `achievements-evaluator.js` | Legacy live tracker. PM-251 was supposed to retire tracking.js — `tracking.js` is still loaded on every live + rp shell (17 pages), so this event still fires from real surfaces. |
 | `session:viewed:failed` | `tracking.js` | `index.html`, `tracking.js` (own retry) | |
-| `replay:viewed` | `replay-tracker.js` | (none — orphan publisher) | **ORPHAN PUBLISHER.** `replay-tracker.js` is loaded on 0 pages anyway, so this never fires. Was the per-replay attribution from PM-294 design that got superseded by player-tracker.js in PM-304. Subscribers found via achievements-evaluator EVENT_HANDLERS (`replay:viewed` is one of the 13) — so the evaluator IS listening, just nothing publishes. Note for auditor: replay activity is now captured by `player-tracker.js` publishing `mind:logged` (mind videos) and writing `replay_video_views` directly, never publishing `replay:viewed`. Achievement metrics that gate on `replays_watched` may be live-data-blind. |
+| `replay:viewed` | `player-tracker.js` (via dynamic `cfg.busEvent` indirection at L569 — fires when `mode='replay'`); `replay-tracker.js` (literal — but loaded on 0 pages, never fires) | `achievements-evaluator.js` via EVENT_HANDLERS (`eval_replays_watched` + 6 session-minutes + streak metrics) | **PM-379 correction.** Original entry called this an orphan publisher because the inventory grep matched the literal string and missed `player-tracker.js`'s dynamic indirection. Reality: `player-tracker.js` loads on 11 pages (8 live shells + replays.html + replay-category.html + mind.html) and publishes `replay:viewed` whenever the player is in replay mode. The `replays_watched` achievement metric is live, not data-blind. `replay-tracker.js` is still loaded on 0 pages and can be deleted as cleanup. |
 | `persona:switched` | `settings.html` | `index.html` | Single consumer (probably to refresh persona-tinted greeting). |
 | `avatar:changed` | `settings.html` | (none) | **ORPHAN PUBLISHER.** Profile avatar upload publishes but no listener. Avatar paint is presumably driven off `members` Dexie row via `vyve-localdb-table-pulled`. |
 | `specific_goal:changed` | `settings.html` | (none) | **ORPHAN PUBLISHER.** Goal change writes to `members` table, no listener — same shape as avatar:changed. |
@@ -104,8 +104,8 @@ For each event: publishers, subscribers, file:line where they live. Subscriber c
 | `certificate:earned` | (none — orphan subscriber) | `certificates.html`, `index.html` | **ORPHAN SUBSCRIBER.** Certificate earn is server-side (certificate-checker cron), no client publisher today. Subscribers presumably waiting for a future Realtime bridge or for `member-dashboard` push to fire this client-side. |
 | `daily_habits` | (none — name reuses Dexie table name) | `index.html` (L2461 — stray subscribe) | **DEAD SUBSCRIBE.** This is `VYVEBus.subscribe('daily_habits', ...)` using a Dexie table name as an event name. No publisher uses this string. Probably a bug — comment above the subscribe says "cross-page consistency". Auditor: confirm intent. |
 | `focus:write_failed` | `focus-shell.js` | (none) | **ORPHAN PUBLISHER.** Focus page write-fail signal not consumed. Focus-shell also publishes individual surface events (`mind:logged` etc.) per the focus catalogue write_target mapping. |
-| `vyve-localdb-table-pulled` | (bridged from window CustomEvent — see §6) | `engagement-v2.html` (via VYVEBus.subscribe) | This is a window CustomEvent on every other listener; engagement-v2 listens via the VYVEBus wrapper (bus.js must bridge window-events into bus subscriptions for table-pulled). Worth confirming the bus.js bridge code. |
-| `<table-event>:failed` | `vyve-offline.js` (1 publish) | (none) | **LITERAL PLACEHOLDER STRING.** The string `<table-event>:failed` is being published as the event name verbatim. Almost certainly a template-string interpolation bug — should be backticks with `${table}` substitution. Worth checking in Chat 5; doesn't surface anywhere because no subscriber matches the literal. |
+| `vyve-localdb-table-pulled` | (window CustomEvent only; NO bus bridge — see §6 + PM-379 audit Flag 14) | `engagement-v2.html` L1642 calls `VYVEBus.subscribe('vyve-localdb-table-pulled', recompute)` — but **the regex check in `publish()`/`subscribe()` rejects this name (no colon)**, so the subscriber never registers. Every other consumer correctly uses `window.addEventListener`. **PM-379 correction:** original inventory speculated there must be a bridge in bus.js — there is not. The engagement-v2 sub is dead. |
+| `<table-event>:failed` | (none — was misread as a publish) | (none) | **PM-379 correction.** Not a bug — the literal `<table-event>:failed` appears only inside a `/* ... */` docblock at `vyve-offline.js` L721 describing the public contract of the outbox dead-letter publish. The real publish at L796 uses `map.event` (dynamic, from FAILURE_TABLE_MAP) — fires the actual event name (e.g. `habit:failed`) per row that hits max-attempts. Retract the flag. |
 
 ---
 
@@ -380,8 +380,8 @@ For each surface: which Dexie table it writes, which bus event it publishes, whi
 | `achievements-evaluator.js` | 18 pages | yes — `member_achievements` | yes — `achievement-claim` EF | n/a | via EVENT_HANDLERS loop: 13 events |
 | `focus-shell.js` | focus pages | yes — table per slug | yes — table per slug | `focus:write_failed`, surface-specific events, window: `vyve-localdb-table-pulled` | n/a |
 | `session-live.js` | 8 `*-live.html` shells | no | no | none | window: `vyve-localdb-table-pulled`, `vyveAuthReady` |
-| `session-rp.js` | 7 of 8 `*-rp.html` shells (`events-rp.html` missing) | no | no | none | window: `vyveAuthReady` |
-| `tracking.js` (legacy) | 17 live + rp shells | no | yes — `session_views` | `session:viewed`, `session:viewed:failed` | own retry path |
+| `session-rp.js` | 7 of 8 `*-rp.html` shells (`events-rp.html` missing — PM-379: also missing `theme.js` AND `session-rp.css`, three tags total) | no | no | none | window: `vyveAuthReady` |
+| `tracking.js` (legacy) | 17 live + rp shells | no | yes — `session_views` AND `replay_views` (PM-379 correction — `isReplay` switch at L42 routes to `replay_views` on rp shells, `session_views` on live shells) | `session:viewed`, `session:viewed:failed` | own retry path |
 | `player-tracker.js` | 8 live shells + replays + replay-category + mind | yes — `replay_video_views` | yes — outbox path | `mind:logged` (only) | none |
 | `replay-tracker.js` | 0 pages — orphan | yes — `replay_video_views` | yes — outbox | `replay:viewed` (never fires) | none |
 | `workouts-session.js` | workouts.html | yes — `workouts`, `exercise_logs` | yes — same tables direct REST | `set:logged`, `workout:logged`, `workout:failed`, `workout:shared` | window: `vyve-outbox-dead`, `vyveAuthReady` |
@@ -465,11 +465,11 @@ Each EF and where the client calls it.
 ## 8. Notes for the Chat 5 auditor (surfaced inline above, consolidated here)
 
 1. **`body:logged` phantom contract.** Three connect surfaces subscribe; nothing publishes. Likely cause of Connect counter lag after body activity.
-2. **`replay:viewed` orphan publisher + orphan module.** `replay-tracker.js` is loaded on 0 pages; `player-tracker.js` replaces it but doesn't publish the event. Achievement metrics depending on `replay:viewed` are inert.
+2. **`replay:viewed` — NOT orphan (PM-379 correction).** Original entry called `replay-tracker.js` the only publisher; reality is `player-tracker.js` also publishes via dynamic `cfg.busEvent` indirection on 11 pages. Achievement metric `replays_watched` is live. `replay-tracker.js` itself is loaded on 0 pages (orphan module, can be deleted as cleanup).
 3. **`tracking.js` not retired.** Brain claims PM-251 dropped it; it's still on 17 shells, including all 8 `*-live.html` shells which now also load `player-tracker.js`. Two trackers run simultaneously on live shells.
-4. **`events-rp.html` is out-of-band.** Missing `session-rp.js` and `theme.js` script tags. Single rp shell that differs from the other 7.
+4. **`events-rp.html` is out-of-band.** Missing `session-rp.js`, `theme.js`, AND `session-rp.css` (three tags — PM-379 correction). Single rp shell that differs from the other 7.
 5. **`movement.html` dual-writes.** Per PM-307 brain entry, movement should write only `movement_activities`. Inventory shows REST writes to BOTH `movement_activities` AND `workouts`, plus bus publishes of BOTH `movement:logged` AND `workout:logged`. Two-table routing wasn't fully collapsed.
-6. **`<table-event>:failed` literal in vyve-offline.js.** Looks like a template-string interpolation bug (should be `${table}:failed`). Confirm and fix in Chat 5.
+6. **`<table-event>:failed` — NOT a code bug (PM-379 correction).** The literal appears only inside a `/* ... */` docblock at `vyve-offline.js` L721 describing the public contract of the outbox dead-letter publish. The real publish at L796 uses `map.event` (dynamic, from FAILURE_TABLE_MAP). Retract the flag.
 7. **`'daily_habits'` stray subscribe in index.html L2461.** Using a Dexie table name as event name. Dead code.
 8. **`connect:challenge:progress` and `connect:hydrated` orphan subscribers.** Confirm whether intentional (Realtime bridge planned) or dead listeners.
 9. **`certificate:earned` orphan subscriber.** Server-side cron produces certs; no client publisher today. May be valid forward design.
@@ -477,7 +477,7 @@ Each EF and where the client calls it.
 11. **`weight_logs` and `water/hydration` write paths in nutrition.html unclear.** My inventory didn't catch a direct REST write or outbox call. Confirm whether water is local-only (probably yes per PM-365 wording) and whether weight writes via outbox or a hidden path.
 12. **`workouts-builder.js` publishing `workout:logged`.** A builder publishing a completion event is suspicious. Confirm intent.
 13. **`workouts-notes-prs.js`, `workouts-exercise-menu.js`** publish no bus events despite writing tables. Confirm whether subscribers expect `swap:applied` / `note:saved` / `pr:logged` (none found).
-14. **VYVEBus event bridge to window CustomEvents.** `engagement-v2.html` listens for `vyve-localdb-table-pulled` via `VYVEBus.subscribe`, while every other listener uses `window.addEventListener`. There must be a bridge in `bus.js` that forwards window events to bus subscribers. Confirm and document.
+14. **VYVEBus subscribe to `vyve-localdb-table-pulled` is dead, not bridged (PM-379 correction).** `engagement-v2.html` L1642 calls `VYVEBus.subscribe('vyve-localdb-table-pulled', recompute)` — there is NO bridge in bus.js, and the event-name fails the regex (`EVENT_NAME_RE` requires a colon). The subscriber never registers. Fix: convert to `window.addEventListener('vyve-localdb-table-pulled', recompute)` to match every other consumer. See audit Flag P0-1 + Flag 14 for context.
 15. **Audit signal §23.65** (envelope-trusted subscribers): brain notes `engagement.html`, `mind.html`, `connect.html`, `exercise.html` still to audit. From this inventory: `engagement.html` is the old v1 score page (read-only); `mind.html` subscribes to `mind:logged`/`failed`/`unlogged` and calls re-render — confirm whether it trusts envelope or re-reads Dexie; `connect.html` is the phantom-subscriber risk (see #1); `exercise.html` only reads `workout_plan_cache` — likely no §23.65 risk.
 16. **Achievement evaluator gap on `replay:viewed`.** The evaluator's EVENT_HANDLERS map lists `replay:viewed` as a target event; the only publisher (replay-tracker.js) is loaded on 0 pages. The `replays_watched` metric is unreachable in production today.
 17. **§23.7.6 audit signal:** the brain lists pages to audit including cardio.html, workouts.html, wellbeing-checkin.html, monthly-checkin.html, nutrition.html, log-food.html. Each has a synchronous-tap surface; confirm in Chat 5 that none re-derive UI state from the bus subscriber pass.
