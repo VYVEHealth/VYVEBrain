@@ -1,3 +1,85 @@
+## 2026-05-25 PM-336 — movement.html icon refinement (5 swaps) + movement-history.html row dedupe by client_id [vyve-site e509ac6]
+
+**Scope.** Two surgical fixes on Movement surfaces, shipped together as one atomic commit.
+
+**1. movement.html Recent Movement Lucide icon picks — refines PM-329.** PM-329 swapped the hand-rolled stick figure + asterisk pair to Lucide icons but the picks weren't all the right ones. Dean reviewed against the live row size (20px) and proposed 5 specific swaps. Pushback offered on 1 of 5 (yoga); 4 of 5 accepted as-proposed.
+
+- `walk` — `footprints` unchanged ✅
+- `other` — `activity` unchanged ✅
+- `stretch` — `wind` → `stretch-horizontal`. `wind` (flowing horizontal lines) reads as weather, not stretching. `stretch-horizontal` is two stacked rounded bars — reads as the verb literal.
+- `yoga` — `flower-2` → `leaf`. Light call. `flower-2` (lotus-radial petals) is the more semantically-on-the-nose yoga icon, but at 20px it's busy and crowds the row visually. `leaf` is calmer and pairs better visually with `stretch-horizontal` (both have simple silhouettes at that size). Noted in the comment header that the swap was made on visual weight grounds, not semantics.
+- `mobility` — `move` → `rotate-ccw`. `move` (4-way arrows) reads as the universal drag-window/reposition affordance — wrong meaning for mobility. `rotate-ccw` (curved rotational arrow) lands the range-of-motion meaning that mobility actually carries.
+- `pilates` — `dumbbell` → `infinity`. `dumbbell` was a stretch — pilates is the un-equipment-y end of the spectrum (mat-and-springs). `infinity` reads as "controlled, continuous, looping motion" which IS pilates.
+
+All five canonical Lucide SVG paths pulled from upstream `lucide-icons/lucide` main branch — not freehand approximations. First draft of stretch-horizontal had wrong rect dimensions from memory (`height="4" y="6"/14`); caught against upstream and corrected to canonical `height="6" y="4"/14` before commit. Pattern worth keeping: when swapping Lucide icons, always pull the raw SVG from the upstream repo's `/icons/<name>.svg` rather than reconstructing.
+
+**2. movement-history.html row doubling — dedupe by `client_id`.** Reported as "every entry showing twice". Server SQL audit confirmed clean: 30 rows, 30 distinct `client_id`s, 30 distinct `id`s for the test account. So the bug was render-side, not data-side.
+
+**Root cause analysis.** Local optimistic write to Dexie uses `id = _mvClientId` (movement.html line 876). Server hydrate row arrives with `id = gen_random_uuid()` (Postgres default) and `client_id = <local uuid>`. These are two different `id`s in Dexie for the same logical activity. `replaceForMember`'s stale-sweep IS architecturally correct — it diffs `incomingIds` against local primaryKeys and bulkDeletes stale rows. But in narrow windows (slow hydrate, mid-write navigation, cold-load before sweep completes) both rows can coexist locally for several seconds. The opening hypothesis (legacy cardio + workouts fan-in) was wrong — PM-306 already retired that fan-in; movement-history reads `movement_activities` only.
+
+**Fix.** Defensive dedup at the render layer in `collectLogs()`. `dedupKey = r.client_id || r.id` — `client_id` is the canonical idempotency key per PM-167/PM-294, so deduping by it strips dual local-optimistic + server-hydrated copies of the same logical row. Falls back to `id` for any pre-migration row that might lack `client_id`. Doesn't disturb hydrate semantics — pure render guard.
+
+**Bonus fix.** Brittle `setTimeout(1500ms)` re-render replaced with bus-driven repaint. The old timer was a guess at hydrate completion time; on slow networks it could be too short (hydrate still running, re-render sees same data), on warm cache it's already done (re-render is wasted work). Now subscribes to `movement:logged` (own writes + cross-tab via BroadcastChannel) and `vyve-localdb-table-pulled` (sync.js dispatches this exact event after each successful pull, line 587). Repaints exactly when state changes, never on a clock guess. `_repainting` reentrancy guard included.
+
+**Tooling.**
+- Composio fallback throughout — `tool_search "github commit multiple files"` returned only Google Drive/Chrome tools (Composio outage continuation from earlier session). Pivoted to Vault PAT + direct GitHub REST + Git Data API for atomic multi-file commit per memory #8.
+- §23.69 session-start collision check fired at opening — scanned 8 most recent commits, found PM-329/330/331 already shipped (no overlap with planned movement work). Cleared to design-talk.
+- §23.41 fresh-HEAD re-check at commit time caught FOUR commits since session start — PM-332/333/334/335 from parallel session (replays YT.ready fix + home pills refinement x2 + achievements evaluator Habits UI). None touched movement.html or movement-history.html. Clean rebase, no surgical re-application needed.
+- §23.70 PM-claim-at-commit-time: drafted source with `PM-XXX` placeholder, sed-swept to `PM-336` immediately after the fresh-HEAD recheck claimed `max(seen)+1 = 336`.
+- §23.41 marker/cache discipline: vbb-marker `222 → 223` in BOTH index.html AND settings.html, sw.js cache-key `pm335-achievements-dexie-first-a → pm336-movement-icons-history-dedupe-a`, all in the same atomic commit.
+- §23.52(c) blob SHAs all 40-char hex from `/git/blobs` POST. §23.53 post-commit first-100-char re-fetch verified all 5 files at the committed SHA — all start with expected file shape (DOCTYPE x4 / "// VYVE Service Worker"). Spot-check: `stretch-horizontal|rotate-ccw|leaf|infinity` all present in committed movement.html. 7 matches for `dedupKey|vyve-localdb-table-pulled|VYVEBus.subscribe.*movement:logged` in committed movement-history.html.
+- `node --check` clean on all inline JS blocks in both edited files (2 blocks per file, 0 errors).
+
+**Files (vyve-site `e509ac6`).** movement.html 70582 → 70337 bytes, movement-history.html 12895 → 14682 bytes (+33 lines for bus wiring + dedup logic), index.html vbb-marker 222 → 223, settings.html settings-vbb-marker 222 → 223, sw.js cache key bumped to `pm336-movement-icons-history-dedupe-a`.
+
+**No new §23 hard rules earned.** All patterns established doctrine — §23.41 fresh-HEAD recheck + marker/cache pair, §23.45 Composio-fallback PAT-direct, §23.52(a/b/c) blob hygiene, §23.53 first-100-char post-commit verification, §23.69 session-start scan, §23.70 PM-claim-at-commit-time. Worth flagging: the Lucide-icon-swap pattern (pull canonical SVG from upstream `/icons/<name>.svg` rather than reconstruct from memory) caught one wrong-dimension bug pre-commit. If we do another icon-swap-heavy session this might warrant a §23 codify; one occurrence isn't enough yet.
+
+---
+
+## 2026-05-25 PM-321 — cardio-history.html walk filter extended to `cardio_type='walking'` (PM-319 follow-up) [vyve-site 370bc34]
+
+**Scope.** Single-file surgical fix follow-up to PM-319. The cardio-history.html walk filter was reading `cardio_type='walk'` only, but PM-319's cardio.html refactor introduced `cardio_type='walking'` as the canonical value (from the walking pill drop + custom-type expansion). Extended the filter predicate to accept both `'walk'` and `'walking'` so historical walks from before the migration AND new walks logged via the new typed-custom flow both surface in the page.
+
+**Files (vyve-site `370bc34`).** cardio-history.html (+6/-3), index.html vbb-marker bump, settings.html settings-vbb-marker bump, sw.js cache key bump.
+
+**No new §23 hard rules earned.** Standard migration-tail follow-up.
+
+---
+
+## 2026-05-25 PM-319 (cardio variant) — cardio.html: drop Walking pill, drop weekly goal card, Other becomes typed custom-type [vyve-site fd8dcaa]
+
+**NOTE on PM number collision.** Two different commits in tonight's history share the PM-319 label. The brain entry dated 2026-05-25 above ("PM-319 — mind.html video watch-time tracking") covers `b3f72f7` (mind tracker — parallel session work). This entry covers `fd8dcaa` (cardio refactor — Dean's main thread). Both legitimately PM-319 by the §23.70 monotonic-claim doctrine because they were drafted in parallel sessions that didn't see each other's claim at commit time. Forensic mapping recorded for future archaeology.
+
+**Scope.** cardio.html refactored post-PM-306 movement.html first-class promotion. Walking lives on movement.html now, so cardio.html's Walking pill became orphaned UX — a member who taps "Walking" on cardio.html and a member who taps "Walking" on movement.html were writing to different tables (`cardio` vs `movement_activities`), creating divergent data paths for the same intent. Dropping the pill consolidates walking-as-movement onto movement.html.
+
+**Changes.**
+- Walking pill dropped from cardio.html kind picker.
+- Weekly goal card removed from cardio.html (post-PM-306 these targets are pillar-level, not page-level — engagement-v2 / home pills carry them).
+- "Other" kind expanded to a typed custom-type input (free text → `cardio_type` column). Member types e.g. "rowing" / "skiing" / "stair climber" and it carries through into stats + history filters.
+- Minor label alignment fix (existing CSS oddity surfaced when pill row shortened).
+
+**Files (vyve-site `fd8dcaa`).** cardio.html (+166/-129), plus standard marker + cache bumps in index.html / settings.html / sw.js.
+
+**Follow-ups.** PM-321 (cardio-history.html walk filter extension) shipped immediately after as a tail-fix.
+
+**No new §23 hard rules earned.** Standard surface refactor following the pillar-first taxonomy laid down in PM-306.
+
+---
+
+## 2026-05-25 PM-317 (movement variant) — movement.html cold-load mirrors cardio.html exactly [vyve-site b890dbb]
+
+**NOTE on PM number collision.** Two different commits share the PM-317 label. The brain entry "PM-319 — mind.html video watch-time tracking" already documents this collision in its tooling section: `b3f72f7` = PM-317 mind tracker (parallel session, renumbered to PM-319 in brain), `b890dbb` = PM-317 movement cold-load (this entry — Dean's main thread). This entry is the deep-doc for `b890dbb`.
+
+**Scope.** movement.html cold-load painted empty on first open even when Dexie had rows (because hydrate was racing the paint). cardio.html had previously been hardened against exactly this race; movement.html still had the older fragile pattern. Refactor copied the cardio.html cold-load pattern verbatim — Dexie-first read with non-empty gate, REST fallback when Dexie is empty, hydrate fan-out kicked off as a side-effect, paint triggered both inline and on `vyve-localdb-table-pulled`.
+
+**Net effect.** No more empty-paint flicker on cold-load. Hot-load (warm Dexie) paints inline at <16ms. Cold-load (empty Dexie) paints from REST in ~200-400ms, then re-paints from Dexie on hydrate completion if the REST + hydrate races diverge.
+
+**Files (vyve-site `b890dbb`).** movement.html (+251/-49), plus standard marker + cache bumps.
+
+**No new §23 hard rules earned.** Pattern was already established by cardio.html; this is just propagation to the matching surface.
+
+---
+
 ## 2026-05-25 PM-335 — Dexie-first achievements evaluator + Habits pillar UI shipped [vyve-site 18d62139 + supabase EF achievement-claim v1]
 
 **Architectural redirect.** Dean's mid-session pivot retired the server-side achievement evaluation path (PM-322/328's `log-activity evaluate_only` + `_shared/achievements.ts` inline evaluator) in favour of a Dexie-first, bus-subscribed client evaluator. Reason: server round-trip on the threshold-crossing tap (200-400ms best case, 2-3s on cellular) is fundamentally incompatible with "instant on the tenth habit." Local Dexie read post-bus-event is sub-50ms, deterministic, no network on the hot path.

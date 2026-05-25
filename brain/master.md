@@ -688,6 +688,28 @@ Reference artefacts: `brain/staging/achievements-catalog-v1.md`, `brain/staging/
 
 ---
 
+### PM-336 (25 May 2026 PM) — movement.html icon refinement + movement-history.html row dedupe [vyve-site e509ac6]
+
+Two surgical fixes on Movement surfaces in one atomic commit.
+
+- **Recent Movement icon picks refined.** Five of six Lucide kind-icons swapped post-PM-329 against live-row 20px legibility: `stretch` wind→stretch-horizontal, `yoga` flower-2→leaf, `mobility` move→rotate-ccw, `pilates` dumbbell→infinity. `walk` (footprints) and `other` (activity) unchanged. All canonical Lucide paths pulled from upstream `lucide-icons/lucide` main, not freehand.
+- **movement-history row doubling fixed.** Defensive dedup in `collectLogs` by `client_id` (falls back to `id`). Root cause: local-optimistic Dexie row (id=client_id) + server-hydrated row (id=gen_random_uuid, client_id=<local uuid>) can coexist in narrow windows even though `replaceForMember` stale-sweep is architecturally correct. `client_id` is the canonical idempotency key per PM-167/PM-294 — render-layer dedup is the right guard. Brittle `setTimeout(1500ms)` re-render replaced with bus-driven repaint on `movement:logged` + `vyve-localdb-table-pulled`.
+
+Full changelog entry covers the §23.69 + §23.70 collision-check details (parallel session shipped PM-332/333/334/335 mid-session, none touched movement files).
+
+### PM-321 (25 May 2026 PM) — cardio-history.html walk filter extended to cardio_type='walking' [vyve-site 370bc34]
+
+PM-319 follow-up. Walk filter in cardio-history.html was reading `cardio_type='walk'` only; PM-319's typed-custom expansion introduced `cardio_type='walking'` as the canonical value. Filter predicate extended to accept both so pre- and post-migration walks both surface.
+
+### PM-319 cardio variant (25 May 2026 PM) — cardio.html: drop Walking pill, drop weekly goal card, Other typed-custom [vyve-site fd8dcaa]
+
+Post-PM-306 movement.html first-class promotion meant cardio.html's Walking pill became an orphaned UX — same intent, different table. Walking pill dropped (lives on movement.html now). Weekly goal card dropped (targets are pillar-level post-PM-306). "Other" expanded to typed custom-type input feeding `cardio_type` column. Minor label alignment fix. PM-321 shipped immediately after as tail-fix. NOTE: PM number collision with `b3f72f7` (mind tracker, parallel session) — see PM-319 mind-tracker changelog for forensic mapping.
+
+### PM-317 movement variant (25 May 2026 PM) — movement.html cold-load mirrors cardio.html exactly [vyve-site b890dbb]
+
+movement.html cold-load painted empty on first open when Dexie had rows (paint racing hydrate). cardio.html had already been hardened against this race; propagated the same pattern verbatim — Dexie-first read with non-empty gate, REST fallback when Dexie empty, hydrate fan-out as side-effect, re-paint on `vyve-localdb-table-pulled`. Net: no more cold-load empty flicker. NOTE: PM number collision with `b3f72f7` (mind tracker, parallel session) — see PM-319 mind-tracker changelog for forensic mapping.
+
+
 ### PM-335 architectural redirect (25 May 2026 PM) — Dexie-first evaluator [SUPERSEDES §11A inline/sweep split for member-action metrics]
 
 **The redirect.** Achievement evaluation moves from server-side (`log-activity evaluate_only` + `_shared/achievements.ts`) to client-side **Dexie-first, bus-subscribed**. Reason: instant feedback on the threshold-crossing tap is non-negotiable; server round-trip is 200-400ms best case, 2-3s on cellular — that's "five, ten, fifteen, twenty seconds later" UX that breaks the achievement-toast moment.
