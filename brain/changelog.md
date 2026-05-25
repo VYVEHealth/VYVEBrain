@@ -1,3 +1,26 @@
+## 2026-05-25 PM-358 — Tier copy review CSV exported [VYVEBrain brain/staging/]
+
+Lewis-reviewable CSV exported from `achievement_tiers` so he can mark up the inaccurate titles and bodies — many of the PM-322 placeholders and a fair chunk of the supposedly-approved rows have problems (e.g. "Fifty Habit Days" when threshold is actually 50 logs not 50 days; "the default is shifting in your favour" — poetic but doesn't tell the member what they did).
+
+**File:** `brain/staging/tier-copy-review-pm354.csv` (528 rows, 102KB)
+
+**Columns:** `pillar, sort_order, slug, display_name, unit, wired_status, tier_index, threshold, current_title, current_body, copy_status, proposed_title, proposed_body, approved_y_n`
+
+**Filter:** Excluded 10 `hidden=true` achievements (anniversary, came_back, comeback_PB, first_light, full_house, honest_checkin_tier5, owl, quiet_wins, reciprocity, streak_saver) — they're easter eggs/surprises and shouldn't appear in tier copy review. Kept everything else: 528 rows from 97 distinct metrics. md5 of body verified server-side as `7b581625f0d517e06ac7313e53a1fcd7`.
+
+**Sort order:** pillar (focus → habits → body → mind → connect → checkins → cross_cutting) → sort_order → slug → tier_index. Cross-cutting metrics (DB `pillar IS NULL`) bucketed at end as "cross_cutting".
+
+**Workflow:** Lewis returns the CSV with `approved_y_n=Y` and his `proposed_title`/`proposed_body` filled in → Claude runs bulk UPDATE on `(metric_slug, tier_index)` setting `title`, `body`, `copy_status='approved'`.
+
+**Side-task surfaced — catalog `wired` flag drift:** Filtering by `m.wired=true` would have wrongly dropped ~232 rows. `achievement_metrics.wired` has drifted from reality:
+- PM-335 wired the 11 Habits metrics client-side but never `UPDATE`d the catalog flag
+- PM-342 wired ~50 Body/Mind/Connect/Check-ins metrics client-side, same omission
+- PM-350's 8 Focus metrics were the only ones that got the explicit `UPDATE achievement_metrics SET wired=true`
+
+CSV includes `wired_status` column (literal "wired" or "NOT WIRED" string from catalog) so Lewis can prioritise the actually-firing tiers. Backlog task: one-time sweep `UPDATE achievement_metrics SET wired=true WHERE slug IN (...)` for the Habits/Body/Mind/Connect/Check-ins metrics that have shipping evaluators, to bring the catalog flag back in line with reality. Any future filter that trusts `wired` is misleading until this is done.
+
+**Build path:** Composio still down (continuing 21 May outage). Used PAT-direct curl via Supabase Vault `GITHUB_PAT_CLAUDE` per memory #8. CSV built server-side via Postgres `string_agg` with proper RFC-4180 quoting (`"`-escaped via `REPLACE`). Encoded base64 server-side, retrieved in 3 chunks (~45K each) via a tmp table `_tier_csv_export_tmp`, decoded client-side, md5-verified. Tmp table dropped post-extract.
+
 ## 2026-05-25 PM — Session close: focus pivot to in-app feature completeness [brain hygiene]
 
 Dean's call at session wind-down: park the v4 architecture work (Dexie audit, offline-first, performance, Capacitor release) until in-app features are functionally complete. Priority order locked for the next several sessions:
