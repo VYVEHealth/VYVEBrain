@@ -1,3 +1,21 @@
+## 2026-05-25 PM-358 — Workout builder header safe-area + Lucide dumbbell empty-state [vyve-site 245a8af]
+
+**Scope.** Dean confirmed PM-357 worked ("that worked", screenshot showing "No custom workouts yet" empty state). Same screenshots surfaced two follow-ups: (1) Cancel button on the New Workout builder overlaps with the iOS status bar/clock — header `padding:0 20px` + fixed `height:60px` with no safe-area-inset; (2) the empty-state dumbbell glyph is the old hand-rolled SVG (rounded rectangles), not the Lucide canonical dumbbell used everywhere else (PM-336/338, exercise.html `ico-dumbbell`).
+
+**Fix 1: workout-builder header (workouts.html:481).** §23.72 violation surfaced again. Replaced `padding:0 20px; height:60px` with `padding:env(safe-area-inset-top,0) 20px 0; min-height:calc(60px + env(safe-area-inset-top,0))` — same pattern as `.session-view-header` (workouts.html:78). Header now drops below notch/Dynamic Island, content area expands accordingly. Cancel button + "New Workout" title + right spacer reflow naturally into the visible band.
+
+This is the third surface in two days where a fixed-pixel `top` or `padding-top` was hiding controls under iOS chrome (sv-close earlier, fullscreen video × in PM-351, now builder header in PM-358). §23.72 is doing its job catching them at audit time. Worth a one-shot grep sweep next session for any remaining `position:fixed` + bare-px positioning in modal/overlay surfaces.
+
+**Fix 2: empty-state dumbbell glyph (workouts-programme.js:480).** Old SVG was a stack of `<rect>` elements approximating a dumbbell shape — rounded plates + bar + handle. Replaced with the Lucide canonical dumbbell path set (5 paths: two plate-end circle arcs, two tick marks for the diagonal flair, one connecting bar). Identical to `<symbol id="ico-dumbbell">` defined in exercise.html (PM-343). Inlined directly rather than referenced via `<use href="#ico-dumbbell"/>` because workouts.html doesn't have the SVG sprite — only exercise.html (Body hub) hosts the symbol set. Could be promoted to a shared sprite file in future, not worth it for one icon today.
+
+Size bumped 24×24 → 28×28 to better fill the 56×56 `.empty-state-icon` container. Stroke + fill conventions match Lucide canonical (`stroke="currentColor"` + `stroke-width="2"` + line-cap round + no fill) so it picks up the existing `color:rgba(77,170,170,0.4)` from `.empty-state-icon` CSS automatically.
+
+**Ship details.** vyve-site `245a8afc`. 5-file commit: workouts.html (header padding), workouts-programme.js (empty-state SVG), sw.js, index.html (vbb 244), settings.html (vbb 244). sw cache `pm357-...` → `pm358-builder-header-safearea-lucide-dumbbell-a`. Atomic via Git Data API. §23.41 first-100 verify on all 5 files at commit SHA matched. Tag balance 101/101 on workouts.html unchanged. JS syntax `node --check` clean.
+
+**No parallel collision** — clean ship from my own PM-357 HEAD.
+
+**No new §23 rule earned** — §23.72 fired correctly on the safe-area fix (this is the second instance after PM-351 codified it), Lucide swap is a one-off cosmetic alignment.
+
 ## 2026-05-25 PM-358 — Tier copy review CSV exported [VYVEBrain brain/staging/]
 
 Lewis-reviewable CSV exported from `achievement_tiers` so he can mark up the inaccurate titles and bodies — many of the PM-322 placeholders and a fair chunk of the supposedly-approved rows have problems (e.g. "Fifty Habit Days" when threshold is actually 50 logs not 50 days; "the default is shifting in your favour" — poetic but doesn't tell the member what they did).
