@@ -10,7 +10,7 @@ Out of scope for PM-346 (which was wiring only); flagging here so it surfaces ne
 
 ## SHIPPED 25 May 2026 PM-342 — PM-335 — Achievements v3 — Dexie-first evaluator rollout (COMPLETE)
 
-**Status.** PM-335 (Habits pillar proof) + PM-342 (Body + Mind + Connect + Check-ins pillars) close this campaign for the five wirable pillars. Focus stays blocked behind the `focus_completions` data-layer campaign.
+**Status.** PM-335 (Habits pillar proof) + PM-342 (Body + Mind + Connect + Check-ins pillars) + PM-350 (Focus pillar via Option A: derive completions from existing focus_slug column) close this campaign across ALL 6 PILLARS. Fuel later retired at PM-353 because Food Log is deferred — 11 of original 12 focuses live across 21 slots; Wednesday morning slot reassigned 'fuel' → 'hydration'.
 
 **Original next-session asks PM-336/337/338/339 — all shipped in one atomic 19-file commit at PM-342 (cbbeb62f, 25 May).** See changelog PM-342 entry for the metric inventory across each pillar (19 Body / 13 Mind / 15 Connect / 9 Check-ins).
 
@@ -20,7 +20,9 @@ Out of scope for PM-346 (which was wiring only); flagging here so it surfaces ne
 
 **Outstanding items from the campaign:**
 
-- **PM-340+ Focus pillar.** BLOCKED until `focus_completions` table ships (separate data-layer campaign — no decision yet on whether "complete a focus" means any activity tagged with that focus_slug counts (Option A, cheapest) or a discrete button per focus card page (Option B/C, more UI work). Carries over.
+- **SHIPPED PM-350 — Focus pillar (Option A).** Wired off `focus_slug` text column on 5 source tables. 8 metrics: focus_cards_completed, first_focus_complete (tiered), distinct_focuses_tried, same_focus_completed_10x, streak_focus, daily_focus_all_complete, weekly_focus_completion, focus_from_every_pillar_week. UPDATE achievement_metrics SET wired=true WHERE pillar='focus' (8 rows). No schema change.
+
+- **SHIPPED PM-353 — Fuel focus retired.** Food Log Coming Soon deferral means nutrition_logs has no publish surface; fuel completions can't accumulate organically. Removed from FOCUS_TO_PILLAR + readAllFocusActivities + COPY map. Wednesday morning slot reassigned 'fuel' → 'hydration'. Re-add path one-line-per-file when nutrition lands.
 
 - **Mind UI reveal.** Single SQL UPDATE pending Phil's clinical sign-off on the 13 Mind metric copy + tier thresholds. Lewis + Phil parallel + non-blocking.
 
