@@ -1,3 +1,83 @@
+## 2026-05-25 PM-355 — Fullscreen video overlay raised above swap modal [vyve-site 7894a3e]
+
+**Scope.** Dean confirmed PM-352's tap-to-preview rewire is now firing — the click handler runs, the video element gets created and starts playing — but the video opens *behind* the swap exercise modal so the screen still appears unchanged. Only after backing out of the picker does the video become visible (already playing). Closes the loop on the PM-346 → PM-352 → PM-355 chain.
+
+**Root cause.** Z-index stacking conflict. The fullscreen video overlay (`openVideoFullscreen` in workouts-programme.js) was created at `z-index: 2000`. The exercise search modal (`#exercise-search-view` in workouts.html:170) sits at `z-index: 10000` — five times higher. The video element rendered to the DOM correctly, played correctly, and emitted audio correctly, but was visually occluded by the picker above it.
+
+**Other modal z-index values for reference** (workouts.html):
+- `body::before` background: 0
+- `main`: 1
+- `session-view`: 500
+- `ex-menu-backdrop`: 800
+- `ex-menu-sheet`: 801
+- `reorder-modal`: 900
+- `exercise-search-view`: 10000 ← the offender
+
+**Fix.** Overlay z-index 2000 → 20000, close button z-index 2001 → 20001. Picked 20000 (not 10001) to leave clear headroom above any future modal — z-index 10000 on the picker is already aggressive; we don't want to keep chasing the ceiling on every conflict.
+
+**Why this didn't surface before PM-346.** Pre-PM-346, `openVideoFullscreen` was only callable from the in-session card thumbnails inside the regular workout view — at that point no fullscreen modal was open. The video overlay's 2000 was always above the session-view (500) and any visible UI. PM-346 added a new caller from inside the picker modal, which has dramatically higher z-index than anything that existed at the time `openVideoFullscreen` was originally designed. The function pre-dates the picker modal entirely; its z-index was set against the world that existed then.
+
+**Three-strike retro for the PM-346 feature.** Started with the wiring (PM-346 — inline onclick + ex.video_url). Bug shape #1: thumb tap didn't trigger handler reliably under iOS WKWebView. Then PM-351: close button untappable under iOS notch (latent bug surfaced by increased video-player usage). Then PM-352: rewrite to addEventListener + getVideoUrl normalisation to fix #1. Now PM-355: z-index conflict, the *third* manifestation of "the player wasn't designed to be opened from inside a higher-priority modal."
+
+**§23 candidate — bank.** When wiring a pre-existing helper to be called from a new context, audit the helper's assumptions against the new context (z-index, scroll context, focus trap, escape-key handler ownership). For PM-346 specifically, `openVideoFullscreen` carried assumptions baked in May 2026 about modal layering that no longer matched May 2026 reality. Banking but not promoting — closely related to PM-352's "copy working mechanism" insight; want to see another instance before formalising.
+
+**Ship details.** vyve-site `7894a3e9`. Two-line code change in `workouts-programme.js` (z-index values) plus the §23.41 portal triplet. sw cache `pm354-leaderboard-avatars-a` → `pm355-video-overlay-zindex-a`. vbb 240 → 241 on both marker files. §23.66/§23.70 fired once — initial PM-353 claim collided with parallel session's Fuel-focus-retired ship which had just landed, then PM-354 leaderboard avatars also landed; sed-rebase PM-353 → PM-355 with marker rebase 239 → 241 + cache key swap. §23.41 first-100 verify on all 4 files at commit SHA matched.
+
+**No new §23 hard rule promoted** — banking the "audit helper assumptions when adding new caller contexts" pattern but not yet codifying.
+
+## 2026-05-25 PM-354 — Leaderboard row avatars from members.avatar_url (PM-242 deferred slice CLOSED) [vyve-site 06fdfec + supabase RPC]
+
+**Scope.** Closes the deferred slice from PM-242 (Profile identity rollout). Until tonight, `leaderboard.html` rendered the same gold V-mark `anonSVG` for every single row regardless of whether the member had uploaded a photo or set their display-name preference to anything other than anonymous. The slice was deferred at PM-242 with a brain note that `get_leaderboard()` RPC "needs additive `email` column return before its EF can hydrate identity" — that note was directionally right but specifically wrong: `email` would be a privacy leak (leaderboards are competitive surfaces; exposing emails of ranked members enables targeted contact). The correct shape is `avatar_url` only, with the same privacy-coupling rule as PM-242 on `connect-feed-preview` EF v2: `dnp='anonymous'` → `avatar_url=NULL`.
+
+**RPC change.** Supabase migration `pm350_leaderboard_avatars` applied (filename carries the early draft PM number — see §23 forensic note at bottom). `public.get_leaderboard()` returns three new fields on every ranked row + every "above you" row, across all four metrics (`all`/`habits`/`workouts`/`streak`) in both the top-100 ranked list and the 10-row "above caller" list:
+
+- `avatar_url`: `members.avatar_url` URL when `dnp != 'anonymous'`, otherwise `NULL`. Privacy can't leak through render — mirrors PM-242 rule on `connect-feed-preview` EF v2.
+- `initials`: computed from `first_name+last_name` when `dnp != 'anonymous'`, otherwise `NULL`.
+- `is_anonymous`: boolean — `dnp = 'anonymous'`.
+
+**Email is NEVER exposed.** Display name continues to honour the existing `dnp`-based projection (`full_name` / `first_name` / `initials` / `anonymous`). Only those projections + avatar (privacy-coupled) reach the client. Dean's exact spec from the talk-first: "the only personal information that should be available is what the customer selects their name to be, initial first name or full name and then profile picture if they have anything other than anonymous. no email should be show."
+
+The SQL implements this via a `pool` CTE addition:
+
+```
+CASE WHEN dnp = 'anonymous' THEN NULL ELSE avatar_url END AS render_avatar_url,
+CASE WHEN dnp = 'anonymous' THEN NULL
+     ELSE upper(left(coalesce(trim(first_name),'M'),1))
+          || upper(left(coalesce(trim(last_name),''),1)) END AS render_initials,
+(dnp = 'anonymous') AS is_anonymous
+```
+
+`m.avatar_url` was already in the `members` LEFT JOIN; the patch threaded it into the `base` CTE then through `pool` with the privacy gate, then into all 8 `jsonb_build_object` builders (4 `ranked_*_json` + 4 `above_*`).
+
+**EF unchanged.** Leaderboard EF v17/v18 is a thin pass-through to the RPC, so the three additive fields flow through automatically. No EF redeploy.
+
+**Client change (`leaderboard.html`).**
+
+1. `<script src="/profile.js" defer></script>` added next to `achievements.js`.
+2. `.avatar` CSS extended: `overflow:hidden` + 12px/600 font for initials fallback + `img` child sizing rules (`width:100%; height:100%; object-fit:cover`) + `.is-anon` padding/filter rules + `.has-photo` transparent background.
+3. Row render path swapped from inline static `anonSVG` to `window.VYVEProfile.buildAvatarInnerHtml({display_name, avatar_url, initials, is_anonymous})` with `buildAvatarClassModifiers` driving the outer class so `.has-photo` / `.is-anon` CSS rules engage correctly. Caller row (you) keeps its teal-tinted ring + caller V-mark variant for self-identification — separate render path inside the same template, unchanged.
+4. `is_anonymous` from RPC is now canonical (was: client-side heuristic from `display_name === 'Member'`). Heuristic retained as back-compat fallback for pre-PM-354 cached payloads still in localStorage.
+
+**Smoke test verified RPC output against live data:**
+
+- Rank 1 — `test1@test.com`: real `avatar_url` (the only photo in current cohort), `initials: TC`, `is_anonymous: false`
+- Rank 2 — Dean (caller): `avatar_url: null`, `initials: DB`, `is_anonymous: false`
+- Rank 3 — TEST SEEDED: `avatar_url: null`, `initials: TS`, `is_anonymous: false`
+
+No anonymous-mode members have photos in current cohort, so the privacy-null behaviour wasn't observable in smoke test — but the SQL `CASE WHEN dnp='anonymous' THEN NULL` is straightforward and self-evidently correct.
+
+**Tooling collisions and §23.69/§23.70 hits.** Parallel session shipped PM-350 (Focus pillar live), PM-351 (fullscreen video safe-area), PM-352 (picker thumb wiring), PM-353 (Fuel focus retired) across the window I was preparing this commit. **§23.70 fired TWICE** as PM number claim shifted PM-350 → PM-352 → PM-354 during prep. Each rebase used per-file fresh re-fetch of `sw.js` / `index.html` / `settings.html` from live HEAD and a clean sed-replacement of PM numbers in source comments. None of the parallel ships overlapped with `leaderboard.html` or the RPC, so the rebase was marker + cache-key-only. Final commit at parent `f27b198f` (PM-353 was the freshest), shipped at SHA `06fdfec5`.
+
+**vbb-marker tracking through the collision window.** I started at 235 (post-PM-349 from earlier this session), parallel landed 236 (PM-350), 237 (PM-351), 238 (PM-352), 239 (PM-353); my final claim of 240 with PM-354 cache key `pm354-leaderboard-avatars-a` superseded.
+
+**Forensic note (§23.14 / §23.45 sibling).** Migration filename `pm350_leaderboard_avatars` carries the early draft PM number — migration names are Supabase append-only history (same forensic pattern as `pm_304_create_movement_activities` for PM-307 and `pm299_create_session_live_views` for PM-304). The brain entry PM-354 is the canonical reference. Also: parallel session's PM-353 commit message reports cache key bump `pm351 → pm352` but the commit is PM-353 — sw.js precache record retained `pm352-fuel-focus-retired-food-log-coming-soon-a` for ~30 minutes until my PM-354 ship superseded it. Minor cosmetic, no production impact.
+
+**Composio still 401-ing this session** (memory #8 — security incident from 21 May still active, now ~5 days), Vault PAT direct via Supabase MCP throughout. Supabase MCP also used for `apply_migration` (PM-354 RPC update) + `execute_sql` (smoke test).
+
+**§23.41 first-100 verification on all 4 files at commit SHA `06fdfec5` — matched.** `node --check` clean on all 3 inline scripts in `leaderboard.html`. Tag balance 10/10.
+
+**No new §23 hard rule earned** — applies the established PM-242 privacy rule pattern to the leaderboard surface. The "client-side heuristic for `is_anonymous` is fragile, prefer server-canonical field" lesson is worth banking as a class principle but the heuristic pattern only appears in one other place (connect-feed.html I'd need to audit), not yet recurrent enough for codification.
+
 ## 2026-05-25 PM — PM-335 through PM-353 — Dexie-first achievements: complete rollout across all 6 pillars [vyve-site: f27b198f + earlier · supabase: achievement-claim EF v1]
 
 **Big architectural campaign closed in one extended session.** PM-335 shipped the Dexie-first evaluator with Habits as proof-of-shape; PM-339→347 hardened it through real device testing; PM-342 wired Body + Mind + Connect + Check-ins pillars; PM-347 fixed toast deep-linking; PM-350 added Focus pillar via the `focus_slug`-on-source-tables read pattern; PM-353 retired the `fuel` focus when Food Log was deferred. Net result: 5 of 6 pillars fully live with instant on-threshold-cross toasts; Focus also live but with proxy logic for its calendar-coupled metrics.
