@@ -1,3 +1,23 @@
+## 2026-05-25 PM-362 — Connect check-in optimistic-flip: UI navigates back immediately after Dexie + bus, not gated on fetch [vyve-site `22885751`]
+
+**Scope.** Dean reported: opened VYVE on his iPhone, went to Connect, typed today's prompt response, tapped "Post check-in" — nothing happened. Page sat there with the button disabled, no feedback, no navigation. Diagnosis from reading `connect-checkin.html` `postCheckin()`: the §23.39 optimistic-first contract was broken on this surface. The Dexie write + bus publish were correct, but `history.back()` (the UI flip) was bolted onto `fetch().then(res.json()).then(...)`, so any wedge in `jwtHeaders()` (Supabase `getSession()` pending) or a stalled fetch left the page visually dead despite the data being live everywhere else. PM-289 (the prior touch on this code path) had tried to fix a different problem — the success-path navigate beating the network commit — by gating navigation on the json parse. That introduced this new failure mode: if the fetch never resolves, navigation never fires.
+
+**The fix.** Move `history.back()` to run immediately after the bus publish, before any awaited network work. The page disappears the moment Dexie + bus succeed. The POST fires un-awaited in the background with `keepalive: true` (kept from PM-289 — still the right call for iOS WKWebView teardown). All failure paths now operate on a page that's already gone: 4xx deletes the Dexie row + publishes `connect:checkin:failed` (hub subscriber can react); 5xx + network throw enqueue to outbox. Success path (2xx) reconciles the canonical server row into Dexie silently — no navigate, page is already on `/connect.html` and its bus subscriber will pick up the canonical-id update via the next Dexie read.
+
+**Why this is the canonical §23.39 shape.** Reference impl `focus-shell.js` `complete()` — write Dexie → publish bus → return synchronously after step 3 → background POST. `journal.html` `saveEntry()` same shape. `connect-checkin.html` was the outlier; PM-289's well-intentioned defensive coding turned the surface synchronous-in-UI-but-async-in-data into synchronous-everywhere. The page sitting dead with the button disabled is the user-visible symptom of awaiting work that the contract says should not be awaited.
+
+**Files (4, atomic at `22885751`):**
+- `connect-checkin.html` — postCheckin() refactored. Dexie write → bus publish → history.back() + fallback /connect.html safety net → un-awaited fetch in background. Failure paths unchanged in shape, just no longer driving navigation. PM-289's keepalive: true preserved. ~70 lines structurally rearranged; net -465 bytes.
+- `sw.js` — cache `pm361-journal-premium-prompt-a` → `pm362-connect-checkin-optimistic-flip-a`.
+- `index.html` — vbb-marker Update 247 → 248.
+- `settings.html` — settings-vbb-marker Update 247 → 248.
+
+**Verification.** node --check clean on both inline JS blocks (81 chars + 26031 chars). Post-commit first-100-char re-fetch on all four files pinned to commit SHA `228857514bb96a0650c8c0337ad114bbb3f8ded2` — all match. Live HEAD re-checked immediately before commit per §23.70 (was `8a164f17` PM-361, PM-362 free). Live device test pending Dean's next force-quit + reopen.
+
+**No new §23 hard rule earned.** This is §23.39 enforced after a prior session drifted off the contract. The lesson — "navigation belongs in the optimistic path, not the fetch chain" — is already implicit in §23.39's "flip UI / clear inputs / repaint; THEN un-awaited background POST" sequence. The audit signal §23.39 specifies (a write inside a page without a `VYVEBus.publish` line above it) didn't catch PM-289's regression because the bus publish WAS still there — just with extra work bolted on after it. Worth a sharpening pass on §23.39's audit signal at some point: "and the page must navigate / flip view immediately after publish, before any awaited fetch." Not earning a new rule today; noting for next time the doctrine gets touched.
+
+---
+
 ## 2026-05-25 PM-361 — Journal premium pass: editorial prompt card + self-contained past-entry prompts [vyve-site `8a164f17`]
 
 **Scope.** Dean opened the journal on his iPhone and flagged it as "feeling less premium" than the rest of the app. Three surfaces, one underlying problem: the prompt copy was visible (title bold, body muted) on the compose card itself, but stripped to title-only on the active-prompt strap and on every past-entry card in calendar view. Reading back "Prompt: Your steady ground" → "hello" tells you nothing about why you reflected on whatever you reflected on. The question that produced the entry was gone the moment you saved.
