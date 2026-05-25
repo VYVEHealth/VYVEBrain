@@ -3999,3 +3999,58 @@ If any of those three is missing, this rule doesn't apply — page-local helpers
 
 ---
 
+### §23.74 — Cross-repo PM-number scan before claiming any PM identifier (PM-381 → PM-381.b, 25 May 2026)
+
+**Status: HARD RULE.** Earned on third occurrence inside 24 hours (PM-378 collision, PM-379 collision, PM-381 itself running the cross-repo scan and claiming correctly). Threshold met cleanly per §23 doctrine (candidate after first, hard rule after second-or-third recurring).
+
+**The collision shape.** §23.70 (PM-claim-at-commit-time) scans the last 5 commits on the **ship target repo** for the highest PM-N before claiming. But VYVE has two active repos that share a single PM-number namespace by convention: `VYVEHealth/vyve-site` (the portal code) and `VYVEHealth/VYVEBrain` (the brain — master/changelog/backlog/playbooks/staging docs). A code-ship session running §23.70 against vyve-site sees only vyve-site commits and can correctly claim "max vyve-site PM-N + 1" — but a parallel brain session may have already claimed that same PM-N for a brain-only doc deliverable (typically a staging architecture doc, a playbook revision, or a backlog addendum). The result: two distinct commits in the world share the same PM-N label, one in each repo. Forensic disambiguation becomes painful; the brain-narrative integrity breaks.
+
+**Documented collisions to date.**
+
+- **PM-378 collision (25 May 2026, ~19:22 UTC).** vyve-site `abcf3d3e` "PM-378 — Podcast platform links migrated to Supabase catalogue" (canonical, ship-bearing). VYVEBrain `451f849` "PM-378 — Architecture map (staging): write-surface inventory across the portal" (parallel staging artefact, ~13 minutes earlier in time but the vyve-site session was first to commit-prep and lock the PM-378 source comments / Supabase migration name / sw cache key / `CATALOGUE_INVALIDATION_KEY` value). Resolution: vyve-site keeps PM-378 (already permanent in code), brain staging artefact carries the suffix-less PM-378 label but with a brain-only namespace. Disposition logged in PM-378's changelog entry.
+
+- **PM-379 collision (25 May 2026, mid-day).** vyve-site `4b445767` "PM-379 — Monthly check-in recap rebuilt around canonical 4 pillars" (canonical). VYVEBrain `8777c083` "PM-379 — Architecture audit (staging)" + VYVEBrain `ed70eedf` "PM-380 — Architecture map corrections per PM-379 audit" (parallel staging artefacts). Resolution: vyve-site keeps PM-379, brain entry takes `.b` suffix (`PM-379.b`) to preserve narrative integrity. Suffix convention established earlier at PM-362.b (weekly recap brain close).
+
+- **PM-381 (25 May 2026, evening).** vyve-site `29a8760f` "PM-381 — bus.js event-name regex loosened to accept 2+ colon segments" (canonical). PM-381's commit message documents running the cross-repo scan: vyve-site max-PM=379, VYVEBrain max-PM=380, cross-repo max=380, claim PM-381. Novel in both repos. **First clean application of §23.74 as a discipline.** The brain-close lands as PM-381.b (this brain entry).
+
+**The rule.**
+
+At the §23.70 PM-claim-at-commit-time check, scan the last 5 commits of **both** `VYVEHealth/vyve-site` and `VYVEHealth/VYVEBrain` for the highest `^PM-(\d+)` label in commit messages. Take the max across BOTH repos. Claim that max + 1 as your PM number. If the parallel repo has shipped a PM-N for a brain-only or staging-only artefact (typical pattern: staging architecture docs, playbook revisions, or brain-close entries themselves), increment past it regardless of which repo your ship is targeting.
+
+```python
+# At PM-claim-at-commit-time (§23.70 with §23.74 extension):
+def claim_next_pm():
+    vyve_commits = github.get_commits('vyve-site', branch='main', per_page=5)
+    brain_commits = github.get_commits('VYVEBrain', branch='main', per_page=5)
+    max_pm = 0
+    for commits in (vyve_commits, brain_commits):
+        for c in commits:
+            m = re.match(r'^PM-(\d+)', c.commit.message)
+            if m:
+                max_pm = max(max_pm, int(m.group(1)))
+    return max_pm + 1
+```
+
+**Cost.** Two `GET /repos/.../commits?per_page=5` calls (~10 KB total) + regex parse. Adds ~one tool call to commit prep. Trivial.
+
+**Benefit.** Eliminates the cross-repo PM-N collision class entirely. Brain narrative stays unambiguous. Forensic queries like "what was PM-N about?" return a single answer regardless of repo.
+
+**Brain-narrative `.b` suffix convention.** When a vyve-site code ship and a brain entry for that ship land in separate commits (the common pattern — code first, brain after), the brain entry takes a `.b` suffix on the same PM number rather than claiming the next integer. Examples to date: PM-362.b (weekly recap brain close after vyve-site PM-362), PM-378.b (podcast platforms brain close), PM-379.b (monthly recap brain close), PM-381.b (this entry — bus regex brain close). The `.b` suffix means "brain-narrative companion to canonical PM-N". This convention is now load-bearing — adopting it across all brain-after-code commits keeps the PM-number namespace clean.
+
+**When `.b` doesn't apply.** A brain-only ship (e.g. a master.md rewrite, a backlog reorganisation, a new playbook with no code change) claims its own PM number per §23.74. Staging artefacts (architecture maps, audits) also claim their own PM — they're brain-only but substantive ships, not narrative companions to code.
+
+**Audit signal.** Any commit pair where the same PM-N appears in two different repos within a 30-minute window is a §23.74 violation in whichever commit was prepared first. Pattern-match for it post-hoc.
+
+**Sibling to §23.66 / §23.68 / §23.69 / §23.70.**
+
+- §23.66 — content rebase at commit time (prevents content overwrite from parallel sessions).
+- §23.68 — PM-number brain-HEAD recheck at the moment of claim (in-repo).
+- §23.69 — feature-level collision detection at session start (prevents wasted build).
+- §23.70 — PM-claim-at-commit-time in the ship target repo.
+- §23.74 — cross-repo PM-number scan (extends §23.70 to scan both repos). 
+
+All five compose. Run §23.69 at session start; run §23.66 + §23.68 + §23.70 + §23.74 at every commit boundary.
+
+---
+
+
