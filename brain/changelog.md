@@ -1,3 +1,28 @@
+## 2026-05-25 PM-370 — Strip easy/medium/hard difficulty tags from Settings habit picker + bring habits.html icons to parity with home (Lucide per-habit glyphs) [vyve-site `5703c9da`]
+
+**Scope.** Two unrelated UI cleanups on a single shipping branch — Dean's brief covered both, ships atomically.
+
+**Surface 1: settings.html — Manage Habits modal.** Three difficulty surfaces removed:
+- "My habits" custom row render at L1551 — `<div class="habit-difficulty ${h.difficulty}">${h.difficulty}</div>` deleted.
+- Library row render at L1576 — same line, same removal.
+- Custom-habit creation form L851-863 — `<select id="hc-difficulty">` block entirely removed; `<select id="hc-pot">` stays as the sole content of the `.habit-create-row`.
+- `toggleCreateForm()` close-reset path: `document.getElementById('hc-difficulty').value = 'easy'` removed.
+- `saveCustomHabit()`: the `getElementById('hc-difficulty').value` read removed; `difficulty` now hardcoded `'medium'` in the POST body so the `habit_library.difficulty` column stays populated for any future re-introduction.
+- `.habit-difficulty` CSS at L304-326 retained dead-but-harmless. `habit_library.difficulty` DB column untouched (forward-compat over migration discipline). 4 inline JS blocks node --check clean.
+
+**Surface 2: habits.html — icon parity with index.html PM-286.** habits.html was rendering an 8px coloured `.habit-pot-dot` next to each habit title — no per-habit glyph. Home page (index.html) since PM-286 has rendered the proper Lucide icon per habit (heart-pulse for cardio, footprints for walking, brain for meditation, etc.) in a pot-tinted 36px tile per PM-287. Dean's brief: "edit the symbols so that they match what is in today's habits on the front page." Three changes:
+
+1. Lucide `<symbol id="hi-...">` defs block (36 symbols, ~9KB) inlined immediately after `<body>` open on habits.html — verbatim copy of the PM-286 block on index.html (line 1031 onward).
+2. `iconForHabit(title, pot)` + `_habitIconSvg(name)` functions inlined into the page script, placed immediately above `habitCardHTML()` — verbatim copy of the index.html lookup tables (lines 1583-1660). Both files now host duplicate copies of the lookup table — flagged as a §23 candidate ("either of: extract to a shared module, or land a Dexie-driven `habit_library.icon` column and a single fallback function" — backlog L885 already tracks the icon-column work).
+3. `habitCardHTML()` card markup: bare `.habit-pot-dot` replaced with `.habit-pot-tile` carrying the icon — `<div class="habit-pot-tile" style="background:${pot.color}1A;color:${pot.color}">${iconForHabit(h.habit_title, h.habit_pot)}</div>`. The `${pot.color}1A` suffix is the 10% alpha hex (parity with PM-287's pot-tinted-tile pattern); `color:${pot.color}` lets the Lucide `currentColor` paths pick up the tint automatically.
+4. CSS additions: `.habit-pot-tile{flex-shrink:0;width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--pot-color);margin-top:2px}` + `.habit-pot-tile .habit-ic-svg{stroke:currentColor;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round}`. Dead `.habit-pot-dot` CSS retained.
+
+**Result.** The cardio habit card on habits.html now shows the same heart-pulse glyph the home page shows; walking shows footprints; both tiles tinted to the same pot colour. Glyph + tint exactly match between index.html and habits.html for every habit_library title (34 exact-match titles in `iconForHabit`'s HABIT_MAP, 19 keyword-fallback regexes covering legacy/non-library habits, 5 pot fallbacks, `circle-dashed` generic). 3 inline JS blocks node --check clean.
+
+**Files committed atomically (4):** settings.html, habits.html (gains 36 Lucide symbol defs + iconForHabit/_habitIconSvg + tile CSS + tile in card), index.html (vbb-marker 253→254), sw.js (cache key pm369-settings-toggle-haptics-a → pm370-habits-icons-difficulty-strip-a). Git Data API atomic at vyve-site `5703c9da`. §23.41 fresh-HEAD-recheck fired clean (parent `026dee9e7f...`, PM-369 still HEAD, claim PM-370 uncontested). First-100-char post-commit re-fetch verify all 4 files clean against the committed SHA via Contents API (not raw CDN).
+
+**Banked, not codified.** Duplicated iconForHabit lookup tables across index.html and habits.html — both files have identical 34-title HABIT_MAP + 19-regex keyword fallback + 5-pot fallback + `circle-dashed` generic. If a third surface needs the same lookup (settings habit-picker is the obvious next candidate — could give the modal-picker rows the same icon treatment instead of plain text), extract to `/habit-icons.js`. Until then, the discipline is: edit both files together, or wait for the `habit_library.icon` column (backlog L885) and reduce the function to a one-line fallback. Not promoting to §23 yet — single occurrence of the duplication, and the backlog item already tracks the proper fix.
+
 ## 2026-05-25 PM-369 — Settings toggle haptics: 11 new wires on settings.html, palette now fully populated [vyve-site `026dee9e`]
 
 **Scope.** Closes out backlog item #7 from the PM-278 haptics adoption list (settings toggle switches). `settings.html` had 2 pre-existing PM-359 wires (`vyveSetTheme` + `handleToggle`, both `selection()`). This commit adds 11 more across every meaningful write/toggle surface on the page, bringing the file to 13 haptic call sites total.
