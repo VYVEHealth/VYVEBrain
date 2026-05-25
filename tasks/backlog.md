@@ -1,66 +1,43 @@
-## Added 25 May 2026 — PM-327 live tracker `ready:false` handoff [HIGH PRIORITY — wanted for tomorrow's bundle ship]
+## Added 25 May 2026 — PM-328 — Achievements v2 items C+D done; A+B still open
 
-**Status.** Session-published live broadcasts in the iOS app show video correctly but YT IFrame API `onReady` never fires. Zero rows have ever landed in `session_live_views`. Patches PM-315/320/323/326/327 each diagnosed something real but the underlying bug (postMessage handshake silently dropped at WKWebView ↔ YouTube boundary) remains unfixed. See changelog PM-327 entry for full chain.
+**Status update on PM-322 closeout.** Items C (migration map) and D (data-model decision) shipped this session — see PM-328 changelog entry. Build remains BLOCKED on A (Lewis copy pass) and B (Phil sign-off). Schema delta SQL is ready to apply; not yet applied — applying it before Lewis writes the new tier copy would litter `achievement_tiers` with placeholder rows that look "approved" against an empty title. Cleaner to apply the schema delta + insert new tier rows together at the start of the build session.
 
-**Hand-off prompt for next session.** Saved at `brain/staging/live-tracker-ready-false-handoff.md`. Paste contents into a fresh session after "Load VYVE brain". The prompt explicitly forbids patches without devtools attached — first action is reading current code + walking through Safari Web Inspector setup.
+**Item D — DONE. Decision: D1 (extend existing tables).** Schema delta drafted at `brain/staging/PM-322-achievements-v2-schema.sql`. Adds 4 nullable columns to `achievement_metrics` (`pillar`, `hidden`, `icon_slug`, `is_cross_cutting`); leaves `achievement_tiers` and `member_achievements` untouched. 345 existing earns preserved zero-loss.
 
-**Diagnostic options ranked (next session should weigh, not just pick first):**
+**Item C — DONE. Migration map at `brain/staging/achievements-migration-map.md`.** All 32 v1 metrics explicitly mapped: 9 KEEP, 3 RENAME, 4 EXTEND, 4 COLLAPSE, 12 RETIRE-LEGACY. Three open mapping questions surfaced for Dean (see migration map document).
 
-1. **Safari Web Inspector against the device.** Requires enabling Web Inspector on iPhone (Settings → Safari → Advanced → Web Inspector) and Develop menu on Mac. Plug iPhone in, launch app, page should appear in Develop → \[iPhone name\] → live page. Gives real console, network, JS evaluation against the running WKWebView. This is the only tool that can actually see the postMessage layer.
+**Item A — STILL OPEN. Lewis-owned. Carve into a Lewis ticket.** Hand Lewis the merged catalog (`brain/staging/achievements-catalog-v1.md`) and the migration map. Ask for:
+1. Keep/extend approval on each surviving v1 tier name. 327 existing approved tier rows; the `copy_status='approved'` gate protects them from overwrite — Lewis is just confirming they fit the new pillar/icon shape and don't need rename.
+2. New copy for ~80-90 net-new tier rows across ~13 net-new metrics (Mind 13 metrics × variable tiers ≈ 46 tiers, Focus 8 metrics × variable tiers ≈ 24 tiers, plus net-new Body/Habits/Connect/Check-ins metrics). Estimate 80-90 new tier-row copy entries total.
+3. Display-name confirmation for new metrics — the schema delta has working titles ("Mind Sessions", "Breathwork Sessions", etc.) but Lewis should pass these.
 
-2. **`window.addEventListener('message', ...)` debug logger surfaced on debug strip.** Cheap to ship, tells us whether YouTube's iframe is sending ANY postMessages to the parent. If zero received, that's the answer — WKWebView is dropping them and the fix is in `capacitor.config.json` (or accept that the IFrame API path is dead and use a different attribution mechanism).
+Voice rules already locked (no emojis, 3-6 word titles, 10-20 word bodies, no fitness-influencer tone, globally-unique titles, distinct streak-vs-count body voice). Same validation gate as the v1 batches 1-7 applies — programmatic check before commit.
 
-3. **Capacitor config audit.** `~/Projects/vyve-capacitor/capacitor.config.json` + `ios/App/App/capacitor.config.json`. Look for: `server.url` value, `iosScheme`, `limitsNavigationsToAppBoundDomains`, App Transport Security exceptions, content blockers.
+**Item B — STILL OPEN. Phil-owned. Carve into a Phil ticket.** Specific achievements needing HAVEN-aware review before copy ships:
+- All of MIND pillar (M1-M13) — voice review even where mechanics are fine
+- `honest_checkin_tier5` (HD1) — therapeutic soundness of rewarding low-wellbeing submission
+- `weekly_score_climb` (K7) and `monthly_avg_improved` (K8) — improvement-based metrics could feel punitive in low weeks
+- `streak_saver` (HD7) — implies pressure, needs gentle framing
+- `came_back` (HD2) — first message after a long absence; framing matters
 
-4. **Bypass IFrame API entirely.** Visibility API (`document.visibilityState === 'visible'`) + interval timer + manual "Mark as complete" CTA + heuristic "broadcast was live during user's session window" attribution. Good enough for the 15-20 person trial. Cuts the whole WKWebView-postMessage debugging problem out of the critical path. Probably the right call for the trial; revisit IFrame API for v2.
+**Open mapping questions for Dean** (in migration map doc):
+1. `workouts_shared` 11 earns sit on a 10-tier v1 ladder; v2 collapses to 2 tiers. Preserve v1 as legacy + fire v2 fresh, or re-issue v2 tier 2 to v1 tier 3+ earners? *Recommended: preserve v1 + fire v2 fresh.*
+2. `healthkit_connected` — salvage as v2 behavioural one-shot or retire? *Recommended: salvage, costs nothing.*
+3. `is_cross_cutting` modelling for `member_days`/`streak_overall` confirmed in this session's schema delta — no further action unless overruled.
 
-**Bundle-ship recommendation (PM-327 author opinion).** Tomorrow's ship goes ahead with manual CTA only. Watch-time attribution is a nice-to-have that costs more time than it's worth right now. The trial cohort (15-20 people) will not generate enough watch-time data for the attribution accuracy to matter for product decisions. Reframe `session_live_views` as a manual-CTA-only table for the trial, design proper attribution post-trial when the cohort is 100+.
+**Updated sequencing.** A and B parallel, both Lewis/Phil pace (1-2 weeks). When A returns: schema delta apply + Lewis tier inserts as one transaction; B may not block this if Phil's review only touches Mind/Check-ins (those can ship in a second pass). Build session for the v2 UI grid opens after A is in.
 
-**Live test rows to clean up before next walk.** All in `calendar_occurrences`:
-- `c22031a5-ae60-402e-97ad-0fb131c77699` — yoga, already ended.
-- `d64fa9e1-ee97-4f19-a50d-345aeac97dc9` — yoga, broadcast `HDq2NAjOmkY`.
-- `24274286-5936-455b-81e3-3268d6b297f6` — workouts, broadcast `A9jLtg2WuQw`.
-
-Soft-delete or set `cancelled_at = now()` and `active = false` before next session to avoid picker contamination.
-
-**Files to revisit (no reverts needed):**
-- `player-tracker.js` — PM-327 added API-constructed live path. Keep.
-- `session-live.js` — PM-327 changed live render to `<div>` placeholder. Keep.
-- All 8 `*-live.html` shells — PM-323 added static `<script src=youtube.com/iframe_api>`. Keep.
-- `sw.js` — cache key `vyve-cache-v2026-05-25-pm327-api-constructed-yt-player-a`. Will get bumped by whatever next session ships.
-
-**Lesson for the brain.** §23.71 codified: when two patches in a row don't move the diagnostic needle, stop patching and attach real devtools. Tonight ate 3 hours and shipped 5 patches without fixing the actual bug; §23.71 would have called it at PM-323.
-
----
-
-## Added 25 May 2026 — PM-322 Achievements design closeout — next-session asks
-
-**Status of PM-309 campaign.** Design phase COMPLETE. Five phases of decisions locked (see changelog 25 May PM-322 entry). All structural choices in place. Build is BLOCKED on items A/B/C/D below — none of which is a build task, all are design/decision deliverables that have to land before any code is written.
-
-**Item D — Data model decision (next-session item #1).** Two options:
-
-*Option D1: extend existing tables.* `achievement_metrics` gets new rows (~60 net new), existing 32 rows stay. `achievement_tiers` similarly extended. `member_achievements` untouched — existing 344 earns preserved automatically. Schema delta: maybe `category` column needs new enum values for the new pillar shapes; maybe `pillar` column added to `achievement_metrics` (currently implied via category). Cleanest for member-data preservation. Dirtier for the catalog header rows — old metric_slugs sit alongside new ones forever.
-
-*Option D2: new tables + migration.* `achievement_metrics_v2` / `achievement_tiers_v2` / `member_achievements_v2`. Clean slate naming. Migration script reads v1 rows, writes v2 rows according to the item C map. Risk: any miss in the map = lost earns. Risk: dual-path code during transition. Cleaner long-term, more work + more risk short-term.
-
-Dean's call. Probably Option D1 for the same pragmatic reason PM-305 left engagement.html as a redirect rather than deleting it — preserving member-side history beats schema cleanliness here.
-
-**Item C — Migration map (next-session item #2, parallel to D).** Explicit table of every existing v1 metric_slug × tier_index combination, with its v2 mapping (or "no v2 home → keep as legacy / collapse / drop"). 32 metrics × ~10 tiers = ~327 mapping decisions. Most are mechanical (workouts_logged stays as-is). The interesting cases are the metrics that DON'T survive (e.g. v1 `kahunas_checkins` is a legacy thing; collapsed into `weekly_checkins_total`?). Claude builds this table once D is decided.
-
-**Item A — Lewis copy pass (parallel, Lewis-owned).** Once items C+D are locked, hand Lewis the merged catalog and ask for: (1) keep/extend approval on each surviving v1 tier name; (2) new copy for ~13 net-new metrics × variable tier counts (estimate ~80-90 new tier rows of copy). Lewis voice rules already locked (no emojis, 3-6 word titles, 10-20 word bodies, no fitness-influencer tone). Existing 327 approved tiers should not be re-litigated — `copy_status='approved'` gate protects them.
-
-**Item B — Phil sign-off (parallel, Phil-owned).** Achievements in Mind / Check-ins pillars where HAVEN persona framing matters. Explicit ask: any achievement copy that would feel wrong to a HAVEN member in a low week. The `honest_checkin_tier5` hidden achievement especially — Phil's call on whether rewarding submission-with-low-wellbeing is therapeutically sound.
-
-**Sequencing recommendation.** D first (1 session). C second (parallel with A, A blocks until C is done). B parallel with A. Build session opens once A+B come back signed. Realistic timeline: design closeout this week, A and B over 1-2 weeks (Lewis + Phil pace), build session early-mid June.
-
-**Reference artefacts.** All in `brain/staging/`:
-- `achievements-catalog-v1.md` — pillar breakdown, tier counts, hidden list
-- `achievements-tier-design.md` — 10-tier badge visual spec
-- `achievements-handover-pm322.md` — paste-ready prompt for next chat
+**Reference artefacts** in `brain/staging/`:
+- `achievements-catalog-v1.md` — full pillar-by-pillar catalog (this session)
+- `achievements-migration-map.md` — explicit v1→v2 mapping (this session)
+- `PM-322-achievements-v2-schema.sql` — ready-to-apply schema delta (this session)
+- `achievements-deepdive-prompt.md` — pre-design-session prompt, historical
+- `achievements-tier-design.md` — referenced in PM-322 changelog but NOT actually committed there; full visual spec exists only in PM-322 changelog entry text (10-tier gemstone ladder, Path B icon-in-frame). Worth re-extracting into its own file at the start of the build session if the spec needs separate reference.
 
 Plus the two mockups in vyve-site root: `/achievements-mockup-c.html` and `/achievements-mockup-pathb.html`.
 
 ---
+
 
 ## Added 25 May 2026 — PM-319 mind tracker follow-ups
 
