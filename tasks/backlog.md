@@ -8,43 +8,34 @@ Action: query workout_plans grouped by plan_type for NULL video_url ratio, then 
 
 Out of scope for PM-346 (which was wiring only); flagging here so it surfaces next time someone touches workout content.
 
-## Added 25 May 2026 PM — PM-335 — Achievements v3 — Dexie-first evaluator rollout
+## SHIPPED 25 May 2026 PM-342 — PM-335 — Achievements v3 — Dexie-first evaluator rollout (COMPLETE)
 
-**Status.** PM-335 shipped the new architecture + Habits pillar end-to-end (11 metrics wired client-side, instant on threshold cross). Body / Mind / Connect / Check-ins pillars are the remaining wireable work; Focus is blocked behind a separate data-layer campaign.
+**Status.** PM-335 (Habits pillar proof) + PM-342 (Body + Mind + Connect + Check-ins pillars) close this campaign for the five wirable pillars. Focus stays blocked behind the `focus_completions` data-layer campaign.
 
-**SUPERSEDES PM-329 backlog item** (the server-side evaluator extension across 65 metrics). That approach is the wrong shape — server round-trip is too slow for instant toast. PM-335 redirected to Dexie-first via bus subscriptions. The previous PM-329 handover prompt at `brain/staging/handover-pm329.md` is OBSOLETE — do not follow it.
+**Original next-session asks PM-336/337/338/339 — all shipped in one atomic 19-file commit at PM-342 (cbbeb62f, 25 May).** See changelog PM-342 entry for the metric inventory across each pillar (19 Body / 13 Mind / 15 Connect / 9 Check-ins).
 
-**Next-session asks (pillar-per-session pattern, all follow the Habits PM-335 template):**
+**Mind UI gated on Phil sign-off.** 13 Mind metric handlers write earns silently to `member_achievements` when thresholds cross; engagement-v2 UI filters them via `phil_approved=false`. When Phil signs: `UPDATE achievement_metrics SET phil_approved=true WHERE pillar='mind'` makes all 13 rows visible with already-earned backdated state. No code change needed.
 
-PM-336 — **Body pillar** (~22 metrics). Bus events: `workout:logged`, `set:logged`, `cardio:logged`, `movement:logged`. Dexie stores: `workouts`, `exercise_logs`, `cardio`, `movement_activities`. Includes: `workouts_logged`, `cardio_logged`, `volume_lifted_total` (sanity caps `reps_completed<=100 AND weight_kg<=500` — two corrupt rows on Dean's Back Squat 2026-04-18 need zeroing first per §11A), `workout_minutes_total`, `cardio_minutes_total`, `streak_workouts`, `streak_cardio`, `movement_sessions_logged`, `streak_movement`, `reps_lifted_total`, `sets_completed_total`, `distance_total`, `workout_before_7am`, `workout_days_in_a_row`, `muscle_groups_week`, `programme_week_complete`, `first_workout`, `first_cardio`, `first_custom_workout`, `programme_complete_8wk`. HK lifetime (`lifetime_steps_v2`, `lifetime_active_energy_v2`) stays server-side sweep.
+**Server-side coexistence.** `_shared/achievements.ts` evaluator + `log-activity evaluate_only` path still live in parallel. `member_achievements` unique constraint makes double-claim safe. Full server-side retirement deferred to a future PM once all 5 client-side pillars are verified stable over a few days of trial — not urgent, dual paths coexist correctly.
 
-PM-337 — **Connect pillar** (~17 metrics). Bus events: `session:viewed`, `replay:viewed`, `connect:checkin:logged`, `connect:reaction:logged`, `workout:shared`. Dexie: `session_views`, `replay_views`, `replay_video_views`, `session_live_views`, `connect_checkins`, `checkin_reactions`, `custom_workouts`. Wirable today: `sessions_watched`, `replays_watched`, `streak_sessions`, `session_minutes_yoga`/`mindfulness`/`therapy`/`education`, `reactions_given`, `checkins_with_reactions`, `workouts_shared_v2`, `distinct_session_categories`, `first_session_watched`, `first_replay_watched`. Deferred (need Realtime channel or one-line publish addition): `reactions_received`, `chat_messages_posted`. Server-sweep keeps: `charity_tips_v2`, `personal_charity_contribution_v2`.
+**Outstanding items from the campaign:**
 
-PM-338 — **Check-ins pillar** (~9 metrics). Bus events: `wellbeing:logged`, `monthly_checkin:submitted`. Dexie: `wellbeing_checkins`, `monthly_checkins`. Wirable: `checkins_completed`, `monthly_checkins_completed`, `streak_checkin_weeks`, `checkin_text_responses`, `first_checkin`. Phil-gated: `weekly_score_climb`, `monthly_avg_improved`, `honest_checkin_tier5`. Needs new bus event + Dexie store: `daily_mood_checkins`, `daily_mood_streak`.
+- **PM-340+ Focus pillar.** BLOCKED until `focus_completions` table ships (separate data-layer campaign — no decision yet on whether "complete a focus" means any activity tagged with that focus_slug counts (Option A, cheapest) or a discrete button per focus card page (Option B/C, more UI work). Carries over.
 
-PM-339 — **Mind pillar** (~13 metrics). Bus event: `mind:logged`. Dexie: `mind_activities` (`kind` column discriminator: breathwork/journal/meditation/visualisation/affirmation). All 13 are `phil_approved=false` so handlers can be wired and write to `member_achievements` but UI filters them out until Phil signs. Once Phil signs, single UPDATE per metric flips them visible — no code change needed.
+- **Mind UI reveal.** Single SQL UPDATE pending Phil's clinical sign-off on the 13 Mind metric copy + tier thresholds. Lewis + Phil parallel + non-blocking.
 
-PM-340+ — **Focus pillar**. BLOCKED until focus completion data layer ships (no `focus_completions` / `focus_cards` table exists). Separate campaign opens with that.
+- **Lewis copy pass.** 211 placeholder tier rows from PM-328 still carry working copy. Lewis can swap any row via single UPDATE — placeholder→approved gate protects subsequent rewrites.
 
-**Pattern (Habits PM-335 reference, ~1.5-2 hr per pillar):**
-1. Add per-pillar `eval_<slug>` handler functions to `achievements-evaluator.js`. Each reads Dexie store(s), returns array of new tier rows via `newEarnsForThreshold(slug, value)`.
-2. Add pillar's bus events to `EVENT_HANDLERS` map in the evaluator.
-3. Extend `engagement-v2.html` inline JS: add `<PILLAR>_ICONS` + `<PILLAR>_DISPLAY` maps, `computePillarValues(email)` reader, `render<Pillar>Pillar()` function, swap the "Tracking goes live next" stub for real rows.
-4. Add script include of `/achievements-evaluator.js` on the pages that publish that pillar's bus events.
-5. Atomic commit per §23.41 + §23.70 (vbb-marker bump, sw.js cache key bump, brain commit close).
+- **Server-side retirement.** `_shared/achievements.ts` + `log-activity evaluate_only` path. Defer to a future PM once trial confirms all 5 client-side pillars firing reliably.
 
-**Lewis copy + Phil sign-off — still parallel + non-blocking.** The 211 placeholder tier rows from PM-328 still carry working copy. Lewis can swap any row via single UPDATE — placeholder→approved gate protects subsequent rewrites. Phil signs Mind pillar by flipping 13 `phil_approved` rows to true. Neither blocks pillar handler wiring.
+- **PM-341 Settings debug button removal.** "Reset achievements" debug button on Settings (shipped PM-341) — remove post-trial once pipe verification done.
 
-**Server-side retirement (deferred — not urgent).** `_shared/achievements.ts` evaluator + `log-activity evaluate_only` path still live, keeping the 22 v1-wired metrics firing. Full retirement is a future PM once all 5 remaining pillars are client-side. Until then, dual paths coexist safely thanks to the `member_achievements` unique constraint.
-
-**§23.66/§23.70 lessons (PM-335 ate two parallel-session rebases).** Parallel session was shipping fast tonight (PM-333, PM-334 in the 30-minute build window). Re-fetch HEAD immediately before `POST /git/commits`, recompute PM number from fresh `/commits` list, rebase touched files if needed. Cost: 2× ~5min rebase loops. Worth banking the lesson here: any session building during the evening hours on vyve-site should expect collisions and pre-stage the rebase tooling.
-
-**Reference artefacts (all kept):**
-- vyve-site: `achievements-mockup-c.html`, `achievements-mockup-pathb.html` — visual reference for remaining pillars. Deletable once all 6 pillars are live.
-- brain: `staging/achievements-catalog-v1.md`, `staging/achievements-migration-map.md`, `staging/PM-322-achievements-v2-schema.sql`. **OBSOLETE: `staging/handover-pm329.md`** — server-side architecture, do not follow.
+**Reference artefacts.**
+- vyve-site: `achievements-mockup-c.html`, `achievements-mockup-pathb.html` — visual reference. Deletable once Focus pillar lands and all 6 pillars are live.
+- brain: `staging/achievements-catalog-v1.md`, `staging/achievements-migration-map.md`, `staging/PM-322-achievements-v2-schema.sql` — kept.
+- brain: `staging/handover-pm329.md` — **OBSOLETE** (server-side architecture, do not follow). Safe to delete.
 
 ---
-
 
 
 ## Added 25 May 2026 — PM-319 mind tracker follow-ups
@@ -61,41 +52,9 @@ PM-340+ — **Focus pillar**. BLOCKED until focus completion data layer ships (n
 
 ---
 
-## Added 25 May 2026 — PM-337 brain close (Live tracker overnight chain — per-broadcast attribution deferred to v2 post-trial)
+## Added 25 May 2026 — PM-315 brain close (live tracker device-walk validation + PM-316+ state-machine fix)
 
-PM-330 → PM-337 (25 May 2026) resolved the live-session attribution crisis differently than expected. The YT IFrame API postMessage bridge in WKWebView is genuinely broken at a layer below what's patchable from the page — PM-330 (pre-baked iframe + explicit origin on both sides) and PM-332 (`YT.ready()` gating + `referrerpolicy="strict-origin-when-cross-origin"`) each fixed real problems but did not move `ready: false` / `session_live_views` empty. The actual trial-blocking bug was elsewhere entirely: tracking.js's `visibilitychange → hidden` handler tearing down the heartbeat permanently. PM-337 fixed that, tracking.js v10 now writes correct per-category-per-day attribution to `session_views` across arbitrary visibility cycles, and **trial cohort attribution is unblocked**.
-
-### Live tracker per-broadcast attribution — v2 post-trial
-
-The original PM-304 ambition (per-broadcast precision attribution via `session_live_views` keyed on `occurrence_id` + `member_email` + `client_id`, with `watch_seconds` derived from YT.Player state events) requires the WKWebView ↔ YouTube postMessage bridge to be functional. PM-330 and PM-332 confirmed it isn't. The bridge falls below the layer we can fix from the page.
-
-**What we have today (PM-337 baseline):** `session_views` writes via tracking.js v10. Granularity: `(member_email, category, activity_date)` with `minutes_watched` accumulating across foreground time. Daily 2/day cap via PM-150's `update_cert_sessions_count` trigger. Replay attribution shares the same writer. Engagement.html, engagement-v2.html, employer-dashboard, and certificate-checker all consume `session_views` natively.
-
-**What we don't have:** Per-broadcast-id attribution. Can't answer "how many of the 47 members watching Tuesday's mindfulness session stayed to the end" — only "47 people watched mindfulness on Tuesday." For trial cohort (15-20 members) that's enough; for v2 / employer-dashboard depth analytics post-trial, it isn't.
-
-**Three v2 paths to evaluate (no prescription yet):**
-
-1. **Safari Web Inspector deep dive.** Attach DevTools to the running Capacitor iOS app, inspect what's actually happening to YouTube's outbound postMessage. May reveal a `capacitor.config.json` setting (App Bound Domains? `iosScheme`? `limitsNavigationsToAppBoundDomains`?) that's blocking cross-origin postMessage to YouTube specifically. If fixable, the existing PM-304 / PM-330 / PM-332 code path becomes the answer — turn it on, ship `session_live_views` writes. Per §23.71, this is the right thing to do when "two patches don't move the needle" — escalate the diagnostic surface.
-
-2. **YouTube Data API server-side polling.** EF cron polls `liveBroadcasts.list?part=liveStreamingDetails` every 60s for active occurrences, reads `actualStartTime` / `actualEndTime` to bound broadcast lifecycle, reads `concurrentViewers` for an aggregate-without-attribution signal. Doesn't give per-member-per-broadcast watch-time but DOES give per-broadcast-aggregate engagement (peak viewers, total minutes-of-broadcast-live-while-people-watched). Lewis can correlate against `session_views` to estimate per-broadcast member attribution. Cheap, no client changes.
-
-3. **PostHog event taxonomy (originally suggested at PM-337 mid-session).** Frontend fires `live_session_entered` / `live_session_heartbeat` / `live_session_left` events with `occurrence_id` + `broadcast_id` payload. PostHog dashboards give per-broadcast aggregates without going through Supabase. Tradeoff: attribution lives in PostHog not session_live_views, so doesn't roll up into engagement.html or employer-dashboard natively. Could mirror via a PostHog → Supabase sync job if needed. Cleanest separation of concerns.
-
-**Sequence.** Start with (1) — Safari Web Inspector — as a one-session investigation. If the postMessage bridge can be unblocked via a Capacitor config tweak, the entire existing PM-304 code path snaps on. If it can't, (2) is the cheap fallback (server-side YouTube API, zero client changes), and (3) is the deeper rebuild if Lewis needs per-broadcast-per-member precision for v2 employer dashboards.
-
-**Don't ship before:** trial cohort (15-20 members) has run for ≥2 weeks. Real engagement distribution will reveal whether per-broadcast attribution is actually a need or a nice-to-have. Currently it's an unvalidated assumption that Lewis will want this depth.
-
-**Code state to preserve:** PM-330 + PM-332's pre-baked iframe with explicit origin + `YT.ready()` gating + `referrerpolicy` are KEPT IN PLACE. They do no harm sitting there with `ready: false` — they just don't accomplish anything until the WKWebView bridge is unblocked. If a future Capacitor config change fixes the bridge, the existing code path will start working without modification. The `session_live_views` table also stays — empty for now, but ready to receive writes when the bridge is functional.
-
-**§23.72 visibility-resume audit candidate.** Other surfaces with `visibilitychange` handlers should be audited for the same single-fire-no-resume bug class PM-337 fixed in tracking.js. Quick grep: `grep -rn "visibilitychange" --include="*.js" --include="*.html"` in vyve-site. Known surfaces beyond tracking.js: replay-tracker.js (probably routes through tracking.js — verify), sync.js (Supabase Realtime channels — check if they get torn down on hide), any in-session timers (rest-timer in workouts.html, breathing-pattern timer in mind/breathwork.html). Audit pass before bundle ship if time permits; defer to next maintenance session otherwise.
-
-## Added 25 May 2026 — PM-315 brain close (live tracker device-walk validation + PM-316+ state-machine fix) [PARTIALLY SUPERSEDED BY PM-337]
-
-**SUPERSEDED.** The "Live tracker end-to-end validation walk" item below was the next-session-resumption procedure for the PM-304 → PM-315 chain. PM-330 → PM-332 attempted that walk and confirmed the bridge bug is below the layer we can fix from the page. PM-337 found a different bug (visibility-hide truncation) that was actually trial-blocking, fixed it, and rerouted attribution to tracking.js / `session_views`. Per-broadcast attribution via `session_live_views` is now an explicit v2 post-trial item — see "Live tracker per-broadcast attribution — v2 post-trial" above.
-
-The PM-316+ state-machine subsection below (LIVE state should override clock-time when broadcast is actually live ahead of schedule) is NOT superseded. Still a real bug, still worth fixing — but lower priority now that `session_views` via tracking.js doesn't depend on the LIVE state machine for attribution. Defer until v2 work begins.
-
-
+PM-315 (25 May 2026, vyve-site `15b3a431`) shipped the CSP fix for YouTube IFrame API on all 8 *-live.html shells (root cause of PM-304 silent failure). Two follow-ups owed.
 
 ### Live tracker end-to-end validation walk (immediate, next session)
 
