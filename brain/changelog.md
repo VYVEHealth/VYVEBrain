@@ -1,3 +1,49 @@
+## 2026-05-25 PM-394 — Premium-feel tab-flicker architectural decision: ship Option 1 (snapshot-first paint) + Option 4 (View Transitions API) over Option 3 (persistent-shell SPA) — brain-only architectural lock
+
+**Context.** Dean raised two pre-binary concerns this session: (1) debug surfaces currently shipping to members (Settings Reset Achievements button, Settings Force Refresh App button, PM-310 always-on live-tracker debug strip on the 8 `*-live.html` shells, `?debug=tracker` mind-video strip), and (2) the quarter-to-half-second flicker on tab-in to Home (and by extension the other hubs) where the skeleton paints for one frame before `paintCacheEarly()` swaps in real content.
+
+**Question Dean raised.** Would bundling the app to a new iOS/Android binary fix the home tab-in flicker? Answer: no. Bundling moves HTML/CSS/JS delivery from network/SW-cache to bundled-asset (saves ~50-200ms on first byte), but the flicker is caused by the rebuild-from-scratch step every tab tap triggers — the page parses, the skeleton element is `display:block` by default in HTML, the synchronous `paintCacheEarly()` IIFE runs, and only then does `reveal()` swap skeleton for real content. Even on bundled assets that paint-cycle is the same; the skeleton flashes at least one frame before the swap.
+
+**Four architectural options laid out.**
+
+1. **Snapshot-first paint.** Save a complete `vyve_home_snapshot_<email>` (and sibling keys for `body`/`mind`/`connect`) to localStorage on every state change. Inline `<script>` at top of `<body>` reads the snapshot synchronously and writes real content into the DOM **before the first browser paint frame**. No skeleton in HTML at all — honest empty state if no snapshot exists yet (truly first launch). 99% of return visits paint complete content in one frame.
+
+2. **`visibility:hidden` until paint.** Hide `<body>` until `paintCacheEarly()` resolves, then reveal in one go. Cheaper but worse UX in the slow case (blank screen reads as broken; skeleton at least signals "loading"). Rejected.
+
+3. **Persistent-shell SPA.** Convert the four hub pages (Home/Body/Mind/Connect) into mounted views inside a single `app.html` shell. Bottom-nav taps swap which view is `display:block`, no page navigation, all state stays alive (Dexie connections, bus subscribers, scroll position, video players). The architecturally-correct answer. Scoped at 3 chats / 8-11 hours Claude-assisted, with real risks: blast radius of any boot-path bug becomes whole-app, four hub pages of ~2000+ lines each need ref-grabbing patterns moved from script-parse to mount-time, iOS WKWebView memory pressure with 4 mounted views + active video.
+
+4. **View Transitions API.** Wire `document.startViewTransition` into nav.js's bottom-nav tap path so tab swaps animate slide/fade. Doesn't fix the underlying paint mechanic — disguises it visually inside the transition. iOS 18+ only; older devices degrade silently to current behaviour. ~30 minutes of work, sits alongside any other change.
+
+**Decision: ship Option 1 + Option 4 combined. Option 3 parked post-trial.**
+
+**Rationale.**
+
+- Dean's weekly Pro 20x usage at ~75% — Option 3 burns through remaining headroom on a campaign that can't be safely partial-shipped (half-migrated nav has to handle both shell-routing AND real-navigation modes simultaneously, blast-radius all-or-nothing).
+- Trial cohort is 15-20 testers, not paying consumers expecting Instagram polish — the perceived premium-feel gap between Option 1+4 and Option 3 is roughly 80/20 (Option 1 eliminates flicker on cache-hit, the 99% case; Option 4 disguises the rare cache-miss with smooth animation; the 20% Option 3 adds is the stuff users don't consciously notice but feel — preserved scroll position, persistent video players, animations don't reset).
+- Per-chat blast radius for Option 1 is exactly one file per hub — Home regression doesn't take down Body. Option 3 boot-path bug takes down the whole app.
+- Option 3 is the right long-term answer for the product but should be done with a clear week ahead, not under rate-limit pressure pre-binary.
+
+**The chat sequence Dean committed to.**
+
+1. **Chat 1 (next):** Cheap-stuff sweep — keystore + password into 1Password (Dean's 30s manual action per PM-116 backlog), `vyve-capacitor` initialised as git repo + dirty tree committed + push to `VYVEHealth/vyve-capacitor` (per PM-115 backlog item L3458 — third occurrence escalation, do not touch Capacitor project for non-trivial work until landed), debug-strip gating across the 8 `*-live.html` shells + mind-video tracker behind `localStorage.vyve_debug_tracker === '1'`. One atomic vyve-site commit for the gating. Brain entry at end.
+
+2. **Chat 2:** Snapshot design + Home page migration. Map every DOM element on `index.html` that needs first-paint data, define the `vyve_home_snapshot_<email>` JSON shape, add writer hooks at every state-changing publisher (bus subscribers + EF response handlers + Dexie write paths), add synchronous reader at script parse before any frame paints, remove `display:block` skeleton from HTML, honest empty state on no-snapshot. Device walk evidence required.
+
+3. **Chat 3:** Body + Mind migrations in one chat. Both lighter than Home; patterns established in Chat 2 carry across.
+
+4. **Chat 4:** Connect migration + Option 4 View Transitions API wired into nav.js bottom-nav tap path + final device walk polish + brain close.
+
+**The §23.7.7 trap to watch.** Cache-first surfaces must paint complete first-paint data from local; any element sourced from a non-snapshot path (separate cache, Dexie read, network fetch) sits on placeholder text and we ship a worse flicker than the skeleton one. Each chat's design phase must enumerate every visible element on first paint and confirm the snapshot covers it. Strict discipline required.
+
+**Open question for Chat 1.** Whether Option 4 View Transitions wire ships in Chat 1 alongside the cheap-stuff sweep (so it's helping during Chat 2/3 device walks) or in Chat 4 (so the heavy snapshot work lands first). Trade-off: earlier ships means easier device walks but introduces an unrelated change into the cheap-stuff sweep. Deferred to Chat 1 framing.
+
+**Banked (NOT codifying solo):** §23 candidate around chat-budget-aware architectural sequencing — when token-rate-limited, prefer surgical patterns with per-commit blast radius over architectural refactors with all-or-nothing semantics, even when the refactor is the correct long-term answer. Single occurrence so far; promotes on second recurrence.
+
+**No vyve-site changes this chat — brain-only decision lock.** §23.74 cross-repo PM scan at compose time: vyve-site max-PM 393 (`184e7bd3` Connect tab-in flicker real fix), brain max-PM 393.b (`7deed506` PM-393.b brain close). Claim PM-394 uncontested. §23.70 fired loud at compose: PM-393 was taken mid-compose by parallel session — re-fetched all 3 brain files at new HEAD, replayed patches with PM-393→PM-394 sed sweep across all entries, no content drift in the patched lines since neither my original PM-393 entry nor the parallel PM-393 ship touched the same lines (brain-only ship per §23.74's exception clause: brain-only ships claim own integer, not `.b` suffix). §23.58 fresh-HEAD re-fetch of all 3 brain files fired at compose time — PM-391/392 already in changelog, no drift.
+
+
+---
+
 ## 2026-05-25 PM-393.b brain close — Real fix to Connect tab-in flicker via inverted cache-first paint ordering (vyve-site PM-393 `184e7bd3`)
 
 **Scope.** Closes the visible flicker Dean reported on device at Update 275: tab into Connect shows 3 cached check-ins, flashes to 1 (own-only), then back to 3. Same shape on reaction tap. PM-392 had skipped the EF call on cache hit but left the own-only paint at the top of paintAll's Promise.all .then UNCONDITIONALLY firing first — two renders per paintAll regardless of cache state.

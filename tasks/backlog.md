@@ -97,6 +97,40 @@ One-line regex fix in `bus.js` L137 — `EVENT_NAME_RE` now accepts one-or-more 
 
 ---
 
+## NEXT FOCUS — 25 May 2026 PM-394 (Dean) — pre-binary work: cheap-stuff sweep + Option 1+4 premium-feel polish
+
+PM-394 locked Option 1 (snapshot-first paint per hub) + Option 4 (View Transitions API on nav.js) as the path to fix the quarter-to-half-second tab-in flicker on Home/Body/Mind/Connect before the next iOS/Android binary cut. Option 3 (persistent-shell SPA) is the architecturally-correct answer but parked until post-trial — burns whole remaining weekly chat headroom on an all-or-nothing refactor that can't be safely partial-shipped. Option 1+4 covers ~80% of perceived premium-feel for ~30% of token cost with per-commit blast radius = exactly one hub.
+
+**Chat sequence committed (4 chats against ~25% remaining weekly Pro 20x headroom):**
+
+1. **Chat 1 — cheap-stuff sweep.** (a) Dean's 30s manual: keystore + password `Weareinthis2026!` into 1Password (path `~/Projects/vyve-capacitor/android/app/keystore/vyve-release-key.jks`, PKCS12, alias `vyve-key`, SHA1 `CC:48:EA:AF:C1:47:ED:43:20:63:4F:FF:07:99:79:20:55:7D:23:B9`) per PM-116 backlog L3441 — P0 launch blocker, business-survival item. (b) `vyve-capacitor` initialised as git repo + dirty tree committed + push to `VYVEHealth/vyve-capacitor` per PM-115 backlog L3458 — third-occurrence escalation, do not touch Capacitor project for non-trivial work until landed; cumulative uncommitted edits across build.gradle, variables.gradle, keystore.properties, local.properties + `.bak-pf14b` / `.bak-pf14b-android` / `.bak` are the only history. (c) Debug strip gating: PM-310 always-on live-tracker debug strip across the 8 `*-live.html` shells + `?debug=tracker` mind-video strip, gated behind `localStorage.getItem('vyve_debug_tracker') === '1'`. PM-315 CSP fix for YT IFrame API (script-src whitelist of `https://www.youtube.com` + `https://s.ytimg.com`) needs a real device walk to validate before strip removal — the brain says "Not yet validated — Dean ended session before PM-315 walk." Either validate during Chat 1 walk OR keep strip live but flag-gated until next walk session. Settings Reset Achievements + Force Refresh App buttons stay (intentional trial-period support tools per backlog L218 + memory #16). Open framing question Chat 1 must answer: does the View Transitions API wire ship in Chat 1 alongside this sweep (helps device walks Chat 2/3) or Chat 4 (heavy snapshot work lands clean first)?
+
+2. **Chat 2 — Home snapshot migration.** Map every DOM element on `index.html` that needs first-paint data (activity ring + components, weekly goals 5-row tick state, daily check-in pill strip + streak, progress tracks 5-pillar with cert counts, live carousel from VYVE_SESSIONS, collective impact banner, hydration overlay state, mood check-in panel state, member prompts dismiss/cooldown state). Define `vyve_home_snapshot_<email>` JSON shape covering ALL of the above per §23.7.7 — partial snapshot = element sits on placeholder = worse flicker than skeleton. Add writer hooks at every state-change publisher (the 12 bus events `_rerenderHome` subscribes to per PM-381.b: workout/set/cardio/movement/food/weight/wellbeing/monthly_checkin/workout-shared/programme-imported/session-viewed + connect:checkin:logged + the Dexie write paths). Synchronous reader at top of `<body>` inline script, before any frame. Remove `display:block` skeleton from HTML. Honest empty state on no-snapshot first launch. Device walk evidence required (Capacitor wrap, force-quit + reopen, tab between Home and Body — Home tab-in should paint complete content in one frame).
+
+3. **Chat 3 — Body + Mind in one chat.** Both pages simpler than Home; patterns established Chat 2 carry across. Body snapshot covers exercise.html Browse Library state + programme card + recent activity list. Mind snapshot covers mind.html FOCUS_POOL paint + Recent Mind row counts per kind. Device walk both surfaces.
+
+4. **Chat 4 — Connect snapshot + View Transitions wire + brain close.** Connect snapshot covers Elite hero ring + dot strip + connect-feed-preview cache hydration (which PM-392 + PM-393 already laid groundwork for — `connect_feed_preview_v1` _kv slot read at paintAll, plus PM-393's inverted cache-first paint ordering). View Transitions API wired into nav.js bottom-nav delegation: `document.startViewTransition(() => navigate())` wraps the existing href click handler; iOS 18+ animates, older devices silently degrade. Final brain close PM with all 4 hubs verified on device.
+
+**§23.7.7 trap discipline at each chat:** each design phase MUST enumerate every visible element on first paint and confirm the snapshot covers it. Any element sourced from a non-snapshot path (separate cache, Dexie read, network fetch) WILL sit on placeholder text and we WILL have shipped a worse flicker than the skeleton one. Strict.
+
+**Banked §23 candidate NOT codified solo at PM-394:** chat-budget-aware architectural sequencing — when token-rate-limited, prefer surgical patterns with per-commit blast radius over architectural refactors with all-or-nothing semantics, even when the refactor is the correct long-term answer. Single occurrence; promotes on second recurrence.
+
+**Post-binary parked (not in any of the 4 chats above):**
+- Option 3 persistent-shell SPA migration (the architecturally-correct answer; 8-11 hours / 3 sessions of Claude-assisted work with full week headroom)
+- Monthly check-in counter-trigger + charity-trigger audit (backlog L2935 — gap is real, members get zero credit today)
+- All "feels finished" items 2-4 from prior NEXT FOCUS block below
+
+**Lewis-blocked (not Claude's problem to unblock):**
+- Health disclaimer copy for App Store + onboarding checkbox
+- Weekly check-in slider copy mirror to onboarding wording
+- Brevo logo removal (~$12/month)
+- Persona welcome copy spot-check in `persona_welcome_copy`
+- HAVEN clinical sign-off (Phil)
+
+This block is the canonical NEXT pointer for the pre-binary push; the in-app feature completeness block below remains the canonical NEXT pointer for post-binary trial-readiness work.
+
+---
+
 ## NEXT FOCUS — 25 May 2026 PM (Dean) — finish in-app feature completeness
 
 Dean's call: park the v4 / architecture work (Dexie audit, offline-first verification, performance audit, Capacitor release, etc.) until in-app features are functionally complete. The trial cohort needs to land on a finished-feeling app, not a half-wired one. Priority order:
