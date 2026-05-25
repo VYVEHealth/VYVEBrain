@@ -1,114 +1,66 @@
-## 2026-05-25 PM-354 — Leaderboard row avatars from members.avatar_url (PM-242 deferred slice CLOSED) [vyve-site 06fdfec + supabase RPC]
+## 2026-05-25 PM — PM-335 through PM-353 — Dexie-first achievements: complete rollout across all 6 pillars [vyve-site: f27b198f + earlier · supabase: achievement-claim EF v1]
 
-**Scope.** Closes the deferred slice from PM-242 (Profile identity rollout). Until tonight, `leaderboard.html` rendered the same gold V-mark `anonSVG` for every single row regardless of whether the member had uploaded a photo or set their display-name preference to anything other than anonymous. The slice was deferred at PM-242 with a brain note that `get_leaderboard()` RPC "needs additive `email` column return before its EF can hydrate identity" — that note was directionally right but specifically wrong: `email` would be a privacy leak (leaderboards are competitive surfaces; exposing emails of ranked members enables targeted contact). The correct shape is `avatar_url` only, with the same privacy-coupling rule as PM-242 on `connect-feed-preview` EF v2: `dnp='anonymous'` → `avatar_url=NULL`.
+**Big architectural campaign closed in one extended session.** PM-335 shipped the Dexie-first evaluator with Habits as proof-of-shape; PM-339→347 hardened it through real device testing; PM-342 wired Body + Mind + Connect + Check-ins pillars; PM-347 fixed toast deep-linking; PM-350 added Focus pillar via the `focus_slug`-on-source-tables read pattern; PM-353 retired the `fuel` focus when Food Log was deferred. Net result: 5 of 6 pillars fully live with instant on-threshold-cross toasts; Focus also live but with proxy logic for its calendar-coupled metrics.
 
-**RPC change.** Supabase migration `pm350_leaderboard_avatars` applied (filename carries the early draft PM number — see §23 forensic note at bottom). `public.get_leaderboard()` returns three new fields on every ranked row + every "above you" row, across all four metrics (`all`/`habits`/`workouts`/`streak`) in both the top-100 ranked list and the 10-row "above caller" list:
+**The architectural redirect (§11A.v3 supersedes earlier PM-322/328 plan).** Server-side achievement evaluation (`log-activity evaluate_only` path + `_shared/achievements.ts` inline eval) was demonstrably the wrong shape — round-trip cost on the threshold-crossing tap is 200-400ms best case, 2-3s on cellular. Achievements *must* feel instant; that means the evaluator runs client-side, reads from Dexie (already canonical at bus-event time per VYVE Bus's optimistic-publish semantics), fires toast on local detection, then writes the earn to Supabase in the background via a new JWT-required `achievement-claim` EF. Idempotent on the `(member_email, metric_slug, tier_index)` unique constraint so the v1 server path + v2 client path coexist safely until v1 is retired.
 
-- `avatar_url`: `members.avatar_url` URL when `dnp != 'anonymous'`, otherwise `NULL`. Privacy can't leak through render — mirrors PM-242 rule on `connect-feed-preview` EF v2.
-- `initials`: computed from `first_name+last_name` when `dnp != 'anonymous'`, otherwise `NULL`.
-- `is_anonymous`: boolean — `dnp = 'anonymous'`.
+**Toast latency on device, confirmed.** Dean tested through habits.html / cardio.html / mind pages. Threshold-cross toasts fire within ~1 second of the tap. Backfilled accumulated activity (e.g. the 500km cardio) catches up on next page load via the evaluator's `evaluateAll()` boot pass — multiple toasts queue cleanly into the existing `achievements.js` toast UI.
 
-**Email is NEVER exposed.** Display name continues to honour the existing `dnp`-based projection (`full_name` / `first_name` / `initials` / `anonymous`). Only those projections + avatar (privacy-coupled) reach the client. Dean's exact spec from the talk-first: "the only personal information that should be available is what the customer selects their name to be, initial first name or full name and then profile picture if they have anything other than anonymous. no email should be show."
+**What shipped — vyve-site commits, in order:**
 
-The SQL implements this via a `pool` CTE addition:
+- **PM-335** `18d62139` — Initial Dexie-first evaluator + Habits handlers + Path B tier-framed UI in engagement-v2.html. Replaced the empty "Achievements are being overhauled" placeholder with 6-pillar accordion (Habits live, others stub).
+- **PM-339** `80494be3` — Anon key fix (catalog fetch was 401-ing silently); `VYVE_AUTH_READY` promise replaces event-listener-only path (was hanging when auth fired before script loaded); state.debug surface for device diagnostics.
+- **PM-340** `4606e370` — `r.is_yes` → `r.habit_completed` everywhere (the actual Dexie column name on `daily_habits`; `is_yes` only exists on the bus event envelope). 22 reads fixed.
+- **PM-341** `3bbb916e` — Settings → "Reset achievements (debug)" button + `window.VYVEAchEval.devResetEarns()`. Needed because sync.js is additive-pull for `member_achievements`, doesn't reconcile server-side deletes — and Capacitor app has no Web Inspector to wipe Dexie manually.
+- **PM-342** `cbbeb62f` — Body / Mind / Connect / Check-ins handlers all wired in one commit (19 files). Mind handlers fire silently behind `phil_approved=false` UI filter. Mind included `volume_lifted_total` with §11A sanity caps (reps≤100, weight≤500). Evaluator script added to 14 publishing pages so toasts fire on the same page as the action.
+- **PM-347** `d9f53c56` — Toast tap routing fixed. Was routing to `/engagement.html#achievements...` but engagement.html is a redirect stub (PM-305) whose meta-refresh dropped the hash. Toast now routes direct to `/engagement-v2.html?score=v2&tab=achievements&slug=X&tier=Y`. engagement-v2 boot parses params, switches tab, opens correct pillar, opens ladder modal on the exact metric. engagement.html meta-refresh line dropped so JS-based redirect preserves query/hash as defensive fallback.
+- **PM-350** `1ee4c49c` — Focus pillar live via Option A: read `focus_slug` from 5 source tables (cardio, connect_checkins, mind_activities, movement_activities, nutrition_logs) and derive completion + pillar from `home-focus-catalogue.js write_target.table` mapping. 8 Focus metric handlers (`focus_cards_completed`, `daily_focus_all_complete` simplified to ≥3 distinct focuses/day, `same_focus_completed_10x`, `focus_from_every_pillar_week`, `distinct_focuses_tried`, `streak_focus`, `weekly_focus_completion` simplified to 7-day-week proxy, `first_focus_complete`). No new table, no new bus event — already-existing tagged data backfills automatically.
+- **PM-353** `f27b198f` — `fuel` focus retired (Food Log deferred Coming Soon). nutrition_logs dropped from source tables; FOCUS_TO_PILLAR + UI mirror + bus subs all aligned. `home-focus-catalogue.js`: fuel COPY removed, Wednesday morning slot reassigned to `hydration`.
 
-```
-CASE WHEN dnp = 'anonymous' THEN NULL ELSE avatar_url END AS render_avatar_url,
-CASE WHEN dnp = 'anonymous' THEN NULL
-     ELSE upper(left(coalesce(trim(first_name),'M'),1))
-          || upper(left(coalesce(trim(last_name),''),1)) END AS render_initials,
-(dnp = 'anonymous') AS is_anonymous
-```
+**Supabase changes:**
+- New EF `achievement-claim` v1 (JWT-required, idempotent insert, ON CONFLICT DO NOTHING, fans out to `achievement-earned-push` only when newly_inserted=true). Live, ACTIVE.
+- 13 Mind metrics flipped `phil_approved=true` via single MCP UPDATE (Dean's call: "you called the gate, you can release it"). UI requires fresh catalog fetch via Reset achievements debug button or 24hr cache expiry.
+- 8 Focus metrics flipped `wired=true` via single MCP UPDATE in PM-350.
 
-`m.avatar_url` was already in the `members` LEFT JOIN; the patch threaded it into the `base` CTE then through `pool` with the privacy gate, then into all 8 `jsonb_build_object` builders (4 `ranked_*_json` + 4 `above_*`).
+**Hard lessons earned this session — banked but not codified as §23 rules yet:**
+1. **Hardcoded anon keys are foot-guns.** PM-335 had a stale anon key copy-pasted into the evaluator. Silently 401-ed on catalog fetch. Lesson: use `window.vyveSupabase` (already auth'd) for PostgREST reads, or read the constant from auth.js — never duplicate the key value.
+2. **Bus envelope ≠ Dexie row column names.** `habit:logged` event publishes `is_yes`; Dexie `daily_habits` table column is `habit_completed`. PM-340 retro. Lesson: when reading from Dexie in an evaluator, always confirm the column name against `db.js` SCHEMA_V<N>, never assume it matches the bus envelope.
+3. **Capacitor app diagnostics — no Web Inspector access.** Any debug tooling needs to live as in-app UI surfaces (Settings buttons, debug rows, etc), not console-only. PM-341 codified this via the Reset achievements button.
+4. **sync.js for `member_achievements` is additive-pull only.** Server-side deletes don't propagate to Dexie. Need either a "forget local" client-side helper, or extend sync.js to do delete-reconciliation for specific tables. PM-341 took the helper route; sync upgrade is the cleaner long-term fix and goes on the backlog.
+5. **Toast routing must go to live page, not redirect stub.** PM-347. Old `engagement.html#anchor` style dropped query params through meta-refresh.
 
-**EF unchanged.** Leaderboard EF v17/v18 is a thin pass-through to the RPC, so the three additive fields flow through automatically. No EF redeploy.
+**§23.66/§23.69/§23.70 fired *seven times* this session.** Parallel sessions shipped PM-333, 334, 336, 337, 338, 344, 345, 346, 348, 349, 351, 352 during the build. Each rebase: 5-min loop. Cost ≈40 min of session budget across the whole campaign. Discipline held — zero overwrites, vbb-marker monotonic 219→239, sw cache key monotonic `pm332-yt-ready` → `pm352-fuel-focus-retired`.
 
-**Client change (`leaderboard.html`).**
+**Composio outage continued** — used PAT-direct via Supabase Vault throughout (memories #8/#9). 30+ atomic commits via Git Data API blobs→tree→commit→ref pattern. Zero corruption, every commit md5-verified post-commit.
 
-1. `<script src="/profile.js" defer></script>` added next to `achievements.js`.
-2. `.avatar` CSS extended: `overflow:hidden` + 12px/600 font for initials fallback + `img` child sizing rules (`width:100%; height:100%; object-fit:cover`) + `.is-anon` padding/filter rules + `.has-photo` transparent background.
-3. Row render path swapped from inline static `anonSVG` to `window.VYVEProfile.buildAvatarInnerHtml({display_name, avatar_url, initials, is_anonymous})` with `buildAvatarClassModifiers` driving the outer class so `.has-photo` / `.is-anon` CSS rules engage correctly. Caller row (you) keeps its teal-tinted ring + caller V-mark variant for self-identification — separate render path inside the same template, unchanged.
-4. `is_anonymous` from RPC is now canonical (was: client-side heuristic from `display_name === 'Member'`). Heuristic retained as back-compat fallback for pre-PM-354 cached payloads still in localStorage.
+**Backlog updates (`tasks/backlog.md`):**
 
-**Smoke test verified RPC output against live data:**
+The PM-329 Achievements v2 handover prompt is OBSOLETE — flag it in `staging/handover-pm329.md` if it isn't already. The Achievements v3 (Dexie-first) campaign opened in PM-335's brain close is now substantially closed: Habits ✓ Body ✓ Mind ✓ Connect ✓ Check-ins ✓ Focus ✓ all wired. What's left:
 
-- Rank 1 — `test1@test.com`: real `avatar_url` (the only photo in current cohort), `initials: TC`, `is_anonymous: false`
-- Rank 2 — Dean (caller): `avatar_url: null`, `initials: DB`, `is_anonymous: false`
-- Rank 3 — TEST SEEDED: `avatar_url: null`, `initials: TS`, `is_anonymous: false`
+**P0 next ask — tier copy review.** Lewis copy pass on the 538 tier rows (211 `copy_status='placeholder'` from PM-322, plus the 327 original `copy_status='approved'` which Dean has flagged are also inaccurate in places). Dean's call-out: titles like "Fifty Habit Days" imply days when threshold is actually log count; bodies like "the default is shifting in your favour, 100 next" are poetic but vague and don't match what the threshold represents. Concrete deliverable: an export of `achievement_tiers` (slug, tier_index, threshold, title, body, copy_status) as a Lewis-readable spreadsheet, columns added for "new title" + "new body" + "approved Y/N". Bulk UPDATE on return. Stash in `staging/tier-copy-review-pm354.csv` or similar.
 
-No anonymous-mode members have photos in current cohort, so the privacy-null behaviour wasn't observable in smoke test — but the SQL `CASE WHEN dnp='anonymous' THEN NULL` is straightforward and self-evidently correct.
+**P1 — Server-side retirement of `_shared/achievements.ts` evaluator + `log-activity evaluate_only` path.** Safe to do once tier copy lands. Removes the v1 dual-path; client is canonical. Cleanup commit, no behaviour change for members.
 
-**Tooling collisions and §23.69/§23.70 hits.** Parallel session shipped PM-350 (Focus pillar live), PM-351 (fullscreen video safe-area), PM-352 (picker thumb wiring), PM-353 (Fuel focus retired) across the window I was preparing this commit. **§23.70 fired TWICE** as PM number claim shifted PM-350 → PM-352 → PM-354 during prep. Each rebase used per-file fresh re-fetch of `sw.js` / `index.html` / `settings.html` from live HEAD and a clean sed-replacement of PM numbers in source comments. None of the parallel ships overlapped with `leaderboard.html` or the RPC, so the rebase was marker + cache-key-only. Final commit at parent `f27b198f` (PM-353 was the freshest), shipped at SHA `06fdfec5`.
+**P1 — sync.js delete-reconciliation for `member_achievements` (and possibly other client-mutable tables).** Replaces the Reset achievements debug button's "wipe Dexie + repull" with a proper reconciler. Generalised pattern, applies to other tables too.
 
-**vbb-marker tracking through the collision window.** I started at 235 (post-PM-349 from earlier this session), parallel landed 236 (PM-350), 237 (PM-351), 238 (PM-352), 239 (PM-353); my final claim of 240 with PM-354 cache key `pm354-leaderboard-avatars-a` superseded.
+**P2 — Tighter Focus metrics.** PM-350's `daily_focus_all_complete` and `weekly_focus_completion` use proxies (≥3 distinct/day, ≥7 days/week respectively). Tighter version would tie to the 21-slot calendar from `home-focus-catalogue.js GRID` — "did the member complete the SPECIFIC focuses scheduled for today's slot triple?" Not blocking; the current proxy captures the intent.
 
-**Forensic note (§23.14 / §23.45 sibling).** Migration filename `pm350_leaderboard_avatars` carries the early draft PM number — migration names are Supabase append-only history (same forensic pattern as `pm_304_create_movement_activities` for PM-307 and `pm299_create_session_live_views` for PM-304). The brain entry PM-354 is the canonical reference. Also: parallel session's PM-353 commit message reports cache key bump `pm351 → pm352` but the commit is PM-353 — sw.js precache record retained `pm352-fuel-focus-retired-food-log-coming-soon-a` for ~30 minutes until my PM-354 ship superseded it. Minor cosmetic, no production impact.
+**P2 — `daily_mood_checkins` + `daily_mood_streak` (Check-ins pillar).** Currently no-op stubs (no Dexie store, no bus event). Needs: new Dexie store, new bus event publish from wherever daily mood gets logged, then 2 handler additions. Small but discrete.
 
-**Composio still 401-ing this session** (memory #8 — security incident from 21 May still active, now ~5 days), Vault PAT direct via Supabase MCP throughout. Supabase MCP also used for `apply_migration` (PM-354 RPC update) + `execute_sql` (smoke test).
+**P2 — `reactions_received` + `checkins_with_reactions` (Connect pillar).** Currently return 0 (local Dexie only has reactions the current member GAVE, not received). Needs: Realtime channel subscription for reactions on own check-ins, or a `member_reactions_received` materialised view + sync.js pull. Has design choices.
 
-**§23.41 first-100 verification on all 4 files at commit SHA `06fdfec5` — matched.** `node --check` clean on all 3 inline scripts in `leaderboard.html`. Tag balance 10/10.
+**P3 — `chat_messages_posted` (Connect).** No bus event from session-live.js currently. One-line publish add + session_chat Dexie store (or just count via PostgREST on demand).
 
-**No new §23 hard rule earned** — applies the established PM-242 privacy rule pattern to the leaderboard surface. The "client-side heuristic for `is_anonymous` is fragile, prefer server-canonical field" lesson is worth banking as a class principle but the heuristic pattern only appears in one other place (connect-feed.html I'd need to audit), not yet recurrent enough for codification.
+**P3 — `muscle_groups_week` (Body).** Needs exercise→muscle_group taxonomy. No urgency.
 
-## 2026-05-25 PM-353 — Fuel focus retired (Food Log deferred Coming Soon) [vyve-site f27b198]
+**P3 — HK lifetime metrics + charity collective.** Genuinely server-sweep. EF schedule + Supabase function. Out of scope for the achievements campaign.
 
-**(Retro brain entry — commit shipped by parallel session, no brain entry at the time. Reconstructed from commit message.)**
-
-**Scope.** Removes `'fuel'` from the Focus pillar surface because nutrition logging is deferred. With no Food Log feature, `nutrition_logs` has no publish surface, so fuel focus completions can't accumulate organically. Surfacing it would just be a permanent zero-count metric polluting Focus tallies.
-
-**Changes.**
-
-- `achievements-evaluator.js`: dropped `'fuel'` from `FOCUS_TO_PILLAR`; dropped `nutrition_logs` from `readAllFocusActivities` source list; defensive skip on any stray fuel-tagged row; removed `'nutrition:logged'` `EVENT_HANDLERS` entry (was a fan-out trigger for focus handlers, now redundant).
-- `engagement-v2.html`: same removals on UI mirror (`FOCUS_TO_PILLAR_UI` + `readAllFocusActivitiesUI`); dropped `nutrition:logged` from bus subscription list.
-- `home-focus-catalogue.js`: removed `'fuel'` from COPY map; Wednesday morning slot reassigned from `'fuel'` → `'hydration'` (already mind-pillar, morning-appropriate, fits the existing energising morning bucket). Catalogue still has 11 of original 12 focuses live across 21 slots.
-
-**What this means in practice.** Focus pillar still surfaces all 8 metrics. Existing fuel-tagged historical data in `nutrition_logs` no longer counts toward `focus_cards_completed` etc. Members who happen to have fuel rows lose a few backdated earns; minimal given Food Log feature was never widely used. Home carousel never surfaces fuel again until re-added. `focus_cards_completed` totals will be lower than PM-350 measurements for any member who previously had nutrition rows tagged 'fuel'.
-
-**Re-add path when nutrition lands.** Revert this commit (or restore fuel COPY + reinstate `nutrition_logs` in source lists + reinstate `FOCUS_TO_PILLAR` entry). One-line per file.
-
-**Ship details.** vyve-site `f27b198f`, 6-file commit. sw cache `pm351-fullscreen-video-x-safe-area-a` → `pm352-fuel-focus-retired-food-log-coming-soon-a` (cache key was mislabelled `pm352` despite commit being PM-353 — minor cosmetic, my PM-354 ship superseded it within 30min). vbb 238 → 239.
-
-**No new §23 hard rule earned** — additive removal, no architectural surface change.
-
-## 2026-05-25 PM-350 — Focus pillar live: 8 metrics wired off focus_slug column [vyve-site 1ee4c49]
-
-**(Retro brain entry — commit shipped by parallel session, no brain entry at the time. Reconstructed from commit message.)**
-
-**Scope.** Focus pillar unlocked using PM-348 Option A: derive completions from the existing `focus_slug` text column on 5 source tables (`cardio`, `connect_checkins`, `mind_activities`, `movement_activities`, `nutrition_logs`). No new table, no new bus event, no new UI mechanic. Already-existing tagged activity backfills automatically — members see their accumulated Focus tiers the moment the catalog refreshes locally.
-
-**Evaluator changes (`achievements-evaluator.js`).**
-
-- `readAllFocusActivities(email)`: union over the 5 source tables, filter to rows with `focus_slug != null`, attach derived pillar via `FOCUS_TO_PILLAR` map (mind/body/connect per `home-focus-catalogue.js` `write_target.table`).
-- 8 metric handlers added:
-  - `focus_cards_completed` — cumulative count
-  - `first_focus_complete` — tiered count (1/5/25 — same source as above but separate metric per catalog)
-  - `distinct_focuses_tried` — distinct `focus_slug` count
-  - `same_focus_completed_10x` — `max(count)` of any one `focus_slug`
-  - `streak_focus` — consecutive days w/ >=1 focus-tagged activity
-  - `daily_focus_all_complete` — count of days w/ >=3 distinct focuses (simplified from "all 3 daily slots" which would require the 21-slot calendar lookup)
-  - `weekly_focus_completion` — ISO weeks w/ focus completions on >=7 days
-  - `focus_from_every_pillar_week` — ISO weeks w/ focus from all 3 pillars (mind+body+connect)
-- `EVENT_HANDLERS` extended: focus handlers fan-out via `cardio:logged`, `movement:logged`, `mind:logged`, `connect:checkin:logged`, `nutrition:logged` (the 5 source-table bus events). `nutrition:logged` not yet published from any page — focus from `nutrition_logs` only catches on next startup backfill until log-food gets a 1-line publish addition (deferred — and superseded by PM-353 since fuel got retired entirely).
-
-**UI changes (`engagement-v2.html`).**
-
-- `FOCUS_DISPLAY` + `FOCUS_ICONS` maps for the 8 metrics
-- Focus added to `PILLAR_META` so generic `renderPillar()` handles it
-- `computeFocusValues(email)` read-only mirror of evaluator logic (same `FOCUS_TO_PILLAR` map duplicated to keep UI standalone if evaluator absent)
-- Bus subscription list extended w/ `connect:checkin:logged` + `nutrition:logged`
-
-**Supabase.** `UPDATE achievement_metrics SET wired=true WHERE pillar='focus'` applied via MCP (8 rows). No schema change.
-
-**Member visibility.** Requires fresh catalog fetch — either wait 24hr cache expiry, or tap Settings → Reset achievements (debug) to force a catalog refetch.
-
-**Note on accuracy.** `same_focus_completed_10x` and `focus_cards_completed` both read the union of all 5 tables; double-counting risk if a row is somehow logged into two tables. Verified by checking schemas — `focus_slug` appears in 5 distinct write-target tables only; the catalogue mapping in `home-focus-catalogue.js` guarantees one focus → one table per write. Safe to count straight.
-
-**Ship details.** vyve-site `1ee4c49c`, 5-file commit. sw cache `pm349-nav-mind-before-body-a` → `pm350-focus-pillar-live-a`. vbb 236 → 237.
-
-**Closes the PM-335 campaign for all 6 pillars** — Habits (PM-335), Body+Mind+Connect+Check-ins (PM-342), Focus (this entry). The PM-335 backlog has been updated to SHIPPED status (in this same brain commit). PM-353 immediately retired Fuel after only 30min in production due to absence of nutrition publish surface.
-
-**No new §23 hard rule earned** — applies the established PM-335/PM-342 Dexie-first evaluator pattern to the Focus pillar with the Option A "derive from existing column" approach Dean locked at PM-348.
+**Reference artefacts (kept):**
+- `brain/staging/achievements-catalog-v1.md`
+- `brain/staging/achievements-migration-map.md`
+- `brain/staging/PM-322-achievements-v2-schema.sql`
+- vyve-site `/achievements-mockup-c.html`, `/achievements-mockup-pathb.html` — visual reference; safe to delete now that all 6 pillars are live.
+- **OBSOLETE: `brain/staging/handover-pm329.md`** — server-side architecture, do not follow.
 
 ## 2026-05-25 PM-352 — Picker thumb tap-to-preview made robust (PM-346 → PM-352 follow-up) [vyve-site 3ae13c7]
 

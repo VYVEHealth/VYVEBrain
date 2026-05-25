@@ -8,32 +8,50 @@ Action: query workout_plans grouped by plan_type for NULL video_url ratio, then 
 
 Out of scope for PM-346 (which was wiring only); flagging here so it surfaces next time someone touches workout content.
 
-## SHIPPED 25 May 2026 PM-342 — PM-335 — Achievements v3 — Dexie-first evaluator rollout (COMPLETE)
+## SHIPPED 25 May 2026 PM-353 — PM-335 — Achievements v3 — Dexie-first evaluator rollout (ALL 6 PILLARS LIVE)
 
-**Status.** PM-335 (Habits pillar proof) + PM-342 (Body + Mind + Connect + Check-ins pillars) + PM-350 (Focus pillar via Option A: derive completions from existing focus_slug column) close this campaign across ALL 6 PILLARS. Fuel later retired at PM-353 because Food Log is deferred — 11 of original 12 focuses live across 21 slots; Wednesday morning slot reassigned 'fuel' → 'hydration'.
+**Status.** All 6 pillars wired client-side. Habits + Body + Mind + Connect + Check-ins + Focus all surfacing live in `engagement-v2.html` with toasts firing on threshold cross. PM-335 through PM-353 thread:
 
-**Original next-session asks PM-336/337/338/339 — all shipped in one atomic 19-file commit at PM-342 (cbbeb62f, 25 May).** See changelog PM-342 entry for the metric inventory across each pillar (19 Body / 13 Mind / 15 Connect / 9 Check-ins).
+- PM-335 `18d62139` — Initial evaluator + Habits + UI shell
+- PM-339 `80494be3` — Anon key fix + auth-ready promise + diag fields
+- PM-340 `4606e370` — `is_yes`→`habit_completed` Dexie column fix
+- PM-341 `3bbb916e` — Reset achievements debug button
+- PM-342 `cbbeb62f` — Body + Mind + Connect + Check-ins (19 files)
+- PM-347 `d9f53c56` — Toast deep-link routing
+- PM-350 `1ee4c49c` — Focus pillar live via `focus_slug` source-table reads
+- PM-353 `f27b198f` — Fuel focus retired (Food Log deferred)
 
-**Mind UI gated on Phil sign-off.** 13 Mind metric handlers write earns silently to `member_achievements` when thresholds cross; engagement-v2 UI filters them via `phil_approved=false`. When Phil signs: `UPDATE achievement_metrics SET phil_approved=true WHERE pillar='mind'` makes all 13 rows visible with already-earned backdated state. No code change needed.
+**Mind UI no longer gated.** Dean called the release in PM-347 session — 13 Mind metrics flipped `phil_approved=true` via direct MCP UPDATE. Visible after fresh catalog fetch (Reset achievements debug button or 24hr cache expiry).
 
-**Server-side coexistence.** `_shared/achievements.ts` evaluator + `log-activity evaluate_only` path still live in parallel. `member_achievements` unique constraint makes double-claim safe. Full server-side retirement deferred to a future PM once all 5 client-side pillars are verified stable over a few days of trial — not urgent, dual paths coexist correctly.
+**Server-side coexistence.** `_shared/achievements.ts` + `log-activity evaluate_only` path still live alongside the new client evaluator. `member_achievements` unique constraint makes double-claim safe. Full server retirement is a P1 cleanup task; not urgent.
 
-**Outstanding items from the campaign:**
+**NEXT ASK — P0 — Tier copy review.** Dean's call-out tonight: tier titles + bodies are inaccurate. "Fifty Habit Days" implies days but threshold is log count; "the default is shifting in your favour, 100 next" is poetic but vague and doesn't tell the member what the threshold represents. Affects both the 211 `copy_status='placeholder'` rows AND many of the 327 `copy_status='approved'` from PM-322.
 
-- **SHIPPED PM-350 — Focus pillar (Option A).** Wired off `focus_slug` text column on 5 source tables. 8 metrics: focus_cards_completed, first_focus_complete (tiered), distinct_focuses_tried, same_focus_completed_10x, streak_focus, daily_focus_all_complete, weekly_focus_completion, focus_from_every_pillar_week. UPDATE achievement_metrics SET wired=true WHERE pillar='focus' (8 rows). No schema change.
+Concrete deliverable:
+1. Export `achievement_tiers` to a Lewis-readable CSV (`brain/staging/tier-copy-review-pm354.csv` or similar). Columns: slug, tier_index, threshold, current_title, current_body, copy_status, **proposed_title, proposed_body, approved_y_n**.
+2. Lewis fills in proposed columns, marks approved_y_n=Y on rows he's done.
+3. Bulk UPDATE on return, set `copy_status='approved'` on the updated rows.
 
-- **SHIPPED PM-353 — Fuel focus retired.** Food Log Coming Soon deferral means nutrition_logs has no publish surface; fuel completions can't accumulate organically. Removed from FOCUS_TO_PILLAR + readAllFocusActivities + COPY map. Wednesday morning slot reassigned 'fuel' → 'hydration'. Re-add path one-line-per-file when nutrition lands.
+Pattern Dean flagged: tier titles should match the unit of the threshold (logs vs days vs minutes vs sessions vs streaks). Tier bodies should explain what was achieved in plain English, present tense, no exclamation marks, no poetry.
 
-- **Mind UI reveal.** Single SQL UPDATE pending Phil's clinical sign-off on the 13 Mind metric copy + tier thresholds. Lewis + Phil parallel + non-blocking.
+**Other outstanding (lower priority):**
+- **P1** — Server-side retirement of `_shared/achievements.ts` + `log-activity evaluate_only` path. Safe to do once tier copy lands.
+- **P1** — `sync.js` delete-reconciliation for `member_achievements` (replaces PM-341 debug button with a proper reconciler). Generalised pattern.
+- **P2** — Tighter Focus metrics (`daily_focus_all_complete` slot-locked to GRID instead of ≥3-distinct proxy; `weekly_focus_completion` 21-slot completion % instead of ≥7-days proxy).
+- **P2** — `daily_mood_checkins` + `daily_mood_streak` handlers (need new Dexie store + bus event from wherever mood gets logged).
+- **P2** — `reactions_received` + `checkins_with_reactions` (need Realtime channel or server view).
+- **P3** — `chat_messages_posted`, `muscle_groups_week`, HK lifetime, charity collective — see PM-353 changelog for design context.
+- **P3** — Settings "Reset achievements (debug)" button removal post-trial (PM-341 stub).
 
-- **Lewis copy pass.** 211 placeholder tier rows from PM-328 still carry working copy. Lewis can swap any row via single UPDATE — placeholder→approved gate protects subsequent rewrites.
-
-- **Server-side retirement.** `_shared/achievements.ts` + `log-activity evaluate_only` path. Defer to a future PM once trial confirms all 5 client-side pillars firing reliably.
-
-- **PM-341 Settings debug button removal.** "Reset achievements" debug button on Settings (shipped PM-341) — remove post-trial once pipe verification done.
+**Hard rules earned this campaign (bank for §23 codification when one repeats):**
+- Never hardcode anon keys in client code; read from auth.js or use `window.vyveSupabase`.
+- Bus envelope ≠ Dexie row column names; check `db.js` SCHEMA_V<N> before reading.
+- Capacitor app diagnostics are in-app only; console-only debug is invisible.
+- `sync.js` for `member_achievements` is additive-pull (deletes don't propagate).
+- Toast routing skips redirect stubs; route direct to live page with query params.
 
 **Reference artefacts.**
-- vyve-site: `achievements-mockup-c.html`, `achievements-mockup-pathb.html` — visual reference. Deletable once Focus pillar lands and all 6 pillars are live.
+- vyve-site: `achievements-mockup-c.html`, `achievements-mockup-pathb.html` — visual reference. **Safe to delete now that all 6 pillars are live.**
 - brain: `staging/achievements-catalog-v1.md`, `staging/achievements-migration-map.md`, `staging/PM-322-achievements-v2-schema.sql` — kept.
 - brain: `staging/handover-pm329.md` — **OBSOLETE** (server-side architecture, do not follow). Safe to delete.
 
