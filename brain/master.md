@@ -688,6 +688,51 @@ Reference artefacts: `brain/staging/achievements-catalog-v1.md`, `brain/staging/
 
 ---
 
+### PM-335 architectural redirect (25 May 2026 PM) — Dexie-first evaluator [SUPERSEDES §11A inline/sweep split for member-action metrics]
+
+**The redirect.** Achievement evaluation moves from server-side (`log-activity evaluate_only` + `_shared/achievements.ts`) to client-side **Dexie-first, bus-subscribed**. Reason: instant feedback on the threshold-crossing tap is non-negotiable; server round-trip is 200-400ms best case, 2-3s on cellular — that's "five, ten, fifteen, twenty seconds later" UX that breaks the achievement-toast moment.
+
+**The new shape (one event family wired so far, pattern locked).**
+
+1. **`achievements-evaluator.js`** (client lib, 460 LOC, loaded on every page that publishes a tracked bus event AND on engagement-v2.html). Subscribes to bus events; for each, debounces 100ms then runs all metric handlers keyed off that event. Each handler reads Dexie store(s), computes a current value, calls `newEarnsForThreshold(slug, value)` against the cached tier ladder, returns any tier rows that are at-or-above threshold AND not in `earnedSet`. Earns flow to optimistic toast via existing `window.VYVEAchievements.queueEarned()` + background POST to `achievement-claim` EF. `earnedSet` populated from Dexie `member_achievements` at boot (already synced by sync.js). Catalog cached in localStorage 24hr TTL (single fetch from `achievement_metrics` + `achievement_tiers` PostgREST — public SELECT RLS).
+2. **`achievement-claim` EF v1** (JWT-required, deployed live). Resolves member email from JWT, verifies `(metric_slug, tier_index)` exists in catalog (anti-tamper), inserts to `member_achievements` ON CONFLICT DO NOTHING, fans out to `achievement-earned-push` via `EdgeRuntime.waitUntil()` *only if* `newly_inserted=true`. Idempotent re-claims are no-ops with no double-push.
+3. **Toast + claim race**: toast fires immediately on local detection; claim is background. Even if claim fails (network drop), `member_achievements` Dexie row is optimistically upserted client-side so next evaluator pass doesn't re-fire the toast. Server eventually catches up on next sync; if the row already exists server-side from a duplicate sweep, the upsert merges.
+
+**Wired this commit (PM-335): Habits pillar — 11 metrics on `habit:logged`.**
+`habits_logged`, `streak_habits`, `three_habits_day`, `five_habits_day`, `all_assigned_habits_day`, `habits_before_9am`, `first_habit`, `weekly_habits_total`, `distinct_habit_types`, `same_habit_repeats`, `seven_day_including_weekend`. Read from `VYVELocalDB.daily_habits` + `VYVELocalDB.member_habits`. The 22 server-side-wired v1 metrics (workouts/cardio/sessions/etc) keep firing through the v1 `log-activity` path until their pillar handlers ship — the unique constraint on `member_achievements` makes the eventual transition safe (no double-claim possible).
+
+**Coverage map for the remaining ~70 active metrics.**
+
+| Bus event | Dexie store | Metrics keyed off it | Status |
+|---|---|---|---|
+| `workout:logged` + `set:logged` | `workouts`, `exercise_logs` | 12 Body metrics | Wirable now |
+| `cardio:logged` | `cardio` | ~4 Body metrics | Wirable now |
+| `movement:logged` | `movement_activities` | 3 Body metrics | Wirable now |
+| `workout:shared` | `custom_workouts` | 2 Connect metrics | Wirable now |
+| `session:viewed` / `replay:viewed` | `session_views`, `replay_views`, `replay_video_views`, `session_live_views` | 9 Connect metrics | Wirable now |
+| `connect:checkin:logged` + `connect:reaction:logged` | `connect_checkins`, `checkin_reactions` | 4 Connect metrics | Wirable now (reactions_received needs Realtime later) |
+| `mind:logged` | `mind_activities` | 13 Mind metrics | Wirable now (UI gated on `phil_approved=false` until Phil signs) |
+| `wellbeing:logged` + `monthly_checkin:submitted` | `wellbeing_checkins`, `monthly_checkins` | 9 Check-ins metrics | Wirable now |
+| (none yet) | (none yet) | 8 Focus metrics | **Blocked** — no `focus_completions` table exists; data-layer campaign owed |
+| (none) | (server-only) | 4 HK lifetime + 2 charity collective | Legitimately sweep-source; keep server-side |
+
+**61 of 82 active metrics wirable client-side today.** Focus pillar (8) and HK/charity sweeps (6) keep the legitimate server-side reasons.
+
+**Files in `_shared/achievements.ts` and `log-activity evaluate_only` path: NOT retired.** Both kept live so the v1-wired metrics still fire. Full retirement is a future PM once every pillar's handlers are client-side. The `achievements.js` client lib (toast queue + mark-seen + replay-unseen) is unchanged — the new evaluator drives it via `queueEarned()`.
+
+**Open per-pillar work (one session each, rough sequencing):**
+- Body handlers (PM-336 next)
+- Connect handlers (PM-337-ish)
+- Check-ins handlers (PM-338-ish)
+- Mind handlers (writeable any time, UI display gated on Phil)
+- Focus pillar — opens once focus completion data layer ships (separate campaign)
+
+**Reference artefacts (vyve-site, kept):** `achievements-mockup-c.html` (Direction C) + `achievements-mockup-pathb.html` (Path B badges) — visual reference for future pillar UI work. Deletable once all 6 pillars are live.
+
+**§11A.v3 supersedes the "Inline vs sweep split" paragraph above for member-action metrics.** Sweep cron (`achievements-sweep`) remains the right place for `member_days` tenure + HK lifetime + charity collective. Everything else moves client-side.
+
+---
+
 ## 11B. Page documentation (`/page-docs/`)
 
 New top-level folder in VYVEBrain repo, opened PM-285 (25 May 2026). One markdown file per portal page describing what the page is, why it exists, what a member sees, how they use it, and what data flows through it. Plain English, member-readable, no SQL, no §23 references.

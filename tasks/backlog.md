@@ -1,50 +1,37 @@
-## Added 25 May 2026 — PM-329 — Achievements v2 UI build (data layer done, UI pending)
+## Added 25 May 2026 PM — PM-335 — Achievements v3 — Dexie-first evaluator rollout
 
-**Status update.** PM-328 part 2 (this evening) shipped the full data layer to live Supabase: schema delta, all new metric rows, 211 placeholder tier rows, gate flags (`phil_approved`, `wired`) applied. UI rewrite is the remaining major piece and was carved out to a fresh chat to avoid mid-build compaction. Handover prompt at `brain/staging/handover-pm329.md` — paste verbatim into a new chat.
+**Status.** PM-335 shipped the new architecture + Habits pillar end-to-end (11 metrics wired client-side, instant on threshold cross). Body / Mind / Connect / Check-ins pillars are the remaining wireable work; Focus is blocked behind a separate data-layer campaign.
 
-**What's left:**
+**SUPERSEDES PM-329 backlog item** (the server-side evaluator extension across 65 metrics). That approach is the wrong shape — server round-trip is too slow for instant toast. PM-335 redirected to Dexie-first via bus subscriptions. The previous PM-329 handover prompt at `brain/staging/handover-pm329.md` is OBSOLETE — do not follow it.
 
-A. **Evaluator wiring** — `supabase/functions/_shared/achievements.ts`. 65 metrics currently flagged `wired=false`. Source-table inventory needed before code:
-   - Movement metrics need `movement_activities` table (PM-307 — confirm schema)
-   - Mind metrics need `mind_activities` table (PM-173 — confirm `kind` column values)
-   - Focus metrics need focus_cards/focus_completions tables — CONFIRM EXISTENCE before wiring; if unshipped, leave `wired=false` and surface in backlog
-   - Connect new metrics need reactions + session_minutes_by_category — confirm tables
-   - Checkins new metrics need daily_mood_checkins table — confirm
-   - Body behavioural needs workouts.completed_at, exercise_logs sanity caps (reps≤100, weight_kg≤500), distinct date sequences
+**Next-session asks (pillar-per-session pattern, all follow the Habits PM-335 template):**
 
-B. **member-achievements EF update.** Return shape: `{ hero: {memberDays, streakOverall}, pillars: {body, habits, mind, connect, checkins, focus}, hidden, legacy }`. Filter: pillar grid uses `WHERE pillar IS NOT NULL AND wired AND (phil_approved OR is_admin)`. Phil-pending Mind metrics stay dark until Phil signs.
+PM-336 — **Body pillar** (~22 metrics). Bus events: `workout:logged`, `set:logged`, `cardio:logged`, `movement:logged`. Dexie stores: `workouts`, `exercise_logs`, `cardio`, `movement_activities`. Includes: `workouts_logged`, `cardio_logged`, `volume_lifted_total` (sanity caps `reps_completed<=100 AND weight_kg<=500` — two corrupt rows on Dean's Back Squat 2026-04-18 need zeroing first per §11A), `workout_minutes_total`, `cardio_minutes_total`, `streak_workouts`, `streak_cardio`, `movement_sessions_logged`, `streak_movement`, `reps_lifted_total`, `sets_completed_total`, `distance_total`, `workout_before_7am`, `workout_days_in_a_row`, `muscle_groups_week`, `programme_week_complete`, `first_workout`, `first_cardio`, `first_custom_workout`, `programme_complete_8wk`. HK lifetime (`lifetime_steps_v2`, `lifetime_active_energy_v2`) stays server-side sweep.
 
-C. **UI rewrite — Direction C + Path B on engagement.html achievements tab.** Mockups in vyve-site (`/achievements-mockup-c.html`, `/achievements-mockup-pathb.html`) are paste-in starting points. Six pillar cards (collapsed by default, tap to expand), Pattern 3 metric rows with icon-in-tier-frame badges, gemstone colour ladder (bronze→silver→gold→sapphire→ruby→emerald→amethyst→pearl→obsidian→diamond), gold dots underneath rows for earned tiers, dashed frame + faded icon for locked. Hidden achievements drawer separate. Legacy badges drawer for member's pillar=NULL earned rows.
+PM-337 — **Connect pillar** (~17 metrics). Bus events: `session:viewed`, `replay:viewed`, `connect:checkin:logged`, `connect:reaction:logged`, `workout:shared`. Dexie: `session_views`, `replay_views`, `replay_video_views`, `session_live_views`, `connect_checkins`, `checkin_reactions`, `custom_workouts`. Wirable today: `sessions_watched`, `replays_watched`, `streak_sessions`, `session_minutes_yoga`/`mindfulness`/`therapy`/`education`, `reactions_given`, `checkins_with_reactions`, `workouts_shared_v2`, `distinct_session_categories`, `first_session_watched`, `first_replay_watched`. Deferred (need Realtime channel or one-line publish addition): `reactions_received`, `chat_messages_posted`. Server-sweep keeps: `charity_tips_v2`, `personal_charity_contribution_v2`.
 
-D. **Lewis copy pass — parallel, non-blocking.** 211 placeholder tier rows currently carry working copy that follows the voice rules (no emojis, 3-6 word titles, 10-20 word bodies). Lewis can swap freely — placeholder→approved is a one-row UPDATE per tier and doesn't require code change. Hand him the catalog (`brain/staging/achievements-catalog-v1.md`) and a SQL query to UPDATE specific rows.
+PM-338 — **Check-ins pillar** (~9 metrics). Bus events: `wellbeing:logged`, `monthly_checkin:submitted`. Dexie: `wellbeing_checkins`, `monthly_checkins`. Wirable: `checkins_completed`, `monthly_checkins_completed`, `streak_checkin_weeks`, `checkin_text_responses`, `first_checkin`. Phil-gated: `weekly_score_climb`, `monthly_avg_improved`, `honest_checkin_tier5`. Needs new bus event + Dexie store: `daily_mood_checkins`, `daily_mood_streak`.
 
-E. **Phil sign-off — parallel.** 18 metrics gated by `phil_approved=false` (Mind pillar + 5 sensitive). Phil reviews copy for any framing that could hurt a HAVEN member in a low week. Once signed, UPDATE `phil_approved=true` per metric.
+PM-339 — **Mind pillar** (~13 metrics). Bus event: `mind:logged`. Dexie: `mind_activities` (`kind` column discriminator: breathwork/journal/meditation/visualisation/affirmation). All 13 are `phil_approved=false` so handlers can be wired and write to `member_achievements` but UI filters them out until Phil signs. Once Phil signs, single UPDATE per metric flips them visible — no code change needed.
 
-**Open mapping questions (recommendations exist; defaults if no answer):**
+PM-340+ — **Focus pillar**. BLOCKED until focus completion data layer ships (no `focus_completions` / `focus_cards` table exists). Separate campaign opens with that.
 
-1. workouts_shared 11 earns sit on a 10-tier v1 ladder; v2 collapses to 2-tier `workouts_shared_v2`. Recommendation: preserve v1 as legacy + fire v2 fresh. Default if no answer: take recommendation.
+**Pattern (Habits PM-335 reference, ~1.5-2 hr per pillar):**
+1. Add per-pillar `eval_<slug>` handler functions to `achievements-evaluator.js`. Each reads Dexie store(s), returns array of new tier rows via `newEarnsForThreshold(slug, value)`.
+2. Add pillar's bus events to `EVENT_HANDLERS` map in the evaluator.
+3. Extend `engagement-v2.html` inline JS: add `<PILLAR>_ICONS` + `<PILLAR>_DISPLAY` maps, `computePillarValues(email)` reader, `render<Pillar>Pillar()` function, swap the "Tracking goes live next" stub for real rows.
+4. Add script include of `/achievements-evaluator.js` on the pages that publish that pillar's bus events.
+5. Atomic commit per §23.41 + §23.70 (vbb-marker bump, sw.js cache key bump, brain commit close).
 
-2. healthkit_connected — salvage as v2 body behavioural or retire? Recommendation: salvage, costs nothing. Default: take recommendation.
+**Lewis copy + Phil sign-off — still parallel + non-blocking.** The 211 placeholder tier rows from PM-328 still carry working copy. Lewis can swap any row via single UPDATE — placeholder→approved gate protects subsequent rewrites. Phil signs Mind pillar by flipping 13 `phil_approved` rows to true. Neither blocks pillar handler wiring.
 
-3. volume_lifted_total had 21 earns in DB despite §11A saying "not yet wired". Marked `wired=true` based on observed behaviour. PM-329 evaluator pass should confirm by reading `_shared/achievements.ts` and either update brain to reflect reality or zero the rogue earns.
+**Server-side retirement (deferred — not urgent).** `_shared/achievements.ts` evaluator + `log-activity evaluate_only` path still live, keeping the 22 v1-wired metrics firing. Full retirement is a future PM once all 5 remaining pillars are client-side. Until then, dual paths coexist safely thanks to the `member_achievements` unique constraint.
 
-**Sequencing recommendation for PM-329 session:**
-1. Inspect evaluator + EF + engagement.html structure (~15 min)
-2. Confirm Focus pillar data layer (~5 min)
-3. Evaluator wiring for confirmed-source metrics (~60-90 min)
-4. member-achievements EF update (~30 min)
-5. UI rewrite using mockups as paste-in (~90-120 min)
-6. Brain close + atomic commit (~15 min)
+**§23.66/§23.70 lessons (PM-335 ate two parallel-session rebases).** Parallel session was shipping fast tonight (PM-333, PM-334 in the 30-minute build window). Re-fetch HEAD immediately before `POST /git/commits`, recompute PM number from fresh `/commits` list, rebase touched files if needed. Cost: 2× ~5min rebase loops. Worth banking the lesson here: any session building during the evening hours on vyve-site should expect collisions and pre-stage the rebase tooling.
 
-Realistic timeline: one focused session (~4 hours) end-to-end. If Focus pillar data layer doesn't exist, defer those 8 metrics to a follow-up — they stay in catalog with wired=false, UI shows them as "Coming soon".
-
-**Reference artefacts** (all in `brain/staging/`):
-- `achievements-catalog-v1.md` — full pillar-by-pillar catalog
-- `achievements-migration-map.md` — explicit v1→v2 mapping
-- `PM-322-achievements-v2-schema.sql` — historical record (schema already applied)
-- `handover-pm329.md` — paste-ready prompt for the build session
-
-Plus vyve-site `/achievements-mockup-c.html` and `/achievements-mockup-pathb.html` (deletable post-ship).
+**Reference artefacts (all kept):**
+- vyve-site: `achievements-mockup-c.html`, `achievements-mockup-pathb.html` — visual reference for remaining pillars. Deletable once all 6 pillars are live.
+- brain: `staging/achievements-catalog-v1.md`, `staging/achievements-migration-map.md`, `staging/PM-322-achievements-v2-schema.sql`. **OBSOLETE: `staging/handover-pm329.md`** — server-side architecture, do not follow.
 
 ---
 

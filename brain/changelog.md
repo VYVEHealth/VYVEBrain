@@ -1,3 +1,55 @@
+## 2026-05-25 PM-335 — Dexie-first achievements evaluator + Habits pillar UI shipped [vyve-site 18d62139 + supabase EF achievement-claim v1]
+
+**Architectural redirect.** Dean's mid-session pivot retired the server-side achievement evaluation path (PM-322/328's `log-activity evaluate_only` + `_shared/achievements.ts` inline evaluator) in favour of a Dexie-first, bus-subscribed client evaluator. Reason: server round-trip on the threshold-crossing tap (200-400ms best case, 2-3s on cellular) is fundamentally incompatible with "instant on the tenth habit." Local Dexie read post-bus-event is sub-50ms, deterministic, no network on the hot path.
+
+**The new shape.**
+
+1. **`achievements-evaluator.js`** (new client module, 460 LOC). Subscribes to `habit:logged` (only event wired this session — other pillars next). On each event, debounce 100ms, run all 11 Habits handlers, compute current value from Dexie, diff against in-memory `earnedSet`, fire optimistic toast via existing `window.VYVEAchievements.queueEarned()`, POST to new `achievement-claim` EF in background. `earnedSet` populated at boot from Dexie `member_achievements` table (already synced by sync.js). Catalog cached in localStorage 24hr TTL.
+2. **`achievement-claim` EF v1** (new, JWT-required, deployed live). Resolves `member_email` from JWT, verifies `(metric_slug, tier_index)` exists in `achievement_tiers`, inserts to `member_achievements` ON CONFLICT DO NOTHING, fans out to `achievement-earned-push` via `EdgeRuntime.waitUntil()` if `newly_inserted=true`. Idempotent — re-claims are a server no-op with no second push.
+3. **`engagement-v2.html` Achievements tab** — placeholder retired, replaced with 6-pillar accordion (Habits / Body / Mind / Connect / Check-ins / Focus). Habits pillar fully populated with Path B tier-framed badges (10 gemstone CSS tiers) + Pattern 3 levels-up rows (gold dots under each row showing earned tiers). Tap row → ladder modal with full tier list + status pill (EARNED / NEXT / LOCKED). Other 5 pillars stub "Tracking goes live next."
+
+**11 Habits metric handlers wired** (all driven by `habit:logged`):
+`habits_logged`, `streak_habits`, `three_habits_day`, `five_habits_day`, `all_assigned_habits_day`, `habits_before_9am`, `first_habit`, `weekly_habits_total`, `distinct_habit_types`, `same_habit_repeats`, `seven_day_including_weekend`. Read from `daily_habits` + `member_habits` Dexie stores. The 22 already-wired metrics from the v1 server path keep firing through that path until retired in a future PM (no double-claim risk because of the unique constraint).
+
+**§23.66 / §23.69 / §23.70 fired hard.** Parallel session was shipping fast — between session start and commit moment, vyve-site moved from PM-332 (`739660cb`, my session-start baseline) → PM-333 (`65038984`, Home pills bigger) → PM-334 (`2f0762d1`, pills maths fix). I rebased twice on the three touched files (index.html, settings.html, sw.js — same three each time). Final PM claimed at commit moment from a fresh `/commits?sha=main` fetch immediately before `POST /git/commits`: max-PM-seen 334 → PM-335. Net effect: zero overwrites, vbb-marker chain monotonic (220 → 221 → 222), CACHE_NAME chain monotonic (`pm333-pills-bigger` → `pm334-pills-engagement-v2-maths` → `pm335-achievements-dexie-first-a`).
+
+**Composio fallback used throughout** (per memories #8/#9). Composio GitHub tools didn't load via `tool_search`; PAT-direct via Supabase Vault. Atomic 6-file commit via Git Data API (blobs → tree → commit → ref update, parents=[2f0762d1], non-force ref update). Post-commit verification via `GITHUB_GET_REPOSITORY_CONTENT` (md5 match on all 6 files at `18d62139`).
+
+**Files shipped (6, vyve-site `18d62139`):**
+- `achievements-evaluator.js` — NEW, 29.8 KB
+- `engagement-v2.html` — Achievements tab rebuilt (~430 LOC added: CSS + Path B badges + 6-pillar accordion + modal + inline JS renderer)
+- `habits.html` — `<script src="/achievements-evaluator.js" defer>` added next to `achievements.js`
+- `index.html` — same script include + vbb 221→222
+- `settings.html` — same script include + vbb 221→222
+- `sw.js` — CACHE_NAME bumped, `/achievements-evaluator.js` added to precache list
+
+**Supabase changes:**
+- New EF `achievement-claim` v1 ACTIVE, JWT-required, sha `ca829a1ec610bf05`
+- No schema changes — operates on existing PM-322 schema (achievement_metrics + achievement_tiers + member_achievements)
+
+**Device walk owed.** Dean to confirm: open habits.html on iOS, tap a yes habit, expect toast "Achievement earned — First habit" within ~1 second. Tap until tier 1 of `habits_logged` (threshold likely 1 — confirm in catalog), expect second toast. Open engagement-v2.html → Achievements tab, expect Habits pillar showing tier 1 badge on those metrics with progress bars against tier 2.
+
+**Stub pillars.** Body / Mind / Connect / Check-ins / Focus all render in the UI as accordion cards but their bodies show "Tracking goes live next." Body has 22 metrics, Habits-pattern repeat per pillar is roughly:
+- 1 hour to add handlers + display names + icons per pillar (Body + Habits = same shape, just different Dexie tables)
+- Mind 13 metrics all phil_gated — handler wiring is safe to ship (writes to member_achievements behind `phil_approved=false` UI filter), but UI display gated until Phil signs
+
+**Not done this session:**
+- Body / Mind / Connect / Check-ins handlers (next session — ~3-4 sessions to cover all 5)
+- Focus pillar genuinely blocked — no `focus_completions` table exists, needs separate data-layer campaign (memory item)
+- `reactions_received`, `chat_messages_posted`, `daily_mood_checkins`, `daily_mood_streak` need either Realtime channels or one-line publish additions at write sites (~4 metrics)
+- HK lifetime + charity collective metrics genuinely need server sweep (4 metrics, justified — date/cohort window calcs)
+- Server-side `_shared/achievements.ts` evaluator + `log-activity evaluate_only` path NOT retired this session — kept live so the 22 v1 metrics keep firing through it. Full retirement is a future PM once all client-side pillars wired.
+
+**§23 candidates earned (not codified this commit — too campaign-specific yet):**
+- "Bus event publish always optimistic-before-server-write means Dexie row is canonical at evaluator time" — useful pattern, worth a rule if we hit a counter-example. Banked.
+- The "claim EF returns `newly_inserted` boolean and gates push fan-out on it" pattern is a generalisation of the v1 push-on-earn behaviour — applies anywhere a client detects an event the server needs to verify-and-persist. Banked.
+
+**PM-329 handover (`brain/staging/handover-pm329.md`) — OBSOLETE.** That handover assumed a server-side evaluator extension across all 65 unwired metrics. Architecture is now Dexie-first; handover is wrong shape. File kept for historical context; do not follow.
+
+**Backlog updates (`tasks/backlog.md` § Achievements v2 build):**
+- PM-329 handover marked obsolete.
+- New campaign opened: "Achievements v3 — Dexie-first evaluator rollout across pillars" with Habits ✓ done, Body / Mind / Connect / Check-ins as discrete next-session asks, Focus deferred behind data-layer campaign.
+
 ## 2026-05-25 PM-334 — Home pills count match engagement-v2 Progress tab maths exactly [vyve-site 2f0762d1]
 
 **Bug.** Dean reviewed PM-333 on device: pills painted but **certificate stars were firing across Mind/Body/Connect** despite him being well under 30 *days* of activity in those buckets. Root cause: PM-331's `loadPillarCounts` used raw row counts (e.g. `mind_activities.allFor(email).length`) — tables that accept multiple rows per day (Mind/Body/Connect at 2/day cap, plus rows-per-tap on Connect via session_views + replays + live_views) blew past 30 fast.
