@@ -1,3 +1,18 @@
+## Shipped 25 May 2026 — PM-375 — Member Prompts system: Lewis-driven in-app questionnaires [vyve-site `9aac3c11`]
+
+Four-table Supabase system + `prompts.js` renderer + `prompts.css` (dark + light theme). Two canary prompts live: **weekly-preference** (Mon focus picker, multi-select 8 options + free text, weekly dismiss) and **app-feedback** (Sun pulse, 1-10 slider + two textareas, 28d cooldown, min 3d active). Both fire on index.html boot. Lewis edits prompts + questions directly in Supabase Studio; devices pick up within 5 min via §23.50 catalogue invalidation. Aggregation for Lewis read via saved Studio SQL for trial; Command Centre editor + read surface on the post-trial backlog.
+
+Closes the in-app questionnaire ask Dean raised on 25 May 2026. Pattern is reusable — any new prompt is an INSERT, no code deploy. Other surfaces (habits.html, mind.html, etc) opt in by adding `<script src="/prompts.js" defer></script>` + calling `VYVEPrompts.maybeShow(surfaceName)` from their boot path.
+
+**Follow-ups parked:**
+- Command Centre editor UI for `member_prompts` + `member_prompt_questions` rows (post-trial).
+- Server-side aggregation EF for response counts + sentiment (when Command Centre reader lands).
+- Catalogue editor with question reordering (manual SQL fine at trial scale).
+- `first_login` trigger type implementation (code path exists in `passesTriggerGate`, no v1 prompt uses it — `surface_enter` + `target_segment.min_days_active` covers canary cases).
+- Per-page boot wires beyond index.html (habits, mind, body, connect hubs).
+
+---
+
 ## NEXT FOCUS — 25 May 2026 PM (Dean) — finish in-app feature completeness
 
 Dean's call: park the v4 / architecture work (Dexie audit, offline-first verification, performance audit, Capacitor release, etc.) until in-app features are functionally complete. The trial cohort needs to land on a finished-feeling app, not a half-wired one. Priority order:

@@ -1,3 +1,94 @@
+## 2026-05-25 PM-375 — Member Prompts system: Lewis-driven in-app questionnaires (4 Supabase tables + Dexie sync + renderer module) [vyve-site `9aac3c11`]
+
+**Scope.** New first-class system for in-app popup questionnaires sourced from Supabase. Lewis (and eventually the Command Centre) authors prompts in the DB; devices pull within 5 min via the §23.50 catalogue contract; renderer gates per-member dismissal state and shows the highest-priority eligible prompt on surface entry. Two canary prompts seeded for the trial: a Monday weekly-preference picker ("what do you want more of this week?") and a Sunday app-feedback pulse (1-10 sentiment slider + free-text). Both wire into the home page boot path; other surfaces opt in by including the script tag and calling `VYVEPrompts.maybeShow(surfaceName)`.
+
+**Dean's brief.** "Could we have a popup go up, what's your thoughts on the app, would you improve anything, having issues. And maybe one that asks what do you want from the app this week — workouts, meditation, etc." Two distinct shapes (feedback + preference) handled by one schema — only `question_type` and how Lewis reads the responses differs.
+
+**Architectural shape.**
+
+The system mirrors the §23.49 (catalogue imagery DB-driven) / §23.50 (invalidation-key bump on schema changes) / §23.55 (hub-page hero composition) contracts that govern `service_catalogue`, `mind_videos`, `replay_playlists`, and the rest of the content-driven surfaces. Four tables:
+
+- `member_prompts` — the popup container (catalogue, Dexie-mirrored). Columns: `id uuid PK`, `slug text unique`, `title`, `subtitle`, `eyebrow`, `cta_label`, `skip_label`, `image_url` (nullable per §23.49 even though not used in v1), `trigger_type` (`first_login` | `surface_enter` | `manual` | `weekly` | `date_range`), `trigger_value jsonb` (per-type config — `{"surface":"index","day_of_week":1,"day_of_week_window":3}` for the weekly preference), `target_segment jsonb` (`{}` = everyone, `{"persona":"HAVEN"}` to filter, `{"min_days_active":7}` for tenure-based), `dismiss_mode` (`once` | `cooldown_days` | `weekly` | `always`), `cooldown_days int`, `priority int` (higher wins when multiple eligible), `active bool`, `active_from`/`active_until timestamptz`, audit cols.
+- `member_prompt_questions` — questionnaire body (catalogue, Dexie-mirrored). Columns: `id uuid PK`, `prompt_id uuid FK ON DELETE CASCADE`, `question_text`, `question_hint`, `question_type` (`multi` | `single` | `slider_1_10` | `text_short` | `text_long` | `yes_no`), `options jsonb` ([{value,label}, ...] for multi/single; `{min_label,max_label,default}` for slider), `placeholder` (text inputs), `required bool`, `display_order int`, `active bool`. One prompt → 1..N questions ordered by `display_order`.
+- `member_prompt_dismissals` — per-member gate state (member-scoped, hydrated). Columns: `id`, `member_email`, `prompt_id`, `first_seen_at`, `last_seen_at`, `last_dismissed_at`, `completed_at`, `dismiss_count int`, `complete_count int`, `last_iso_year int`, `last_iso_week int`. Unique index on `(member_email, prompt_id)` for upsert-into-one-row semantics. Renderer reads this from Dexie to compute "should I show this prompt" without a network round trip.
+- `member_prompt_responses` — answers (member-scoped, write-only from this module). Columns: `id`, `member_email`, `prompt_id`, `question_id`, `answer_value jsonb` (shape depends on `question_type` — `["workouts","meditation"]` for multi, `7` for slider, `"text..."` for textareas, `true` for yes_no), `iso_year int`, `iso_week int`, `submitted_at`. Indexed `(prompt_id, iso_year, iso_week)` for the weekly aggregations Lewis will run from Supabase Studio.
+
+RLS on all four. Catalogue tables: `SELECT TO authenticated USING (active = true)`. Dismissals + responses: `SELECT/INSERT/UPDATE TO authenticated USING/WITH CHECK (member_email = auth.email())`. Updated_at triggers on the three mutable tables via shared `set_updated_at_mp()` function.
+
+**Client wiring.**
+
+`prompts.js` (665 LOC, new file) — the renderer module. Self-contained IIFE exposing `window.VYVEPrompts = { maybeShow(surface), showBySlug(slug), refresh() }`. Eight sections inside: (1) eligibility gate (ISO-week helper, day-of-week ± window math, trigger gate, segment gate, dismissal gate — modes `once` / `weekly` / `cooldown_days` / `always`); (2) Dexie-first catalogue + dismissal read; (3) priority-desc selection; (4) modal render — `vp-scrim` + `vp-sheet` injected into body, bottom-sheet transform-on-open animation, drag-handle, close-X, scrollable body, sticky footer; (5) per-question-type render (pills for multi/single/yes_no, range slider for slider_1_10 with live value + gradient fill, textarea/input for text); (6) answer capture + required-field validation with shake animation; (7) optimistic-first submit per §23.39 — UI tears down BEFORE the network writes fire, `keepalive: true` on both POSTs so a quick page navigation doesn't kill the writes; (8) public API.
+
+`prompts.css` (335 LOC, new file) — bottom-sheet styles. Reuses app theme tokens (`--bg`, `--surface`, `--text`, `--teal`, `--teal-lt`, `--border`, `--scrim`) so dark + light parity comes for free via `data-theme="dark|light"` on `<html>`. Light-mode overrides on five surfaces: CTA (lighter-teal-on-dark → deep-teal-on-white), eyebrow (teal-lt → deep teal for contrast on white), slider thumb border (teal-lt → deep teal), slider value text (teal-lt → deep teal), scrim (rgba black → rgba teal-tinted). All other styling cascades from tokens.
+
+`db.js` SCHEMA_V18 — four new stores. Catalogue tables (`member_prompts`, `member_prompt_questions`) via `makeCatalogueTable`; member-scoped (`member_prompt_dismissals`, `member_prompt_responses`) via `makeTable`. Dexie indexes match the schema: `&id` (PK), plus `[member_email+prompt_id]` compound on dismissals for fast per-member upsert, plus `[prompt_id+iso_year+iso_week]` on responses for weekly aggregation reads. Version chain extended `.version(18).stores(SCHEMA_V18)`.
+
+`sync.js` — three plan entries (2 catalogue + 1 member-scoped dismissals; responses are write-only from `prompts.js` — no pull needed since the renderer never reads its own submissions back). `CATALOGUE_FRESH_TABLES` extended with `member_prompts: 1, member_prompt_questions: 1` (5-min window — Lewis edits surface fast). `CATALOGUE_INVALIDATION_KEY` bumped `pm372-persona-welcome-copy` → `pm375-member-prompts` per §23.50.
+
+`index.html` — `<script src="/prompts.js" defer></script>` added immediately after `/sync.js`. `VYVEPrompts.maybeShow('index')` wired into `boot()` after `moodShowPanel(email)` so the first-paint mood card (which has its own dismissal logic) shows before the prompt can. Inside `maybeShow`, a 600ms `setTimeout` defers the actual catalogue+dismissal Dexie read so first paint completes uncontested. vbb-marker 258 → 259.
+
+`sw.js` — cache key `pm374-food-log-coming-soon-a` → `pm375-member-prompts-a`. `/prompts.js` + `/prompts.css` added to precache list immediately after `/haptics.js` so cold-boot offline resolves the renderer.
+
+`settings.html` — `settings-vbb-marker` 258 → 259 to maintain the dual-marker invariant per memory #10.
+
+**Seed data.**
+
+```sql
+INSERT INTO member_prompts (slug, eyebrow, title, subtitle, cta_label, skip_label,
+  trigger_type, trigger_value, dismiss_mode, priority, active)
+VALUES
+  ('weekly-preference', 'This week''s focus',
+   'What do you want more of this week?',
+   'Pick as many as you like. We''ll shape the live sessions and content around what the community asks for.',
+   'Save my preferences', 'Skip this week',
+   'surface_enter', '{"surface":"index","day_of_week":1,"day_of_week_window":3}',
+   'weekly', 200, true),
+  ('app-feedback', 'Quick check-in',
+   'How''s the app feeling?',
+   '30 seconds. Honest answers — it shapes what we build next.',
+   'Send feedback', 'Skip for now',
+   'surface_enter', '{"surface":"index","day_of_week":7}',
+   'cooldown_days', 150, true);
+```
+
+`weekly-preference` carries one multi-select with 8 options (Workouts / Cardio / Movement & mobility / Meditation / Sleep content / Mindfulness / Connect & community / Nutrition) plus one optional `text_long` for the "anything specific" follow-up. `app-feedback` carries the 1-10 slider (required, `min_label:"Struggling"`, `max_label:"Loving it"`, `default:7`) plus two optional `text_long` fields ("anything bugging you" + "anything you'd love to see").
+
+**Lewis read surface (deferred build).**
+
+For the trial, Lewis reads responses from Supabase Studio with two saved queries: `select option, count(*) from member_prompt_responses ... where iso_week=...` for the preference aggregate, and a chronological list of the feedback texts for sentiment review. Command Centre editor + reading UI is on the backlog post-trial — schema is editor-ready.
+
+**Tooling discipline.**
+
+§23.70 fired **twice** during this build. First fire: parallel sessions shipped PM-372 (hydration COPY_TABLE → catalogue, took SCHEMA_V17) + PM-373 (habits tile palette) between session-start (PM-368 was HEAD) and first commit attempt — both touched my five collision files. Re-fetched all five at the new HEAD; rebased SCHEMA_V17 → SCHEMA_V18 (the V17 slot was no longer mine); re-applied invalidation key bump on top of the new PM-372 bump value; re-applied marker bump 255 → 257 → planned 258. Then second fire: parallel session shipped PM-374 (food log Coming Soon) between rebase and final commit attempt — touched index.html + settings.html + sw.js. Re-fetched those three at the new HEAD; replayed marker bump 257 → 258 → 259 on post-PM-374 content; replayed cache-key bump `pm374-food-log-coming-soon-a` → `pm375-member-prompts-a`; my non-collision files (prompts.js, prompts.css, db.js, sync.js) carried forward without rebase. PM claim recomputed 372 → 374 → 375 across the chain.
+
+§23.41 first-100-char verify all 7 files clean against committed SHA `9aac3c11`. §23.52(a) honoured throughout — Git Blob API used (`encoding: base64`, written to /tmp file then read; never substituted into bash argv). One blob-API quirk surfaced during commit: GitHub doesn't return `size` on the blob-create response (it does on the read response), so the post-write size-check has to be dropped or routed through a follow-up `GET /git/blobs/{sha}`. Single sed sweep at commit time per memory #21 — 6 PM-XXX placeholders cleaned to PM-375 in one pass after the final HEAD recheck.
+
+**What's intentionally NOT built.**
+
+- Command Centre editor. Schema is editor-ready (jsonb config, nullable image_url, dismiss-mode enum, segment jsonb). Lewis edits via Supabase Studio for the trial.
+- `first_login` trigger type. Code path exists in `passesTriggerGate` for future use but no v1 prompts use it — `surface_enter` + `target_segment.min_days_active` covers the canary use cases without needing a dedicated first-login flag column on `members`.
+- Server-side aggregation EF for the response read. Studio SQL is fine for trial scale (<50 members). Aggregation EF gets a backlog slot when the read surface lands in Command Centre.
+- Catalogue editor UI for question reordering. The `display_order int` column means manual SQL is fine until volume justifies a UI.
+
+**Files committed atomically (7):**
+
+| file | status | summary |
+|---|---|---|
+| `prompts.js` | added | 665 LOC renderer module |
+| `prompts.css` | added | 335 LOC bottom-sheet styles, dark + light theme |
+| `db.js` | modified | SCHEMA_V18 + 4 store registrations (+23 LOC) |
+| `sync.js` | modified | 3 plan entries + invalidation key bump + CATALOGUE_FRESH_TABLES (+22 LOC) |
+| `index.html` | modified | script tag + boot wire + vbb 258 → 259 (+6 LOC) |
+| `sw.js` | modified | cache key bump + precache add (+7 LOC) |
+| `settings.html` | modified | settings-vbb-marker 258 → 259 (+1 LOC) |
+
+vyve-site commit: `9aac3c114ee9181f8c895ceeabf46f2ab5e0f9f0`
+sw cache: `vyve-cache-v2026-05-25-pm375-member-prompts-a`
+vbb-marker: `Update 259` on both index.html + settings.html
+Supabase migration: `pm_369_create_member_prompts` (historical name — content is PM-375; migration filenames are append-only history per the precedent set in PM-307)
+
+---
+
 ## 2026-05-25 PM-374 — Food log locked Coming Soon (soft lockdown): nutrition.html CTA → coming-soon card, log-food.html cover + boot suppressed [vyve-site `761a027c`]
 
 **Scope.** Soft lockdown of food-logging UX surfaces ahead of trial launch. PM-353 had already retired the `fuel` focus + `nutrition_logs` from Focus pillar source-table reads. PM-374 closes the entry-point loop — `log-food.html` is no longer reachable from `nutrition.html` and direct-link / cached-SW navigation hits a cover, not the live UI. No DB, EF, or bus changes. Substantive UX surfaces preserved (Nutrition page macros / TDEE / hydration / weight tracker unchanged).
