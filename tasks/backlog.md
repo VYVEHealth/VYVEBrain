@@ -24,6 +24,37 @@ This block is the canonical NEXT pointer; ignore stale P0 labels lower in the fi
 
 ---
 
+## Added 25 May 2026 PM-358 — Achievement tier curve + naming overhaul (P1, post-trial)
+
+**Surfaced from Lewis's review of `brain/staging/tier-copy-review-pm354.csv`.** Two distinct problems with the current tier set, separate from per-tier copy:
+
+**1. Naming convention is unit-blind.** Tier titles like "Five Cardio Banked", "Three Workouts In", "Twenty-Five Strong" read like banking a cardio / strong-what. The noun (sessions / workouts / habits / replays) is missing from a lot of mid-tier titles, especially the suffix words "Banked", "In", "Strong". Easy structural fix: every title must contain the unit explicitly. "Five Cardio Sessions" not "Five Cardio Banked". Apply across all 528 rows; bulk find-and-replace candidate.
+
+**2. Tier curve dies in the mid-game.** Current bulk-count metrics (cardio_logged, workouts_logged, sessions_watched, replays_watched, mind_sessions_logged, etc.) all use: `1, 3, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000`. From tier 5 onward each step is ≥2× the previous — gap goes 15 → 25 → 50 → 150 → 250 → 500 → 1500 → 2500 → 5000. A member doing 3–4 cardio/week needs ~6 weeks to hit 25, then 2 months to hit 50, then 5 months to hit 100, then ~year for 250. The 25→100 dead zone is exactly where engagement-fatigue is highest — for a wellbeing app whose value prop is "reward consistent usage", this curve actively punishes the cohort we most want to retain.
+
+**Proposed curve** for bulk-count metrics: `1, 3, 5, 10, 20, 35, 50, 75, 100, 150, 250, 500, 1000, 2500, 10000`. 15 tiers (vs current 13). Replaces the 25→100 chasm with 20→35→50→75→100. Member hits new tiers every 1–2 weeks through month 3, every ~3 weeks through month 6, monthly-ish into year one, then rare prestige tiers beyond. Headspace/Strava model — frequent small wins early, steady tempo mid, rare prestige top.
+
+**Scope:**
+- Streak metrics (3/7/14/30/60/100/200/365/...) — leave as-is; calendar logic constrains them and they already have decent cadence
+- Time-based metrics (workout_minutes_total, cardio_minutes_total, mind_minutes_total) — same curve problem, same fix scaled to minutes
+- HealthKit metrics (lifetime_steps, lifetime_distance_hk, lifetime_active_energy) — already use different scales (1K → 5M); review separately
+- Volume_lifted_total (kg) — already exponential by necessity (100 → 50M kg); leave alone
+- Tier-1-only metrics (first_workout, tour_complete, etc.) — N/A
+
+**Sequencing:** P1, deferred until **after Lewis's v1 copy review lands**. Order of operations:
+1. Lewis returns v1 CSV with per-tier copy approved/proposed
+2. Claude bulk-UPDATE per-tier `title`/`body`/`copy_status='approved'`
+3. THEN curve overhaul: drop affected tier rows, insert new tier set, regenerate titles/bodies using new curve + unit-aware naming convention
+4. v2 CSV → Lewis for sign-off on the new curve + new tier titles
+5. Bulk-UPDATE final
+
+Doing the curve change AFTER Lewis's per-tier copy lands means the copy work isn't wasted on tiers that survive the curve change (tier 1-5 thresholds 1/3/5/10/20 mostly overlap with current 1/3/5/10/25, so Lewis's text for those holds). Tiers that change threshold get fresh AI-generated copy in the v2 pass, Lewis only reviews diffs.
+
+**Out of scope (separate decisions):**
+- Whether to retire any of the 50+ unwired metrics in `achievement_metrics` (separate audit needed — see PM-358 catalog-wired-flag-drift side-task in changelog)
+- Achievement badge / certificate UI changes downstream of new tier set
+
+
 ## Added 25 May 2026 PM-346 — Exercise demo video coverage fill
 
 129 of 297 rows in `workout_plans` have NULL `video_url` (43%). After PM-346 wired the picker thumbnails to open the fullscreen player, members will see dimmed thumbs on those rows = "no preview available". Honest UX but a visible gap.
