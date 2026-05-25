@@ -1,3 +1,36 @@
+## 2026-05-25 PM-333 — Home pills bigger + Mind before Body + carousel switched to VYVE_SESSIONS [vyve-site 65038984]
+
+**Scope.** Three small follow-ups to PM-331's home dashboard ship after Dean reviewed on device.
+
+**(1) Pills bigger.** Ring `56→64px`, stroke `4→4.5`, ring-val font `0.86→0.95rem`, `/30` small `0.56→0.6rem`. SVG `viewBox 52→60`, circle `r 22→26`, C constant `138.2→163.36`. The numbers (e.g. `7/30`) now read at arm's length on phone. Five-across still fits within the row.
+
+**(2) Mind before Body.** PROGRESS_TRACKS array reordered. Final order: **Habits → Mind → Body → Connect → Check-ins**. Same reorder will land on other surfaces (engagement-v2, achievements page when it ships, hub navigation) as they get touched — Dean's spec was explicit about applying everywhere progressively. PM-333 only touches the home pills; downstream surfaces stay as-is until their own ship.
+
+**(3) Carousel switched to `VYVE_SESSIONS`.** This was the bug Dean flagged: home showed nothing in Live Sessions This Week while Connect's "Live This Week" displayed the full carousel. Root cause: two different data sources entirely. PM-331 wired home to `calendar_occurrences` (Dexie-synced from Supabase, async, depends on sync.js pull having fired). Connect uses `window.VYVE_SESSIONS` from `sessions-data.js` (hardcoded recurring catalogue of 8 session types, synchronous, always available). On Dean's device the calendar_occurrences sync hadn't fired (or had stale Dexie state), so the home painted empty while Connect painted full. PM-190.d (21 May) already solved this on Connect by switching from `service_catalogue` Dexie reads to the hardcoded `sessions-data.js` — same lesson now applies to home.
+
+**Renderer port.** Verbatim port of `connect.html` `renderLiveThisWeek` (lines 1274-1325) into `index.html` `paintLiveCarousel`. Same chronological sort by `getNextOccurrence`, same "Sunday · 06:00" day-name format, same image-with-onerror-fallback to gradient pattern, same `(s.tags && s.tags[0])` for category eyebrow, same `s.liveUrl` for tap target. Cards paint synchronously on first frame — no Dexie wait, no skeleton, no race condition. Identical to Connect's "Live This Week" by construction.
+
+**Sessions-data.js loading.** Added `<script src="/sessions-data.js" defer>` to index.html head between sync.js and firstPaintHydrate.js. sw.js precache list already included it from earlier (PM-190.d era), so no precache change needed. The defer attribute means the script loads after document parse — `paintLiveCarousel` gets called from boot which is also after parse, so the `window.VYVE_SESSIONS` global is reliably present. Added a `setTimeout(paintLiveCarousel, 100)` retry inside the renderer as belt-and-braces in case boot races with the defer load (defensive only; not observed to happen).
+
+**Dropped code.** `LIVE_CAT_SHORT` constant (8-entry category-name shortener), `fmtLiveWhen` (today/tomorrow/day-name formatter), `DAY_SHORT` short-name array — all no longer needed because the new renderer uses Connect's "Sunday · 06:00" format directly via `DAY_NAMES`. The `calendar_occurrences` branch in `vyve-localdb-table-pulled` handler removed (no consumer reads from it on home anymore). `calendar_occurrences` Dexie table itself stays — `connect-calendar.html` still reads it for the full calendar view, and the table's broadcast-ID linkage matters for any future surface that needs to know whether a session is currently live. Just the home doesn't need it.
+
+**Tooling.** §23.41 fresh-HEAD fired once mid-build. Started at PM-331 HEAD `af32355a`; lived HEAD moved to PM-332 `739660cb` (parallel session shipped YT.ready + referrerpolicy mirror on live shells — touched index.html / sw.js / settings.html again, marker-only). Fresh re-fetch, sed-rebased PM-332 → PM-333, Update 219 → 220, cache key `pm332-yt-ready-referrerpolicy-a` → `pm333-pills-bigger-reorder-carousel-sessionsdata-a`. §23.70 PM claim-at-commit-time resolved my draft PM-332 → committed PM-333. Clean rebase — parallel session's diff was 3 marker lines only.
+
+§23.52(a) all three blob bodies via base64-encoded urllib JSON. §23.52(c) all blob SHAs 40-char hex. §23.41 fresh-HEAD checked twice (pre-tree, no drift). §23.52(b) post-commit `files[].status` `{modified: 3, added: 0, removed: 0}`. §23.53 first-100-char re-fetch on all three files at committed SHA matched.
+
+9 inline scripts `node --check` clean. Tag balance 29/29 (was 28; +1 for sessions-data.js script tag in head).
+
+**Files.** vyve-site `65038984`. `index.html` 126177 → 125544 bytes (-633, net smaller because the new sessions-data renderer is more compact than the LIVE_CAT_SHORT + fmtLiveWhen + calendar_occurrences Dexie-read it replaces). `sw.js` cache key bump. `settings.html` vbb-marker 219 → 220.
+
+**No new §23 hard rules earned.** All patterns are established doctrine. **Lesson worth noting** (not §23-rule-shaped yet): when a surface reliably works on one page (Connect) and unreliably on another (Home), and the data shape is recurring-schedule (not per-broadcast), the hardcoded `sessions-data.js` const is the right source. Don't reach for Dexie / Supabase when the catalogue is fixed and small. This is PM-190.d's lesson re-applied — banked as a pattern, not a rule.
+
+**What this doesn't ship.**
+- Mind-before-Body reorder is home-only. engagement-v2 still has its own ordering. Achievements page (PM-322 design lock) hasn't shipped yet; when it does, its ordering should match this.
+- Live-now detection — the new renderer doesn't surface a green "● LIVE NOW" tag because `sessions-data.js` has no concept of an actual YouTube broadcast being live right now. If a real-broadcast-status surface is wanted at home, a small layer on top reading `calendar_occurrences` for the `youtube_broadcast_id` + `[starts_at, ends_at)` window could add the green eyebrow on top of the otherwise-static card. Not built tonight; flag for backlog if it matters.
+- Per-card hosting/instructor name — sessions-data.js doesn't carry host_name fields. If Lewis wants instructor bylines, add a `host` field to each sessions-data.js entry and render conditionally. Not blocking.
+
+---
+
 ## 2026-05-25 PM-331 — Home progress pills cert badges + live carousel connect-parity [vyve-site af32355a]
 
 **Scope.** Two surfaces on the home dashboard get aligned with the rest of the app — both small but both visible-on-first-paint. Triggered by Dean reviewing the home in-app: progress pills hardcoded to zeros + live carousel placeholder-looking even when calendar_occurrences has real rows.
