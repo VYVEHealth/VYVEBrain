@@ -1,3 +1,40 @@
+## 2026-05-25 PM-393.b brain close — Real fix to Connect tab-in flicker via inverted cache-first paint ordering (vyve-site PM-393 `184e7bd3`)
+
+**Scope.** Closes the visible flicker Dean reported on device at Update 275: tab into Connect shows 3 cached check-ins, flashes to 1 (own-only), then back to 3. Same shape on reaction tap. PM-392 had skipped the EF call on cache hit but left the own-only paint at the top of paintAll's Promise.all .then UNCONDITIONALLY firing first — two renders per paintAll regardless of cache state.
+
+**Root cause.** paintAll's structure was:
+
+```js
+Promise.all([dbT.allFor(memberEmail), rxPromise]).then(function (results) {
+  renderRecentCheckins(rows);   // ← FIRST PAINT, own-only, always fires
+  // then nested cache check + EF branch
+  kvP.then(cached => {
+    if (fresh) renderRecentCheckins(cached.checkins);  // ← SECOND PAINT from cache
+    else EF fetch → renderRecentCheckins(data.checkins);
+  });
+});
+```
+
+The first render is always the own-only Dexie paint with member's check-in only — 1 row. The second render replaces it with the community feed — 3 rows. Visible 1→3 flicker on every paintAll invocation, regardless of cache freshness. PM-392's fix only addressed the EF round-trip; the own-only paint outside the cache branch still fired.
+
+**PM-393 fix — invert order.** Read cache FIRST, before any renderRecentCheckins call. Branch on cache freshness:
+
+- **Path A (cache hit, fresh, no bypass).** Load Dexie reactions in parallel to overlay own-row reaction state on top of cache's server-side counts, but call `renderRecentCheckins` exactly once — with the cache's community check-ins. No own-only paint. No flicker.
+
+- **Path B (cache miss / stale / bypass).** Own-only Dexie paint as fallback (preserves cold-boot UX where cache is empty), then EF fetch upgrades to community feed when network returns and populates cache for next tab-in. This is the original PM-242 behaviour, retained for cold-boot and after-own-action paths.
+
+After this ship: every tab-in within 90s of the last paintAll is Path A (single instant render from cache, no flicker). Reaction taps go Path B because `__cacheBypassOnce` is true after a member action — so the own-only-then-EF flicker is bounded to the reaction-tap itself, not every tab-in.
+
+**Known-remaining: reaction-tap own-only flicker.** PM-393 doesn't fully eliminate the 1→3 sequence on reaction tap because the bypass forces Path B which still does the own-only fallback render before the EF lands. Possible follow-on: instead of bypassing cache on reaction-tap, apply the reaction delta directly to the cached row and keep Path A. Mutate `cached.checkins[idx].reaction_counts[reaction]` += or –=, write the mutated cache back, then renderRecentCheckins(cached.checkins). No EF round-trip needed on tap. Banked if Dean still sees flicker on tap after PM-393.
+
+**Ship details.** vyve-site `184e7bd3`. 4 files atomic. connect.html (paintAll Promise.all .then rewritten — old block ~80 lines, new block ~100 lines, structurally inverted), sw.js (cache pm392-connect-feed-prefetch-cache-a → pm393-cache-first-paint-ordering-a), index.html (vbb 275 → 276), settings.html (settings-vbb 275 → 276). 3 inline JS blocks in connect.html + sw.js standalone node --check clean. §23.41 byte-perfect verify clean on all 4 files at commit SHA. §23.74 cross-repo PM scan: vyve-site max=392, brain max=392.b, claim PM-393 uncontested. PAT-direct via Vault (Composio still down).
+
+**Lesson banked (§23 candidate, NOT codified solo).** When refactoring a render path to add a fast path that skips work, audit EVERY render call site in the path — not just the one closest to the work being skipped. PM-392 audited the EF call and the EF-result render but missed the own-only fallback render sitting two indent levels up. Same bug shape as "you fixed the slow path but the fast path still triggers all the slow path's side effects." Two ships to land the fix when one careful audit would have done it. Banked as candidate; promote to hard rule on second occurrence.
+
+**Verification expected on device.** (1) Force-quit + reopen, look for Update 276 in Settings. (2) Tab from home → Connect should paint 3 community check-ins instantly with no 1-flash. (3) Reaction tap will still show a brief flicker (1 then 3) because Path B forces own-only fallback — that's the known-remaining and the candidate follow-on. (4) Lewis's check-ins still take up to 90s to surface on Path A; tap anything or wait for TTL to refresh.
+
+---
+
 ## 2026-05-25 PM-391 + PM-392.b brain close — Connect tab-in flicker eliminated: reverted PM-390 reaction subscriber double-mutation (PM-391, vyve-site `e98e67fe`), then added boot-time prefetch + cache-first paint for connect-feed-preview (PM-392, vyve-site `624552ce`)
 
 **Scope.** Two surgical ships in one session closing two distinct flicker bugs on connect.html that Dean reported after PM-390 landed.

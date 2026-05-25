@@ -1,3 +1,13 @@
+## Shipped 25 May 2026 — PM-393 — Real fix to Connect tab-in flicker via inverted cache-first paint ordering [vyve-site `184e7bd3`]
+
+PM-392's cache-first paint only skipped the EF round-trip on cache hit; the own-only Dexie paint at the top of paintAll's Promise.all .then handler still fired UNCONDITIONALLY, producing the 1→3 flicker on every tab-in. PM-393 inverts the order: read cache first, branch on freshness. Path A (cache fresh, no bypass): single render from cache, no own-only paint, no flicker. Path B (miss/stale/bypass): own-only fallback + EF upgrade + cache populate.
+
+Known-remaining: reaction-tap still shows 1→3 because bypass forces Path B. Possible follow-on: instead of bypassing cache on reaction tap, mutate the cached row's reaction_counts directly + write back + renderRecentCheckins(cached). No EF round-trip on tap. Banked.
+
+§23 candidate banked: audit EVERY render call site when adding a fast path, not just the one closest to skipped work. Codifying on second occurrence.
+
+---
+
 ## Shipped 25 May 2026 — PM-392 — Connect feed prefetch + cache-first paint (closes Connect tab-in two-paint flicker) [vyve-site `624552ce`]
 
 Boot-time prefetch fires from index.html at L2403 (1200ms after first paint), warms `VYVELocalDB._kv['connect_feed_preview_v1']` (existing PM-201 cache slot). connect.html paintAll now reads cache first; on <90s fresh hit, paints community feed instantly without EF call; on miss/stale falls through to EF fetch + writes cache. Module-scoped `__cacheBypassOnce` invalidates cache on member's own check-in / reaction action so next paint refetches fresh. Cross-member updates lag up to 90s — acceptable at cohort scale.
