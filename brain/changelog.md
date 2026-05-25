@@ -1,3 +1,74 @@
+## 2026-05-25 PM-390.b brain close — §23.65 envelope-trusted subscriber sweep on connect.html + mind.html, engagement-v2 L1682 dead subscribe converted, events-rp.html unified onto shared session-rp shell (vyve-site PM-390 `f2f07b99`)
+
+**Scope.** Four atomic surgical patches in one 7-file vyve-site commit, closing the Audit PM-379 queue's last two remaining items (§23.65 sweep for Connect + Mind, plus P0-5 events-rp out-of-band shell). All four patches share a single underlying contract — *publishers carry enough envelope payload that subscribers don't need to re-read storage to know what changed* — but each manifests in a different topology.
+
+**connect.html — 4 of 6 bus subscribers upgraded.** The page's bus subscribers all called `repaintDebounced()` (150ms → `paintAll()` which re-reads Dexie for postedState + reactionsByCheckin + streak + challenge tiles), pure Dexie re-read pattern, classic §23.65 race surface against the 6 Connect publishers that all use §23.39 fire-and-forget Dexie writes.
+
+Upgrades applied per envelope decode-ability:
+
+- `connect:checkin:logged` envelope is `{client_id, source, focus_tag}` — module-scoped `__optimisticCheckinClientId` is set to envelope.client_id synchronously before repaintDebounced fires. Future renderPostedState hook can use this as a hint that the posted-today state should hold even when Dexie races against the IndexedDB commit window.
+- `connect:checkin:failed` envelope is `{client_id, http_status, reason}` — clears `__optimisticCheckinClientId` when it matches, then repaintDebounced.
+- `connect:reaction:logged` envelope is `{checkin_id, reaction}` — synchronously increments `reactionsByCheckin[checkin_id].reaction_counts[reaction]` and sets `my_reaction = envelope.reaction` on the bucket. Next render reads the updated bucket from in-memory state, not Dexie. The 150ms repaintDebounced still reconciles fully from `checkin_reactions` Dexie table on the tail.
+- `connect:reaction:cleared` envelope is `{checkin_id}` — decrements `reaction_counts[my_reaction]` and clears `my_reaction` synchronously, then repaintDebounced.
+
+Left as pure Dexie re-read by design:
+- `connect:challenge:progress` — signal/aggregate publish, no per-row counter to apply.
+- `connect:hydrated` — hydration completion signal, repaint is the entire point.
+- `mind:logged` + `body:logged` — cross-pillar aggregate signals on connect.html (drive challenge metric + Elite progress aggregates). No per-row counter local to connect.html to mutate; full Dexie re-read after debounce is the correct shape.
+
+**mind.html — all 3 bus subscribers upgraded with a module-scoped delta map.** Mind subscribers are interesting because `readMindActivities` does **both** Dexie + a REST round-trip and takes `max(Dexie, REST)`, so the race surface extends beyond the local IndexedDB commit window — the REST GET has its own 100-300ms latency during which the just-published activity may not have hit the server-side snapshot yet.
+
+Pattern: a module-scoped `__mindDeltas` map keyed by `client_id` holds `{kind, activity_date, sign}` overlays. Three new helpers — `applyMindDelta(d)`, `revertMindDelta(client_id)`, `mergeMindDeltasInto(rows)`. The merger overlays envelope-confirmed +1 rows that aren't yet visible in Dexie/REST; it's idempotent — once the real row lands in either source with the same client_id, `existingIds` dedupes the delta to a no-op (the delta entry stays in the map but adds zero rows to the merged result). One-line touch at the terminal `.then(...)` of `readMindActivities` swaps `return baseRows` for `return mergeMindDeltasInto(baseRows)`. All 6 Mind publishers (breathwork / meditation / sleep / visualisation / journal / affirmations) emit `{kind, client_id, ref_id, ...}` envelopes — the kind + client_id are sufficient to apply the delta.
+
+`mind:failed` calls revertMindDelta with envelope.client_id — publisher already revoked the Dexie row on failure, so dropping the cached delta restores parity.
+
+`mind:unlogged` is handled in two paths: if envelope carries client_id we target the specific delta entry; otherwise we apply a generic `sign:-1` delta. Generic decrements can't dedupe by client_id so they may linger as a -1 in the cache until Dexie reconcile catches up, but renderProgress's todayCount/streak computation tolerates that gracefully (the count never goes negative because both branches feed into the same `rows.reduce` over activity_date).
+
+**engagement-v2.html — single-line dead subscribe conversion (Audit PM-379 Flag 14).** L1682 was `VYVEBus.subscribe('vyve-localdb-table-pulled', recompute)`. The event name `vyve-localdb-table-pulled` has no colon — fails bus.js EVENT_NAME_RE both pre-PM-381 (1-segment-only) and post-PM-381 (2+-segment, requires at least one colon). Subscriber was never registered, recompute never fired from this signal since the page was built. The signal is actually dispatched by sync.js + focus-shell as a window CustomEvent (every other consumer uses `window.addEventListener`). Converted in line, four-line comment block documents why.
+
+**events-rp.html — full replacement of standalone 17,618-byte self-rendered page with canonical session-rp shell (2,473 bytes).** Audit PM-379 P0-5 claimed events-rp was "missing session-rp.js + theme.js + session-rp.css" but inspection showed events-rp wasn't on the shared shell at all — it was a fully self-contained page rendering its own grid layout, embedded CSS, hand-rolled topbar/sidebar, with an exposed YouTube API key in inline JS. The other 7 replay-category pages (yoga / mindfulness / workouts / therapy / podcast / education / checkin) are all 2KB shells loading `session-rp.js` + `session-rp.css` and exposing `window.VYVE_SESSION = {name, playlistId, liveLink, description}` for the shell to consume. events-rp had drifted out of band — probably never migrated when the shared shell was introduced.
+
+Brief's instruction to "add the 3 missing tags" would have broken the page (no `<div id="session-app">` for `session-rp.js` to mount on, layout conflict between inline CSS and `session-rp.css`). Pushed back on Dean's brief and proposed full replacement with the canonical shell template. Mockup approved, ship landed.
+
+Four side fixes baked into the migration:
+
+1. **Layout drift closed.** events-rp.html is now byte-equivalent in structure to yoga-rp.html and mindfulness-rp.html. Any future bug fix or feature on `session-rp.js` updates all 8 replay-category pages at once — one less surface for future drift.
+2. **Stale playlist ID fixed.** Old standalone page pointed at `PLIQ-snig8bSm7qQ2a1GFhN9U58wmkSEjm` which is not in `public.replay_playlists`. The canonical playlist ID for the `events` slug per `replay_playlists.youtube_playlist_id` is `PLyaCafiXVssiPt5whqWDiK0EVTMYxbCyh` (matches the `PLyaCafiXVss…` family used by all other slugs). New shell uses the canonical ID.
+3. **Theme support gained.** Old page had hand-rolled `:root` CSS variables and never loaded `theme.js`, so the global dark/light toggle didn't reach it. New shell inherits via `theme.css` + `theme.js`.
+4. **Embedded YouTube API key removed from this surface.** The key is still in `session-rp.js` (shared across all 8) so this isn't a credential rotation — just one less file containing it.
+
+Description copy reconciled to the canonical text from `events-live.html`'s `VYVE_SESSION.description`. Live link points at `events-live.html`. Title preserved as "VYVE — Events & Run Club (Replays)".
+
+**Engagement-v2 recompute fan-in subscriber NOT upgraded (parked low-urgency).** The L1679 `recompute()` is a fan-in over 14 events (`habit:logged` / `workout:logged` / `set:logged` / `cardio:logged` / `movement:logged` / `mind:logged` / `mind:unlogged` / `connect:checkin:logged` / `food:logged` / `food:deleted` / `wellbeing:logged` / `session:viewed` / `monthly_checkin:submitted` / `live_checkin:logged`) all calling a single `refreshScore()` which is a pure Dexie re-read via `computeHomeStateFromDexie`. BUT recompute is already wrapped in a 50ms `setTimeout` debounce that serves as the §23.65 pass-2 mechanism (the fire-and-forget Dexie write typically completes within 50ms). Brief said "upgrade if pure Dexie re-read, skip if already safe" — I read this as safe-enough-by-design. Sibling case to the `index.html` `_rerenderHome` fan-in retrofit that PM-381.b backlog explicitly parked as "low urgency, wait for user-visible glitch." Same shape, same disposition.
+
+**Audit PM-379 queue status post-PM-390:** P0-1 / P0-2 (PM-382) / P0-3 (PM-383) / P0-4 (PM-383) / P0-5 (this ship) / P1-3 (PM-384.b) / P1-4 live-side (PM-385) / Tier 2.3 (PM-384) / §23.65 sweep on Connect + Mind (this ship) — all CLOSED. Remaining open from the audit: P1-4 rp-side (gated on per-replay attribution doctrine clarification, low urgency at trial scale), and the two fan-in retrofits noted above (low urgency, wait-for-glitch).
+
+**Ship details.** vyve-site `f2f07b99`. 7 files atomic via Git Data API (Composio still down per memory #8 fallback, PAT-direct via Vault per memory #20). Files: `connect.html` (envelope-trusted subscriber rewrite + `__optimisticCheckinClientId` module-scoped state), `mind.html` (subscriber rewrite + 3 delta helpers + `readMindActivities` overlay), `engagement-v2.html` (L1682 single-line addEventListener conversion), `events-rp.html` (full replacement with shared shell), `sw.js` (cache key `pm389-breakdown-tiles-dexie-direct-a` → `pm390-section65-sweep-events-rp-unify-a`), `index.html` (vbb-marker 272 → 273), `settings.html` (settings-vbb-marker 272 → 273).
+
+**Tooling discipline checks fired:**
+- **§23.69 collision scan at session start**: last 15 vyve-site commits scanned. PM-386/387/388/389 covered the parallel debug arc but none of them touched the subscribers/lines being patched here (connect.html bus subscribers L2055-2071, mind.html L1227-1229, engagement-v2.html L1682, events-rp.html as a whole). Clean.
+- **§23.66 per-file content rebase immediately before commit**: zero drift on any of the 7 files. Parallel sessions were quiet during this build.
+- **§23.74 cross-repo PM-N scan immediately before commit**: vyve-site max-PM=389, VYVEBrain max-PM=389.b, cross-repo max=389. Claimed PM-390 uncontested.
+- **§23.41 fresh-HEAD recheck**: vyve-site HEAD `09c8f7d7` at commit time (parent of new commit).
+- **§23.41 byte-perfect post-commit verify** on all 7 files via Contents API with `Accept: application/vnd.github.raw`: every file matches local staged sha256 byte-for-byte at commit `f2f07b99`.
+- **§23.58 brain pre-commit re-fetch**: master.md / changelog.md / backlog.md MD5-match the initial session-start fetch.
+- **JS sanity**: 22 inline `<script>` blocks across the 6 HTML files + `sw.js` standalone all `node --check` clean.
+- **Memory #10 dual-marker invariant** held: vbb-marker 272 → 273 on both `index.html` AND `settings.html` in the same commit.
+- **Memory #14 cache key lockstep**: sw.js cache key bumped in the same commit as the markers.
+
+**§23 candidates banked (NOT codified solo):**
+1. **`session-rp.js` reads playlist ID from inline `VYVE_SESSION` not from `replay_playlists` Dexie catalogue.** When `replay_playlists.youtube_playlist_id` changes for any slug, every rp shell needs a manual edit. Could move to Dexie lookup in a follow-on ship — would let Lewis manage replay playlists entirely from Supabase Studio (mirrors the catalogue pattern from PM-377 / PM-378). Banked, not promoting solo. Promotion criterion: next time `replay_playlists` row needs to change AND any rp shell is also being touched.
+2. **rp-shell drift audit.** events-rp drifted to a standalone page at some point without ever being caught. Worth a periodic grep across `*-rp.html` for byte-count outliers — if any rp shell is >5KB it's probably drifted from the canonical shell shape. Banked, not promoting solo.
+3. **Brief-vetting against live source.** The brief described events-rp's P0-5 as a 3-tag bolt-on; live source contradicted that. Pushback was justified. PM-372.b banked a similar "brief-vetting protocol candidate" — this is the second occurrence, getting close to promotion to a `/playbooks/content-surface-audit.md` companion (the brief vetting protocol already lives there in spirit). Banked, codifying on third occurrence.
+
+**Verification expected on device.** Force-quit + reopen iPhone app on test2@test.com (or any test account) to pick up Update 273+. (1) Tap a Connect reaction from connect-feed.html; immediately navigate to connect.html — reaction count on the relevant card should be live without flicker, no half-second stale-paint window. (2) Post a Connect check-in from connect-checkin.html; immediately navigate to connect.html — check-in tile and streak update without lag. (3) Log a mind activity from any of the 6 Mind sub-pages (breathwork is easiest); immediately navigate to mind.html — today's progress counter and streak update without lag. (4) Navigate to an Events category replay (events-rp.html) from sessions.html → Events & Run Club → Replays — page should render in the canonical session-rp layout (topbar / video-area / sidebar / bottom-bar), theme tokens applied (dark or light matching the rest of the app), the events playlist videos visible in the sidebar.
+
+If any race is still visible (counter shows previous value for ~50-150ms then updates), the envelope-trusted upgrade didn't land on that subscriber — surface and patch.
+
+**Next.** After PM-390.b the PM-379 audit queue is functionally closed. Next sequence is the NEXT FOCUS block from the backlog: monthly check-in DB triggers (counter trigger + zzz_mark_home_state_dirty + retroactive UPDATE for 3 existing monthly_checkins rows), certificates → leaderboard ladder parity with engagement-v2, then the Your Journey scope decision. Separate sessions per Dean's no-batching framing.
+
+---
+
 ## 2026-05-25 PM-389.b brain close — Activity Breakdown tile counts on engagement-v2.html rewritten as Dexie-direct (vyve-site PM-389 `09c8f7d7`)
 
 **Scope.** Dean's second device walk on test3 after PM-387 surfaced two surviving symptoms on engagement-v2.html's Activity Breakdown grid: (1) Body tile shows 1 when server has 0 workouts + 1 cardio + 1 movement (expected 2); (2) Connect tile shows 0 when server has 1 connect_checkin + 1 replay_video_view (expected 2). Score panel ("Where your score came from") rendering correctly post-PM-387 — Mind 4pts, Connect 2pts, Check-ins 8pts — so the JS twin score compute is fixed. The bug surviving PM-387 was that the **tile renders** in Activity Breakdown still ran on a 3-stage compose that depended on v1 home_state columns.

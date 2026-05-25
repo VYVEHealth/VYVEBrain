@@ -1,3 +1,21 @@
+## Shipped 25 May 2026 — PM-390 — §23.65 envelope-trusted subscriber sweep on connect.html + mind.html, engagement-v2 L1682 dead subscribe converted, events-rp.html unified onto canonical session-rp shell [vyve-site `f2f07b99`, brain close PM-390.b]
+
+Closes Audit PM-379 P0-5 + §23.65 sweep for Connect / Mind. connect.html: 4 of 6 subscribers upgraded (connect:checkin:logged + :failed, connect:reaction:logged + :cleared) — connect:challenge:progress + connect:hydrated + mind:logged + body:logged kept as pure Dexie re-read (aggregate signals, race-immune by design). mind.html: all 3 subscribers upgraded with module-scoped `__mindDeltas` map keyed by client_id + 3 helpers, `readMindActivities` overlays `mergeMindDeltasInto(base)` so renderProgress sees envelope-confirmed activity before Dexie/REST converge. engagement-v2.html L1682: VYVEBus.subscribe('vyve-localdb-table-pulled', recompute) → window.addEventListener('vyve-localdb-table-pulled', recompute) (Audit Flag 14 — no colon, never registered, signal was always a window CustomEvent). events-rp.html: full replacement of standalone 17.6KB self-rendered page with canonical 2.5KB session-rp shell, joining the other 7 replay-category shells. Side fixes baked into the migration: stale playlist ID swapped to canonical `PLyaCafiXVssiPt5whqWDiK0EVTMYxbCyh` from replay_playlists.slug='events', theme.js now loaded (theme tokens reach the page), embedded YouTube API key removed from this surface.
+
+Audit PM-379 queue post-PM-390: P0-1 / P0-2 (PM-382) / P0-3 (PM-383) / P0-4 (PM-383) / P0-5 (this ship) / P1-3 (PM-384.b) / P1-4 live-side (PM-385) / Tier 2.3 (PM-384) / §23.65 sweep on Connect + Mind (this ship) — all CLOSED. Remaining: P1-4 rp-side (gated on per-replay attribution doctrine), engagement-v2 recompute fan-in retrofit (low urgency, wait-for-glitch sibling to index.html `_rerenderHome` retrofit), affirmations per-day-cap design issue (parked).
+
+**Follow-ons banked from PM-390:**
+
+- **`session-rp.js` playlist ID lookup migration to Dexie catalogue.** Currently each rp shell exposes `window.VYVE_SESSION.playlistId` inline; session-rp.js reads it directly. When `replay_playlists.youtube_playlist_id` changes for any slug, every rp shell needs a manual edit. Could move to Dexie lookup via slug — mirrors catalogue pattern from PM-377 / PM-378 / PM-384, lets Lewis manage replay playlists from Supabase Studio. Banked, not codifying solo. Promotion: next time `replay_playlists` row needs to change AND any rp shell is also being touched.
+
+- **Periodic rp-shell drift audit.** events-rp drifted to a standalone 17.6KB page without ever being caught. Worth a periodic grep across `*-rp.html` for byte-count outliers — any rp shell >5KB is probably drifted from canonical. Banked, not codifying solo. Could be a one-shot playbook entry.
+
+- **Brief-vetting against live source — second occurrence.** PM-372.b banked the protocol on first occurrence; PM-390 is the second (events-rp P0-5 brief contradicted live source — 3-tag bolt-on would have broken the page). Codifying as a `/playbooks/content-surface-audit.md` extension on third independent recurrence.
+
+- **mind.html generic `mind:unlogged` decrement may linger.** When envelope lacks client_id, the generic -1 delta can't dedupe and stays in `__mindDeltas` cache until next Dexie reconcile. renderProgress tolerates it (count never goes negative), but worth tightening if a member-visible glitch surfaces. Bank low-priority.
+
+---
+
 ## Shipped 25 May 2026 — PM-375 — Member Prompts system: Lewis-driven in-app questionnaires [vyve-site `9aac3c11`]
 
 Four-table Supabase system + `prompts.js` renderer + `prompts.css` (dark + light theme). Two canary prompts live: **weekly-preference** (Mon focus picker, multi-select 8 options + free text, weekly dismiss) and **app-feedback** (Sun pulse, 1-10 slider + two textareas, 28d cooldown, min 3d active). Both fire on index.html boot. Lewis edits prompts + questions directly in Supabase Studio; devices pick up within 5 min via §23.50 catalogue invalidation. Aggregation for Lewis read via saved Studio SQL for trial; Command Centre editor + read surface on the post-trial backlog.
