@@ -5627,17 +5627,7 @@ Calum (Physical Health Lead) has delivered the spec, scoring data, and QA framew
 
 ### Added 2026-05-25 — PM-309 follow-ups
 
-**1. movement_activities table integration into streak/engagement (PM-307 follow-up).**
-PM-307 shipped `movement_activities` as a first-class table but did not extend
-`refresh_member_home_state_v1_internal`'s UNION to include it. Currently the streak
-compute still reads from the legacy `workouts` + `cardio` tables only. When
-movement_activities becomes canonical (or in parallel), the SQL function's UNION
-needs extending with `SELECT activity_date FROM movement_activities WHERE member_email = e`
-in three places: per-type streak compute (probably a new movement_cur block),
-overall_streak union, and active_days_30 union. Also `home-state-local.js`
-computeHomeStateFromDexie needs an `allFor(email)` call to a VYVELocalDB.movement_activities
-table (if/when sync.js syncs that table to Dexie). Co-ordinate with whoever owns
-PM-307 — likely the other Claude session.
+**1. movement_activities table integration into streak/engagement (PM-307 follow-up).** **PARTIALLY CLOSED — PM-386.b (25 May 2026).** `compute_engagement_components_v2` now includes movement_activities in Body UNION (focus_slug IS NULL), Focus UNION (focus_slug IS NOT NULL), and v_active_days UNION; plus `zzz_mark_home_state_dirty_{ins,upd,del}` triggers added to mind_activities + connect_checkins (movement already had them). `home-state-local.js` computeHomeStateFromDexie extension confirmed not needed — the client-side Body pill compute on index.html L2120 already includes movement_activities in the Dexie-first read path. **Still open**: the v1 streak compute (`refresh_member_home_state_v1_internal`) UNIONs — per-type streak block + overall_streak union + active_days_30 union — still on the legacy workouts+cardio shape; v1 is being phased out per the §11C cleanup plan, so this may resolve via deletion rather than extension. Verify before next streak-related ship whether v1 paths still drive any UI.
 
 **2. At-risk-of-losing-streak push notifications (PM-309 follow-up).**
 Dean's ask: 19:00/20:00/21:00 BST push notification "you're about to lose your
