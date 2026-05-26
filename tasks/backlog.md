@@ -1,3 +1,23 @@
+## Shipped 26 May 2026 — PM-402 — Broadcast push infrastructure (manual UI + scheduled cron rails) [vyve-command-centre `291a21cf`, Supabase migration `pmtbd_broadcast_push_infra_v2`]
+
+Lewis-facing manual broadcast UI in Command Centre + scheduled-push cron rails. SQL: `is_admin` RPC + `admin_broadcast_log` table + `broadcast_schedules` table + `resolve_broadcast_audience(jsonb)` SECURITY DEFINER resolver supporting 6 audience shapes. Two new EFs: `admin-broadcast-push` v2 (verify_jwt:true, admin-gated) + `scheduled-push-runner` v2 (verify_jwt:false, cron-invoked). New pg_cron job 28 `vyve-broadcast-scheduler` every 5min. Command Centre `pages/broadcast.html` (compose + 4-mode audience picker + iOS-style preview + recent broadcasts log) + sidebar entry under Delivery section. Live at admin.vyvehealth.co.uk/#/broadcast.
+
+Single SECURITY DEFINER resolver `resolve_broadcast_audience(criteria jsonb)` is the source of truth — UI count-preview, manual EF, cron runner all call the same function. Adding a new audience type = single function edit, no UI/EF rebuild. Audit log on every send regardless of source (manual vs scheduled). is_admin RPC backfill closes Lewis's permissive-mode auth.js fallback — Command Centre gate is now enforceable.
+
+Auth-shape gotcha banked NOT codified (first occurrence): post-key-rotation `SUPABASE_SERVICE_ROLE_KEY` env in EFs is the new `sb_secret_*` publishable shape; `send-push` v13's `Bearer` equality check needs JWT-format `LEGACY_SERVICE_ROLE_JWT` instead. First runner deploy got `401 UNAUTHORIZED_INVALID_JWT_FORMAT`; both new EFs redeployed at v2 with corrected env. Pattern reference: `achievement-earned-push` v2 source. Promotes to §23 on second occurrence.
+
+Smoke test end-to-end green: seeded `broadcast_schedules` row scoped to Dean's email at 17:38 London, fired runner via pg_net, `recipient_count:1 in_app_written:1 native_banners_sent:1 web_banners_sent:4`. APNs banner delivered to iPhone Capacitor receiver. VAPID web push to 4 legacy subs (brain noted as dormant since 15 April) fanned out cleanly.
+
+Out of scope v1 (parked): scheduler creation UI in Command Centre (rails ship dark per Dean's call); "pool of quotes" infrastructure for morning quotation (Lewis decides content shape); Android FCM banners (standing backlog #6); same-day dedupe on broadcasts (default false, intentional); custom audience JSON editor (power user surface, defer).
+
+Operational for Lewis: UI at admin.vyvehealth.co.uk → Delivery → Broadcast. Workflow: compose title + body + optional deeplink, pick audience, hit Preview count, then Send. Recent broadcasts list shows last 20 sends with recipient counts + source + caller email.
+
+Operational for Dean: adding a recurring schedule = INSERT into `broadcast_schedules` via Supabase Studio. Required cols: `slug` UNIQUE, `title`, `body`, `audience` jsonb, `recurrence` jsonb, `is_active true`. Daily shape: `{type:'daily',hour:7,minute:0,tz:'Europe/London'}`. Weekly: same plus `days:['MO','WE','FR']`.
+
+No new §23 hard rules earned. Auth-shape gotcha banked above for promotion on second occurrence.
+
+---
+
 ## Shipped 25 May 2026 — PM-395 — Reaction-tap cache mutation pattern (closes tap-time own-only fallback flicker) [vyve-site `aba703ab`]
 
 Closes the last visible flicker in the Connect-hub arc (PM-390→PM-395, 5 ships). PM-392's `__cacheBypassOnce` wire on reaction subscribers forced paintAll onto Path B every tap, which rendered own-only Dexie fallback (1 check-in) before EF upgrade restored the community feed (3 check-ins) — visible as "lower 2 cards disappear then reappear" on every tap. PM-395 keeps paintAll on Path A through reaction taps by syncing the in-memory reaction state to the cached snapshot directly: new `syncReactionStateToCache(checkinId)` helper copies `reactionsByCheckin[checkinId]` back into `cached.checkins[idx]` and writes the cache with computed_at_ms UNCHANGED (surgical patch, 90s TTL anchored). No bypass, no EF round-trip on tap.

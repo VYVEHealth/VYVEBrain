@@ -1,3 +1,70 @@
+## 2026-05-26 PM-402 — Broadcast push infrastructure shipped end-to-end. Lewis-facing manual broadcast UI in Command Centre + scheduled-push cron rails. SQL: `is_admin` RPC + `admin_broadcast_log` table + `broadcast_schedules` table + `resolve_broadcast_audience(jsonb)` SECURITY DEFINER resolver. Two new EFs: `admin-broadcast-push` v2 (verify_jwt:true, admin-gated, calls send-push via LEGACY_SERVICE_ROLE_JWT) + `scheduled-push-runner` v2 (verify_jwt:false, cron-invoked every 5min via new pg_cron job 28 `vyve-broadcast-scheduler`). Command Centre: new `pages/broadcast.html` (compose + 4-mode audience picker + live iOS-style preview + recent broadcasts log) + sidebar entry under Delivery section. Live at admin.vyvehealth.co.uk/#/broadcast.
+
+**Scope.** Dean asked "can we just say it to Claude, or build a back-end where we can push a notification to everyone who hasn't been active, or send a morning quote." Two surfaces required: (a) manual broadcast UI Lewis can use without engineering in the loop; (b) scheduled-push rails so morning quotes / recurring nudges work without per-send human action. Scope locked v1 to ship rails for both; deferred scheduler UI per Dean's call ("not fussed on setting them now but if we decided to create an EF on a schedule we'd want it to be possible").
+
+**Architecture.**
+
+Manual flow (UI → EF):
+1. Lewis loads `/#/broadcast` in Command Centre → admin-console.html router fetches `pages/broadcast.html`
+2. Page gates on `is_admin` RPC under user's PKCE session JWT (`admin_users` allowlist)
+3. Compose form: title (80 char) + body (240 char) + optional deeplink route + push_type tag
+4. Audience picker: 4 modes (all members / inactive N days / by company / single email)
+5. "Preview count" hits `admin-broadcast-push` mode=preview → returns resolved count + 5-email sample
+6. "Send broadcast" confirms via JS confirm, hits mode=send
+7. EF re-verifies caller is admin via `is_admin` RPC under user JWT (defence in depth — front-end gate is layer 1, EF gate is layer 2)
+8. Resolves audience via `resolve_broadcast_audience(jsonb)` SECURITY DEFINER RPC under service role
+9. Fans out via `send-push` v13 in 100-email batches with `Bearer ${LEGACY_SERVICE_ROLE_JWT}`
+10. Audit row written to `admin_broadcast_log` under `EdgeRuntime.waitUntil` (non-blocking)
+11. UI refreshes "Recent broadcasts" list reading directly from `admin_broadcast_log` via RLS (admin-only SELECT)
+
+Scheduled flow (cron → EF):
+1. pg_cron job 28 `vyve-broadcast-scheduler` fires every 5 min via `net.http_post` to `scheduled-push-runner`
+2. Runner pulls active rows from `broadcast_schedules` within `[active_from, active_until]` window
+3. For each row, `isDue(recurrence, now, last_fired_at)` matches current minute against schedule slot in row's tz (default Europe/London)
+4. Daily and weekly recurrences supported v1; recurrence is `jsonb` so future extensions don't need schema migration
+5. Slot key includes date + time + tz so same slot can't fire twice within 6-min window even if runner double-invokes
+6. Audience resolved through same `resolve_broadcast_audience` resolver, identical contract to manual path
+7. send-push fan-out + audit log (source='scheduled' + schedule_id back-reference) + last_fired_at + fire_count bump
+
+**Why `broadcast_schedules` not `scheduled_pushes`.** First migration attempted `scheduled_pushes` — failed because a `scheduled_pushes` table already exists in this project, different shape (per-member one-shot `fire_at` rows, 1 dormant row from 4 May 2026). Brain didn't surface that table. Renamed to `broadcast_schedules` to avoid trampling. The pre-existing `process-scheduled-pushes` cron job and its EF are completely independent of this work — different abstraction entirely (per-member reminders, not broadcasts to audiences).
+
+**Audience resolver.** Single SECURITY DEFINER function takes `criteria jsonb`, returns `TABLE(member_email text)`. Six shapes: `all`, `inactive` (uses `members.last_active_at`, includes never-active members), `company` (case-insensitive match on `members.company`), `company_slug`, `email`, `emails[]`. Resolver is the single source of truth — UI count-preview, manual EF, and cron runner all call the same function. Adding a new audience type (e.g. "by persona" or "by company size") = single function edit, no UI/EF rebuild.
+
+**Auth model.**
+- UI gate: front-end calls `is_admin` RPC under user PKCE JWT — fails closed
+- EF gate (manual): decodes caller JWT email + calls `is_admin` RPC under same JWT — fails closed
+- EF→EF (send-push): `Bearer ${LEGACY_SERVICE_ROLE_JWT}` per dual-auth pattern documented in achievement-earned-push v2
+- DB calls inside EF: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` (publishable post-rotation, accepted by REST/RPC under RLS bypass)
+- `is_admin` RPC SECURITY DEFINER so it can read admin_users regardless of caller RLS context
+
+**Auth gotcha banked (NOT codified — single occurrence so far).** First runner deploy used `SUPABASE_SERVICE_ROLE_KEY` to call `send-push`, got `401 UNAUTHORIZED_INVALID_JWT_FORMAT`. Root cause: post-key-rotation, `SUPABASE_SERVICE_ROLE_KEY` in EF env is the new `sb_secret_*` publishable shape; `send-push` v13's `Bearer` equality check needs the JWT-format `LEGACY_SERVICE_ROLE_JWT` instead. The pattern is documented inline in `achievement-earned-push` v2 source ("dual-auth (sb_secret_* OR LEGACY_SERVICE_ROLE_JWT) per §23 rule"). Both new EFs redeployed at v2 with the correct env. Promoting to §23 hard rule on second independent occurrence. For now, the rule for any future EF→EF call where the callee has `verify_jwt:true` and uses a `Bearer === SERVICE_KEY` equality check: use `LEGACY_SERVICE_ROLE_JWT`, not `SUPABASE_SERVICE_ROLE_KEY`. The achievement-earned-push pattern is the reference implementation.
+
+**Smoke test — end to end green.** Seeded one `broadcast_schedules` row scoped to Dean's email with London-time slot at 17:38, fired runner via pg_net. Result: `schedules_seen: 1, fired_count: 1, recipient_count: 1, in_app_written: 1, native_banners_sent: 1, web_banners_sent: 4`. All four channels exercised:
+- `member_notifications` row written with full route `/index.html`
+- `admin_broadcast_log` row id=2 captured (source='scheduled', schedule_id=1, error=null)
+- APNs banner sent to Dean's iPhone (Capacitor native receiver)
+- VAPID web push sent to 4 legacy web subs (the brain noted these as dormant since 15 April; they fanned out cleanly — useful confirmation that the web push path still works for any returning desktop session)
+Smoketest schedule deactivated post-verification (`is_active=false`). fire_count=2 reflects the first failed v1 attempt + this green v2.
+
+**Command Centre ship.** `vyve-command-centre@291a21cf` — 2 files atomic via Git Data API per §23.52(a) Python urllib (`--data-binary @file` equivalent). `pages/broadcast.html` 21952 bytes, `assets/sidebar-config.js` 11044 bytes (Broadcast entry inserted into Delivery section between Sessions and Tasks). §23.41 first-100-bytes verified at commit SHA on both files — MATCH/MATCH. JS syntax `node --check` clean on the inline block (10736 chars) and on the sidebar config file.
+
+**is_admin RPC backfilled.** Pre-PM-402 the Command Centre auth.js was running in "permissive mode" — `is_admin` RPC didn't exist, auth.js had a fallback that let any authenticated user in with a `console.warn`. PM-402 ships the RPC, so the gate is now enforceable. The `VYVE_CONFIG.auth.strict` toggle in Command Centre settings is no longer the blocker — the RPC just works. Three admins active: deanonbrown@hotmail.com, lewisvines@hotmail.com, team@vyvehealth.co.uk.
+
+**Out of scope this ship (parked).**
+- Scheduler creation UI in Command Centre — rails ship dark per Dean's call. Adding a schedule today means inserting a row in Supabase Studio with title/body/audience/recurrence. Standard pattern doc in playbooks lives or sits in the brain when the UI lands.
+- "Pool of quotes" infrastructure for morning quotation use case — also parked. Lewis decides content shape; v1 schedule rows take a single static title+body.
+- Android FCM banners — blocked on the standing FCM backlog item (#6). Android members get in-app rows + correct tap routing, no system banner. Surfacing this on the manual broadcast UI's send summary as "0 Android banners sent" is implicit (counts are iOS native + VAPID web only).
+- Same-day dedupe on broadcasts — `dedupe_same_day:false` is the default for broadcasts (intentional: an admin firing a broadcast knows what they're doing). The toggle exists in the EF input contract but isn't surfaced in the UI v1.
+- Custom audience JSON editor — power user surface for "all the segments resolver knows about". Defer until a real use case arrives.
+
+**Operational implications for Lewis.** UI is at admin.vyvehealth.co.uk → Delivery → Broadcast. Workflow: compose title + body + optional deeplink, pick audience, hit "Preview count" to confirm size, then "Send broadcast" → JS confirm → fan-out. Recent broadcasts list at the bottom of the page shows the last 20 sends with the recipient count and source (manual vs scheduled). All sends audit-logged regardless of channel. Lewis can also send to a specific member by typing their email — useful for personal nudges. The push type tag (default "broadcast") drives grouping in `member_notifications` if Lewis later wants to filter by type.
+
+**Operational implications for Dean.** Adding a recurring schedule means inserting a row in `broadcast_schedules` via Supabase Studio. Required cols: `slug` (unique), `title`, `body`, `audience` (jsonb), `recurrence` (jsonb), `is_active` (true). Recurrence shape examples in this changelog entry above and in `scheduled-push-runner` source comments. Audit log shows whether the schedule actually fired and how many recipients got it.
+
+**No new §23 hard rules earned tonight.** The auth-shape gotcha (LEGACY_SERVICE_ROLE_JWT for verify_jwt:true callees) banked as a first-occurrence note in this entry. Promotes to §23 if it recurs.
+
+---
+
 ## 2026-05-25 PM-401.b brain close — Connect-page flicker arc closed in THREE atomic vyve-site ships after Dean reported residual surfaces post-PM-398: PM-399 Your Journey snapshot first-paint, PM-400 live carousel background-image + reaction-tap site surgical patch, PM-401 renderRecentCheckins same-layout guard (the actual fix)
 
 **Scope.** Continuation of PM-398.b chat. Originally framed as the "Chat 2 Body snapshot migration" item from PM-398.b's NEXT FOCUS but Dean's device walk confirmed Body and Mind don't flicker (exercise.html already has PM-96 `paintCacheEarly` from `vyve_exercise_cache_v2` localStorage — snapshot-first pattern predates PM-394 architecture by weeks). Real residual surfaces were:
