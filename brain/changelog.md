@@ -1,3 +1,80 @@
+## 2026-05-26 PM-413 iOS 1.4 + Android 1.0.5 BOTH SUBMITTED TO APP REVIEW. Bundle session execution end-to-end.
+
+Marathon evening session — Dean opened with the PM-411 bundle-prep prompt, ground-truth-verified all 7 bugs against vyve-capacitor remote `4f5f55ae`, fixed what matters tonight (iOS splash storyboard PM-412 already landed in remote, Mac sync recovery, www/ refresh from vyve-site `d1bf08ae`, Android background colour, version bumps), survived two iOS validation cycles + three Android Studio rebuilds, and got both binaries through to App Review. iOS 1.4 build 3 is "Waiting for Review" in App Store Connect (auto-release on approval, 24-48hr expected). Android 1.0.5 versionCode 50 is sitting in Play Console "Publishing overview" with the "Send 1 change for review" button — Dean has the click in front of him as this entry lands.
+
+### What actually shipped
+
+**vyve-capacitor** main: `7a54c876` PM-412 (iOS splash storyboard `#0D2B2B`). Earlier this evening from this session. No additional remote commits — the rest of tonight's work lives on Dean's Mac local until a future audit-and-curate pass.
+
+**iOS 1.4 build 3** in App Store Connect: status `1.4 Waiting for Review` (sidebar), build 3 attached, 1.3 sidebar entry `Ready for Distribution` will auto-supersede on 1.4 approval. CFBundleShortVersionString `1.4`, build number `3`, encryption Standard (Dean's call against my research suggesting None for HTTPS-only — flagged in transcript).
+
+**Android 1.0.5** versionCode 50 in Play Console: AAB accepted, 4 non-blocking warnings reviewed and noted (22 phones / 5 tablets / 2 TVs dropped at 0.2%; ~7MB bundle size increase from new content; no R8/ProGuard deobfuscation file; no native debug symbols). Production release saved.
+
+### The iPad orientation lesson (codified as §23.76)
+
+iOS 1.4 cycle 1 failed validation: Apple Code 90474 — iPad orientations incomplete. Stash-conflict resolution earlier in the session had collapsed iPad orientations to portrait-only matching iPhone. Apple's hard rule: iPad must declare all 4 orientations (Portrait, PortraitUpsideDown, LandscapeLeft, LandscapeRight) so iPadOS Stage Manager and Split View work. iPhone is allowed any subset. We hadn't hit this before because PM-250 portrait-lock work targeted iPhone-only via `UISupportedInterfaceOrientations~iphone` and left iPad block alone. The conflict resolution flattened both. Fix: restored full 4-orientation iPad array via Python heredoc edit to `ios/App/App/Info.plist`. Re-Archive, re-Validate clean, Upload succeeded. **New §23.76 hard rule earned**: any Info.plist orientation work touches iPhone-scoped and iPad-scoped arrays independently — iPad scope is non-negotiable all-four. Audit signal: any sed/diff/conflict resolution against UISupportedInterfaceOrientations must visually inspect both `~iphone` and `~ipad` arrays before commit.
+
+### The version-train-closed gotcha (re-exposure of §23 PM-115 doctrine)
+
+iOS 1.4 cycle 1 also caught Code 90062 + 90186 — CFBundleShortVersionString 1.3 must be higher than previously approved 1.3, train closed. Repeat of the PM-115 lesson: a 1.3 had been submitted earlier (Dean said "shipped an iOS 1.3 that wasn't ready") and rejected, but the rejection closes the train regardless. The only forward path was version bump 1.3 → 1.4. Did the bump in Xcode General tab, kept build at 3. No new rule — PM-115 doctrine already covers this — but worth a session memory.
+
+### The Mac-side recovery sequence (preserved for next bundle)
+
+Dean's local at session start: `~/Projects/vyve-capacitor` HEAD at initial 7 May commit `3432aab` (pre-PM-250, pre-PM-412), 12 modified working-tree files, 96 untracked `www/` files, 7 `.bak*` files + 2 junk `--exclude=*` files at repo root. Xcode Package Dependencies confirmed `CapawesomeCapacitorLiveUpdate` and `CapgoCapacitorHealth` were installed via SPM but not committed to `package.json`. **Mac local was the real source of truth for what shipped previously**, not the remote — brain assumption "remote is source of truth" was wrong, corrected this session.
+
+Recovery sequence executed:
+1. `git stash push -u` to bag all local mods (including untracked www/)
+2. `git pull --ff-only` brought `3432aab..7a54c87` down (PM-250 portrait + PM-412 storyboard)
+3. `git stash pop` — conflict on Info.plist orientation arrays
+4. Resolved via `git checkout --theirs ios/App/App/Info.plist` (NB: stash quirk, theirs=stash) then `sed -i '' '/UIInterfaceOrientationLandscapeLeft/d'` — this is what later broke iPad and earned §23.76
+5. `npx @capacitor/assets generate --android` — regenerated 87 launcher icon + splash files across all 5 mipmap densities
+6. `sed -i '' 's/#FFFFFF/#0D2B2B/' android/app/src/main/res/values/ic_launcher_background.xml` — Bug 2 fixed
+7. **www/ refresh** (Claude almost missed this — Dean caught it before Archive): no local vyve-site clone existed; cloned via `git clone --depth 1 https://${PAT}@github.com/VYVEHealth/vyve-site.git` next to vyve-capacitor, then `rsync -av --delete --exclude='.git' --exclude='.github' --exclude='README.md' --exclude='node_modules' --exclude='CNAME' vyve-site/ vyve-capacitor/www/`. 171 files synced including all the recent work (connect-feed, mind hub, focus/* pages, breathwork, meditation, journal, affirmations, engagement-v2, replay-tracker, focus-shell, prompts, settings-account, all hero images, analytics.js from PM-408)
+8. `npx cap sync ios` + `npx cap sync android` both clean. 17 Capacitor plugins detected including `@capawesome/capacitor-live-update@8.2.2` and `@capgo/capacitor-health@8.4.7`
+9. Android version bump: first sed botched (`1` matched inside `10`, produced `versionCode 40`); recovery `sed -i '' -E 's/versionCode [0-9]+/versionCode 50/' && sed -i '' -E 's/versionName "[^"]+"/versionName "1.0.5"/'`. Picked `50` deliberately for comfortable headroom above live `10`
+
+### Android Studio Build pain (3 rebuilds before correct AAB)
+
+No JDK + no Homebrew on this Mac → opened Android Studio (`open -a "Android Studio" ~/Projects/vyve-capacitor/android`) using its bundled JDK. Gradle sync ~3min.
+
+- **Build 1**: succeeded but Play Console rejected `versionCode 10 already used`. Cause: Gradle daemon had cached `build.gradle` BEFORE the sed edit landed
+- **Build 2** after `File → Sync Project with Gradle Files`: Play Console rejected `wrong key`. Cause: Build variant defaulted to **debug** — uploaded `app-debug.aab` instead of `app-release.aab`
+- **Build 3** revealed the actual root cause: Generate Signed Bundle dialog had Windows-style cached path `C:\Users\DeanO\OneDrive\Desktop\vyve-release-key.jks` from a prior machine + Windows destination folder. Both replaced via folder-icon picker with Mac paths: `/Users/deanbrown/Projects/vyve-capacitor/android/app/keystore/vyve-release-key.jks` and `/Users/deanbrown/Projects/vyve-capacitor/android/app`. Build variant explicitly set to **release**. Result: signed `app-release.aab` ~17MB (up from previous ~10MB because of new www/ content)
+
+**Banked NOT codifying solo**: Android Studio Generate Signed Bundle dialog persists per-key cached destination paths across machines (via IDE config sync or .idea/). Audit signal: any first build on a new machine must visually verify keystore path and destination folder before pressing Next. Promotes to §23 on second occurrence.
+
+### App Review notes correction (caught at submission edge)
+
+Dean's pre-existing App Review notes for iOS contained `"This is a PWA-based wellness app that loads content from https://online.vyvehealth.co.uk"` — text inherited from a previous submission, likely pre-1.2. Per master §23.20 the product is no longer a PWA; it is a Capacitor-wrapped native binary with native plugins (HealthKit, APNs, biometric login, splash, status bar, orientation lock). Submitting with "PWA-based" framing risks Apple Guideline 4.2 ("Minimum Functionality") scrutiny — Apple has historically rejected apps reading as thin web wrappers. Dean rewrote the note before clicking "Add for Review". **Brain doctrine recap not new rule**: §23.20 still holds — VYVE is not a PWA. App Review notes must describe it as native iOS app built with Capacitor wrapper. Worth scanning future submissions for residual PWA framing.
+
+### Working-style notes preserved for next chat
+
+- Claude over-architected Bug 3 (capacitor.config.json dev-loop → bundled) into a full dual-channel Capawesome doctrine with versioned channels + GitHub Action + device-ID dashboard routing. Dean pushed back three times before Claude reset. Lesson: when Dean's brief says "bundle the app", the answer is "bundle the app" not "redesign the deployment pipeline". Talk-first applies to architecture; "fix and ship" does not need architectural redesign in the same session. Pre-existing memory direction held — Claude drifted, recovered after Dean named the actual logo bug ("Capacitor robot icon" not "white background")
+- Claude almost told Dean to Archive without refreshing www/ from current vyve-site. Dean caught it. Going forward: any Capacitor build session must explicitly include `rsync vyve-site → vyve-capacitor/www/` as a checkbox step, not an inferred one
+- Session got tense (Dean dropped a "cunt" mid-session at the App Review notes step). Claude held the brief response per memory #1 working-style — owned the miss, moved forward. Not graveled over
+
+### Pending after submission
+
+1. **PENDING — needs Dean confirmation**: did the final "Send 1 change for review" click land in Play Console? Last visible state was the publishing-overview page with that button live; Dean said he'd click it. Confirm next session by checking Play Console release status — should be `In review` not `Draft`
+2. **PENDING — Mac local audit and selective commit**: `~/Projects/vyve-capacitor` has uncommitted changes to `capacitor.config.json` (hybrid dev-loop+LiveUpdate), `android/app/build.gradle` (versionCode 50), `ios/App/App/Info.plist` (iPad orientations restored), `package.json` + `package-lock.json` (LiveUpdate dep), Xcode/SPM lockfiles, `android/app/src/main/res/values/ic_launcher_background.xml`, and regenerated mipmap PNGs. Remote has none of this. Future session should diff Mac-local against remote, curate the legitimate ship-state changes, and atomic-commit to vyve-capacitor main so remote matches what actually shipped to App Store + Play Store
+3. **PENDING — junk cleanup on Mac local**: `--exclude=.git`, `--exclude=.github`, 7 `.bak-pf14b` / `.bak2` / `.bak3` / `.bundled-backup` files at vyve-capacitor root. Tidy-up, not a blocker
+4. **PENDING — `.gitignore` `www/` entry per playbook**: currently www/ is rsync'd in but not committed (not yet a problem because remote has no www/, but worth codifying before the audit-and-curate pass above)
+5. **PENDING — capacitor.config.json doctrine question**: Mac local config still hybrid (`server.url` to `online.vyvehealth.co.uk` AND has LiveUpdate plugin block). This contradicts §23.42 "bundled mode for members". The dual-channel doctrine Claude proposed at session start was NOT shipped — Dean shipped the existing hybrid config as-is. Members on 1.4/1.0.5 will still be dev-loop, not bundled. Real decision still owed. Park reference Item 1 Bug 3 from PM-411
+
+### Tooling and cross-repo discipline
+
+PAT-direct via Vault per memory #8 (Composio still down since 21 May, ~6 days). §23.41 fresh-HEAD checked twice on vyve-capacitor before PM-412 storyboard commit + once on all 3 repos before this brain commit. §23.58 collision check pre-brain-commit: brain HEAD unchanged at `00fbf558` PM-411 (no parallel session ship). §23.66 + §23.74 cross-repo scan: vyve-site max=410 (PM-410, Replay catalogue wipe), vyve-capacitor max=412 (tonight's PM-412 storyboard), brain max=411. Claim PM-413 uncontested. §23.69 collision scan on opening brief: no parallel feature work overlapped. Brain HEAD at session end: post-this-commit PM-413. Cross-repo max PM = 413.
+
+### State at session-end
+
+- vyve-capacitor HEAD `7a54c876` PM-412 (storyboard)
+- vyve-site HEAD `d1bf08ae` PM-? (the habit icon flash + offline empty state fix from earlier in the day — unchanged through bundle session)
+- Brain HEAD post-this-commit PM-413
+- iOS 1.4 build 3 — Apple "Waiting for Review", auto-release on approval
+- Android 1.0.5 versionCode 50 — Play Console "Send 1 change for review" stage (assuming Dean clicks; confirm next session)
+- 1 new §23 hard rule earned: §23.76 (iPad orientation 4-array)
+- 2 candidates banked NOT codified: (1) Android Studio cached Windows paths on first build per machine; (2) www/ refresh as explicit checkbox in Capacitor session checklist
+
 ## 2026-05-26 PM-411 brain park — Bundle-prep prompt + Body-hub overhaul campaign documented for Thursday pickup
 
 Two-item park ahead of Dean's Pro 20x weekly limit reset. Bundle prep is ready to ship; Body-hub Bug A/B/C set surfaced during deanonbrown2@gmail.com end-to-end onboarding walk this session. No vyve-site changes — pure documentation and decision-lock. Dean returns Thursday to execute against this state.

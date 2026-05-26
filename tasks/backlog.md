@@ -1,4 +1,52 @@
-## PARKED 26 May 2026 — PM-411 — Bundle-prep + Body-hub overhaul
+## 26 May 2026 PM-413 — iOS 1.4 + Android 1.0.5 SUBMITTED. Pending follow-ups.
+
+iOS 1.4 build 3 is "Waiting for Review" in App Store Connect. Android 1.0.5 versionCode 50 is in Play Console at the "Send 1 change for review" stage at brain commit time — confirm Dean clicked it.
+
+### Pending — needs confirmation next session
+
+1. **Play Console final click**: confirm `In review` not `Draft` on play.google.com/console for VYVE Health Android. If still `Draft`, click `Send 1 change for review` from publishing overview.
+
+### Pending — Mac local audit and selective commit
+
+2. **vyve-capacitor remote sync**: Dean's `~/Projects/vyve-capacitor` Mac local has uncommitted ship-state changes that aren't in remote `7a54c876`:
+   - `capacitor.config.json` (hybrid dev-loop + LiveUpdate config — contradicts §23.42 doctrine, see Pending #5)
+   - `android/app/build.gradle` (versionCode 50, versionName "1.0.5")
+   - `ios/App/App/Info.plist` (iPad 4-orientation restored after PM-413 §23.76)
+   - `package.json` + `package-lock.json` (`@capawesome/capacitor-live-update@8.2.2` was installed via Xcode SPM but not in package.json)
+   - `android/app/src/main/res/values/ic_launcher_background.xml` (`#FFFFFF` → `#0D2B2B`)
+   - Regenerated mipmap PNGs across all 5 density buckets (`mipmap-{hdpi,mdpi,xhdpi,xxhdpi,xxxhdpi}/`)
+   - Xcode/SPM lockfiles
+   
+   Future session should diff Mac-local against remote, curate legitimate ship-state changes, and atomic-commit so remote `vyve-capacitor` matches what's actually shipping in iOS 1.4 / Android 1.0.5.
+
+3. **Mac local junk cleanup**: `--exclude=.git` + `--exclude=.github` literal files (typo from earlier session) + 7 `.bak-pf14b` / `.bak2` / `.bak3` / `.bundled-backup` files at vyve-capacitor repo root. Tidy-up, not a blocker.
+
+4. **`.gitignore` `www/` entry per playbook**: currently `www/` is rsync'd in from vyve-site but not committed. Not yet a problem because remote has no www/, but codify before the audit-and-curate pass above to avoid accidentally committing 171 sync'd files.
+
+### Pending — architectural decision still owed
+
+5. **capacitor.config.json doctrine — UNRESOLVED**: Mac local config is still hybrid (`server.url` pointing at `online.vyvehealth.co.uk` AND has LiveUpdate plugin block). Members on 1.4/1.0.5 will be **dev-loop mode, not bundled** when iOS/Play Store approves. Contradicts §23.42 "bundled mode for members". Claude proposed a full dual-channel Capawesome doctrine at PM-413 session start; Dean rejected, shipped existing hybrid config as-is. **Real decision still owed**:
+   - (a) Proper bundled mode with `@capawesome/capacitor-live-update` (app `f9961f66-eb66-4102-b1c5-f9b2c7baeebf`, prod channel `89e12796`) — what brain memory #4 / §23.42 actually describes
+   - (b) Dev-loop mode for trial cohort accepting network dependency (current de facto state of the shipped binary)
+   - (c) Something else
+   
+   Reference PM-411 Item 1 Bug 3 for context — this is the same decision parked from the bundle-prep session.
+
+### Pending — Apple submission risks watch
+
+6. **iOS encryption answer (banked)**: Dean chose "Standard encryption" against my research-backed advice of "None of the algorithms" for HTTPS-only apps (per Apple Developer Forums + official guidance). Standard requires export compliance documentation if Apple ever audits. Likely fine — most apps choose Standard — but if Apple asks for export docs post-approval, that's the audit trail.
+
+7. **iOS App Review notes scan**: residual "PWA-based" framing was caught and rewritten this session; per §23.20 the product is no longer a PWA. Future submissions: scan App Review Notes for any inherited PWA / "thin web wrapper" / "web shell" framing that could trigger Apple Guideline 4.2 review. Always describe as "native iOS app built with Capacitor wrapper".
+
+### Pending — Android post-trial polish
+
+8. **R8/ProGuard enable**: Play Console Warning 3 of 4 from PM-413 — no deobfuscation file. Future build improvement; makes crash stack traces more readable.
+
+9. **Native debug symbols**: Play Console Warning 4 of 4 — no native code debug symbols uploaded. Same shape as #8, harder to debug native crashes if they happen.
+
+---
+
+## PARKED 26 May 2026 — PM-411 — Body-hub overhaul Bug A/B/C (Item 1 Bundle-prep CLOSED in PM-413 — see top of backlog)
 
 Dean returns Thursday once Pro 20x weekly limit resets.
 
