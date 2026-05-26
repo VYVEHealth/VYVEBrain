@@ -1,3 +1,86 @@
+## 2026-05-26 PM-405 — Bottom-nav opacity split on Connect + offline scope audit pre-bundle
+
+Two pieces shipped this session: (1) PM-403 vyve-site `ff5cd4f4` split `--bottom-nav-bg-mob` from `--nav-bg-mob` so Connect's frosted-topbar override at body L53 no longer drops the bottom nav from 0.97 → 0.42 alpha; (2) full PF-14c offline-scope audit against pre-bundle vyve-site main with two real gaps surfaced and codified as fix tickets.
+
+### PM-403 ship — bottom-nav-bg-mob token split
+
+PM-216 doctrine (23 May 2026) introduced body-scoped `--nav-bg-mob: rgba(8,24,24,0.42)` on connect.html L53 to make the sticky topbar frosted-glass over the photographic hero. The unintended side effect: `nav.js` line 148 `.vyve-bottom-nav` ALSO reads `--nav-bg-mob` for its background, so the body-scoped override on Connect dropped the bottom nav from theme.css default `rgba(8,24,24,0.97)` to the same 0.42 alpha. Result: Connect bottom nav reads as see-through glass while every other hub (Home/Body/Mind) has an opaque dark nav. Dean caught it on device during pre-bundle walk.
+
+**Fix shape — option (a) of two-options brief**: split the token rather than override on Connect. Touches theme.css + nav.js only, Connect stays untouched.
+
+Files committed (vyve-site `ff5cd4f4ec`, 5-file atomic via Git Data API per §23.52(a)):
+- `theme.css` — added `--bottom-nav-bg-mob: rgba(8,24,24,0.97)` immediately after `--nav-bg-mob` in BOTH `:root` (dark) and `[data-theme="light"]` blocks. Defaults identical to `--nav-bg-mob` so zero visual delta for non-Connect pages. Light-theme value retained `rgba(8,24,24,0.97)` per April CTO decision that nav chrome stays visually dark across themes.
+- `nav.js` line 148 — `.vyve-bottom-nav { background: var(--nav-bg-mob) }` → `var(--bottom-nav-bg-mob)`. Topbar `.mobile-page-header` line 131 STILL reads `--nav-bg-mob` (verified post-edit: `--nav-bg-mob` count 2 → 1, `--bottom-nav-bg-mob` count 0 → 1).
+- `sw.js` cache key `pm401-recent-checkins-same-layout-skip-a` → `pm403-bottom-nav-bg-split-a`
+- `index.html` vbb-marker 283 → 284
+- `settings.html` settings-vbb-marker 283 → 284
+
+`node --check` clean on nav.js + sw.js standalone + 11 inline JS blocks in index.html + 4 in settings.html. §23.41 byte-perfect verify all 5 files via Contents API raw-accept sha256 MATCH at commit SHA `ff5cd4f4ec`. §23.66 fresh-HEAD recheck clean (vyve-site HEAD was `e02304a3` pre-commit, no parallel drift). §23.74 cross-repo PM scan: vyve-site max=401, brain max=402, claim PM-403 uncontested. PAT-direct via Vault per memory #8 (Composio still down).
+
+Connect's body-scoped `--nav-bg-mob` override at L53 left untouched — topbar stays frosted as intended. Member-visible result: Connect bottom nav now opaque dark matching every other hub; no regression on Home/Body/Mind/settings.
+
+### PM-405 (this) — offline-scope audit pre-bundle
+
+Native binary cuts from vyve-site main tonight → App Store + Play Store. PF-14c contract (PM-105, 14 May 2026): every same-origin runtime-loaded script must be in `urlsToCache`; cross-origin runtime deps forbidden in critical path. Pre-bundle audit run against live vyve-site main at SHA `ff5cd4f4ec` / vbb 284 / cache key `pm403-bottom-nav-bg-split-a`.
+
+**Method**: live-fetched sw.js + 10 hub pages (index/exercise/mind/connect/settings/wellbeing-checkin/habits/nutrition/workouts/sessions); extracted `urlsToCache` array (132 paths); cross-referenced against live repo tree (186 files); audited each hub for `<script src>`, `<link href>`, and dynamic `script.src=` injections.
+
+**Two real findings**:
+
+(1) **Precache gap — 22 files not in `urlsToCache` but member-reachable**: 8 live-broadcast shells (yoga-live/mindfulness-live/workouts-live/checkin-live/therapy-live/events-live/podcast-live/education-live), 8 replay-category shells (yoga-rp/mindfulness-rp/workouts-rp/checkin-rp/therapy-rp/events-rp/podcast-rp/education-rp), 4 new mind/more surfaces (meditation/sleep/how-to-pdfs/how-to-videos), and the 2 shared session CSS files (session-live.css + session-rp.css). **Symptom offline**: member taps a session/replay/meditation card → SW fetch fails → graceful fallback to `/index.html` (correct SW behaviour per fetch handler L370) → member lands on home not on the surface they tapped. Premium-feel regression but not a hang or black screen. Root cause: PM-251 ship of the live-state-machine + 8 live shells + 8 rp shells (23 May 2026) added 16 new HTML surfaces to the repo without a sw.js precache addition in the same atomic commit. 3 days of drift.
+
+(2) **PF-14c §2a violation — wellbeing-checkin.html injects Chart.js from cdnjs at runtime**: lines 905 + 1419 both do `script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js'`. SW fetch handler L338 correctly skips cross-origin (`if (url.origin !== self.location.origin) return`), so offline = chart canvas stays blank with no error UX. **Not critical-path** (both inside chart-render helpers, no `await` on script.onload, page doesn't hang) — but the trend chart is invisible offline and member would think the chart was broken not that they were offline.
+
+**No-bug findings (worth documenting to prevent re-investigation)**:
+- 15 other "missing from precache" HTML are by-design (login/set-password gate auth → must hit network; sw.js can't cache itself; consent-gate/shared-workout/nutrition-setup are one-shot or deep-link only; achievements-mockup-* are dead; VYVE_Health_Hub.html gated on Phil per master §8; offline.html exists but SW doesn't reference it; activity.html is legacy)
+- 35 image paths flagged as "ghost" — recursive tree API truncated. Direct file fetches confirmed all exist on disk
+- supabase.min.js IS vendored locally — preconnect hints to supabase.co are non-blocking
+- Google Fonts (Playfair Display + DM Sans) on every hub — system-font fallback offline, premium-feel regression but acceptable per PF-14c §2b (has offline UX). Banked for post-launch self-host
+
+**Recommended fix shape (PM-406 single atomic vyve-site commit, pre-bundle)**:
+1. sw.js — add the 22 missing paths to `urlsToCache`, bump cache key `pm403-...` → `pm406-offline-scope-fill-a`
+2. /chart.umd.js — vendor from cdnjs locally (~210KB), add to precache
+3. wellbeing-checkin.html — both Chart.js injection sites swap `https://cdnjs.cloudflare.com/...` → `/chart.umd.js`
+4. index.html + settings.html vbb 284 → 285
+
+**§23 candidates banked (NOT codifying solo from one audit pass)**:
+
+(a) **SW precache must be audited on every new HTML surface ship** — PM-251's 16 new shells + 4 new mind/more surfaces all shipped without a sw.js precache addition in the same atomic commit. 3 days of drift. Audit signal: any vyve-site commit adding an HTML file in repo root should have a sw.js diff in the same atomic commit. Promotes to §23 hard rule on second recurrence (single drift episode so far).
+
+(b) **Cross-origin runtime injection on a member-facing surface is a PF-14c violation regardless of critical-path status** — even non-blocking injections like Chart.js produce silent visual breakage offline. Audit signal: `grep -rn "script.src.*http" *.html` should return zero hits on member-facing surfaces. Promotes to §23 hard rule on second occurrence.
+
+### Audit doc
+
+Full per-surface findings written to `/audit/pm404_offline_audit.md` (saved locally in this session, doc names PM-404 for working filename — canonical PM is 405 post §23.58 collision rebase). Doc covers method, findings, recommended fix shape, and §23 candidates earned. Not committed to brain repo because it'd duplicate this entry; the entry IS the durable record.
+
+### Capacitor block pause
+
+Bundle work parked mid-session — Dean confirmed vyve-site main "not bundle-ready yet, couple of hours." Capacitor work (portrait lock verify, asset regen, Health Connect wire) resumes once vyve-site has frozen the SHA to bundle. Investigation of vyve-capacitor local Mac state surfaced:
+- **Remote `4f5f55ae` (PM-250) IS the source of truth** — portrait lock on iOS + Android landed there 23 May
+- **Local Mac at 3432aab (7 May initial commit)** — 1 commit BEHIND remote, with 12 modified working-tree files + 90+ untracked www/ files
+- **Local Info.plist STILL has all 4 orientations** + Android Manifest STILL missing `android:screenOrientation="portrait"` — local working tree is pre-PM-250 because the working tree was never pulled
+- Source PNGs verified clean: `assets/icon.png` 1024×1024 RGB no-alpha ✅, `assets/splash.png` 2732×2732 RGB no-alpha ✅
+- AppDelegate.swift exists for APNs bridge ✅
+- `@capgo/capacitor-health@8.4.7` + `@capacitor/browser@8.0.3` in package.json ✅
+- Two junk files at repo root: `--exclude=.git` and `--exclude=.github` (0 bytes each, 15 May) — earlier session typo, safe to delete
+- Recovery plan: `git stash push --include-untracked` → `git pull --ff-only origin main` → review stash for net-new work → cherry-pick if any → continue with asset regen + Health Connect
+
+Health Connect on Android confirmed by Dean as **wire-tonight, not defer** — approved by Google, plugin already in package.json, Dean buying Android device tonight to E2E.
+
+### New playbook this commit
+
+`playbooks/vyve-capacitor-mac-sync.md` — canonical procedure for diagnosing + recovering the Mac local copy when it drifts from remote. Covers the standard stash + ff-pull + cherry-pick pattern, the canonical `.gitignore`, the bundle prep workflow, keystore safety (P0 launch blocker), source PNG specs, and junk-file cleanup. Built from this session's investigation of Dean's pre-bundle local state.
+
+### §23.58 + §23.70 + §23.74 collision recovery
+
+Initial PM claim was 404, composed against brain HEAD `47b2af50`. §23.58 final fresh-HEAD check before commit caught parallel session shipping `0fb09c9b` PM-404 (In-App Tour PF-23 elevation) at 17:52Z, ~minutes before my commit. Recovery: re-fetched all 3 brain files at new HEAD, replayed patches with PM-404→PM-405 sed sweep, no content drift on master §19 (parallel didn't touch §19), prepended my changelog entry ABOVE parallel's PM-404, backlog top still clear for my P0 block. ~120s wall-clock cost.
+
+§23 reinforcement: §23.58 doing exactly its job. Third cross-repo PM collision today after PM-378 + PM-379 (codified §23.74 from those). No new rule earned this collision.
+
+### Markers / state at session end
+
+vyve-site HEAD `ff5cd4f4ec` PM-403, vbb 284 / settings-vbb 284, cache `pm403-bottom-nav-bg-split-a`. Brain HEAD `0fb09c9b` PM-404 (parallel session In-App Tour PF-23 elevation). PM-405 is mine. PM-406 reserved for offline scope fix ship (next vyve-site commit, pre-bundle).
+
 ## 2026-05-26 PM-404 brain close — In-App Tour PF-23 elevated from "V2 post-launch blocked on Lewis copy" to next-up P1 after bundle ships.
 
 **Dean's framing**: bundle is being cut now for trial launch; tour is "probably one of the next things I do" once everything else is checked off. Strategic call — tour is important for new customer first-touch experience and shouldn't sit indefinitely behind the original post-trial gate.

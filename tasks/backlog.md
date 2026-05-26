@@ -1,3 +1,39 @@
+## PM-405 PRE-BUNDLE OFFLINE-SCOPE FIX (P0, blocks bundle freeze)
+
+**Discovered 26 May 2026 PM-405 offline-scope audit (post-§23.58 collision rebase from PM-404). Must land in vyve-site BEFORE Capacitor bundle freeze tonight. Becomes PM-406 ship.**
+
+Single atomic vyve-site commit:
+
+1. **sw.js** — add 22 paths to `urlsToCache`:
+   ```
+   /checkin-live.html      /checkin-rp.html
+   /education-live.html    /education-rp.html
+   /events-live.html       /events-rp.html
+   /mindfulness-live.html  /mindfulness-rp.html
+   /podcast-live.html      /podcast-rp.html
+   /therapy-live.html      /therapy-rp.html
+   /workouts-live.html     /workouts-rp.html
+   /yoga-live.html         /yoga-rp.html
+   /meditation.html
+   /sleep.html
+   /how-to-pdfs.html
+   /how-to-videos.html
+   /session-live.css
+   /session-rp.css
+   /chart.umd.js  (NEW vendored file, see #2)
+   ```
+   Cache key bump: `pm403-bottom-nav-bg-split-a` → `pm406-offline-scope-fill-a`
+
+2. **Vendor chart.umd.js locally** — fetch from `https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js` (~210KB), commit to vyve-site root as `/chart.umd.js`. License is MIT (Chart.js project). One-time fetch, vendored same as PM-105 Dexie pattern.
+
+3. **wellbeing-checkin.html L905 + L1419** — both `script.src = 'https://cdnjs.cloudflare.com/...'` lines swap to `script.src = '/chart.umd.js'`. Add comment: `// PM-406: vendored locally per PF-14c §2a (no cross-origin runtime deps in member-facing surfaces)`.
+
+4. **index.html + settings.html** — vbb-marker 284 → 285.
+
+**Bundle pre-flight after PM-406 lands**: vyve-site main freezes at PM-406 SHA, Capacitor bundles from that.
+
+---
+
 ## Shipped 26 May 2026 — PM-402 — Broadcast push infrastructure (manual UI + scheduled cron rails) [vyve-command-centre `291a21cf`, Supabase migration `pmtbd_broadcast_push_infra_v2`]
 
 Lewis-facing manual broadcast UI in Command Centre + scheduled-push cron rails. SQL: `is_admin` RPC + `admin_broadcast_log` table + `broadcast_schedules` table + `resolve_broadcast_audience(jsonb)` SECURITY DEFINER resolver supporting 6 audience shapes. Two new EFs: `admin-broadcast-push` v2 (verify_jwt:true, admin-gated) + `scheduled-push-runner` v2 (verify_jwt:false, cron-invoked). New pg_cron job 28 `vyve-broadcast-scheduler` every 5min. Command Centre `pages/broadcast.html` (compose + 4-mode audience picker + iOS-style preview + recent broadcasts log) + sidebar entry under Delivery section. Live at admin.vyvehealth.co.uk/#/broadcast.
