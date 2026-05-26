@@ -1,3 +1,134 @@
+## 2026-05-25 PM-398.b brain close — Chat 1 of PM-394 sequence done: Home tab-in flicker fix shipped across THREE atomic vyve-site commits (PM-396 value-mutation snapshot, PM-397 layout-shift reservation, PM-398 habit content-late instant-paint)
+
+**Scope.** Chat 1 of the 4-chat PM-394 sequence locked yesterday (Option 1 snapshot-first paint per hub + Option 4 View Transitions wire). Original Chat 1 brief was the "cheap-stuff sweep" (keystore 1Password + vyve-capacitor git-init + debug strip gating) but Dean pivoted mid-chat directly to the user-visible flicker work after the sweep framing didn't land — sweep items REMAIN OPEN, deferred not done. This chat instead delivered the Home flicker fix end-to-end across three ships against three independent flicker shapes on the same page.
+
+**The three flicker shapes on Home (root-cause analysis).**
+
+(1) **Value mutation.** Progress rings paint at `0/30` on first paint (PROGRESS_TRACKS defaults), then `loadPillarCounts()` reads 10 Dexie tables and `renderPills()` repaints with real values 100-300ms later. Visible tick-up of all 5 rings. Same shape on the hero greeting — `#ih-name` paints "there." from static HTML, then `paintName(member)` overwrites with "Lewis." after `await loadMember()` resolves.
+
+(2) **Layout collapse-then-expand.** `#focus-carousel` and `#habit-list` containers are empty in HTML at script parse, so they collapse to zero height. "Live sessions this week" jumps UP to fill the gap, then jumps BACK DOWN when `paintFocus()` and `renderHabitList()` finally paint their content. Surrounding page reflows twice on every tab-in.
+
+(3) **Content-late.** Even with layout reserved (PM-397 closed the surface jumping), "Today's habits" label paints but the slot stays blank for ~250ms before either rows or the empty-state CTA appears. Root cause: BOTH `#habit-list` AND `#habit-empty` were default-hidden in HTML, with `renderHabitList()` deciding which to show after `loadHabits()` resolved its Dexie read.
+
+**PM-396 ship — value mutation closed (`ca34f7de`).**
+
+Synchronous snapshot reader inline at top of `<body>`, immediately after the build-banner script and before any other script:
+
+```js
+(function () {
+  try {
+    var key = null;
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('vyve_home_snapshot_') === 0) { key = k; break; }
+    }
+    if (!key) return;
+    window.__vyveHomeSnapshot = JSON.parse(localStorage.getItem(key));
+  } catch (_) { /* honest empty paint */ }
+})();
+```
+
+Scans localStorage for `vyve_home_snapshot_` prefix (first match wins — one key per device per logged-in member, no separate "current email" key needed). Stashes onto `window.__vyveHomeSnapshot`. Runs before any frame paint.
+
+Three consumers seed from the snapshot synchronously:
+
+- `PROGRESS_TRACKS` module-init IIFE: seeds `.value` + `.certs` from `snapshot.pillarCounts` before `renderPills()` is called from `boot()`. First paint draws real ring values.
+- `paintNameFromSnapshot()` IIFE at script-parse: reads `snapshot.memberName`, writes to `#ih-name` synchronously. `paintName()` in `boot()` still runs with the real member object on top, but the snapshot paint covers the visible-flicker window.
+- (No third consumer in PM-396 itself; PM-398 added habits as a sibling reader later.)
+
+Two write sites persist back to snapshot:
+
+- `loadPillarCounts()` tail: writes `pillarCounts` keyed by pillar. Single write site covers ALL 18 bus events that fire `_rerenderHome` (habit/workout/set/cardio/movement/food/weight/wellbeing/monthly_checkin/workout-shared/programme-imported/session-viewed/certificate-earned + 5 failure events + persona-switched). No per-publisher hooks needed.
+- `boot()` `loadMember` success: writes `memberName`. Merge-with-existing preserves `pillarCounts` from previous `loadPillarCounts()` write.
+
+Stale-by-1-boot is acceptable because async paths overwrite on every render. First-launch (no snapshot) falls through to existing honest empty paint — same UX as today, zero regression.
+
+**PM-397 ship — layout shift closed (`578ba863`).**
+
+Two CSS rules, no JS:
+
+```css
+.focus-carousel { min-height: 190px; }
+.habit-list { min-height: 204px; }
+```
+
+`focus-carousel` 190px ≈ focus-card aspect-ratio 16/9 at ~338px width (86% viewport on 393px iPhone). `habit-list` 204px ≈ 3 habit rows (60px row × 3 + 8px gap × 2 + 4px breathing).
+
+Members with 0 habits unaffected: `renderHabitList()` sets `.habit-list display:none` and shows `#habit-empty` (sibling). `min-height` does not apply to elements with `display:none`. Empty-state CTA in `#habit-empty` is positioned naturally without being pushed down by the reservation.
+
+Trade-off accepted: members with 4-5 habits get a slightly under-reserved container — first 3 rows occupy their final slot from page open, rows 4-5 land 100ms later. Much less visible than the previous Live-sessions-jump-up-then-back-down shape.
+
+**PM-398 ship — content-late closed (`31ae8036`).**
+
+Two changes in same commit:
+
+(1) **Default visibility inverted on the markup.** Previously `#habit-list` was visible by default (paints empty rectangle until JS fills it) and `#habit-empty` was `style="display:none"`. Now `#habit-list` is `style="display:none"` by default and `#habit-empty` is visible by default with the "Complete check-in" CTA. `renderHabitList()` flips them when habits actually exist. Members with 0 habits (new accounts, test accounts) see the empty-state CTA in first paint with zero JS dependency.
+
+(2) **Tiny inline `<script>` immediately after the habit-list / habit-empty markup.** Self-contained — doesn't depend on the main script's `renderHabitList()` being defined yet (the main script at L1311 defines it later). Reads `window.__vyveHomeSnapshot.habits` + `.habitsDate`, sorts uncompleted-first per PM-291 ordering, caps visible at 5 per PM-291 overflow rule, hand-rolls a minimal row HTML structure matching `renderHabitList()`'s output. Empty icon tile (no Lucide glyph) — main script's `renderHabitList()` overwrites with the resolved Lucide icon on next pass. Icon-only swap is the subtlest possible upgrade vs the alternative of bloating localStorage with rendered SVG HTML.
+
+Date-gate: on a new day (`snap.habitsDate !== todayKey`) clears `doneToday` to false on all rows before painting. Assignments stay valid, ticks reset — natural alignment with `daily_habits` 1/day cap semantics.
+
+`loadHabits()` tail extended to write `__habits` array + `habitsDate: todayStr()` + `writtenAt` to the home snapshot. Merge-with-existing preserves `pillarCounts` + `memberName` from PM-396 writes.
+
+**Backlog L120 was over-spec'd against the current page.** The block lists snapshot scope as "activity ring + components, weekly goals 5-row tick state, daily check-in pill strip + streak, progress tracks 5-pillar, collective impact banner, hydration overlay state, mood check-in panel state, member prompts dismiss/cooldown state." But the PM-256 redesign at `index.html` L1254 removed activity ring + weekly goals + check-in strip + collective impact banner from the actual page. The shipped Home is simpler than the plan assumed.
+
+Current Home elements + their first-paint coverage post-PM-398:
+
+| Element | Source | Pre-fix paint | Post-fix paint |
+|---|---|---|---|
+| Hero greeting (clock-based salutation) | static | synchronous | unchanged |
+| Hero name (`#ih-name`) | `loadMember()` then `paintName()` | "there." → "Lewis." flicker | PM-396 snapshot reader |
+| Rotating tagline | static `TAGLINE_FALLBACK` pool | synchronous | unchanged |
+| Mood panel | `localStorage` PM-257 gate | already instant | unchanged |
+| Apple Health re-prompt banner | `localStorage` cadence | already instant | unchanged |
+| Focus carousel (3 cards) | `VYVEFocusCatalogue` static module | paints with delay → layout reflow | PM-397 layout reservation |
+| Habits list | `loadHabits()` Dexie read | empty rectangle → rows | PM-398 inline reader + inverted default visibility |
+| Live sessions carousel | `VYVE_SESSIONS` static module | synchronous | unchanged |
+| Progress pills (5 rings) | `loadPillarCounts()` 10-table Dexie read | 0/30 → real values | PM-396 PROGRESS_TRACKS seed |
+
+The §23.7.7 trap (every visible element on first paint must be covered by snapshot or already-synchronous) is satisfied. Static elements were already covered. PM-396 + PM-398 cover the two member-data elements. PM-397 layout reservation prevents the surrounding reflow from focus carousel + habit list paints.
+
+**Device-walk evidence.** Dean walked all three ships on iPhone Capacitor wrap.
+
+- **First load post-PM-398** took 5-10 seconds and showed a broken-looking page (links dead, taps unresponsive). Root cause was the SW recache one-shot from cache key bump `pm397-...` → `pm398-...`. Every member hits the same recache window once when sw.js cache key changes; first-load slow is the SW fetching + caching the new bundle from network before activating. NOT a code bug. Same shape will hit every member on first reopen after any cache key bump.
+- **Steady-state after recache**: tab-in to Home shows real ring values + name + focus cards + habit rows or empty CTA in first frame. No 0/30 → real flicker. No "there." → "Lewis." flicker. No "Live sessions" jumping up and back. No quarter-second blank rectangle in the habit slot. Taps work. Navigation works. Sign-out + sign-in to a different account works.
+
+**§23 candidate banked NOT codified solo.** SW cache key bump causes a one-shot slow first-load for every member when they next open the app. Consider a `?_cacheBumpWarning=1` flag or a Settings indicator so a slow first-load post-deploy doesn't read as broken. Single occurrence so far (Dean's confusion at PM-398 first-load + concern that the deploy had broken everything). Promotes if another member surfaces the same confusion in the trial, or if a future cache key bump triggers similar feedback.
+
+**Trade-offs explicitly accepted.**
+
+- Members with 5+ habits see only 3 in the snapshot-reserved layout slot, then 5 paint when `loadHabits()` resolves. Micro-shift on rows 4-5 acceptable vs over-reserving the slot for 0-habit accounts (which would push the empty-state CTA down by ~120px).
+- Snapshot habit rows paint without Lucide icons (empty tile) until main script's `renderHabitList()` overwrites with the resolved glyph. Icon-only swap is the subtlest possible upgrade vs bloating localStorage with the full rendered SVG HTML for every habit row.
+
+**Markers across the three ships.**
+
+- vbb-marker: 277 → 278 (PM-396) → 279 (PM-397) → 280 (PM-398). Three +1 bumps both `index.html` and `settings.html` per memory #10 dual-marker invariant.
+- sw cache: `pm395-reaction-tap-cache-mutate-a` → `pm396-home-snapshot-first-paint-a` → `pm397-home-layout-reservation-a` → `pm398-habits-instant-paint-a`. Three +1 monotonic per memory #14 cache key lockstep.
+
+9 files total atomic across 3 ships (`index.html` × 3, `settings.html` × 3, `sw.js` × 3 — each ship a clean atomic Git Data API commit). PAT-direct via Vault throughout (Composio still down per memory #8). `node --check` clean on all inline JS blocks + `sw.js` on each ship. §23.41 byte-perfect verify clean on every committed file at every commit SHA via Contents API raw + first-100-char compare.
+
+**§23.74 cross-repo PM scan run before every commit.**
+
+- PM-396 claim: vyve-site max=395 (`aba703ab` PM-395 reaction-tap cache mutate), brain max=395.b. Uncontested.
+- PM-397 claim: vyve-site max=396 (my own PM-396), brain max=395.b. Uncontested.
+- PM-398 claim: vyve-site max=397 (my own PM-397), brain max=395.b. Uncontested.
+
+No parallel-session ships during the chat — clean run end-to-end.
+
+**Chats 2-4 still owe.** Same surgical pattern across Body (`exercise.html`) / Mind (`mind.html`) / Connect (`connect.html`): three flicker shapes likely on each surface — value mutation on lifetime counts / streaks, layout collapse-then-expand on lists + carousels, content-late on member-data containers with default-hidden empty states. View Transitions wire still parked for Chat 4 per the original PM-394 plan.
+
+**Original Chat 1 sweep items ALL STILL OPEN.** Backlog L118 has been updated to reflect that the cheap-stuff sweep was deferred not done:
+
+- Keystore + password `Weareinthis2026!` into 1Password (Dean's 30s manual action per PM-116 backlog L3441) — still required, business-survival item.
+- `vyve-capacitor` initialised as git repo + dirty tree committed + push to `VYVEHealth/vyve-capacitor` per PM-115 backlog L3458 — still required, third-occurrence escalation.
+- Debug strip gating (PM-310 always-on live-tracker strip on 8 `*-live.html` shells + `?debug=tracker` mind-video strip behind `localStorage.vyve_debug_tracker === '1'`) — still required, members shouldn't see debug overlays at trial launch.
+
+Banked into the next-session opener.
+
+**Next.** Either pick up Chats 2-4 (Body / Mind / Connect flicker via same pattern) OR pick up the deferred Chat 1 sweep items. Dean's call.
+
+---
+
 ## 2026-05-25 PM-395.b brain close — Reaction-tap cache mutation pattern: keep paintAll on Path A through reaction taps to eliminate the tap-time own-only fallback flicker (vyve-site PM-395 `aba703ab`)
 
 **Scope.** Closes the visible glitch Dean reported on device at Update 276: tab into Connect → 3 cards (cache hit, instant, no flicker — PM-393 working as designed) → tap heart on a card → lower 2 cards disappear → reappear ~500ms later. PM-393's known-remaining: PM-392's `__cacheBypassOnce` subscriber wire forced reaction taps onto Path B, which rendered the own-only Dexie fallback first (just the member's own check-in, 1 row) before the EF fetch landed and Path B's upgrade paint restored the community feed.
