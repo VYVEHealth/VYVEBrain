@@ -1,3 +1,54 @@
+## 2026-05-26 PM-403.b brain close — Pre-bundle monitoring restoration designed end-to-end (Sessions A+B build prompt drafted for fresh chat). Three-times-daily digest cadence locked, severity recalibration rules locked, circuit breaker threshold locked, "always send including all-quiet" cadence locked. Brain-only ship — no code shipped this session. Build executes in next chat.
+
+**Scope.** Native binary cut tonight from vyve-site main → App Store + Play Store, becoming the full overhaul shipping to all members on approval (replacing the incremental 1.1 Build 3 currently auto-release-pending in App Review). Cohort widens from 15-20 trial seats to all members overnight on approval. Pre-bundle monitoring restoration treated as P0 — flipping the cohort without visibility on 401s, network errors, page-load timeouts is reckless. PM-145 (open since 16 May, P0 since PM-149 outage) is the work this designs into a buildable shape.
+
+**Decisions locked tonight.**
+
+(1) **Digest cadence: three-times-daily, always send.** 08:00 / 14:00 / 20:00 UTC. "All quiet" emails fire even when zero new incidents — subject line differentiates instantly (`VYVE alerts — 0 issues` vs `VYVE alerts — 3 new incidents`). Reasoning: PM-149 lived for 10 days because "it's quiet" was indistinguishable from "monitoring is broken." Three short emails a day < one missed outage. Adjustable down to 2 or 1 per day after a week if proven too noisy.
+
+(2) **Severity recalibration on intake — the storm-volume defence.** Write-path endpoint list defined: `daily_habits, workouts, cardio, log-activity, weekly_goals, custom_workouts, exercise_logs, exercise_swaps, weight_logs, nutrition_logs, member_habits, wellbeing_checkins, monthly_checkins, members`. Rules:
+- `network_error_*` on write endpoint → critical (kept)
+- `network_error_*` elsewhere → info (downgrade — the noise reducer)
+- `auth_401_*` on any endpoint → critical (kept)
+- `js_error` + `promise_rejection` → high (kept)
+- `skeleton_timeout_*` → high, first-per-fingerprint-per-hour writes only, subsequent increment counter in existing row's `details` JSON
+- `api_500_*` → critical regardless
+
+(3) **Circuit breaker: 20 invocations / 60s sliding → 429 for 5 min.** Module-scoped counter. Cold-start reset to zero is the right behaviour — fresh isolate isn't being stormed yet. This is the PM-149 storm-class line of defence.
+
+(4) **Fingerprint shape v1.** `(type, normalised_endpoint, member_email)` computed server-side from existing `auth.js` vyveMonitor IIFE (L927-999) payload. `boot_id` + `app_version` deferred to the auth.js v3 hardening session post-bundle — client untouched tonight.
+
+(5) **Drop dead-table writes.** v8's `push_subscriptions` write (pre-`send-push`-v12 VAPID bug, 90-150s connection holds) was the direct cause of the PM-149 compute drain. v10 writes only to `platform_alerts`. No Brevo, no Anthropic, no push fan-out. <50ms 200-return on the happy path.
+
+(6) **alert-digest EF shape.** New EF, three pg_cron slots. Pulls `platform_alerts` rows `severity IN ('critical', 'high')` since last fire (6h lookback window or `digest_runs` watermark table — implementation choice in build chat). Groups by fingerprint. Per-fingerprint Claude Sonnet 4 diagnosis paragraph using fingerprint summary + failing EF source (Supabase Management API fetch) + last 3 commits to mapped vyve-site file (hardcoded deterministic map `daily_habits → habits.html` etc — small surface, no need for runtime resolution). 4096 max_tokens per call, cap 10 fingerprints/email, "+ N other incidents" tail. Anthropic failure never blocks email — fallback note "diagnosis unavailable this run." Brevo sender `team@vyvehealth.co.uk`, tag `alert-digest`, recipients `deanonbrown@hotmail.com` + `lewisvines@hotmail.com` (no team@).
+
+(7) **All-quiet body.** 30 seconds of reading. Last 24h `platform_alerts` counts by severity + most recent watchdog cron failure if any + one-line status. Confirms pipeline alive.
+
+**Cron noise cleanup (Session A item 2) — three bugs surfaced for the build chat.**
+
+(a) `charity_total_reconcile_and_heal()` PL/pgSQL writes `severity='warning'` into `platform_alerts` but CHECK constraint allows only `critical|high|info`. Single literal swap `'warning'` → `'info'`.
+
+(b) + (c) `habit-reminder-daily` + `streak-reminder-daily` cron commands both carry broken JSON literal `current_setting('app.service_role_key', true) || '"}'::json` — produces stray `}` when GUC unset. Cron command body fixes. Worth a `SELECT command FROM cron.job WHERE command LIKE '%service_role_key%'` sweep before declaring cleanup done — may not be the only two.
+
+All three failing daily since 16 May, generating watchdog noise that would compete with real alerts post-restore. Build chat fixes these first (10 min, removes false-positive emails immediately).
+
+**Session B — pre-bundle walk scope.** Seven items locked: (1) console.log / debug surface / `?debug=` param sweep with particular attention to settings.html + settings-account.html dev-panel gating (PM-228/PM-183.7 5-tap unlock); (2) Coming Soon gate confirmation (food log per PM-374, others); (3) HAVEN persona assignment in onboarding v37 — surface recommendation to Dean for Lewis-call on ship-as-is vs soft-disable to RIVER pending Phil's clinical sign-off; (4) hydration.js COPY_TABLE + Achievements placeholder assessment (Dean's call but cohort widening tonight is the trigger); (5) last 30 days vyve-site commits + brain/backlog scan for "device confirmation pending" / "not closed" / "open" markers — pre-bundle verification pass on shipped-but-unverified work; (6) `VYVE_Health_Hub.html` unlink confirmation (no nav.js entry, no `<a href>` anywhere, no sitemap inclusion); (7) sw.js cache key + vbb-marker parity on main (PM-403 should be current, members upgrading from bundled-mode would hit cache mismatch on drift). Output: "READY TO BUNDLE" status report — green/red bulleted list.
+
+**Deferred to post-bundle (OTA via Capawesome after binary lands).**
+
+- Stage 2 — auth.js v3 hardening: `boot_id` + `app_version` injection into vyveMonitor payload, verified-within-N-minutes pattern for the auth cascade Option C cause-fix.
+- Stages 3-5 of wider monitoring rebuild: Command Centre alerts panel (ships to vyve-command-centre repo, zero bundle risk), pattern detection / weekly summary EF, in-app member-side error display refinements.
+
+**No §23 hard rules earned tonight.** Brain-only design session — no execution surface to ratify a rule against. The build chat will likely generate new gotchas worth banking (digest EF Anthropic context-window sizing, watermark table contention if multiple cron slots overlap, severity recalibration edge cases).
+
+**Tooling state.** Composio remained down through this session — Vault PAT fallback via Supabase MCP `vault.decrypted_secrets` continues to work cleanly per memory #11. Brain reads via raw GitHub Contents API + Bearer PAT. No git-data-API writes attempted this session (no code shipped).
+
+**Build prompt drafted in chat.** Single fresh-chat prompt covers Session A (cron noise → platform-alert v10 → alert-digest EF + cron → manual digest invocation green) and Session B (pre-bundle walk → READY TO BUNDLE report). Order-of-operations explicit, deploy-per-step gates explicit ("Don't deploy in a single bash chain — talk me through each step"). Stage 2 auth.js work explicitly OUT of scope tonight per Dean's call.
+
+**Open at end of session.** Build chat hasn't run yet. PM-145 backlog entry refined to reflect tonight's design lock — fresh chat picks up from a known starting point. The 1.1 Build 3 auto-release flag is Dean's manual pull, not in scope for the build chat.
+
+---
+
 ## 2026-05-26 PM-402 — Broadcast push infrastructure shipped end-to-end. Lewis-facing manual broadcast UI in Command Centre + scheduled-push cron rails. SQL: `is_admin` RPC + `admin_broadcast_log` table + `broadcast_schedules` table + `resolve_broadcast_audience(jsonb)` SECURITY DEFINER resolver. Two new EFs: `admin-broadcast-push` v2 (verify_jwt:true, admin-gated, calls send-push via LEGACY_SERVICE_ROLE_JWT) + `scheduled-push-runner` v2 (verify_jwt:false, cron-invoked every 5min via new pg_cron job 28 `vyve-broadcast-scheduler`). Command Centre: new `pages/broadcast.html` (compose + 4-mode audience picker + live iOS-style preview + recent broadcasts log) + sidebar entry under Delivery section. Live at admin.vyvehealth.co.uk/#/broadcast.
 
 **Scope.** Dean asked "can we just say it to Claude, or build a back-end where we can push a notification to everyone who hasn't been active, or send a morning quote." Two surfaces required: (a) manual broadcast UI Lewis can use without engineering in the loop; (b) scheduled-push rails so morning quotes / recurring nudges work without per-send human action. Scope locked v1 to ship rails for both; deferred scheduler UI per Dean's call ("not fussed on setting them now but if we decided to create an EF on a schedule we'd want it to be possible").
