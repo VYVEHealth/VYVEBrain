@@ -34,6 +34,28 @@ Single atomic vyve-site commit:
 
 ---
 
+## Added 26 May 2026 PM-408 — index.html duplicate `posthog.init` cleanup (P3, low urgency)
+
+**Surfaced during PM-408 analytics taxonomy ship.**
+
+index.html lines 1043-1046 contain an inline `posthog.init` block that runs immediately (no defer) and sets `posthog.__SV=1`. auth.js's deferred init at line 8 then no-ops on the existing stub. Net effect: the session_recording config in auth.js (100% sampling, `maskAllInputs:true`, `maskInputOptions.email:false`) is NEVER applied on index.html.
+
+**Why not fixed in PM-408 ship**: removing the inline init changes the window during which `window.posthog` is defined. The PostHog stub becomes available only when auth.js defers in — typically a few hundred ms after body parse begins. Any future inline script in index.html body that calls `posthog.capture()` before auth.js defers would no-op silently. Current index.html has zero such inline calls (only posthog.init at 1045), but removing the stub creates a new potential failure mode.
+
+**Fix shape (single ship)**:
+1. Delete lines 1043-1046 inline posthog block from index.html.
+2. **Test in fresh Chrome incognito** with DevTools open against the live URL — confirm `window.posthog` becomes defined within first 200ms of page paint AND session recording is active AND no console errors fire.
+3. If incognito test green, ship vyve-site + brain close.
+4. If incognito test surfaces issues, ALTERNATIVE fix: keep the inline init but align its config with auth.js's (add the same session_recording block + defaults: '2026-01-30'). Either path produces a working result; deletion is cleaner if it works.
+
+**Files touched**: index.html (-3 lines), sw.js (cache key bump), index.html vbb + settings.html vbb. ~4-file atomic ship.
+
+**Verification**: incognito test confirms session_recording active. PostHog dashboard "Session replays" tab shows index.html sessions getting captured with masked inputs (except email).
+
+**Banked from**: PM-408 §19 entry + PM-408 changelog entry both flag this. Brain master §5 Analytics row notes the issue inline.
+
+**Priority**: P3 / low urgency. Session recording is still active on every OTHER portal page (auth.js init wins on the 44 other pages because they have no inline duplicate). Home page recordings missing is a noticeable observability gap but not blocking trial launch.
+
 ## Shipped 26 May 2026 — PM-402 — Broadcast push infrastructure (manual UI + scheduled cron rails) [vyve-command-centre `291a21cf`, Supabase migration `pmtbd_broadcast_push_infra_v2`]
 
 Lewis-facing manual broadcast UI in Command Centre + scheduled-push cron rails. SQL: `is_admin` RPC + `admin_broadcast_log` table + `broadcast_schedules` table + `resolve_broadcast_audience(jsonb)` SECURITY DEFINER resolver supporting 6 audience shapes. Two new EFs: `admin-broadcast-push` v2 (verify_jwt:true, admin-gated) + `scheduled-push-runner` v2 (verify_jwt:false, cron-invoked). New pg_cron job 28 `vyve-broadcast-scheduler` every 5min. Command Centre `pages/broadcast.html` (compose + 4-mode audience picker + iOS-style preview + recent broadcasts log) + sidebar entry under Delivery section. Live at admin.vyvehealth.co.uk/#/broadcast.

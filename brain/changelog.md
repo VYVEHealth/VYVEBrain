@@ -1,3 +1,21 @@
+## 2026-05-26 PM-408 vyve-site ship — Analytics taxonomy lands before Capacitor bundle freeze
+
+48 files atomic at vyve-site `e75b2d7a`. New `analytics.js` PostHog bridge (267 lines) subscribes to 29 VYVEBus events at `envelope.origin === 'local'` filter — no double-counting from cross-tab/cross-device echoes. Mirrors to PostHog with allowlisted ~30-key payloads. Events covered: habit/workout/cardio/movement/mind logged + failed variants, session:viewed + replay:viewed, wellbeing + monthly_checkin, food + weight, persona:switched, connect:checkin + reactions, workout:shared, mind:unlogged. Skipped deliberately: body:logged (aggregator double-count risk), set:logged (high-volume per-set, workout:logged summary suffices), habits:set-changed (config), avatar:changed / specific_goal:changed / programme:imported / focus:write_failed (low signal). Curated from `grep VYVEBus.publish(` whole-tree audit at HEAD 20a23f7d — 37 distinct event names live, 86 publish call sites.
+
+`auth.js` v2.4 → v2.5. `vyveCapturePageView()` identify enriched from `{email, name}` to `{email, name, given_name, family_name, is_dean, host_kind}`. `is_dean` filters Dean's dev traffic out of dashboards (deanonbrown@hotmail.com case-insensitive). `host_kind` distinguishes capacitor:// bundled native from https:// web fallback. New `vyveAnalyticsRefreshIdentity(email)` reads `vyve_members_cache_<email>` localStorage (populated by `_vyvePfMembers` eager prefetch) and pushes `posthog.setPersonProperties` with persona/goal_focus/gender/age/activity_level/first_name/last_name. Scheduled at 2s/5s/10s after first identify (idempotent retries cover the prefetch idle-callback window). New `window.vyveEFFetch(fnName, url, opts)` wraps fetch and fires `ef_error` capture on non-2xx/network failure with {fn, http_status, duration_ms, error_code}. Adoption opt-in per call site.
+
+`sw.js` cache `pm406-offline-scope-fill-a` → `pm408-analytics-taxonomy-a`. `/analytics.js` added to `urlsToCache` for offline cold-boot. vbb-marker 285 → 286 in BOTH index.html and settings.html per memory #10. 45 HTML pages got `<script src='/analytics.js' defer></script>` (or relative `analytics.js`) inserted after the existing bus.js script tag, style-preserving per page. perf-test.html skipped.
+
+Master §5 stale claim "Supabase Auth identity wiring still pending" fully rewritten — identity has actually been wired since PM-18 with thin props; PM-408 lands real taxonomy + enriched person props.
+
+Tooling: PAT-direct via Vault (Composio still down ~6 days). §23.41 fresh-HEAD checked twice. §23.52(a) Python urllib raw-bytes for all 48 blob bodies. §23.69 collision scan clean. §23.70 PM-claim recomputed at commit time (vyve-site max=406, brain max=407). §23.74 cross-repo scan clean. All inline JS + standalone files node --check clean. Post-commit MD5 verification on 48 files at commit SHA matched local. No new §23 hard rule earned.
+
+PostHog quota math: 15-member cohort × ~20 actions/day = ~6k events/day = ~180k/month. Free tier 1M/month. Session recording stays 100% in dashboard config; pre-bundle flip to sampled possible if quota concerns arise post-OTA.
+
+Bundle implications: vyve-site main now carries full analytics taxonomy. Dean's dev iPhone via server.url dev-loop picks it up immediately. Bundled members (iOS 1.3, Android 1.0.3 frozen at SHA 83874dd5 from PM-115/116) won't see it until next OTA via Capawesome. Pre-bundle window deliberate so the next bundle ships with analytics active from day one for trial cohort.
+
+Banked NOT shipped (deliberate, separate ship): index.html lines 1043-1046 contain a duplicate inline `posthog.init` block that pre-empts auth.js's deferred init (`__SV=1` set first), so the session_recording config in auth.js is NEVER applied on index.html. Removing changes window.posthog availability timing window — safer as its own ship with incognito verification. Logged on backlog.
+
 ## 2026-05-26 PM-407 brain close — Stale Lewis-blocker scrub: Brevo logo (never existed), health disclaimer (done), weekly check-in slider copy mirror (done), monthly check-in slider copy mirror (done). Pre-bundle hygiene pass.
 
 Dean's session-open instruction was to deep-read the brain for pre-launch state and flag stale blocker entries. Surfaced four items still flagged across master/active/backlog that are no longer real:
