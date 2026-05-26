@@ -1,3 +1,130 @@
+## 2026-05-26 PM-414 Brain overhaul — master.md + tasks/backlog.md full sweep
+
+Single curation pass executed across four parallel chats (Chats 1+2+3 wrote the new master.md sections + backlog; this chat synthesised and committed). Driver: master.md had drifted to 4,159 lines / ~800KB and tasks/backlog.md to 5,923 lines / ~780KB — both load-bearing for session-start brain reads, both increasingly carrying chronicle entries that belong in changelog.md. Goal: cut master to ~1,500 lines and backlog to ~1,800 lines without losing operationally-load-bearing content.
+
+### Headline numbers
+
+- **brain/master.md**: 4,159 → 1,575 lines (62% reduction)
+- **tasks/backlog.md**: 5,923 → 474 lines (92% reduction)
+- **brain/changelog.md**: 22,815 lines + this entry (archival cadence triggers next when changelog crosses ~30K — split target `changelog-archive/2026-Q1.md`)
+
+### What changed in master.md
+
+**§1-18** re-audited against live Supabase + live GitHub. Recomposed end-to-end against live state at session start, not patched against historical snapshot.
+
+- §5 tech stack rewritten — auth.js v2.5, 120 public tables, Capacitor binaries narrative replaces PWA framing, deployment-model split (dev-loop iPhone vs bundled-mode members) inlined, PostHog identity wiring described, broadcast-push infrastructure added.
+- §6 Supabase architecture restructured by purpose — catalogue tables now first-class (9+ tables on §23.45/§23.46 pattern), member-prompts cluster, broadcast schedules, mood + daily check-ins, mind + movement support tables. Old "88 tables" header replaced with live "120 public base tables" doctrine. Verbose per-row provenance dropped.
+- §7 Edge Functions inventory updated to "124 EFs deployed (~70 actively operational)". Grouped by purpose. 28 active cron jobs listed (was 14/20 in older snapshots). Added missing live EFs (connect-feed-preview, achievement-claim, crisis-scan, session-publish, youtube-token-keepalive, refresh-replay-videos v2, admin-broadcast-push, scheduled-push-runner, alert-digest).
+- §8 portal pages re-stated as 86 HTML files with structural categorisation (Hubs → Sub-trackers → Live + replay shells → Focus surfaces → Catalogues → Account → Admin → Mockups + staging). PWA infrastructure block expanded.
+- §11A Achievements consolidated from 207 lines, retaining three-table data model + 107×538 counts + voice rules + Phase 3 UI shape + sweep-still-server metrics + known partial implementations + the four architectural lessons. PM-322/PM-336/PM-321/PM-319/PM-317 per-PM sub-headings retired — provenance lives in changelog.
+- §11C Engagement Score v2 tightened from 92 lines, keeping formula + six pillars + multiplier curves + worked examples + schema delta + JS↔SQL parity.
+- §13 dashboards updated for snapshot-first paint (PM-396/397/398).
+- §14 workout library — `workout_plan_cache` UNIQUE constraint gotcha added (PM-411 banked); Movement track added.
+- §16 GDPR — Article 15 + 17 pipelines inlined; "RLS on all 120 public tables" confirmed.
+
+**§19 status board** reduced from 66 chronicle entries to 5 rolling status entries (PM-413, PM-411, PM-410, PM-408, PM-402). All retired entries have changelog provenance — 61 entries dropped. Representative retirements: premium-feel tab-flicker campaign (PM-391→PM-401, closed), catalogue migrations (PM-367/372/375/377/378/384, doctrine in §23.45/§23.46), haptics campaign (PM-359-369, palette fully populated), bus discipline ships (PM-382-393, closed by §23.41-§23.50 doctrine).
+
+**§23 hard rules** curated and renumbered from a sprawling non-monotonic mess (§23.5/6/7.x subseries, §23.5.x subseries, mixed `##`/`###` headers, 11 unfiled "Hard rule (added DATE)" entries, §23.67-§23.79 sitting after the §24 chapter break) into a clean monotonic §23.1-§23.76 grouped by topic family:
+
+- §23.1-§23.10 Architecture invariants
+- §23.11-§23.20 Native bundle & store discipline
+- §23.21-§23.30 Tooling discipline
+- §23.31-§23.40 Optimistic-first / Dexie discipline
+- §23.41-§23.50 Bus event discipline
+- §23.51-§23.60 CSS / UX discipline
+- §23.61-§23.70 Diagnostics / patch budget
+- §23.71-§23.76 Brain / portal hygiene
+- Content / brand discipline carried unnumbered
+
+Source dropped from 1,961 lines to ~600. Key retirements: §23.5.1 (member-dashboard EF latency dominant — obsolete per PF-40 Dexie-first paint), §23.16 (Composio-tarball pattern — superseded by §23.27 Vault PAT), §23.25 (`tool_search` routing through Composio — Composio is down), §23.9 (auth.users INSERT default token columns — one-time pattern), §23.7.x sub-series collapsed to §23.34, PM-3/5/6/11/16/20/26/30 unfiled hard rules merged or retired.
+
+**§24 references** consolidated. Renumbered (old §24 Premium-Feel Campaign chapter retired entirely; old §25 references merged into §24). Cron job count corrected to 28 active. Stripe payment target confirmed as `welcome.html` (verified `onboarding_v8.html` does not exist in Test-Site-Finalv3 main). Make scenarios (analytics collectors + social publisher) retired entirely per Dean — Lewis no longer running Make-driven workflows. Stripe coupons annotated as "still active but copy + values need refresh".
+
+### What changed in tasks/backlog.md
+
+Recomposed from 206 H2 headings / 480 sub-headings into 17 surface-bucketed sections:
+
+- NEXT FOCUS (Thursday pickup) → consolidated from two competing NEXT FOCUS blocks
+- PARKED — PM-411 Body-hub overhaul Bug A/B/C → preserved verbatim per Chat 3's "sacred" directive
+- Pre-bundle / app store (PM-413 follow-ups, 9 items)
+- Body hub
+- Mind hub
+- Connect hub
+- Home / engagement
+- Settings / profile
+- Onboarding
+- Admin / Command Centre
+- Native / Capacitor
+- Infra / Data
+- Lewis-blocked
+- Calum-blocked
+- Post-trial / post-launch
+- Backlog — security & hygiene
+- Recently shipped (last 7 days, single short list)
+
+24 explicit SHIPPED blocks dropped against changelog. ~58-line "Completed (Recent)" block dropped. ~167-line PM-106 PF-40 Local-First Consolidation Campaign block dropped (all Layers 1-5 shipped). ~171-line PM-117 Dexie audit findings block dropped (PF-15 partial-upsert landmines all closed by PM-97+, surface fixes individually shipped). ~133-line PM-197 Profile identity campaign trimmed to remaining-after-PM-242 work. PM-150/PM-154/PM-155/PM-156/PM-157/PM-178/PM-184/PM-195/PM-211/PM-213/PM-274 phase 1 narrative all dropped.
+
+### Dean's calls applied this session
+
+- Single paying B2C: Paige Coult. Rest of `members` is test / trial / not actually paying. Cohort framing corrected across §1.
+- "We are not a PWA anymore" — retired-tech §5 row points to §23.1 instead of §23.20.
+- Facebook Make connection: dropped from §20 (dead).
+- Make social publisher (Scenario 4950386 / 133 stuck posts): dropped from §20 + dropped from Lewis-blocked backlog (dead).
+- Make analytics collectors (Scenarios 4993944/4993948/4993949): dropped from §24 (Lewis not using).
+- EMPLOYER_DASHBOARD_API_KEY: dropped from §20 as a blocker — dashboard itself not built yet, key wiring is downstream. Moved to backlog (Admin / Command Centre).
+- Replay throwaway EFs (replay-inventory-tmp, replay-archive-tmp, replay-ghost-cleanup-tmp): retained in backlog as "Dean to delete".
+- Stripe coupons VYVE15 / VYVE10: kept listed in §24, annotated "still active but copy + values need refresh".
+- PM-178 hotfix port: dropped per Chat 3's static-verification that HOTFIX markers no longer exist in vyve-site main.
+- Achievements overhaul campaign: dropped from Home / engagement + Post-trial backlog — Dean confirmed "happened, all been overhauled and is looking good" (PM-353 v3 evaluator + PM-300/301/305 three-tab shell). PM-358 tier-curve + naming overhaul kept (separate scope).
+- Movement-as-own-activity-track: collapsed from Post-trial to "Certificate re-pillaring" framing — Movement first-class shipped via PM-307; remaining open piece is certificate pillar restructure (Mind/Body/Connect).
+
+### Cross-ref fixes applied during Chat 4 synthesis
+
+Chat 1 referenced §23 rules using its assumed numbering; Chat 2's renumbering took precedence. Surgical fixes:
+
+- §5 retired-tech PWA framing row: §23.20 → §23.1
+- §6 catalogue tables header: §23.49 + §23.50 → §23.45 + §23.46
+- §8 hub-page hero pattern: §23.57 → §23.53
+- §8 bus PWA infra: §23.65 → §23.42
+- §11A "§23.77 candidate" left as candidate — three independent occurrences (PM-307 movement, PM-173 mind, PM-289 connect) is promotion-eligible but Dean's call deferred; promotes next time a new activity table is added without touching the SQL function + v_active_days + dirty-mark triggers + JS mirror + tile renderers.
+
+### What stayed verbatim (and why)
+
+- All hard rules involving load-bearing daily-discipline content: §23.21-§23.30 tooling (PAT-direct, fresh-HEAD, post-commit verify, curl argv, JSON parse, brain whole-file hazard, cross-repo PM scan, session-start collision scan).
+- §23.4 bundled-native semantics (operational core for understanding "live to Dean" vs "live to members").
+- §23.45+§23.46 catalogue pattern + §23.50 body:logged aggregator (muscle-memorised, slimmed).
+- §23.52 hub-page hero doctrine + §23.53 scrolling-fade recipe (playbook references + invariants kept).
+- §23.54 "body" = exercise.html (memory rule, retained verbatim).
+- PARKED PM-411 schema-architecture note (workout_plan_cache contradictory UNIQUE indexes) — preserved per Chat 3's "sacred" directive.
+
+### [VERIFY] flags left unresolved
+
+None blocking. Items deferred to future sessions:
+
+- PostHog duplicate-init follow-up (PM-408 banked) — needs incognito-verified ship.
+- workout_plan_cache contradictory UNIQUE indexes — promotes to §23 on second contradictory-UNIQUE recurrence.
+- Auth-shape gotcha post-key-rotation (PM-402 banked) — promotes to §23 on second occurrence.
+- Upsert-only sync EFs need reconciliation (PM-410 banked) — promotes to §23 on second occurrence.
+- §23.77 candidate (activity-table change requires SQL + JS twins + tile renderers) — third occurrence already met, promotes when Dean wants it codified.
+
+### Tooling
+
+PAT-direct via Vault throughout — Composio is still down ~6 days since the 21 May security incident per memory #8. Brain HEAD at session start: `e7d7d8de` PM-413. §23.21 fresh-HEAD checked pre-commit. §23.22 content rebase clean (live changelog unchanged from session start, md5 match). §23.26 brain whole-file overwrite hazard: re-fetched all three brain files immediately before blob creation. §23.24 PM-claim at commit time. §23.74 cross-repo scan: VYVEBrain max=413, vyve-site max=413, vyve-capacitor max=412 — claim PM-414 uncontested. §23.30 post-commit verification via Contents API + raw accept + md5 on all 3 files at commit SHA.
+
+### Chat 4 corrections caught during synthesis
+
+- Chat 2's §24 active cron jobs claim "31 total" — actual live is 28 active (jobids run 1-31 with gaps at 12/17/19). Fixed.
+- Chat 1's §23.x cross-references pre-dated Chat 2's renumbering — applied surgical fixes per Dean's call.
+- Chat 2 flagged [VERIFY] on Stripe payment link target — resolved during Chat 4 (welcome.html confirmed via Test-Site-Finalv3 contents fetch; onboarding_v8.html confirmed 404).
+- Chat 2 flagged [VERIFY] on EMPLOYER_DASHBOARD_API_KEY — resolved during Chat 4 (confirmed not in Vault; Dean called dashboard-not-built-yet so re-routed item).
+- Chat 2 flagged [VERIFY] on throwaway replay EFs — resolved during Chat 4 (Supabase list_edge_functions confirms all 3 still ACTIVE).
+
+### Net effect
+
+Future Claude sessions opening with "Load VYVE brain" now read ~1,575 lines of master + ~474 lines of backlog instead of ~4,159 + ~5,923. Brain-load is faster, signal-to-noise higher, doctrine grouping monotonic. Everything dropped has provenance in changelog.md — read the PM cited on any rule for the worked example. This entry is the audit signal for the next overhaul: when master + backlog drift back past ~3,000 + ~3,000 lines, re-run this protocol.
+
+---
+
 ## 2026-05-26 PM-413 iOS 1.4 + Android 1.0.5 BOTH SUBMITTED TO APP REVIEW. Bundle session execution end-to-end.
 
 Marathon evening session — Dean opened with the PM-411 bundle-prep prompt, ground-truth-verified all 7 bugs against vyve-capacitor remote `4f5f55ae`, fixed what matters tonight (iOS splash storyboard PM-412 already landed in remote, Mac sync recovery, www/ refresh from vyve-site `d1bf08ae`, Android background colour, version bumps), survived two iOS validation cycles + three Android Studio rebuilds, and got both binaries through to App Review. iOS 1.4 build 3 is "Waiting for Review" in App Store Connect (auto-release on approval, 24-48hr expected). Android 1.0.5 versionCode 50 is sitting in Play Console "Publishing overview" with the "Send 1 change for review" button — Dean has the click in front of him as this entry lands.
