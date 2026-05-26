@@ -109,40 +109,54 @@ One-line regex fix in `bus.js` L137 — `EVENT_NAME_RE` now accepts one-or-more 
 
 ---
 
-## NEXT FOCUS — 25 May 2026 PM-398.b (Dean) — Chats 2-4 of PM-394 sequence + deferred Chat 1 sweep items
+## NEXT FOCUS — 25 May 2026 PM-401.b (Dean) — Premium-feel flicker campaign DONE, deferred sweep items + post-binary parked work next
 
-**Status update from PM-394's original plan.** Chat 1 pivoted: instead of cheap-stuff sweep + flicker, Chat 1 delivered the Home flicker fix directly across PM-396/397/398. Sweep items NOT done — keystore 1Password, vyve-capacitor git, debug strip gating all remain open. Decision banked: when Dean leads with the user-visible problem and not the housekeeping queue, fix the user-visible problem first. PM-394's 4-chat sequence reshapes to a Body/Mind/Connect snapshot trio + recovered sweep chat.
+**Status update from PM-398.b.** Chat 2 reframed mid-session: original "Body snapshot migration" plan obsolete because Dean's device walks confirmed Body and Mind don't flicker (exercise.html already has PM-96 `paintCacheEarly` from `vyve_exercise_cache_v2` — snapshot-first pattern pre-existed the PM-394 architecture decision). Real residual surfaces were elsewhere. Three commits shipped to close them.
 
-**Home flicker shipped (PM-398.b, vyve-site `31ae8036`).** Three independent flicker shapes closed:
-- **Value mutation** (PM-396 `ca34f7de`): synchronous snapshot reader inline at body open seeds PROGRESS_TRACKS pillar counts + hero name from `vyve_home_snapshot_<email>` localStorage. Two write sites: `loadPillarCounts()` tail (covers all 18 `_rerenderHome` bus events) + `boot()` loadMember success.
-- **Layout collapse-then-expand** (PM-397 `578ba863`): `.focus-carousel min-height: 190px` + `.habit-list min-height: 204px` reserve layout slots before async paints land. CSS only, no JS.
-- **Content-late** (PM-398 `31ae8036`): inverted default visibility on habit markup (`#habit-empty` now visible by default with CTA, `#habit-list` display:none until rows exist) + tiny inline reader right after the markup that paints from snapshot synchronously. Date-gated for tick reset on new day.
+**Flicker campaign shipped (PM-401.b, vyve-site `e02304a3`).** All surfaces now instant or surgically-updated:
 
-Backlog L120 original scope was over-spec'd against the actual page — PM-256 redesign removed activity ring + weekly goals + check-in pill strip + collective impact banner. The shipped Home is simpler than the plan assumed. §23.7.7 trap satisfied with 2 snapshot fields (pillarCounts + memberName + habits) covering the 2 member-data elements; static elements were already covered.
+| Surface | Closed by | Commit |
+|---|---|---|
+| Home tab-in value mutation (rings, name) | PM-396 | `ca34f7de` |
+| Home tab-in layout collapse (focus, habits) | PM-397 | `578ba863` |
+| Home tab-in content-late (habit empty/list) | PM-398 | `31ae8036` |
+| Your Journey LOADING hang | PM-399 | `718678f4` |
+| Home + Connect live carousel image flicker | PM-400 | `85fd00d2` |
+| Connect reaction-tap site flicker | PM-400 | `85fd00d2` |
+| Connect reaction-tap avatar flicker (bus repaint) | PM-401 | `e02304a3` |
+| Connect tab-in 1→3 own-only flash | PM-391-395 | (prior arc) |
+| Body tab-in | PM-96 paintCacheEarly | (pre-existing) |
+| Mind tab-in | no flicker, no work needed | n/a |
 
-**Chat sequence remaining (3 chats against remaining weekly Pro 20x headroom):**
+Dean confirmed PM-401 fix on device at Update 283: "fixed".
 
-1. **Chat 2 — Body snapshot migration (`exercise.html`).** Likely 3 flicker shapes mirror Home: (a) value mutation on lifetime workouts/cardio/movement totals or programme-week progress, (b) layout collapse on Recent activity list or programme card, (c) content-late on Browse Library tiles or programme overview. Read the actual `exercise.html` first to enumerate visible elements — DO NOT trust the prior plan's element list, learn from Chat 1 that backlog plans drift against live pages. Apply same surgical pattern: snapshot reader inline at body open, seed module-level data structures before paint, write at canonical re-render function tail. Per-commit blast radius = exercise.html only. Device walk required (force-quit + reopen, tab Home → Body → Home → Body).
+**Lessons banked across the campaign (NOT codified solo):**
 
-2. **Chat 3 — Mind snapshot migration (`mind.html`).** Likely 3 flicker shapes: (a) value mutation on mind activity counts per kind / streak, (b) layout collapse on Recent Mind list or FOCUS_POOL carousel, (c) content-late on per-kind tiles. Same pattern. Device walk required.
+1. **innerHTML rewrite destroys child `<img>` elements forcing re-decode** even with hot HTTP cache + same-origin URLs. Three independent occurrences in two ships (PM-400 live carousel + PM-400 tap-site rewrite + PM-401 bus debounced repaint). Codification rule on next surface: when state changes don't affect layout/identity, prefer surgical DOM patches over innerHTML rewrites.
 
-3. **Chat 4 — Connect snapshot + View Transitions wire + brain close (`connect.html`).** Connect groundwork already partially laid by PM-392 + PM-393 (`connect_feed_preview_v1` _kv cache slot + inverted cache-first paint ordering on paintAll). May only need additional snapshot for Elite hero ring + dot strip + per-pillar counts. View Transitions API wired into nav.js bottom-nav: `document.startViewTransition(() => navigate())` wraps existing href click handler; iOS 18+ animates, older devices silently degrade. Final brain close PM with all 4 hubs verified on device.
+2. **State-change renderers should be idempotent over no-layout-change case.** Called from multiple bus events without a same-layout guard, they re-paint identical DOM and destroy child elements as a side-effect. PM-401's `renderRecentCheckins` guard is the canonical implementation. Extension of the §23.65 in-page-vs-cross-page distinction from PM-391 — same class of bug from a different angle (bare `repaintDebounced` without envelope semantics, same DOM destruction).
 
-**§23.7.7 trap discipline at each chat:** read the actual page FIRST. Enumerate every visible element on first paint. Confirm snapshot or already-synchronous coverage for each. Backlog plans drift — Chat 1 hit this exact problem. Strict.
+3. **SW cache key bump causes a one-shot slow first-load** for every member when they next open the app (5-10s of broken-looking page during SW recache, NOT a code bug). Surfaced as Dean's PM-398 first-load confusion. Consider a `?_cacheBumpWarning=1` flag or a Settings indicator so a slow first-load post-deploy doesn't read as broken. Single occurrence so far.
 
-**Deferred Chat 1 sweep items — must land before next iOS/Android binary cut:**
+4. **Backlog plans drift against live pages.** PM-398.b's planned scope for "Chat 2 Body snapshot" assumed Body had the same flicker shape as Home; live page inspection confirmed it didn't. PM-398.b's L120 listed Home snapshot scope items that PM-256 redesign had removed. Always read the actual page FIRST when starting a planned chat, regardless of how detailed the prior plan was.
 
-- **Keystore + password `Weareinthis2026!` into 1Password** (Dean's 30s manual). Path `~/Projects/vyve-capacitor/android/app/keystore/vyve-release-key.jks`, PKCS12, alias `vyve-key`, SHA1 `CC:48:EA:AF:C1:47:ED:43:20:63:4F:FF:07:99:79:20:55:7D:23:B9` per PM-116 backlog L3441. P0 launch blocker — if Dean's Mac is wiped before keystore + password are co-located in 1Password the Android app is un-shippable for the entire lifetime of `co.uk.vyvehealth.app` on Play Store.
+5. **When user pushes back, re-read the evidence with their framing not yours.** Dean's "Home is the issue and Home is having the problem I've just told you about" surfaced a re-reading of the device screenshots that identified engagement-v2.html as the slow-load page Home was linking TO. The flicker symptom was on Home (taps queued) but the cause was downstream.
+
+**Deferred Chat 1 sweep items — STILL OPEN, must land before next iOS/Android binary cut:**
+
+- **Keystore + password `Weareinthis2026!` into 1Password** (Dean's 30s manual). Path `~/Projects/vyve-capacitor/android/app/keystore/vyve-release-key.jks`, PKCS12, alias `vyve-key`, SHA1 `CC:48:EA:AF:C1:47:ED:43:20:63:4F:FF:07:99:79:20:55:7D:23:B9` per PM-116 backlog L3441. **P0 launch blocker** — if Dean's Mac is wiped before keystore + password are co-located in 1Password the Android app is un-shippable for the entire lifetime of `co.uk.vyvehealth.app` on Play Store. Dean was reminded of this at end of PM-398.b session.
 - **`vyve-capacitor` initialised as git repo + dirty tree committed + push to `VYVEHealth/vyve-capacitor`** per PM-115 backlog L3458. Third-occurrence escalation — cumulative uncommitted edits across `build.gradle`, `variables.gradle`, `keystore.properties`, `local.properties` over iOS + Android ships sit in unversioned working tree. `.bak-pf14b` / `.bak-pf14b-android` / `.bak` files are the only history. Any accidental file overwrite is unrecoverable.
 - **Debug strip gating** behind `localStorage.getItem('vyve_debug_tracker') === '1'`. PM-310 always-on live-tracker debug strip across the 8 `*-live.html` shells (via `session-live.js`) + `?debug=tracker` mind-video strip (via `mind.html`). PM-315 CSP fix for YT IFrame API still not validated on device walk per brain — either validate first and remove strip, or keep flag-gated until next walk. Settings Reset Achievements + Force Refresh App buttons stay (intentional trial-period support tools per backlog L218 + memory #16).
 
-Sweep items can land in one chat between Chats 2-4 (small surgical work, doesn't compete with snapshot architecture) OR be rolled into Chat 4 (highest-leverage placement — sweep + Connect + View Transitions + brain close in one final chat before binary cut). Dean's call when we get there.
+**Next session options:**
 
-**§23 candidate banked NOT codified solo from PM-398.b:** SW cache key bump causes a one-shot slow first-load for every member when they next open the app (Dean's confusion at PM-398 first-load — 5-10 seconds of broken-looking page during SW recache, NOT a code bug). Consider a `?_cacheBumpWarning=1` flag or a Settings indicator so a slow first-load post-deploy doesn't read as broken. Single occurrence so far, promotes if another member surfaces the same confusion in the trial.
+1. **Sweep items** (recommended pre-binary). Keystore is 30s of Dean's time; vyve-capacitor git init is 10 minutes; debug strip gating is one surgical commit across 9 files. Single chat covers all three.
+2. **View Transitions API wire** (PM-394 plan item, now lower priority). The visible-flicker problem the wire was meant to help with is already solved by snapshot-first paint across all 4 hubs. Wire could still ship as a polish item for cross-tab nav animation. One chat.
+3. **Monthly check-in DB triggers + charity-trigger audit** (backlog L2935 — gap is real, members get zero credit today). Real bug, not visual polish. Separate session, DB-only work.
+4. **Engagement-v2 cold load slow-path investigation.** PM-399 snapshot makes the LOADING hang visually invisible but the underlying `computeHomeStateFromDexie` 10-table heavy read still takes 1-30s on memory-pressured devices. Worth a profiling pass post-trial to see where the time goes.
 
-**Post-binary parked (not in any of the chats above):**
+**Post-binary parked:**
 - Option 3 persistent-shell SPA migration (the architecturally-correct answer; 8-11 hours / 3 sessions of Claude-assisted work with full week headroom)
-- Monthly check-in counter-trigger + charity-trigger audit (backlog L2935 — gap is real, members get zero credit today)
 - All "feels finished" items 2-4 from prior NEXT FOCUS block below
 
 **Lewis-blocked (not Claude's problem to unblock):**

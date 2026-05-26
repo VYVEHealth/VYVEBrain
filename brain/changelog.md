@@ -1,3 +1,180 @@
+## 2026-05-25 PM-401.b brain close — Connect-page flicker arc closed in THREE atomic vyve-site ships after Dean reported residual surfaces post-PM-398: PM-399 Your Journey snapshot first-paint, PM-400 live carousel background-image + reaction-tap site surgical patch, PM-401 renderRecentCheckins same-layout guard (the actual fix)
+
+**Scope.** Continuation of PM-398.b chat. Originally framed as the "Chat 2 Body snapshot migration" item from PM-398.b's NEXT FOCUS but Dean's device walk confirmed Body and Mind don't flicker (exercise.html already has PM-96 `paintCacheEarly` from `vyve_exercise_cache_v2` localStorage — snapshot-first pattern predates PM-394 architecture by weeks). Real residual surfaces were:
+1. Your Journey LOADING hang when tabbing from Home → My Progress → engagement-v2.html
+2. Connect reaction-tap avatar flicker
+3. Live carousel image flicker on first paint
+
+**Pushback turned diagnostic.** Initial design pass argued Chat 2 had nothing to fix (Body genuinely doesn't have the flicker shape). Dean re-stated the problem with frustration ("Home is the issue and Home is having the problem I've just told you about"). Surfaced Image 1-4 device screenshots showing engagement-v2.html stuck on LOADING + pillar zeros. Re-read the screenshots correctly second time: Home looks fine, but tapping into Your Journey hangs. The problem-from-Home is that the destinations FROM Home are slow. Lesson banked NOT codified: when user pushes back, re-read the evidence with their framing not yours.
+
+**PM-399 — Your Journey snapshot first-paint (`718678f4`).**
+
+Root cause: `refreshScore()` does heavy 10-table Dexie read via `computeHomeStateFromDexie(email)` then computes full engagement score (v2 schema). Warm Dexie 50-200ms; iOS WKWebView under memory pressure or after PM-312 Force Refresh App that wiped IndexedDB can stall 1-30 seconds. During that window HTML defaults paint: `scoreNum: "—"`, `scoreBandLabel: "Loading"`, pillar pts spans showing "0", breakdown tile counts showing "0", streak rows showing "—". Member experience: page feels broken, subsequent taps queue behind the in-flight render.
+
+Fix shape mirrors PM-396 Home snapshot reader exactly:
+
+```html
+<body>
+<script>
+// PM-399 journey snapshot synchronous reader. Runs BEFORE any frame paints.
+(function () {
+  try {
+    var key = null;
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('vyve_journey_snapshot_') === 0) { key = k; break; }
+    }
+    if (!key) return;
+    var snap = JSON.parse(localStorage.getItem(key));
+    if (!snap || !snap.v2) return;
+    window.__vyveJourneySnapshot = snap;
+  } catch (_) {}
+})();
+</script>
+```
+
+Synchronous paint IIFE inside main script immediately after `renderScore()` is defined (around L1466, right after the function body closes). If `__vyveJourneySnapshot.v2` exists, calls `renderScore(snap.v2)` synchronously — paints the full score ring fill, band label/title, multiplier values + bars + details, all 6 pillar rows (Today's Focus, Daily Habits, Body, Mind, Connect, Check-ins), and Activity Breakdown tile counts + streaks. All from cached numbers. First paint shows real data, NOT defaults.
+
+`refreshScore()` success at L1672 writes the freshly-computed v2 object back to localStorage:
+
+```js
+localStorage.setItem('vyve_journey_snapshot_' + email, JSON.stringify({ v2: v2, writtenAt: Date.now() }));
+```
+
+~500 bytes typical, well within budget. Stale-by-1-boot acceptable: async refreshScore on every page open overwrites within 50-200ms typical.
+
+The 30-second hang scenario is now visually impossible: even if `computeHomeStateFromDexie` hangs forever, the snapshot already painted real numbers in first frame. Subsequent recomputes only IMPROVE accuracy, never block visibility.
+
+**PM-400 — live carousel images + reaction-tap site (`85fd00d2`).**
+
+Two independent fixes in one commit, both shipped after Dean confirmed PM-399 worked and surfaced residual flicker on Connect.
+
+(a) **Live carousel image flicker** on `paintLiveCarousel()` (index.html) + `renderLiveThisWeek()` (connect.html). Was rendered as `<img src="/..." loading="lazy"/>` inside `.scroll-card-thumb`. The `loading=lazy` attribute forces a separate decode step after the img element is in the DOM — img starts blank, then browser fetches/decodes, then paints. Visible blink-then-image flicker on first carousel paint even with images in HTTP cache.
+
+Fix: switched both renderers from `<img>` child to `background-image:url()` on the `.scroll-card-thumb` wrapper div. CSS background-images paint synchronously from the image cache without the lazy-load decode separation. Fallback gradient + stripe pattern still shows when `s.thumb` is missing.
+
+```js
+var thumbStyle = s.thumb
+  ? ' style="background-image:url(/' + escapeHtml(s.thumb) + ');background-size:cover;background-position:center"'
+  : '';
+return '<a href="..." class="scroll-card">' +
+         '<div class="scroll-card-thumb"' + thumbStyle + '>' +
+           (s.thumb ? '<div class="scroll-card-thumb-overlay"></div>' : '') +
+         '</div>' + ...;
+```
+
+(b) **Reaction-tap site surgical patch** in `toggleReaction()` at L1680. Was calling `renderRecentCheckins(__lastRecentRows)` synchronously on every tap — full innerHTML rewrite. Replaced with surgical IIFE that finds the tapped card by `data-checkin=<id>`, iterates `.rx-btn` children, toggles `on` class, updates count spans, updates aggregate heart count.
+
+This caught the synchronous re-render on tap. What it MISSED — and the reason Dean reported it didn't work — was the bus-driven repaint 150ms later.
+
+**PM-401 — renderRecentCheckins same-layout guard (`e02304a3`) — the actual fix.**
+
+Dean walked PM-400 at Update 282: "It's still the same at the moment as shown build number two eight two, but it's still the same... on the connect screen, it does [flicker]."
+
+Re-traced the bus chain that survived PM-400's tap-site patch:
+
+```
+toggleReaction()
+  → bucket update (in-memory)
+  → PM-400 surgical patch (DOM updated)
+  → VYVEBus.publish('connect:reaction:logged')
+  → subscribers at L2210/2214:
+       - syncReactionStateToCache(checkinId)   [PM-395, keeps cache fresh]
+       - repaintDebounced()                    [150ms timer]
+  → setTimeout(150) fires
+  → paintAll()
+  → Path A (cache hit per PM-393)
+  → renderRecentCheckins(rows)
+  → list.innerHTML = data.map(...).join('')   ← THIS LINE
+  → ALL 3 .cin-card destroyed + recreated
+  → ALL 3 avatar <img> destroyed + recreated
+  → browser must re-decode each img from cache
+  → VISIBLE AVATAR FLICKER even with hot cache
+```
+
+The `loading=lazy` attribute + img element replacement = mandatory decode step. PM-400's site-level patch caught the synchronous path but the 150ms debounced bus repaint wiped it.
+
+Fix: guard at top of `renderRecentCheckins`. Before innerHTML rewrite, check if existing DOM cards have same IDs in same order as incoming data. If YES (common case — reaction taps don't change row layout, just reaction counts), do surgical update of every card's `.rx-btn` set + `.cin-heart-n` text + `on` classes. Avatars/names/bodies/timestamps untouched, no img destruction. If NO (new check-in posted, old one cycled out, cache→EF upgrade with different rows), fall through to existing full innerHTML rebuild.
+
+```js
+function renderRecentCheckins(rows) {
+  var list = $('recent-list');
+  var data = (rows || []).slice().sort(...).slice(0, 3);
+  if (!data.length) { ... return; }
+
+  // PM-401 — surgical update path
+  if (list) {
+    var existingCards = list.querySelectorAll('.cin-card');
+    var sameLayout = existingCards.length === data.length;
+    if (sameLayout) {
+      for (var k = 0; k < data.length; k++) {
+        var existingId = existingCards[k].querySelector('[data-checkin]');
+        existingId = existingId ? existingId.getAttribute('data-checkin') : null;
+        if (existingId !== String(data[k].id)) { sameLayout = false; break; }
+      }
+    }
+    if (sameLayout) {
+      // Surgical: update reaction counts + heart on every card
+      for (var j = 0; j < data.length; j++) {
+        var card = existingCards[j];
+        var bucket = reactionsByCheckin[data[j].id] || ...;
+        // ... iterate .rx-btn, update .rx-count, toggle 'on' class
+        // ... update .cin-heart aggregate
+      }
+      return;  // SKIP innerHTML rewrite
+    }
+  }
+
+  // Fall through to full rebuild for actual layout changes
+  if (list) {
+    list.innerHTML = data.map(function (c) { ... }).join('');
+  }
+}
+```
+
+The surgical path covers every reaction tap (state change without layout change). The full rebuild only runs on actual layout changes — which the user expects to be a visible repaint anyway (new check-in card appearing IS a repaint).
+
+PM-400's site-level patch left in place as defence-in-depth: runs synchronously on the tap (instant feedback, no 150ms wait for the debounced repaint), while PM-401's guard prevents the inevitable bus-driven re-render from undoing it.
+
+**Device walk evidence.**
+
+- PM-399 walked at Update 281. Dean: "looks alright now... I've just signed out and signed into a different account to see if there was something there. That seems fine now."
+- PM-400 walked at Update 282. Dean: "the only thing that seems to flicker a little bit is, like, if I'm giving, um, reaction to a recent checking, the profile picture flickers... It's still the same as shown build number two eight two." Live carousel + Home surfaces clean ("nothing that you click on the home screen makes it flicker"). Avatar on Connect STILL flickering.
+- PM-401 walked at Update 283. Dean: "fixed".
+
+**§23.65 in-page-vs-cross-page distinction reinforced.**
+
+PM-391 banked the original candidate: envelope-trusted subscribers are for cross-page only, not in-page where publisher already mutated. PM-401 surfaces the SAME class of bug from a different angle — even bare `repaintDebounced()` subscribers (no envelope semantics) can wreck an in-page surgical state mutation by rebuilding the DOM.
+
+The fix isn't subscriber-side, it's render-function-side: a renderer that's idempotent over the no-layout-change case naturally absorbs both same-page debounced repaints AND cross-page bus invalidations without flickering. Suggested codification: "any state-change render function called from multiple bus events should be idempotent over the no-change case (skip DOM rewrite when current DOM already matches incoming state)." Banked.
+
+**§23 candidate banked NOT codified solo.** "innerHTML rewrite destroys child `<img>` elements forcing re-decode even with hot HTTP cache." Three occurrences in two ships (PM-400 live carousel + PM-400 tap-site rewrite + PM-401 debounced repaint). Codification rule: when state changes don't affect layout/identity, prefer surgical DOM patches over innerHTML rewrites. Promotes to §23 hard rule on next independent surface ship.
+
+**Markers across 3 ships.** vbb 280 → 281 (PM-399) → 282 (PM-400) → 283 (PM-401). sw cache `pm398-habits-instant-paint-a` → `pm399-journey-snapshot-first-paint-a` → `pm400-connect-flicker-images-bg-a` → `pm401-recent-checkins-same-layout-skip-a`. 12 files atomic across 3 ships (engagement-v2.html + connect.html × 2 + index.html × 3 + settings.html × 3 + sw.js × 3). PAT-direct via Vault throughout (Composio still down). `node --check` clean on all inline JS blocks + sw.js on each ship. §23.41 byte-perfect verify clean on every committed file at every commit SHA. §23.74 cross-repo PM scan clean before every commit. No parallel-session ships during the chat.
+
+**Premium-feel tab-flicker campaign now effectively done.**
+
+| Surface | State | Closed by |
+|---|---|---|
+| Home tab-in (rings, name, focus carousel, habit list) | ✓ instant first paint | PM-396/397/398 |
+| Body tab-in | ✓ already instant pre-campaign | PM-96 paintCacheEarly |
+| Mind tab-in | ✓ no flicker per device walk | n/a |
+| Connect tab-in (1→3 own-only flicker, cache-first ordering) | ✓ | PM-391-395 |
+| Connect reaction tap (avatar flicker) | ✓ | PM-401 |
+| Home + Connect live session carousels (img flicker) | ✓ | PM-400 |
+| Your Journey LOADING hang | ✓ instant first paint | PM-399 |
+
+View Transitions API wire from PM-394 plan still parked — lower priority now that perceived flicker is gone across every surface Dean walked.
+
+**Still outstanding.** Deferred Chat 1 sweep items from PM-398.b backlog block:
+- Keystore + password `Weareinthis2026!` into 1Password (Dean's 30s manual — P0 launch blocker)
+- vyve-capacitor git init + commit dirty tree + push to VYVEHealth/vyve-capacitor (third-occurrence escalation)
+- Debug strip gating behind `localStorage.vyve_debug_tracker === '1'` (PM-310 always-on tracker strip on 8 *-live.html shells + mind-video strip)
+
+These must land before the next iOS/Android binary cut.
+
+---
+
 ## 2026-05-25 PM-398.b brain close — Chat 1 of PM-394 sequence done: Home tab-in flicker fix shipped across THREE atomic vyve-site commits (PM-396 value-mutation snapshot, PM-397 layout-shift reservation, PM-398 habit content-late instant-paint)
 
 **Scope.** Chat 1 of the 4-chat PM-394 sequence locked yesterday (Option 1 snapshot-first paint per hub + Option 4 View Transitions wire). Original Chat 1 brief was the "cheap-stuff sweep" (keystore 1Password + vyve-capacitor git-init + debug strip gating) but Dean pivoted mid-chat directly to the user-visible flicker work after the sweep framing didn't land — sweep items REMAIN OPEN, deferred not done. This chat instead delivered the Home flicker fix end-to-end across three ships against three independent flicker shapes on the same page.
