@@ -216,9 +216,6 @@ Dean confirmed PM-401 fix on device at Update 283: "fixed".
 - All "feels finished" items 2-4 from prior NEXT FOCUS block below
 
 **Lewis-blocked (not Claude's problem to unblock):**
-- Health disclaimer copy for App Store + onboarding checkbox
-- Weekly check-in slider copy mirror to onboarding wording
-- Brevo logo removal (~$12/month)
 - Persona welcome copy spot-check in `persona_welcome_copy`
 - HAVEN clinical sign-off (Phil)
 
@@ -230,7 +227,7 @@ This block is the canonical NEXT pointer for the pre-binary push; the in-app fea
 
 Dean's call: park the v4 / architecture work (Dexie audit, offline-first verification, performance audit, Capacitor release, etc.) until in-app features are functionally complete. The trial cohort needs to land on a finished-feeling app, not a half-wired one. Priority order:
 
-**1. Weekly check-in recap — SHIPPED PM-362.b (25 May 2026).** Recap card on `wellbeing-checkin.html` active flow rebuilt around canonical 4 pillars (Habits/Body/Mind/Connect) with rolling 7-day window, Lucide pillar icons in accent colours, kind-aware drilldown. Submission slot stays ISO-week-locked via the existing UNIQUE constraint. STILL OUTSTANDING on this page: slider copy mirror to onboarding wording (§22 open decision, Lewis-blocked) — and the bigger scope question of whether weekly should become an 8-slider mini-monthly to mirror the onboarding baselines (Lewis call, not actioned this session).
+**1. Weekly check-in recap — SHIPPED PM-362.b (25 May 2026).** Recap card on `wellbeing-checkin.html` active flow rebuilt around canonical 4 pillars (Habits/Body/Mind/Connect) with rolling 7-day window, Lucide pillar icons in accent colours, kind-aware drilldown. Submission slot stays ISO-week-locked via the existing UNIQUE constraint. Slider copy mirror to onboarding wording done (Dean confirmed PM-407, 26 May 2026). The bigger scope question of whether weekly should become an 8-slider mini-monthly to mirror onboarding baselines remains a Lewis call but is not blocking.
 
 **2. Monthly check-in (next session, paired)** — needs audit: does `monthly_checkins` table exist and is the page wired? Backlog line at 2935 says monthly check-ins currently earn ZERO credit (no counter trigger, no charity trigger) — this gap is real and needs closing. Bus event for `monthly_checkin:logged` should exist already (achievements evaluator handlers `monthly_checkins_completed`, `monthly_avg_improved` reference it per PM-342). Check what's actually firing.
 
@@ -2950,8 +2947,8 @@ Ship a bundled iOS + Android app that members can use offline on the tube, on a 
 
 - [ ] **Home page rewrite (index.html).** Pillar tiles replace certificate-track cards. Activity Score Ring retained but Variety component reframes (next bullet). PM-73 home redesign mockup is a starting reference; pillar reframe likely changes the shape.
 - [ ] **Engagement page rewrite (engagement.html).** Variety component reframes from per-activity-type to per-pillar coverage (Mind / Body / Connect). Each pillar contributes up to 4.17 points (12.5 / 3) to Variety. Scoring methodology section updated. Activity Breakdown table reorganises around pillars.
-- [ ] **Weekly check-in rewrite (wellbeing-checkin.html + EF v29).** Activity summary rolls up Mind + Body + Connect activities. AI prompt to Anthropic includes pillar-coverage data. Slider questions updated (resolves the §22 "Weekly check-in slider questions" open decision).
-- [ ] **Monthly check-in rewrite (monthly-checkin.html + EF v18).** Same as weekly.
+- [x] **Weekly check-in rewrite (wellbeing-checkin.html + EF v29).** SHIPPED PM-362.b (recap rebuild) + PM-407 (slider wording mirror to onboarding confirmed done by Dean, 26 May 2026). Activity summary rolls up Mind + Body + Connect activities. AI prompt to Anthropic includes pillar-coverage data.
+- [x] **Monthly check-in rewrite (monthly-checkin.html + EF v18).** SHIPPED PM-379.b (recap rebuild around canonical 4 pillars) + PM-407 (slider wording mirror to onboarding confirmed done by Dean, 26 May 2026).
 - [ ] **Certificates re-pillaring.** Three pillar certificates (Mind / Body / Connect) replace five activity certificates. `pillar` column added to `certificates` table. Old earned certs grandfather as `pillar='legacy'`. Lewis sign-off on three new pillar titles + tier copy. (Pulled in from deferred-post-launch in §22 per PM-184 — ship a consistent surface or don't ship.)
 
 ### Phase 4 — Offline-correctness sweep [PRE-BUNDLE GATE — 2-3 sessions]
@@ -2994,9 +2991,7 @@ Framework: `playbooks/offline-correctness-audit.md`.
 These are tracked but not gating. Own owners, own timelines.
 
 - [ ] HAVEN clinical sign-off (Phil). Conor Warren on HAVEN since 15 April — Phil to review interactions.
-- [ ] Weekly check-in nudge copy split (Phil + Lewis). First-time activation vs continuity. Mental-health-adjacent.
 - [ ] PF-13 hydration COPY_TABLE finalisation. 23 entries tagged `COPY_DEAN_FINAL` in `/hydration.js`. ~30-45 min Dean writing time.
-- [ ] Brevo logo removal (~$12/month). Lewis — before any enterprise demo.
 - [ ] **Facebook Make connection refresh — expires 22 May 2026 — URGENT.** Lewis.
 - [ ] Public launch comms draft (Lewis).
 - [ ] B2B volume tier definition (Lewis + Dean). Pre-first-enterprise-contract.
@@ -5770,7 +5765,6 @@ Calum (Physical Health Lead) has delivered the spec, scoring data, and QA framew
 - Facebook Make connection — **EXPIRES 22 MAY 2026 (CRITICAL)**
 - Make social publisher fix — 133 posts stuck since 23 March
 - B2B volume discount tiers — define before first contract
-- Brevo logo removal (~$12/month)
 - Annual pricing discount % decision
 - 5 disabled Make tasks — keep or remove
 

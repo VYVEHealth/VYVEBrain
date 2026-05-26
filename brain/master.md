@@ -90,8 +90,7 @@ Pre-call briefs via Sales Intelligence skill (8-step deep dive, ROI calculator, 
 | Presentation deck | Update once check-in sliders updated | UPDATE NEEDED |
 | GDPR / DPA | Complete — swap client name in DPA before sending | COMPLETE |
 | B2B pricing volume tiers | Lewis + Dean | TIERS PENDING |
-| Brevo logo removal | Lewis — ~$12/month add-on | PENDING |
-| Health disclaimer | Short para for App Store listing + onboarding checkbox | PENDING |
+| Health disclaimer | Done (Lewis confirmed PM-407, 26 May 2026) | COMPLETE |
 
 ---
 
@@ -110,7 +109,7 @@ Pre-call briefs via Sales Intelligence skill (8-step deep dive, ROI calculator, 
 | Operational AI | 24 custom Claude skills running daily/weekly/monthly intelligence, content, sales, and monitoring workflows for Lewis. |
 | Automation | Make (Lewis only, social publishing). Dean uses `log-activity` EF directly — Make retired from Dean's stack. |
 | Payments | Stripe. Live link: `buy.stripe.com/00wfZicla1Em0NnaIB93y00`. Coupons `VYVE15` and `VYVE10`. Redirects to `welcome.html`. First paying B2C: Paige Coult @ £20/month. |
-| Email | Brevo — transactional SMTP API with custom HTML. No campaign builder, no Brevo branding injected. Verified sender `team@vyvehealth.co.uk` (ID 1, name "VYVE Health"). Proxy endpoint `smtp/email` (no `/v3/` prefix). ~$12/month upgrade still outstanding to remove the "Sent via Brevo" footer. |
+| Email | Brevo — transactional SMTP API with custom HTML. No campaign builder, no Brevo branding injected. Verified sender `team@vyvehealth.co.uk` (ID 1, name "VYVE Health"). Proxy endpoint `smtp/email` (no `/v3/` prefix). |
 | HealthKit integration | `@capgo/capacitor-health@8.4.7`. iOS device-validated. 7 read scopes (steps, distance, active energy, workouts, cardio, sleep, weight); 1 write scope (weight only — workout write-back unsupported by Capgo 8.4.7 on iOS, codified session 4). Cohort-wide post 1.2 approval (`HEALTH_FEATURE_ALLOWLIST` dropped 26 April; `member_health_connections` row presence is the truthsource). |
 | Push notifications | Live end-to-end as of 28 April PM. Native APNs via `push-send-native` v5 (auto-revokes 410/400 BadDeviceToken) functional since early PM. Web VAPID via `send-push` v12 (RFC 8291 aes128gcm) functional since late PM — v11 had a silent bug in `makeVapidJwt` (`crypto.subtle.importKey('raw', …, ['sign'])` invalid for ECDSA private keys per Web Crypto spec, Deno enforces strictly), v12 fixes via `'jwk'` import with x/y reconstructed from the public key. Service worker `push` + `notificationclick` listeners shipped tonight (`vyve-site@124ecb53`). Reminder triggers (`habit-reminder` v14, `streak-reminder` v14) and `achievement-earned-push` v1 all delegate to `send-push` and inherit the fix automatically. |
 | Analytics | PostHog (`phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl`) — Supabase Auth identity wiring still pending. |
@@ -1581,7 +1580,7 @@ Production iOS 1.3 (2) + Android 1.0.3 (10) bundled-mode at SHA `83874dd5` — u
 
 **Phase 1 — Body section consolidation deferred to after Phase 2 closes.** Body hub is `exercise.html` (existing, drift-corrected PM-186), not `body.html`. Decide `body_activities` table shape (mirror of mind_activities — `kind` discriminator across workouts/cardio/movement, `client_id` idempotency — vs view-over-existing-tables), apply mind.html shape inside exercise.html, audit sub-pages (workouts.html, cardio.html, movement.html). 2-3 sessions estimated.
 
-**Phases after Phase 1.** Phase 2 — Connect section build (connect.html NEW, unifies leaderboard + sessions + charity impact). Phase 3 — Pillar realignment (Home / Engagement / Weekly check-in / Monthly check-in / Certificates all reframe around Mind / Body / Connect; certificates re-pillar pulled in from deferred-post-launch). Phase 4 — Offline-correctness sweep (PRE-BUNDLE GATE; new playbook `playbooks/offline-correctness-audit.md`). Phase 5 — Bundle and OTA (three tasks from PM-178 already queued in backlog). Phase 6 — external-blocker items (HAVEN sign-off, copy reviews, Brevo logo, etc).
+**Phases after Phase 1.** Phase 2 — Connect section build (connect.html NEW, unifies leaderboard + sessions + charity impact). Phase 3 — Pillar realignment (Home / Engagement / Weekly check-in / Monthly check-in / Certificates all reframe around Mind / Body / Connect; certificates re-pillar pulled in from deferred-post-launch). Phase 4 — Offline-correctness sweep (PRE-BUNDLE GATE; new playbook `playbooks/offline-correctness-audit.md`). Phase 5 — Bundle and OTA (three tasks from PM-178 already queued in backlog). Phase 6 — external-blocker items (HAVEN sign-off, copy reviews, etc).
 
 **Formal PF-40 closure at this commit.** Original 12-sub-item scope (PM-106) was the wrong scaffolding (PM-111 device walk diagnosed real bug as cache-writer/template shape mismatch, not structural). Mind section v1 (PM-173–183) demonstrated the §23.39 optimistic-first skeleton organically replacing PF-40.4. Post-launch sub-items PF-40.3 through PF-40.12 closed as superseded; functionality re-absorbed into Bundle-Ready phases.
 
@@ -1630,11 +1629,9 @@ The mechanics above compound — they're not mutually exclusive. Order of likely
 
 | Item | Owner | Status |
 |---|---|---|
-| Brevo logo removal (~$12/month) | Lewis | OPEN |
 | Facebook Make connection refresh | Lewis | **CRITICAL — EXPIRES 22 MAY 2026** |
 | B2B volume tiers defined | Lewis + Dean | OPEN |
 | Make social publisher fix (Scenario 4950386) | Lewis | DEFERRED (133 posts stuck since 23 March) |
-| Health disclaimer wording | Lewis sign-off | PENDING |
 | HAVEN clinical review | Phil | PENDING — persona content held from sign-off; auto-assignment currently active in production (see §10) |
 
 ---
@@ -1679,7 +1676,6 @@ The mechanics above compound — they're not mutually exclusive. Order of likely
 - HAVEN clinical sign-off (Phil).
 - Weekly check-in nudge copy split (Phil + Lewis).
 - PF-13 hydration copy finalisation. Schema-side migrated PM-372 — Dean now finalises via `UPDATE public.persona_welcome_copy` in Supabase Studio (no vyve-site commit needed). 13 rows live, seeded verbatim from the PF-13 draft. When finalised, sweep `FALLBACK_COPY_TABLE` in hydration.js to lockstep so cold-paint and live-paint converge.
-- Brevo logo removal (~$12/month, Lewis).
 - Facebook Make connection refresh — **expires 22 May 2026, URGENT** (Lewis).
 - Public launch comms draft (Lewis).
 - B2B volume tier definition (Lewis + Dean).
@@ -1724,8 +1720,6 @@ The mechanics above compound — they're not mutually exclusive. Order of likely
 
 - B2B volume discount tiers — formally define before first enterprise contract.
 - Annual pricing discount % — Lewis decision, Dean adds to Stripe once confirmed.
-- Weekly check-in slider questions — map to onboarding questionnaire wording.
-- Health disclaimer wording — draft ready, Lewis sign-off.
 - Make social publisher fix timing — deferred by Lewis.
 - Wellbeing Scorecard — host on live domain. Which URL? Who builds form submission?
 - Today's Progress strip — Lewis to approve copy before building.
@@ -2161,7 +2155,6 @@ Audit method for any whole-tree trigger or aggregation work going forward MUST f
 | **Server-side EFs must verify a sync actually pulled data before advancing `last_sync_at` (29 April PM-4)** | Generalised rule from the 28 April HK gap bug. Any EF that maintains a "last successful sync" cursor must check the response shape — empty pulls, all-probes-failed pulls, and explicit error responses must NOT advance the cursor. `sync-health-data` v9 implements this for HK via `diagnosticsShowAuthBlocked()` returning `auth_blocked:true` instead of advancing. Apply the same pattern to any future cursor-advancing EF (e.g. fitness-bridge for Android Health Connect, future sleep integrations). |
 | **HAVEN safeguarding** | Must signpost professional help in crisis. Clinical review required before promotion — HAVEN is currently auto-assigning in production despite Phil not having signed off (open issue, see §10/§22). |
 | **NOVA/SPARK restriction** | Never assign with serious life context flagged in Section G. |
-| **Brevo logo** | Free plan injects "sent via Brevo" footer. ~$12/month upgrade removes it. Pending before enterprise demo. |
 | **Microsoft Exchange via GoDaddy** | `team@vyvehealth.co.uk` is a personal Microsoft Exchange via GoDaddy mailbox. NEVER refer to it as Google Workspace — that is incorrect. MX is `vyvehealth-co-uk.mail.protection.outlook.com`. SPF authorises `secureserver.net`, `spf.protection.outlook.com`, and `spf.brevo.com`. DKIM via `brevo1._domainkey` and `brevo2._domainkey` CNAMEs. Migrate to enterprise tenant post-first-enterprise-contract. |
 | **Brevo recipient-MX cache lag (04 May PM-1)** | Brevo's outbound mail-relay servers cache MX records for recipient domains independent of public DNS TTL. When `team@vyvehealth.co.uk` started hard-bouncing on 28 April due to a transient upstream blip, Brevo logged the bounce, added the address to its transactional blocked-contacts list, and continued routing to a stale MX even after the inbox layer self-healed. The dashboard's "Check configuration" button validates outbound auth (SPF/DKIM/DMARC/brevo-code) but does NOT touch the recipient-MX cache. All four green ticks can mask a real failure. **Symptoms:** EFs return success, cron fires fine, Brevo API returns 200 + valid messageId, but `smtp/statistics/events?event=hardBounces` shows every send rejected. **Diagnosis:** check `smtp/blockedContacts` and `smtp/statistics/events` filtered by recipient and `event=hardBounces` for the bounce reason text. **Resolution:** (a) wait 1–4h for Brevo's resolver to expire its cache (typical), (b) Brevo support flush request, (c) temporarily reroute via cron `body` override (`{"to":"alt@email","cc":"alt2@email"}`) to a known-good inbox while the cache clears. **Watchdog coverage (`email-watchdog` v1, jobid 16):** `team_hardbounce`, `team_on_blocklist`, `daily_report_not_delivered_24h` all alert within 30 min of recurrence. |
 | **Always send pipeline alerts to multiple recipients (04 May PM-1)** | A single inbox failure must never blind us to itself. `email-watchdog` sends to `deanonbrown@hotmail.com` (TO) with `lewisvines@hotmail.com` and `team@vyvehealth.co.uk` (CC) — even if `team@` were the failing recipient, the two Hotmail addresses still receive the alert. Apply the same multi-recipient pattern to any future critical-path automated mail (alerts, on-call notifications, enterprise sales alerts). |

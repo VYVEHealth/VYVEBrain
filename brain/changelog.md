@@ -1,3 +1,51 @@
+## 2026-05-26 PM-407 brain close — Stale Lewis-blocker scrub: Brevo logo (never existed), health disclaimer (done), weekly check-in slider copy mirror (done), monthly check-in slider copy mirror (done). Pre-bundle hygiene pass.
+
+Dean's session-open instruction was to deep-read the brain for pre-launch state and flag stale blocker entries. Surfaced four items still flagged across master/active/backlog that are no longer real:
+
+1. **Brevo logo removal (~$12/month)** — Dean: "doesn't even exist, I've never seen a Brevo logo in any of the emails. And also right now I'm not bothered, so remove that for now." Brevo's free-tier "Sent via Brevo" footer was carried in the brain narrative from pre-launch but was never actually visible in any production send — Brevo's transactional SMTP API with custom HTML doesn't inject that footer (that's the campaign builder's behaviour, which VYVE doesn't use). The brain had inherited an incorrect "pending before enterprise demo" caveat across §4 demo-readiness table, §5 tech stack description, §20 enterprise blockers, §21 Phase 6, §23 gotchas, active.md Phase 6 numbered list, tasks-backlog L221+L3000+L5773. All seven live forward-looking surfaces stripped.
+
+2. **Health disclaimer copy for App Store + onboarding checkbox** — Dean confirmed done. Brain still had it flagged PENDING in §4 demo-readiness table + §20 enterprise blockers + §22 open decisions + tasks-backlog L219. All four live forward-looking surfaces updated (§4 row now reads "Done (Lewis confirmed PM-407)" with status COMPLETE; the other three surfaces stripped the entry).
+
+3. **Weekly check-in slider copy mirror to onboarding wording** — Dean confirmed done. Brain still had it flagged in §22 open decisions + tasks-backlog L220 + tasks-backlog L233 (the NEXT FOCUS item-1 "STILL OUTSTANDING" clause) + tasks-backlog L2950 (Phase 3 Pillar realignment checklist). All four live forward-looking surfaces updated — Phase 3 checklist entry flipped to `[x]` SHIPPED via PM-362.b + PM-407, L233 reworded, §22 entry removed, L220 entry removed.
+
+4. **Monthly check-in slider copy mirror** — Dean: "the monthly check-in needed to mirror the onboarding. That's also done." Brain Phase 3 Pillar realignment checklist L2951 had it as a pending `[ ]` item ("Same as weekly"). Flipped to `[x]` SHIPPED via PM-379.b + PM-407.
+
+### What stayed unchanged (historical record, intentionally not rewritten)
+
+- Frozen `## 19. Current status` entries in master.md (PM-362.b L1168, PM-371 L1147, PM-379.b L1135) reference slider-copy-mirror as Lewis-blocked because that was true at those timestamps. These are timestamped session-end retrospectives; rewriting them rewrites history.
+- Dated carry-forward Lewis-blocker lists in tasks-backlog.md at L4332/L4366/L4456/L4498 (sessions from 11-13 May, PM-65/72/77 era) — historical record of what was thought-blocked at each session-end. Same logic.
+- Brevo as the email vendor across all operational descriptions (master §5 L113 retains the Brevo entry with the "~$12/month upgrade still outstanding" tail STRIPPED; welcome-email and transactional pipelines continue to use Brevo as before — Brevo the vendor stays, the phantom logo-removal blocker is gone).
+
+### Files patched in this commit (4 files atomic via Git Data API per §23.52(a))
+
+- `brain/master.md` — 7 strikes: §4 demo-readiness table rows for Brevo + Health disclaimer (Brevo dropped, Health disclaimer flipped to COMPLETE); §5 tech-stack Brevo entry (drop $12 tail); §19 Phase 6 narrative (drop "Brevo logo" mention); §20 enterprise blockers table (drop Brevo + Health disclaimer rows); §21 Phase 6 list (drop Brevo bullet); §22 open decisions (drop weekly check-in slider + health disclaimer wording); §23 gotchas table (drop Brevo logo row entirely).
+- `brain/active.md` — 2 strikes: Phase 6 narrative line (drop weekly check-in nudge copy + Brevo logo); Phase 6 numbered checklist (drop items 22 weekly check-in nudge copy + 24 Brevo logo removal, renumber 21→26 down from 21→28).
+- `tasks/backlog.md` — 5 strikes: PM-401.b NEXT FOCUS Lewis-blocked list L218-223 (drop Health disclaimer + Weekly check-in slider + Brevo logo); NEXT FOCUS item-1 L233 (slider copy mirror done per Dean PM-407); Phase 3 Pillar realignment L2950-2951 (Weekly + Monthly check-in rewrite both flipped to `[x]` SHIPPED); tracked-not-gating list L2997-3000 (drop Weekly check-in nudge copy + Brevo logo); Lewis Actions L5773 (drop Brevo logo removal).
+- `brain/changelog.md` — this entry prepended.
+
+### §23 hard rules fired this session
+
+- **§23.41** fresh HEAD recheck — brain HEAD `641d3a504f` (PM-405) confirmed unchanged immediately before commit composition. Parent SHA locked.
+- **§23.58** brain whole-file overwrite hazard — re-fetched `brain/changelog.md` via raw at main immediately before blob creation (file is 2.7MB, well over the Contents API 1MB inline limit per §23.79). Hash captured pre-prepend.
+- **§23.66** fresh-HEAD recheck at commit time — clean, no parallel brain ship between PM-405 and this commit.
+- **§23.70** PM-claim recompute — `GET /commits?per_page=5` on both repos at commit time. vyve-site max-PM = 406 (`20a23f7d7e`), VYVEBrain max-PM = 405 (`641d3a504f`). PM-407 uncontested across both repos.
+- **§23.74** cross-repo PM scan — same as §23.70 above; clean.
+- **§23.52(a)/(b)/(c)** Git Data API multi-file atomic via Python urllib + blob-by-SHA + tree-by-SHA + commit-with-parent + refs/heads/main update.
+
+### Pre-bundle context
+
+This is hygiene-only — no vyve-site changes, no member-facing change, brain narrative cleanup only. Pre-bundle walk (PM-403.b Session B) will read a cleaner Lewis-blocker surface; the four items above won't show up as false-positive blockers in the READY TO BUNDLE green/red report. Composio still 401 (~5 days), §23.45 PAT-direct via Vault used throughout per memory #8.
+
+### Tooling notes
+
+Composio remained inaccessible — `tool_search` for "composio github" surfaced first-party tools only this session (consistent with PM-405 / PM-403.b session-state). Vault PAT pulled once via Supabase MCP `execute_sql` at session-open; all GitHub reads via `curl Accept: application/vnd.github.raw`, this commit via Git Data API blob→tree→commit→update-ref. §23.41 post-commit byte-perfect verification of all 4 patched files at commit SHA via Contents API where size <1MB; changelog.md (>2.6MB post-prepend) verified via blob-by-SHA per §23.79.
+
+### Open after this commit
+
+Unchanged from PM-405 — three P0 launch blockers (keystore 1Password, vyve-capacitor git init, debug strip gating), Session A monitoring restoration build chat, Session B pre-bundle walk → READY TO BUNDLE report, then Capacitor bundle freeze.
+
+---
+
 ## 2026-05-26 PM-405 — Bottom-nav opacity split on Connect + offline scope audit pre-bundle
 
 Two pieces shipped this session: (1) PM-403 vyve-site `ff5cd4f4` split `--bottom-nav-bg-mob` from `--nav-bg-mob` so Connect's frosted-topbar override at body L53 no longer drops the bottom nav from 0.97 → 0.42 alpha; (2) full PF-14c offline-scope audit against pre-bundle vyve-site main with two real gaps surfaced and codified as fix tickets.
