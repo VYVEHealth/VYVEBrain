@@ -2973,7 +2973,7 @@ These are tracked but not gating. Own owners, own timelines.
 - ~~PM-72 materialise achievement_progress~~ — obsolete post-bundle.
 - ~~§23.5.1 backend EF perf campaign~~ for home payload — obsolete post-bundle. Dexie-first paint renders <200ms regardless of EF latency.
 - ~~PWA install prompt~~ code in index.html — slated for Phase 1 removal.
-- ~~In-App Tour PF-23~~ — V2, blocked on Lewis copy, post-launch.
+- **In-App Tour PF-23** — ELEVATED PM-404 (26 May 2026): Dean's call — next-up after bundle ships. Was V2 post-launch. Full design locked from 26 April session. Hard deps: Achievements (post-trial PM-94) + Lewis ~35-line copy doc across 5 personas. ~3 sessions total when unblocked. Ships as first Capawesome OTA push.
 - ~~Achievements system major overhaul~~ — post-trial, post-launch.
 
 ### Formal PF-40 closure (logged PM-184)

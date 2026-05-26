@@ -1,3 +1,32 @@
+## 2026-05-26 PM-404 brain close — In-App Tour PF-23 elevated from "V2 post-launch blocked on Lewis copy" to next-up P1 after bundle ships.
+
+**Dean's framing**: bundle is being cut now for trial launch; tour is "probably one of the next things I do" once everything else is checked off. Strategic call — tour is important for new customer first-touch experience and shouldn't sit indefinitely behind the original post-trial gate.
+
+**Sequencing reality (no change to architecture)**: §23.42 deployment model means tour ships into vyve-site online portal and reaches all members — new App Store downloaders + existing bundled members — via Capawesome OTA on next app open. Capawesome update-check runs before WebView paints, so new customers downloading the bundled SHA get the tour on first online launch (couple-second OTA swap masked by splash). The "new customer won't see the tour" concern Dean raised does not materialise unless they're offline on first open OR Capawesome is down — both <1% paths.
+
+**Design status: already locked (PF-23 spec, 26 April 2026 strategy session)**. No new design work needed. Quick recap of what's already decided:
+- Modal step-through (not slideshow), interactive (real activity logs, not throwaway tutorial ticks).
+- 7 steps: welcome + persona reveal → three-tab nav tour → log first habit → log first workout/movement → log first cardio (HK consent prompt on iPhone) → log water → set first weekly goal → closing.
+- Each step earns a real tier-1 achievement (First Steps, First Move, Heart Started, Hydrated, Direction Set) — day one ends with banked progress on 30-activity ladders, not 0% cold start.
+- Persona-voiced (NOVA/RIVER/SPARK/SAGE/HAVEN) — ~35 lines of copy across 5 personas × 7 steps for Lewis.
+- Skip path required; persistence via `members.tour_completed_at`; "Restart tour" in Settings.
+- PF-23 is NOT a hydration time-killer — PF-13 hydration screen handles that separately. PF-23 stands as its own day-one product moment.
+
+**Hard dependency**: Achievements System ship (currently parked post-trial as PM-94). Tour celebration moments depend on real achievements firing at each step. If we accelerate the tour, we accelerate Achievements first.
+
+**Hard dependency**: Lewis copy approval. ~35 lines, 5 personas. Bulk-approval model — single doc, single review pass.
+
+**Build order when we come back (3 sessions total post-bundle)**:
+1. Achievements data layer + `log-activity` v22 + daily sweep + dashboard payload extension. ~1 session.
+2. Achievements UI — toast + dashboard slot + `achievements.html`. ~1 session.
+3. In-App Tour — modal step-through, real-activity-logging, achievement-on-each-step. ~1–2 sessions. Ships as **first OTA push via Capawesome prod channel** (consider `--rollout 0.1` canary).
+
+**Parked work surface**: PF-23 spec lives in backlog (full design captured 26 April changelog entry). Master.md §21 updated this commit — tour moved out of "drops off entirely" list, added to a new "Near-future P1 (post-bundle, pre-public-launch)" subsection.
+
+**No new §23 hard rules earned tonight** — design conversation only, no code, no schema, no portal changes.
+
+---
+
 ## 2026-05-26 PM-403.b brain close — Pre-bundle monitoring restoration designed end-to-end (Sessions A+B build prompt drafted for fresh chat). Three-times-daily digest cadence locked, severity recalibration rules locked, circuit breaker threshold locked, "always send including all-quiet" cadence locked. Brain-only ship — no code shipped this session. Build executes in next chat.
 
 **Scope.** Native binary cut tonight from vyve-site main → App Store + Play Store, becoming the full overhaul shipping to all members on approval (replacing the incremental 1.1 Build 3 currently auto-release-pending in App Review). Cohort widens from 15-20 trial seats to all members overnight on approval. Pre-bundle monitoring restoration treated as P0 — flipping the cohort without visibility on 401s, network errors, page-load timeouts is reckless. PM-145 (open since 16 May, P0 since PM-149 outage) is the work this designs into a buildable shape.

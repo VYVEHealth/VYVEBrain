@@ -1690,8 +1690,11 @@ The mechanics above compound — they're not mutually exclusive. Order of likely
 - PM-72 materialise achievement_progress (obsolete post-bundle).
 - §23.5.1 backend EF perf campaign for home payload (obsolete post-bundle — Dexie-first paint renders <200ms regardless of EF latency).
 - PWA install prompt code in index.html (Phase 1 removal).
-- In-App Tour PF-23 (V2, blocked on Lewis copy, post-launch).
 - Achievements system major overhaul (post-trial, post-launch).
+
+### Near-future P1 (post-bundle, pre-public-launch — added PM-404)
+
+- **In-App Tour PF-23** — elevated from V2 post-launch. Dean's call 26 May 2026: "important for new customers, probably one of the next things I do" once bundle clears. Full design locked in PF-23 spec (26 April 2026 session). Hard deps: Achievements System ship (post-trial PM-94), Lewis ~35-line copy doc across 5 personas. Build order when unblocked: Achievements data layer (1 sess) → Achievements UI (1 sess) → Tour modal step-through with real activity logging + achievement-on-each-step (1-2 sess). Ships as first Capawesome OTA push (consider `--rollout 0.1` canary). Reaches new App Store downloaders + existing bundled members on next app open per §23.42.
 
 ### Post-launch backlog (do not work on before 31 May)
 
