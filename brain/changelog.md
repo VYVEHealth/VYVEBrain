@@ -1,3 +1,109 @@
+## 2026-05-26 PM-410 — Replay catalogue wipe via YouTube archive + refresh-replay-videos v2 reconciliation ship
+
+Pre-launch hygiene: 33 test-content replay videos archived from 8 live YouTube playlists into a private archive playlist, and the upsert-only sync EF (refresh-replay-videos) gained a reconciliation step so future YouTube-side removals propagate to Supabase automatically. Member-facing replay app surface is now fully cleared — every category shows the empty state on next refresh.
+
+### Context
+
+Every video across all 8 YouTube category playlists (yoga-stretch / mindfulness / workouts / checkin / education / events / group-therapy / podcast) was test content from pre-launch development: "PM-215 stream test" generations, "PM-304/315/327 device walks", and pre-launch placeholder broadcasts. Dean wanted them off the app for the trial cohort launch but kept on the channel as a sentimental "this is where it all started" record. Path: create a private archive playlist, copy every item over chronologically, remove from source category playlists, propagate to Supabase, wipe member test-view history.
+
+### Sub-step A — `playlistItems.delete` doesn't propagate
+
+Investigation of `refresh-replay-videos` v1 (PM-241, deployed 23 May) found the EF is **upsert-only** — pulls per-playlist video list, upserts into `replay_videos` on `youtube_video_id` conflict, refreshes `replay_playlists.latest_video_*` cache. No `DELETE FROM replay_videos WHERE youtube_video_id NOT IN (current_set)` step. Result: removing a video from a YouTube playlist would never propagate to Supabase, the row would sit forever, the app would keep showing the tile, and tap → broken iframe. This is a permanent architecture bug at this layer — affects every future content rotation. Fix shape locked: add reconciliation step to a v2 of the EF.
+
+### Sub-step B — YouTube archive (33 items via two throwaway EFs)
+
+OAuth scope confirmed via brain master §24: `https://www.googleapis.com/auth/youtube` (full read+write). Vault has the 3 secrets (`YOUTUBE_OAUTH_CLIENT_ID`, `YOUTUBE_OAUTH_CLIENT_SECRET`, `YOUTUBE_OAUTH_REFRESH_TOKEN`) plumbed via `public.get_youtube_oauth_secrets()` SECURITY DEFINER RPC. No token refresh issue (consent screen still in Testing per master §24's 7-day rotation note, but no rotation was due this run).
+
+**Two throwaway EFs deployed for the one-shot work**:
+
+`replay-inventory-tmp` (function id `18512b11-...`): one-shot read-only enumeration. For each of 8 active `replay_playlists`, calls `playlistItems.list?part=snippet,status&maxResults=50&playlistId=<id>`, returns per-item `{playlistItemId, videoId, title, publishedAt, position, privacyStatus}`. Returned 33 items (vs `replay_playlists.video_count` of 30, last refreshed 03:30 UTC same day — 3 net adds between then and the call, evidence the daily cron is healthy). All items already `unlisted` per Dean's standing pattern. One "Deleted video" ghost in yoga-stretch playlist (videoId `Q6bOcA-p-S4`) — playlistItem dangling after the underlying video was deleted from YouTube.
+
+`replay-archive-tmp` (function id `5511ab7a-...`): one-shot archive operation:
+1. Re-pulls inventory across all 8 playlists into a single ordered set sorted by `publishedAt ASC` (chronological — oldest "VYVE Yoga, Pilates & Stretch" from 17 March 2026 23:06 first)
+2. Creates new YouTube playlist via `playlists.insert?part=snippet,status` with title "VYVE Archive — Dev & Testing (pre-launch)", description noting the archive event, `privacyStatus: 'private'` (only `team@vyvehealth.co.uk` can see it, not even unlisted-link-accessible)
+3. Sequentially calls `playlistItems.insert?part=snippet` for each item into the archive playlist
+4. **Safety guarantee**: only calls `playlistItems.delete` on items that successfully inserted. If insert fails, skip the corresponding delete — never lose access to a video that didn't make it into the archive
+
+**Result**: 32 inserted + 32 deleted cleanly. 1 failure as expected: the "Deleted video" ghost row failed insert (`videoNotFound` 404, video already gone from YouTube), so its delete was correctly skipped. Cleaned the ghost separately via `replay-ghost-cleanup-tmp` (function id `200be6dc-...`) — direct `playlistItems.delete` on the dangling item, returned 204 No Content. All 8 source playlists now empty on YouTube. Archive playlist URL: `https://www.youtube.com/playlist?list=PLyaCafiXVssjqWqYpqntk3kdjb0BSCOIL`. Quota math: ~3450 units total across all 3 EFs (well under 10K daily).
+
+### Sub-step C — refresh-replay-videos v2 (the PM-407 fix, version-labelled per EF deployment timing)
+
+EF deployed as v2 with reconciliation logic added after the existing per-playlist upsert loop. Implementation:
+
+```
+const allSeenVideoIds = new Set<string>();
+// (populated inside per-playlist loop alongside existing upserts)
+// ...
+if (!anyPlaylistFailed) {
+  const seenArr = Array.from(allSeenVideoIds);
+  const { error } = await supabase.from("replay_videos").delete()
+    .not("youtube_video_id", "in", `(${seenArr.map(id => `"${id.replace(/"/g, '\\"')}"`).join(",")})`);
+}
+```
+
+**Safety**: reconciliation skipped if any playlist fetch failed during the run — partial data could nuke real rows. Failure on any single playlist preserves existing data (only loss of completeness). Edge case: zero-videos-seen (every playlist empty) → triggers full table wipe via `.neq("youtube_video_id", "")` since supabase-js DELETE requires a filter clause.
+
+Also extended empty-playlist branch to clear `latest_video_*` columns (PM-241 only zeroed `video_count`, left stale `latest_video_id/title/thumb_url/published_at/duration_sec` pointing at the most-recent-deleted video).
+
+EF version is canonically v2 in Supabase (overwriting the v1 source). Daily pg_cron job `vyve-refresh-replay-videos-daily` at 03:30 UTC unchanged — points at function slug, picks up new version automatically.
+
+### Sub-step D — invocation + verification
+
+Pre-state snapshot via SQL:
+- `replay_videos`: 30 rows
+- `replay_video_views`: 4 rows (Dean's test watch attribution)
+- `replay_views`: 10 rows (legacy table, no FK to `replay_videos`)
+- `session_live_views`: 0 rows (no test live broadcast views — saves a wipe step)
+
+Manual invocation via `pg_net.http_post` to refresh-replay-videos:
+- 200 OK, finished in ~15s
+- `playlists_processed: 8` (all 8 cleanly, no failures)
+- `videos_upserted: 0` (every YouTube playlist now empty)
+- `reconciliation: { ran: true, seen_video_ids: 0, rows_before: 30, rows_deleted: null }` (`rows_deleted` is `null` from `head: true` quirk in supabase-js — verified via direct SELECT instead)
+
+Post-state snapshot:
+- `replay_videos`: 30 → **0** ✅
+- `replay_video_views`: 4 → **0** ✅ (FK ON DELETE CASCADE fired correctly)
+- All 8 `replay_playlists` rows: `video_count = 0`, `latest_video_id/title/thumb_url/published_at/duration_sec` all `null`, `last_refreshed_at` bumped
+- `replay_views` (legacy, no FK): still 10 rows
+
+Final wipe via `DELETE FROM replay_views`:
+- 10 → **0** ✅
+
+### Member-visible result
+
+Replays hub (`replays.html`) on next page load shows the empty state (or "no videos in this category yet" message per the rp shell pattern). Tap any of the 8 category cards → `replay-category.html` shows empty state per category. `connect.html` `renderLatestReplay` reads from `replay_playlists.latest_video_*` (now all null) — no "latest replay" card surfaces on Connect. PWA Dexie catalogue sync (per PM-235 architecture) propagates the empty state to all members on next sync. Members who watched test replays during dev had their `replay_video_views` rows wiped via cascade — clean engagement-score recalculation on next dirty-mark.
+
+### Backlog status changes
+
+- **PM-405 PRE-BUNDLE OFFLINE-SCOPE FIX block at backlog top → CLOSE** (shipped PM-406 vyve-site `20a23f7d7e` 26 May ~18:03 UTC, all 22 missing paths now in sw.js precache, chart.umd.js vendored locally, both Chart.js cdnjs sites swapped to local URL, vbb 284 → 285). Block removed from backlog top.
+- New PM-410 SHIPPED entry replaces the PM-405 P0 block at backlog top.
+- §23 candidate banked **NOT codifying solo from one occurrence**: "Upsert-only sync without reconciliation = stale-row class bug whenever upstream is a source-of-truth that supports deletion." Promotes on second recurrence (next time a sync EF is shipped against a deletable upstream and misses the reconciliation step). Audit signal: any new sync EF should include the reconciliation pattern from refresh-replay-videos v2.
+
+### Operational cleanup pending
+
+Three throwaway EFs remain ACTIVE in Supabase but unused — none triggered automatically (no cron, no webhook, no client calls):
+- `replay-inventory-tmp` (id `18512b11-721d-4b99-a20a-6013d66726e5`)
+- `replay-archive-tmp` (id `5511ab7a-601b-4095-98d1-5fd9cea8e7d4`)
+- `replay-ghost-cleanup-tmp` (id `200be6dc-3234-4c49-af7e-7b9584512e72`)
+
+Dean to delete via Supabase dashboard → Edge Functions → ⋮ → Delete when convenient. No urgency — they sit dormant. MCP doesn't expose a delete-EF tool; only Management API + dashboard.
+
+### State at session end
+
+- vyve-site HEAD `e75b2d7a` PM-408 (parallel session analytics ship; my own vyve-site commit was PM-406 `20a23f7d7e` earlier in the same session)
+- VYVEBrain HEAD post-this-commit (PM-410)
+- Cross-repo max PM = 410 (mine)
+- All 33 test replays archived to private YouTube playlist `PLyaCafiXVssjqWqYpqntk3kdjb0BSCOIL`
+- All replay-related Supabase test data wiped
+- `refresh-replay-videos` v2 ships pre-bundle (cron next 03:30 UTC will run new logic automatically)
+
+### Cross-session collisions
+
+§23.58 fresh-HEAD check at brain commit time caught parallel ships PM-406/407/408/409 (offline-scope fix solo-shipped by me as PM-406 vyve-site; PM-407 Facebook scrub by another session; PM-408 analytics taxonomy by yet another session; PM-409 second Facebook scrub continuation). My initial work-name was PM-407 (the EF reconciliation), claim was rebased to PM-410 at brain commit time — `refresh-replay-videos v2` is internally labelled v2 in Supabase but is referenced as the PM-407 work throughout this entry's narrative for continuity with the EF source comment. The PM number on the brain commit is canonical.
+
+---
+
 ## 2026-05-26 PM-409 brain close — Facebook Make connection refresh scrubbed from forward-looking surfaces. Pre-bundle hygiene pass continuation of PM-407.
 
 Dean's session-open call after PM-407 lands: "removed all note as a Facebook made connection refresh, I don't need to know that." Carries forward from PM-407 scope rationale — same hygiene pass on a stale Lewis-blocker, separate ship because PM-407 closed before Dean surfaced this one. Six live forward-looking surfaces stripped; four dated historical carry-forward entries in tasks-backlog (PM-65/PM-72/PM-77-era dated session-end records at L4354/L4388/L4478/L4520) intentionally untouched per PM-407 frozen-history doctrine.

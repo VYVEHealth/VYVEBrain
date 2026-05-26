@@ -1,36 +1,16 @@
-## PM-405 PRE-BUNDLE OFFLINE-SCOPE FIX (P0, blocks bundle freeze)
+## SHIPPED 26 May 2026 — PM-410 — Replay catalogue wipe via YouTube archive + refresh-replay-videos v2 reconciliation
 
-**Discovered 26 May 2026 PM-405 offline-scope audit (post-§23.58 collision rebase from PM-404). Must land in vyve-site BEFORE Capacitor bundle freeze tonight. Becomes PM-406 ship.**
+All 33 test-content replay videos archived into private YouTube playlist `PLyaCafiXVssjqWqYpqntk3kdjb0BSCOIL` ("VYVE Archive — Dev & Testing (pre-launch)", `privacyStatus: private`, chronological by `publishedAt` ASC). Source 8 category playlists now empty on YouTube. `refresh-replay-videos` upgraded to v2 with reconciliation step (closes the upsert-only stale-row architecture gap from v1 PM-241). All replay-side Supabase data wiped clean: `replay_videos` 30→0, `replay_video_views` 4→0 (cascade), `replay_views` 10→0 (separate DELETE), `replay_playlists` `video_count + latest_video_*` cleared on all 8 rows.
 
-Single atomic vyve-site commit:
+**Operational cleanup pending**: 3 throwaway EFs (`replay-inventory-tmp`, `replay-archive-tmp`, `replay-ghost-cleanup-tmp`) still ACTIVE in Supabase but dormant. Dean to delete via Supabase dashboard when convenient.
 
-1. **sw.js** — add 22 paths to `urlsToCache`:
-   ```
-   /checkin-live.html      /checkin-rp.html
-   /education-live.html    /education-rp.html
-   /events-live.html       /events-rp.html
-   /mindfulness-live.html  /mindfulness-rp.html
-   /podcast-live.html      /podcast-rp.html
-   /therapy-live.html      /therapy-rp.html
-   /workouts-live.html     /workouts-rp.html
-   /yoga-live.html         /yoga-rp.html
-   /meditation.html
-   /sleep.html
-   /how-to-pdfs.html
-   /how-to-videos.html
-   /session-live.css
-   /session-rp.css
-   /chart.umd.js  (NEW vendored file, see #2)
-   ```
-   Cache key bump: `pm403-bottom-nav-bg-split-a` → `pm406-offline-scope-fill-a`
+**§23 candidate banked NOT codifying solo**: upsert-only sync EFs against deletable upstreams need a reconciliation step. Promotes on second recurrence.
 
-2. **Vendor chart.umd.js locally** — fetch from `https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js` (~210KB), commit to vyve-site root as `/chart.umd.js`. License is MIT (Chart.js project). One-time fetch, vendored same as PM-105 Dexie pattern.
+---
 
-3. **wellbeing-checkin.html L905 + L1419** — both `script.src = 'https://cdnjs.cloudflare.com/...'` lines swap to `script.src = '/chart.umd.js'`. Add comment: `// PM-406: vendored locally per PF-14c §2a (no cross-origin runtime deps in member-facing surfaces)`.
+## SHIPPED 26 May 2026 — PM-406 — Pre-bundle offline scope fix (was PM-405 spec in this slot)
 
-4. **index.html + settings.html** — vbb-marker 284 → 285.
-
-**Bundle pre-flight after PM-406 lands**: vyve-site main freezes at PM-406 SHA, Capacitor bundles from that.
+vyve-site `20a23f7d7e`. 5 files atomic via Git Data API. 22 missing surfaces precached (8 *-live.html shells + 8 *-rp.html shells + meditation/sleep/how-to-pdfs/how-to-videos + session-live.css + session-rp.css). `chart.umd.js` vendored locally (~205KB, Chart.js v4.4.1 MIT, sourced from npm registry). Both Chart.js cdnjs injection sites in `wellbeing-checkin.html` (L905 + L1419) swapped to `/chart.umd.js`. Cache key `pm403-bottom-nav-bg-split-a` → `pm406-offline-scope-fill-a`. vbb 284 → 285. §23.41 sha256-MATCH on all 5 files. PF-14c §2a violation closed.
 
 ---
 
