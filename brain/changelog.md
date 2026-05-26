@@ -1,3 +1,69 @@
+## 2026-05-26 PM-411 brain park — Bundle-prep prompt + Body-hub overhaul campaign documented for Thursday pickup
+
+Two-item park ahead of Dean's Pro 20x weekly limit reset. Bundle prep is ready to ship; Body-hub Bug A/B/C set surfaced during deanonbrown2@gmail.com end-to-end onboarding walk this session. No vyve-site changes — pure documentation and decision-lock. Dean returns Thursday to execute against this state.
+
+### Item 1: Bundle-prep prompt READY (artifact path `/mnt/user-data/outputs/bundle-prep-prompt.md`)
+
+Single conversational-prose prompt, first-person Dean voice, no emojis, no directive ALL-CAPS blocks per memory #5. Loads brain → reads `playbooks/vyve-capacitor-mac-sync.md` → surfaces all 7 known bugs in `vyve-capacitor` remote main (HEAD `4f5f55ae` PM-250) → walks 9-step workflow → ends with PM-411-ish brain close. Bug list inline:
+
+1. **iOS LaunchScreen.storyboard root view bg = pure white.** `<color key="backgroundColor" systemColor="systemBackgroundColor"/>` resolves to `<color white="1" alpha="1" .../>`. Splash imageset 1366×1366 `contentMode="scaleAspectFill"` — portrait iPhone shows white edges past the rounded logo. Fix: swap root view bg from `systemBackgroundColor` → VYVE Dark `#0D2B2B` via IB or storyboard XML edit. Confirmed in remote inspection this session.
+
+2. **Android `ic_launcher_background.xml` = `#FFFFFF`.** Adaptive icon foreground IS the VYVE V drawable (assets present in all 5 density buckets via `mipmap-{hdpi,mdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher_foreground.png`). Background colour resource is the bug. Fix: change to `#0D2B2B`. Note Dean's local Mac binary shows Capacitor default because Mac local is at initial commit `3432aab` pre-the-asset-regen — once playbook recovery happens, this resolves alongside.
+
+3. **`capacitor.config.json` is DEV-LOOP MODE, not bundled mode** — biggest finding of the session, contradicts brain memory #4 + §23.42. Remote file: `{"appId":"co.uk.vyvehealth.app","appName":"VYVE Health","webDir":"www","server":{"url":"https://online.vyvehealth.co.uk","cleartext":false}}`. No LiveUpdate config. No `iosScheme/androidScheme/hostname`. If bundled as-is every member gets a thin shell pointing at online.vyvehealth.co.uk — opposite of PM-115/PM-116 spec. **Decision needed Thursday from Dean BEFORE any other Capacitor work**: (a) ship proper bundled mode with LiveUpdate + Capawesome app `f9961f66-eb66-4102-b1c5-f9b2c7baeebf` prod channel `89e12796`, (b) ship dev-loop mode for trial cohort accepting network dependency, or (c) something else. Answer determines whether Bugs 6 + 7 are tonight or parked.
+
+4. **Android `build.gradle` versionCode 1 / versionName 1.0** — but brain says Android 1.0.2 awaiting Google review. Mismatch — must bump beyond live Play Console state. Plan probably `versionCode 4 / versionName "1.0.3"` per §23.42 bundled-mode Android target.
+
+5. **Android `styles.xml` base AppTheme = `Theme.AppCompat.Light.DarkActionBar`** — contributes to bright-white first-load. Switch to `Theme.AppCompat.DayNight.NoActionBar`. Optional for tonight, defer.
+
+6. **`package.json` no `@capawesome/capacitor-live-update`** — required only if Bug 3 option (a). NOTE THIS WAS WRONG: Xcode Package Dependencies panel showed `CapawesomeCapacitorLiveUpdate local` is INSTALLED on Dean's Mac just NOT COMMITTED to remote package.json. So this is partly a sync issue not a missing-plugin issue.
+
+7. **Android Health Connect needs wiring.** `@capgo/capacitor-health@8.4.7` already in package.json (unified plugin). What's missing: AndroidManifest only declares `<uses-permission android:name="android.permission.INTERNET" />`. Need additional `<uses-permission>` entries for Health Connect + `<queries>` block + Gradle SDK dependency. healthbridge.js needs Android branch parallel to iOS HealthKit. Decisions Dean owes: read-only vs read+write (default read-only); metric set (default Steps + Active calories + Heart rate matching iOS HealthKit core); permission trigger surface (default Settings → Connect button matching `apple-health.html`). Health Connect approved by Google per Dean — wiring only.
+
+Plus standard playbook workflow (Mac diagnose → stash → ff-pull → cleanup → fix bugs → asset regen → rsync www/ → cap sync → keystore safety + 1Password upload → Xcode Archive + ./gradlew bundleRelease → App Store Connect + Play Console upload). Project rules embedded: memory #7 native-not-browser, Lewis no emojis.
+
+### Item 2: Body-hub overhaul campaign (Bug A + B + C) — Thursday or post-trial
+
+Surfaced during the deanonbrown2@gmail.com end-to-end onboarding walk this session. Dean assigned Movement persona by AI, swapped to Strength manually via Browse Library — exposing three distinct bugs:
+
+**Bug A — Movement plan is structurally homeless (architectural, post-trial campaign).** `exercise.html` L350 `<a class="hero-cta" id="hero-cta" href="workouts.html">View Programme</a>` is hardcoded `workouts.html` regardless of programme category. Live SQL audit confirmed every `workout_plan_cache` row has `category: null` — no programme in the system today carries category metadata. So even if exercise.html branches on category, there's nothing to branch on. Fix scope (4-6h minimum):
+1. Backfill `category` in `programme_library` (content classification work)
+2. Onboarding EF v37 writes `category` into `workout_plan_cache`
+3. exercise.html hero CTA branches: `category==='movement'` → `movement.html`, else → `workouts.html`
+4. movement.html consumes + displays the programme card at top (currently has no programme-block structure, just session-logging pills at L243-267 with Walk/Stretch/Yoga/Mobility/Pilates/Other + "Log session" button at L267 + "Mark as Done" at L225). Needs design talk on what the Movement programme card looks like — mockup before code.
+
+Note: movement.html already filters `programme_json.category === 'movement'` at L440-486 — it's READY to consume a categorised plan, just nothing's writing the category.
+
+**Bug B — Workout selection doesn't update until reload (Dexie stale-read race, surgical fix).** `activateProgramme()` in workouts-library.js correctly: POSTs to workout-library EF → server updates Supabase → clears localStorage cache → nulls programmeData + cacheRow → calls loadProgramme → which should call renderProgramme. Trace through proves renderProgramme SHOULD fire. Real root cause at `workouts-programme.js` L78-89 (PF-7 Dexie local-first path): when `_pf7Local` is enabled, calls `VYVESync.criticalHydrate('workouts')` UN-AWAITED then reads from Dexie immediately. Dexie still has the OLD plan because the sync hasn't propagated yet. loadProgramme returns oldFresh, paints OLD plan. User sees no change until manual page reload (which forces fresh Dexie state). Fix scope (30-45 min): await criticalHydrate, OR skip Dexie path when called from a cache-bust context, OR invalidate the Dexie row before reading. Single-file edit in workouts-programme.js.
+
+**Bug C — Browse Library tab broken at runtime (surgical fix, needs device console).** Static check is clean: `switchTab('library')` exists in workouts-programme.js L49, `loadLibrary` exists in workouts-library.js L70, both `library-loading` + `library-content` DOM elements exist at workouts.html L309-311, `programme_library` table has 30 active rows, RLS policy is permissive (`USING (is_active = true)`), `CATEGORY_LABELS` defined at L12, `loadPausedPlans` defined at L37. So failure is runtime JS error swallowed by an outer try/catch. Candidates: `getJWT()` returning undefined for new test accounts; `VYVEData.cacheGet/cacheSet` API drift from a recent sync change; async error in `renderLibrary` first-paint. Fix scope (~30 min device debugging + ~10-30 min surgical patch).
+
+### State at session-end
+
+- vyve-site HEAD `050db258` PM-409 (parallel session, debug surface gating per `e75b2d7a→050db258` chain post-PM-408 analytics)
+- vyve-site PM-406 (my offline scope fix) → PM-408 (analytics) → PM-409 (debug surface gating) all in the timeline since session start
+- vyve-capacitor remote `4f5f55ae` PM-250 unchanged (no Capacitor commits this session)
+- Brain HEAD post-this-commit PM-411
+- Cross-repo max PM = 411
+
+### Schema-architecture note banked NOT codifying solo
+
+`workout_plan_cache` table has TWO contradictory UNIQUE indexes:
+- `workout_plan_cache_member_email_key`: UNIQUE on (member_email) — only one row per member, period
+- `workout_plan_cache_one_active_per_member`: UNIQUE on (member_email) WHERE is_active=true
+
+The second implies multi-row-per-member design (active + paused plans). The first contradicts it. workout-library EF v13 has paused-plan logic at L60-84 that assumes multi-row support, but upserts at L98-110 use `onConflict: 'member_email'` which silently overwrites due to the broader UNIQUE. **Net result: "paused plans" feature has likely never worked** — every plan swap nukes the previous one. Confirmed empirically on test account: 1 row (Strength), no paused Movement row preserved. Banked for Body-hub overhaul campaign. Promotes to §23 when second occurrence of contradictory-UNIQUE schema bug surfaces.
+
+### Cross-session collisions
+
+§23.58 fresh-HEAD check pre-commit caught parallel ship `d58e6a2b` PM-409.b (brain debug surface gating ship) landing AFTER my PM-410 brain close earlier this session. No content collision — parallel session touched active.md + master.md §19 + changelog, my park entry is prepend-only on changelog + new sections only. PM claim recomputed at commit time: cross-repo max=410 (mine, PM-410), claim PM-411 uncontested.
+
+### Tooling
+
+PAT-direct via Vault throughout (Composio still down, ~6 days since 21 May incident). All file fetches via Git Blob API per §23.58 — brain/master.md and brain/changelog.md exceed Contents API truncation threshold. Atomic commit via Git Data API blobs → tree → commit → ref-update with §23.41 sha256-MATCH verification on all 3 files.
+
+---
+
 ## 2026-05-26 PM-409.b — Pre-bundle debug surface gating (debug strip + reset achievements + unified dev-panel flag)
 
 vyve-site `050db258`, brain `PM-409.b` (this entry). Closes the pre-bundle audit Dean asked for at session start: "remove or hide-from-members the debug surfaces visible today (force-refresh / reset-achievement / live page debug strip)."

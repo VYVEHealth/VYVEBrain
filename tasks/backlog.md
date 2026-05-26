@@ -1,3 +1,48 @@
+## PARKED 26 May 2026 — PM-411 — Bundle-prep + Body-hub overhaul
+
+Dean returns Thursday once Pro 20x weekly limit resets.
+
+### Item 1: Bundle-prep prompt READY
+
+Artifact at `/mnt/user-data/outputs/bundle-prep-prompt.md`. Conversational prose, first-person Dean voice, no emojis. Walks fresh chat through: load brain → read vyve-capacitor-mac-sync playbook → 7 named bugs in remote `4f5f55ae` → 9-step playbook workflow → end-of-session brain commit closing PM-412+.
+
+**Bugs documented in prompt (full state in changelog PM-411 entry)**:
+1. iOS LaunchScreen.storyboard root view bg = pure white → fix to `#0D2B2B`
+2. Android `ic_launcher_background.xml` = `#FFFFFF` → fix to `#0D2B2B`
+3. **capacitor.config.json is DEV-LOOP MODE not bundled — Dean decision needed BEFORE other work**: (a) bundled with LiveUpdate, (b) dev-loop for trial, (c) other
+4. Android `build.gradle` versionCode 1/versionName 1.0 → bump beyond Play Console
+5. Android styles.xml `Light.DarkActionBar` → `DayNight.NoActionBar` (optional)
+6. package.json `@capawesome/capacitor-live-update` not committed (Mac local has it installed per Xcode Package Dependencies)
+7. Android Health Connect wiring — AndroidManifest + Gradle SDK + healthbridge.js Android branch (plugin present)
+
+**Project rules embedded in prompt**: memory #7 (native not browser, no URL bar tricks), Lewis no emojis.
+
+### Item 2: Body-hub overhaul campaign
+
+Surfaced during deanonbrown2@gmail.com end-to-end onboarding walk this session.
+
+**Bug A — Architectural (4-6h, post-trial)**: Movement plan structurally homeless. exercise.html hero CTA L350 hardcoded `href="workouts.html"` ignoring programme category. Every workout_plan_cache row has `category: null` — no branching surface exists. Fix needs:
+- programme_library category backfill
+- Onboarding EF v37 writes category into workout_plan_cache
+- exercise.html branches: `category === 'movement'` → movement.html, else → workouts.html
+- movement.html consumes + displays programme card at top (currently only has session-logging pills + Mark as Done button)
+
+Note: movement.html L440-486 already filters `category === 'movement'` — it's READY to consume categorised plans, nothing's writing them.
+
+**Bug B — Surgical (30-45min, Thursday)**: Workout selection doesn't update until reload. PF-7 Dexie stale-read race in workouts-programme.js L78-89. activateProgramme flow correctly clears cache + nulls programmeData + cacheRow + calls loadProgramme, but loadProgramme's Dexie-first path calls criticalHydrate UN-AWAITED then reads Dexie immediately — Dexie still has OLD plan because sync hasn't propagated. Single-file fix: await criticalHydrate, OR skip Dexie on cache-bust contexts, OR invalidate Dexie row before reading.
+
+**Bug C — Surgical (30-60min, needs device console)**: Browse Library tab broken at runtime. Static check clean — switchTab + loadLibrary + DOM + RLS + 30 programmes + CATEGORY_LABELS + loadPausedPlans all present. Failure is runtime JS error swallowed by outer try/catch. Candidates: getJWT undefined for new accounts, VYVEData API drift, async error in renderLibrary first-paint.
+
+### Schema-architecture note (banked, not codifying solo)
+
+`workout_plan_cache` has TWO contradictory UNIQUE indexes:
+- `workout_plan_cache_member_email_key` UNIQUE on `(member_email)` — blocks multi-row
+- `workout_plan_cache_one_active_per_member` UNIQUE on `(member_email) WHERE is_active=true` — assumes multi-row design
+
+workout-library EF v13 paused-plan logic at L60-84 likely never works correctly — upserts at L98-110 `onConflict: 'member_email'` silently overwrite the previous plan due to the broader UNIQUE constraint. Empirically confirmed on test account: 1 row only, no paused Movement preserved after swap to Strength. Promotes to §23 on second contradictory-UNIQUE occurrence.
+
+---
+
 ## SHIPPED 26 May 2026 — PM-410 — Replay catalogue wipe via YouTube archive + refresh-replay-videos v2 reconciliation
 
 All 33 test-content replay videos archived into private YouTube playlist `PLyaCafiXVssjqWqYpqntk3kdjb0BSCOIL` ("VYVE Archive — Dev & Testing (pre-launch)", `privacyStatus: private`, chronological by `publishedAt` ASC). Source 8 category playlists now empty on YouTube. `refresh-replay-videos` upgraded to v2 with reconciliation step (closes the upsert-only stale-row architecture gap from v1 PM-241). All replay-side Supabase data wiped clean: `replay_videos` 30→0, `replay_video_views` 4→0 (cascade), `replay_views` 10→0 (separate DELETE), `replay_playlists` `video_count + latest_video_*` cleared on all 8 rows.
