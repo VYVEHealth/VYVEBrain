@@ -3014,7 +3014,6 @@ These are tracked but not gating. Own owners, own timelines.
 
 - [ ] HAVEN clinical sign-off (Phil). Conor Warren on HAVEN since 15 April — Phil to review interactions.
 - [ ] PF-13 hydration COPY_TABLE finalisation. 23 entries tagged `COPY_DEAN_FINAL` in `/hydration.js`. ~30-45 min Dean writing time.
-- [ ] **Facebook Make connection refresh — expires 22 May 2026 — URGENT.** Lewis.
 - [ ] Public launch comms draft (Lewis).
 - [ ] B2B volume tier definition (Lewis + Dean). Pre-first-enterprise-contract.
 - [ ] Mind v1 Lewis copy review — affirmations / journal / breathwork seed content. `COPY_LEWIS_REVIEW` tags throughout.
@@ -5784,7 +5783,6 @@ Calum (Physical Health Lead) has delivered the spec, scoring data, and QA framew
 
 ## Lewis Actions (Business)
 
-- Facebook Make connection — **EXPIRES 22 MAY 2026 (CRITICAL)**
 - Make social publisher fix — 133 posts stuck since 23 March
 - B2B volume discount tiers — define before first contract
 - Annual pricing discount % decision

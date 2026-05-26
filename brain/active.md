@@ -314,7 +314,7 @@ This commitment may not be revised without producing a specific measured problem
 
 - **Phase 5 — Bundle and OTA.** NOT STARTED. Three tasks queued from PM-178 (port hotfix to main, sweep main, first-ever Capawesome OTA push). Consider `--rollout 0.1` for first push.
 
-- **Phase 6 — External-blocker items.** OPEN. HAVEN sign-off (Phil), PF-13 hydration COPY_TABLE finalisation (Dean), Facebook Make connection refresh (Lewis — URGENT, expires 22 May), public launch comms (Lewis), B2B volume tiers (Lewis + Dean), Mind v1 Lewis copy review.
+- **Phase 6 — External-blocker items.** OPEN. HAVEN sign-off (Phil), PF-13 hydration COPY_TABLE finalisation (Dean), public launch comms (Lewis), B2B volume tiers (Lewis + Dean), Mind v1 Lewis copy review.
 
 ### What drops off the radar entirely
 
@@ -478,10 +478,9 @@ Every member-data surface in the portal falls into exactly one of these four pat
 ### Phase 6 — External-blocker items (off the critical path, tracked separately)
 21. **HAVEN clinical sign-off** (Phil). Conor Warren on HAVEN since 15 April — Phil to review interactions.
 22. **PF-13 hydration COPY_TABLE finalisation** (Dean writes, Lewis spot-check). 23 entries tagged `COPY_DEAN_FINAL`.
-23. **Facebook Make connection refresh** — expires 22 May 2026. **URGENT — today/tomorrow.** Lewis.
-24. **Public launch comms draft** (Lewis).
-25. **B2B volume tier definition** (Lewis + Dean). Pre-first-enterprise-contract.
-26. **Mind v1 Lewis copy review** — affirmations / journal / breathwork seed content. `COPY_LEWIS_REVIEW` tags throughout.
+23. **Public launch comms draft** (Lewis).
+24. **B2B volume tier definition** (Lewis + Dean). Pre-first-enterprise-contract.
+25. **Mind v1 Lewis copy review** — affirmations / journal / breathwork seed content. `COPY_LEWIS_REVIEW` tags throughout.
 
 **P1 — desired before launch, acceptable to slip:**
 

@@ -1,3 +1,37 @@
+## 2026-05-26 PM-409 brain close — Facebook Make connection refresh scrubbed from forward-looking surfaces. Pre-bundle hygiene pass continuation of PM-407.
+
+Dean's session-open call after PM-407 lands: "removed all note as a Facebook made connection refresh, I don't need to know that." Carries forward from PM-407 scope rationale — same hygiene pass on a stale Lewis-blocker, separate ship because PM-407 closed before Dean surfaced this one. Six live forward-looking surfaces stripped; four dated historical carry-forward entries in tasks-backlog (PM-65/PM-72/PM-77-era dated session-end records at L4354/L4388/L4478/L4520) intentionally untouched per PM-407 frozen-history doctrine.
+
+### Files patched (4 atomic via Git Data API per §23.52(a))
+
+- `brain/master.md` — 3 strikes: §20 enterprise blockers table (Facebook Make row dropped); §21 Phase 6 bullet (Facebook Make line dropped); §24 keys & secrets table (Facebook connection expiry row dropped).
+- `brain/active.md` — 2 strikes: Phase 6 narrative line (Facebook Make refresh phrase dropped); Phase 6 numbered checklist (item 23 dropped, items 24-26 renumbered to 23-25).
+- `tasks/backlog.md` — 2 strikes: PM-401.b NEXT FOCUS tracked-not-gating list L3017 (Facebook Make line dropped); Lewis Actions L5786 (Facebook Make connection line dropped).
+- `brain/changelog.md` — this entry prepended.
+
+### §23 hard rules fired this session
+
+- **§23.41 fresh-HEAD recheck** — fired LOUD. Initial composition was off PM-407 parent `3959bd4832`. Pre-commit §23.66 + §23.74 PM-claim scan caught parallel session PM-408 brain ship (`616210d5ff`, "Analytics taxonomy ship — vyve-site e75b2d7a, 48 files atomic") landed between PM-407 close and this commit. Re-fetched master/active/tasks-backlog/changelog post-PM-408, snapshotted PM-407 edits, replayed all 6 Facebook Make strips on fresh content. PM-407 edits confirmed survived in PM-408 brain. PM-claim incremented PM-408 → PM-409.
+- **§23.58 brain whole-file overwrite hazard** — exactly the failure mode this rule defends against. Parent-SHA match (3959bd48 = PM-407) was no longer valid post-PM-408 ship; whole-file blobs would have silently overwritten PM-408's analytics-taxonomy content if committed without re-fetch. Caught at the §23.66 pre-commit scan, not at parent-SHA validation — proving §23.58's "necessary but not sufficient" framing.
+- **§23.66 fresh-HEAD recheck at commit time** — fired clean post-rebase. Brain HEAD `616210d5ff` (PM-408) confirmed unchanged immediately before commit composition.
+- **§23.70 PM-claim recompute** — vyve-site max-PM = 408 (`e75b2d7a` parallel analytics taxonomy ship), brain max-PM = 408 (`616210d5ff`). PM-409 uncontested across both repos.
+- **§23.74 cross-repo PM scan** — same as §23.70 above; clean.
+- **§23.52(a)/(b)/(c)** Git Data API multi-file atomic via Python urllib + blob-by-SHA + tree-by-SHA + commit-with-parent + refs/heads/main update.
+
+### Tooling notes
+
+Composio still 401 (~5 days), §23.45 PAT-direct via Vault used throughout per memory #8. Local PAT cached at `/tmp/.pat` from session-open Vault pull. All GitHub reads via `curl Accept: application/vnd.github.raw`, this commit via Git Data API blob→tree→commit→update-ref. §23.41 post-commit byte-perfect verification of all 4 patched files at commit SHA via blob-by-SHA per §23.79 (changelog.md >2.6MB exceeds Contents API inline limit).
+
+### Pre-bundle context
+
+Hygiene-only — no vyve-site changes, no member-facing change, brain narrative cleanup only. Pre-bundle walk (PM-403.b Session B) will read a cleaner external-blocker surface; the Facebook Make item won't show up as a false-positive blocker in the READY TO BUNDLE green/red report. Combined PM-407 + PM-409 cleanup removes five stale entries from the Lewis-blocker / external-blocker surfaces (Brevo logo, health disclaimer, weekly check-in slider mirror, monthly check-in slider mirror, Facebook Make refresh).
+
+### Open after this commit
+
+Unchanged from PM-407 (modulo PM-408's analytics taxonomy work which Dean is now informed of separately) — three P0 launch blockers (keystore 1Password co-location, vyve-capacitor git init, debug strip gating), Session A monitoring restoration build, Session B pre-bundle walk → READY TO BUNDLE report, then Capacitor bundle freeze + App Store + Play Store submission. Order of operations confirmed by Dean: bundle and submit first, then full brain audit in fresh chat (audit prompt draft pending Dean's confirmation).
+
+---
+
 ## 2026-05-26 PM-408 vyve-site ship — Analytics taxonomy lands before Capacitor bundle freeze
 
 48 files atomic at vyve-site `e75b2d7a`. New `analytics.js` PostHog bridge (267 lines) subscribes to 29 VYVEBus events at `envelope.origin === 'local'` filter — no double-counting from cross-tab/cross-device echoes. Mirrors to PostHog with allowlisted ~30-key payloads. Events covered: habit/workout/cardio/movement/mind logged + failed variants, session:viewed + replay:viewed, wellbeing + monthly_checkin, food + weight, persona:switched, connect:checkin + reactions, workout:shared, mind:unlogged. Skipped deliberately: body:logged (aggregator double-count risk), set:logged (high-volume per-set, workout:logged summary suffices), habits:set-changed (config), avatar:changed / specific_goal:changed / programme:imported / focus:write_failed (low signal). Curated from `grep VYVEBus.publish(` whole-tree audit at HEAD 20a23f7d — 37 distinct event names live, 86 publish call sites.

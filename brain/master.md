@@ -1631,7 +1631,6 @@ The mechanics above compound — they're not mutually exclusive. Order of likely
 
 | Item | Owner | Status |
 |---|---|---|
-| Facebook Make connection refresh | Lewis | **CRITICAL — EXPIRES 22 MAY 2026** |
 | B2B volume tiers defined | Lewis + Dean | OPEN |
 | Make social publisher fix (Scenario 4950386) | Lewis | DEFERRED (133 posts stuck since 23 March) |
 | HAVEN clinical review | Phil | PENDING — persona content held from sign-off; auto-assignment currently active in production (see §10) |
@@ -1678,7 +1677,6 @@ The mechanics above compound — they're not mutually exclusive. Order of likely
 - HAVEN clinical sign-off (Phil).
 - Weekly check-in nudge copy split (Phil + Lewis).
 - PF-13 hydration copy finalisation. Schema-side migrated PM-372 — Dean now finalises via `UPDATE public.persona_welcome_copy` in Supabase Studio (no vyve-site commit needed). 13 rows live, seeded verbatim from the PF-13 draft. When finalised, sweep `FALLBACK_COPY_TABLE` in hydration.js to lockstep so cold-paint and live-paint converge.
-- Facebook Make connection refresh — **expires 22 May 2026, URGENT** (Lewis).
 - Public launch comms draft (Lewis).
 - B2B volume tier definition (Lewis + Dean).
 - Mind v1 Lewis copy review on affirmations/journal/breathwork seed content.
@@ -3797,7 +3795,6 @@ These remain in the historical backlog as superseded. Post-launch they can be re
 | SW cache | See live `vyve-site/sw.js` (key bumps on every portal commit; do not maintain inline here). Latest at this rewrite: `vyve-cache-v2026-05-08-perf-shim-f` (08 May 2026 PM-21). |
 | Make social publisher | Scenario 4950386 — BROKEN since 23 March |
 | Make analytics collectors | Scenarios 4993944 (IG), 4993948 (FB), 4993949 (LinkedIn) → Data Store 107716 |
-| Facebook connection expiry | **22 MAY 2026 — Lewis to renew urgently** |
 | GitHub PAT | `GITHUB_PAT_BRAIN` — scoped to `VYVEHealth/VYVEBrain` Contents R/W. Expires **18 April 2027** (calendar rotation required) |
 | GitHub PAT (Composio fallback) | Stored in Supabase Vault as `GITHUB_PAT_CLAUDE` (project `ixjfklpckgxrwjlfsaaz`, secret UUID `0c17013f-c79b-4950-8e2f-589ef81078cc`). Fine-grained, VYVEHealth org resource owner, all-repos, Contents + PRs + Workflows R/W. **Claude fetches via Supabase MCP:** `execute_sql` with `SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'GITHUB_PAT_CLAUDE'` — never ask Dean to paste it. Used when Composio is down (per §23.45). Expires **20 June 2026** (calendar rotation required) — 30-day fine-grained token created during PM-185 Composio incident. |
 | YouTube Data API v3 OAuth | Three Vault secrets in project `ixjfklpckgxrwjlfsaaz`: `YOUTUBE_OAUTH_CLIENT_ID`, `YOUTUBE_OAUTH_CLIENT_SECRET`, `YOUTUBE_OAUTH_REFRESH_TOKEN`. Google Cloud project `vyve-website`. Scope: `https://www.googleapis.com/auth/youtube`. Owner account: `team@vyvehealth.co.uk` (manager of 9 brand-account channels — Yoga, Mindfulness, Workouts, Weekly Check-In, Group Therapy, Events, Education, Podcast, plus a 9th). Provisioned 23 May 2026 (PM-215 prep). **Refresh token 7-day expiry while OAuth consent screen is in Testing state** (`refresh_token_expires_in: 604799`). Re-mint weekly via `https://developers.google.com/oauthplayground` (Use your own OAuth credentials → custom scope `https://www.googleapis.com/auth/youtube` → exchange code → copy refresh token → update Vault). Eliminate the rotation by submitting the consent screen for Google verification (one-time, ~3-7 day review). Backlog item for verification submission post-launch. |
