@@ -4079,4 +4079,35 @@ All five compose. Run §23.69 at session start; run §23.66 + §23.68 + §23.70 
 
 ---
 
+### §23.75 — Pre-bundle debug surface gating discipline (PM-409, 26 May 2026)
+
+**Rule.** Before any production bundle commits, every debug surface on the member-facing app must be either (a) hidden behind the canonical `localStorage.vyve_dev_panel_unlocked === '1'` flag, (b) hidden behind a URL parameter that can't be set in the native app (`?debug=`-style — safe because Capacitor has no address bar), or (c) deleted from the codebase. "Debug-labelled but technically harmless" UI is not acceptable; the label itself is the problem.
+
+**Why.** Debug surfaces drift into the member-facing app by a predictable mechanism: each one is added during active development with the rationale "Dean needs to see this on-device to diagnose X, I'll hide it once X is proven." Then X gets proven, attention moves to Y, and the surface stays. Five months later the audit produces ~10 visible-by-default debug surfaces, each shipped with an honest "will hide later" comment. The aggregate effect is a member-facing app that screams "this is a developer build." Bundle prep is the forcing function.
+
+**Canonical pattern: one flag, multiple surfaces, one gesture.**
+
+- **Flag.** `localStorage.vyve_dev_panel_unlocked === '1'`. Read-only check, never written to from member-facing code paths.
+- **Surfaces.** Each debug surface reads the flag once at its lifecycle entry point. If unlocked, the surface renders / listener attaches / row reveals. If locked, the code path is skipped entirely (not just hidden via CSS — actually skipped, saves resources).
+- **Gesture.** 5 taps in 3 seconds on a benign UI element (App version label on settings-account.html, Build row on settings.html). Alert confirms unlock/lock with the same flag, so Dean can toggle from any settings surface. Persisted across sessions via the localStorage write.
+- **No URL-param-only gates for native-app surfaces.** The native app has no address bar (memory §15 / master §23.29). URL-gated debug works on dev-loop Safari sessions but not on native devices — useless for the "Dean needs to verify on-device" diagnostic use case. URL-only gates are acceptable ONLY where the surface is also accessible via the localStorage flag.
+
+**Audit signal at scan time.** Repository-wide grep for: `force[\s-]*refresh`, `reset.{0,20}(achievement|cache|local|dexie|data|member)`, `\?debug=`, `dev[\s_-]?panel`, `developer[\s_-]*tools?`, `\bdiagnostic\b`, `localStorage\.removeItem`, `localStorage\.clear`, `indexedDB\.deleteDatabase`. Cross-reference each hit against the three gating patterns above. Anything visible by default is a launch-blocker.
+
+**Audit signal at commit time.** Any new commit that adds a UI element with "(debug)" in a visible label, or any commit that adds an always-on debug overlay (PM-310-style), must include the gating in the same commit. No "I'll add the gate later" follow-up tickets — the gate ships with the surface or the surface waits.
+
+**Console logging is exempt.** `console.log/warn/error/debug` calls in production code paths are not member-visible — Capacitor has no devtools attached on member devices. They are the diagnostic trail for post-launch bug reports. Removing them pre-bundle is anti-pattern.
+
+**Application history.**
+
+- PM-310 (24 May 2026) shipped `renderDebugStrip` as always-on across all 8 live shells with "will hide later" comment. PM-409 retroactively gated.
+- PM-341 (~25 May 2026) shipped "Reset achievements (debug)" row visible on settings.html with member-facing label. PM-409 retroactively gated + relabelled.
+- PM-183.7 (21 May 2026) shipped settings-account.html Developer Tools section already gated by `vyve_dev_panel_unlocked`. Pattern source — PM-409 generalised it.
+- PM-126 / PM-127 (~PM-126 epoch) shipped index.html build banner already URL-gated. Pattern source — exemption clause for URL-only gates established here.
+
+**Sibling to §23.44 (script-tag inclusion auditing).** Both are pre-ship audit rules. §23.44 catches silently-degraded pages; §23.75 catches visibly-overshared dev surfaces. Run both as part of bundle-ready gate (Phase 4 of Bundle-Ready campaign).
+
+---
+
+
 

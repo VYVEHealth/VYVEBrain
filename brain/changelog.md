@@ -1,3 +1,57 @@
+## 2026-05-26 PM-409.b — Pre-bundle debug surface gating (debug strip + reset achievements + unified dev-panel flag)
+
+vyve-site `050db258`, brain `PM-409.b` (this entry). Closes the pre-bundle audit Dean asked for at session start: "remove or hide-from-members the debug surfaces visible today (force-refresh / reset-achievement / live page debug strip)."
+
+### Audit findings (HEAD `e75b2d7a` at scan time)
+
+129 files (86 HTML + 44 JS) scanned in parallel via ThreadPoolExecutor. Patterns: force-refresh, reset-* labels, ?debug= query params, dev-panel keys, diagnostic overlays, console.log/warn/error noise. Three categories of finding:
+
+**Class A — member-visible debug surfaces (action required):**
+
+1. **`session-live.js` PM-310 always-on debug strip** — fixed-position monospace overlay at `bottom:80px` covering player chrome, painted on every render via `renderDebugStrip(state, ctx)` (L567). Spans all 8 live shells that share `session-live.js`: yoga-live, mindfulness-live, workouts-live, therapy-live, education-live, podcast-live, checkin-live, events-live. PM-310 comment explicitly said "Will hide behind a settings flag once tracker is proven on live; for now stays visible so Dean can verify attribution state on-device." Time to hide.
+
+2. **`settings.html` "Reset achievements (debug)" row** (L750) — title contains "(debug)", visible to every member, wipes Dexie member_achievements via `VYVEAchEval.devResetEarns()`. Internal-only utility for clearing test rows after server-side delete.
+
+3. **`settings.html` "Force refresh app" row** (L735) — labelled with member-friendly copy ("Clear cached assets and reload"). Comment at L2027 explicitly notes the row is safe for member use: "if a member hits it it just refreshes their session, no harm." Decision: **keep member-visible**. Legitimate self-service "I'm stuck on an old version" escape hatch, particularly important for bundled-mode members hit by OTA churn. The neighbouring "(debug)" labelled row was the embarrassment, not Force Refresh itself.
+
+**Class A — correctly gated already (no change needed):**
+
+- `dexie-source-indicator.js` — `localStorage.vyve_lf_spike === '1'` (L40).
+- `index.html` build banner — `?debug=build` URL or `localStorage.vyve_debug_build === '1'` (L1099).
+- `replays.html` ?debug=1 diagnostic — URL-gated (L803); native app has no address bar so members can't accidentally trigger.
+
+**Class B — orphan debug pages (no nav links in):**
+
+Cross-grep across all 129 files found zero nav/menu/auth references to `hk-diagnostic.html`, `perf-test.html`, `reset-cache.html`, `achievements-mockup-c.html`, `achievements-mockup-pathb.html`. `VYVE_Health_Hub.html` already known as Phil-gated staging per master §22. Only inbound link found: `sw.js` precaches `/perf-test.html` (PM-75 soak harness allowlist), `auth.js` redirects to `consent-gate.html` (production flow). Decision: **leave all in repo**. Bundling cost is trivial bytes, removal cost is N commits each with §23.41 / §23.58 / §23.70 overhead. Post-launch tidy-up, not bundle-blocker. `reset-cache.html` is now functionally redundant with the Force Refresh row in settings.html — flagged for backlog.
+
+**Class C — console noise (212 warn, 91 error, 34 log):** Production-silent in Capacitor without devtools attached. Leave as the diagnostic trail for post-launch bug reports. No change pre-bundle.
+
+### What shipped (vyve-site `050db258` atomic 4-file commit)
+
+**`session-live.js`** — `renderDebugStrip(state, ctx)` call at L567 wrapped in `if (_devPanelUnlocked()) renderDebugStrip(state, ctx)`. New `_devPanelUnlocked()` helper reads `localStorage.vyve_dev_panel_unlocked === '1'` with defensive try/catch for private-mode Safari edge case. The PM-328 postMessage listener IIFE (L582-594) also gated — listener attach now skipped entirely on member devices, saving the closure scope and the regex test on every cross-origin message.
+
+**`settings.html`** — Reset achievements row (L743-753) re-titled from "Reset achievements (debug)" to "Reset achievements", `style="display:none;..."` added inline so it's hidden by default. `populateBuildMarker()` extended with a `wireDevPanelGesture` IIFE that (a) reads the unlock flag on initial paint and reveals the row if Dean already unlocked elsewhere, (b) wires a 5-taps-in-3s gesture on the Build row to toggle the flag with alert confirmation. Mirrors the existing settings-account.html App-version-tap gesture exactly. One localStorage key (`vyve_dev_panel_unlocked`) now gates three surfaces: renderDebugStrip across all live pages, Reset achievements row on settings.html, Developer Tools section on settings-account.html. Unlock from either settings surface lights up all three.
+
+**`index.html`** — vbb-marker 286 → 287.
+**`settings.html`** — vbb-marker 286 → 287.
+**`sw.js`** — `CACHE_NAME` `pm408-analytics-taxonomy-a` → `pm409-debug-gating-a`.
+
+All JS validated via `node --check` (4 inline blocks in settings.html, 11 in index.html, plus session-live.js and sw.js directly). §23.41 byte-equal verification on first 200 chars of all 4 files post-commit confirmed.
+
+### New hard rule earned: §23.75 — Pre-bundle debug surface gating discipline
+
+Codified in master.md. Captures the "every debug surface visible by default is a launch-blocker" principle and the canonical unification pattern (one localStorage flag, multiple gated surfaces, member-friendly gesture for Dean access). The rule guards against the natural-drift failure mode where each debug surface gets shipped as "I'll hide it later" and "later" never comes until a member sees it.
+
+### Production state
+
+vyve-site main HEAD `050db258`. Bundled production iOS 1.3 / Android 1.0.3 still at SHA `83874dd5` (frozen 15 May per PM-115/116) — members do not see the gating until next OTA bundle. Dean's dev iPhone via `server.url` dev-loop picks up new gating on next WKWebView cache cycle (2-15 min per §23.29), confirmable via `?debug=build` showing Update 287 / `pm409-debug-gating-a`.
+
+### Next session pickup
+
+Bundle-Ready Phase 5 work remains the canonical next surface (Bundle + OTA). The debug-gating hygiene is now done; if anything else surfaces during a final Phase 4 offline-correctness pass (pre-bundle gate), handle it then.
+
+---
+
 ## 2026-05-26 PM-410 — Replay catalogue wipe via YouTube archive + refresh-replay-videos v2 reconciliation ship
 
 Pre-launch hygiene: 33 test-content replay videos archived from 8 live YouTube playlists into a private archive playlist, and the upsert-only sync EF (refresh-replay-videos) gained a reconciliation step so future YouTube-side removals propagate to Supabase automatically. Member-facing replay app surface is now fully cleared — every category shows the empty state on next refresh.
