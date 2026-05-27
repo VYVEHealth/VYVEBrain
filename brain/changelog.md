@@ -1,3 +1,101 @@
+## 2026-05-27 PM-417 HealthKit workout distance shipped — Capgo field-name fix (forward only; backfill patcher specced)
+
+Lewis raised that his Apple Watch cardio rows pull through to cardio history with date/time/type but never distance. Dean asked me to dig. Bug located, fix shipped surgically, backfill patcher specced for next session.
+
+### Root cause
+
+`healthbridge.js` L230 in `sampleToEF()` read `s.distance` from the Cap-go `@capgo/capacitor-health` workout sample object. The Cap-go `Workout` TypeScript interface (verified live against https://github.com/Cap-go/capacitor-health README, plugin v8.4.2 current) exposes distance as **`totalDistance`** (metres) and energy as **`totalEnergyBurned`** (kilocalories). Field names are unified across both iOS HealthKit and Android Health Connect — same shape both platforms.
+
+Consequence: `s.distance` was always `undefined` on every workout sample since allowlist drop (26 April 2026). The conditional `s.distance ? { distance_m: s.distance } : {}` spread an empty object into metadata. Downstream `sync-health-data` v9 `promoteMapping()` correctly reads `sample.metadata.distance_m` and converts to `distance_km` — but there was never anything to read.
+
+Confirmed against live data: queried Lewis's `member_health_samples` for sample_type='workout' — every single row's metadata JSONB contains only `{HKTimeZone, HKIndoorWorkout}` going back to December 2025. No `distance_m` key has ever been written by this codepath. The `cardio` table mirror confirms it: every HealthKit-sourced cardio row has `distance_km IS NULL`.
+
+Duration works because the EF-side extractor at `sampleToEF` L223 reads `s.value || s.count || s.duration` — `s.duration` is the field name Cap-go DOES use. Workout-type works because that's `s.workoutType`. Only the two `total*` fields had wrong names.
+
+### The fix shipped (vyve-site `2e6ffb46`)
+
+One block in `healthbridge.js` `sampleToEF()`:
+
+```js
+// before
+s.distance ? { distance_m: s.distance } : {}
+
+// after
+(s.totalDistance ?? s.distance) ? { distance_m: Number(s.totalDistance ?? s.distance) } : {},
+(s.totalEnergyBurned ?? s.calories) ? { energy_kcal: Number(s.totalEnergyBurned ?? s.calories) } : {}
+```
+
+`s.distance` fallback retained for safety against any future plugin version renaming. `totalEnergyBurned` captured into metadata as `energy_kcal` for future use — `cardio` table has no calories column today so it just sits in metadata, but capture now is free and the data's there when we want to surface it.
+
+Atomic 4-file commit per §23 hard rules:
+- `healthbridge.js` — the fix
+- `index.html` — vbb-marker 289 → 290
+- `settings.html` — settings-vbb-marker 288 → 290 (was -1 drifted from index after d665b992/7b475afe two-commit split; this commit restores lock-step)
+- `sw.js` — CACHE_NAME `vyve-cache-v2026-05-26-qm409-debug-gating-a` → `vyve-cache-v2026-05-27-pm417-hk-distance-a`
+
+Forward only. Historical NULL distance rows stay blank in cardio history until PM-417.b patcher ships.
+
+### PM-417.b backfill patcher (next session)
+
+Dean's call: ship backfill. ~6 months of HealthKit-sourced cardio rows have NULL distance — Lewis's whole running history plus any other HK-connected member's. Patcher design:
+
+**Shape.** New EF `backfill-hk-distance` (verify_jwt: true, admin-gated by `members.role IN ('admin','owner')` check or admin allowlist). Triggered manually per member from vyve-command-centre, OR auto-flagged via `member_health_connections.needs_backfill BOOLEAN DEFAULT false` that the next normal `pull_samples` call detects and processes.
+
+**Mechanism.** EF receives `{ member_email }`. Reads `member_health_samples` for that member where `sample_type='workout'` AND `(metadata->>'distance_m') IS NULL` AND `promoted_to='cardio'`. Returns the list of `(native_uuid, start_at, end_at, workout_type)` to the client. Client calls Capgo `queryWorkouts({startDate, endDate, limit: 200})` in batched 30-day windows for the full member history (last 365 days max per existing `MAX_SAMPLE_AGE_DAYS`). For each returned workout that has a `totalDistance`, match by `platformId === native_uuid`, post results back to EF. EF updates `member_health_samples.metadata` to merge in `{distance_m, energy_kcal}` AND updates the corresponding `cardio.distance_km` via the `promoted_id` link in one transaction. Returns count of rows touched.
+
+**Why client-side re-pull, not server-only.** HealthKit data lives on-device. The server has the `native_uuid` but cannot re-query the original samples — only the iOS app with HealthKit authorization can. So this is a one-time member-triggered (or auto-triggered-on-next-sync) round-trip: app pulls fresh totalDistance values from on-device HK, posts them back keyed by native_uuid, server backfills.
+
+**Edge case: workout deleted on device.** If a workout's native_uuid no longer matches any HK record (member deleted it in Health app), the client returns nothing for that UUID. EF leaves that row's metadata as-is. Cardio row stays NULL. Acceptable — member can manually edit if they care.
+
+**Edge case: app source not Apple Watch.** Third-party fitness apps (Strava, Nike Run Club, etc.) writing to HealthKit may or may not populate totalDistance. If they don't, we still capture nothing. Document but don't engineer around — Apple Watch native workouts are the dominant source.
+
+**Estimate.** ~1.5 sessions Claude-assisted: EF write (~0.5), client wire in healthbridge.js or new `backfill-hk-distance.js` triggered from a Settings "Re-sync historical data" button (~0.5), admin command centre trigger UI (~0.3), device walk on Dean's account end-to-end (~0.2).
+
+### Open question on the iOS bundle
+
+Lewis is on whatever iOS binary the existing 1.3 ship gave him (or 1.4 once App Review clears, expected today/tomorrow per PM-413). The healthbridge.js fix is web-layer — both dev-loop and bundled-mode binaries pick it up via WKWebView's normal fetch lifecycle. **No native bundle change needed for the forward fix.** Lewis benefits as soon as his app's WKWebView refreshes healthbridge.js (force-quit + reopen recommended, otherwise next natural cache cycle).
+
+The backfill patcher will run client-side JS too — also no native bundle dependency. Whole flow ships without a re-cut.
+
+### What we saw in live data
+
+10 most recent HealthKit workouts for Lewis (sample, full set is similar):
+
+| date | type | duration | distance | source |
+|---|---|---|---|---|
+| 2026-05-24 | running | 6 min | NULL | healthkit |
+| 2026-05-24 | running | 30 min | NULL | healthkit |
+| 2026-03-05 | running | 30 min | NULL | healthkit |
+| 2026-03-04 | running | 30 min | NULL | healthkit |
+| 2026-02-14 | walking | 284 min | NULL | healthkit |
+| 2026-02-01 | walking | 179 min | NULL | healthkit |
+| 2026-01-21 | walking | 84 min | NULL | healthkit |
+| 2026-01-04 | running | 31 min | NULL | healthkit |
+| 2025-12-28 | running | 11 min | NULL | healthkit |
+| 2025-12-26 | running | 30 min | NULL | healthkit |
+
+`member_health_samples.metadata` for all of these: `{HKTimeZone: "Europe/London", HKIndoorWorkout: "0" or "1"}`. No distance key. Smoking gun.
+
+### Why duration shows but distance doesn't (the part Lewis noticed)
+
+duration → Cap-go field `duration` (seconds) → `sampleToEF` L223 reads `s.duration` correctly → stored in `member_health_samples.value` → promoteMapping computes `durationMin` from `start_at`/`end_at` delta (not even from `value` — belt-and-braces) → `cardio.duration_minutes` populated.
+
+distance → Cap-go field `totalDistance` (metres) → `sampleToEF` L230 read `s.distance` (wrong name) → undefined → no metadata key → promoteMapping reads `metadata.distance_m` → null → `cardio.distance_km` NULL.
+
+### Tooling
+
+PAT-direct via Vault (Composio still down ~6 days). vyve-site HEAD at session start `d1bf08ae`, commit at `2e6ffb46`. §23.21 fresh-HEAD checked pre-commit. §23.24 cross-repo PM scan: VYVEBrain max=416 (PM-416 from earlier in this session), vyve-site max-prior=409, vyve-capacitor max=412 — PM-417 uncontested. §23.30 post-commit md5 verify on all 4 files at the commit SHA — all match. §23.26 brain re-fetch via /git/blobs immediately before THIS brain commit; md5 match no parallel drift (VYVEBrain only ships at PM-416 above, no others between).
+
+node --check pass on both healthbridge.js (post-edit) and sw.js (post-edit) before blob creation.
+
+### Net effect
+
+Future cardio rows from HealthKit will have `distance_km` populated. Lewis's existing 6+ months of NULL rows wait on PM-417.b backfill patcher. The vbb-marker drift between index.html and settings.html (-1) is resolved as a side effect of this commit. sw cache rotation forces members to pick up the new healthbridge.js on next app open.
+
+PM-417.b is the next ship after PM-411 Bug B + capacitor.config.json doctrine call — both still ahead of it in Thursday's NEXT FOCUS. Doesn't displace anything urgent; the bug is data-visibility not data-loss.
+
+---
+
 ## 2026-05-27 PM-416 Brain park — Live session Q&A architecture specced (PM-251c successor)
 
 Talk-first design session with Dean on whether live broadcasts should become two-way interactive. Resolved into three distinct asks, two of which are already in the backlog and one of which is the genuinely new piece worth specifying. No code shipped this session — spec landed in brain as the next pull-off-the-backlog item after PM-251c chat unlock.
