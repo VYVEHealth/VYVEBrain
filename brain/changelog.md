@@ -1,3 +1,56 @@
+## 2026-05-27 PM-418 Movement V2 spec locked — design session output committed; build sequenced post-PM-413 + PM-411 Bug B
+
+Long design session with Dean covering the Movement section overhaul end-to-end. Closes PM-411 Bug A (movement plan structurally homeless) and goes well beyond it — adds a full four-plan library, state-aware `movement.html` (5 render variants based on plan + HK presence), HK history pull at consent time (90-day baseline via Capgo `queryAggregated`), plan-fit nudge intelligence, manual-step support for non-HK / Android members, and full ecosystem wire (bus + Supabase + 10-surface completeness test).
+
+**Spec ships as `playbooks/movement-v2-spec.md`.** Single-read reference for build chats — no design re-derivation needed in execution sessions.
+
+**The four plans (final library):**
+- **Just Steps** — autonomy plan, ongoing, slider target, adaptive bumps for HK
+- **Sedentary Reset — Foundation** — 4-week locked ramp 3k → 5k for Sarah-shape members
+- **Distance Builder** — 6-week locked ramp 8k → 12k for Hannah-shape active walkers (NEW plan that emerged from session — gap in original three-plan library)
+- **Return to Movement** — 6-week gentle locked ramp 1.5k → 4k for post-injury / illness / pregnancy (Phil clinical sign-off required)
+
+Office Worker Mobility considered and dropped — folds into Foundation as a desk-based starting context. Five plans was too many; four is the right shape.
+
+**HK history pull at consent — invisible to member.** When member taps Allow on existing HK consent prompt, background pull captures 90 days of step history via Capgo `queryAggregated` (3 windows × 30 days). Compute median (p50), p25, p75 — median is the headline because one parkrun day inflates mean badly. Stamp `members.baseline_steps_p50/p25/p75/baseline_source/baseline_computed_at/baseline_days_available`. No loader UI — runs `EdgeRuntime.waitUntil`-style. Initial mockup had dramatic loader screen; explicitly deleted from spec — pull happens during onboarding flow advance, result available silently when member reaches plan-picker.
+
+Consent disclosure copy needs one italic line added: "When you tap Allow, we'll quickly check your last 90 days of step data to suggest the best movement plan for you. This stays on your device — only your daily-average summary is saved." Lewis + Phil sign-off on exact wording.
+
+**Plan-picker smart sort.** Library ranks plans by closeness of mid-target to `baseline_steps_p50`. Top match gets gold "Suggested for you" badge + border + fit-line ("Fits your 7,400 baseline — starts at 8k, builds to 12k"). Off-baseline plans dimmed at 55% opacity, still tappable, with explainer chips ("Below your baseline" / "Specific use case"). Baseline strip at top of library makes sort logic visible. For non-HK members, baseline derives from one-question chip prompt ("Roughly how active are you usually?") stored as `members.baseline_activity_band`.
+
+**Plan-fit nudge (mid-programme intelligence).** Cron `evaluate-plan-fit` daily 04:00 UTC. For HK members on structured plans past Week 2, if 14-day median ≥ 130% of plan end-state target, fire gold nudge banner: "You've outgrown Foundation. Ready for something more challenging?" with [Move to Distance Builder] [Not now] CTAs. Plan-switch modal explicitly lists what carries over (streak intact, certificates preserved, today's activity counts, can switch back). Dismissed → 30-day cooldown.
+
+**Plan-down responses NOT automatic.** If 14-day median significantly below target for 21+ days, do NOT fire automatic plan-down — that reads as "the algorithm has given up on you". Phil-shaped human check-in instead. Document trigger event for ops review, out of scope for v1.
+
+**Adaptive target (Just Steps only, HK only).** Same shape as plan-fit but lighter — when 14-day median ≥ 130% of current target AND ≥10 of 14 days hit target, suggest bump of `median × 0.9` rounded to nearest 500. Dismissible with 30-day cooldown. DISABLED for manual-only members (self-reinforcing data — they tap 5k every day, median is 5k, target never moves).
+
+**Slider safeguards (Just Steps).** Range `[baseline × 0.9, baseline × 1.5]` rounded to 500s. Amber warning banner at `baseline × 1.3` ("That's a big jump..."), orange cap banner at ceiling ("Higher targets unlock as you build consistency"). Member can't punch in 20k as a target — slider physically can't reach it. For non-HK: narrower ranges anchored to chip-band midpoint. Translation copy: "About **60 minutes** of walking" (mapping ~100 steps/min). Phil eyeballs all plan max caps before ship.
+
+**Today's Movement prompts — generic text only for v1.** Calum/Phil don't have curated mobility content yet, and waiting for production blocks the ship. V1 ships 5 generic prompt types with one sentence of instruction each (Lewis copy): movement break, short walk, neck/shoulder stretch, stand and walk, take a breath. Member taps, reads, does the thing, ticks Done. V2 post-trial swaps prompts for filmed sessions — page architecture unchanged, content swap is slot-by-slot. This unblocks shipping movement-as-real-plan without content production lead time.
+
+**HK supplement modal (football match case).** Triggered from "+ Add activity" link on HK ring. For activities where member took the watch off (Dean's example: football match, 90 min, ~8k steps not captured by HK). Pills: Sport (NEW kind enum value) / Walk / Yoga / Pilates / Other. Activity name + duration + optional approx-steps field. Caps at `daily_target × 2` (proportional, not flat 10k — fairer across plan targets). Stamps `source='manual_supplement'` and `manual_steps` (new nullable column on `movement_activities`).
+
+**Manual step ring for non-HK / Android members.** 4-chip estimate (2k / 5k / 7.5k / 10k+). New table `manual_step_estimates` UPSERT on `(member_email, day)`, stamped `source='manual_estimate'`. Connect-hint at bottom of ring card: "Have an Apple Watch or fitness tracker? Connect to unlock adaptive targets →". Concrete commercial value — gives non-HK members a real reason to plug in, not vague "auto-tracking" promise.
+
+**§23.78 new hard rule (third-occurrence promotion).** Every new activity table requires touching: (1) SQL function `compute_engagement_components_v2`, (2) JS twin `computeEngagementComponentsV2`, (3) SQL view `v_active_days`, (4) dirty-mark trigger calling `refresh_member_home_state()`, (5) activity-breakdown tile renderers on home + engagement-v2, (6) charity reconcile function `charity_total_reconcile_and_heal()`, (7) 10-surface completeness test. Reference occurrences: PM-307 movement first-class, PM-289 connect-checkin first-class, PM-418 movement v2 — third occurrence promotes candidate to hard rule.
+
+**10-surface completeness test (PM-418 contribution).** Build chat must verify every movement write surface (8 paths) propagates to all 10 dependent surfaces within seconds: home step ring, home day-streak grid, home Progress Tracks tile, charity counter, engagement score v2, leaderboard, certificate progress, movement-history.html, recent movement card, bus subscribers via `movement:*` / `body:*` events. Most novel data path to test: non-HK member taps 5k chip → all 10 surfaces update. This is the integration test for movement-as-first-class — if it passes, the build is real; if not, ship is incomplete.
+
+**Charity mechanic integration.** All five movement pathways count toward charity (every 30 = 1 month donated): Today's Movement tick, kind-pill quick-log, HK supplement, HK autotick (existing), manual step chip tap that hits day's target. `charity_total_reconcile_and_heal()` needs new branch for `manual_step_estimates` where `estimate_bucket >= plan.daily_target_steps`.
+
+**Mockups produced this session** (`/mnt/user-data/outputs/`):
+- `movement-plan-mockups.html` — initial clean-slate vs grounded comparison
+- `movement-manual-options.html` — three manual-only options
+- `movement-v1-final.html` — first hybrid
+- `movement-v1-three-state.html` — added No Plan state
+- `movement-plan-picker.html` — library + slider
+- `movement-plan-fit-intelligence.html` — baseline + smart sort + nudge
+- `movement-v1-final-spec.html` — **final consolidated mockup, visual ship target**
+
+**Build sequence (7 steps, ~6-7 sessions Claude-assisted), full detail in `playbooks/movement-v2-spec.md` §12 and `tasks/backlog.md` PM-418 block.** Sequenced AFTER PM-413 (iOS 1.4 / Android 1.0.5 store approval) and PM-411 Bug B (workout-library Dexie stale-read).
+
+Next session opens with: "Load VYVE brain. Today's job is Movement V2 build step 1 per `playbooks/movement-v2-spec.md`." Spec is read-once-execute; no design discussion needed in build chats.
+
 ## 2026-05-27 PM-417 HealthKit workout distance shipped — Capgo field-name fix (forward only; backfill patcher specced)
 
 Lewis raised that his Apple Watch cardio rows pull through to cardio history with date/time/type but never distance. Dean asked me to dig. Bug located, fix shipped surgically, backfill patcher specced for next session.

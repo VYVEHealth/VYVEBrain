@@ -40,6 +40,46 @@ Note: movement.html L440-486 already filters `category === 'movement'` — it's 
 
 workout-library EF v13 paused-plan logic at L60-84 likely never works correctly — upserts at L98-110 `onConflict: 'member_email'` silently overwrite the previous plan due to the broader UNIQUE constraint. Empirically confirmed on test account: 1 row only, no paused Movement preserved after swap to Strength. Promotes to §23 on second contradictory-UNIQUE occurrence.
 
+## PM-418 — Movement V2 build (sequenced after PM-413 + PM-411 Bug B)
+
+**Spec locked PM-418, 27 May 2026.** Full design captured in `playbooks/movement-v2-spec.md`. Build chats read playbook once and execute — no design re-derivation needed.
+
+**Scope.** Closes PM-411 Bug A (movement plan structurally homeless — category backfill + branching) and goes well beyond it. Adds the four-plan library (Just Steps / Foundation / Distance Builder / Return to Movement), state-aware `movement.html` (5 render variants), HK history pull at consent (90-day baseline via Capgo `queryAggregated`), plan-fit nudge intelligence, manual-step support for non-HK members, and full ecosystem wire (bus + Supabase + 10-surface completeness test).
+
+**New §23 hard rule codified:** §23.78 — every new activity table requires touching SQL function + JS twin + dirty-mark trigger + tile renderers + charity reconcile + 10-surface completeness test. Promoted to hard rule on third occurrence (PM-307 movement, PM-289 connect, PM-418 movement v2).
+
+**Build sequence (7 steps, ~6-7 Claude-assisted sessions):**
+
+1. `programme_library.category` backfill + onboarding EF v37 writes category into `workout_plan_cache` (PM-411 Bug A prereq, ~1 session)
+2. New columns + new table migrations: `members.baseline_steps_p50/p25/p75/baseline_source/baseline_computed_at/baseline_days_available/baseline_activity_band/custom_step_target/target_suggestion_dismissed_at/planfit_suggestion_dismissed_at` + `workout_plan_cache.programme_json` new fields + `manual_step_estimates` new table + `movement_activities.manual_steps` column + `kind='sport'` enum extension (~0.5 sessions)
+3. HK consent-time background baseline pull — Capgo `queryAggregated` 3-window × 30 days, median + p25 + p75 compute, stamp `members.baseline_steps_*`. Invisible to member — no loader UI (~1 session)
+4. `movement.html` v2 with 5-state render matrix, Today's Movement prompts (5 generic text prompts from Lewis copy), Sport pill on quick-log, Add activity supplement modal with `target × 2` cap (~1.5 sessions)
+5. Plan-picker page with smart sort by baseline fit + Just Steps slider with safeguards (1.3× warning, 1.5× cap) + adaptive toggle (~1 session)
+6. `evaluate-plan-fit` daily cron at 04:00 UTC + nudge banner UI + plan-up acceptance flow preserving streak + certificate state. Plan-down is NOT automatic — Phil-shaped human check-in only (~1 session)
+7. Wire & subscribers audit per §23.78 — repo-wide grep for `movement:*` / `body:*` / `movement_activities` / `workout_plan_cache` / `baseline_steps_p50` subscribers, update SQL function + JS twin (`compute_engagement_components_v2` + `computeEngagementComponentsV2`), update `v_active_days`, add dirty-mark triggers on new tables, update charity reconcile (`charity_total_reconcile_and_heal()`), run 10-surface completeness test (~0.5-1 session)
+
+**Phil sign-off gates before ship:**
+- Return to Movement plan content (audience overlaps post-injury / post-pregnancy)
+- Just Steps slider max caps (especially Return to Movement plan max)
+- Plan-fit nudge copy variants for each source plan
+- HK consent disclosure copy addition
+
+**Lewis copy gates:**
+- 5 Today's Movement prompt text lines (one sentence each, generic — no curated content)
+- 4 plan descriptions (library cards)
+- Plan-fit nudge copy variants per source plan
+
+**Out of scope for v1** (documented in playbook §13): Office Worker Mobility as distinct plan (folded into Foundation), automatic plan-down, adaptive bumps for manual-estimate members, curated mobility video content (post-trial), Android Health Connect (parked until device), real-time plan-fit evaluation (cron-driven correct starting shape).
+
+**Mockup ship target:** `/mnt/user-data/outputs/movement-v1-final-spec.html` from the PM-418 session — source of truth for visual design. Playbook source of truth for logic.
+
+**Dependencies:**
+- Sequenced AFTER PM-413 (iOS 1.4 / Android 1.0.5 store approval) — trial cohort first
+- Sequenced AFTER PM-411 Bug B (workout-library Dexie stale-read race) — Thursday-grade surgical fix
+- Reads playbook `playbooks/movement-v2-spec.md` as single-read spec reference
+
+## PARKED — Original PM-411 carry-over notes preserved
+
 ## Pre-bundle / app store (PM-413 follow-ups)
 
 **Play Console final click (P0, confirm next session).** Confirm `In review` not `Draft` on play.google.com/console for VYVE Health Android. If still `Draft`, click `Send 1 change for review` from publishing overview.
