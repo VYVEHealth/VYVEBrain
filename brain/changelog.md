@@ -1,3 +1,67 @@
+## 2026-05-27 PM-416 Brain park — Live session Q&A architecture specced (PM-251c successor)
+
+Talk-first design session with Dean on whether live broadcasts should become two-way interactive. Resolved into three distinct asks, two of which are already in the backlog and one of which is the genuinely new piece worth specifying. No code shipped this session — spec landed in brain as the next pull-off-the-backlog item after PM-251c chat unlock.
+
+### The three asks Dean opened with
+
+1. **Member interaction in broadcasts** — chat back to instructor during a live YouTube stream. Already PM-251c in backlog ("Chat + Q&A unlock"). 2-hour ship, post-bundle.
+2. **Two-way video for group therapy** — members on camera with Phil/instructor. Resolved as: handle out-of-app via Zoom (Phil hosts on Zoom Business £18.49/user/month, member taps "Join on Zoom" → `window.open(url, '_system')` → native Zoom app handles the call → returns to VYVE app). One-evening build, ~1 row addition to service_catalogue, zero per-participant infrastructure cost. Privacy upside: clinical session content never touches VYVE servers, GDPR surface area shrinks for sensitive mental health discussions. Still Phil-blocked on clinical sign-off for branded VYVE therapy sessions regardless of platform.
+3. **Question feed during live YouTube broadcasts** — this is the new architecture work. PM-416 spec below.
+
+### The latency reality (worth banking)
+
+YouTube Live has 5-30s delay depending on stream mode (Low Latency ~5-10s, Ultra-Low ~2-5s but flakier). Riverside-to-YouTube adds 1-3s on top. Member sees broadcast 5-15s behind reality. Cannot be fixed — it's how HLS/DASH streaming works.
+
+This doesn't matter for question submission. The illusion of liveness is robust to 10-15s delay; what matters is questions arriving at the instructor *while they're still talking*. Member submits at 12:00, instructor sees at 12:00.5 (Supabase Realtime), answers at 12:02, members hear answer at 12:02:10. Conversational flow preserved. The 10s delay actually helps — gives Lewis a beat to read the question without dead air.
+
+### PM-416 architecture (full spec in tasks/backlog.md, sequenced after PM-251c)
+
+**Member side** — flips `COMING_SOON_TABS = false` for Q&A pane in session-live.html. Composer + 280-char limit + upvote-ordered feed of all questions for the occurrence. All questions visible per Dean's call (not just own+answered) — upvote-driven ordering makes the feed self-curating, surfaces the questions Lewis should actually answer first.
+
+**Instructor side** — new `live-questions.html` in `vyve-command-centre` (admin.vyvehealth.co.uk) per Dean's call. Two-column layout: Pending sorted by upvotes DESC + created_at ASC, Answered chronological with un-answer affordance. Big readable type (≥18px) for arm's-length reading during broadcast. Realtime sub with subtle flash on new arrivals. Optional "Producer mode" toggle exposing a "Highlight for Lewis" star path — defers the operator-model decision (solo vs producer-assisted) to post-pilot per Dean's call.
+
+**Schema** — two new tables in Supabase:
+- `session_questions` (UUID PK, occurrence_id FK → calendar_occurrences ON DELETE CASCADE, member_email, question_text 3-280 chars, status pending/answered/dismissed, answered_at, dismissed_at, upvote_count, client_id, created_at)
+- `session_question_upvotes` (composite PK (question_id, member_email), one upvote per member per question, trigger keeps upvote_count synced on session_questions)
+
+RLS: members see pending+answered, never dismissed; member can INSERT own (rate-limited to 5 pending per occurrence via trigger); UPDATE service-role only (goes through question-moderate EF). Self-upvote prevented at trigger level.
+
+**Edge Functions** — two new EFs both verify_jwt:true:
+- `question-submit` v1: validates occurrence is currently live (broadcast_state IN ('live','starting')), member under 5-pending cap, inserts row. Optimistic-first on member side per §23.39.
+- `question-moderate` v1: admin-gated (members.role check or admin allowlist), updates status + answered_at/dismissed_at.
+
+Both publish to bus events on member side via Realtime broadcast: `live:question:created`, `live:question:answered`, `live:question:dismissed`, `live:question:upvoted`. Per §23.41-§23.50 bus discipline.
+
+**Dexie** — SCHEMA bump, `session_questions` table member-scoped on occurrence_id, 24h TTL. Pullable on occurrence_id ordered by upvote_count DESC, created_at ASC.
+
+### Decision matrix Dean rejected (worth banking)
+
+- **Embedded Zoom/Teams in WKWebView**: rejected. Zoom Meeting SDK web embed brittle on Capacitor + Apple/Google steer hard toward native SDK. Native Zoom SDK = Capacitor plugin work + iOS/Android SDK integration + store re-review + enterprise licensing. Wrong tool, wrong cost envelope.
+- **Daily.co / LiveKit / Agora developer-platform real-time video embedded in app**: technically viable (~$0.004/participant/minute, ~$30/month for 4 weekly group therapy sessions @ 10 members) but wrong product shape for what Dean's solving — broadcast Q&A is fundamentally 1-to-many with text feedback, not many-to-many video. Reserved for future consideration if group therapy specifically demands faces-on AND Zoom-out-of-app proves insufficient.
+- **PM-251c "Q&A with own session_qa table"**: superseded by PM-416 — original spec stored Q&A client-side only with a Supabase shim; PM-416 promotes Q&A to first-class Supabase-backed feature with upvote ordering and admin moderation surface. PM-251c chat unlock still ships independently as the cheaper precursor.
+
+### Build estimate
+
+3-4 sessions Claude-assisted post-bundle: schema + EFs + Dexie wiring ~0.5-1 session, member-side Q&A tab ~1 session, vyve-command-centre admin page ~1.5 sessions, device walk + Lewis copy ~0.5 session. Sequenced AFTER PM-251c chat unlock — chat proves the Q&A tab architecture, then questions stack on top.
+
+### Risks logged
+
+- Rate limiting tight at 5-pending-per-occurrence; may drop to 3 after first real session. Server-side enforcement.
+- No profanity filter at v1 — trial cohort known, fine for now. Post-trial: simple wordlist in question-submit EF before insert. No AI moderation layer.
+- Withdraw race: member withdraws same moment instructor answers. EF returns current state if status already transitioned; client reconciles.
+- Realtime quota: 1000 simultaneous viewers on one occurrence channel well within Pro plan budget. Polling fallback at 5-10s if hit.
+- Producer-star vs answered status: two-state UI needs device-walk validation.
+
+### Tooling
+
+PAT-direct via Vault (Composio still down ~6 days — confirmed this session, tool_search for "composio github" returned only Google Drive + Supabase tools). Brain HEAD at session start `c5abee63` PM-415. §23.21 fresh-HEAD checked pre-commit. §23.24 cross-repo PM scan: VYVEBrain max=415, vyve-site max=409, vyve-capacitor max=412, vyve-command-centre uses Commit-N numbering not PM-N — claim PM-416 uncontested. §23.26 brain whole-file overwrite hazard: both changelog.md + backlog.md re-fetched via /git/blobs immediately before blob creation, md5 match confirmed no parallel drift. §23.30 post-commit verification via /git/blobs at commit SHA + first-100-chars re-fetch on both files.
+
+### Net effect
+
+Spec is now bankable. When bundle clears App Review and PM-251c ships first (2-hour chat unlock), PM-416 is the next sequenced ship for the live-session interactive layer — adds the question-feed substrate that lets Lewis actually conduct Q&A during a broadcast instead of just reading chat scrollback. Cross-references PM-251c (chat ships first), PM-211 (live session source-of-truth — `calendar_occurrences` is the FK target), PM-197 (member identity rendering on the question feed), §23.41-§23.50 (bus discipline for live:question:* events).
+
+---
+
 ## 2026-05-27 PM-415 Brain park — three Lewis-audit-surfaced items: home tracker debug, Connect challenge, certificate re-pillaring
 
 Audit-doc readback session. Dean shared the platform audit + priority remediation docs (`vyve_internal_feature_audit_2026-05-26.md` + simplified Lewis versions) and Lewis flagged three items mid-read that warrant brain capture before Thursday pickup. None new conceptually — all three already in backlog — but each needs a sharpening or escalation against what Dean surfaced verbally.
