@@ -1,3 +1,45 @@
+## 2026-05-27 PM-415 Brain park — three Lewis-audit-surfaced items: home tracker debug, Connect challenge, certificate re-pillaring
+
+Audit-doc readback session. Dean shared the platform audit + priority remediation docs (`vyve_internal_feature_audit_2026-05-26.md` + simplified Lewis versions) and Lewis flagged three items mid-read that warrant brain capture before Thursday pickup. None new conceptually — all three already in backlog — but each needs a sharpening or escalation against what Dean surfaced verbally.
+
+### Item 1 — Home / "main section" tracker debug strip removal
+
+Dean's phrasing: "on the main section under the play, there's PM-324 main tracker debug that needs to go."
+
+Read as: the live-tracker debug strip is bleeding through onto the home / main surface, not just the 8 *-live.html shells where PM-310 originally placed it. PM-409.b gated the strip behind `localStorage.getItem('vyve_debug_tracker') === '1'` for the 8 live shells but if it's appearing on the home dashboard that's a separate gating leak — possibly via `?debug=tracker` URL param hitting `mind.html` per the backlog item at L67, but Dean said "main section" which is index.html or possibly the home Today's Focus / live session slot.
+
+Action Thursday: device-walk index.html with no debug flags set, confirm whether the debug strip renders. If yes, scope is broader than PM-409.b's `session-live.js` gating — needs a sweep of all surfaces that load `player-tracker.js` or render `renderDebugStrip()` output. Existing backlog entry at L67 ("Debug strip gating, P1, pre-next-binary") already covers the gate work; this brain park adds the home-surface qualifier so the Thursday session knows to walk home first, not just the live shells. Promotion if confirmed on home: P0, pre-bundle-rollout (members on 1.4 / 1.0.5 will see this).
+
+Note: PM-324 doesn't exist as a discrete brain entry — the strip's origin is PM-310 (`Live tracker debug surface; Settings Reset Achievements + Force Refresh App buttons`, 25 May, backlog L447). Dean's PM number was approximate. Capturing under that lineage.
+
+### Item 2 — Connect "This Week's Challenge" card not populated
+
+Dean's phrasing: "the this week's challenge in Connect that isn't updated yet."
+
+Backlog status: the Connect hub challenge surface is built (`connect-challenge.html`, weekly_challenges + weekly_challenge_participation tables both live since PM-186/PM-187 22 May). The `connect-challenge-summary` EF v? renders the summary on connect.html. What's missing is a real challenge in the database — Lewis hasn't seeded one. Today the card on connect.html either reads from a stale test row or shows empty.
+
+Action: Lewis-blocked. Adding to the Lewis-blocked bucket in backlog as its own item rather than burying it inside the existing PM-201 / connect hub items, because the surface is built and only the content is missing — same shape as the Replays content refill (Rank 4 in priority doc). Dean's audit doc rated `connect-challenge.html` at 3/5 with note "Lewis needs to land a real challenge"; this brain park surfaces it.
+
+### Item 3 — Certificates re-pillaring not yet shipped (visibility escalation)
+
+Dean's phrasing: "the certificates hasn't been updated to the new track ever."
+
+Read as: Dean is concerned the audit doc surfaced certificates at 4/5 (Architect / Warrior / Relentless / Elite / Explorer working well) without making it clear that those five tracks are pre-pillar-realignment and don't reflect the post-trial direction (Mind / Body / Connect three-pillar tracks). The backlog has the re-pillaring item TWICE — at L254 and L358, both flagged "post-trial" / "post-launch" / "Lewis-gated." Dean's mid-read flag reads as "this should be more visible, possibly elevated, definitely not surfaced as 4/5 without that caveat."
+
+Action: (a) consolidate the two backlog duplicates into one canonical entry, (b) leave the post-trial-scope timing as-is (Lewis-gated decision; trial members earning Architect / Warrior / Relentless certs this month is fine because new tracks grandfather old earns), (c) flag for the next priority-remediation rewrite that the 5-track → 3-pillar transition deserves its own rank rather than burying inside "Certificates" 4/5. Probably belongs around rank 11-13 in that doc — small-to-medium effort, Lewis-blocked on track titles + tier copy, meaningful procurement framing improvement (talking about three pillars in sales conversations matches the strategic positioning, talking about five activity tracks does not).
+
+### Net effect on Thursday session
+
+When Dean opens Thursday, NEXT FOCUS in backlog reads (in order): capacitor.config.json doctrine decision → Mac-local audit + selective vyve-capacitor commit → keystore + password into 1Password → small cleanup items (.gitignore www/, junk file removal) → PM-411 Bug B (workout selection Dexie stale-read race, 30-45min). The three items above slot into the second half of Thursday or roll forward depending on bundle-approval state.
+
+PM-403.b platform-alert v10 + alert-digest build is still the highest-impact engineering ship Dean can do alone — keep that as the "if bundle's still in review and I need something to ship" fallback.
+
+### Tooling
+
+PAT-direct via Vault (Composio still down ~6 days). Brain HEAD at session start `3b2ae54296c9b32df7d8513c9135a95f4c4d3e0e` PM-414 (the brain overhaul commit). §23.21 fresh-HEAD check — sizes match what I fetched at session start, no parallel session drift. §23.24 cross-repo PM scan: VYVEBrain max=414, vyve-site max=409, vyve-capacitor max=412 — claim PM-415 uncontested. §23.26 brain whole-file overwrite hazard — all three brain files re-fetched immediately before blob creation. §23.30 post-commit verify via Contents API on all three files at commit SHA.
+
+---
+
 ## 2026-05-26 PM-414 Brain overhaul — master.md + tasks/backlog.md full sweep
 
 Single curation pass executed across four parallel chats (Chats 1+2+3 wrote the new master.md sections + backlog; this chat synthesised and committed). Driver: master.md had drifted to 4,159 lines / ~800KB and tasks/backlog.md to 5,923 lines / ~780KB — both load-bearing for session-start brain reads, both increasingly carrying chronicle entries that belong in changelog.md. Goal: cut master to ~1,500 lines and backlog to ~1,800 lines without losing operationally-load-bearing content.
