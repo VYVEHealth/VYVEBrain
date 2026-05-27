@@ -1,3 +1,54 @@
+## 2026-05-27 PM-420 Movement V2 step 4a-pre-1 — table foundation + step 3 production CHECK hotfix + EF v86 deploy (4a-pre-2 partial)
+
+Three migrations + one EF deploy. Mixed bag: planned table foundation work succeeded, but caught a schema-drift trap that earned §23.78.
+
+**Step 4a-pre-1 — `movement_activities` extended + `manual_step_estimates` created.**
+
+Spec called the work "create new table `movement_activities`". Reality: table already existed since PM-307 with 38 production rows, fully wired into `home_state_dirty` triggers per §23 + `auto_time_fields_movement` + `zz_lc_email`. Built from the spec without first checking pre-existence — caught it on the migration failure (`relation "movement_activities" already exists`), pivoted to extension.
+
+Extended schema added 7 columns: `display_name`, `manual_steps` (INT, with `>=0` CHECK), `counts_for_charity` (default true), `hk_native_uuid`, `hk_promoted_to` (CHECK in `cardio` / `workouts`), `prompt_kind`, `metadata` JSONB. UPDATE'd 38 historical rows `source='manual'` → `source='manual_log'` to align with new vocabulary semantics (those rows really were quick-log writes from the page). Added two partial unique indexes: `(member_email, activity_date, prompt_kind) WHERE source='prompt_tick'` for prompt-tick daily dedupe, and `(member_email, hk_native_uuid) WHERE source='hk_workout' AND hk_native_uuid IS NOT NULL` for HK resync dedupe. Plus recent-feed btree on `(member_email, logged_at DESC)`.
+
+**Production CHECK constraint hotfix — ~90 second outage and lesson learned.**
+
+The same step 4a-pre-1 migration added a strict CHECK on `source` accepting only the four new vocabulary values (`hk_workout` / `manual_supplement` / `manual_log` / `prompt_tick`). Did not pre-audit write surfaces. Live `movement.html` quick-log writes at lines 644 and 931 use `source: 'manual'` literal — production immediately started rejecting movement quick-log inserts with 23514 CHECK violation.
+
+Hotfix migration (`pm420_step4a_loosen_movement_source_check_for_backcompat`) dropped the strict CHECK and replaced with a loose 5-value CHECK accepting legacy `'manual'` alongside the new vocabulary. Default reverted to `'manual'` so any code path omitting source continues to work. Step 4a-page will switch new writes to `'manual_log'` via the `movement.html` v2 refactor and at that point the CHECK can be tightened back if desired.
+
+**New §23.78 hard rule (third-occurrence not needed — earned on first):** before adding any CHECK constraint to a pre-existing table, audit write surfaces across vyve-site + EF source for literal value writes that would violate the new constraint. Generalises to any constraint that narrows the accepted-value set for a pre-existing column (NOT NULL on previously-nullable, narrower CHECK enums, FKs against tables with unreferenced strings).
+
+**Step 4a-pre-1 — `manual_step_estimates` created clean.**
+
+New table for non-HK members' daily 4-band chip estimate. PK `(member_email, estimate_date)`, UPSERT semantics. Bands: `under_2k` (2000) / `5k` (5000) / `7_5k` (7500) / `over_10k` (10000). RLS member-scoped via `auth.email() = member_email`. `zz_lc_email_manual_step_estimates` trigger applied for email lowercase consistency with `movement_activities`. Mockup screen 6 chip-row writes will land here when 4a-page ships.
+
+**Step 4a-pre-2 (partial) — onboarding EF v86 deployed.**
+
+Patched `writeWorkoutPlan` to deactivate-old + insert-new pattern, replacing the previous upsert via `?on_conflict=member_email`. Old write depended on `workout_plan_cache_member_email_key` (full unique) which is queued for drop in 4a-pre-2 migration. New write semantics: PATCH all `member_email=eq.<email>&is_active=eq.true` rows to `is_active=false`, then POST the new row with `is_active=true`. Partial unique `workout_plan_cache_one_active_per_member` enforces only-one-active correctness post-migration.
+
+Deployed as Supabase EF version 90 (internal v86). `ezbr_sha256: 304cb7ca4bdb5cb4ce4d32858bbd394fc3066a572fd91f3f04575bb457fa14d5`. Forward-compatible with current schema (deactivate PATCH is a no-op when no row exists; INSERT works fine under either unique constraint pattern).
+
+**Step 4a-pre-2 (pending) — `workouts-session.js` site patch + full-unique drop migration.**
+
+Repository audit found two production wpc write surfaces: `workouts-session.js:847` and `movement.html:780`. Both are PATCHes that update `current_session`/`current_week` after session completion. `movement.html` already filters `is_active=eq.true`; `workouts-session.js` does not. Today this is safe because the full unique guarantees only one row exists. Once the full unique is dropped, the unfiltered PATCH would back-patch historical paused rows — silent bug.
+
+Staged the surgical fix locally at `/home/claude/site/staging/workouts-session.js` with `&is_active=eq.true` added to line 850. Also staged vbb-marker bumps 293 → 294 and sw.js CACHE_NAME → `vyve-cache-v2026-05-27-pm420-wpc-active-filter-a`. Atomic Git Data API commit attempt failed on a `print()` formatting bug in the verification helper — no commit landed (HEAD still `c57802a`). Possible dangling blobs in object store will be GC'd.
+
+**Step 4a-pre-2 ship plan (next session):** retry the atomic 4-file commit (`workouts-session.js` + `index.html` vbb-marker 294 + `settings.html` vbb-marker 294 + `sw.js` cache `pm420-wpc-active-filter-a`), then run the full-unique drop migration. Both ship cleanly; the EF v86 deploy already makes the new pattern live in production.
+
+**Drift surfaced for brain master.md:**
+
+- `movement_activities` is PM-307's first-class table — extend, don't create. Master.md row updated to make this explicit.
+- `movement.html` already exists in production at 1429 lines, fully Dexie-mirrored / sync.js-wired / home-state-thread-through / multi-page referenced. Step 4a-page is a V2 refactor of an existing page, not a new build. Spec wording about "build movement.html" was misleading.
+- `workout_plan_cache` two-unique-index contradiction parked since PM-411 — now in-progress resolution. Master.md updated.
+- 10 vyve-site files reference `movement_activities`: `movement-history.html`, `db.js`, `sync.js`, `home-state-local.js`, `movement.html`, `index.html`, `achievements-evaluator.js`, `engagement-v2.html`, `monthly-checkin.html`, `wellbeing-checkin.html`. Future migrations touching this table need to consider all 10.
+- 14 vyve-site files reference `workout_plan_cache`. Only 2 are write surfaces (`movement.html:780` PATCH, `workouts-session.js:850` PATCH). EF write is `workouts.ts` v86.
+
+**Files changed this session.**
+
+- Migration `pm420_step4a_extend_movement_activities_and_create_manual_step_estimates`.
+- Migration `pm420_step4a_loosen_movement_source_check_for_backcompat` (hotfix).
+- Onboarding EF `index.ts` + `workouts.ts` deployed as v86 (`ezbr_sha256: 304cb7ca4bdb5cb4ce4d32858bbd394fc3066a572fd91f3f04575bb457fa14d5`).
+- Site patch staged but NOT shipped: `workouts-session.js` line 850 + `index.html` vbb-marker + `settings.html` settings-vbb-marker + `sw.js` CACHE_NAME.
+
 ## 2026-05-27 PM-418 Movement V2 spec locked — design session output committed; build sequenced post-PM-413 + PM-411 Bug B
 
 Long design session with Dean covering the Movement section overhaul end-to-end. Closes PM-411 Bug A (movement plan structurally homeless) and goes well beyond it — adds a full four-plan library, state-aware `movement.html` (5 render variants based on plan + HK presence), HK history pull at consent time (90-day baseline via Capgo `queryAggregated`), plan-fit nudge intelligence, manual-step support for non-HK / Android members, and full ecosystem wire (bus + Supabase + 10-surface completeness test).

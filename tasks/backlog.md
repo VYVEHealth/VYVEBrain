@@ -2,9 +2,15 @@
 
 Last triage: 2026-05-26 (Chat 3 of brain overhaul). Recomposed from ~5,923 lines / 206 headings / 480 sub-headings of chronological journal into surface-bucketed live items. SHIPPED blocks dropped against changelog. Stale "Added" items pre-14 May dropped per triage rule. Bus-campaign chronicle (PM-30 → PM-65, 08–11 May) dropped — all shipped, surface state in master §19.
 
-## NEXT FOCUS — Thursday pickup (after Pro 20x weekly limit resets)
+## NEXT FOCUS — Pick up at PM-420 step 4a-pre-2 site commit, then full-unique drop, then 4a-page
 
-Two binaries are with the platforms. iOS 1.4 build 3 sitting "Waiting for Review" in App Store Connect (auto-release on approval, 24–48hr expected). Android 1.0.5 versionCode 50 — needs confirmation Dean clicked "Send 1 change for review" from Play Console publishing overview (Pending #1 below). Assume approved by the time the next session opens; otherwise unblock by clicking through.
+**Step 4a-pre-2 site commit (15 min).** Workouts-session.js line 850 needs `&is_active=eq.true` added to the wpc PATCH URL. Patch is staged at `/home/claude/site/staging/workouts-session.js` (already edited, ready to commit). Ship as atomic 4-file Git Data API commit alongside `index.html` vbb-marker 293→294, `settings.html` settings-vbb-marker 293→294, `sw.js` CACHE_NAME → `vyve-cache-v2026-05-27-pm420-wpc-active-filter-a`. Onboarding EF v86 already live (deactivate-old + insert-new pattern) — this site patch makes the existing wpc PATCH future-compatible too. Forward-compatible with current schema; safe to ship before the unique-index drop migration.
+
+**Step 4a-pre-2 full-unique drop migration (5 min).** After site commit lands: drop `workout_plan_cache_member_email_key`. Keep `workout_plan_cache_one_active_per_member` (partial unique WHERE `is_active=true`). Enables plan history. The EF and both site write surfaces are already filtering on `is_active=true` so no other patches needed.
+
+**Step 4a-page — `movement.html` V2 refactor (THE big one, ~2 sessions).** Per `playbooks/movement-v2-spec.md` and mockup at `/home/claude/site/movement-v1-final-spec.html` (also at `/mnt/user-data/uploads/movement-v1-final-spec.html`). Five render variants based on member state (HK+plan / HK no plan / no-HK+plan / no-HK no plan / plan-picker library). All write paths defined in 4a-pre-1 table foundation: prompt-tick → `movement_activities source='prompt_tick'`, manual chip → `manual_step_estimates` UPSERT, HK supplement modal → `movement_activities source='manual_supplement'`, quick-log → `movement_activities source='manual_log'` (switch from current `'manual'` literal). Plan-switch modal triggers the wpc deactivate+insert pattern. Reads `programme_library WHERE surface='movement'` for picker. Movement.html currently exists at 1429 lines and is fully Dexie/sync/home-state wired — this is a refactor, not a new build.
+
+**Original Thursday pickup paragraph (still valid background):** Two binaries are with the platforms. iOS 1.4 build 3 sitting "Waiting for Review" in App Store Connect (auto-release on approval, 24–48hr expected). Android 1.0.5 versionCode 50 — needs confirmation Dean clicked "Send 1 change for review" from Play Console publishing overview (Pending #1 below). Assume approved by the time the next session opens; otherwise unblock by clicking through.
 
 The session-opening question is the architectural decision PM-411 Item 1 Bug 3 / PM-413 Pending #5 left unresolved: capacitor.config.json is hybrid dev-loop + LiveUpdate today. Members on iOS 1.4 / Android 1.0.5 will be dev-loop mode, not bundled, contradicting §23.42. Real call between (a) proper bundled mode with @capawesome/capacitor-live-update on the prod channel, (b) accept dev-loop for trial cohort, (c) other. Talk-first; this drives the Mac-local sync work below.
 
@@ -40,23 +46,30 @@ Note: movement.html L440-486 already filters `category === 'movement'` — it's 
 
 workout-library EF v13 paused-plan logic at L60-84 likely never works correctly — upserts at L98-110 `onConflict: 'member_email'` silently overwrite the previous plan due to the broader UNIQUE constraint. Empirically confirmed on test account: 1 row only, no paused Movement preserved after swap to Strength. Promotes to §23 on second contradictory-UNIQUE occurrence.
 
-## PM-418 — Movement V2 build (sequenced after PM-413 + PM-411 Bug B)
+## PM-420 — Movement V2 build (PM-418 was the spec lock; PM-419 collided on Focus card fix)
 
 **Spec locked PM-418, 27 May 2026.** Full design captured in `playbooks/movement-v2-spec.md`. Build chats read playbook once and execute — no design re-derivation needed.
 
 **Scope.** Closes PM-411 Bug A (movement plan structurally homeless — category backfill + branching) and goes well beyond it. Adds the four-plan library (Just Steps / Foundation / Distance Builder / Return to Movement), state-aware `movement.html` (5 render variants), HK history pull at consent (90-day baseline via Capgo `queryAggregated`), plan-fit nudge intelligence, manual-step support for non-HK members, and full ecosystem wire (bus + Supabase + 10-surface completeness test).
 
-**New §23 hard rule codified:** §23.78 — every new activity table requires touching SQL function + JS twin + dirty-mark trigger + tile renderers + charity reconcile + 10-surface completeness test. Promoted to hard rule on third occurrence (PM-307 movement, PM-289 connect, PM-418 movement v2).
+**New §23 hard rules:** §23.78 (PM-420 step 4a-pre-1) — CHECK constraint write-surface audit before adding to pre-existing tables (earned the hard way via the production movement quick-log outage). The engagement-aggregator triple-occurrence rule originally slated as §23.78 — every new activity table requires touching SQL function + JS twin + dirty-mark trigger + tile renderers + charity reconcile + 10-surface completeness test — still needs its own number; will land as §23.79 when codified.
 
 **Build sequence (7 steps, ~6-7 Claude-assisted sessions):**
 
-1. `programme_library.category` backfill + onboarding EF v37 writes category into `workout_plan_cache` (PM-411 Bug A prereq, ~1 session)
-2. New columns + new table migrations: `members.baseline_steps_p50/p25/p75/baseline_source/baseline_computed_at/baseline_days_available/baseline_activity_band/custom_step_target/target_suggestion_dismissed_at/planfit_suggestion_dismissed_at` + `workout_plan_cache.programme_json` new fields + `manual_step_estimates` new table + `movement_activities.manual_steps` column + `kind='sport'` enum extension (~0.5 sessions)
-3. HK consent-time background baseline pull — Capgo `queryAggregated` 3-window × 30 days, median + p25 + p75 compute, stamp `members.baseline_steps_*`. Invisible to member — no loader UI (~1 session)
-4. `movement.html` v2 with 5-state render matrix, Today's Movement prompts (5 generic text prompts from Lewis copy), Sport pill on quick-log, Add activity supplement modal with `target × 2` cap (~1.5 sessions)
-5. Plan-picker page with smart sort by baseline fit + Just Steps slider with safeguards (1.3× warning, 1.5× cap) + adaptive toggle (~1 session)
+1. ✅ **SHIPPED PM-419** — `programme_library.surface` column added (CHECK in `workouts` / `movement`), backfilled `workout_plan_cache.programme_json.surface` from existing plan_type. Onboarding EF v85 stamps surface. Naming: used `surface` not `category` (overrode playbook).
+2. ✅ **SHIPPED PM-420 step 2** — Four movement plans seeded into `programme_library`: Just Steps (active), Sedentary Reset Foundation (active), Distance Builder (active), Return to Movement (INACTIVE pending Phil clinical sign-off). Prompt copy is Claude-drafted placeholder pending Lewis sign-off.
+3. ✅ **SHIPPED PM-420 step 3** — HK 90-day baseline history pull at consent. EF `pull-baseline-steps` v1 deployed (verify_jwt:true). `healthbridge.js` v0.7→v0.8 with `pullBaselineHistory()` runs 3×30-day Capgo windows, fire-and-forget from `connect()`. Members get `baseline_steps_p50/p25/p75` + `baseline_source` + `baseline_activity_band` stamped in 2-3s post-Allow.
+4. **IN PROGRESS PM-420 step 4a-pre-1** ✅ + **step 4a-pre-2** PARTIAL:
+   - ✅ `movement_activities` extended (7 new columns: display_name, manual_steps, counts_for_charity, hk_native_uuid, hk_promoted_to, prompt_kind, metadata JSONB)
+   - ✅ Source CHECK loosened to accept legacy 'manual' + new vocabulary (hot-fix from §23.78 trap — see master.md)
+   - ✅ `manual_step_estimates` new table with RLS + email-lc trigger
+   - ✅ Onboarding EF v86 deployed (deactivate-old + insert-new pattern, replaces upsert-via-on_conflict)
+   - ❌ PENDING: `workouts-session.js` line 850 site patch (`&is_active=eq.true` filter add) — staged at `/home/claude/site/staging/`
+   - ❌ PENDING: drop `workout_plan_cache_member_email_key` migration (full unique on member_email)
+   - ❌ PENDING: `movement.html` V2 page build (the big mockup → production translation, est ~2 sessions)
+5. Plan-picker page with smart sort by baseline fit + Just Steps slider with safeguards (1.3× warning, 1.5× cap) + adaptive toggle (~1 session) — folds into 4a-page since picker IS one of the 5 render variants
 6. `evaluate-plan-fit` daily cron at 04:00 UTC + nudge banner UI + plan-up acceptance flow preserving streak + certificate state. Plan-down is NOT automatic — Phil-shaped human check-in only (~1 session)
-7. Wire & subscribers audit per §23.78 — repo-wide grep for `movement:*` / `body:*` / `movement_activities` / `workout_plan_cache` / `baseline_steps_p50` subscribers, update SQL function + JS twin (`compute_engagement_components_v2` + `computeEngagementComponentsV2`), update `v_active_days`, add dirty-mark triggers on new tables, update charity reconcile (`charity_total_reconcile_and_heal()`), run 10-surface completeness test (~0.5-1 session)
+7. Wire & subscribers audit per §23.78 (engagement aggregator triple-occurrence rule, not the new §23.78 CHECK-audit rule) — repo-wide grep for `movement:*` / `body:*` / `movement_activities` / `workout_plan_cache` / `baseline_steps_p50` subscribers, update SQL function + JS twin (`compute_engagement_components_v2` + `computeEngagementComponentsV2`), update `v_active_days`, add dirty-mark triggers on new tables, update charity reconcile (`charity_total_reconcile_and_heal()`), run 10-surface completeness test (~0.5-1 session). Also: `movement.html` quick-log writes should switch source literal `'manual'` → `'manual_log'` so the loose CHECK can be tightened back.
 
 **Phil sign-off gates before ship:**
 - Return to Movement plan content (audience overlaps post-injury / post-pregnancy)

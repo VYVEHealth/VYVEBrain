@@ -142,7 +142,7 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). **120 public base ta
 
 | Table | Purpose |
 |---|---|
-| `members` | Core member profiles. Email PK. Persona, welcome recs, goals, consent flags, `exercise_stream`, `avatar_url`. |
+| `members` | Core member profiles. Email PK. Persona, welcome recs, goals, consent flags, `exercise_stream`, `avatar_url`. **PM-420 step 3:** added `baseline_steps_p50`/`baseline_steps_p25`/`baseline_steps_p75` INT NULL + `baseline_source` (CHECK in `healthkit_history` / `manual_chip` / `deferred`) + `baseline_computed_at` + `baseline_days_available` + `baseline_activity_band` (CHECK in `under_3k` / `3k_5k` / `5k_8k` / `over_8k`). Populated by `pull-baseline-steps` EF v1 at consent time via Capgo `queryAggregated` 90-day window. |
 | `employer_members` | Employer–member relationships (empty until first enterprise goes live). |
 | `daily_habits` | Habit completions. Cap 10/day via BEFORE INSERT trigger; over-cap routed to `activity_dedupe`. `notes='autotick'` distinguishes HK auto-ticked rows. |
 | `workouts` | Workout completions. `source` column (`'manual'` vs `'healthkit'`). Cap 2/day for `source='manual'` only. HK-sourced rows bypass entirely. |
@@ -160,7 +160,7 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). **120 public base ta
 | `checkin_reactions` | Member reactions on Connect check-ins. |
 | `connect_checkins` | Connect-pillar member check-in posts. |
 | `mind_activities` | Mind-pillar log (`kind` discriminator: breathwork / journal / affirmation / visualisation / meditation / sleep). Path 2 from PM-172 design lock. |
-| `movement_activities` | Body-pillar Movement track (PM-307): walk / stretch / yoga / mobility / pilates / other. Backfilled from legacy `cardio.logged_via='movement'` + `workouts.plan_name='Movement'`. |
+| `movement_activities` | Body-pillar Movement track. PM-307 first-class promotion (walk / stretch / yoga / mobility / pilates / other), backfilled from legacy `cardio.logged_via='movement'` + `workouts.plan_name='Movement'`. **PM-420 step 4a-pre-1 extended schema:** added `display_name`, `manual_steps`, `counts_for_charity` (default true), `hk_native_uuid`, `hk_promoted_to`, `prompt_kind`, `metadata` JSONB. `source` CHECK loosened to accept legacy `'manual'` alongside new vocabulary `hk_workout` / `manual_supplement` / `manual_log` / `prompt_tick`. 38 historical rows renamed `manual` → `manual_log`. Two new partial unique indexes: prompt-tick daily dedupe + hk-native-uuid dedupe. Fully trigger-wired (`auto_time_fields_movement`, `zz_lc_email`, three `mark_home_state_dirty` triggers). Quick-log path in `movement.html:644,931` still writes legacy `'manual'` literal — patch to `'manual_log'` queued for 4a-page ship. |
 | `weekly_goals` | Recurring weekly goals (4-row template, reset Mondays via `seed-weekly-goals` cron). UNIQUE `(member_email, week_start)`. |
 | `activity_dedupe` | Over-cap activity rows — routed by triggers, not discarded. |
 | `qa_submissions` | QA test submissions. |
@@ -180,7 +180,8 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). **120 public base ta
 | Table | Purpose |
 |---|---|
 | `workout_plans` | Workout library rows across plan days (~297 rows). |
-| `workout_plan_cache` | Per-member workout programme (JSONB). Single source of truth. UNIQUE constraint shape needs audit — `workout_plan_cache_member_email_key` (UNIQUE on member_email) blocks the paused-plan multi-row design that `workout_plan_cache_one_active_per_member` (partial UNIQUE WHERE is_active=true) assumes works. Surfaced PM-411. |
+| `workout_plan_cache` | Per-member workout programme (JSONB). UNIQUE constraint contradiction (surfaced PM-411) being resolved in PM-420 step 4a-pre-2: drop `workout_plan_cache_member_email_key` (full unique on `member_email`) and keep `workout_plan_cache_one_active_per_member` (partial unique WHERE `is_active=true`). Enables plan history (multiple wpc rows per member, only one active at a time). Onboarding EF v86 LIVE (deactivate-old + insert-new pattern). Site patch for `workouts-session.js` (PATCH must filter `is_active=eq.true`) **pending atomic 4-file commit**. Full-unique drop migration pending site patch landing. |
+| `manual_step_estimates` | PM-420 step 4a-pre-1. Daily 4-band chip estimate for non-HK members on Movement page. PK `(member_email, estimate_date)`, UPSERT on band tap. Bands: `under_2k` (2000) / `5k` (5000) / `7_5k` (7500) / `over_10k` (10000). RLS member-scoped. `vyve_lc_email` trigger. Empty post-create (zero rows yet). |
 | `exercise_logs` | Plan-agnostic set/rep/weight logs. |
 | `exercise_swaps` | Member exercise substitutions. |
 | `exercise_notes` | Per-exercise notes. |
@@ -347,7 +348,7 @@ Charity + certificate counters stay independently capped at 2/day via `get_chari
 
 | Function | Status | Purpose |
 |---|---|---|
-| `onboarding` | LIVE | New member onboarding. Two-phase (fast persona/habits/recs + `EdgeRuntime.waitUntil()` for 8-week workout JSON). Stream-aware. |
+| `onboarding` | LIVE v86 | New member onboarding. Two-phase (fast persona/habits/recs + `EdgeRuntime.waitUntil()` for 8-week workout JSON). Stream-aware. v86 (PM-420 step 4a-pre-2): `writeWorkoutPlan` switched from upsert-via-on_conflict to deactivate-old + insert-new pattern, ready for `workout_plan_cache_member_email_key` drop. Carries v85 (PM-419 surface stamping) + v84 (PM-408 flat-progression + deterministic movement plan) + v83 (crisis-scan). |
 | `member-dashboard` | LIVE | Full dashboard data in one call. Includes `health_connections` + `health_feature_allowed` + `habits` block + `achievements` block. Reads `member_home_state` for `*_this_week` cached counts. |
 | `employer-dashboard` | LIVE | Aggregate employer analytics. API-key auth (no PII). |
 | `wellbeing-checkin` | LIVE | Weekly check-in flow. AI recs from activity + persona. Writes `ai_interactions` audit. |
@@ -879,7 +880,7 @@ All admin writes audited to `admin_audit_log`.
 | Movement & Wellbeing | 7 content tabs. |
 | Total in Supabase | ~297 rows in `workout_plans` across ~40 workout days. |
 
-**Cache.** `workout_plan_cache` — one row per member, full 8-week JSONB programme. Generated at onboarding in background (Phase 2 waitUntil). **UNIQUE constraint shape needs audit (PM-411):** broader `workout_plan_cache_member_email_key` blocks the paused-plan multi-row design that partial `workout_plan_cache_one_active_per_member` (UNIQUE WHERE is_active=true) assumes works.
+**Cache.** `workout_plan_cache` — historically one row per member, full 8-week JSONB programme. Generated at onboarding in background (Phase 2 waitUntil). **UNIQUE constraint contradiction being resolved (PM-420 step 4a-pre-2):** dropping `workout_plan_cache_member_email_key` (full unique on `member_email`); keeping `workout_plan_cache_one_active_per_member` (partial unique WHERE `is_active=true`). Enables plan history. Onboarding EF v86 already uses deactivate-old + insert-new write pattern. Pending: site patch (`workouts-session.js` filter add) + full-unique drop migration.
 
 **Architecture.** All 5 plans available. AI recommends weekly schedule, not plan selection.
 
@@ -1440,6 +1441,14 @@ Earned PM-405 audit: wellbeing-checkin.html injected Chart.js from cdnjs at runt
 #### §23.76 — sw.js precache audit on every new HTML surface ship
 
 Audit signal: any vyve-site commit adding HTML file in repo root should have sw.js diff in same atomic commit. Earned PM-405 audit — PM-251 + later ships added new HTML surfaces (8 live-broadcast shells + 8 replay-category shells + 4 mind/more surfaces + 2 session CSS files) without sw.js precache additions. Uncached HTML falls back to `/index.html` per SW handler — graceful but premium-feel regression. 22-file precache gap closed PM-406.
+
+#### §23.78 — CHECK constraint write-surface audit before adding to pre-existing tables
+
+Before adding any CHECK constraint to a table that already has live production write surfaces, audit those surfaces for literal value writes that would violate the new constraint. PM-420 step 4a-pre-1 earned this rule the hard way: added `movement_activities.source` CHECK constraint with new vocabulary (`hk_workout` / `manual_supplement` / `manual_log` / `prompt_tick`) without first grepping for the existing `source: 'manual'` literal at `movement.html:644,931`. Constraint went live → production quick-log writes immediately started 400ing. ~90 second outage before hotfix migration loosened the CHECK to accept both vocabularies.
+
+**Audit procedure:** for any CHECK on a pre-existing table column, run repo-wide grep for the literal old values (`grep -rn "source.*'<value>'"`) across `vyve-site` + EF source. Either rename writers in same atomic commit (preferred) or loosen the CHECK to accept old + new vocabulary during transition (acceptable for soft migrations). Never ship a strict CHECK against a column that has live production writes elsewhere.
+
+The same trap class: any constraint that narrows the set of accepted values for a pre-existing column. NOT NULL on a previously-nullable column, narrower CHECK enums, foreign keys against tables that may have unreferenced strings — all require pre-flight write-surface audit.
 
 ---
 
