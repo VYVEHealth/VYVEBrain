@@ -1,3 +1,22 @@
+## 2026-05-28 PM-420 Movement V2 step 4d — plan-fit nudge (SQL-function cron + banner + carryover modal)
+
+One vyve-site commit (`ec8bcffa`, movement.html + standard discipline) + two migrations + one SQL function + one pg_cron job. Closes the last cron piece of Movement V2. Rebased onto parallel PM-422 (`b622c023`) + PM-423 (`15d2b08e`) site commits — vbb 303->304.
+
+**Built as a SQL function on pg_cron, NOT an EF — deliberate deviation from spec.** Spec §7 calls it `evaluate-plan-fit` EF, but the evaluation is pure data (14-day step median vs plan end-target), zero AI/external calls. A SQL function matches `charity_total_reconcile` / `recompute_member_stats` and sidesteps the §23.79 EF-deploy surface entirely. Better shape than the spec's literal label.
+
+**Migrations.** `members.planfit_suggestion jsonb NULL` (shape `{from_plan, to_plan_id, to_plan_name, median_14d, end_target, fired_at}`; additive nullable, §23.78 write-surface audit clean — only the new function writes it). `public.evaluate_plan_fit()` SECURITY DEFINER.
+
+**Function logic.** For each HK member on a `locked_ramp` movement plan past Week 2 whose 14-day `member_health_daily` steps median >= 130% of the plan's end-state target (last `weekly_targets` entry: Foundation 5000, Distance Builder 12000): set `planfit_suggestion` UNLESS a live 30-day `planfit_suggestion_dismissed_at` cooldown applies, and not already holding the same pending to_plan_id. Clears stale suggestions for members no longer eligible (switched plan / median dropped) without touching the cooldown. Plan-down (median below target 21+ days): NEVER auto-acted — spec defers to a Phil-shaped human check-in; not even flagged in v1 (documented trigger only). Graduate routing: Foundation->Distance Builder, Distance Builder->Just Steps.
+
+**Verified.** Fire path proven via synthetic Foundation member (week 3, 14×7200 steps vs 5000 end-target) in a `BEGIN…ROLLBACK` harness — produced correct `{from_plan:Foundation, to_plan:Distance Builder (c0521d18), median:7200, end_target:5000}`, prod untouched. Live run `{fired:0, cleared:0}` (nobody eligible pre-trial — no members on locked_ramp movement plans yet). Test-fixture column gotchas hit en route (member_health_connections.platform CHECK = healthkit/health_connect; member_health_daily.source NOT NULL; wpc.plan_duration_weeks NOT NULL) — fixture-only, function unaffected.
+
+**Cron.** `cron.schedule('vyve-evaluate-plan-fit', '0 4 * * *', 'SELECT public.evaluate_plan_fit();')` — jobid 32, daily 04:00 UTC (after the */15 stats refresh). Cron count 28->29.
+
+**UI (movement.html, `ec8bcffa`).** Added `planfit_suggestion` to the member select. Gold nudge banner, states 1-2, shown when the suggestion is set; copy varies by from_plan (spec §7 drafted wording — Lewis approves final, PM-94 placeholder until copy_status set). Accept opens a carryover confirm modal (streak / certificate / today's activity / switch-back-anytime reassurance) that runs the picker's EXACT switch contract in-place: PATCH-deactivate active `surface=movement` wpc row -> POST new active row (`source='plan_fit_nudge'`) -> clear suggestion -> `movement:plan_started` -> bust caches -> reload. No URL params (native-app rule) — switch happens on movement.html, no picker bounce. Dismiss stamps the 30-day cooldown + nulls the suggestion + `movement:nudge_dismissed`. `workout_plan_cache.source` is free-text (no CHECK) so `plan_fit_nudge` writes fine.
+
+**Movement V2 status: ~90% — only the Dexie wpc PK->id bump remains.** All member-facing surfaces + the cron are shipped. The Dexie bump (db.js + sync.js + every wpc reader + migration story) is the one self-contained piece left; movement.html reads its plan REST-direct as the interim workaround (instant paint preserved via localStorage cache).
+
+
 ## 2026-05-28 PM-423 alert severity classifier — benign WebKit IndexedDB transient downgraded to info
 
 Closing the loop on the 72-hour platform_alerts review (PM-421 → PM-422). After fixing the workouts.html `init` bug (PM-422, hit 5+ real members), the only remaining genuine code-adjacent alert was a single `promise_rejection::settings.html::deanonbrown2` in 72h: `UnknownError: Attempt to get all index records from database without an in-progress transaction`.

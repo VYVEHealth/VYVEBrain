@@ -253,6 +253,7 @@ This is now a first-class pattern with 9+ catalogues built on it. Edit via Supab
 | `member_activity_daily` | Per-member per-day aggregate. Refreshed every 30 min via `vyve_rebuild_mad_incremental`. |
 | `member_activity_log` | Chronological activity log. |
 | `member_stats` | Per-member rolling stats. Recomputed every 15 min via `vyve_recompute_member_stats`. |
+| `members.planfit_suggestion` | PM-420 4d jsonb col. Pending plan-up nudge `{from_plan,to_plan_id,to_plan_name,median_14d,end_target,fired_at}`, set by `evaluate_plan_fit()`, read by movement.html banner, nulled on accept/dismiss (dismiss also stamps `planfit_suggestion_dismissed_at` 30-day cooldown). |
 | `company_summary` | Enterprise aggregate rollup. Recomputed daily 02:00 UTC. |
 | `platform_metrics_daily` | Platform-wide metrics per day. Recomputed daily 02:15 UTC. |
 | `platform_alerts` | Central monitoring — errors, failures, proactive alerts. Service-role only. |
@@ -448,7 +449,7 @@ Roughly 40+ functions in the deployed list are dormant: one-shot seeders (`seed-
 - `SUPABASE_DEPLOY_FUNCTION` for body changes; `SUPABASE_UPDATE_A_FUNCTION` corrupts deployed bundles.
 - `SUPABASE_GET_FUNCTION_BODY` returns ESZIP binary (not human-readable); use native `Supabase:get_edge_function` MCP for source.
 
-### Cron jobs — 28 active (all `active=true` as of 26 May 2026)
+### Cron jobs — 29 active (all `active=true`; +`vyve-evaluate-plan-fit` PM-420 4d, 28 May)
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -458,6 +459,7 @@ Roughly 40+ functions in the deployed list are dormant: one-shot seeders (`seed-
 | `vyve-broadcast-scheduler` | `*/5 * * * *` | scheduled-push-runner |
 | `vyve_drain_home_state_dirty` | `*/5 * * * *` | drain_home_state_dirty() |
 | `vyve_recompute_member_stats` | `*/15 * * * *` | recompute_all_member_stats() |
+| `vyve-evaluate-plan-fit` | `0 4 * * *` | evaluate_plan_fit() — PM-420 4d plan-up nudge |
 | `vyve-gdpr-export-tick` | `*/15 * * * *` | gdpr-export-execute |
 | `vyve_rebuild_mad_incremental` | `*/30 * * * *` | rebuild_member_activity_daily_incremental() |
 | `vyve-reengagement-daily` | `0 8 * * *` | re-engagement-scheduler |
