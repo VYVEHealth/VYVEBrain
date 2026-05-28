@@ -392,7 +392,7 @@ Charity + certificate counters stay independently capped at 2/day via `get_chari
 | `re-engagement-scheduler` | LIVE | Daily 08:00 UTC. Streams A + B (C1/C2/C3 retired 4 May). Reads `member_home_state.last_*_at` cols. Writes `ai_interactions` audit. |
 | `send-session-recap` / `send-journey-recap` / `send-password-reset` / `send-test-welcome` / `vicki-preview-sender` / `vicki-doc-sender` | LIVE | Specific email surfaces. |
 | `email-watchdog` | LIVE | 30-min cron checking 5 failure modes (missing daily delivery, hard-bounces, blocklist, pg_cron failures, bounce-spike). Per-code 6h suppression via `watchdog_alerts`. |
-| `alert-digest` | LIVE v2 (PM-421) | Morning / afternoon / evening platform-alert digest. v2: per-incident diagnosis is three tiers — `plain` (everyday language, jargon banned) + `impact` (who's affected, what a member sees, member-count-led) + `technical` (engineer detail underneath). Sonnet 4 returns `{plain,impact,technical}` JSON; unparseable/failed → graceful fallback, email never blocks. |
+| `alert-digest` | LIVE v2 (PM-421) | Morning / afternoon / evening platform-alert digest. v2: per-incident diagnosis is three tiers — `plain` (everyday language, jargon banned) + `impact` (who's affected, what a member sees, member-count-led) + `technical` (engineer detail underneath). Sonnet 4 returns `{plain,impact,technical}` JSON; unparseable/failed → graceful fallback, email never blocks. Client-side severity is set by `classifySeverity()` in `auth.js` vyveMonitor (PM-423) — known-benign WebKit transients (e.g. IndexedDB `in-progress transaction`) downgraded to `info` so the digest doesn't cry wolf; genuine errors stay `high`. |
 
 ### Reports + housekeeping
 
