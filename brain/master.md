@@ -1006,6 +1006,10 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 Rolling 3-5 most recent ship narratives. Anything older lives in `brain/changelog.md` with full detail; §19 is a status board, not an archive.
 
+### PM-424 — Mind tracker debug strip gating closed (28 May 2026)
+
+Member-facing PM-324 debug strip was leaking onto every Today's Focus meditation play on `mind.html`. PM-418 gated the open-time render but left an ungated 1s `setInterval` poller re-inserting it. Fixed by guarding `renderDebugStrip()` at its entry behind `vyve_dev_panel_unlocked` (vyve-site `9300a0bf`, 4-file atomic, vbb 304→305). §23.63 candidate sharpening banked: gate the render fn entry, not the call site — pollers/subscribers bypass call-site gates. Remaining: the 8 `*-live.html` session-live strips still want a device-walk gating confirm.
+
 ### PM-413 — iOS 1.4 + Android 1.0.5 both submitted to App Review (26 May 2026)
 
 iOS 1.4 build 3 sitting `Waiting for Review` in App Store Connect, auto-release on approval (24-48hr expected). 1.3 sidebar entry `Ready for Distribution` will auto-supersede on 1.4 approval. Android 1.0.5 versionCode 50 production release saved in Play Console; AAB accepted with 4 non-blocking warnings. Earned §23.76 (iPad orientation 4-array invariant — iOS Code 90474). Mac local has uncommitted changes to capacitor.config.json + several Android/iOS files that the remote `7a54c876` doesn't yet carry — selective audit-and-curate commit on vyve-capacitor pending. Brain doctrine corrected: Mac local was the real source of truth for the prior bundle ship, not the remote. Going forward, remote must match Mac-local ship-state after every bundle session via curated atomic commit. App Review notes scanned for residual "PWA-based" framing per §23.20 — corrected pre-submission.
@@ -1387,6 +1391,8 @@ Brain-load is not sufficient. The spec docs in `/playbooks/` carry the worked-ex
 #### §23.63 — Pre-bundle debug surface gating discipline (PM-409)
 
 Before any production bundle commits, every debug surface on the member-facing app must be either (a) hidden behind `localStorage.vyve_dev_panel_unlocked === '1'`, (b) hidden behind a URL parameter that can't be set in the native app (`?debug=`-style — safe because Capacitor has no address bar), or (c) deleted. "Debug-labelled but technically harmless" UI is not acceptable; the label is the problem. Canonical pattern: one flag, multiple surfaces, one gesture (5 taps in 3 seconds on a benign UI element). Audit signal at scan time: repo-wide grep for `force[\s-]*refresh`, `reset.{0,20}(achievement|cache|local|dexie|data|member)`, `\?debug=`, `dev[\s_-]?panel`, `developer[\s_-]*tools?`, `\bdiagnostic\b`. Console logging is exempt (not member-visible; preserves diagnostic trail). Bundle prep is the forcing function — debug surfaces drift in by predictable mechanism: "I'll hide it once X is proven" then attention moves to Y, surface stays.
+
+**Sharpening (PM-424, candidate):** gating a debug surface behind a flag must guard the **render function's entry**, not only the call site that opens it. PM-418 gated `mind.html`'s open-time `renderDebugStrip()` call but left a `setInterval(…1000)` poller calling it unconditionally — the strip wiped on open then re-leaked within ≤1s on the next tick. Guarding the function entry (`if flag !== '1' return`) kills every path at once: open, poller, and future callers. Audit signal when gating any overlay: grep for **every** caller of the render fn. Promotes to a numbered sub-rule on second occurrence.
 
 #### §23.64 — Dean tests on the native iOS app, not a browser
 
