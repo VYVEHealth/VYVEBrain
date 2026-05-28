@@ -1,3 +1,21 @@
+## 2026-05-28 PM-421 alert-digest v2 — layman-readable incident emails (plain + impact + technical)
+
+Dean flagged the morning alert-digest email (the PM-404 / PM-403.b build) reads as a wall of engineer jargon — fine for fixing, useless for a glance. Single-EF prompt+template rewrite. No schema, no site commit, no other EF touched.
+
+**What changed.** `alert-digest` EF `generateDiagnosis()` now asks Sonnet 4 for a JSON object `{plain, impact, technical}` instead of one engineer paragraph:
+- `plain` — what broke in everyday language, jargon explicitly banned in the system prompt (no 'init', 'race condition', 'promise', 'query', 'null', 'async').
+- `impact` — Dean's chosen shape: who's affected + what a member actually sees, leads with member count, names the recognisable app surface, honest about test-vs-real-member severity.
+- `technical` — the original engineer diagnosis, kept underneath for fix work.
+
+New `ENDPOINT_PLAIN_LABEL` map gives the model a member-recognisable surface name per endpoint (e.g. `workouts` → "the Workouts page"). Per-incident HTML now renders three tiers: `plainLine()` (dark, normal weight, read first) → `impactLine()` (coloured left-border callout, severity-tinted) → `techBlock()` (muted grey, "Technical detail" eyebrow). Occurrence/member/commit metadata unchanged, demoted below the prose.
+
+**Graceful degradation preserved (original design lock).** Anthropic non-2xx, throw, empty response, OR unparseable JSON → `fallbackDiagnosis()` synthesises plain+impact from member count + surface label and keeps any raw model prose as the technical block. Email NEVER blocks. `stripFences()` handles ```json-wrapped output.
+
+**Deploy.** Single self-contained `index.ts` (no relative imports — §23.79 compliant, real content in first call). Deployed via native `Supabase:deploy_edge_function` with `verify_jwt:false` preserved (cron + manual GET trigger). Version 3 ACTIVE, `ezbr_sha256: 896ceed795649bc49ff8e2f6e33a38ed744dafb966d1fa352bdd69501135645d`. Verified via `get_logs` — no boot error, no error-status invocation. Live invocation from bash blocked by `*.supabase.co` allowlist (§23.79); first real run is the 14:00 UTC cron, which will arrive in the new format.
+
+**Live example at deploy time.** Three open incidents (all traced to the parallel-session PM-420 Chunk B `1ab2b61a` ship): two `js_error` on workouts.html (Phil + deanonbrown2 test account), one `promise_rejection` on settings.html — all `init`/DB-index errors from the state-aware render scaffolds. These will render in the new three-tier format on the next cron fire.
+
+No new §23 rule. No backlog change. master §7 alert-digest line updated to v2.
 ## 2026-05-27/28 PM-420 Movement V2 step 4a/4b — render scaffolds, multi-active-by-surface, plan-picker shipped + EF placeholder-deploy incident (§23.79)
 
 Long session. Five vyve-site commits, one EF redeploy (twice — see incident), one schema migration, and the first member-reachable Movement V2 surface. Picks up from 4a-pre-2 partial.
