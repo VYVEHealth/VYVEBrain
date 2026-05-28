@@ -142,7 +142,7 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). **120 public base ta
 
 | Table | Purpose |
 |---|---|
-| `members` | Core member profiles. Email PK. Persona, welcome recs, goals, consent flags, `exercise_stream`, `avatar_url`. **PM-420 step 3:** added `baseline_steps_p50`/`baseline_steps_p25`/`baseline_steps_p75` INT NULL + `baseline_source` (CHECK in `healthkit_history` / `manual_chip` / `deferred`) + `baseline_computed_at` + `baseline_days_available` + `baseline_activity_band` (CHECK in `under_3k` / `3k_5k` / `5k_8k` / `over_8k`). Populated by `pull-baseline-steps` EF v1 at consent time via Capgo `queryAggregated` 90-day window. |
+| `members` | Core member profiles. Email PK. Persona, welcome recs, goals, consent flags, `exercise_stream`, `avatar_url`. **PM-420 step 3:** added `baseline_steps_p50`/`baseline_steps_p25`/`baseline_steps_p75` INT NULL + `baseline_source` (CHECK in `healthkit_history` / `manual_chip` / `deferred`) + `baseline_computed_at` + `baseline_days_available` + `baseline_activity_band` (CHECK in `under_3k` / `3k_5k` / `5k_8k` / `over_8k`). Populated by `pull-baseline-steps` EF v1 at consent time via Capgo `queryAggregated` 90-day window. **PM-428:** `baseline_steps_p50` is now kept live by `public.recompute_step_baselines()` (SECURITY DEFINER) — medians `member_health_daily` steps over a rolling **90-day** window EXCLUDING non-wear days (`< 1000` steps), min 5 wear-days, for members with a live `member_health_connections` row; source stays `'healthkit_history'`; idempotent. Cron jobid 33 daily 04:10 UTC. The consent-time snapshot was going stale (e.g. deanonbrown2 stuck at 7,500 vs live 5,882) — the picker reads this column for its Just Steps slider default/baseline. |
 | `employer_members` | Employer–member relationships (empty until first enterprise goes live). |
 | `daily_habits` | Habit completions. Cap 10/day via BEFORE INSERT trigger; over-cap routed to `activity_dedupe`. `notes='autotick'` distinguishes HK auto-ticked rows. |
 | `workouts` | Workout completions. `source` column (`'manual'` vs `'healthkit'`). Cap 2/day for `source='manual'` only. HK-sourced rows bypass entirely. |
@@ -460,6 +460,7 @@ Roughly 40+ functions in the deployed list are dormant: one-shot seeders (`seed-
 | `vyve_drain_home_state_dirty` | `*/5 * * * *` | drain_home_state_dirty() |
 | `vyve_recompute_member_stats` | `*/15 * * * *` | recompute_all_member_stats() |
 | `vyve-evaluate-plan-fit` | `0 4 * * *` | evaluate_plan_fit() — PM-420 4d plan-up nudge |
+| `vyve-recompute-step-baselines` | `10 4 * * *` | recompute_step_baselines() — PM-428 live rolling-90d baseline |
 | `vyve-gdpr-export-tick` | `*/15 * * * *` | gdpr-export-execute |
 | `vyve_rebuild_mad_incremental` | `*/30 * * * *` | rebuild_member_activity_daily_incremental() |
 | `vyve-reengagement-daily` | `0 8 * * *` | re-engagement-scheduler |
@@ -566,7 +567,7 @@ All portal pages live at `online.vyvehealth.co.uk` and are bundled inside the iO
 | Service worker | `sw.js` — network-first for HTML + skipWaiting + clients.claim. HTML changes reach users on next reload without cache bumps. Non-HTML assets use cache versioning (~22 file precache scope swept PM-405). Push event listener + notificationclick handler shipped 28 April. **Build marker invariant:** every vyve-site commit must bump `sw.js` `CACHE_NAME` suffix + `<span id="vbb-marker">` in BOTH `index.html` AND `<span id="settings-vbb-marker">` in `settings.html`, all in same commit (PM-299, memory #10). Build number permanently visible on Settings page. |
 | Bus | `bus.js` — `VYVEBus.publish(eventName, envelope)` cross-cutting event spine. ~37 distinct event names live; 86 publish call sites. Envelope shape `{kind, source, client_id, origin, ...}`. `origin === 'local'` filters analytics to physical user actions only. **§23.42:** in-page subscribers should not envelope-trust events the same page already mutated optimistically — that's a cross-page-only pattern. |
 | Achievement client | `achievements-evaluator.js` (~1660 LOC) — Dexie-first, bus-subscribed evaluator across all 6 pillars. Loaded on every page that publishes a tracked bus event AND on `engagement-v2.html`. Subscribes to 13 bus events, runs ~65 handler functions, debounces 100ms, fires toasts via `window.VYVEAchievements.queueEarned()`, claims earns via `achievement-claim` EF in background. Catalog cached in localStorage 24hr TTL. `earnedSet` populated from Dexie `member_achievements` at boot. |
-| Local DB | `db.js` (Dexie, SCHEMA_V21+) + `sync.js` — local IndexedDB cache for member-scoped tables + catalogue tables (with `CATALOGUE_FRESH_TABLES` 5-min stale window + `CATALOGUE_INVALIDATION_KEY` immediate-bump path). `VYVELocalDB.<table>.allFor(email)` is the canonical Dexie read. **Reminder:** `id: clientId` MUST be in POST payload, not just `client_id`, or server gen_random_uuid() creates Dexie duplicates (PM-386). |
+| Local DB | `db.js` (Dexie, SCHEMA_V22) + `sync.js` — local IndexedDB cache for member-scoped tables + catalogue tables (with `CATALOGUE_FRESH_TABLES` 5-min stale window + `CATALOGUE_INVALIDATION_KEY` immediate-bump path). `VYVELocalDB.<table>.allFor(email)` is the canonical Dexie read. **Reminder:** `id: clientId` MUST be in POST payload, not just `client_id`, or server gen_random_uuid() creates Dexie duplicates (PM-386). **PM-425:** `workout_plan_cache` PK moved `member_email`→`id` (`'id, member_email, is_active, generated_at, [member_email+is_active]'`) so Dexie mirrors BOTH surfaces (workouts + movement) per member, not one row each — this is what makes movement.html `fetchPlan` Dexie-first + the picker's instant-start mirror (PM-427) work. |
 | Analytics | `analytics.js` — 29 VYVEBus events mirrored to PostHog. `vyveEFFetch` wraps fetch for `ef_error` capture. |
 | Haptics | `haptics.js` — `VYVEHaptics.{selection, light, medium, success, heavy, error, warning}()` bridge. Loaded across 40+ surfaces. Palette: selection (steppers) / light (un-ticks, optimistic list deletes) / medium (destructive commits) / success (additive logs, save commits) / heavy (achievement reveal) / error (failure) / warning (pre-confirm). |
 | Theme | `theme.js` — dual dark/light CSS tokens. `data-theme` on `html`. localStorage. All pages use dual-token CSS blocks — never single `:root`. |
@@ -653,7 +654,7 @@ The onboarding EF assigns HAVEN to members hitting the low-wellbeing/high-stress
 | **Engagement Score v2** | LIVE behind `?score=v2` flag + in-app chip link (PM-295). Six-pillar base × consistency × variety / 2.5, base 50 floor, ceiling 100. JS↔SQL parity proven on real member data. v1 path untouched alongside v2. See §11C. |
 | Recurring weekly goals (fixed 4-row template) | LIVE — 3 habits / 3 exercise / 2 live sessions / 1 weekly check-in. Computes against `member-dashboard` goals payload. |
 | Mind sub-pages (meditation / sleep / breathwork / visualisation / journal / affirmations) | LIVE — write to `mind_activities` with `kind` discriminator. Catalogue-driven content from `mind_videos`. |
-| Movement track | LIVE — `movement.html` (state-aware, `<body data-mv-state=1..5>`) + `movement-history.html`, writes to `movement_activities`. PM-307 promotion to first-class table closed dual-write to legacy `cardio.logged_via='movement'` + `workouts.plan_name='Movement'` shapes. **PM-420 step 4c (vbb 301):** Today's Movement card (states 1-2, prompt_pool tap-to-complete), Sport quick-log pill, Add Activity HK-supplement modal (step top-ups summed onto HK ring base, survive refresh). |
+| Movement track | LIVE — `movement.html` (state-aware, `<body data-mv-state=1..5>`) + `movement-history.html`, writes to `movement_activities`. PM-307 promotion to first-class table closed dual-write to legacy `cardio.logged_via='movement'` + `workouts.plan_name='Movement'` shapes. **PM-420 step 4c (vbb 301):** Today's Movement card (states 1-2, prompt_pool tap-to-complete), Sport quick-log pill, Add Activity HK-supplement modal (step top-ups summed onto HK ring base, survive refresh). **PM-426..431 (vbb 307→312):** Movement V2 picker (`movement-plans.html`) brought to portal standard (theme.css, nav.js, cache-first paint) + the picker→home flow made instant via the PM-427 Dexie wpc mirror; `renderPlan` now routes ANY sessionless movement plan (just_steps + locked_ramp Foundation/Distance) to the state-aware render — previously the structured session renderer's `if (!session) showNoPlan()` discarded picker-created plans and showed the no-plan CTA (§23.81). prog-card now names locked-ramp plans (states 1/2); Just Steps target editable while current; Add-steps modal opaque. |
 | Member Prompts (Lewis-driven in-app questionnaires) | LIVE (PM-375) — 4-table schema, 8 question types, bottom-sheet modal on home boot. Two canary prompts seeded (weekly-preference, app-feedback). |
 | Broadcast Push (Lewis manual + cron-driven recurring schedules) | LIVE (PM-402) — admin UI at `admin.vyvehealth.co.uk/#/broadcast`. 6-shape audience resolver. Full fan-out to in-app + native + web. |
 | Weekly progress email (Friday, AI-generated, Brevo) | BACKLOG — blocked on Lewis copy template |
@@ -841,7 +842,7 @@ Scenario 4993944 (IG), 4993948 (FB), 4993949 (LinkedIn) → Data Store 107716.
 
 ### Cron jobs
 
-See §7 for the 28 active pg_cron jobs.
+See §7 for the 30 active pg_cron jobs.
 
 ---
 
@@ -1466,6 +1467,10 @@ When copying a page's boot/auth-observer IIFE between portal pages, the entry-fu
 
 **Digest-mapping note (banked, not codified):** the alert-digest commit-mapping heuristic maps an error's endpoint to a vyve-site file and shows that file's last 3 commits as "recent / possibly related." When the bug lives in a *sibling bundled script* (here the error was in `workouts-notes-prs.js` but the mapped file is `workouts.html`), the digest surfaces unrelated recent commits and the AI diagnosis may pin blame on them. Treat the digest's commit attribution as a hint, not a conclusion — always open the actual file/line from the error payload. Revisit if this misleads twice.
 
+#### §23.81 — movement.html renderPlan must route by shape presence, not plan_type (PM-429, PM-431 — HARD RULE)
+
+Movement-surface plans created by the picker (`movement-plans.html startPlan`) carry `weekly_targets` / `prompt_pool` but **never** `weeks[].sessions[]`. movement.html's structured session renderer reads weeks→sessions and bails `if (!session) showNoPlan()` — so a member WITH an active plan sees the no-plan "Choose your plan" CTA and the chosen plan renders as nothing. This is NOT a hydration/Dexie-timing bug (the row is in Dexie instantly via the PM-427 mirror); the renderer silently discards it. **Rule:** `renderPlan` routes on `!hasSessions` (any sessionless movement plan — just_steps AND locked_ramp Foundation/Distance) → the state-aware ring/target layer (`applyMovementState`); only genuinely session-shaped legacy plans take the structured path. Never dispatch by enumerating `plan_type` values — a new picker shape (e.g. a future "interval walk") would silently regress. Earned twice: PM-429 (just_steps bailed) then PM-431 (locked_ramp bailed identically). Sibling to §23.57 (mockup→page checklist): when a render path is copied from a sibling surface (here the workouts session renderer), audit which plan SHAPES the destination surface actually produces before trusting the copied dispatch.
+
 ---
 
 ### Content / brand discipline (carried)
@@ -1578,6 +1583,8 @@ When copying a page's boot/auth-observer IIFE between portal pages, the entry-fu
 | 29 | vyve-alert-digest-morning | 0 8 * * * |
 | 30 | vyve-alert-digest-afternoon | 0 14 * * * |
 | 31 | vyve-alert-digest-evening | 0 20 * * * |
+| 32 | vyve-evaluate-plan-fit | 0 4 * * * |
+| 33 | vyve-recompute-step-baselines | 10 4 * * * |
 
 ### Make scenarios (Lewis-side)
 

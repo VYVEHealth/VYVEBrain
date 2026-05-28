@@ -2,14 +2,18 @@
 
 Last triage: 2026-05-26 (Chat 3 of brain overhaul). Recomposed from ~5,923 lines / 206 headings / 480 sub-headings of chronological journal into surface-bucketed live items. SHIPPED blocks dropped against changelog. Stale "Added" items pre-14 May dropped per triage rule. Bus-campaign chronicle (PM-30 → PM-65, 08–11 May) dropped — all shipped, surface state in master §19.
 
-## NEXT FOCUS — Movement V2 remaining (Dexie wpc PK→id bump — last piece)
+## NEXT FOCUS — Movement V2 CLOSED (28 May). Pick next from queued items below (PM-308 cardio walking removal, Achievements post-trial overhaul, In-App Tour, Layer 2 Realtime bridge).
 
 **Movement V2 is member-reachable.** Step 4a-pre-2, 4a-page (Chunk B render scaffolds), 4b (multi-active-by-surface), and the plan-picker all SHIPPED 27-28 May (see changelog). Live flow: Body → Movement → State 5 "Start a movement programme" → `movement-plans.html` picker → pick Just Steps / Foundation / Distance Builder → set target → Start → movement.html renders step ring + week card. Members can hold a workouts plan AND a movement plan concurrently.
 
-**SHIPPED 28 May:** PM-420 4c — Today's Movement card (`dc1108c5`), Sport pill (`f6aa4131`), Add Activity modal (`eaaf8683`). PM-420 4d — plan-fit nudge: `evaluate_plan_fit()` SQL-function cron (`vyve-evaluate-plan-fit` 04:00 UTC, jobid 32) + gold banner + carryover modal (`ec8bcffa`). All member-facing surfaces + the cron done. ~90% of Movement V2 shipped.
+**SHIPPED 28 May:** PM-420 4c — Today's Movement card (`dc1108c5`), Sport pill (`f6aa4131`), Add Activity modal (`eaaf8683`). PM-420 4d — plan-fit nudge: `evaluate_plan_fit()` SQL-function cron (`vyve-evaluate-plan-fit` 04:00 UTC, jobid 32) + gold banner + carryover modal (`ec8bcffa`). All member-facing surfaces + the cron done. **PM-425..431 (28 May) closed the rest: Movement V2 is ~100% functionally complete.**
 
-**Remaining Movement V2 pieces:**
-- **Dexie wpc PK→id bump** — `workout_plan_cache` Dexie PK is `member_email` so it holds only one row per member; movement.html currently reads its plan REST-direct as a workaround. A Dexie version bump (PK→id, member_email secondary index) would let both surfaces mirror locally. Touches db.js + sync.js + every wpc Dexie reader + Dexie migration story. Self-contained but non-trivial; do as its own focused ship.
+**Movement V2 — DONE (PM-425..431, 28 May):**
+- ✅ **Dexie wpc PK→id bump (PM-425, `fb5e91e9`)** — `workout_plan_cache` PK moved `member_email`→`id` (SCHEMA_V22); both surfaces now mirror locally; movement.html `fetchPlan` is Dexie-first (no more REST-direct workaround).
+- ✅ **Picker → portal standard + instant start (PM-426 `030bab25`, PM-427 `a6c6b431`)** — theme.css/nav.js/cache-first paint; `startPlan` mirrors the new active row into Dexie so the home page reflects the switch instantly; Just Steps start fixed (`plan_duration_weeks` NOT NULL → sentinel `0`).
+- ✅ **Render all plan shapes (PM-429 `74e3cb6d`, PM-431 `326532d4`)** — `renderPlan` routes any sessionless movement plan to the state layer; was bailing to no-plan for Just Steps then locked_ramp (§23.81 hard rule). prog-card names locked-ramp plans.
+- ✅ **Live baseline recompute (PM-428 `7d2bc123`)** — `recompute_step_baselines()` SQL fn + cron jobid 33 (04:10 UTC); picker slider ceiling/default fixed. Modal opacity + editable Just Steps target (PM-430 `ee9ba078`).
+- Post-trial backlog (not blocking): Return to Movement plan still INACTIVE pending Phil clinical sign-off; prompt-pool copy is Claude placeholder pending Lewis sign-off; Achievements-style UI polish pass on the movement ring.
 
 **Movement V2 state matrix reference** (`<body data-mv-state="N">` on movement.html): 1=structured+HK, 2=structured+no-HK, 3=Just Steps+HK, 4=Just Steps+no-HK, 5=no plan. CSS-only show/hide off the body attr. Branch on `programme_json.surface==='movement'` (NOT category — spec drift, see changelog). plan_type values are `just_steps` / `locked_ramp`.
 
