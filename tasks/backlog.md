@@ -2,14 +2,13 @@
 
 Last triage: 2026-05-26 (Chat 3 of brain overhaul). Recomposed from ~5,923 lines / 206 headings / 480 sub-headings of chronological journal into surface-bucketed live items. SHIPPED blocks dropped against changelog. Stale "Added" items pre-14 May dropped per triage rule. Bus-campaign chronicle (PM-30 → PM-65, 08–11 May) dropped — all shipped, surface state in master §19.
 
-## NEXT FOCUS — Movement V2 polish pass (Today's Movement card, Sport pill, Add Activity modal)
+## NEXT FOCUS — Movement V2 remaining (plan-fit nudge cron, Dexie wpc PK→id bump)
 
 **Movement V2 is member-reachable.** Step 4a-pre-2, 4a-page (Chunk B render scaffolds), 4b (multi-active-by-surface), and the plan-picker all SHIPPED 27-28 May (see changelog). Live flow: Body → Movement → State 5 "Start a movement programme" → `movement-plans.html` picker → pick Just Steps / Foundation / Distance Builder → set target → Start → movement.html renders step ring + week card. Members can hold a workouts plan AND a movement plan concurrently.
 
-**Remaining Movement V2 pieces (~1.5 sessions):**
-- **Today's Movement card** (states 1-2 only). Reads `programme_json.prompt_pool`, renders the 5 generic prompt rows (Lewis-drafted placeholder copy already seeded). Tap-to-complete → `movement_activities source='prompt_tick'` (partial unique daily dedupe already in place), optimistic Dexie write + un-awaited POST. CSS slot `#today-card` not yet built on movement.html.
-- **Sport pill** in quick-log kind row (Walk/Stretch/Yoga/Mobility/Pilates/**Sport**/Other). DB `movement_activities.kind` CHECK already accepts `'sport'` (migration shipped). Pure UI add.
-- **Add Activity modal** (HK supplement). `openAddActivityModal()` is currently a console-log STUB on movement.html. Triggered from "+ Add activity" on the HK ring. Sport/Walk/Yoga/Pilates/Other pills + name + duration + approx steps (cap `daily_target × 2`). Stamps `source='manual_supplement'`, `manual_steps` column.
+**SHIPPED 28 May (PM-420 step 4c, vbb 301):** Today's Movement card (`dc1108c5`), Sport pill (`f6aa4131`), Add Activity / step-top-up modal (`eaaf8683`). See changelog. All three member-facing pieces done.
+
+**Remaining Movement V2 pieces:**
 - **Plan-fit nudge cron** — `evaluate-plan-fit` EF: when a member consistently exceeds/undershoots their plan target, surface a switch suggestion. Uses `members.planfit_suggestion_dismissed_at` cooldown (column shipped). Lower priority.
 - **Dexie wpc PK→id bump** — `workout_plan_cache` Dexie PK is `member_email` so it holds only one row per member; movement.html currently reads its plan REST-direct as a workaround. A Dexie version bump (PK→id, member_email secondary index) would let both surfaces mirror locally. Touches db.js + sync.js + every wpc Dexie reader + Dexie migration story. Self-contained but non-trivial; do as its own focused ship.
 
