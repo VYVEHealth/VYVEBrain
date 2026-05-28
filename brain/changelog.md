@@ -1,3 +1,52 @@
+## 2026-05-27/28 PM-420 Movement V2 step 4a/4b — render scaffolds, multi-active-by-surface, plan-picker shipped + EF placeholder-deploy incident (§23.79)
+
+Long session. Five vyve-site commits, one EF redeploy (twice — see incident), one schema migration, and the first member-reachable Movement V2 surface. Picks up from 4a-pre-2 partial.
+
+**Commits (vyve-site, all md5-verified at commit SHA):**
+
+- `e4a9acdf` — step 4a-pre-2 finish: `workouts-session.js:847` heartbeat PATCH gained `&is_active=eq.true`; full-unique `workout_plan_cache_member_email_key` dropped. vbb 293→294.
+- `ec6583c2` — step 4a-page surgical: `movement.html` fetchPlan branches on `programme_json.surface==='movement' || category==='movement'` (was category-only — Phil's live plan had `surface='movement'`, `category=null`, so it silently rendered No-Plan in production; this is a live bug fix). Both quick-log/markDone `source:'manual'` literals → `'manual_log'`. vbb 294→295.
+- `1ab2b61a` — step 4a-page Chunk B: state-aware render scaffolds in `movement.html` (+693 lines). `<body data-mv-state="1..5">` CSS-only show/hide. Step ring (HK variant fills from `member_health_daily`; manual variant fills from `manual_step_estimates` 4-chip row). Week consistency card (distinct movement-active days, current ISO week). Chip-tap writer → `manual_step_estimates` UPSERT with `client_id`, optimistic UI + revert, publishes `movement:step_estimate` + `body:steps_updated`. vbb 295→296.
+- `dbcb0e0e` — step 4b multi-active-by-surface (10 files). See below.
+- `4eb7b05e` — plan-picker page + State 5 CTA (5 files). See below.
+
+**Step 4b — multi-active workout_plan_cache by surface (architectural).**
+
+Product direction from Dean mid-session: a member on a gym (workouts) programme must ALSO be able to run a Steps/Movement plan concurrently. Previous partial unique `workout_plan_cache_one_active_per_member` (one active row per member) made the two surfaces mutually exclusive.
+
+Migration `pm420_step4b_wpc_multi_active_by_surface`: dropped that index, created `workout_plan_cache_one_active_per_member_surface` UNIQUE `(member_email, (programme_json->>'surface')) WHERE is_active=true`. One active row per (member, surface).
+
+Repo-wide wpc write/read audit — every consumer scoped by surface so neither clobbers the other:
+- `auth.js` prefetch `_vyvePfExercise`, `exercise.html` Body-hub hero (REST + Dexie), `workouts-library.js` paused-plans (both paths), `workouts-programme.js` active-plan (REST + Dexie), `workouts-session.js` heartbeat PATCH → all scoped `&programme_json->>surface=eq.workouts` (missing-surface treated as workouts for legacy rows).
+- `movement.html` fetchPlan → REST-only, `surface=eq.movement`; markDone heartbeat PATCH scoped to movement.
+- `sync.js` wpc hydrate → restricted to `surface=eq.workouts`.
+
+**Dexie PK constraint (logged, deferred):** `workout_plan_cache` Dexie PK is `member_email` — holds only ONE row per member locally. Server is now multi-active. Rather than a risky Dexie version bump (PK→id) mid-session, Dexie mirrors only the workouts-surface row; `movement.html` reads its plan REST-direct (localStorage cache-paint preserves instant first paint). A future Dexie schema bump would let both surfaces mirror locally. **Backlog.**
+
+**Plan-picker shipped — `movement-plans.html` (new, ~680 lines).** The member-reachable entry point. Spec §4 + §6.
+- Smart sort by closeness of plan mid-target to member baseline (`baseline_steps_p50` for HK; activity-band midpoint for non-HK). Top match → gold Suggested badge + border + fit-line. Just Steps always floats relevant. Off-baseline plans dim to 55%.
+- Reads `programme_library WHERE surface='movement' AND is_active=true` — so Return to Movement stays hidden until Phil's sign-off flips `is_active`.
+- Just Steps detail: target slider with §6 safeguards (HK range [p50×0.9, p50×1.5] round-500; non-HK band-anchored; amber banner ≥baseline×1.3; orange cap at max; "About N minutes walking" translation; adaptive toggle greyed for non-HK).
+- Locked-ramp detail (Foundation/Distance Builder): read-only weekly progression + fixed-ramp note.
+- Start/switch contract: PATCH `members.custom_step_target` (Just Steps) → deactivate active `surface=movement` wpc row (workouts untouched) → insert new active movement row (`source='plan_picker'`, `source_library_id` stamped). Publishes `movement:plan_started`, busts movement caches, routes to movement.html.
+
+**State 5 redesign on `movement.html`:** dead-end No-Plan screen replaced with "Start a movement programme" hero CTA → picker, plus "or just log a one-off session below" into existing quick-log. States 1-4 get "Browse all movement plans" button after week card (spec §5 item 6).
+
+**INCIDENT — EF placeholder deploy (~4 min broken window, no member impact). New §23.79.**
+
+Redeploying onboarding for step 4b (surface-scoped deactivate in `writeWorkoutPlan`). First deploy call passed literal `"PLACEHOLDER_INDEX"` / `"PLACEHOLDER_EMAILS"` / `"PLACEHOLDER_WORKOUTS"` strings instead of file contents — the `Supabase:deploy_edge_function` tool bundled them successfully (all three "files" present so import resolution passed) and went ACTIVE as version 91 with garbage content that would 500 at runtime. Caught immediately on review. Second attempt (single-file index.ts, real content) failed bundling because index.ts still imported `./emails.ts`+`./workouts.ts` which weren't in the call. Resolved by collapsing all three modules into one self-contained `index.ts` (no relative imports, deduped the shared `ANTHROPIC_KEY`/`SUPABASE_URL`/`SUPABASE_KEY` consts, aliased `WORKOUT_SENSITIVE_CONTEXT`→`SENSITIVE_CONTEXT`) and deploying as version 92. Verified via `get_logs` (no boot errors, no onboarding invocations during the window — no member hit the broken version).
+
+Onboarding now **internal v87 / Supabase version 92**, `ezbr_sha256: 9fbfb39875120dddd4029b7d0974df7d229e2c06c623476a81ff1fbe2d199dd4`. Single-file build. `writeWorkoutPlan` deactivate-old scoped by surface (`&programme_json->>surface=eq.<surface>`) so re-onboarding one stream can't wipe the other's plan.
+
+**§23.79 (new hard rule):** when deploying an Edge Function via `Supabase:deploy_edge_function`, NEVER pass placeholder strings as a two-step "deploy then fix" — the tool bundles placeholders successfully and ships broken code live. Always pass real file content in the first call. For multi-file EFs where inlining all files reliably in one tool call is the risk, collapse to a single self-contained `index.ts` (strip relative imports, dedupe shared consts) and deploy that one file. Verify post-deploy via `get_logs` (boot errors + absence of error-status invocations) since the bash network allowlist blocks `*.supabase.co` curl.
+
+**Spec ↔ live correction:** earlier in-session I told Dean the HK baseline pull "isn't built." **Wrong — the brain/backlog show step 3 shipped** (`pull-baseline-steps` v1, `healthbridge.js` v0.8 `pullBaselineHistory()`). Members who connected HK after that ship get baseline stamped. Dean's own account showing no `baseline_steps_p50` is a per-account artefact (connected pre-ship or pull deferred), not a missing feature. Brain wins over my mid-session recollection.
+
+**Migrations applied this session (carried from earlier 4a turns + 4b):** `pm420_step4a_pre_2_drop_wpc_full_unique`, `pm420_step4a_page_member_step_target_and_cooldowns` (members.custom_step_target CHECK 500-50000 + two cooldown timestamps), `pm420_step4a_page_extend_kind_enum_and_mse_client_id` (movement_activities.kind CHECK +sport; manual_step_estimates.client_id uuid + partial unique), `pm420_step4a_page_mse_dirty_mark_triggers`, `pm420_step4b_wpc_multi_active_by_surface`.
+
+**Still open on Movement V2:** Today's Movement prompt card (states 1-2, reads `programme_json.prompt_pool`), Sport pill in quick-log (DB CHECK already accepts), Add Activity modal (HK supplement → `source='manual_supplement'`), plan-fit nudge cron, Dexie wpc PK→id bump (to mirror movement surface locally), Achievements-style polish pass. `openAddActivityModal()` is currently a console-log stub.
+
+
 ## 2026-05-27 PM-420 Movement V2 step 4a-pre-1 — table foundation + step 3 production CHECK hotfix + EF v86 deploy (4a-pre-2 partial)
 
 Three migrations + one EF deploy. Mixed bag: planned table foundation work succeeded, but caught a schema-drift trap that earned §23.78.
