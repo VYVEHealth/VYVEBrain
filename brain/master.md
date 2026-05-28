@@ -1452,6 +1452,12 @@ Before adding any CHECK constraint to a table that already has live production w
 
 The same trap class: any constraint that narrows the set of accepted values for a pre-existing column. NOT NULL on a previously-nullable column, narrower CHECK enums, foreign keys against tables that may have unreferenced strings — all require pre-flight write-surface audit.
 
+#### §23.80 — Ported boot/IIFE blocks call page-local entry functions; grep the destination before shipping (PM-422, candidate)
+
+When copying a page's boot/auth-observer IIFE between portal pages, the entry-function name (`init`, `boot`, the page-specific loader) is page-local and almost never matches the destination file. A copied IIFE calling a non-existent entry function throws an uncaught `ReferenceError` on every page load. It is non-fatal — it kills only the IIFE, so the page still works and it survives review and "works on my screen" — but it fires a `high`-severity `platform_alerts` row on every load for every member, flooding the alert-digest and burying genuine incidents. Earned PM-422: `workouts-notes-prs.js` carried an auth-observer IIFE copied from nutrition.html (comment said so) calling `init()`; that file has no `init()` (it defines on-demand session helpers), so it threw on every workouts.html load, live since PM-255, hitting 5+ real members before it was noticed. When porting any IIFE/bootstrap block between pages, grep the destination file for the called function's definition before shipping; if absent, wire it to the real entry point or delete the block. Sibling to §23.44 (script-tag inclusion audit) and §23.57 (mockup→page full-checklist diff). Promotes to hard rule on second occurrence.
+
+**Digest-mapping note (banked, not codified):** the alert-digest commit-mapping heuristic maps an error's endpoint to a vyve-site file and shows that file's last 3 commits as "recent / possibly related." When the bug lives in a *sibling bundled script* (here the error was in `workouts-notes-prs.js` but the mapped file is `workouts.html`), the digest surfaces unrelated recent commits and the AI diagnosis may pin blame on them. Treat the digest's commit attribution as a hint, not a conclusion — always open the actual file/line from the error payload. Revisit if this misleads twice.
+
 ---
 
 ### Content / brand discipline (carried)
