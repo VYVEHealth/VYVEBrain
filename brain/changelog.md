@@ -1,3 +1,15 @@
+## 2026-05-30 PM-433 cardio/workouts — HealthKit cross-app duplicate guard (server-side, no OTA)
+
+The cardio "double information" bug. `sync-health-data` promoted HK workouts to cardio/workouts via plain `.insert()` with no semantic dedupe — every other table in the EF already upserts. The cardio table's only dedupe was `(member_email, client_id) WHERE client_id IS NOT NULL`, and HK rows carry `client_id=null`, so they had ZERO protection. Confirmed mechanism: Owen Barrett's runs are in HealthKit twice — from Strava (49 samples) AND Garmin Connect (48) — each app writes the same physical workout under its own `native_uuid`, so the samples-layer dedup `(member_email, source, native_uuid)` sees them as distinct → two promoted cardio rows. A native_uuid key cannot catch cross-app dupes; the real identity is member + source + type + start instant.
+
+Fix (two layers):
+- Migration `pm433_cardio_workouts_healthkit_dedupe_guard`: removed 48 existing HK cardio dupes (287→239 rows; Owen 97→49), then `CREATE UNIQUE INDEX cardio_member_source_type_loggedat_uniq (member_email, source, cardio_type, logged_at)` and `workouts_member_source_loggedat_uniq (member_email, source, logged_at)`. Pre-checked: 0 manual-row collisions, so indexes created clean; manual logging unaffected (also still guarded by client_id index). No FKs reference cardio/workouts so dedupe delete was safe.
+- EF v17 (deployed, was v16): cardio/workouts promotion switched from `.insert()` to `.upsert(m.row, { onConflict, ignoreDuplicates:true })` via new `promotedConflictTarget()` helper. On conflict → DO NOTHING → empty data → existing code skips the promoted++ / sample-link, so no error, no double. weight_logs/samples/daily upserts unchanged.
+
+Verified: post-fix HK dupes = 0; attempted duplicate insert on the semantic key was rejected by the unique index (Owen count held at 49). Server-side only — reaches every member immediately, NO OTA needed. workouts had 0 dupes today (Owen's cross-app dupes are all cardio-type) but the same latent bug was guarded too.
+
+Note: this is a HealthKit-pipeline architectural invariant — master.md §6/§7 should record sync-health-data → v17 and the new cardio/workouts dedupe keys on next master pass. Composio still down; Vault PAT + Supabase MCP (apply_migration/deploy_edge_function) throughout.
+
 ## 2026-05-30 PM-432 light mode — mood panel white-on-light contrast fix
 
 `index.html` mood panel (PM-285): the `[data-theme="light"] .mood-panel` override flipped only the container to a near-white surface (`rgba(255,255,255,0.72)`); every child colour was authored white-on-dark and never flipped — `.mood-question`/`.mood-thanks-msg` (#fff), `.mood-label-row` (`--teal-lt`, sub-AA on white), `.mood-skip`/`.mood-label`/`.mood-icon` (translucent white), `.mood.selected .mood-label` (#fff). White-on-white / sub-AA in light mode — and it's the most prominent element on the home screen. Added a `[data-theme="light"]` child-override block using semantic tokens (`--text` 16:1, `--text-muted` 6.9:1, `--text-faint`, `--teal` for label + selected-icon + thanks-tick).
