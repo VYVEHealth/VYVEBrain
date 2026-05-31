@@ -2,13 +2,13 @@
 
 > Auto-generated from live Supabase project `ixjfklpckgxrwjlfsaaz`.
 > DO NOT EDIT — overwritten weekly by the `schema-snapshot-refresh` Edge Function.
-> Last refresh: 2026-05-24T03:00:33.656Z
+> Last refresh: 2026-05-31T03:00:48.649Z
 
-**Totals:** 104 tables (104 with RLS) · 1227 columns · 35 FKs · 204 triggers · 72 public functions · 117 RLS policies · 279 indexes · 23 cron jobs
+**Totals:** 121 tables (121 with RLS) · 1480 columns · 42 FKs · 231 triggers · 86 public functions · 146 RLS policies · 346 indexes · 30 cron jobs
 
 ---
 
-## Tables (104)
+## Tables (121)
 
 ### `achievement_metrics` · RLS
 
@@ -24,9 +24,16 @@
 | `description` | text | YES |  |  |  |
 | `sort_order` | integer | NO | 0 |  |  |
 | `created_at` | timestamp with time zone | NO | now() |  |  |
+| `pillar` | text | YES |  |  |  |
+| `hidden` | boolean | NO | false |  |  |
+| `icon_slug` | text | YES |  |  |  |
+| `is_cross_cutting` | boolean | NO | false |  |  |
+| `phil_approved` | boolean | NO | true |  |  |
+| `wired` | boolean | NO | false |  |  |
 
 **Check constraints:**
 - `achievement_metrics_category_check`: CHECK ((category = ANY (ARRAY['counts'::text, 'time_totals'::text, 'distance'::text, 'hk'::text, 'streaks'::text, 'variety'::text, 'collective'::text, 'tenure'::text, 'one_shot'::text, 'volume'::text])))
+- `achievement_metrics_pillar_check`: CHECK (((pillar IS NULL) OR (pillar = ANY (ARRAY['body'::text, 'habits'::text, 'mind'::text, 'connect'::text, 'checkins'::text, 'focus'::text]))))
 - `achievement_metrics_source_check`: CHECK ((source = ANY (ARRAY['inline'::text, 'sweep'::text])))
 
 **RLS policies:**
@@ -34,6 +41,7 @@
 
 **Indexes:**
 - `achievement_metrics_pkey`
+- `idx_achievement_metrics_pillar`
 
 ### `achievement_tiers` · RLS
 
@@ -106,6 +114,35 @@
 - `idx_admin_audit_admin_email_created`
 - `idx_admin_audit_created_at`
 - `idx_admin_audit_member_email_created`
+
+### `admin_broadcast_log` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | bigint | NO | nextval('admin_broadcast_log_id_seq'::regclass) | ✓ |  |
+| `sent_by` | text | NO |  |  |  |
+| `sent_at` | timestamp with time zone | NO | now() |  |  |
+| `source` | text | NO |  |  |  |
+| `schedule_id` | bigint | YES |  |  |  |
+| `audience` | jsonb | NO |  |  |  |
+| `title` | text | NO |  |  |  |
+| `body` | text | NO |  |  |  |
+| `route` | text | YES |  |  |  |
+| `push_type` | text | NO | 'broadcast'::text |  |  |
+| `recipient_count` | integer | NO | 0 |  |  |
+| `result` | jsonb | YES |  |  |  |
+| `error` | text | YES |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `admin_broadcast_log_source_check`: CHECK ((source = ANY (ARRAY['manual'::text, 'scheduled'::text])))
+
+**RLS policies:**
+- `admin_broadcast_log_admin_read` (SELECT, roles: authenticated) — is_admin()
+
+**Indexes:**
+- `admin_broadcast_log_pkey`
+- `idx_admin_broadcast_log_sent_at`
 
 ### `admin_users` · RLS
 
@@ -305,6 +342,37 @@
 - `breathwork_patterns_active_sort_idx`
 - `breathwork_patterns_pkey`
 
+### `broadcast_schedules` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | bigint | NO | nextval('broadcast_schedules_id_seq'::regclass) | ✓ |  |
+| `slug` | text | NO |  |  | ✓ |
+| `title` | text | NO |  |  |  |
+| `body` | text | NO |  |  |  |
+| `route` | text | YES |  |  |  |
+| `audience` | jsonb | NO |  |  |  |
+| `recurrence` | jsonb | NO |  |  |  |
+| `is_active` | boolean | NO | true |  |  |
+| `active_from` | timestamp with time zone | YES |  |  |  |
+| `active_until` | timestamp with time zone | YES |  |  |  |
+| `last_fired_at` | timestamp with time zone | YES |  |  |  |
+| `fire_count` | integer | NO | 0 |  |  |
+| `created_by` | text | YES |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**Triggers:**
+- `trg_broadcast_schedules_updated_at` — BEFORE UPDATE
+
+**RLS policies:**
+- `broadcast_schedules_admin_read` (SELECT, roles: authenticated) — is_admin()
+
+**Indexes:**
+- `broadcast_schedules_pkey`
+- `broadcast_schedules_slug_key`
+- `idx_broadcast_schedules_is_active`
+
 ### `calendar_occurrences` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -370,6 +438,7 @@
 | `source` | text | NO | 'manual'::text |  |  |
 | `client_id` | uuid | YES |  |  |  |
 | `logged_via` | text | YES |  |  |  |
+| `focus_slug` | text | YES |  |  |  |
 
 **Check constraints:**
 - `cardio_time_of_day_check`: CHECK ((time_of_day = ANY (ARRAY['morning'::text, 'afternoon'::text, 'evening'::text, 'night'::text])))
@@ -392,8 +461,10 @@
 
 **Indexes:**
 - `cardio_member_client_uniq`
+- `cardio_member_source_type_loggedat_uniq`
 - `cardio_pkey`
 - `idx_cardio_email_logged_at`
+- `idx_cardio_focus_slug`
 - `idx_cardio_logged_at`
 - `idx_cardio_member_email`
 
@@ -917,6 +988,46 @@
 - `idx_certificates_earned_at`
 - `idx_certificates_member_email`
 
+### `checkin_questions` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | bigint | NO |  | ✓ |  |
+| `slug` | text | NO |  |  | ✓ |
+| `survey_type` | text | NO |  |  | ✓ |
+| `version` | integer | NO | 1 |  | ✓ |
+| `display_order` | integer | NO | 100 |  |  |
+| `question_text` | text | NO |  |  |  |
+| `question_subtitle` | text | YES |  |  |  |
+| `min_label` | text | YES |  |  |  |
+| `max_label` | text | YES |  |  |  |
+| `min_value` | integer | NO | 1 |  |  |
+| `max_value` | integer | NO | 10 |  |  |
+| `default_value` | integer | YES |  |  |  |
+| `active` | boolean | NO | true |  |  |
+| `active_from` | timestamp with time zone | YES |  |  |  |
+| `active_until` | timestamp with time zone | YES |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `checkin_questions_default_chk`: CHECK (((default_value IS NULL) OR ((default_value >= min_value) AND (default_value <= max_value))))
+- `checkin_questions_range_chk`: CHECK ((min_value < max_value))
+- `checkin_questions_slug_nonempty_chk`: CHECK ((length(TRIM(BOTH FROM slug)) > 0))
+- `checkin_questions_survey_type_chk`: CHECK ((survey_type = ANY (ARRAY['weekly'::text, 'monthly'::text])))
+- `checkin_questions_text_nonempty_chk`: CHECK ((length(TRIM(BOTH FROM question_text)) > 0))
+
+**Triggers:**
+- `trg_set_updated_at_checkin_questions` — BEFORE UPDATE
+
+**RLS policies:**
+- `checkin_questions_read_active` (SELECT, roles: authenticated) — (active = true)
+
+**Indexes:**
+- `checkin_questions_pkey`
+- `checkin_questions_unique_version`
+- `idx_checkin_questions_catalogue`
+
 ### `checkin_reactions` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -979,6 +1090,7 @@
 | `focus_tag` | text | YES |  |  |  |
 | `posted_at` | timestamp with time zone | NO | now() |  |  |
 | `updated_at` | timestamp with time zone | NO | now() |  |  |
+| `focus_slug` | text | YES |  |  |  |
 
 **Check constraints:**
 - `connect_checkins_body_check`: CHECK (((length(body) >= 1) AND (length(body) <= 60)))
@@ -989,6 +1101,9 @@
 
 **Triggers:**
 - `connect_checkins_updated_at` — BEFORE UPDATE
+- `zzz_mark_home_state_dirty_del` — AFTER DELETE
+- `zzz_mark_home_state_dirty_ins` — AFTER INSERT
+- `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
 
 **RLS policies:**
 - `connect_checkins_read_all` (SELECT, roles: public) — true
@@ -1001,6 +1116,7 @@
 - `connect_checkins_member_email_checkin_date_key`
 - `connect_checkins_member_email_client_id_key`
 - `connect_checkins_pkey`
+- `idx_connect_checkins_focus_slug`
 
 ### `custom_workouts` · RLS
 
@@ -1421,6 +1537,39 @@
 - `habit_themes_one_active`
 - `habit_themes_pkey`
 
+### `how_to_resources` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | bigint | NO |  | ✓ |  |
+| `kind` | text | NO |  |  | ✓ |
+| `slug` | text | NO |  |  | ✓ |
+| `title` | text | NO |  |  |  |
+| `description` | text | YES |  |  |  |
+| `url` | text | YES |  |  |  |
+| `youtube_video_id` | text | YES |  |  |  |
+| `thumb_url` | text | YES |  |  |  |
+| `duration_label` | text | YES |  |  |  |
+| `display_order` | integer | NO | 100 |  |  |
+| `active` | boolean | NO | true |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `how_to_resources_kind_check`: CHECK ((kind = ANY (ARRAY['pdf'::text, 'video'::text])))
+- `how_to_resources_payload_ck`: CHECK ((((kind = 'pdf'::text) AND (url IS NOT NULL)) OR ((kind = 'video'::text) AND ((url IS NOT NULL) OR (youtube_video_id IS NOT NULL)))))
+
+**Triggers:**
+- `trg_how_to_resources_updated_at` — BEFORE UPDATE
+
+**RLS policies:**
+- `how_to_resources_read_authenticated` (SELECT, roles: authenticated) — (active = true)
+
+**Indexes:**
+- `how_to_resources_pkey`
+- `how_to_resources_slug_kind_unique`
+- `idx_how_to_resources_read`
+
 ### `knowledge_base` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -1440,6 +1589,63 @@
 
 **Indexes:**
 - `knowledge_base_pkey`
+
+### `live_checkin_submissions` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `client_id` | uuid | NO |  |  | ✓ |
+| `member_email` | text | NO |  |  | ✓ |
+| `week_start` | date | NO |  |  | ✓ |
+| `activity_date` | date | NO | CURRENT_DATE |  |  |
+| `payload` | jsonb | YES | '{}'::jsonb |  |  |
+| `logged_at` | timestamp with time zone | NO | now() |  |  |
+
+**RLS policies:**
+- `live_checkin_submissions_delete_own` (DELETE, roles: public) — (auth.email() = member_email)
+- `live_checkin_submissions_insert_own` (INSERT, roles: public) — — / CHECK: (auth.email() = member_email)
+- `live_checkin_submissions_select_own` (SELECT, roles: public) — (auth.email() = member_email)
+- `live_checkin_submissions_update_own` (UPDATE, roles: public) — (auth.email() = member_email)
+
+**Indexes:**
+- `live_checkin_submissions_activity_date_idx`
+- `live_checkin_submissions_client_id_key`
+- `live_checkin_submissions_member_email_week_start_key`
+- `live_checkin_submissions_member_idx`
+- `live_checkin_submissions_pkey`
+
+### `manual_step_estimates` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `member_email` | text | NO |  | ✓ |  |
+| `estimate_date` | date | NO |  | ✓ |  |
+| `estimate_band` | text | NO |  |  |  |
+| `estimate_steps` | integer | NO |  |  |  |
+| `estimated_at` | timestamp with time zone | NO | now() |  |  |
+| `source` | text | NO | 'manual_estimate'::text |  |  |
+| `client_id` | uuid | YES |  |  |  |
+
+**Check constraints:**
+- `manual_step_estimates_estimate_band_check`: CHECK ((estimate_band = ANY (ARRAY['under_2k'::text, '5k'::text, '7_5k'::text, 'over_10k'::text])))
+- `manual_step_estimates_source_check`: CHECK ((source = 'manual_estimate'::text))
+
+**Triggers:**
+- `zz_lc_email_manual_step_estimates` — BEFORE INSERT/UPDATE
+- `zzz_mark_home_state_dirty_del` — AFTER DELETE
+- `zzz_mark_home_state_dirty_ins` — AFTER INSERT
+- `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
+
+**RLS policies:**
+- `manual_step_estimates_member_insert` (INSERT, roles: public) — — / CHECK: (auth.email() = member_email)
+- `manual_step_estimates_member_select` (SELECT, roles: public) — (auth.email() = member_email)
+- `manual_step_estimates_member_update` (UPDATE, roles: public) — (auth.email() = member_email)
+
+**Indexes:**
+- `manual_step_estimates_client_id_idem`
+- `manual_step_estimates_date_idx`
+- `manual_step_estimates_pkey`
 
 ### `member_achievements` · RLS
 
@@ -1731,6 +1937,17 @@
 | `last_cardio_at` | timestamp with time zone | YES |  |  |  |
 | `last_session_at` | timestamp with time zone | YES |  |  |  |
 | `last_checkin_at` | timestamp with time zone | YES |  |  |  |
+| `engagement_focus_points` | numeric | YES | 0 |  |  |
+| `engagement_habits_points` | numeric | YES | 0 |  |  |
+| `engagement_body_points` | numeric | YES | 0 |  |  |
+| `engagement_mind_points` | numeric | YES | 0 |  |  |
+| `engagement_connect_points` | numeric | YES | 0 |  |  |
+| `engagement_checkins_points` | numeric | YES | 0 |  |  |
+| `engagement_consistency_mult` | numeric | YES | 1.000 |  |  |
+| `engagement_variety_mult` | numeric | YES | 1.000 |  |  |
+| `engagement_active_days_7` | integer | YES | 0 |  |  |
+| `engagement_pillars_touched_7` | integer | YES | 0 |  |  |
+| `engagement_score_v2` | integer | YES | 50 |  |  |
 
 **Foreign keys:**
 - `member_email` → `members.email` (`member_home_state_member_email_fkey`)
@@ -1784,6 +2001,134 @@
 - `idx_member_notifications_lookup`
 - `idx_member_notifications_member_email`
 - `member_notifications_pkey`
+
+### `member_prompt_dismissals` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `prompt_id` | uuid | NO |  |  |  |
+| `first_seen_at` | timestamp with time zone | NO | now() |  |  |
+| `last_seen_at` | timestamp with time zone | NO | now() |  |  |
+| `last_dismissed_at` | timestamp with time zone | YES |  |  |  |
+| `completed_at` | timestamp with time zone | YES |  |  |  |
+| `dismiss_count` | integer | NO | 0 |  |  |
+| `complete_count` | integer | NO | 0 |  |  |
+| `last_iso_year` | integer | YES |  |  |  |
+| `last_iso_week` | integer | YES |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**Foreign keys:**
+- `prompt_id` → `member_prompts.id` (`member_prompt_dismissals_prompt_id_fkey`)
+
+**Triggers:**
+- `trg_mpd_updated_at` — BEFORE UPDATE
+
+**RLS policies:**
+- `mpd_insert_own` (INSERT, roles: authenticated) — — / CHECK: (member_email = auth.email())
+- `mpd_select_own` (SELECT, roles: authenticated) — (member_email = auth.email())
+- `mpd_update_own` (UPDATE, roles: authenticated) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+
+**Indexes:**
+- `idx_mpd_member`
+- `idx_mpd_member_prompt`
+- `member_prompt_dismissals_pkey`
+
+### `member_prompt_questions` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `prompt_id` | uuid | NO |  |  |  |
+| `question_text` | text | NO |  |  |  |
+| `question_hint` | text | YES |  |  |  |
+| `question_type` | text | NO |  |  |  |
+| `options` | jsonb | NO | '[]'::jsonb |  |  |
+| `placeholder` | text | YES |  |  |  |
+| `required` | boolean | NO | false |  |  |
+| `display_order` | integer | NO | 0 |  |  |
+| `active` | boolean | NO | true |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**Foreign keys:**
+- `prompt_id` → `member_prompts.id` (`member_prompt_questions_prompt_id_fkey`)
+
+**Triggers:**
+- `trg_mpq_updated_at` — BEFORE UPDATE
+
+**RLS policies:**
+- `member_prompt_questions_read` (SELECT, roles: authenticated) — (active = true)
+
+**Indexes:**
+- `idx_mpq_prompt`
+- `member_prompt_questions_pkey`
+
+### `member_prompt_responses` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `prompt_id` | uuid | NO |  |  |  |
+| `question_id` | uuid | NO |  |  |  |
+| `answer_value` | jsonb | NO |  |  |  |
+| `iso_year` | integer | NO |  |  |  |
+| `iso_week` | integer | NO |  |  |  |
+| `submitted_at` | timestamp with time zone | NO | now() |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Foreign keys:**
+- `prompt_id` → `member_prompts.id` (`member_prompt_responses_prompt_id_fkey`)
+- `question_id` → `member_prompt_questions.id` (`member_prompt_responses_question_id_fkey`)
+
+**RLS policies:**
+- `mpr_insert_own` (INSERT, roles: authenticated) — — / CHECK: (member_email = auth.email())
+- `mpr_select_own` (SELECT, roles: authenticated) — (member_email = auth.email())
+
+**Indexes:**
+- `idx_mpr_member`
+- `idx_mpr_prompt_question`
+- `idx_mpr_prompt_week`
+- `member_prompt_responses_pkey`
+
+### `member_prompts` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `slug` | text | NO |  |  | ✓ |
+| `title` | text | NO |  |  |  |
+| `subtitle` | text | YES |  |  |  |
+| `eyebrow` | text | YES |  |  |  |
+| `cta_label` | text | NO | 'Submit'::text |  |  |
+| `skip_label` | text | NO | 'Skip for now'::text |  |  |
+| `image_url` | text | YES |  |  |  |
+| `trigger_type` | text | NO |  |  |  |
+| `trigger_value` | jsonb | NO | '{}'::jsonb |  |  |
+| `target_segment` | jsonb | NO | '{}'::jsonb |  |  |
+| `dismiss_mode` | text | NO | 'once'::text |  |  |
+| `cooldown_days` | integer | YES |  |  |  |
+| `priority` | integer | NO | 100 |  |  |
+| `active` | boolean | NO | true |  |  |
+| `active_from` | timestamp with time zone | YES |  |  |  |
+| `active_until` | timestamp with time zone | YES |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**Triggers:**
+- `trg_mp_updated_at` — BEFORE UPDATE
+
+**RLS policies:**
+- `member_prompts_read` (SELECT, roles: authenticated) — (active = true)
+
+**Indexes:**
+- `idx_member_prompts_active`
+- `idx_member_prompts_slug`
+- `member_prompts_pkey`
+- `member_prompts_slug_key`
 
 ### `member_running_plans` · RLS
 
@@ -1979,16 +2324,30 @@
 | `exercise_stream` | character varying | YES | 'workouts'::character varying |  |  |
 | `display_name_preference` | text | NO | 'anonymous'::text |  |  |
 | `avatar_url` | text | YES |  |  |  |
+| `baseline_steps_p50` | integer | YES |  |  |  |
+| `baseline_steps_p25` | integer | YES |  |  |  |
+| `baseline_steps_p75` | integer | YES |  |  |  |
+| `baseline_source` | text | YES |  |  |  |
+| `baseline_computed_at` | timestamp with time zone | YES |  |  |  |
+| `baseline_days_available` | integer | YES |  |  |  |
+| `baseline_activity_band` | text | YES |  |  |  |
+| `custom_step_target` | integer | YES |  |  |  |
+| `target_suggestion_dismissed_at` | timestamp with time zone | YES |  |  |  |
+| `planfit_suggestion_dismissed_at` | timestamp with time zone | YES |  |  |  |
+| `planfit_suggestion` | jsonb | YES |  |  |  |
 
 **Check constraints:**
+- `members_baseline_activity_band_check`: CHECK (((baseline_activity_band IS NULL) OR (baseline_activity_band = ANY (ARRAY['under_3k'::text, '3k_5k'::text, '5k_8k'::text, 'over_8k'::text]))))
 - `members_baseline_diet_check`: CHECK (((baseline_diet >= 1) AND (baseline_diet <= 10)))
 - `members_baseline_energy_check`: CHECK (((baseline_energy >= 1) AND (baseline_energy <= 10)))
 - `members_baseline_motivation_check`: CHECK (((baseline_motivation >= 1) AND (baseline_motivation <= 10)))
 - `members_baseline_physical_check`: CHECK (((baseline_physical >= 1) AND (baseline_physical <= 10)))
 - `members_baseline_sleep_check`: CHECK (((baseline_sleep >= 1) AND (baseline_sleep <= 10)))
 - `members_baseline_social_check`: CHECK (((baseline_social >= 1) AND (baseline_social <= 10)))
+- `members_baseline_source_check`: CHECK (((baseline_source IS NULL) OR (baseline_source = ANY (ARRAY['healthkit_history'::text, 'manual_chip'::text, 'deferred'::text]))))
 - `members_baseline_stress_check`: CHECK (((baseline_stress >= 1) AND (baseline_stress <= 10)))
 - `members_baseline_wellbeing_check`: CHECK (((baseline_wellbeing >= 1) AND (baseline_wellbeing <= 10)))
+- `members_custom_step_target_positive`: CHECK (((custom_step_target IS NULL) OR ((custom_step_target >= 500) AND (custom_step_target <= 50000))))
 - `members_display_name_preference_check`: CHECK ((display_name_preference = ANY (ARRAY['anonymous'::text, 'initials'::text, 'first_name'::text, 'full_name'::text])))
 - `members_exercise_stream_check`: CHECK (((exercise_stream)::text = ANY ((ARRAY['workouts'::character varying, 'movement'::character varying, 'cardio'::character varying])::text[])))
 - `members_persona_check`: CHECK ((persona = ANY (ARRAY['NOVA'::text, 'RIVER'::text, 'SPARK'::text, 'SAGE'::text, 'HAVEN'::text])))
@@ -2024,20 +2383,62 @@
 | `content` | text | YES |  |  |  |
 | `ref_id` | text | YES |  |  |  |
 | `client_id` | uuid | YES |  |  |  |
+| `focus_slug` | text | YES |  |  |  |
+| `watch_seconds` | integer | YES |  |  |  |
+| `total_seconds` | integer | YES |  |  |  |
+| `pct_watched` | numeric | YES |  |  |  |
+| `completed` | boolean | YES | false |  |  |
+| `started_at` | timestamp with time zone | YES |  |  |  |
+| `last_updated_at` | timestamp with time zone | YES |  |  |  |
 
 **Check constraints:**
-- `mind_activities_kind_check`: CHECK ((kind = ANY (ARRAY['breathwork'::text, 'journal'::text, 'affirmation'::text, 'visualisation'::text])))
+- `mind_activities_kind_check`: CHECK ((kind = ANY (ARRAY['breathwork'::text, 'journal'::text, 'affirmation'::text, 'visualisation'::text, 'meditation'::text, 'sleep'::text])))
 
 **Triggers:**
 - `mind_activities_set_time_fields` — BEFORE INSERT
+- `zzz_mark_home_state_dirty_del` — AFTER DELETE
+- `zzz_mark_home_state_dirty_ins` — AFTER INSERT
+- `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
 
 **RLS policies:**
 - `mind_activities_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
+- `idx_mind_activities_focus_slug`
 - `mind_activities_member_date_idx`
 - `mind_activities_member_kind_idx`
+- `mind_activities_member_last_updated_idx`
+- `mind_activities_member_ref_client_uniq`
 - `mind_activities_pkey`
+
+### `mind_videos` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `youtube_video_id` | text | NO |  | ✓ |  |
+| `kind` | text | NO |  |  |  |
+| `title` | text | NO |  |  |  |
+| `sub` | text | YES |  |  |  |
+| `duration_minutes` | integer | YES |  |  |  |
+| `is_hero` | boolean | NO | false |  |  |
+| `display_order` | integer | NO | 0 |  |  |
+| `active` | boolean | NO | true |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `mind_videos_kind_check`: CHECK ((kind = ANY (ARRAY['meditation'::text, 'sleep'::text, 'visualisation'::text])))
+
+**Triggers:**
+- `mind_videos_set_updated_at` — BEFORE UPDATE
+
+**RLS policies:**
+- `mind_videos_read_authenticated` (SELECT, roles: authenticated) — (active = true)
+
+**Indexes:**
+- `idx_mind_videos_kind_order`
+- `idx_mind_videos_one_hero_per_kind`
+- `mind_videos_pkey`
 
 ### `monthly_checkins` · RLS
 
@@ -2096,6 +2497,57 @@
 - `monthly_checkins_member_email_iso_month_key`
 - `monthly_checkins_pkey`
 
+### `movement_activities` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `activity_date` | date | NO |  |  |  |
+| `day_of_week` | text | YES |  |  |  |
+| `time_of_day` | text | YES |  |  |  |
+| `logged_at` | timestamp with time zone | NO | now() |  |  |
+| `kind` | text | NO |  |  |  |
+| `duration_minutes` | integer | YES |  |  |  |
+| `duration_seconds` | integer | YES |  |  |  |
+| `distance_km` | numeric | YES |  |  |  |
+| `notes` | text | YES |  |  |  |
+| `client_id` | uuid | YES |  |  |  |
+| `focus_slug` | text | YES |  |  |  |
+| `source` | text | NO | 'manual'::text |  |  |
+| `display_name` | text | YES |  |  |  |
+| `manual_steps` | integer | YES |  |  |  |
+| `counts_for_charity` | boolean | NO | true |  |  |
+| `hk_native_uuid` | text | YES |  |  |  |
+| `hk_promoted_to` | text | YES |  |  |  |
+| `prompt_kind` | text | YES |  |  |  |
+| `metadata` | jsonb | NO | '{}'::jsonb |  |  |
+
+**Check constraints:**
+- `movement_activities_hk_promoted_to_check`: CHECK (((hk_promoted_to IS NULL) OR (hk_promoted_to = ANY (ARRAY['cardio'::text, 'workouts'::text]))))
+- `movement_activities_kind_check`: CHECK ((kind = ANY (ARRAY['walk'::text, 'stretch'::text, 'yoga'::text, 'mobility'::text, 'pilates'::text, 'sport'::text, 'other'::text])))
+- `movement_activities_manual_steps_check`: CHECK (((manual_steps IS NULL) OR (manual_steps >= 0)))
+- `movement_activities_source_check`: CHECK ((source = ANY (ARRAY['manual'::text, 'hk_workout'::text, 'manual_supplement'::text, 'manual_log'::text, 'prompt_tick'::text])))
+
+**Triggers:**
+- `auto_time_fields_movement` — BEFORE INSERT
+- `zz_lc_email` — BEFORE INSERT/UPDATE
+- `zzz_mark_home_state_dirty_del` — AFTER DELETE
+- `zzz_mark_home_state_dirty_ins` — AFTER INSERT
+- `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
+
+**RLS policies:**
+- `movement_activities_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
+
+**Indexes:**
+- `movement_activities_hk_native_uuid_unique`
+- `movement_activities_kind_idx`
+- `movement_activities_logged_at_idx`
+- `movement_activities_member_date_idx`
+- `movement_activities_member_recent_idx`
+- `movement_activities_pkey`
+- `movement_activities_prompt_tick_daily_unique`
+
 ### `nutrition_common_foods` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -2145,6 +2597,7 @@
 | `serving_unit` | text | YES |  |  |  |
 | `servings` | numeric | NO | 1 |  |  |
 | `client_id` | uuid | YES |  |  |  |
+| `focus_slug` | text | YES |  |  |  |
 
 **Check constraints:**
 - `nutrition_logs_meal_type_check`: CHECK ((meal_type = ANY (ARRAY['breakfast'::text, 'lunch'::text, 'dinner'::text, 'snacks'::text])))
@@ -2160,6 +2613,7 @@
 
 **Indexes:**
 - `idx_nutrition_logs_email_date`
+- `idx_nutrition_logs_focus_slug`
 - `nutrition_logs_member_client_uniq`
 - `nutrition_logs_pkey`
 
@@ -2240,6 +2694,32 @@
 **Indexes:**
 - `persona_switches_pkey`
 
+### `persona_welcome_copy` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | bigint | NO |  | ✓ |  |
+| `persona` | text | NO |  |  |  |
+| `goal` | text | YES |  |  |  |
+| `line` | text | NO |  |  |  |
+| `active` | boolean | NO | true |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `persona_welcome_copy_persona_check`: CHECK ((persona = ANY (ARRAY['NOVA'::text, 'RIVER'::text, 'SPARK'::text, 'SAGE'::text, 'HAVEN'::text, 'generic'::text])))
+
+**Triggers:**
+- `trg_persona_welcome_copy_updated_at` — BEFORE UPDATE
+
+**RLS policies:**
+- `persona_welcome_copy_read_authenticated` (SELECT, roles: authenticated) — (active = true)
+
+**Indexes:**
+- `idx_persona_welcome_copy_read`
+- `persona_welcome_copy_pkey`
+- `uq_persona_welcome_copy_persona_goal`
+
 ### `personas` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -2282,6 +2762,7 @@
 | `resolved` | boolean | YES | false |  |  |
 | `notified` | boolean | YES | false |  |  |
 | `created_at` | timestamp with time zone | YES | now() |  |  |
+| `fingerprint` | text | YES |  |  |  |
 
 **Check constraints:**
 - `platform_alerts_severity_check`: CHECK ((severity = ANY (ARRAY['critical'::text, 'high'::text, 'info'::text])))
@@ -2293,6 +2774,7 @@
 
 **Indexes:**
 - `idx_platform_alerts_dedup`
+- `idx_platform_alerts_fingerprint`
 - `idx_platform_alerts_recent`
 - `idx_platform_alerts_unresolved`
 - `platform_alerts_pkey`
@@ -2370,6 +2852,36 @@
 - `idx_podcast_episodes_section_order`
 - `podcast_episodes_pkey`
 
+### `podcast_platforms` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | bigint | NO |  | ✓ |  |
+| `slug` | text | NO |  |  | ✓ |
+| `display_name` | text | NO |  |  |  |
+| `url` | text | NO |  |  |  |
+| `icon_url` | text | YES |  |  |  |
+| `display_order` | integer | NO | 100 |  |  |
+| `active` | boolean | NO | true |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `podcast_platforms_display_name_nonempty`: CHECK ((length(TRIM(BOTH FROM display_name)) > 0))
+- `podcast_platforms_slug_nonempty`: CHECK ((length(TRIM(BOTH FROM slug)) > 0))
+- `podcast_platforms_url_nonempty`: CHECK ((length(TRIM(BOTH FROM url)) > 0))
+
+**Triggers:**
+- `trg_set_updated_at_podcast_platforms` — BEFORE UPDATE
+
+**RLS policies:**
+- `podcast_platforms_select_active` (SELECT, roles: authenticated) — (active = true)
+
+**Indexes:**
+- `podcast_platforms_active_order_idx`
+- `podcast_platforms_pkey`
+- `podcast_platforms_slug_unique`
+
 ### `programme_library` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -2379,9 +2891,9 @@
 | `description` | text | YES |  |  |  |
 | `category` | text | NO |  |  |  |
 | `difficulty` | text | NO |  |  |  |
-| `equipment` | text | NO |  |  |  |
-| `days_per_week` | integer | NO |  |  |  |
-| `duration_weeks` | integer | NO |  |  |  |
+| `equipment` | text | YES |  |  |  |
+| `days_per_week` | integer | YES |  |  |  |
+| `duration_weeks` | integer | YES |  |  |  |
 | `sessions_per_week` | integer | NO |  |  |  |
 | `programme_json` | jsonb | NO |  |  |  |
 | `tags` | text[] | YES |  |  |  |
@@ -2389,6 +2901,11 @@
 | `created_at` | timestamp with time zone | YES | now() |  |  |
 | `is_active` | boolean | YES | true |  |  |
 | `sort_order` | integer | YES | 0 |  |  |
+| `surface` | text | NO |  |  |  |
+
+**Check constraints:**
+- `programme_library_surface_check`: CHECK ((surface = ANY (ARRAY['workouts'::text, 'movement'::text])))
+- `programme_library_surface_shape_check`: CHECK ((((surface = 'workouts'::text) AND (duration_weeks IS NOT NULL) AND (equipment IS NOT NULL) AND (days_per_week IS NOT NULL)) OR (surface = 'movement'::text)))
 
 **RLS policies:**
 - `Anyone can read active library programmes` (SELECT, roles: public) — (is_active = true)
@@ -2397,6 +2914,7 @@
 - `idx_programme_library_active`
 - `idx_programme_library_category`
 - `programme_library_pkey`
+- `programme_library_surface_idx`
 
 ### `push_subscriptions` · RLS
 
@@ -2507,6 +3025,41 @@
 - `replay_playlists_category_key`
 - `replay_playlists_pkey`
 - `replay_playlists_slug_uniq`
+
+### `replay_video_views` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `youtube_video_id` | text | NO |  |  |  |
+| `playlist_slug` | text | NO |  |  |  |
+| `category` | text | NO |  |  |  |
+| `host_name` | text | YES |  |  |  |
+| `activity_date` | text | NO |  |  |  |
+| `started_at` | timestamp with time zone | NO | now() |  |  |
+| `last_updated_at` | timestamp with time zone | NO | now() |  |  |
+| `watch_seconds` | integer | NO | 0 |  |  |
+| `total_seconds` | integer | YES |  |  |  |
+| `pct_watched` | numeric | YES |  |  |  |
+| `completed` | boolean | NO | false |  |  |
+| `client_id` | uuid | NO |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Foreign keys:**
+- `member_email` → `members.email` (`replay_video_views_member_email_fkey`)
+- `youtube_video_id` → `replay_videos.youtube_video_id` (`replay_video_views_youtube_video_id_fkey`)
+
+**RLS policies:**
+- `members read own replay views` (SELECT, roles: authenticated) — (auth.email() = member_email)
+- `members update own replay views` (UPDATE, roles: authenticated) — (auth.email() = member_email) / CHECK: (auth.email() = member_email)
+- `members write own replay views` (INSERT, roles: authenticated) — — / CHECK: (auth.email() = member_email)
+
+**Indexes:**
+- `replay_video_views_dedupe`
+- `replay_video_views_member_last_updated`
+- `replay_video_views_pkey`
+- `replay_video_views_video_id`
 
 ### `replay_videos` · RLS
 
@@ -2663,6 +3216,32 @@
 **Indexes:**
 - `service_catalogue_pkey`
 
+### `session_categories` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `category` | text | NO |  | ✓ |  |
+| `youtube_stream_id` | text | NO |  |  |  |
+| `youtube_playlist_id` | text | NO |  |  |  |
+| `riverside_studio_name` | text | YES |  |  |  |
+| `display_name` | text | YES |  |  |  |
+| `default_privacy` | text | NO | 'unlisted'::text |  |  |
+| `active` | boolean | NO | true |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `session_categories_default_privacy_check`: CHECK ((default_privacy = ANY (ARRAY['unlisted'::text, 'public'::text, 'private'::text])))
+
+**Triggers:**
+- `session_categories_updated_at` — BEFORE UPDATE
+
+**RLS policies:**
+- `session_categories_read` (SELECT, roles: public) — true
+
+**Indexes:**
+- `session_categories_pkey`
+
 ### `session_chat` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -2684,6 +3263,41 @@
 **Indexes:**
 - `session_chat_pkey`
 - `session_chat_type_created_idx`
+
+### `session_live_views` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `occurrence_id` | uuid | NO |  |  |  |
+| `youtube_broadcast_id` | text | YES |  |  |  |
+| `category` | text | NO |  |  |  |
+| `host_name` | text | YES |  |  |  |
+| `session_title` | text | YES |  |  |  |
+| `activity_date` | text | NO |  |  |  |
+| `started_at` | timestamp with time zone | NO | now() |  |  |
+| `last_updated_at` | timestamp with time zone | NO | now() |  |  |
+| `watch_seconds` | integer | NO | 0 |  |  |
+| `total_seconds` | integer | YES |  |  |  |
+| `pct_watched` | numeric | YES |  |  |  |
+| `completed` | boolean | NO | false |  |  |
+| `client_id` | uuid | NO |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Foreign keys:**
+- `occurrence_id` → `calendar_occurrences.id` (`session_live_views_occurrence_id_fkey`)
+
+**RLS policies:**
+- `session_live_views_insert_own` (INSERT, roles: public) — — / CHECK: (member_email = auth.email())
+- `session_live_views_select_own` (SELECT, roles: public) — (member_email = auth.email())
+- `session_live_views_update_own` (UPDATE, roles: public) — (member_email = auth.email()) / CHECK: (member_email = auth.email())
+
+**Indexes:**
+- `session_live_views_dedupe`
+- `session_live_views_member_last_updated`
+- `session_live_views_occurrence`
+- `session_live_views_pkey`
 
 ### `session_views` · RLS
 
@@ -3028,7 +3642,7 @@
 | Column | Type | Nullable | Default | PK | Unique |
 |---|---|---|---|---|---|
 | `id` | uuid | NO | gen_random_uuid() | ✓ |  |
-| `member_email` | text | NO |  |  | ✓ |
+| `member_email` | text | NO |  |  |  |
 | `programme_json` | jsonb | NO |  |  |  |
 | `plan_duration_weeks` | integer | NO |  |  |  |
 | `current_week` | integer | NO | 1 |  |  |
@@ -3051,8 +3665,7 @@
 
 **Indexes:**
 - `idx_wpc_active`
-- `workout_plan_cache_member_email_key`
-- `workout_plan_cache_one_active_per_member`
+- `workout_plan_cache_one_active_per_member_surface`
 - `workout_plan_cache_pkey`
 
 ### `workout_plans` · RLS
@@ -3135,11 +3748,12 @@
 - `idx_workouts_logged_at`
 - `idx_workouts_member_email`
 - `workouts_member_client_uniq`
+- `workouts_member_source_loggedat_uniq`
 - `workouts_pkey`
 
 ---
 
-## Public Functions (72)
+## Public Functions (86)
 
 - `_vyve_daily_streak(p_dates date[], p_today date)` — func
 - `_vyve_daily_streak_best(p_dates date[])` — func
@@ -3159,8 +3773,10 @@
 - `charity_total_reconcile()` — func
 - `charity_total_reconcile_and_heal()` — func
 - `compute_engagement_components(p_last_activity_at timestamp with time zone, p_active_days_30d integer, p_distinct_types_7d integer, p_latest_wellbeing integer)` — func
+- `compute_engagement_components_v2(p_member_email text)` — func
 - `compute_engagement_score(p_last_activity_at timestamp with time zone, p_active_days_30d integer, p_distinct_types_7d integer, p_latest_wellbeing integer)` — func
 - `drain_member_home_state_dirty(p_max_age_seconds integer)` — func
+- `evaluate_plan_fit()` — func
 - `exercise_logs_canonical_normalise()` — func
 - `exercise_name_canonical_normalise_generic()` — func
 - `gdpr_erase_purge_subject(subject_email text)` — func
@@ -3176,6 +3792,7 @@
 - `increment_checkin_counter()` — func
 - `increment_habit_counter()` — func
 - `increment_workout_counter()` — func
+- `is_admin()` — func
 - `member_age(birth_date date)` — func
 - `member_home_state_get_fresh(p_email text)` — func
 - `next_certificate_number()` — func
@@ -3183,19 +3800,30 @@
 - `normalise_exercise_names_jsonb_trigger()` — func
 - `podcast_episodes_set_updated_at()` — func
 - `queue_health_write_back()` — func
+- `read_vault_secret(secret_name text)` — func
 - `rebuild_member_activity_daily()` — func
 - `rebuild_member_activity_daily_incremental()` — func
 - `recompute_all_member_stats()` — func
 - `recompute_company_summary()` — func
 - `recompute_member_stats(p_email text)` — func
 - `recompute_platform_metrics(p_date date)` — func
+- `recompute_step_baselines()` — func
 - `refresh_member_home_state(p_email text)` — func
 - `refresh_member_home_state_if_dirty(p_email text)` — func
+- `refresh_member_home_state_v1_internal(p_email text)` — func
 - `replay_videos_set_updated_at()` — func
+- `resolve_broadcast_audience(criteria jsonb)` — func
+- `session_categories_set_updated_at()` — func
 - `set_activity_time_fields()` — func
+- `set_broadcast_schedules_updated_at()` — func
 - `set_checkin_iso_week()` — func
 - `set_daily_mood_updated_at()` — func
 - `set_updated_at()` — func
+- `set_updated_at_checkin_questions()` — func
+- `set_updated_at_how_to_resources()` — func
+- `set_updated_at_mp()` — func
+- `set_updated_at_persona_welcome_copy()` — func
+- `set_updated_at_podcast_platforms()` — func
 - `taglines_set_updated_at()` — func
 - `tg_mark_home_state_dirty_del()` — func
 - `tg_mark_home_state_dirty_ins()` — func
@@ -3216,7 +3844,7 @@
 
 ---
 
-## Cron Jobs (23)
+## Cron Jobs (30)
 
 | Job | Schedule | Active | Command preview |
 |---|---|---|---|
@@ -3224,6 +3852,7 @@
 | `habit-reminder-daily` | `0 20 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `monthly-report` | `15 8 1 * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
 | `process-scheduled-pushes` | `*/5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `session-publish-hourly` | `5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `streak-reminder-daily` | `0 18 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve_charity_reconcile_daily` | `30 2 * * *` | ✓ | ` SELECT public.charity_total_reconcile_and_heal(); ` |
 | `vyve_drain_home_state_dirty` | `*/5 * * * *` | ✓ | ` SELECT public.drain_member_home_state_dirty(); ` |
@@ -3233,10 +3862,16 @@
 | `vyve_recompute_member_stats` | `*/15 * * * *` | ✓ | `SELECT public.recompute_all_member_stats();` |
 | `vyve_schema_snapshot` | `0 3 * * 0` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-achievements-sweep-daily` | `0 22 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `vyve-alert-digest-afternoon` | `0 14 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `vyve-alert-digest-evening` | `0 20 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `vyve-alert-digest-morning` | `0 8 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `vyve-broadcast-scheduler` | `*/5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-certificate-checker` | `0 9 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-daily-report` | `5 8 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `vyve-evaluate-plan-fit` | `0 4 * * *` | ✓ | `SELECT public.evaluate_plan_fit();` |
 | `vyve-gdpr-erase-daily` | `0 3 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-gdpr-export-tick` | `*/15 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `vyve-recompute-step-baselines` | `10 4 * * *` | ✓ | `SELECT public.recompute_step_baselines();` |
 | `vyve-reengagement-daily` | `0 8 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-refresh-replay-videos-daily` | `30 3 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-seed-weekly-goals` | `1 0 * * 1` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
