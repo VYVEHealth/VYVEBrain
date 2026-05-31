@@ -1,31 +1,418 @@
-// onboarding v82 - native app store welcome email (PWA install steps removed) + write-error hardening (carried from v78)
+// onboarding v87 - PM-420 step 4b: writeWorkoutPlan deactivate-old now scoped by surface (preserves co-active workouts + movement plans). Carries v86 (wpc deactivate-old+insert-new) + v85 (surface pillar stamping) + v84 (flat-progression workouts + deterministic movement plan) + v83 (crisis-scan).
+// Single-file build (inlined emails.ts + workouts.ts) to deploy in one tool call.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-const BREVO_KEY = Deno.env.get('BREVO_API_KEY') ?? '';
 const MAKE_WEBHOOK = Deno.env.get('MAKE_ONBOARDING_WEBHOOK') || '';
+const BREVO_KEY = Deno.env.get('BREVO_API_KEY') ?? '';
 const CORS = {
   'Access-Control-Allow-Origin': 'https://www.vyvehealth.co.uk',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
-const SENSITIVE_CONTEXT = [
+const WORKOUT_SENSITIVE_CONTEXT = [
   'Bereavement',
   'Major life change',
   'Recovering from illness or injury',
   'Struggling with mental health'
 ];
-function resolveStream(d) {
-  const raw = String(d.exerciseStream || '').toLowerCase().trim();
-  if (raw === 'movement' || raw === 'cardio' || raw === 'workouts') return raw;
-  return 'workouts';
+const SENSITIVE_CONTEXT = WORKOUT_SENSITIVE_CONTEXT;
+const SPLITS = {
+  PPL: 'Push / Pull / Legs',
+  Upper_Lower: 'Upper / Lower',
+  Full_Body: 'Full Body',
+  Home: 'Home',
+  Movement_Wellbeing: 'Movement & Wellbeing'
+};
+function selectPlanType(d) {
+  const loc = String(d.trainingLocation || '').trim().toLowerCase(), days = parseInt(String(d.trainDays)) || 3, exp = String(d.gymExperience || 'Beginner').toLowerCase();
+  const goals = (d.trainingGoals || []).map((g)=>g.toLowerCase()).join(' '), lc = d.lifeContext || [], sens = lc.some((c)=>WORKOUT_SENSITIVE_CONTEXT.includes(c));
+  if (loc === 'home') return {
+    planType: 'Home',
+    planReason: 'Home only.'
+  };
+  if (sens && exp === 'beginner') return {
+    planType: 'Movement_Wellbeing',
+    planReason: 'Sensitive+Beginner.'
+  };
+  if (goals.includes('mobility') || goals.includes('flexibility') || goals.includes('mental')) return {
+    planType: 'Movement_Wellbeing',
+    planReason: 'Mobility/flexibility goals.'
+  };
+  if (days <= 2) return {
+    planType: 'Full_Body',
+    planReason: days + 'd/wk.'
+  };
+  if (days === 3) return exp === 'advanced' ? {
+    planType: 'PPL',
+    planReason: '3d+Adv.'
+  } : {
+    planType: 'Full_Body',
+    planReason: '3d+' + exp + '.'
+  };
+  if (days === 4) return exp === 'advanced' ? {
+    planType: 'PPL',
+    planReason: '4d+Adv.'
+  } : {
+    planType: 'Upper_Lower',
+    planReason: '4d+' + exp + '.'
+  };
+  return {
+    planType: 'PPL',
+    planReason: days + 'd.'
+  };
+}
+function slotsBySessionLength(sessionLengthRaw) {
+  const v = String(sessionLengthRaw || '').toLowerCase().trim();
+  if (v.includes('20')) return 2;
+  if (v.includes('30')) return 4;
+  if (v.includes('60')) return 8;
+  return 6;
+}
+function buildFlatProgressionPrompt(d, planType, exerciseLibrary) {
+  const split = SPLITS[planType] || planType;
+  const days = parseInt(String(d.trainDays)) || 3;
+  const slots = slotsBySessionLength(d.sessionLength);
+  const exp = String(d.gymExperience || 'Beginner');
+  const goals = (d.trainingGoals || []).join(', ') || 'general fitness';
+  const injuries = (d.injuries || []).join(', ') || 'none';
+  const avoid = String(d.avoidExercises || 'none');
+  const loc = String(d.trainingLocation || 'gym');
+  const equipment = (d.equipment || []).join(', ') || 'standard gym';
+  const priority = String(d.priorityMuscle || '').trim();
+  const s = d.scores || {};
+  const exNames = exerciseLibrary.slice(0, 120).map((e)=>String(e.exercise_name || '')).filter(Boolean);
+  const exList = exNames.join(', ');
+  return `You are building an 8-week workout programme for a VYVE Health member, using a FLAT-PROGRESSION contract.
+
+PROGRAMME SHAPE (critical):
+- 8 weeks total. The same WORKING WEEK template repeats 6 times; a DELOAD WEEK template repeats twice.
+- Schedule is hard-coded: Weeks 1, 2, 3, 5, 6, 7 = WORKING. Weeks 4 and 8 = DELOAD.
+- You generate ONE working-week template AND ONE deload-week template. The code expands them.
+- Primary compounds MUST be IDENTICAL across working and deload weeks. Only sets/reps change.
+
+WORKING WEEK RULES:
+- 3 sets per exercise (4 for primary compounds if intermediate/advanced)
+- Rep range 8-12 for compounds, 10-15 for accessories
+- Rest 90s primary, 60s accessories
+
+DELOAD WEEK RULES:
+- 2 sets per exercise (3 max)
+- Rep range 12-15 (lighter weight implied)
+- Rest 60 seconds
+- Notes mention "deload \u2014 drop weight 30-40%, focus on form"
+
+SESSION STRUCTURE:
+- Split: ${split}
+- Sessions per week: ${days}
+- Exercises per session: ${slots}
+- Order: primary compounds first, accessories after, isolation last
+
+MEMBER PROFILE:
+- Experience: ${exp}
+- Location: ${loc}
+- Equipment: ${equipment}
+- Goals: ${goals}
+- Injuries/limitations: ${injuries}
+- Exercises to avoid: ${avoid}
+${priority ? `- Priority muscle: ${priority} (bias selection within existing slots, do NOT add extra)` : ''}
+- Wellbeing ${s.wellbeing || '5'}/10, Energy ${s.energy || '5'}/10
+
+CRITICAL \u2014 use exercise names from this VYVE library exactly:
+${exList}
+
+NEVER include exercises from injuries/avoid list. NEVER invent exercise names not in the library.
+
+PROGRAMME NAMING: Short motivating name based on split + goals (NOT location). Example: "8-Week Push/Pull/Legs Strength".
+
+Respond ONLY with valid JSON. No preamble. No markdown. Schema:
+{
+  "programme_name": "string",
+  "rationale": "2-3 sentence motivating rationale addressed to the member",
+  "working_week": { "sessions": [ { "session_name": "Push A", "session_label": "Session 1", "exercises": [ { "exercise_name": "Bench Press", "sets": "3", "reps": "8-12", "rest_seconds": 90, "notes": "Control the descent" } ] } ] },
+  "deload_week": { "sessions": [ { "session_name": "Push A \u2014 Deload", "session_label": "Session 1", "exercises": [ { "exercise_name": "Bench Press", "sets": "2", "reps": "12-15", "rest_seconds": 60, "notes": "Deload \u2014 drop weight 30-40%, focus on form" } ] } ] }
+}`;
+}
+function parseFlatProgressionResponse(text) {
+  const clean = text.replace(/```json|```/g, '').trim();
+  try {
+    const o = JSON.parse(clean);
+    if (!o.programme_name || !o.working_week?.sessions || !o.deload_week?.sessions) return null;
+    return o;
+  } catch (e) {
+    console.error('parseFlatProgressionResponse: JSON parse failed', e);
+    return null;
+  }
+}
+function enrichSessionsWithVideos(sessions, exerciseLibrary) {
+  const libMap = {};
+  for (const ex of exerciseLibrary){
+    const name = String(ex.exercise_name || '').toLowerCase().trim();
+    if (name) libMap[name] = {
+      video_url: String(ex.video_url || ''),
+      thumbnail_url: String(ex.thumbnail_url || '')
+    };
+  }
+  let matched = 0, unmatched = 0;
+  const out = sessions.map((s)=>({
+      ...s,
+      exercises: s.exercises.map((ex)=>{
+        const key = ex.exercise_name.toLowerCase().trim();
+        const urls = libMap[key];
+        if (urls?.video_url) {
+          matched++;
+          return {
+            ...ex,
+            ...urls
+          };
+        }
+        unmatched++;
+        return ex;
+      })
+    }));
+  return {
+    sessions: out,
+    matched,
+    unmatched
+  };
+}
+function expandToEightWeeks(working, deload) {
+  const weeks = [];
+  const schedule = [
+    'W',
+    'W',
+    'W',
+    'D',
+    'W',
+    'W',
+    'W',
+    'D'
+  ];
+  for (const slot of schedule){
+    const template = slot === 'W' ? working : deload;
+    weeks.push(JSON.parse(JSON.stringify(template)));
+  }
+  return weeks;
+}
+async function callAnthropicFlatProgression(prompt) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_KEY,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 6000,
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ]
+    })
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error('Anthropic flat-progression ' + r.status + ': ' + t.slice(0, 200));
+  }
+  const j = await r.json();
+  return {
+    text: j.content?.[0]?.text || '',
+    stopReason: j.stop_reason || 'unknown'
+  };
+}
+async function generateWorkoutPlanFlat(d, exerciseLibrary) {
+  const { planType } = selectPlanType(d);
+  const prompt = buildFlatProgressionPrompt(d, planType, exerciseLibrary);
+  const result = await callAnthropicFlatProgression(prompt);
+  if (result.stopReason === 'max_tokens') console.warn('Flat-progression generator hit max_tokens');
+  const parsed = parseFlatProgressionResponse(result.text);
+  if (!parsed) throw new Error('Failed to parse flat-progression response. Stop reason: ' + result.stopReason);
+  const workingEnriched = enrichSessionsWithVideos(parsed.working_week.sessions, exerciseLibrary);
+  const deloadEnriched = enrichSessionsWithVideos(parsed.deload_week.sessions, exerciseLibrary);
+  const totalMatched = workingEnriched.matched + deloadEnriched.matched;
+  const totalUnmatched = workingEnriched.unmatched + deloadEnriched.unmatched;
+  const plan = expandToEightWeeks(workingEnriched.sessions, deloadEnriched.sessions);
+  console.log(`Flat workout plan: ${plan.length} weeks (6 working + 2 deload), ${totalMatched}/${totalMatched + totalUnmatched} videos matched`);
+  return {
+    plan,
+    programme_name: parsed.programme_name,
+    programme_rationale: parsed.rationale,
+    plan_type: planType,
+    split_type: SPLITS[planType] || planType,
+    videos_matched: totalMatched,
+    videos_unmatched: totalUnmatched,
+    shape: 'flat_8wk_w6d2'
+  };
+}
+function profileMovementMember(d) {
+  const lc = d.lifeContext || [];
+  const sens = lc.some((c)=>WORKOUT_SENSITIVE_CONTEXT.includes(c));
+  const exp = String(d.gymExperience || '').toLowerCase();
+  const goals = (d.trainingGoals || []).map((g)=>g.toLowerCase());
+  const startingGently = goals.some((g)=>g.includes('starting gently')) || goals.some((g)=>g.includes('starting gentle'));
+  const movingMore = goals.some((g)=>g.includes('moving more'));
+  const days = parseInt(String(d.movementFrequency || d.trainDays)) || 3;
+  const movementDuration = String(d.movementDuration || '').toLowerCase();
+  let startMin = 15, endMin = 30;
+  if (movementDuration.includes('5') || movementDuration.includes('10')) {
+    startMin = 10;
+    endMin = 20;
+  } else if (movementDuration.includes('45') || movementDuration.includes('60')) {
+    startMin = 25;
+    endMin = 45;
+  }
+  if (sens || exp === 'beginner' || startingGently) {
+    return {
+      level: 'gentle',
+      startDurationMin: Math.min(startMin, 10),
+      endDurationMin: Math.min(endMin, 20),
+      walksPerWeek: Math.max(3, Math.min(days, 4)),
+      includeMobility: false
+    };
+  }
+  if (days >= 4 || movingMore) {
+    return {
+      level: 'active',
+      startDurationMin: startMin,
+      endDurationMin: endMin + 10,
+      walksPerWeek: Math.min(days, 5),
+      includeMobility: days >= 4
+    };
+  }
+  return {
+    level: 'default',
+    startDurationMin: startMin,
+    endDurationMin: endMin,
+    walksPerWeek: Math.max(3, Math.min(days, 4)),
+    includeMobility: false
+  };
+}
+function durationForMovementWeek(weekNum, profile) {
+  const t = (weekNum - 1) / 7;
+  return Math.round(profile.startDurationMin + (profile.endDurationMin - profile.startDurationMin) * t);
+}
+function buildMovementWeek(weekNum, profile) {
+  const sessions = [];
+  const duration = durationForMovementWeek(weekNum, profile);
+  const sessionsCount = profile.walksPerWeek;
+  for(let i = 0; i < sessionsCount; i++){
+    const isMobility = profile.includeMobility && i === sessionsCount - 1;
+    if (isMobility) {
+      sessions.push({
+        session_name: 'Mobility & Stretch',
+        session_label: `Session ${i + 1}`,
+        exercises: [
+          {
+            exercise_name: 'Full-body mobility flow',
+            sets: '1',
+            reps: '15 min',
+            rest_seconds: 0,
+            notes: 'Gentle stretches and joint mobility. Move slowly, breathe through each position.'
+          }
+        ]
+      });
+    } else {
+      sessions.push({
+        session_name: `Walk \u2014 ${duration} min`,
+        session_label: `Session ${i + 1}`,
+        exercises: [
+          {
+            exercise_name: `${duration}-minute walk`,
+            sets: '1',
+            reps: `${duration} min`,
+            rest_seconds: 0,
+            notes: weekNum === 1 && i === 0 ? 'Start where you are. A comfortable pace is the right pace.' : profile.level === 'gentle' ? 'Easy pace. If you can hold a conversation, you are doing it right.' : 'Brisk pace. You should be able to talk but not sing.'
+          }
+        ]
+      });
+    }
+  }
+  return sessions;
+}
+function generateMovementPlan(d) {
+  const profile = profileMovementMember(d);
+  const weeks = [];
+  for(let w = 1; w <= 8; w++)weeks.push(buildMovementWeek(w, profile));
+  const startMin = profile.startDurationMin;
+  const endMin = profile.endDurationMin;
+  const programme_name = profile.level === 'gentle' ? 'Your Gentle Movement Journey' : profile.level === 'active' ? 'Your Daily Movement Plan' : 'Your Movement Programme';
+  const rationale = profile.level === 'gentle' ? `Walks first. ${profile.walksPerWeek} times a week, starting at ${startMin} minutes and building to ${endMin} minutes by week 8. No pressure, no equipment \u2014 just consistency.` : profile.includeMobility ? `${profile.walksPerWeek - 1} walks a week (${startMin}-${endMin} min) plus a weekly mobility session. Builds the habit of moving daily without overwhelming your schedule.` : `${profile.walksPerWeek} walks a week, scaling from ${startMin} to ${endMin} minutes over 8 weeks. Simple, repeatable, and exactly what your body needs.`;
+  return {
+    plan: weeks,
+    programme_name,
+    programme_rationale: rationale,
+    plan_type: 'Movement',
+    split_type: 'Movement',
+    shape: 'movement_walks_8wk'
+  };
+}
+async function writeWorkoutPlan(email, plan, programmeName, planType, opts) {
+  const em = email.toLowerCase().trim();
+  const surface = opts?.surface || (planType === 'Movement' ? 'movement' : 'workouts');
+  const payload = {
+    member_email: em,
+    programme_json: {
+      weeks: plan,
+      programme_name: programmeName,
+      plan_type: planType,
+      split_type: opts?.split_type || planType,
+      programme_rationale: opts?.rationale || '',
+      shape: opts?.shape || 'flat_8wk_w6d2',
+      surface,
+      generated_at: new Date().toISOString()
+    },
+    plan_duration_weeks: 8,
+    current_week: 1,
+    current_session: 1,
+    is_active: true,
+    source: 'onboarding',
+    generated_at: new Date().toISOString()
+  };
+  // PM-420 step 4b: deactivate-old SCOPED BY SURFACE so a workouts re-onboarding
+  // does not deactivate an active movement plan (and vice versa).
+  const em_enc = encodeURIComponent(em);
+  const surface_enc = encodeURIComponent(surface);
+  const deactivate = await fetch(SUPABASE_URL + '/rest/v1/workout_plan_cache?member_email=eq.' + em_enc + '&is_active=eq.true&programme_json->>surface=eq.' + surface_enc, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Prefer': 'return=minimal'
+    },
+    body: JSON.stringify({
+      is_active: false
+    })
+  });
+  if (!deactivate.ok) {
+    const t = await deactivate.text();
+    throw new Error('writeWorkoutPlan deactivate-old: ' + t);
+  }
+  const r = await fetch(SUPABASE_URL + '/rest/v1/workout_plan_cache', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Prefer': 'return=minimal'
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error('writeWorkoutPlan insert-new: ' + t);
+  }
+  console.log('Plan written for', em, '-', plan.length, 'weeks, shape:', payload.programme_json.shape, 'surface:', surface);
 }
 async function sendErrorAlert(fn, phase, mem, err) {
   if (!BREVO_KEY) return;
   const ts = new Date().toISOString();
   const se = err.replace(/</g, '&lt;').replace(/>/g, '&gt;').slice(0, 2000);
-  const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#FFF5F5;font-family:Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#FFF5F5;padding:30px 16px;"><tr><td align="center"><table width="540" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(180,40,40,0.08);"><tr><td style="background:#8B0000;padding:18px 28px;"><span style="font-family:Georgia,serif;font-size:16px;letter-spacing:4px;color:#fff;">VYVE - ERROR ALERT</span></td></tr><tr><td style="padding:24px 28px;"><h2 style="margin:0 0 14px;font-size:18px;color:#8B0000;">Edge Function Failed</h2><table width="100%" cellpadding="6" cellspacing="0" style="font-size:13px;color:#333;"><tr><td style="font-weight:700;width:110px;border-bottom:1px solid #eee;">Function</td><td style="border-bottom:1px solid #eee;">${fn}</td></tr><tr><td style="font-weight:700;border-bottom:1px solid #eee;">Phase</td><td style="border-bottom:1px solid #eee;">${phase}</td></tr><tr><td style="font-weight:700;border-bottom:1px solid #eee;">Member</td><td style="border-bottom:1px solid #eee;">${mem}</td></tr><tr><td style="font-weight:700;border-bottom:1px solid #eee;">Time</td><td style="border-bottom:1px solid #eee;">${ts}</td></tr><tr><td style="font-weight:700;vertical-align:top;">Error</td><td style="color:#8B0000;font-family:monospace;font-size:12px;word-break:break-all;">${se}</td></tr></table><p style="margin:16px 0 0;font-size:12px;color:#999;">Member saw error screen. Check the separate answers backup email.</p></td></tr></table></td></tr></table></body></html>`;
+  const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#FFF5F5;font-family:Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#FFF5F5;padding:30px 16px;"><tr><td align="center"><table width="540" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;"><tr><td style="background:#8B0000;padding:18px 28px;"><span style="font-family:Georgia,serif;font-size:16px;letter-spacing:4px;color:#fff;">VYVE - ERROR ALERT</span></td></tr><tr><td style="padding:24px 28px;"><h2 style="margin:0 0 14px;font-size:18px;color:#8B0000;">Edge Function Failed</h2><table width="100%" cellpadding="6" cellspacing="0" style="font-size:13px;color:#333;"><tr><td style="font-weight:700;width:110px;">Function</td><td>${fn}</td></tr><tr><td style="font-weight:700;">Phase</td><td>${phase}</td></tr><tr><td style="font-weight:700;">Member</td><td>${mem}</td></tr><tr><td style="font-weight:700;">Time</td><td>${ts}</td></tr><tr><td style="font-weight:700;vertical-align:top;">Error</td><td style="color:#8B0000;font-family:monospace;font-size:12px;word-break:break-all;">${se}</td></tr></table></td></tr></table></td></tr></table></body></html>`;
   try {
     await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
@@ -60,251 +447,7 @@ async function sendAnswersBackup(data) {
   const ts = new Date().toISOString();
   const email = String(data.email || 'unknown');
   const name = String(data.firstName || '') + ' ' + String(data.lastName || '');
-  const scores = data.scores || {};
-  const fields = [
-    [
-      'Name',
-      name.trim()
-    ],
-    [
-      'Email',
-      email
-    ],
-    [
-      'Phone',
-      String(data.phone || 'N/A')
-    ],
-    [
-      'DOB',
-      String(data.dob || 'N/A')
-    ],
-    [
-      'Gender',
-      String(data.gender || 'N/A')
-    ],
-    [
-      'Location (area)',
-      String(data.location || 'N/A')
-    ],
-    [
-      'Exercise Stream',
-      String(data.exerciseStream || 'N/A')
-    ],
-    [
-      'Training Location',
-      String(data.trainingLocation || 'N/A')
-    ],
-    [
-      'Experience',
-      String(data.gymExperience || 'N/A')
-    ],
-    [
-      'Training Days/Week',
-      String(data.trainDays || 'N/A')
-    ],
-    [
-      'Training Goals',
-      (data.trainingGoals || []).join(', ') || 'N/A'
-    ],
-    [
-      'Movement Types',
-      (data.movementTypes || []).join(', ') || 'N/A'
-    ],
-    [
-      'Movement Frequency',
-      String(data.movementFrequency || 'N/A')
-    ],
-    [
-      'Movement Duration',
-      String(data.movementDuration || 'N/A')
-    ],
-    [
-      'Movement Location',
-      String(data.movementLocation || 'N/A')
-    ],
-    [
-      'Running Level',
-      String(data.runningLevel || 'N/A')
-    ],
-    [
-      'Running Goal',
-      String(data.runningGoal || 'N/A')
-    ],
-    [
-      'Running Days',
-      String(data.runningDays || 'N/A')
-    ],
-    [
-      'Running Location',
-      String(data.runningLocation || 'N/A')
-    ],
-    [
-      'Specific Goal',
-      String(data.specificGoal || 'N/A')
-    ],
-    [
-      'Equipment',
-      (data.equipment || []).join(', ') || 'N/A'
-    ],
-    [
-      'Injuries',
-      (data.injuries || []).join(', ') || 'None'
-    ],
-    [
-      'Exercises to Avoid',
-      String(data.avoidExercises || 'None')
-    ],
-    [
-      'Wellbeing Score',
-      scores.wellbeing || 'N/A'
-    ],
-    [
-      'Stress Score',
-      scores.stress || 'N/A'
-    ],
-    [
-      'Energy Score',
-      scores.energy || 'N/A'
-    ],
-    [
-      'Sleep Score',
-      scores.sleep || 'N/A'
-    ],
-    [
-      'Physical Score',
-      scores.physical || 'N/A'
-    ],
-    [
-      'Diet Score',
-      scores.diet || 'N/A'
-    ],
-    [
-      'Social Score',
-      scores.social || 'N/A'
-    ],
-    [
-      'Motivation Score',
-      scores.motivation || 'N/A'
-    ],
-    [
-      'Sleep Hours',
-      String(data.sleepHours || 'N/A')
-    ],
-    [
-      'Bedtime',
-      String(data.bedtime || 'N/A')
-    ],
-    [
-      'Sleep Issues',
-      (data.sleepIssues || []).join(', ') || 'None'
-    ],
-    [
-      'Sleep Help',
-      (data.sleepHelp || []).join(', ') || 'N/A'
-    ],
-    [
-      'Activity Level',
-      String(data.activityLevel || 'N/A')
-    ],
-    [
-      'Height (cm)',
-      String(data.heightCm || 'N/A')
-    ],
-    [
-      'Weight (kg)',
-      String(data.weightKg || 'N/A')
-    ],
-    [
-      'TDEE Target',
-      String(data.recommendedCalories || 'N/A')
-    ],
-    [
-      'TDEE Maintenance',
-      String(data.tdeeMaintenance || 'N/A')
-    ],
-    [
-      'Deficit %',
-      String(data.deficitPercentage || 'N/A')
-    ],
-    [
-      'Nutrition Goal',
-      String(data.nutritionGoal || 'N/A')
-    ],
-    [
-      'Nutrition Guidance',
-      String(data.nutritionGuidance || 'N/A')
-    ],
-    [
-      'Life Context',
-      (data.lifeContext || []).join(', ') || 'None'
-    ],
-    [
-      'Life Context Detail',
-      String(data.lifeContextExtra || 'N/A')
-    ],
-    [
-      'Alcohol',
-      String(data.alcohol || 'N/A')
-    ],
-    [
-      'Social Barriers',
-      (data.socialBarriers || []).join(', ') || 'None'
-    ],
-    [
-      'Social Help',
-      (data.socialHelp || []).join(', ') || 'N/A'
-    ],
-    [
-      'Past Barriers',
-      (data.pastBarriers || []).join(', ') || 'None'
-    ],
-    [
-      'Success Vision',
-      String(data.successVision || 'N/A')
-    ],
-    [
-      'Goal Style',
-      String(data.goalStyle || 'N/A')
-    ],
-    [
-      'Tone Preference',
-      String(data.tonePreference || 'N/A')
-    ],
-    [
-      'Overwhelm Response',
-      (data.overwhelmedPref || []).join(', ') || 'N/A'
-    ],
-    [
-      'Contact Preference',
-      String(data.contactPreference || 'N/A')
-    ],
-    [
-      'Support Areas',
-      (data.supportAreas || []).join(', ') || 'N/A'
-    ],
-    [
-      'Support Style',
-      (data.supportStyle || []).join(', ') || 'N/A'
-    ],
-    [
-      'Motivation Help',
-      (data.motivationHelp || []).join(', ') || 'N/A'
-    ],
-    [
-      'Smartphone',
-      String(data.smartphone || 'N/A')
-    ],
-    [
-      'Smartwatch',
-      String(data.smartwatch || 'N/A')
-    ],
-    [
-      'Additional Info',
-      String(data.anythingElse || 'N/A')
-    ]
-  ];
-  const rows = fields.map(([k, v])=>`<tr><td style="font-weight:700;padding:6px 10px;border-bottom:1px solid #eee;width:160px;vertical-align:top;font-size:13px;">${k}</td><td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:13px;">${String(v).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td></tr>`).join('');
-  const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#F0FAF8;font-family:Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#F0FAF8;padding:30px 16px;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;box-shadow:0 2px 12px rgba(27,120,120,0.08);"><tr><td style="background:#0D2B2B;padding:18px 28px;"><span style="font-family:Georgia,serif;font-size:16px;letter-spacing:4px;color:#fff;">VYVE - ANSWERS BACKUP</span></td></tr><tr><td style="padding:24px 28px;"><h2 style="margin:0 0 6px;font-size:18px;color:#0D2B2B;">Questionnaire Answers</h2><p style="margin:0 0 16px;font-size:13px;color:#888;">Onboarding failed for this member. Their answers are preserved below.</p><table width="100%" cellpadding="0" cellspacing="0" style="color:#333;">${rows}</table><p style="margin:20px 0 0;font-size:12px;color:#999;">Backup sent ${ts}.</p><pre style="background:#f4f4f4;padding:12px;border-radius:6px;font-size:11px;overflow-x:auto;margin-top:12px;max-height:400px;">${JSON.stringify(data, null, 2).replace(/</g, '&lt;').replace(/>/g, '&gt;').slice(0, 8000)}</pre></td></tr></table></td></tr></table></body></html>`;
+  const html = `<!DOCTYPE html><html><body><h2>VYVE Answers Backup</h2><p>Onboarding failed for ${name.trim()} (${email}) at ${ts}.</p><pre>${JSON.stringify(data, null, 2).replace(/</g, '&lt;').replace(/>/g, '&gt;').slice(0, 8000)}</pre></body></html>`;
   try {
     await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
@@ -336,6 +479,50 @@ async function sendAnswersBackup(data) {
   } catch (e) {
     console.error('Answers backup failed:', e);
   }
+}
+async function sendWelcomeEmail(e, fn, persona, pr, r1, r2, r3, pwl, on, or, stream) {
+  if (!BREVO_KEY) return;
+  const lu = pwl || 'https://online.vyvehealth.co.uk/login.html', bl = pwl ? 'Set your password &amp; sign in' : 'Sign in to VYVE';
+  const streamIntro = stream === 'workouts' ? 'You are in. Habits loaded, 8-week programme ready.' : stream === 'movement' ? 'You are in. Habits loaded, your 8-week Movement plan is ready.' : 'You are in. Habits loaded, your Cardio hub is ready - generate your running plan when you want to start.';
+  const pwa = `<tr><td style="padding:0 32px 28px;"><p style="margin:0 0 12px;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1B7878;">Get the VYVE Health app</p><p style="margin:0 0 16px;font-size:14px;color:#3A5A5A;line-height:1.65;">Download from the App Store or Google Play, then sign in with your VYVE email.</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td width="48%" style="vertical-align:middle;text-align:center;background:#0D2B2B;border-radius:8px;"><a href="https://apps.apple.com/gb/app/vyve-health/id6762100652" style="display:block;padding:14px 16px;color:#fff;text-decoration:none;font-size:14px;font-weight:600;">Download for iPhone &rarr;</a></td><td width="4%"></td><td width="48%" style="vertical-align:middle;text-align:center;background:#0D2B2B;border-radius:8px;"><a href="https://play.google.com/store/apps/details?id=co.uk.vyvehealth.app" style="display:block;padding:14px 16px;color:#fff;text-decoration:none;font-size:14px;font-weight:600;">Download for Android &rarr;</a></td></tr></table></td></tr>`;
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#F4FAFA;font-family:Helvetica Neue,Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#F4FAFA;padding:40px 20px;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;"><tr><td style="background:#0D2B2B;padding:24px 32px;"><div style="font-family:Georgia,serif;font-size:20px;letter-spacing:6px;color:#fff;">VYVE</div></td></tr><tr><td style="padding:32px;"><h2 style="margin:0 0 8px;font-size:24px;font-family:Georgia,serif;color:#0D2B2B;font-weight:400;">Welcome to VYVE, ${fn}.</h2><p style="margin:0 0 24px;font-size:15px;color:#3A5A5A;line-height:1.7;">${streamIntro}</p><div style="background:#F0F9F9;border-radius:8px;padding:20px 24px;margin-bottom:24px;"><p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1B7878;">Your Coach</p><p style="margin:0;font-size:20px;font-weight:700;color:#0D2B2B;">${persona}</p><p style="margin:8px 0 0;font-size:14px;color:#3A5A5A;line-height:1.6;">${pr}</p></div><div style="background:#F4FAFA;border-radius:8px;padding:16px 20px;margin-bottom:24px;border-left:3px solid #4DAAAA;"><p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1B7878;">Your Programme</p><p style="margin:0;font-size:15px;font-weight:600;color:#0D2B2B;">${on}</p><p style="margin:8px 0 0;font-size:14px;color:#3A5A5A;line-height:1.6;">${or}</p></div><p style="margin:0 0 12px;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1B7878;">Your first week</p><div style="border-left:3px solid #4DAAAA;padding:0 0 0 16px;margin-bottom:14px;"><p style="margin:0;font-size:14px;color:#3A5A5A;line-height:1.65;">${r1}</p></div><div style="border-left:3px solid #4DAAAA;padding:0 0 0 16px;margin-bottom:14px;"><p style="margin:0;font-size:14px;color:#3A5A5A;line-height:1.65;">${r2}</p></div><div style="border-left:3px solid #4DAAAA;padding:0 0 0 16px;margin-bottom:28px;"><p style="margin:0;font-size:14px;color:#3A5A5A;line-height:1.65;">${r3}</p></div><div style="text-align:center;margin:0 0 28px;"><a href="${lu}" style="background:#0D2B2B;color:#fff;text-decoration:none;padding:16px 36px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;">${bl} &rarr;</a></div></td></tr>${pwa}<tr><td style="background:#F4FAFA;padding:20px 32px;border-top:1px solid #C8E4E4;"><p style="margin:0;font-size:12px;color:#7A9A9A;">VYVE Health CIC &middot; team@vyvehealth.co.uk &middot; ICO 00013608608</p></td></tr></table></td></tr></table></body></html>`;
+  await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': BREVO_KEY,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({
+      sender: {
+        name: 'VYVE Health',
+        email: 'team@vyvehealth.co.uk'
+      },
+      to: [
+        {
+          email: e,
+          name: fn
+        }
+      ],
+      bcc: [
+        {
+          email: 'team@vyvehealth.co.uk',
+          name: 'VYVE Team'
+        }
+      ],
+      subject: 'Welcome to VYVE, ' + fn + ' \u2014 your programme is ready',
+      htmlContent: html,
+      tags: [
+        'welcome',
+        'onboarding'
+      ]
+    })
+  });
+}
+function resolveStream(d) {
+  const raw = String(d.exerciseStream || '').toLowerCase().trim();
+  if (raw === 'movement' || raw === 'cardio' || raw === 'workouts') return raw;
+  return 'workouts';
 }
 async function resetMemberData(email) {
   const e = encodeURIComponent(email.toLowerCase().trim());
@@ -398,55 +585,10 @@ function computeAge(dob) {
 function isQuickPath(d) {
   return (d.trainingGoals || []).length === 0 && !String(d.trainingLocation || '').trim() && !String(d.gymExperience || '').trim();
 }
-function selectPlanType(d) {
-  const loc = String(d.trainingLocation || '').trim().toLowerCase(), days = parseInt(String(d.trainDays)) || 3, exp = String(d.gymExperience || 'Beginner').toLowerCase();
-  const goals = (d.trainingGoals || []).map((g)=>g.toLowerCase()).join(' '), lc = d.lifeContext || [], sens = lc.some((c)=>SENSITIVE_CONTEXT.includes(c));
-  if (loc === 'home') return {
-    planType: 'Home',
-    planReason: 'Home only.'
-  };
-  if (sens && exp === 'beginner') return {
-    planType: 'Movement_Wellbeing',
-    planReason: 'Sensitive+Beginner.'
-  };
-  if (goals.includes('mobility') || goals.includes('flexibility') || goals.includes('mental')) return {
-    planType: 'Movement_Wellbeing',
-    planReason: 'Mobility/flexibility goals.'
-  };
-  if (days <= 2) return {
-    planType: 'Full_Body',
-    planReason: days + 'd/wk.'
-  };
-  if (days === 3) return exp === 'advanced' ? {
-    planType: 'PPL',
-    planReason: '3d+Adv.'
-  } : {
-    planType: 'Full_Body',
-    planReason: '3d+' + exp + '.'
-  };
-  if (days === 4) return exp === 'advanced' ? {
-    planType: 'PPL',
-    planReason: '4d+Adv.'
-  } : {
-    planType: 'Upper_Lower',
-    planReason: '4d+' + exp + '.'
-  };
-  return {
-    planType: 'PPL',
-    planReason: days + 'd.'
-  };
-}
-const SPLITS = {
-  PPL: 'Push / Pull / Legs',
-  Upper_Lower: 'Upper / Lower',
-  Full_Body: 'Full Body',
-  Home: 'Home',
-  Movement_Wellbeing: 'Movement & Wellbeing'
-};
 function buildDecisionLog(d, persona, pt, pr, pm, prr, stream) {
   const s = d.scores || {}, lc = d.lifeContext || [];
   return {
-    onboarding_version: 'v82',
+    onboarding_version: 'v87',
     recorded_at: new Date().toISOString(),
     inputs: {
       exercise_stream: stream,
@@ -466,7 +608,7 @@ function buildDecisionLog(d, persona, pt, pr, pm, prr, stream) {
       split_type: SPLITS[pt],
       method: 'deterministic',
       reason: pr,
-      generated: stream === 'workouts'
+      generated: stream === 'workouts' || stream === 'movement'
     },
     persona_decision: {
       persona,
@@ -502,37 +644,6 @@ async function callAnthropic(sys, usr, mt = 1000) {
   }
   const j = await r.json();
   return j.content?.[0]?.text ?? '';
-}
-async function callAnthropicFull(sys, usr, mt = 1000) {
-  const b = {
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: mt,
-    messages: [
-      {
-        role: 'user',
-        content: usr
-      }
-    ]
-  };
-  if (sys) b.system = sys;
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_KEY,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify(b)
-  });
-  if (!r.ok) {
-    const t = await r.text();
-    throw new Error('Anthropic ' + r.status + ': ' + t.slice(0, 200));
-  }
-  const j = await r.json();
-  return {
-    text: j.content?.[0]?.text ?? '',
-    stopReason: j.stop_reason ?? 'unknown'
-  };
 }
 async function selectPersona(d) {
   const s = d.scores || {}, lc = d.lifeContext || [], w = parseInt(s.wellbeing) || 5, st = parseInt(s.stress) || 5, en = parseInt(s.energy) || 5, tg = (d.trainingGoals || []).map((g)=>g.toLowerCase()), gl = tg.join(' ');
@@ -597,14 +708,12 @@ async function selectPersona(d) {
 }
 async function generateProgrammeOverview(d, stream) {
   if (stream === 'movement') {
-    const types = (d.movementTypes || []).join(', ') || 'gentle movement';
-    const freq = String(d.movementFrequency || '2-3 times a week');
     return {
-      programme_name: 'Your Movement Journey',
+      programme_name: 'Your Movement Programme',
       split_type: 'Movement',
       plan_type: 'Movement',
       sessions_per_week: 3,
-      rationale: `A gentle ${types} plan, ${freq}. Start where you are — we'll build from there.`
+      rationale: 'A walks-led plan that builds gradually over 8 weeks. Start where you are.'
     };
   }
   if (stream === 'cardio') {
@@ -617,31 +726,22 @@ async function generateProgrammeOverview(d, stream) {
       rationale: `Build toward ${goal}. Generate your personalised running plan from the Cardio tab when you are ready to start.`
     };
   }
-  const s = d.scores || {}, td = parseInt(String(d.trainDays)) || 3, { planType } = selectPlanType(d), sp = SPLITS[planType];
-  const txt = await callAnthropic(null, `You are a PT naming an 8-week programme. IMPORTANT: Only reference information explicitly provided below. NEVER invent or assume weight, body measurements, target weights, health conditions, or any specifics not stated.\nSplit:${sp}. loc=${d.trainingLocation || 'gym'},exp=${d.gymExperience || 'Beginner'},${td}d/wk,goals=${(d.trainingGoals || []).join(',') || 'general'},injuries=${(d.injuries || []).join(',') || 'none'},W=${s.wellbeing}/10,E=${s.energy}/10. JSON:{\"programme_name\":\"str\",\"rationale\":\"str\"}`, 250);
-  try {
-    const o = JSON.parse(txt.replace(/\`\`\`json|\`\`\`/g, '').trim());
-    if (o.programme_name && o.rationale) return {
-      programme_name: o.programme_name,
-      split_type: sp,
-      plan_type: planType,
-      sessions_per_week: td,
-      rationale: o.rationale
-    };
-  } catch (_) {}
+  const { planType } = selectPlanType(d);
+  const sp = SPLITS[planType];
+  const td = parseInt(String(d.trainDays)) || 3;
   return {
     programme_name: `8-Week ${sp} Programme`,
     split_type: sp,
     plan_type: planType,
     sessions_per_week: td,
-    rationale: `Custom ${td}-day ${sp} programme.`
+    rationale: `Your custom ${td}-day ${sp} programme \u2014 generating now.`
   };
 }
 async function selectHabits(d, lib) {
   const s = d.scores || {}, lc = d.lifeContext || [];
   const txt = await callAnthropic(null, `Select 5 habits. STRESS:1=stressed,10=calm.\nMember:Goals=${(d.trainingGoals || []).join(',') || 'general'},W=${s.wellbeing}/10,St=${s.stress}/10,Sl=${s.sleep}/10,E=${s.energy}/10,Ctx=${lc.join(',') || 'stable'},Exp=${d.gymExperience || 'N/A'},Sleep=${(d.sleepIssues || []).join(',') || 'none'},Act=${d.activityLevel || 'N/A'}\nLIB:\n${lib.map((h)=>`${h.id}|${h.habit_pot}|${h.habit_title}|${h.difficulty}`).join('\n')}\nJSON:{\"ids\":[5],\"reasoning\":\"brief\"}`, 400);
   try {
-    const o = JSON.parse(txt.replace(/\`\`\`json|\`\`\`/g, '').trim());
+    const o = JSON.parse(txt.replace(/```json|```/g, '').trim());
     if (Array.isArray(o.ids) && o.ids.length === 5) return {
       ids: o.ids,
       reasoning: o.reasoning || 'Selected.'
@@ -681,165 +781,8 @@ async function generateRecommendations(d, persona, ls, on, stream) {
   if (s.stress) fl.push('St:' + s.stress + '/10');
   if (lc.length) fl.push('Ctx:' + lc.join(','));
   const sm = fl.length ? fl.join('\n') : 'Name:' + d.firstName;
-  const streamGuidance = stream === 'workouts' ? `First rec: workout programme named "${on}" is ready on the Exercise tab.` : stream === 'movement' ? `First rec: head to the Exercise tab and tap Movement to explore walks, yoga and stretching that match them.` : `First rec: head to the Exercise tab and tap Cardio to generate their personalised running plan.`;
+  const streamGuidance = stream === 'workouts' ? `First rec: workout programme named "${on}" is ready on the Exercise tab.` : stream === 'movement' ? `First rec: head to the Exercise tab and tap Movement to start their walks-led 8-week plan.` : `First rec: head to the Exercise tab and tap Cardio to generate their personalised running plan.`;
   return await callAnthropic(`${pp}\n\nWelcome new VYVE member. Warm, specific, no AI mention.\nIMPORTANT: Only reference information explicitly provided below. NEVER invent or assume weight, body measurements, target weights, health conditions, or any specifics not stated by the member.\n${streamGuidance}\nSESSIONS:\n${ls}\n3 recs: 1.Their exercise starting point per above 2.A live session that fits 3.First-week action${isQuickPath(d) ? '\nQuick-start' : ''}\nMEMBER:\n${sm}${sens ? '\nSENSITIVE' : ''}\nDash per rec, plain text.`, `3 recs for ${d.firstName}.`, 600);
-}
-function buildWorkoutContext(d, planType, exerciseLibrary) {
-  const injuries = (d.injuries || []).join(', ') || 'none';
-  const avoid = String(d.avoidExercises || 'none');
-  const exp = String(d.gymExperience || 'Beginner');
-  const goals = (d.trainingGoals || []).join(', ') || 'general fitness';
-  const days = parseInt(String(d.trainDays)) || 3;
-  const loc = String(d.trainingLocation || 'gym');
-  const equipment = (d.equipment || []).join(', ') || 'standard gym';
-  const s = d.scores || {};
-  const exNames = exerciseLibrary.slice(0, 120).map((e)=>String(e.exercise_name || '')).filter(Boolean);
-  const exList = exNames.join(', ');
-  return `Member profile:
-- Plan type: ${planType} (${SPLITS[planType]})
-- Experience: ${exp}
-- Training days/week: ${days}
-- Location: ${loc}
-- Equipment: ${equipment}
-- Goals: ${goals}
-- Injuries/limitations: ${injuries}
-- Exercises to avoid: ${avoid}
-- Energy score: ${s.energy || '5'}/10
-- Wellbeing score: ${s.wellbeing || '5'}/10
-
-Available exercises from VYVE library (use these names exactly when possible):
-${exList}`;
-}
-function buildWeeksPrompt(d, planType, context, weeksRange) {
-  const days = parseInt(String(d.trainDays)) || 3;
-  const split = SPLITS[planType];
-  return `You are building ${weeksRange} of an 8-week personalised workout programme for a VYVE Health member.
-
-${context}
-
-RULES:
-- Generate exactly ${weeksRange === 'weeks 1-4' ? 4 : 4} weeks of workouts
-- Each week has exactly ${days} workout sessions
-- Session names must be consistent with the ${split} split
-- Each session has 4-6 exercises
-- For each exercise include: exercise_name, sets (e.g. "3"), reps (e.g. "8-12" or "10"), rest_seconds (e.g. 60), notes (optional form tip)
-- Progressive overload: ${weeksRange === 'weeks 1-4' ? 'weeks 1-2 slightly lighter to build form, weeks 3-4 increase intensity' : 'weeks 5-6 increase volume, weeks 7-8 peak intensity'}
-- Use exercise names from the library list when possible
-- NEVER include exercises from the injuries/avoid list
-
-Respond ONLY with valid JSON. No preamble. No explanation. No markdown. Schema:
-{"weeks":[{"week_number":1,"sessions":[{"session_name":"Push A","session_label":"Session 1","exercises":[{"exercise_name":"Bench Press","sets":"3","reps":"8-10","rest_seconds":90,"notes":"Control the descent"}]}]}]}`;
-}
-function parseWeeksArray(text) {
-  const clean = text.replace(/```json|```/g, '').trim();
-  let parsed;
-  try {
-    parsed = JSON.parse(clean);
-  } catch (_) {
-    return [];
-  }
-  const weeks = parsed.weeks || [];
-  return weeks.map((w)=>{
-    const sessions = w.sessions || [];
-    return sessions.map((s)=>({
-        session_name: String(s.session_name || 'Session'),
-        session_label: String(s.session_label || ''),
-        exercises: (s.exercises || []).map((e)=>({
-            exercise_name: String(e.exercise_name || ''),
-            sets: String(e.sets || '3'),
-            reps: String(e.reps || '10'),
-            rest_seconds: parseInt(String(e.rest_seconds || 60)),
-            notes: String(e.notes || '')
-          }))
-      }));
-  });
-}
-async function generateWorkoutPlan(d, exerciseLibrary) {
-  const { planType } = selectPlanType(d);
-  const context = buildWorkoutContext(d, planType, exerciseLibrary);
-  const prompt14 = buildWeeksPrompt(d, planType, context, 'weeks 1-4');
-  const prompt58 = buildWeeksPrompt(d, planType, context, 'weeks 5-8');
-  const [r14, r58] = await Promise.all([
-    callAnthropicFull(null, prompt14, 16000),
-    callAnthropicFull(null, prompt58, 16000)
-  ]);
-  if (r14.stopReason === 'max_tokens') console.warn('Weeks 1-4 hit max_tokens');
-  if (r58.stopReason === 'max_tokens') console.warn('Weeks 5-8 hit max_tokens');
-  const weeks14 = parseWeeksArray(r14.text);
-  const weeks58 = parseWeeksArray(r58.text);
-  const allWeeks = [
-    ...weeks14,
-    ...weeks58
-  ];
-  console.log(`Workout plan parsed: ${allWeeks.length} weeks (expected 8)`);
-  let totalMatched = 0, totalUnmatched = 0;
-  const enriched = allWeeks.map((sessions)=>{
-    const libMap = {};
-    for (const ex of exerciseLibrary){
-      const name = String(ex.exercise_name || '').toLowerCase().trim();
-      if (name) libMap[name] = {
-        video_url: String(ex.video_url || ''),
-        thumbnail_url: String(ex.thumbnail_url || '')
-      };
-    }
-    return sessions.map((session)=>({
-        ...session,
-        exercises: session.exercises.map((ex)=>{
-          const key = ex.exercise_name.toLowerCase().trim();
-          const urls = libMap[key];
-          if (urls?.video_url) {
-            totalMatched++;
-            return {
-              ...ex,
-              ...urls
-            };
-          }
-          totalUnmatched++;
-          return ex;
-        })
-      }));
-  });
-  const programmeName = `8-Week ${SPLITS[planType]} Programme`;
-  return {
-    plan: enriched,
-    programme_name: programmeName,
-    plan_type: planType,
-    videos_matched: totalMatched,
-    videos_unmatched: totalUnmatched
-  };
-}
-async function writeWorkoutPlan(email, plan, programmeName, planType) {
-  const em = email.toLowerCase().trim();
-  const payload = {
-    member_email: em,
-    programme_json: {
-      weeks: plan,
-      programme_name: programmeName,
-      plan_type: planType,
-      generated_at: new Date().toISOString()
-    },
-    plan_duration_weeks: 8,
-    current_week: 1,
-    current_session: 1,
-    is_active: true,
-    source: 'onboarding',
-    generated_at: new Date().toISOString()
-  };
-  const r = await fetch(SUPABASE_URL + '/rest/v1/workout_plan_cache?on_conflict=member_email', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': SUPABASE_KEY,
-      'Authorization': 'Bearer ' + SUPABASE_KEY,
-      'Prefer': 'resolution=merge-duplicates,return=minimal'
-    },
-    body: JSON.stringify(payload)
-  });
-  if (!r.ok) {
-    const t = await r.text();
-    throw new Error('writeWorkoutPlan: ' + t);
-  }
-  console.log('Workout plan written for', em, '-', plan.length, 'weeks');
 }
 async function writeMember(d, persona, pr, r1, r2, r3, stream) {
   const s = d.scores || {};
@@ -934,7 +877,6 @@ async function writeMember(d, persona, pr, r1, r2, r3, stream) {
   });
   if (!res.ok) throw new Error('writeMember: ' + await res.text());
 }
-// v78 HARDENING: all write helpers now throw on !ok responses instead of silently dropping them
 async function writeWeeklyGoals(e, stream) {
   const n = new Date(), d = n.getUTCDay(), m = new Date(n);
   m.setUTCDate(n.getUTCDate() + (d === 0 ? -6 : 1 - d));
@@ -1107,44 +1049,31 @@ async function createAuthUser(e, fn, ln) {
   });
   return (await lr2.json()).action_link || null;
 }
-async function sendWelcomeEmail(e, fn, persona, pr, r1, r2, r3, pwl, on, or, stream) {
-  if (!BREVO_KEY) return;
-  const lu = pwl || 'https://online.vyvehealth.co.uk/login.html', bl = pwl ? 'Set your password &amp; sign in' : 'Sign in to VYVE';
-  const streamIntro = stream === 'workouts' ? 'You are in. Habits loaded, 8-week programme ready.' : stream === 'movement' ? 'You are in. Habits loaded, your Movement hub is ready.' : 'You are in. Habits loaded, your Cardio hub is ready - generate your running plan when you want to start.';
-  const pwa = `<tr><td style="padding:0 32px 28px;"><p style="margin:0 0 12px;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1B7878;">Get the VYVE Health app</p><p style="margin:0 0 16px;font-size:14px;color:#3A5A5A;line-height:1.65;">Download from the App Store or Google Play, then sign in with your VYVE email.</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td width="48%" style="vertical-align:middle;text-align:center;background:#0D2B2B;border-radius:8px;"><a href="https://apps.apple.com/gb/app/vyve-health/id6762100652" style="display:block;padding:14px 16px;color:#fff;text-decoration:none;font-size:14px;font-weight:600;font-family:Helvetica Neue,Arial,sans-serif;">Download for iPhone &rarr;</a></td><td width="4%"></td><td width="48%" style="vertical-align:middle;text-align:center;background:#0D2B2B;border-radius:8px;"><a href="https://play.google.com/store/apps/details?id=co.uk.vyvehealth.app" style="display:block;padding:14px 16px;color:#fff;text-decoration:none;font-size:14px;font-weight:600;font-family:Helvetica Neue,Arial,sans-serif;">Download for Android &rarr;</a></td></tr></table></td></tr>`;
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#F4FAFA;font-family:Helvetica Neue,Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#F4FAFA;padding:40px 20px;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 16px rgba(13,43,43,0.08);"><tr><td style="background:#0D2B2B;padding:24px 32px;"><div style="font-family:Georgia,serif;font-size:20px;letter-spacing:6px;color:#fff;">VYVE</div></td></tr><tr><td style="padding:32px;"><h2 style="margin:0 0 8px;font-size:24px;font-family:Georgia,serif;color:#0D2B2B;font-weight:400;">Welcome to VYVE, ${fn}.</h2><p style="margin:0 0 24px;font-size:15px;color:#3A5A5A;line-height:1.7;">${streamIntro}</p><div style="background:#F0F9F9;border-radius:8px;padding:20px 24px;margin-bottom:24px;"><p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1B7878;">Your Coach</p><p style="margin:0;font-size:20px;font-weight:700;color:#0D2B2B;">${persona}</p><p style="margin:8px 0 0;font-size:14px;color:#3A5A5A;line-height:1.6;">${pr}</p></div><div style="background:#F4FAFA;border-radius:8px;padding:16px 20px;margin-bottom:24px;border-left:3px solid #4DAAAA;"><p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1B7878;">Your Programme</p><p style="margin:0;font-size:15px;font-weight:600;color:#0D2B2B;">${on}</p><p style="margin:8px 0 0;font-size:14px;color:#3A5A5A;line-height:1.6;">${or}</p></div><p style="margin:0 0 12px;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1B7878;">Your first week</p><div style="border-left:3px solid #4DAAAA;padding:0 0 0 16px;margin-bottom:14px;"><p style="margin:0;font-size:14px;color:#3A5A5A;line-height:1.65;">${r1}</p></div><div style="border-left:3px solid #4DAAAA;padding:0 0 0 16px;margin-bottom:14px;"><p style="margin:0;font-size:14px;color:#3A5A5A;line-height:1.65;">${r2}</p></div><div style="border-left:3px solid #4DAAAA;padding:0 0 0 16px;margin-bottom:28px;"><p style="margin:0;font-size:14px;color:#3A5A5A;line-height:1.65;">${r3}</p></div><div style="text-align:center;margin:0 0 28px;"><a href="${lu}" style="background:#0D2B2B;color:#fff;text-decoration:none;padding:16px 36px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;">${bl} &rarr;</a></div></td></tr>${pwa}<tr><td style="background:#F4FAFA;padding:20px 32px;border-top:1px solid #C8E4E4;"><p style="margin:0;font-size:12px;color:#7A9A9A;">VYVE Health CIC &middot; team@vyvehealth.co.uk &middot; ICO 00013608608</p></td></tr></table></td></tr></table></body></html>`;
-  await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: {
-      'api-key': BREVO_KEY,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    },
-    body: JSON.stringify({
-      sender: {
-        name: 'VYVE Health',
-        email: 'team@vyvehealth.co.uk'
+function fireCrisisScan(memberEmail, memberName, data) {
+  try {
+    fetch(SUPABASE_URL + '/functions/v1/crisis-scan', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json'
       },
-      to: [
-        {
-          email: e,
-          name: fn
+      body: JSON.stringify({
+        member_email: memberEmail,
+        member_name: memberName,
+        trigger_source: 'onboarding',
+        fields: {
+          specific_goal: data.specificGoal || '',
+          success_vision: data.successVision || '',
+          life_context_detail: data.lifeContextExtra || '',
+          anything_else: data.anythingElse || ''
         }
-      ],
-      bcc: [
-        {
-          email: 'team@vyvehealth.co.uk',
-          name: 'VYVE Team'
-        }
-      ],
-      subject: 'Welcome to VYVE, ' + fn + ' \u2014 your programme is ready',
-      htmlContent: html,
-      tags: [
-        'welcome',
-        'onboarding'
-      ]
-    })
-  });
+      })
+    }).then(async (r)=>{
+      if (!r.ok) console.error('[onboarding] crisis-scan non-2xx:', r.status);
+    }).catch((e)=>console.error('[onboarding] crisis-scan threw:', String(e)));
+  } catch (e) {
+    console.error('[onboarding] crisis-scan fire failed:', String(e));
+  }
 }
 serve(async (req)=>{
   if (req.method === 'OPTIONS') return new Response('ok', {
@@ -1185,7 +1114,7 @@ serve(async (req)=>{
     email = data.email.toLowerCase().trim();
     const fn = data.firstName, ln = data.lastName || '';
     const stream = resolveStream(data);
-    console.log('Start v82:', email, fn, ln, 'stream:', stream);
+    console.log('Start v87:', email, fn, ln, 'stream:', stream);
     phase = 'batch1_parallel_fetch';
     const elPromise = stream === 'workouts' ? fetch(SUPABASE_URL + '/rest/v1/workout_plans?select=exercise_name,video_url,thumbnail_url&order=exercise_name.asc', {
       headers: {
@@ -1221,6 +1150,7 @@ serve(async (req)=>{
       planReason: 'Stream-based'
     };
     console.log('Batch 1 complete. Persona:', persona, 'Plan:', planType, 'ExLib:', exerciseLibrary.length);
+    fireCrisisScan(email, (fn + ' ' + ln).trim(), data);
     phase = 'batch2_parallel_ai';
     const [habitResult, recsText] = await Promise.all([
       selectHabits(data, hl),
@@ -1271,19 +1201,37 @@ serve(async (req)=>{
     ]);
     phase = 'welcome_email';
     await sendWelcomeEmail(email, fn, persona, personaReason, r1, r2, r3, pwl, finalProgrammeName, ov.rationale, stream);
-    console.log('DONE v82:', email, persona, 'stream:', stream, stream === 'workouts' ? 'WorkoutPlan: generating in background' : '(no workout plan — stream)');
+    console.log('DONE v87:', email, persona, 'stream:', stream);
     if (stream === 'workouts') {
       const bgPromise = (async ()=>{
         try {
-          const wpResult = await generateWorkoutPlan(data, exerciseLibrary);
-          await writeWorkoutPlan(email, wpResult.plan, finalProgrammeName, wpResult.plan_type);
-          console.log('BG workout plan written:', email, wpResult.plan.length, 'weeks');
+          const wpResult = await generateWorkoutPlanFlat(data, exerciseLibrary);
+          await writeWorkoutPlan(email, wpResult.plan, wpResult.programme_name, wpResult.plan_type, {
+            rationale: wpResult.programme_rationale,
+            split_type: wpResult.split_type,
+            shape: wpResult.shape,
+            surface: 'workouts'
+          });
+          console.log('BG workout plan written:', email, wpResult.plan.length, 'weeks, shape:', wpResult.shape);
         } catch (e) {
           console.error('BG workout failed:', email, e);
         }
       })();
-      // @ts-ignore - EdgeRuntime.waitUntil exists in Supabase Edge Functions
       if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) EdgeRuntime.waitUntil(bgPromise);
+    }
+    if (stream === 'movement') {
+      try {
+        const mp = generateMovementPlan(data);
+        await writeWorkoutPlan(email, mp.plan, mp.programme_name, mp.plan_type, {
+          rationale: mp.programme_rationale,
+          split_type: mp.split_type,
+          shape: mp.shape,
+          surface: 'movement'
+        });
+        console.log('Movement plan written:', email, mp.plan.length, 'weeks');
+      } catch (e) {
+        console.error('Movement plan write failed:', email, e);
+      }
     }
     return new Response(JSON.stringify({
       success: true,
@@ -1301,7 +1249,7 @@ serve(async (req)=>{
       decision_log: dl,
       workout_plan: {
         programme_name: finalProgrammeName,
-        status: stream === 'workouts' ? 'generating' : 'not_applicable'
+        status: stream === 'workouts' ? 'generating' : stream === 'movement' ? 'movement_written' : 'not_applicable'
       }
     }), {
       headers: {

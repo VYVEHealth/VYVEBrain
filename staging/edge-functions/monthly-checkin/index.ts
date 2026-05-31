@@ -1,17 +1,36 @@
-// monthly-checkin v18
+// monthly-checkin v20
+// v20 (PM-382): three-mode state machine. Submit window opens on the 1st of
+//               the next calendar month (was: opens on 25th of current month).
+//               Page is always live and useful — recap visible across all
+//               three modes:
+//                 - submit             → recap of the completed month + sliders
+//                 - in_progress        → recap of the running month + "opens in N days"
+//                 - new_member_locked  → recap of activity since joining + "your first opens 1st [month]"
+//               GET response gains `mode`, `monthStart`, `monthEnd`, `daysUntilOpens`,
+//               and returns both the data-month window and submit-window context.
+//               POST validates against the submit window only and 403s for any
+//               attempt to submit outside submit mode.
+//               BST-aware "today" computed server-side (was UTC) — was a real
+//               00-01 BST DST bug that would have surfaced the wrong submit
+//               month at midnight transitions.
+// v19 (PM-379): activity rollup migrated to canonical 4-pillar shape
+//             (Habits / Body / Mind / Connect) — mirrors weekly recap
+//             PM-362.b. Adds movement_activities, mind_activities,
+//             connect_checkins, session_live_views, replay_video_views
+//             to the parallel read, deduplicates session views across
+//             the 4 view tables, and reshapes the Anthropic prompt's
+//             === ACTIVITY === block so the AI sees Mind/Body/Connect/
+//             Habits + weekly check-ins. Response body activity field
+//             gains pillar totals (bodyTotal, mindTotal, connectTotal,
+//             habitsDays) while preserving legacy fields for back-compat.
 // v18 FIX: nutrition_logs schema drift. The table uses `activity_date` (not `log_date`)
 //         and `calories_kcal` (not `calories`). v17 (and earlier) queried the old column
 //         names which produced a Postgres 42703 error inside Promise.all, killing the
 //         entire POST handler with a 500. Symptom: page jumps back to question and
 //         alerts "Something went wrong". Zero successful monthly check-ins ever in DB.
 // v17 FIX: GET requests now accept ?email=... query-string fallback when the JWT
-//         doesn't resolve to a user. Previously the page would POST/GET with
-//         ?email=... but the EF only ever read the email from the JWT or POST body,
-//         producing a 400 "Missing email" for any user whose session hadn't fully
-//         initialised.
+//         doesn't resolve to a user.
 // Fix: wellbeing_checkins table uses `score_wellbeing` (not `wellbeing_score`).
-// `band` and `answer` columns do not exist on this table and have been dropped.
-// Band is derived inline from the 1-10 score.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -41,71 +60,115 @@ async function q(table, params) {
   if (!res.ok) throw new Error(`Query failed on ${table}: ${await res.text()}`);
   return res.json();
 }
-// Derive band label from a 1-10 wellbeing score
 function scoreBand(score) {
   if (score <= 3) return 'struggling';
   if (score <= 5) return 'getting by';
   if (score <= 7) return 'solid';
   return 'strong';
 }
-function getMonthWindow() {
-  const now = new Date();
-  const day = now.getUTCDate();
-  const year = now.getUTCFullYear();
-  const mon = now.getUTCMonth();
-  let finalDataYear;
-  let finalDataMon;
-  if (day >= 25) {
-    finalDataYear = year;
-    finalDataMon = mon;
-  } else {
-    finalDataYear = mon === 0 ? year - 1 : year;
-    finalDataMon = mon === 0 ? 11 : mon - 1;
-  }
-  const isoMonth = `${finalDataYear}-${String(finalDataMon + 1).padStart(2, '0')}`;
-  const monthName = new Date(finalDataYear, finalDataMon, 1).toLocaleString('en-GB', {
+// PM-382: BST-aware "today" server-side. UK members are the primary cohort and
+// the existing client-side code is BST-locked (see §23.7.7 in the brain). The
+// EF needs to agree with the client on what "today" is or the submit window
+// rolls over at the wrong moment for members tapping at 00-01 BST. DST-aware
+// via Intl.DateTimeFormat with explicit Europe/London tz so the EF works year
+// round (BST in summer = UTC+1, GMT in winter = UTC+0). Returns Y/M/D ints.
+function bstToday() {
+  const fmt = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric'
+  });
+  const parts = fmt.formatToParts(new Date());
+  const year = parseInt(parts.find((p)=>p.type === 'year').value, 10);
+  const month = parseInt(parts.find((p)=>p.type === 'month').value, 10) - 1; // 0-indexed
+  const day = parseInt(parts.find((p)=>p.type === 'day').value, 10);
+  return {
+    year,
+    month,
+    day
+  };
+}
+function buildMonthInfo(year, mon) {
+  const isoMonth = `${year}-${String(mon + 1).padStart(2, '0')}`;
+  const monthName = new Date(year, mon, 1).toLocaleString('en-GB', {
     month: 'long',
     year: 'numeric'
   });
-  const start = `${finalDataYear}-${String(finalDataMon + 1).padStart(2, '0')}-01`;
-  const lastDay = new Date(finalDataYear, finalDataMon + 1, 0).getDate();
-  const end = `${finalDataYear}-${String(finalDataMon + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-  const nextWindowMon = finalDataMon === 11 ? 0 : finalDataMon + 1;
-  const nextWindowYear = finalDataMon === 11 ? finalDataYear + 1 : finalDataYear;
-  const nextWindowName = new Date(nextWindowYear, nextWindowMon, 1).toLocaleString('en-GB', {
-    month: 'long'
-  });
-  const opensNext = `25 ${nextWindowName}`;
+  const start = `${year}-${String(mon + 1).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, mon + 1, 0).getDate();
+  const end = `${year}-${String(mon + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   return {
-    available: true,
-    windowInfo: '',
     isoMonth,
     monthName,
     start,
-    end,
-    opensNext
+    end
   };
 }
-// Check if member is new (joined < 1 full calendar month ago)
+// PM-382: window logic.
+// `submitWindow` = the completed calendar month that is the current target of
+//                  a monthly check-in submission. Today is 25 May 2026 → April.
+// `inProgress`   = the running calendar month.                           → May.
+// `opensNext`    = display string for when the in-progress month will become
+//                  the next submit window (always 1st of inProgress + 1).
+// `daysUntilOpens` = whole days from today to that 1st-of-next-month date.
+function computeWindows() {
+  const today = bstToday();
+  const inProgressYear = today.year;
+  const inProgressMon = today.month;
+  const submitYear = inProgressMon === 0 ? inProgressYear - 1 : inProgressYear;
+  const submitMon = inProgressMon === 0 ? 11 : inProgressMon - 1;
+  const inProgress = buildMonthInfo(inProgressYear, inProgressMon);
+  const submitWindow = buildMonthInfo(submitYear, submitMon);
+  // "Opens 1st [month after inProgress]"
+  const nextOpensMon = inProgressMon === 11 ? 0 : inProgressMon + 1;
+  const nextOpensYear = inProgressMon === 11 ? inProgressYear + 1 : inProgressYear;
+  const opensNextDate = new Date(nextOpensYear, nextOpensMon, 1);
+  const opensNext = opensNextDate.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'long'
+  }); // "1 June"
+  // Days from today (BST) to opensNextDate (00:00 local). Use UTC midnight of
+  // both for the subtraction to avoid DST off-by-one.
+  const todayUTC = Date.UTC(today.year, today.month, today.day);
+  const opensNextUTC = Date.UTC(nextOpensYear, nextOpensMon, 1);
+  const daysUntilOpens = Math.max(0, Math.round((opensNextUTC - todayUTC) / 86_400_000));
+  return {
+    submitWindow,
+    inProgress,
+    opensNext,
+    daysUntilOpens
+  };
+}
 function isNewMember(joinedAt) {
   if (!joinedAt) return {
     locked: false,
-    availableFrom: ''
+    availableFrom: '',
+    eligibleIsoMonth: ''
   };
   const joined = new Date(joinedAt);
-  const now = new Date();
-  const eligibleYear = joined.getUTCMonth() === 11 ? joined.getUTCFullYear() + 1 : joined.getUTCFullYear();
-  const eligibleMon = joined.getUTCMonth() === 11 ? 0 : joined.getUTCMonth() + 1;
+  // First eligible submit window = first calendar month AFTER the join month
+  // is fully complete. Joined 15 April 2026 → first full month = May → first
+  // submit window = May → opens 1 June 2026. Joined 31 March → April is first
+  // full month → submit window May → opens 1 June.
+  // Equivalent: eligible when today is on/after the 1st of (joinMonth + 2).
+  // joined 15 Apr → eligibleDate = 1 Jun.
+  const eligibleYear = joined.getUTCMonth() >= 10 ? joined.getUTCFullYear() + 1 : joined.getUTCFullYear();
+  const eligibleMon = (joined.getUTCMonth() + 2) % 12;
   const eligibleDate = new Date(Date.UTC(eligibleYear, eligibleMon, 1));
-  const locked = now < eligibleDate;
+  const today = bstToday();
+  const todayUTC = Date.UTC(today.year, today.month, today.day);
+  const locked = todayUTC < eligibleDate.getTime();
   const monthName = eligibleDate.toLocaleString('en-GB', {
     month: 'long',
     year: 'numeric'
   });
-  const availableFrom = locked ? `1st ${monthName}` : '';
+  const availableFrom = locked ? `1 ${monthName}` : '';
+  const eligibleIsoMonth = `${eligibleYear}-${String(eligibleMon + 1).padStart(2, '0')}`;
   return {
     locked,
-    availableFrom
+    availableFrom,
+    eligibleIsoMonth
   };
 }
 function buildWeightSummary(logs) {
@@ -125,7 +188,6 @@ function buildWeightSummary(logs) {
     `  Full trend:     ${trend}`
   ].join('\n');
 }
-// v18: nutrition_logs columns are activity_date + calories_kcal (was log_date + calories in v17 and earlier).
 function buildNutritionSummary(logs) {
   if (!logs.length) return '  No nutrition logs this month';
   const days = new Set(logs.map((l)=>l.activity_date)).size;
@@ -136,6 +198,19 @@ function buildNutritionSummary(logs) {
     `  Avg daily calories:    ${Math.round(totCal / days)} kcal`,
     `  Avg daily protein:     ${Math.round(totProt / days)}g`
   ].join('\n');
+}
+function countByKind(rows, kindField) {
+  const out = {};
+  for (const r of rows){
+    const k = r[kindField] || 'other';
+    out[k] = (out[k] || 0) + 1;
+  }
+  return out;
+}
+function fmtByKind(map) {
+  const keys = Object.keys(map).filter((k)=>map[k] > 0);
+  if (!keys.length) return '';
+  return keys.map((k)=>`${map[k]} ${k}`).join(', ');
 }
 serve(async (req)=>{
   if (req.method === 'OPTIONS') return new Response('ok', {
@@ -156,7 +231,6 @@ serve(async (req)=>{
     }
     const body = req.method === 'POST' ? await req.json().catch(()=>({})) : {};
     if (!email) email = (body.email ?? '').toLowerCase();
-    // v17 FIX: fall back to query-string ?email=... for GET requests
     if (!email) {
       try {
         const urlEmail = new URL(req.url).searchParams.get('email');
@@ -172,42 +246,53 @@ serve(async (req)=>{
         'Content-Type': 'application/json'
       }
     });
-    const win = getMonthWindow();
+    const { submitWindow, inProgress, opensNext, daysUntilOpens } = computeWindows();
     const enc = encodeURIComponent(email);
-    // GET: status check
+    // GET: mode + recap-data-window resolution
     if (req.method === 'GET') {
       const [existing, memberRows] = await Promise.all([
-        q('monthly_checkins', `member_email=eq.${enc}&iso_month=eq.${win.isoMonth}&select=id,ai_report,created_at,avg_score,score_wellbeing,score_energy,score_stress,score_physical,score_sleep,score_diet,score_social,score_motivation,goal_progress_score&limit=1`),
+        q('monthly_checkins', `member_email=eq.${enc}&iso_month=eq.${submitWindow.isoMonth}&select=id,ai_report,created_at,avg_score,score_wellbeing,score_energy,score_stress,score_physical,score_sleep,score_diet,score_social,score_motivation,goal_progress_score&limit=1`),
         q('members', `email=eq.${enc}&select=specific_goal,success_vision,created_at&limit=1`)
       ]);
       const mg = memberRows[0] ?? {};
       const goalText = mg.specific_goal || mg.success_vision || null;
-      const { locked, availableFrom } = isNewMember(mg.created_at || null);
-      if (locked) {
-        return new Response(JSON.stringify({
-          available: true,
-          newMemberLocked: true,
-          availableFrom,
-          isoMonth: win.isoMonth,
-          monthName: win.monthName,
-          opensNext: win.opensNext,
-          memberGoal: goalText
-        }), {
-          headers: {
-            ...CORS,
-            'Content-Type': 'application/json'
-          }
-        });
+      const newMember = isNewMember(mg.created_at || null);
+      // Resolve mode + the data month to render recap against.
+      let mode;
+      let dataMonth;
+      if (newMember.locked) {
+        mode = 'new_member_locked';
+        dataMonth = inProgress;
+      } else if (existing.length > 0) {
+        mode = 'in_progress';
+        dataMonth = inProgress;
+      } else {
+        mode = 'submit';
+        dataMonth = submitWindow;
       }
       return new Response(JSON.stringify({
-        available: true,
-        newMemberLocked: false,
-        alreadyDone: existing.length > 0,
-        isoMonth: win.isoMonth,
-        monthName: win.monthName,
-        opensNext: win.opensNext,
+        mode,
+        // Data month the page should render the recap against
+        isoMonth: dataMonth.isoMonth,
+        monthName: dataMonth.monthName,
+        monthStart: dataMonth.start,
+        monthEnd: dataMonth.end,
+        // Submit-window context (always present, even when mode !== 'submit')
+        submitIsoMonth: submitWindow.isoMonth,
+        submitMonthName: submitWindow.monthName,
+        // When does the next submit window open
+        opensNext,
+        daysUntilOpens,
+        // New-member fields
+        newMemberLocked: newMember.locked,
+        availableFrom: newMember.availableFrom,
+        // Already-submitted report (only set in in_progress mode)
         existing: existing[0] ?? null,
-        memberGoal: goalText
+        // Member goal (used in submit-flow personalisation)
+        memberGoal: goalText,
+        // Back-compat keys (pre-PM-382 callers)
+        available: true,
+        alreadyDone: existing.length > 0
       }), {
         headers: {
           ...CORS,
@@ -215,7 +300,7 @@ serve(async (req)=>{
         }
       });
     }
-    // POST: submit
+    // POST: submit — strictly validates against submitWindow
     if (req.method !== 'POST') return new Response('Method not allowed', {
       status: 405,
       headers: CORS
@@ -231,10 +316,11 @@ serve(async (req)=>{
       }
     });
     const memberCheckRows = await q('members', `email=eq.${enc}&select=created_at&limit=1`);
-    const { locked: postLocked } = isNewMember(memberCheckRows[0]?.created_at || null);
-    if (postLocked) {
+    const newMemberCheck = isNewMember(memberCheckRows[0]?.created_at || null);
+    if (newMemberCheck.locked) {
       return new Response(JSON.stringify({
-        error: 'not_available_yet'
+        error: 'not_available_yet',
+        availableFrom: newMemberCheck.availableFrom
       }), {
         status: 403,
         headers: {
@@ -243,10 +329,11 @@ serve(async (req)=>{
         }
       });
     }
-    const alreadyDone = await q('monthly_checkins', `member_email=eq.${enc}&iso_month=eq.${win.isoMonth}&select=id&limit=1`);
+    const alreadyDone = await q('monthly_checkins', `member_email=eq.${enc}&iso_month=eq.${submitWindow.isoMonth}&select=id&limit=1`);
     if (alreadyDone.length > 0) {
       return new Response(JSON.stringify({
-        error: 'already_done'
+        error: 'already_done',
+        isoMonth: submitWindow.isoMonth
       }), {
         status: 409,
         headers: {
@@ -255,12 +342,11 @@ serve(async (req)=>{
         }
       });
     }
-    const { isoMonth, monthName, start, end } = win;
+    const { isoMonth, monthName, start, end } = submitWindow;
     const dateFilter = `activity_date=gte.${start}&activity_date=lte.${end}`;
     const dateFilter2 = `logged_date=gte.${start}&logged_date=lte.${end}`;
-    // v18: nutrition_logs uses activity_date (was log_date in v17 — caused 42703 column-not-exist)
-    const dateFilter3 = `activity_date=gte.${start}&activity_date=lte.${end}`;
-    const [memberRows, habits, workouts, cardio, sessions, replays, wbCheckins, historicalCheckins, weightLogs, nutritionLogs] = await Promise.all([
+    const dateFilterCK = `checkin_date=gte.${start}&checkin_date=lte.${end}`;
+    const [memberRows, habits, workouts, cardio, movement, mind, connectCheckins, sessions, sessionsLive, replays, replaysVideo, wbCheckins, historicalCheckins, weightLogs, nutritionLogs] = await Promise.all([
       q('members', [
         `email=eq.${enc}&select=`,
         `first_name,persona,`,
@@ -274,41 +360,72 @@ serve(async (req)=>{
       q('daily_habits', `member_email=eq.${enc}&${dateFilter}&select=activity_date`),
       q('workouts', `member_email=eq.${enc}&${dateFilter}&select=activity_date,workout_name`),
       q('cardio', `member_email=eq.${enc}&${dateFilter}&select=activity_date,cardio_type`),
-      q('session_views', `member_email=eq.${enc}&${dateFilter}&select=activity_date,session_name`),
-      q('replay_views', `member_email=eq.${enc}&${dateFilter}&select=activity_date,session_name`),
+      q('movement_activities', `member_email=eq.${enc}&${dateFilter}&select=activity_date,kind`),
+      q('mind_activities', `member_email=eq.${enc}&${dateFilter}&select=activity_date,kind`),
+      q('connect_checkins', `member_email=eq.${enc}&${dateFilterCK}&select=checkin_date`),
+      q('session_views', `member_email=eq.${enc}&${dateFilter}&select=activity_date,session_name,category`),
+      q('session_live_views', `member_email=eq.${enc}&${dateFilter}&select=activity_date,category`),
+      q('replay_views', `member_email=eq.${enc}&${dateFilter}&select=activity_date,session_name,category`),
+      q('replay_video_views', `member_email=eq.${enc}&${dateFilter}&select=activity_date,category`),
       q('wellbeing_checkins', `member_email=eq.${enc}&activity_date=gte.${start}&activity_date=lte.${end}` + `&select=score_wellbeing,activity_date&order=activity_date.asc`),
       q('monthly_checkins', `member_email=eq.${enc}&iso_month=neq.${isoMonth}` + `&select=iso_month,avg_score,score_wellbeing,score_energy,score_stress,` + `score_physical,score_sleep,score_diet,score_social,score_motivation,` + `goal_progress_score,goal_progress_note` + `&order=iso_month.desc&limit=4`),
       q('weight_logs', `member_email=eq.${enc}&${dateFilter2}&select=logged_date,weight_kg&order=logged_date.asc`),
-      // v18: select activity_date + calories_kcal (was log_date + calories — both renamed in PM-12 nutrition rework)
-      q('nutrition_logs', `member_email=eq.${enc}&${dateFilter3}&select=activity_date,calories_kcal,protein_g&order=activity_date.asc`)
+      q('nutrition_logs', `member_email=eq.${enc}&${dateFilter}&select=activity_date,calories_kcal,protein_g&order=activity_date.asc`)
     ]);
     const member = memberRows[0] ?? {};
     const firstName = (member.first_name || 'there').toLowerCase().replace(/\b\w/g, (c)=>c.toUpperCase());
     const persona = member.persona || 'SPARK';
     const voice = PERSONA_VOICES[persona] || PERSONA_VOICES.SPARK;
     const memberGoalText = member.specific_goal || member.success_vision || 'Not specified at onboarding';
+    const sessKey = (r)=>`${r.activity_date}|${(r.category || '').toLowerCase()}`;
+    const sessionSet = new Set();
+    sessions.forEach((r)=>sessionSet.add(sessKey(r)));
+    sessionsLive.forEach((r)=>sessionSet.add(sessKey(r)));
+    const replaySet = new Set();
+    replays.forEach((r)=>replaySet.add(sessKey(r)));
+    replaysVideo.forEach((r)=>replaySet.add(sessKey(r)));
+    const totalSessionsWatched = sessionSet.size + replaySet.size;
     const activityMap = {};
-    const add = (rows, type)=>rows.forEach((r)=>{
-        if (!activityMap[r.activity_date]) activityMap[r.activity_date] = [];
-        if (!activityMap[r.activity_date].includes(type)) activityMap[r.activity_date].push(type);
+    const addPillar = (rows, pillar, dateCol)=>{
+      rows.forEach((r)=>{
+        const d = r[dateCol];
+        if (!d) return;
+        if (!activityMap[d]) activityMap[d] = [];
+        if (!activityMap[d].includes(pillar)) activityMap[d].push(pillar);
       });
-    add(habits, 'habits');
-    add(workouts, 'workouts');
-    add(cardio, 'cardio');
-    add(sessions, 'sessions');
-    add(replays, 'sessions');
+    };
+    addPillar(habits, 'habits', 'activity_date');
+    addPillar(workouts, 'body', 'activity_date');
+    addPillar(cardio, 'body', 'activity_date');
+    addPillar(movement, 'body', 'activity_date');
+    addPillar(mind, 'mind', 'activity_date');
+    addPillar(connectCheckins, 'connect', 'checkin_date');
+    addPillar(sessions, 'connect', 'activity_date');
+    addPillar(sessionsLive, 'connect', 'activity_date');
+    addPillar(replays, 'connect', 'activity_date');
+    addPillar(replaysVideo, 'connect', 'activity_date');
     const activeDays = Object.keys(activityMap).length;
-    const totalHabits = habits.length;
-    const totalWorkouts = workouts.length;
-    const totalCardio = cardio.length;
-    const totalSessions = sessions.length + replays.length;
+    const habitsDays = new Set(habits.map((h)=>h.activity_date)).size;
+    const habitsTicks = habits.length;
+    const bodyTotal = workouts.length + cardio.length + movement.length;
+    const mindTotal = mind.length;
+    const connectTotal = connectCheckins.length + totalSessionsWatched;
     const totalCheckins = wbCheckins.length;
-    const sessionNames = [
+    const cardioByKind = countByKind(cardio, 'cardio_type');
+    const movementByKind = countByKind(movement, 'kind');
+    const mindByKind = countByKind(mind, 'kind');
+    const sessionCategories = [
       ...new Set([
-        ...sessions.map((s)=>s.session_name),
-        ...replays.map((s)=>s.session_name)
+        ...sessions.map((s)=>s.category),
+        ...sessionsLive.map((s)=>s.category),
+        ...replays.map((s)=>s.category),
+        ...replaysVideo.map((s)=>s.category)
       ].filter(Boolean))
     ];
+    const totalHabits = habitsTicks;
+    const totalWorkouts = workouts.length;
+    const totalCardio = cardio.length;
+    const totalSessions = totalSessionsWatched;
     const wbSummary = wbCheckins.length ? wbCheckins.map((c)=>`  Week of ${c.activity_date}: score ${c.score_wellbeing}/10 (${scoreBand(c.score_wellbeing)})`).join('\n') : '  No weekly check-ins completed this month';
     const avgWellbeing = wbCheckins.length ? (wbCheckins.reduce((s, r)=>s + (r.score_wellbeing || 0), 0) / wbCheckins.length).toFixed(1) : null;
     const LABELS = {
@@ -358,22 +475,45 @@ serve(async (req)=>{
       `  Self-rated progress this month: ${goal_progress_score ?? 'not provided'}/10`,
       goal_progress_note ? `  Member's own words: "${goal_progress_note}"` : ''
     ].filter(Boolean).join('\n');
+    const bodyDetailParts = [];
+    if (workouts.length > 0) bodyDetailParts.push(`${workouts.length} workouts`);
+    const cardioFmt = fmtByKind(cardioByKind);
+    if (cardioFmt) bodyDetailParts.push(`cardio (${cardioFmt})`);
+    const movementFmt = fmtByKind(movementByKind);
+    if (movementFmt) bodyDetailParts.push(`movement (${movementFmt})`);
+    const bodyDetail = bodyDetailParts.join(' · ') || 'none';
+    const mindFmt = fmtByKind(mindByKind);
+    const mindDetail = mindFmt || 'none';
+    const connectDetailParts = [];
+    if (connectCheckins.length > 0) connectDetailParts.push(`${connectCheckins.length} daily check-ins`);
+    if (totalSessionsWatched > 0) connectDetailParts.push(`${totalSessionsWatched} sessions watched`);
+    if (sessionCategories.length) connectDetailParts.push(`categories: ${sessionCategories.slice(0, 6).join(', ')}`);
+    const connectDetail = connectDetailParts.join(' · ') || 'none';
+    const activityBlock = [
+      `Active days (any pillar): ${activeDays}`,
+      `HABITS:  ${habitsDays} ${habitsDays === 1 ? 'day' : 'days'} · ${habitsTicks} ${habitsTicks === 1 ? 'habit' : 'habits'} ticked`,
+      `BODY:    ${bodyTotal} ${bodyTotal === 1 ? 'activity' : 'activities'} — ${bodyDetail}`,
+      `MIND:    ${mindTotal} ${mindTotal === 1 ? 'activity' : 'activities'} — ${mindDetail}`,
+      `CONNECT: ${connectTotal} ${connectTotal === 1 ? 'activity' : 'activities'} — ${connectDetail}`,
+      `Weekly check-ins completed: ${totalCheckins}${avgWellbeing ? ` (avg wellbeing ${avgWellbeing}/10)` : ''}`
+    ].join('\n');
     const systemPrompt = [
       voice,
       '',
       `You are writing ${firstName}'s ${monthName} monthly wellbeing report.`,
-      `You have their full profile, activity data, weight trend, nutrition tracking, weekly check-in responses, goal progress, and historical data.`,
+      `You have their full profile, four-pillar activity data (Habits / Body / Mind / Connect), weight trend, nutrition tracking, weekly check-in responses, goal progress, and historical data.`,
       `Make the report feel genuinely personal — use their actual numbers, their own words, their goal.`,
       '',
       'STRUCTURE (follow exactly):',
-      `1. Opening (2-3 sentences): acknowledge ${monthName} honestly — active days, workouts, avg score. Warm but direct.`,
+      `1. Opening (2-3 sentences): acknowledge ${monthName} honestly — active days, the pillars they hit hardest, weekly check-in volume. Warm but direct.`,
       '2. Goal progress (most important section): name their goal explicitly. Reference what they said. Use actual weight numbers if available. Praise real progress. Be honest if progress was slow.',
-      "3. What's working: 2-3 sentences on strongest scores/activity. Quote their notes.",
-      "4. What needs attention: 2-3 sentences on lower areas. Direct but kind.",
-      '5. Trend: 1-2 sentences vs last month or onboarding baseline.',
-      '6. Three recommendations: numbered, specific, actionable, tied to their goal and barriers.',
+      '3. Pillar breakdown: 3-4 sentences across Habits / Body / Mind / Connect. Call out the strongest pillar and the lightest. Reference specific activity kinds (e.g. "the breathwork sessions", "your running consistency").',
+      "4. What's working: 1-2 sentences on strongest scores or activity patterns. Quote their notes.",
+      "5. What needs attention: 1-2 sentences on lower areas. Direct but kind.",
+      '6. Trend: 1-2 sentences vs last month or onboarding baseline.',
+      '7. Three recommendations: numbered, specific, actionable, tied to their goal and which pillar needs the most lift.',
       '',
-      'RULES: Under 500 words. Never mention AI. Use their name. If weight goal, always cite actual numbers. No invented data.'
+      'RULES: Under 550 words. Never mention AI. Use their name. If weight goal, always cite actual numbers. No invented data. Refer to the pillars as Habits / Body / Mind / Connect (never "exercise pillar" or other names).'
     ].join('\n');
     const userPrompt = [
       '=== MEMBER PROFILE ===',
@@ -391,13 +531,8 @@ serve(async (req)=>{
       '=== BASELINE vs NOW ===',
       deltaLines || '  Not available',
       '',
-      `=== ${monthName.toUpperCase()} ACTIVITY ===`,
-      `Active days: ${activeDays}`,
-      `Habits: ${totalHabits}`,
-      `Workouts: ${totalWorkouts}`,
-      `Cardio: ${totalCardio}`,
-      `Sessions watched: ${totalSessions}${sessionNames.length ? ` (${sessionNames.slice(0, 5).join(', ')})` : ''}`,
-      `Weekly check-ins: ${totalCheckins}`,
+      `=== ${monthName.toUpperCase()} ACTIVITY (4 PILLARS) ===`,
+      activityBlock,
       '',
       '=== WEEKLY CHECK-IN RESPONSES ===',
       wbSummary,
@@ -470,17 +605,29 @@ serve(async (req)=>{
       firstName,
       monthName,
       isoMonth,
-      opensNext: win.opensNext,
+      opensNext,
+      daysUntilOpens,
       memberGoal: memberGoalText,
       activity: {
         activeDays,
+        habitsDays,
+        habitsTicks,
+        bodyTotal,
+        mindTotal,
+        connectTotal,
+        cardioByKind,
+        movementByKind,
+        mindByKind,
+        dailyCheckins: connectCheckins.length,
+        sessionsWatched: totalSessionsWatched,
+        sessionCategories,
+        totalCheckins,
+        avgWellbeing,
+        activityMap,
         totalHabits,
         totalWorkouts,
         totalCardio,
-        totalSessions,
-        totalCheckins,
-        avgWellbeing,
-        activityMap
+        totalSessions
       },
       scores,
       avg: parseFloat(avg.toFixed(1))

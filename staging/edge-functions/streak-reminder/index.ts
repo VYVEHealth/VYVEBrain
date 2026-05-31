@@ -7,6 +7,10 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 // preserved verbatim.
 //
 // Cron: daily 18:00 UTC (= 19:00 BST = 7pm UK) via streak-reminder-daily.
+//
+// PM-404 (26 May 2026): verify_jwt flipped true → false to match the cron auth
+// pattern used by achievements-sweep / seed-weekly-goals / process-scheduled-pushes.
+// Source code unchanged; gateway config only.
 // ─────────────────────────────────────────────────────────────────────────────
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
