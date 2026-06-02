@@ -9,6 +9,16 @@
 - [ ] BLOCKED: Suicide and Men airing -> Phil clinical sign-off + crisis signposting (§23.84).
 - [ ] PENDING: 6th Lewis video; morning_stillness classification.
 
+## Trial / membership (added 2026-06-03, PM-438)
+
+- [ ] DEAN (Stripe dashboard, closes the loop): register webhook endpoint `https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1/stripe-webhook` (events `checkout.session.completed` + `customer.subscription.deleted`) and set its signing secret as `STRIPE_WEBHOOK_SECRET` in Supabase Edge Functions secrets. Until set, payments succeed but membership won't flip (webhook fails safe).
+- [ ] DEAN: confirm "Allow promotion codes" stays ON for the conversion Payment Link (`bJeeVe0Cs1Em53D5oh93y01`) else £20 is charged instead of £10.
+- [ ] Read-path EF enforcement: add the membership gate to `member-dashboard` (and any other read EFs) so an expired member can't pull data even if the client gate is bypassed. Deferred at PM-438 (write-guard + client gate judged sufficient for trial; core EFs are 400+ lines, hand-redeploy = transcription risk).
+- [ ] Extend the write-guard (`assert_member_not_expired`) beyond daily_habits/workouts/cardio/session_views to: mind_activities, movement_activities, connect_checkins, wellbeing_checkins, monthly_checkins.
+- [ ] Web "Start free trial" sign-up flow (inverts the current pay-first signup) — NOT built (was step 6). Needed before public trial marketing.
+- [ ] `continue.html` no-`cid` path = manual reconcile (rare; member reaches checkout without a bound id). Decide auto-handling later.
+- [ ] GITHUB_PAT_CLAUDE expires 20 Jun 2026 — rotate before expiry (Vault `GITHUB_PAT_CLAUDE` on project ixjfklpckgxrwjlfsaaz).
+
 # VYVE Health — Backlog
 
 Last triage: 2026-05-26 (Chat 3 of brain overhaul). Recomposed from ~5,923 lines / 206 headings / 480 sub-headings of chronological journal into surface-bucketed live items. SHIPPED blocks dropped against changelog. Stale "Added" items pre-14 May dropped per triage rule. Bus-campaign chronicle (PM-30 → PM-65, 08–11 May) dropped — all shipped, surface state in master §19.
