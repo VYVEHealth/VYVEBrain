@@ -272,6 +272,18 @@ This is now a first-class pattern with 9+ catalogues built on it. Edit via Supab
 | `calendar_occurrences` | Scheduled session occurrences (drives `*-live.html` shells; `starts_at` should be now/now+30s for testing per PM-304 walk lesson). |
 | `broadcast_schedules` | Recurring scheduled broadcast push rows (PM-402). Lewis adds via Studio with `slug` UNIQUE + `audience` jsonb + `recurrence` jsonb. Drained by `vyve-broadcast-scheduler` cron every 5 min. |
 
+### Live content delivery + simulated-live schedule (locked 2026-06-02)
+
+**Model.** Live sessions are simulated-live: a pre-recorded master pushed in real time over RTMP (`ffmpeg -re`) into an existing reusable YouTube stream key. `session-publish` v2 (hourly cron jobid 27) mints the liveBroadcast (unlisted, autoStart, DVR), binds the category reusable stream, and playlistItems.insert into the category playlist; `refresh-replay-videos` v2 (03:30 UTC) pulls the 8 playlists into `replay_videos` -> app Replays, so airing a session auto-populates Replays. RTMP key is NOT in Supabase -> resolved live via YouTube Data API `liveStreams.list(part=cdn)`. Pusher = self-hosted ffmpeg (over Castr), from an always-on ~GBP4/mo box (prove on Mac first); cannot run in an Edge Function. Worker `simulated-live-worker.py` is single-session, needs a multi-session scheduler wrapper.
+
+**Cadence (3-4/day).** 07:00 Movement (themed) / 08:30 Mind (themed) / 13:00 Movement booster (blended) / 19:30 Wind-down (restore). Tuesday mornings = Healthy/mobility series. Repetition accepted.
+
+**Recyclability rule.** Practice content (yoga/pilates/mobility/meditation/breathwork/affirmations/journaling/wind-downs) recurs freely; talks air once then on-demand in Replays.
+
+**Library (riverside_ masters, deduped).** 53 Movement (yoga 15, gentle/yin 6, pilates 5, flows 7, flexibility 3, mobility 17) + 21 Mind (meditation 3, breathwork 3, affirmations 2, visualisation 1, journaling 2, talks 10) = 74 airable. 4 explainers NOT aired -> Mind-section intro content. Excluded: 3x background_5min; morning_stillness (pending). Lewis new set: Doing Hard Things + Not Drinking Alcohol -> talks; Why I Founded VYVE -> launch feature/onboarding; Welcome to VYVE -> onboarding; Suicide and Men -> gated (§23.84).
+
+**Go-live = two tracks.** (1) Seed Replays now by uploading back-catalogue straight into the 8 category playlists (empty since PM-410). (2) Run the 3-4/day schedule on top. 30-day calendar (Wed 3 Jun -> Thu 2 Jul 2026) built; titles map to riverside_ files at wiring time, each -> a `calendar_occurrences` row.
+
 ### Notifications + push
 
 | Table | Purpose |
@@ -1478,6 +1490,10 @@ supabase-js returns `{ error }` (not a throw) when the named function doesn't ex
 #### §23.83 — never re-key an existing Dexie store via a version bump (PM-436 — HARD RULE)
 
 Changing a store's `keyPath` (primary key) in a later `db.version(N).stores()` forces Dexie to delete + recreate the object store inside the versionchange transaction. IndexedDB cannot alter a keyPath in place, and iOS/WKWebView mishandles delete-and-recreate-of-the-same-store-in-one-transaction — `db.open()` rejects on any device already holding the prior version's data, db.js falls through to the noop shim (`isEnabled()===false`), and EVERY Dexie-backed surface silently reads empty (0/30 home rings via `loadPillarCounts`, habits.html "no habits assigned") while EF-backed surfaces still paint. Fresh installs are unaffected (clean create, no migration), so it sails through quick tests and breaks ONLY existing-data devices on the next bundle — full member blast radius, silent, looks like data loss. PM-425 did exactly this (`workout_plan_cache` `member_email`→`id`, SCHEMA_V22); every device stuck at on-disk IDB v210 (= Dexie v21; Dexie stores IDB version as schema×10) because the 21→22 upgrade kept throwing. Reverted in PM-436 (`e44b2357`) — wpc back to `member_email`, `db.version(22)` kept as a no-op bump so jammed v21 devices upgrade 210→220 with no store recreate and self-heal on next open. **Rule:** to add/change a primary key, create a NEW store under a new name and repoint sync + reads (phones add a store cleanly), OR do a deliberate two-RELEASE delete-then-recreate (delete the store in one shipped version, recreate in a later one — never both in the same open). Never re-key in place. **Corollary:** a failed `db.open()` must not silently degrade to a confident `0` — distinguish "Dexie unavailable" from "genuinely zero" (graceful-fallback backlog item). Diagnostic: `indexedDB.open(name)` onsuccess → `db.version` (÷10 = Dexie schema version on the device); `VYVELocalDB.isEnabled()===false` + populated server tables = jammed open, not a data problem.
+
+#### §23.84 — mental-health-sensitive video content gated on Phil + on-asset crisis signposting before airing (PM-437 — HARD RULE)
+
+Any member-facing video addressing suicide, self-harm, addiction crisis, bereavement or equivalent acute mental-health territory (first instance: Lewis's "Suicide and Men") must NOT be scheduled into the live rotation or seeded to Replays until (a) Phil has clinically signed it off and (b) it carries visible crisis-support signposting (helpline on the asset + in the description). Extends the HAVEN safeguarding bar to video. Recovery-adjacent talks that are not acute (e.g. "Not Drinking Alcohol") may air but get flagged for Lewis's eye. Rationale: member duty-of-care + Sage/enterprise diligence expects this standard.
 
 ---
 

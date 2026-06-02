@@ -1,3 +1,14 @@
+## Live content go-live (added 2026-06-02, PM-437)
+
+- [ ] Resolve a category RTMP ingest+key live via YouTube Data API liveStreams.list(part=cdn) (Yoga/Pilates & Stretch first).
+- [ ] ONE test simulated-live push from Dean's Mac -> confirm session-publish binds broadcast + playlistItems.insert + replay appears.
+- [ ] Seed Replays: upload back-catalogue (53 Movement -> Yoga/Pilates & Stretch playlist, 21 Mind -> Mindfulness & Mindset playlist) so Replays is populated for sales now.
+- [ ] Stand up always-on ~GBP4/mo box (Dean creates/pays; Claude configures); get riverside_ masters onto it once.
+- [ ] Wrap simulated-live-worker.py into a multi-session scheduler reading calendar_occurrences.
+- [ ] Wire the 30-day calendar into calendar_occurrences (map readable titles -> riverside_ filenames).
+- [ ] BLOCKED: Suicide and Men airing -> Phil clinical sign-off + crisis signposting (§23.84).
+- [ ] PENDING: 6th Lewis video; morning_stillness classification.
+
 # VYVE Health — Backlog
 
 Last triage: 2026-05-26 (Chat 3 of brain overhaul). Recomposed from ~5,923 lines / 206 headings / 480 sub-headings of chronological journal into surface-bucketed live items. SHIPPED blocks dropped against changelog. Stale "Added" items pre-14 May dropped per triage rule. Bus-campaign chronicle (PM-30 → PM-65, 08–11 May) dropped — all shipped, surface state in master §19.
