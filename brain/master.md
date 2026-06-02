@@ -265,7 +265,7 @@ This is now a first-class pattern with 9+ catalogues built on it. Edit via Supab
 
 | Table | Purpose |
 |---|---|
-| `certificates` | Issued certificate records. Global sequential numbers. |
+| `certificates` | Issued certificate records. Global sequential numbers via `next_certificate_number()`. **PM-435:** re-pillared onto the five Your Journey buckets — `activity_type` ∈ {habits, mind, body, connect, checkins} + legacy {workouts, cardio, sessions} (widened CHECK); `pillar` column (legacy rows tagged `'legacy'`). Counts come from `public.get_certificate_buckets()` (single source, mirrors `engagement-v2 renderProgressTab` caps). Unique `(member_email, activity_type, milestone_count)`. |
 | `engagement_emails` | Re-engagement email tracking. Streams A/B (C1/C2/C3 retired 4 May). |
 | `session_chat` | Live session chat (last 50 per session). Open INSERT/SELECT for live chat. |
 | `session_categories` | Session category metadata. |
@@ -402,7 +402,7 @@ Charity + certificate counters stay independently capped at 2/day via `get_chari
 | `daily-report` | LIVE | Cron 08:05 UTC daily. |
 | `weekly-report` | LIVE | Cron 08:10 Monday UTC. |
 | `monthly-report` | LIVE | Cron 08:15 1st of month UTC. |
-| `certificate-checker` | LIVE | Daily 09:00 UTC. Generates HTML certs to Supabase Storage. Global sequential numbers. |
+| `certificate-checker` | LIVE | **v24 (PM-435).** Daily 09:00 UTC. Reads `get_certificate_buckets()` (five capped Your Journey buckets: habits/mind/body/connect/checkins), issues one cert per 30 per track with `pillar`, upsert ignoreDuplicates (race-safe), emails only on new inserts. Certs render client-side via `/certificate.html?id=` (HTML/Storage generation dropped at v23). Calls `next_certificate_number()` — v23 called a non-existent fn and silently numbered all certs `1`; fixed. |
 | `certificate-serve` | LIVE | Serves certificate HTML. |
 | `warm-ping` | LIVE | 5-min keep-warm against 10 EFs. |
 | `check-cron` | LIVE | Cron audit/verification. |
@@ -804,7 +804,7 @@ Not done. v1 columns + v1 SQL function + v1 page all still live and untouched. D
 
 ### Three-tab future shape — DEFERRED
 
-Engagement page queued to become a three-tab shell (Score / Progress / Achievements). Score = current v2 content. Progress = charity mechanic + 5-track milestone progress. Achievements = trophy-cabinet block from §11A.
+Engagement page (`Your Journey`) is a three-tab shell. **PM-435 order: Progress (default) / Score / Achievements** — Progress renders from Dexie on boot (no longer lazy-only). Score = v2 engagement content. Progress = the five capped pillar buckets (habits/mind/body/connect/checkins, identical caps to the cert tracks) + charity mechanic. Achievements = trophy-cabinet block from §11A. Achievements deep-link routes by `data-tab` click, order-independent.
 
 ### Push notification thresholds — DEFERRED
 
@@ -1096,7 +1096,7 @@ Achievements system overhaul (PM-94) — post-trial, 2-3 sessions, own campaign.
 - **APNs key rotation** — accepted risk pending Sage procurement diligence. KEY_ID `2MWXR57BU4` exposed in chat 27 April 2026 PM, rotation attempted 07 May hit Apple's 2-keys-per-team cap. Risk profile low; rotate if Sage's security review surfaces it.
 - **Secondary email service provider** — Brevo is single-provider for onboarding welcomes / certificates / re-engagement / push fan-outs. No failover ESP. Pre-Sage acceptable; post-Sage evaluate AWS SES as secondary.
 - **GDPR cron static-PSK exposure** — cron jobids 21 + 22 hardcode SHA-256-shaped bearer in `cron.job.command`. Procurement reviewers will flag; either replace with `current_setting('app.gdpr_cron_psk')` lookup or drop bearer entirely (EFs already enforce service-role checks). Backlog rotation when convenient; not blocking Sage diligence unless raised.
-- **Goal & certificate re-pillaring (PM-159)** — per-activity goal targets and certificate tracks (Habits/Workouts/Cardio) no longer map cleanly onto BODY/Mind/Connect pillars. Deferred to post-launch. Revisit alongside home-redesign EF trim.
+- **Goal re-pillaring (PM-159, partial)** — certificate re-pillaring SHIPPED PM-435 (certs now read the five Your Journey buckets via `get_certificate_buckets()`). The per-activity GOAL-target half (weekly goal targets mapped onto the pillars) is still open. Revisit alongside home-redesign EF trim.
 - **5 disabled Make tasks** — keep or remove: LinkedIn article, podcast brief, LinkedIn newsletter, PR pitch, employee advocacy pack.
 - **Autotick evaluator multi-source arbiter** — when/if a future member has two sources (HealthKit + Fitbit).
 
@@ -1470,6 +1470,10 @@ When copying a page's boot/auth-observer IIFE between portal pages, the entry-fu
 #### §23.81 — movement.html renderPlan must route by shape presence, not plan_type (PM-429, PM-431 — HARD RULE)
 
 Movement-surface plans created by the picker (`movement-plans.html startPlan`) carry `weekly_targets` / `prompt_pool` but **never** `weeks[].sessions[]`. movement.html's structured session renderer reads weeks→sessions and bails `if (!session) showNoPlan()` — so a member WITH an active plan sees the no-plan "Choose your plan" CTA and the chosen plan renders as nothing. This is NOT a hydration/Dexie-timing bug (the row is in Dexie instantly via the PM-427 mirror); the renderer silently discards it. **Rule:** `renderPlan` routes on `!hasSessions` (any sessionless movement plan — just_steps AND locked_ramp Foundation/Distance) → the state-aware ring/target layer (`applyMovementState`); only genuinely session-shaped legacy plans take the structured path. Never dispatch by enumerating `plan_type` values — a new picker shape (e.g. a future "interval walk") would silently regress. Earned twice: PM-429 (just_steps bailed) then PM-431 (locked_ramp bailed identically). Sibling to §23.57 (mockup→page checklist): when a render path is copied from a sibling surface (here the workouts session renderer), audit which plan SHAPES the destination surface actually produces before trusting the copied dispatch.
+
+#### §23.82 — A `supabase.rpc()` to a non-existent Postgres function fails silently, not loudly (PM-435, candidate)
+
+supabase-js returns `{ error }` (not a throw) when the named function doesn't exist; an EF fallback that returns a constant on error then masks the bug indefinitely. `certificate-checker` v23 called `get_next_global_cert_number` (never existed — the real fn is `next_certificate_number()`); its `if (error) return 1` numbered EVERY certificate `1` for an unknown duration, only caught when max `global_cert_number` was 2 across 9 certs. **Rule:** when wiring an EF to an RPC, confirm the function exists in `pg_proc` before trusting it; any rpc-error fallback returning a constant is a candidate for hiding a missing-function bug — log the error, don't swallow to a default. Companion pattern (banked): when a value must match a client-side Dexie compute (here the Your Journey progress buckets), express the rule ONCE as a server SQL function (`get_certificate_buckets()`) consumed by both the EF and any backfill, rather than re-deriving it in two languages. Promotes to hard rule on second occurrence.
 
 ---
 
