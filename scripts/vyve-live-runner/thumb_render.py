@@ -21,6 +21,7 @@ def _resolve(cands):
 # then elegant fallbacks (Instrument Serif in-container, Georgia/Times on macOS), then DejaVu.
 _HERE = os.path.dirname(os.path.abspath(__file__))
 SERIF = _resolve([
+    os.path.join(_HERE, "PlayfairDisplay.ttf"),
     os.path.join(_HERE, "PlayfairDisplay-Bold.ttf"),
     os.path.join(_HERE, "PlayfairDisplay-Regular.ttf"),
     "/mnt/skills/examples/canvas-design/canvas-fonts/InstrumentSerif-Regular.ttf",
@@ -101,14 +102,18 @@ def render(category, title, host, bg=None, logo_path=None, out="thumb.jpg"):
 
     MX, base = 92, H - 96
     f_eyebrow = F(SANSB, 25); f_title = F(SERIF, 96); f_host = F(SANS, 32)
+    try:
+        f_title.set_variation_by_axes([600])  # Playfair VF -> medium-bold for thumbnail legibility
+    except Exception:
+        pass
 
     # title (wrap to <=2 lines), measured upward from host line
     tlines = wrap(d, title, f_title, W - MX - 360)
     th = len(tlines) * 96
     host_y = base
-    title_bottom = host_y - 18
+    title_bottom = host_y - 34
     title_top = title_bottom - th
-    eyebrow_y = title_top - 44
+    eyebrow_y = title_top - 40
 
     # gold accent rule
     d.line([(MX, eyebrow_y+14), (MX, base+30)], fill=GOLD, width=3)
