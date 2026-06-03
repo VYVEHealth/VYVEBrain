@@ -288,7 +288,7 @@ def ensure_broadcast(token, occ, cat, dry_run):
         return "(would-mint)", "dry-run"
 
     title = (occ.get("session_title") or occ.get("name") or
-             f"VYVE \u2014 {cat.get('display_name') or occ['category']}")
+             f"VYVE — {cat.get('display_name') or occ['category']}")
     desc = occ.get("session_description") or occ.get("description") or ""
     st, ins = yt_post(token, "liveBroadcasts?part=snippet,status,contentDetails", {
         "snippet": {
@@ -353,7 +353,7 @@ def ffmpeg_cmd(media_path, rtmp_url):
 
 
 def redact(rtmp_url, key):
-    return rtmp_url.replace(key, key[:6] + "\u2026" + f"[{len(key)} chars]") if key else rtmp_url
+    return rtmp_url.replace(key, key[:6] + "…" + f"[{len(key)} chars]") if key else rtmp_url
 
 
 # ── worker ──────────────────────────────────────────────────────────────────
@@ -378,7 +378,7 @@ def run_occurrence(occ, token, dry_run=False, wait_for_start=False):
         log(f"    category  : {cat['category']}  stream={cat['youtube_stream_id']}  playlist={cat.get('youtube_playlist_id')}")
         log(f"    rtmp      : {redact(rtmp_url, key)}")
         log(f"    broadcast : {bid}  ({how})")
-        log(f"    thumbnail : {thumb or '(none found \u2014 would use YouTube auto-frame)'}")
+        log(f"    thumbnail : {thumb or '(none found — would use YouTube auto-frame)'}")
         log(f"    would: set thumbnail -> start ffmpeg -> poll stream active -> transition {bid} ready->live")
         log(f"           -> wait ffmpeg end -> transition {bid} live->complete")
         log(f"    ffmpeg    : {' '.join(cmd[:-1])} {redact(rtmp_url, key)}")
@@ -389,7 +389,7 @@ def run_occurrence(occ, token, dry_run=False, wait_for_start=False):
         st, terr = set_thumbnail(token, bid, thumb)
         log(f"  thumbnail {bid} <- {os.path.basename(thumb)}: {'OK' if terr is None else f'{st} {terr}'}")
     else:
-        log(f"  no thumbnail for '{occ.get('notes')}' \u2014 YouTube auto-frame will be used")
+        log(f"  no thumbnail for '{occ.get('notes')}' — YouTube auto-frame will be used")
 
     if wait_for_start:
         start = datetime.fromisoformat(occ["starts_at"].replace("Z", "+00:00"))
