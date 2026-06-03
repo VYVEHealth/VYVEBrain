@@ -1,3 +1,17 @@
+## PM-451 — Live session calendar content + host/type thumbnails applied (2026-06-03)
+
+Applied the approved go-live content to the simulated-live calendar and shipped the session thumbnails.
+
+vyve-site (commit `cecf2f7f875d108f726c864153fec5d8c5833e53`, PM-451): added 5 branded host/type thumbnail cards at `assets/hosts/{alex,nicola,lewis,lucy,jamie}.jpg` (1280x720 RGB jpg, normalised from Dean's uploads — Alex=Yoga, Nicola=Breathwork, Lewis=Mindset, Lucy=Meditation, Jamie=Mindfulness & Mindset). Lock-step bump: index.html + settings.html vbb-marker -> Update 330; sw.js CACHE_NAME -> `vyve-cache-v2026-06-03-pm451-host-thumbnails-a`. All 8 files md5-verified at the new commit via the Git Data API (Composio not used).
+
+calendar_occurrences (Supabase ixjfklpckgxrwjlfsaaz): one `UPDATE ... FROM (VALUES ...)` keyed on current `session_title`, scoped `active AND starts_at >= '2026-06-04 00:00:00+01'`, touched all 116 active rows (Thu 4 Jun–Wed 2 Jul). Set final `session_title` (Part->Session across the Healthy series + 10-min flow; "Flexibility Route/Routine" -> "Flexibility Session"; "With"->"with"), Dean-approved live-voiced `session_description` (standalone live-class voice, no series-position wording except the Healthy care series; the three 10-min flows, three 15-min flows and three Flexibility share copy), `host_name` for every row (Lucy/Jamie/Flexibility were NULL in the DB — the sheet had hosts, the DB did not), and `image_url` = type-mapped host-card URL. Verified 116/116: 0 blank descriptions, 0 null images, 0 null hosts, 0 "Part" titles.
+
+Thumbnail mapping is by session TYPE, not per host (decision, reversible): movement->alex.jpg, breathwork->nicola.jpg, meditation/affirmations/visualisation/rest->lucy.jpg, Lewis talks->lewis.jpg, journaling+sleep-routine->jamie.jpg. Rationale: Nicola's card is branded "Breathwork" but she hosts most of the yoga/pilates; per-host would put a Breathwork card on ~25 yoga sessions. Real host preserved as `host_name` text. Flip to per-host = a single UPDATE on `image_url`.
+
+New hard rule §23.86: the sandbox can't reach online.vyvehealth.co.uk (egress allowlist) — a 403 there is NOT evidence an asset is broken; verify via raw GitHub API pinned to the commit SHA or in-app. (All 5 cards 403'd from the sandbox while present in the repo.)
+
+Open / owed: type-vs-per-host thumbnail decision + whether to drop numeric labels on flows/flexibility; YouTube-side broadcast title/description + host-card thumbnail wiring (broadcasts don't exist until aired); 41 stale pre-re-curation rows still active (cleanup candidate); actual streaming tomorrow depends on the runner on Dean's Mac. Descriptions are Dean-approved to unblock go-live; Lewis retains copy sign-off.
+
 ## 2026-06-03 PM-449 — thumbnails: bundle exact Playfair Display (brand serif) + spacing fix
 
 Dropped the brand heading font (Playfair Display, OFL variable font, weighted 600 for thumbnail legibility) into scripts/vyve-live-runner/PlayfairDisplay.ttf and made thumb_render.py prefer it, so production cards match the brand exactly instead of the Georgia/Mac fallback. Tightened title->host spacing so Playfair's descenders clear the host line. Sample re-rendered + approved-direction (flat-brand shown; frame-behind is the generator default, --no-frame for flat). Look signed off by Dean.

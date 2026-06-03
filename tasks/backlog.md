@@ -2,10 +2,13 @@
 
 ### NEXT — live content go-live (PM-439, 2026-06-02) — continue here
 - [x] Masters renamed via ~/vyve_rename.py (truncation gotcha logged).
-- [x] 30-day calendar WIRED (120 rows). session_description still blank for Lewis; hosts only Alex/Nicola.
+- [x] 30-day calendar WIRED + CONTENT APPLIED PM-451: all 116 active rows (4 Jun–2 Jul) carry final titles (Part->Session; Flexibility Route/Routine->Session), Dean-approved live-voiced session_description, host_name filled (Alex/Nicola/Lewis/Lucy/Jamie), and image_url thumbnails. 5 host/type cards committed to vyve-site assets/hosts/ (commit cecf2f7f). Thumbnails mapped by session TYPE not per-host (Nicola's card is breathwork-branded but she hosts most yoga/pilates).
 - [x] `*-live.html` YouTube broadcast-status probe (override clock-only LIVE gate) — SHIPPED PM-445 (broadcast-status EF + session-live.js effectiveState; §23.65 resolved). live:true branch needs real-push device walk.
 - [x] Token-health monitor — LIVE PM-447: EF `youtube-token-health` + cron job 35 (`0 4 * * *`), refresh+authed-call probe, send-email alert to team@ on failure. Real-send branch unexercised.
 - [ ] Stand up the always-on box; place vyve-live-runner.py; turn OFF session-publish hourly cron once box owns creation.
+- [ ] PM-451: confirm the 5 host-card thumbnails render in-app (sandbox can't reach online.vyvehealth.co.uk — 403 even on logo.png; files verified present via raw GitHub API). Do NOT re-host on a sandbox 403 (§23.86).
+- [ ] PM-451 decision: keep TYPE-based thumbnails or flip to strict per-host (one UPDATE on calendar_occurrences.image_url); also decide whether to drop numeric labels on flows/flexibility titles.
+- [ ] PM-451: wire runner/session-publish so each created YouTube broadcast sets title + description from calendar_occurrences AND uploads the matching assets/hosts/<card>.jpg as the YouTube thumbnail (currently uploads the per-session frame card).
 - [ ] 3 missing talk videos: "Why I Founded VYVE", "Doing Hard Things", "Not Drinking Alcohol".
 - [x] Place vyve-live-runner.py into a repo — DONE PM-446: VYVEBrain scripts/vyve-live-runner/ (runner + systemd + launchd + env.example + README; reconstructed from the PM-439 autostart-dead model). Not yet smoke-tested on the box.
 
