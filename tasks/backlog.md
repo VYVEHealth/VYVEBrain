@@ -1,5 +1,15 @@
 ## Live content go-live (added 2026-06-02, PM-437)
 
+### NEXT — live content go-live (PM-439, 2026-06-02) — continue here
+- [ ] Dean: run `~/vyve_rename.py` then `--go`; paste fresh VYVE LIVES `ls`.
+- [ ] Map schedule titles -> real filenames; generate calendar_occurrences rows (rebuilds 192 placeholders): daily-strand rotations + one-off talk placements; fill notes(filename)/session_title/host_name/host_role/session_description.
+- [ ] `*-live.html` YouTube broadcast-status probe (override clock-only LIVE gate) — go-live blocker.
+- [ ] Token-health monitor: daily pg_net refresh probe -> Brevo alert to team@ on invalid_grant.
+- [ ] Stand up the always-on box; place vyve-live-runner.py; turn OFF session-publish hourly cron once box owns creation.
+- [ ] 3 missing talk videos: "Why I Founded VYVE", "Doing Hard Things", "Not Drinking Alcohol".
+- [ ] Place vyve-live-runner.py into a repo (currently only in a session output) — not yet version-controlled.
+
+
 - [ ] Resolve a category RTMP ingest+key live via YouTube Data API liveStreams.list(part=cdn) (Yoga/Pilates & Stretch first).
 - [ ] ONE test simulated-live push from Dean's Mac -> confirm session-publish binds broadcast + playlistItems.insert + replay appears.
 - [ ] Seed Replays: upload back-catalogue (53 Movement -> Yoga/Pilates & Stretch playlist, 21 Mind -> Mindfulness & Mindset playlist) so Replays is populated for sales now.

@@ -1,5 +1,33 @@
 # VYVE Health — Brain Master
 
+<!--CURRENT_FRONT_START-->
+## CURRENT FRONT — read first, continue from here (updated 2026-06-02, PM-439)
+
+**Workstream: simulated-live content go-live. Plumbing PROVEN; content wiring is what's left.**
+
+- PROVEN tonight end-to-end (real push, then cleaned up): Mac ffmpeg -re -> YouTube live -> complete -> playlist -> app Replays.
+- **Autostart is DEAD on this channel.** `enableAutoStart` never flips ready->live (tested exhaustively; manual transition rejected invalidTransition while autostart=true). MODEL: create broadcast autostart=false + monitorStream=false + autostop=false, then explicitly transition ready->live once the bound stream is active, and live->complete when the push ends. `session-publish` redeployed **v5** (autostart/monitor/autostop all off) — it only pre-creates (mint+bind+playlist); the WORKER owns live/complete transitions. (§23 candidate, see changelog.)
+- Stream keys cached in Vault secret **YOUTUBE_STREAM_KEYS_CACHE** (category->{ingestionAddress,streamName}); push path needs no live token.
+- OAuth refresh token re-minted + stored (Vault YOUTUBE_OAUTH_REFRESH_TOKEN). App is ALREADY "In production" yet token still rotated -> unverified app on sensitive youtube scope can rotate anyway; durable fix = Workspace Internal or full verification (roadmapped). master §24 "7-day expiry while in Testing" note is STALE. `youtube-token-keepalive` cannot cure refresh-token death.
+- **Auto-runner built:** `vyve-live-runner.py` (stdlib + ffmpeg, single self-contained daemon for the always-on box). Reads the day's calendar_occurrences, waits to airtime, pushes, polls stream active, transitions live, transitions complete on file end. Reads OAuth + stream cache from Vault; only the Supabase service key lives on the box. CAS write-back prevents double-mint vs session-publish. Recommend turning OFF the session-publish hourly cron once the box owns creation. NOT yet on a box — Mac is the interim pusher.
+
+**The real 30-day schedule maps to real files.** 4 slots/day (07:00 Movement themed · 08:30 Mind themed · 13:00 booster · 19:30 wind-down); talks one-off then Replays; "Suicide and Men" held for Phil (§23.84); explainers -> Mind section. Masters on Dean's Mac ~/Desktop/VYVE LIVES. Inventory matched: every movement/mind-practice slot has a file, 10/12 talks do; **3 gaps with no file yet:** "Why I Founded VYVE", "Doing Hard Things", "Not Drinking Alcohol".
+
+**Naming:** folder had two styles (already-clean + raw riverside_). Decision: standardise on clean names. Validated rename script handed to Dean at `~/vyve_rename.py` (dry-run-first, no-clobber, never deletes, only touches riverside_*; skips riverside dups of files already cleaned).
+
+**EXACT NEXT ACTIONS (continue from here):**
+1. Dean runs `~/vyve_rename.py` (preview) then `--go` at the PC, pastes fresh `ls -1 ~/Desktop/"VYVE LIVES"`.
+2. Map schedule titles -> real filenames; generate calendar_occurrences rows (rotations for daily strands, one-offs placed; title/host/session_description/notes=filename/host_name/host_role). This REBUILDS the ~192 placeholder rows (currently blank: 0 title/host/desc/file, and on different times+categories than this schedule).
+3. **Live-page probe (named go-live blocker):** `*-live.html` decides live by CLOCK only; with worker-driven go-live (a few s after starts_at) the page won't flip at the true moment. Add a YouTube broadcast-status probe so broadcast-live overrides the clock. (Logged near master's "state-machine bug" note.)
+4. Token-health monitor: daily pg_net refresh probe -> Brevo alert to team@vyvehealth.co.uk on invalid_grant (so the next token death is loud).
+5. Prove one real slot end-to-end (airs; app shows live + host + description; replay appears), then let the runner take the schedule.
+
+**Amendments later = trivial:** runner + app both read calendar_occurrences; edit a row (time/file/title/host/desc) -> no redeploy, no app update. A swapped video file must be on the box. Member-facing copy via Lewis.
+
+**Note:** Replays currently shows 12 pre-existing videos in the category playlists (master previously had Replays empty post-PM-410) — flagged, untouched.
+<!--CURRENT_FRONT_END-->
+
+
 > Single source of truth for the whole business. Last full rewrite 28 April 2026 PM; §1-18 re-audited and consolidated 26 May 2026 against live Supabase + GitHub state. If this drifts from live reality, rewrite it fully again — do not paper over. **Live counts (members, EF versions, table row counts, page state) live in the database and the repo — this doc never caches them.**
 
 ---
