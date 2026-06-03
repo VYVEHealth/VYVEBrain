@@ -3,7 +3,7 @@
 ### NEXT — live content go-live (PM-439, 2026-06-02) — continue here
 - [x] Masters renamed via ~/vyve_rename.py (truncation gotcha logged).
 - [x] 30-day calendar WIRED (120 rows). session_description still blank for Lewis; hosts only Alex/Nicola.
-- [ ] `*-live.html` YouTube broadcast-status probe (override clock-only LIVE gate) — go-live blocker.
+- [x] `*-live.html` YouTube broadcast-status probe (override clock-only LIVE gate) — SHIPPED PM-445 (broadcast-status EF + session-live.js effectiveState; §23.65 resolved). live:true branch needs real-push device walk.
 - [ ] Token-health monitor: daily pg_net refresh probe -> Brevo alert to team@ on invalid_grant.
 - [ ] Stand up the always-on box; place vyve-live-runner.py; turn OFF session-publish hourly cron once box owns creation.
 - [ ] 3 missing talk videos: "Why I Founded VYVE", "Doing Hard Things", "Not Drinking Alcohol".

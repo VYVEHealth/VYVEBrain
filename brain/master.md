@@ -12,9 +12,10 @@ DONE since the schedule was locked:
 - **30-day calendar RE-CURATED in calendar_occurrences: 116 rows, Thu 4 Jun–Wed 2 Jul, 4 slots/day (07:00 movement / 08:30 mind / 13:00 movement booster / 19:30 wind-down).** Full library folded in — **78 distinct videos** incl Healthy Knees/Shoulders/Spine (1-4 each), Healthy Wrists, Hamstrings & Hips, the 4 explainers (What Is Breathwork/Meditation, Why Sleep, Why Visualisation), Morning Stillness, Short Full Body Flow. Greedy rotation: **no video repeats within 7 days**; series in chronological order (10-min Pt1/S2/S3, 15-min S1/2/3, Healthy Knees/Shoulders/Spine 1-4, Hips 1-3). Categories still content-based 2-bucket (movement -> "Yoga, Pilates & Stretch"; mind -> "Mindfulness & Mindset"). notes=filename; ends_at=start+parsed-mins-or-20.
 - **Hosts set by filename** (reusable UPDATE...FROM VALUES map): Alex 38, Nicola 44, Lewis 13. Mobility series Healthy Knees/Shoulders/Spine/Wrists + Short Full Body + Full Body + Desk + Seated + Healthy Ankles/Hips + Alex flows = Alex; all Pilates + yoga + yin + breathwork/meditation + gentle flows + Hamstrings = Nicola; spoken talks = Lewis. **21 rows still host-blank pending Dean's call** (Alex/Nicola/Lewis): Affirmations I Am Stronger, Affirmations Meditation, Healing Meditation, Guided Journaling, Journaling & Understanding You, Visualisation, Flexibility Routine 1/2/3, the 4 explainers, Morning Stillness.
 - **session_description ALL BLANK = Lewis.** Many session_titles are PROVISIONAL/placeholder — Dean finalising. All are one-field edits.
+- **Build #1 (live-page status probe) SHIPPED PM-445** — `broadcast-status` EF + session-live.js `effectiveState()` override; broadcast-live overrides the clock; fail-safe to clock on probe error; §23.65 resolved. `live:true` branch unproven until a real push (rides build #2's now+30s test). 41 stale pre-re-curation rows (22 May–3 Jun) still sit active in `calendar_occurrences` alongside the 116 — cleanup candidate.
 
 **EXACT NEXT ACTIONS (continue from here):**
-1. **Live-page status probe (the build):** `*-live.html` decides LIVE by clock only; with worker-driven go-live the page won't flip at the true moment. Add a YouTube broadcast-status probe so broadcast-live overrides the clock. Production vyve-site front-end -> mockup/confirm then ship; bump vbb-marker in index.html+settings.html+sw.js. THIS is the next thing to build.
+1. **Live-page status probe — SHIPPED PM-445** (broadcast-status EF + session-live.js `effectiveState()` override). DONE bar the `live:true` device walk, which rides build #2's real push. The runner box (#2) is now the live front.
 2. Stand up the always-on box: vyve-live-runner.py + ffmpeg + env (Supabase service key + VYVE_MEDIA_DIR) + systemd. Interim: Dean's Mac as pusher. Prove first real slot (4 Jun 07:00 = Yoga Flexibility) with `--once --dry-run` then live. Turn OFF session-publish hourly cron once box owns creation.
 3. Token-health monitor: daily pg_net refresh probe -> Brevo alert to team@ on invalid_grant.
 4. Lewis: session_description for all rows + Dean: the 21 host-blanks + final session_titles.
@@ -447,7 +448,8 @@ Charity + certificate counters stay independently capped at 2/day via `get_chari
 | `schema-snapshot-refresh` | LIVE | Sunday 03:00 UTC, auto-commits structural changes to VYVEBrain. `GITHUB_PAT_BRAIN` fine-grained PAT, expires 18 April 2027. |
 | `youtube-token-keepalive` | LIVE | Daily 03:00 UTC YouTube OAuth keepalive. |
 | `refresh-replay-videos` | LIVE | Daily 03:30 UTC YouTube → `replay_videos` sync with DELETE-NOT-IN reconciliation (PM-410 — closes upsert-only stale-row gap; gated to run only if all 8 playlists fetch cleanly). |
-| `session-publish` | LIVE | Hourly cron — creates YouTube `liveBroadcast` resources from `broadcast_schedules`. `enableAutoStart=true`, `enableAutoStop=false` (PM-310 — broadcasts only end on instructor RTMP ingest stop). |
+| `session-publish` | LIVE | v5 — PRE-CREATE only (mint+bind+playlistItems.insert) from `calendar_occurrences` within 60min lookahead. `enableAutoStart=false` (autostart DEAD on this channel — the worker transitions ready->live + ->complete explicitly), `enableAutoStop=false`, monitorStream off. Hourly cron. |
+| `broadcast-status` | LIVE | v1 (PM-445, verify_jwt) — member live-page probe. OAuth `liveBroadcasts.list?part=status` -> `{live:bool|null}` so `*-live.html` lets broadcast-live override the clock (§23.65). Fail-safe: returns live:null on YouTube/token error -> client clock-falls-back. |
 | `crisis-scan` | LIVE | Mental-health crisis scan on weekly check-in submissions. |
 
 ### Admin console + ops
@@ -1438,6 +1440,8 @@ NEVER tell Dean to "navigate to URL X" or use `?query=params` in an address bar 
 #### §23.65 — Live device-walk testing scheduling (PM-304 walk lesson)
 
 When testing `*-live.html` against a real broadcast, schedule `calendar_occurrences` with `starts_at = now()` or `now+30s`, NEVER `now+10min`. Skip PRE_ROLL — page should be trying to be LIVE the moment Riverside push hits YouTube. State-machine bug logged: LIVE gates on clock-time only, so YouTube `enableAutoStart` already-live doesn't flip page state until starts_at clock passes. Broadcast-live should override the clock — architectural fix needs a YT broadcast status probe.
+
+**RESOLVED PM-445.** `broadcast-status` EF (OAuth `liveBroadcasts.list?part=status`, verify_jwt, returns `{live:bool|null}`) + session-live.js `probeBroadcastStatus()`/`effectiveState()` layered over the clock machine. broadcast-live overrides the clock; holds PRE_ROLL until confirmed live; JUST_ENDED on live->not-live; holds LIVE past `ends_at` on over-run; fails safe to clock-only on probe error (== prior behaviour). player-tracker + wake-lock bind on EFFECTIVE LIVE only. `live:true` branch still needs a real-push device walk to confirm.
 
 #### §23.66 — session-publish EF: enableAutoStop=false (PM-310)
 
