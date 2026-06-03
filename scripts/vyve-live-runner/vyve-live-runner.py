@@ -80,6 +80,8 @@ OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
 SUPABASE_URL = os.environ.get("VYVE_SUPABASE_URL", "https://ixjfklpckgxrwjlfsaaz.supabase.co").rstrip("/")
 SERVICE_KEY = os.environ.get("VYVE_SUPABASE_SERVICE_KEY", "")
 MEDIA_DIR = os.path.expanduser(os.environ.get("VYVE_MEDIA_DIR", ""))
+# thumbnails: <basename>.jpg, in VYVE_THUMB_DIR if set, else alongside the masters
+THUMB_DIR = os.path.expanduser(os.environ.get("VYVE_THUMB_DIR", "") or MEDIA_DIR)
 REFRESH_INTERVAL = int(os.environ.get("VYVE_REFRESH_INTERVAL", "60"))
 SPAWN_HORIZON = int(os.environ.get("VYVE_SPAWN_HORIZON", "900"))
 
@@ -232,6 +234,32 @@ def resolve_media(occ):
     return path, None
 
 
+def thumb_for(occ):
+    """<basename>.jpg in THUMB_DIR for this occurrence's master filename."""
+    name = (occ.get("notes") or "").strip()
+    if not name or not THUMB_DIR:
+        return None
+    p = os.path.join(THUMB_DIR, os.path.splitext(name)[0] + ".jpg")
+    return p if os.path.isfile(p) else None
+
+
+def set_thumbnail(token, video_id, jpg_path):
+    """Upload a custom thumbnail via thumbnails.set (uploadType=media, raw jpeg)."""
+    with open(jpg_path, "rb") as f:
+        data = f.read()
+    url = f"https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId={urllib.parse.quote(video_id)}&uploadType=media"
+    r = urllib.request.Request(url, data=data, method="POST",
+                               headers={"Authorization": f"Bearer {token}", "Content-Type": "image/jpeg"})
+    try:
+        with urllib.request.urlopen(r) as resp:
+            return resp.status, None
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()[:300]
+        # 403 here almost always = custom thumbnails not enabled for the channel
+        hint = "  (channel may need custom-thumbnails enabled in YouTube Studio)" if e.code == 403 else ""
+        return e.code, body + hint
+
+
 def ensure_broadcast(token, occ, cat, dry_run):
     """Return broadcast_id. Uses the session-publish-minted one if present;
     otherwise mints+binds+playlist-inserts (autostart OFF) and CAS-writes it
@@ -324,6 +352,7 @@ def run_occurrence(occ, token, dry_run=False, wait_for_start=False):
         return False
     rtmp_url, key = resolve_rtmp(token, cat["youtube_stream_id"])
     bid, how = ensure_broadcast(token, occ, cat, dry_run)
+    thumb = thumb_for(occ)
     cmd = ffmpeg_cmd(media_path, rtmp_url)
 
     if dry_run:
@@ -332,10 +361,18 @@ def run_occurrence(occ, token, dry_run=False, wait_for_start=False):
         log(f"    category  : {cat['category']}  stream={cat['youtube_stream_id']}  playlist={cat.get('youtube_playlist_id')}")
         log(f"    rtmp      : {redact(rtmp_url, key)}")
         log(f"    broadcast : {bid}  ({how})")
-        log(f"    would: start ffmpeg -> poll stream active -> transition {bid} ready->live")
+        log(f"    thumbnail : {thumb or '(none found \u2014 would use YouTube auto-frame)'}")
+        log(f"    would: set thumbnail -> start ffmpeg -> poll stream active -> transition {bid} ready->live")
         log(f"           -> wait ffmpeg end -> transition {bid} live->complete")
         log(f"    ffmpeg    : {' '.join(cmd[:-1])} {redact(rtmp_url, key)}")
         return True
+
+    # custom thumbnail (best-effort; never blocks the air)
+    if thumb:
+        st, terr = set_thumbnail(token, bid, thumb)
+        log(f"  thumbnail {bid} <- {os.path.basename(thumb)}: {'OK' if terr is None else f'{st} {terr}'}")
+    else:
+        log(f"  no thumbnail for '{occ.get('notes')}' \u2014 YouTube auto-frame will be used")
 
     if wait_for_start:
         start = datetime.fromisoformat(occ["starts_at"].replace("Z", "+00:00"))

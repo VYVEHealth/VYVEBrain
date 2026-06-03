@@ -40,3 +40,27 @@ Single day: `python3 vyve-live-runner.py --date 2026-06-04`
 ## After the box is proven live
 Turn OFF the `session-publish-hourly` pg_cron (jobid 27) so the box solely owns
 broadcast creation — the runner's CAS write-back makes them safe to co-run until then.
+
+## Thumbnails
+YouTube auto-thumbnails for a simulated-live push land on the slate/black frame —
+bad. So we set a branded one per video.
+
+- `thumb_render.py` — shared 1280x720 card renderer (brand teal grade, gold eyebrow,
+  serif title, host, logo). Drop `PlayfairDisplay-*.ttf` beside it for the exact
+  brand serif; else Georgia/Times fallback.
+- `vyve-thumbgen.py` — for each master, ffmpeg-grabs a representative frame, overlays
+  the card, writes `<basename>.jpg`. Title/host/category come from `calendar_occurrences`
+  (notes==filename). `--no-frame` for flat brand cards; `--only "<file>.mp4"` for one.
+- The runner sets `<basename>.jpg` on each broadcast via `thumbnails.set` at air time
+  (best-effort; never blocks the air). Put thumbs in `VYVE_THUMB_DIR` (default = masters dir).
+- `vyve-thumbs-backfill.py` — sets thumbnails on already-minted broadcasts (`--dry-run` first).
+
+Prereq: the channel must have **custom thumbnails enabled** (Studio, verified channel).
+First real upload surfaces a 403 if not — the runner/backfill log it clearly.
+
+Generate then backfill:
+```
+python3 vyve-thumbgen.py                 # builds <basename>.jpg next to each master
+python3 vyve-thumbs-backfill.py --dry-run
+python3 vyve-thumbs-backfill.py          # set them on existing broadcasts
+```
