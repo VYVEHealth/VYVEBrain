@@ -1,3 +1,12 @@
+## 2026-06-03 PM-439 (cont. 2) Calendar re-curated: full library, 7-day spacing, hosts set
+
+Dean reviewed the wired calendar and flagged tight repeats (e.g. Alex 10-min Pt1 on back-to-back days — that came from the source doc) and that ~20 masters weren't used. Folded the full library in and re-curated all 116 rows (4 Jun–2 Jul): greedy rotation over 4 ordered slot pools with a 7-day no-repeat window, series kept in chronological order. Verified in DB: 116 rows, 0 within-7-day repeats, 78 distinct videos, 0 leftovers (cleared the old 3–16 Jul placeholder rows that the original wiring left behind). Added Healthy Knees/Shoulders/Spine/Wrists, Hamstrings & Hips, the 4 explainers, Morning Stillness, Short Full Body Flow.
+
+Hosts assigned by filename via reusable UPDATE...FROM VALUES (Alex 38 / Nicola 44 / Lewis 13). 21 rows host-blank pending Dean: Affirmations x2, Healing Meditation, Guided Journaling, Journaling & Understanding You, Visualisation, Flexibility Routine 1/2/3, 4 explainers, Morning Stillness. session_description all blank (Lewis); many titles provisional. Started schedule from 4 Jun (dropped the 3 Jun rows + their stale broadcasts earlier).
+
+Next build unchanged = live-page YouTube broadcast-status probe.
+
+
 ## 2026-06-03 PM-439 (cont.) Masters renamed + 30-day calendar WIRED (120 rows)
 
 Ran `~/vyve_rename.py --go` on Dean's Mac: 75 riverside_ files renamed to clean names, 10 dup copies skipped. GOTCHA captured: riverside export filenames carry literal `...` truncation, so ~12 movement files clipped to stubs (e.g. "10 Minute Flow with Al"); content intact. Several "stubs" are higher-bitrate encodes of the clean-named files, NOT identical dups (sizes differ markedly) — do not bulk-delete. iCloud "storage full" banner = backup-only; files are local on disk.

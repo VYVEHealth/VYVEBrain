@@ -3,21 +3,24 @@
 <!--CURRENT_FRONT_START-->
 ## CURRENT FRONT — read first, continue from here (updated 2026-06-03, PM-439)
 
-**Workstream: simulated-live content go-live. Plumbing PROVEN + calendar WIRED. Two builds left.**
+**Workstream: simulated-live content go-live. Plumbing PROVEN + calendar RE-CURATED. Two builds left.**
+**Live DB is canonical for the calendar — read calendar_occurrences, do not trust counts cached here.**
 
 DONE since the schedule was locked:
-- Pipeline proven end-to-end (push -> live -> complete -> playlist -> app Replays). **Autostart is DEAD on this channel** -> broadcasts must be transitioned live/complete explicitly by the pusher. `session-publish` is **v5** (autostart/monitor/autostop OFF, pre-create only). Stream keys cached in Vault **YOUTUBE_STREAM_KEYS_CACHE**. OAuth refresh token re-minted + stored (re-minted again 03 Jun). `vyve-live-runner.py` built (stdlib+ffmpeg daemon for the box).
-- **Masters renamed** on Dean's Mac (~/Desktop/VYVE LIVES) via ~/vyve_rename.py. GOTCHA: the riverside_ export filenames contain literal `...` truncation, so ~12 movement files came out with the last word clipped ("10 Minute Flow with Al", "Calming Breathwork Pra", "Wake Up! 15 Minute Flo"); content fine, names are stubs. Several are different-bitrate encodes of the clean-named files (NOT dup-deletes — sizes differ, e.g. yoga 192MB vs 41MB). iCloud "storage full" = backup only; files ARE local.
-- **30-day calendar WIRED into calendar_occurrences** (120 rows, 3 Jun–2 Jul, 4 slots/day 07:00/08:30/13:00/19:30). Each row: category, starts_at/ends_at, session_title, notes=filename. Category scheme = content-based: movement -> "Yoga, Pilates & Stretch", mind -> "Mindfulness & Mindset" (so just 2 of 8 categories carry the whole schedule — Dean may want to spread talks->Education, mobility->Workouts; one bulk UPDATE). Hosts: only Alex/Nicola auto-filled from filenames. **session_description ALL BLANK — Lewis's member-facing copy.** 3 gaps inactive (no video yet): "Why I Founded VYVE", "Doing Hard Things", "Not Drinking Alcohol". Used clean-named (smaller) encodes; swap to big originals later = one-field edit.
+- Pipeline proven end-to-end. **Autostart is DEAD on this channel** -> pusher must transition broadcasts live/complete explicitly. `session-publish` is **v5** (autostart/monitor/autostop OFF, pre-create only). Stream keys cached in Vault **YOUTUBE_STREAM_KEYS_CACHE**. OAuth refresh token re-minted. `vyve-live-runner.py` built (stdlib+ffmpeg daemon for the box; lives in a session output, not yet in a repo).
+- **Masters renamed** on Dean's Mac (~/Desktop/VYVE LIVES) via ~/vyve_rename.py. GOTCHA: riverside_ exports carry literal `...` truncation -> ~12 movement files clipped to stubs; content fine. Folder also has bitrate-dup copies ("(1)/(2)"), 3 background tracks, a 16x9, and leftover riverside_ originals — NOT new content. ~80 distinct real sessions exist; authoritative `ls` captured this session.
+- **30-day calendar RE-CURATED in calendar_occurrences: 116 rows, Thu 4 Jun–Wed 2 Jul, 4 slots/day (07:00 movement / 08:30 mind / 13:00 movement booster / 19:30 wind-down).** Full library folded in — **78 distinct videos** incl Healthy Knees/Shoulders/Spine (1-4 each), Healthy Wrists, Hamstrings & Hips, the 4 explainers (What Is Breathwork/Meditation, Why Sleep, Why Visualisation), Morning Stillness, Short Full Body Flow. Greedy rotation: **no video repeats within 7 days**; series in chronological order (10-min Pt1/S2/S3, 15-min S1/2/3, Healthy Knees/Shoulders/Spine 1-4, Hips 1-3). Categories still content-based 2-bucket (movement -> "Yoga, Pilates & Stretch"; mind -> "Mindfulness & Mindset"). notes=filename; ends_at=start+parsed-mins-or-20.
+- **Hosts set by filename** (reusable UPDATE...FROM VALUES map): Alex 38, Nicola 44, Lewis 13. Mobility series Healthy Knees/Shoulders/Spine/Wrists + Short Full Body + Full Body + Desk + Seated + Healthy Ankles/Hips + Alex flows = Alex; all Pilates + yoga + yin + breathwork/meditation + gentle flows + Hamstrings = Nicola; spoken talks = Lewis. **21 rows still host-blank pending Dean's call** (Alex/Nicola/Lewis): Affirmations I Am Stronger, Affirmations Meditation, Healing Meditation, Guided Journaling, Journaling & Understanding You, Visualisation, Flexibility Routine 1/2/3, the 4 explainers, Morning Stillness.
+- **session_description ALL BLANK = Lewis.** Many session_titles are PROVISIONAL/placeholder — Dean finalising. All are one-field edits.
 
 **EXACT NEXT ACTIONS (continue from here):**
-1. **Live-page status probe (the build):** `*-live.html` decides LIVE by clock only; with worker-driven go-live (a few s after starts_at) the page won't flip at the true moment. Add a YouTube broadcast-status probe so broadcast-live overrides the clock. Production vyve-site front-end -> mockup/confirm then ship; bump vbb-marker in index.html+settings.html+sw.js. THIS is the next thing to build.
-2. Stand up the always-on box: place vyve-live-runner.py, ffmpeg, env (Supabase service key + VYVE_MEDIA_DIR), systemd. Interim: Dean's Mac as pusher. Prove first real slot (tomorrow 04 Jun 07:00) with `--once --dry-run` then live. Turn OFF session-publish hourly cron once box owns creation.
+1. **Live-page status probe (the build):** `*-live.html` decides LIVE by clock only; with worker-driven go-live the page won't flip at the true moment. Add a YouTube broadcast-status probe so broadcast-live overrides the clock. Production vyve-site front-end -> mockup/confirm then ship; bump vbb-marker in index.html+settings.html+sw.js. THIS is the next thing to build.
+2. Stand up the always-on box: vyve-live-runner.py + ffmpeg + env (Supabase service key + VYVE_MEDIA_DIR) + systemd. Interim: Dean's Mac as pusher. Prove first real slot (4 Jun 07:00 = Yoga Flexibility) with `--once --dry-run` then live. Turn OFF session-publish hourly cron once box owns creation.
 3. Token-health monitor: daily pg_net refresh probe -> Brevo alert to team@ on invalid_grant.
-4. Lewis: session_description for all 120 + host_name for non-Alex/Nicola (member-facing copy).
-5. Optional: spread categories off the 2-category concentration if desired.
+4. Lewis: session_description for all rows + Dean: the 21 host-blanks + final session_titles.
+5. Optional: spread categories off the 2-bucket concentration (talks->Education, mobility->Workouts) via bulk UPDATE.
 
-**Amendments = trivial:** runner + app both read calendar_occurrences; edit a row (time/file/title/host/category), no redeploy/app-update. A copy of the calendar is exported to this session's outputs (VYVE_30-Day_Live_Schedule.xlsx).
+A stale copy of the (pre-re-curation) calendar was exported earlier to session outputs; regenerate from live DB if a fresh copy is needed.
 <!--CURRENT_FRONT_END-->
 
 
