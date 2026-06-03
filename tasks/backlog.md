@@ -593,3 +593,12 @@ Captured here so the at-a-glance state of the recent past is one short list, not
 - **Graceful open-failure fallback** — when `db.open()` rejects / `VYVELocalDB.isEnabled()===false`, aggregate surfaces (home rings `loadPillarCounts`, habits.html) must NOT render a confident `0/30` / "no habits". Either a neutral placeholder ("—") distinguishing "unknown" from "zero", or fetch server-side pillar counts (extend `member-dashboard` EF to emit the 5 lifetime ring counts — today no server source: `member_home_state` carries old-vocab `*_this_month` + v2 engagement points, not lifetime per-pillar). Also covers the separate iOS "IndexedDB lost" (PF-30) pattern. Talk-first (read-path blast radius). §23.83 corollary.
 - **`dexie_open_failed` / `dexie_idb_lost` alert** — telemetry already emitted in db.js open `.catch` (PostHog). Wire a threshold alert so this class is caught instantly, not by eye. Quick.
 - **Option B — multi-plan-local mirror via NEW store** — re-do PM-425's goal (both workouts + movement wpc rows mirrored locally) via a new id-keyed store (e.g. `workout_plan_cache_v2`), repoint sync.js persist + workouts-programme.js / movement.html reads, leave the old member_email store untouched. Post-launch, with a real-iPhone upgrade pass. Never re-key the existing store (§23.83).
+
+
+## Go-live tail — PM-459 (2026-06-04)
+- Make the runner hands-off: leave `python3 vyve-live-runner.py` daemon running, or install `com.vyve.live-runner.plist` launchd (needs the service key in an env file). 4 Jun 07:00 is the first scheduled real air — daemon must be up by then.
+- Turn OFF `session-publish-hourly` (cron jobid 27) once the daemon owns broadcast creation.
+- **SECURITY: rotate the service_role key** — exposed in the assistant chat 2026-06-04. Reset Supabase JWT secret (also rotates `anon`) + update all consumers (EF secrets, runner env, clients). Disruptive — plan it, not mid-air.
+- Delete the ~00:43 BST test VOD (`qOmK6vZeTKo`, Yoga Flexibility) from YouTube Studio.
+- 41 stale pre-re-curation calendar rows (22 May–3 Jun) still active — cleanup.
+- Content calls: type-vs-per-host thumbnail mapping; drop numeric labels on flow/flexibility titles; connect-calendar card title reads `row.name` not `session_title`.

@@ -1,27 +1,27 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-03, PM-453)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-04, PM-459)
 
-**Workstream: simulated-live content go-live. Calendar CONTENT + THUMBNAILS now fully applied. Streaming (the runner on the box) is the only thing left between us and live.**
+**Workstream: simulated-live go-live. The runner aired a REAL live broadcast end-to-end (PM-459) — pipeline proven against reality. What's left is making it hands-off.**
 **Live DB is canonical for the calendar — read calendar_occurrences, do not trust counts cached here.**
 
-DONE since the schedule was locked:
-- Pipeline proven end-to-end. **Autostart is DEAD on this channel** -> the pusher transitions broadcasts live/complete. `session-publish` is **v5** (pre-create only). `vyve-live-runner.py` version-controlled at VYVEBrain `scripts/vyve-live-runner/` (PM-446).
-- Build #1 live-page status probe SHIPPED PM-445 (`broadcast-status` EF + session-live.js `effectiveState()`). Build #3 token-health monitor LIVE PM-447 (EF `youtube-token-health` + cron job 35).
-- **Calendar CONTENT APPLIED PM-451.** All **116 active rows** (Thu 4 Jun–Wed 2 Jul) now carry: final `session_title` (Part->Session everywhere; "Flexibility Route/Routine"->"Flexibility Session"; "With"->"with"), Dean-approved **live-voiced `session_description`** (standalone live-class voice — "Join Alex for..."; NO series-position wording except the Healthy care series; the three 10-min flows, three 15-min flows and three Flexibility share copy), `host_name` filled for **every** row (roster is now **Alex, Nicola, Lewis, Lucy, Jamie** — Lucy/Jamie/Flexibility were NULL in the DB), and `image_url` thumbnails. Verified 116/116: 0 blank desc / 0 null image / 0 null host / 0 "Part" titles.
-- **Thumbnails PM-451** = 5 branded host/type cards committed to **vyve-site `assets/hosts/{alex,nicola,lewis,lucy,jamie}.jpg`** (1280x720), commit `cecf2f7f875d108f726c864153fec5d8c5833e53`, marker Update 330 / cache pm451 (8 files md5-verified, Git Data API). `image_url` is mapped **by session TYPE, not per-host**: movement -> alex.jpg (Yoga), breathwork -> nicola.jpg, meditation/affirmations/visualisation/rest -> lucy.jpg, talks -> lewis.jpg, journaling+sleep-routine -> jamie.jpg. Reason: Nicola's card is branded "Breathwork" but she hosts most of the yoga/pilates, so per-host would mislabel ~25 yoga sessions. Real host still shows as "with X" text. Flip to per-host = one UPDATE on `image_url`.
-- **Home carousel wired PM-453** (vyve-site `44de2cf996b76a1c71446e1c4ba3fc0a9eb5bc8c`): the home "live sessions this week" carousel now reads the REAL upcoming sessions from `calendar_occurrences` (titles/hosts/thumbnails, next 7 days, currently-live first), with the hardcoded `sessions-data.js` 8-card catalogue kept only as a cold-boot fallback that auto-upgrades once Dexie hydrates. Was previously the static catalogue only (PM-333). `paintWhatsNext` remains a no-op. **PM-455 fix:** the PM-453 reader called `.all()` — undefined on catalogue (makeCatalogueTable) stores, which expose `.allFor()` only — so it threw, the try/catch swallowed it, and it silently fell back to the static list (the "old movement sessions" Dean saw). Corrected to `.allFor(null)` (matches sessions.html). vyve-site `0a242751`. NOTE: still only visible once the device loads the new index.html (remote/OTA) AND the catalogue sync has hydrated calendar_occurrences into Dexie. **PM-456 (thumbnails):** the cards were blank because a parallel session (vyve-site pm454 calendar-card-thumb-desc) normalised `calendar_occurrences.image_url` from absolute `https://online.vyvehealth.co.uk/assets/hosts/*.jpg` to **root-relative** `/assets/hosts/*.jpg`, and the carousel's thumb builder only special-cased `http(s)://` and otherwise prepended `/` → `//assets/hosts/..` (protocol-relative, host="assets") → broken → blank. Fixed (vyve-site `63c73dbd`): builder now leaves any leading-slash path intact. image_url is root-relative going forward — CSS url() builders must NOT prepend a slash.
-- 41 stale pre-re-curation rows (22 May–3 Jun) still sit active alongside the 116 — cleanup candidate.
+PROVEN / DONE:
+- **First real air (PM-459).** `vyve-live-runner.py` on Dean's Mac aired `0be49b96…` (Yoga Flexibility): minted `qOmK6vZeTKo`, set alex.jpg thumbnail (custom thumbnails enabled — no 403), pushed, `ready->live`, CAS write-back of youtube_broadcast_id. Confirmed live on YouTube. Cleared afterwards (youtube_broadcast_id back to NULL so 7am mints fresh). Only build-#1 sliver unseen = the front-end live:true flip (gated to the 10-min pre-roll; shows at a real 07:00).
+- Calendar content (PM-451); home carousel wired (PM-453/455/456); connect-calendar cards 16:9 + tap-to-expand description + click-through (PM-454).
+- **Thumbnails render.** image_url is now **root-relative** `/assets/hosts/<card>.jpg` (absolute online.vyvehealth URLs don't resolve in the local-first shell). url() builders must leave leading-slash paths intact (PM-456 carousel fix).
+- **Durations real.** ends_at backfilled from ffprobe master lengths (2–51 min; was flat-20 on Mindfulness).
+- **Explainers removed** (4 occ deactivated). Active future calendar = **112**.
+- Runner sets the YouTube thumbnail from image_url (host card) and is Python-3.9-safe (runner patch + PM-458 f-string fix). On Dean's Mac: runner `~/Desktop/Lives`, masters `~/Desktop/VYVE LIVES`, host cards `…/VYVE LIVES/hosts`. Mac python3 = system 3.9.
 
 **EXACT NEXT ACTIONS (continue from here):**
-1. **Confirm thumbnails render in-app.** The sandbox CANNOT reach online.vyvehealth.co.uk — every URL 403s from curl incl `logo.png`/`sw.js` (egress allowlist, NOT a prod fault; cards verified present via the raw GitHub API pinned to the commit). Do NOT re-host the cards on a sandbox 403 — verify in-app or via raw-API pin first (§23.86).
-2. **Thumbnail mapping decision** — keep TYPE-based or flip to strict per-host (one UPDATE). Also open: drop the numeric labels on flows/flexibility titles?
-3. **YouTube-side metadata** — broadcasts don't exist until aired. Wire the runner / `session-publish` so each created broadcast sets title + description from `calendar_occurrences` AND uploads the matching `assets/hosts/<card>.jpg` as the YouTube thumbnail (it currently uploads the per-session frame card from PM-448/449). Only affects the YouTube view, not the in-app card.
-4. **Runner box (#2) is the live front** — to actually AIR sessions Dean runs `vyve-live-runner.py` on his Mac (needs ffmpeg + masters in ~/Desktop/VYVE LIVES + service key in env). Dry-run then live: `--once 0be49b96-eec2-4c06-9e01-762e10c39118` (4 Jun 07:00 Yoga Flexibility). The first real push is also the device walk proving build #1's `live:true` flip. Then turn OFF session-publish-hourly (cron job 27).
-5. Lewis retains copy sign-off on `session_description`; Dean approved them this session to unblock go-live, so Lewis can still tweak any row.
+1. **Make the runner hands-off.** Leave `python3 vyve-live-runner.py` (daemon, no `--once`) running, or install `com.vyve.live-runner.plist` to `~/Library/LaunchAgents/` for unattended/reboot-safe (needs service key in an env file, not just a session export). First scheduled real air = 4 Jun 07:00 — daemon must be up by then.
+2. **Turn OFF session-publish-hourly (cron jobid 27)** once the daemon solely owns broadcast creation (until then they co-run safely via CAS write-back).
+3. **ROTATE the service_role key** — exposed in chat this session (legacy JWT, exp 2036). Reset JWT secret + update every consumer. Disruptive; plan it, not mid-air.
+4. Open content calls: type-vs-per-host thumbnail mapping; drop numeric labels on flow/flexibility titles; connect-calendar card title reads `row.name` not `session_title`. Lewis retains `session_description` copy sign-off.
+5. 41 stale pre-re-curation rows (22 May–3 Jun) still active — cleanup. Delete the ~00:43 test VOD (`qOmK6vZeTKo`) from YouTube Studio.
 
-A stale (pre-content) calendar xlsx was exported to session outputs earlier; regenerate from live DB if a fresh copy is needed.
+Sandbox can't reach online.vyvehealth.co.uk (egress allowlist) — a 403 is not an asset fault (§23.86).
 <!--CURRENT_FRONT_END-->
 
 
@@ -1535,6 +1535,10 @@ The Claude sandbox egress only allows a fixed domain list (github.com, api.githu
 #### §23.87 — Dexie catalogue stores expose `.allFor()`, never `.all()`; a wrong accessor throws and a try/catch silently degrades the surface (PM-455 — HARD RULE)
 
 Tables built with `makeCatalogueTable()` in db.js (e.g. `calendar_occurrences`, `service_catalogue`, `replay_videos`, `mind_videos`) expose `allFor()` (no-arg returns the whole table via `toArray()`), `replaceForMember(null, rows)`, and `upsert` — but NOT `all()`. Calling `.all()` throws `TypeError: ...all is not a function`. When that call sits inside a `try/catch` that returns a fallback (as the PM-453 home carousel did), the surface degrades silently to its fallback with no console error visible to the user — it just shows stale/old content. Always read catalogue stores via `.allFor(null)` (grep an existing consumer — sessions.html `readActiveBroadcasts` is the reference). When adding a try/catch fallback around a Dexie read, log the caught error so a wrong-accessor bug surfaces instead of hiding as "the new code isn't showing".
+
+#### §23.88 — Version-controlled Python that runs on Dean's Mac must be Python 3.9-safe; no backslash inside an f-string expression (PM-458 — HARD RULE)
+
+Dean's Mac runs the Xcode Command Line Tools system `python3`, which is **3.9** (`/Applications/Xcode.app/.../Python3.framework/Versions/3.9/`). The Claude sandbox/container is 3.12, where PEP 701 allows backslashes inside f-string expression parts — so `python3 -m py_compile` in-container does NOT catch a backslash-in-`{...}` that is a hard `SyntaxError` on 3.9/3.10/3.11. The `vyve-live-runner.py` had `f"… {x or '(none found \u2014 …)'}"` and died at import on the Mac. RULE: any `.py` meant to run on Dean's box must avoid backslashes inside f-string expression parts — use a literal Unicode character (`—`) rather than the `\u2014` escape, or pull the string out of the brace. When committing a runner/script, AST-scan FormattedValue source segments for `\` (the 3.12 py_compile won't flag it).
 
 ---
 
