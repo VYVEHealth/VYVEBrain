@@ -82,6 +82,9 @@ SERVICE_KEY = os.environ.get("VYVE_SUPABASE_SERVICE_KEY", "")
 MEDIA_DIR = os.path.expanduser(os.environ.get("VYVE_MEDIA_DIR", ""))
 # thumbnails: <basename>.jpg, in VYVE_THUMB_DIR if set, else alongside the masters
 THUMB_DIR = os.path.expanduser(os.environ.get("VYVE_THUMB_DIR", "") or MEDIA_DIR)
+# host/type cards matching the in-app calendar image_url (e.g. hosts/alex.jpg);
+# VYVE_HOSTCARD_DIR if set, else a "hosts" subdir of THUMB_DIR.
+HOSTCARD_DIR = os.path.expanduser(os.environ.get("VYVE_HOSTCARD_DIR", "") or os.path.join(THUMB_DIR, "hosts"))
 REFRESH_INTERVAL = int(os.environ.get("VYVE_REFRESH_INTERVAL", "60"))
 SPAWN_HORIZON = int(os.environ.get("VYVE_SPAWN_HORIZON", "900"))
 
@@ -167,7 +170,7 @@ def yt_post(token, path, data):
 # ── domain resolves ─────────────────────────────────────────────────────────
 def get_occurrence(occ_id):
     st, rows = supa("GET", "calendar_occurrences?id=eq." + urllib.parse.quote(occ_id) +
-                    "&select=id,category,starts_at,ends_at,session_title,session_description,name,description,notes,youtube_broadcast_id,active,cancelled_at")
+                    "&select=id,category,starts_at,ends_at,session_title,session_description,name,description,notes,image_url,youtube_broadcast_id,active,cancelled_at")
     if st != 200 or not rows:
         die(f"occurrence {occ_id} not found ({st})")
     return rows[0]
@@ -177,7 +180,7 @@ def get_upcoming(date_filter=None):
     now = datetime.now(timezone.utc)
     hi = now.timestamp() + 24 * 3600
     q = ("calendar_occurrences?select=id,category,starts_at,ends_at,session_title,"
-         "session_description,name,description,notes,youtube_broadcast_id"
+         "session_description,name,description,notes,image_url,youtube_broadcast_id"
          "&type=eq.live_session&active=eq.true&cancelled_at=is.null"
          "&order=starts_at.asc&limit=100")
     st, rows = supa("GET", q)
@@ -235,7 +238,21 @@ def resolve_media(occ):
 
 
 def thumb_for(occ):
-    """<basename>.jpg in THUMB_DIR for this occurrence's master filename."""
+    """Thumbnail for this occurrence's broadcast.
+
+    Prefer the branded host/type card the in-app calendar shows
+    (calendar_occurrences.image_url basename, e.g. 'alex.jpg') resolved in
+    HOSTCARD_DIR — keeps the YouTube thumbnail in lockstep with the in-app
+    card and auto-follows any image_url remap (type<->per-host, one UPDATE).
+    Fall back to the per-master frame card '<basename>.jpg' in THUMB_DIR.
+    """
+    iu = (occ.get("image_url") or "").strip()
+    if iu and HOSTCARD_DIR:
+        card = os.path.basename(urllib.parse.urlparse(iu).path)
+        if card:
+            p = os.path.join(HOSTCARD_DIR, card)
+            if os.path.isfile(p):
+                return p
     name = (occ.get("notes") or "").strip()
     if not name or not THUMB_DIR:
         return None

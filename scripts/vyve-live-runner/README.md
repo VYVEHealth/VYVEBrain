@@ -51,8 +51,11 @@ bad. So we set a branded one per video.
 - `vyve-thumbgen.py` — for each master, ffmpeg-grabs a representative frame, overlays
   the card, writes `<basename>.jpg`. Title/host/category come from `calendar_occurrences`
   (notes==filename). `--no-frame` for flat brand cards; `--only "<file>.mp4"` for one.
-- The runner sets `<basename>.jpg` on each broadcast via `thumbnails.set` at air time
-  (best-effort; never blocks the air). Put thumbs in `VYVE_THUMB_DIR` (default = masters dir).
+- The runner sets the broadcast thumbnail via `thumbnails.set` at air time (best-effort;
+  never blocks the air). It prefers the in-app host/type card named by the occurrence's
+  `image_url` (e.g. `alex.jpg`) resolved in `VYVE_HOSTCARD_DIR` (default `<VYVE_THUMB_DIR>/hosts`),
+  so YouTube matches the in-app calendar card and auto-follows any image_url remap; it falls
+  back to the per-master frame card `<basename>.jpg` in `VYVE_THUMB_DIR` if no host card is found.
 - `vyve-thumbs-backfill.py` — sets thumbnails on already-minted broadcasts (`--dry-run` first).
 
 Prereq: the channel must have **custom thumbnails enabled** (Studio, verified channel).
