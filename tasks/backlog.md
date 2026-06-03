@@ -10,6 +10,7 @@
 - [ ] PM-451 decision: keep TYPE-based thumbnails or flip to strict per-host (one UPDATE on calendar_occurrences.image_url); also decide whether to drop numeric labels on flows/flexibility titles.
 - [ ] PM-451: wire runner/session-publish so each created YouTube broadcast sets title + description from calendar_occurrences AND uploads the matching assets/hosts/<card>.jpg as the YouTube thumbnail (currently uploads the per-session frame card).
 - [x] PM-453: home "live sessions this week" carousel now reads real upcoming sessions from calendar_occurrences (titles/hosts/thumbnails); static sessions-data.js fallback on cold boot, upgrades once Dexie hydrates (vyve-site 44de2cf9). node --check passed.
+- [x] PM-455: FIX home carousel — PM-453 read calendar_occurrences via `.all()` (undefined on catalogue stores → threw → silent static fallback = the "old sessions" Dean reported). Corrected to `.allFor(null)` (vyve-site 0a242751). §23.87 added. Still gated on device loading the new index.html + Dexie having synced the calendar.
 - [ ] 3 missing talk videos: "Why I Founded VYVE", "Doing Hard Things", "Not Drinking Alcohol".
 - [x] Place vyve-live-runner.py into a repo — DONE PM-446: VYVEBrain scripts/vyve-live-runner/ (runner + systemd + launchd + env.example + README; reconstructed from the PM-439 autostart-dead model). Not yet smoke-tested on the box.
 
