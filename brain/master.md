@@ -16,8 +16,8 @@ DONE since the schedule was locked:
 
 **EXACT NEXT ACTIONS (continue from here):**
 1. **Live-page status probe — SHIPPED PM-445** (broadcast-status EF + session-live.js `effectiveState()` override). DONE bar the `live:true` device walk, which rides build #2's real push. The runner box (#2) is now the live front.
-2. Stand up the always-on box: vyve-live-runner.py + ffmpeg + env (Supabase service key + VYVE_MEDIA_DIR) + systemd. Interim: Dean's Mac as pusher. Prove first real slot (4 Jun 07:00 = Yoga Flexibility) with `--once --dry-run` then live. Turn OFF session-publish hourly cron once box owns creation.
-3. Token-health monitor: daily pg_net refresh probe -> Brevo alert to team@ on invalid_grant.
+2. **Runner box — vyve-live-runner.py VERSION-CONTROLLED PM-446** at VYVEBrain `scripts/vyve-live-runner/` (runner + systemd + launchd + env.example + README; reconstructed from the PM-439 autostart-dead model). REMAINING (Dean-side, his Mac — needs ffmpeg + masters in ~/Desktop/VYVE LIVES + service key in env): run `python3 vyve-live-runner.py --once 0be49b96-eec2-4c06-9e01-762e10c39118 --dry-run` (4 Jun 07:00 Yoga Flexibility), then drop --dry-run to air it for real. The first real push is also the device walk that proves build #1's `live:true` flip. Then turn OFF session-publish-hourly (cron job 27) so the box solely owns creation.
+3. **Token-health monitor — LIVE PM-447.** EF `youtube-token-health` + cron job 35 (`0 4 * * *`): daily refresh + authed-call probe, branded alert to team@ via send-email on failure, silent when healthy. Real-send branch unexercised (would email team@) — fire `{check:'alert-test'}` once if you want end-to-end confirmation.
 4. Lewis: session_description for all rows + Dean: the 21 host-blanks + final session_titles.
 5. Optional: spread categories off the 2-bucket concentration (talks->Education, mobility->Workouts) via bulk UPDATE.
 
@@ -140,7 +140,7 @@ Pre-call briefs via Sales Intelligence skill (8-step deep dive, ROI calculator, 
 | Push notifications | Live end-to-end. Native APNs via `push-send-native` v5 (auto-revokes 410/400 BadDeviceToken). Web VAPID via `send-push` v13 (RFC 8291 aes128gcm). Service worker `push` + `notificationclick` listeners shipped 28 April. Reminder triggers (`habit-reminder`, `streak-reminder`), `achievement-earned-push`, and broadcast-push infrastructure (PM-402: `admin-broadcast-push` + `scheduled-push-runner` + `broadcast_schedules` table + Lewis-facing admin UI at `admin.vyvehealth.co.uk/#/broadcast`) all delegate to `send-push`. |
 | Analytics | PostHog (`phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl`, EU instance `eu.i.posthog.com`). Identity + event taxonomy live since PM-408 (26 May 2026) via `analytics.js` bridge subscribing to 29 VYVEBus events at `envelope.origin === 'local'` (no cross-tab/cross-device double-counting), with `is_dean` flag for filtering dev traffic out of dashboards and `host_kind` splitting `capacitor://` bundled native from `https://` web fallback. `window.vyveEFFetch(fnName, url, opts)` wraps fetch and captures `ef_error` on non-2xx/network. Session recording configured 100% in `posthog.init`. |
 | CRM | HubSpot — `app-eu1.hubspot.com`. Hub ID 148106724. Timezone Europe/London. Currency GBP. |
-| Streaming | Riverside (7 studios, permanent links) + YouTube (**ONE channel — `UCuptZFgSk0ZmNnE2IbYBdtg` "VYVE"** — with **9 reusable RTMP stream keys + 8 category playlists** all on that one channel; each stream key paired to a dedicated Riverside studio). Castr (scheduled pre-recorded). Architecture for scaling to 12-15 live sessions/day: reusable-stream pattern with Command Centre orchestrating batch broadcast creation via `session-publish` EF (v2 — `enableAutoStart=true`, `enableAutoStop=false` so broadcasts only end when instructor stops the RTMP ingest). |
+| Streaming | Riverside (7 studios, permanent links) + YouTube (**ONE channel — `UCuptZFgSk0ZmNnE2IbYBdtg` "VYVE"** — with **9 reusable RTMP stream keys + 8 category playlists** all on that one channel; each stream key paired to a dedicated Riverside studio). Castr (scheduled pre-recorded). Architecture for scaling to 12-15 live sessions/day: reusable-stream pattern. `session-publish` EF (v5) PRE-CREATES broadcasts only (autostart/monitor/autostop OFF — **autostart is DEAD on this channel**); the pusher (`vyve-live-runner.py`) drives `ready->live` and `live->complete` explicitly around the ffmpeg push. |
 | Podcast | *The VYVE Podcast* (rebranded from *The Everyman Podcast*). Page live at `vyvehealth.co.uk/vyve-podcast.html`. |
 
 ### Retired technologies — never suggest
@@ -299,7 +299,7 @@ This is now a first-class pattern with 9+ catalogues built on it. Edit via Supab
 
 ### Live content delivery + simulated-live schedule (locked 2026-06-02)
 
-**Model.** Live sessions are simulated-live: a pre-recorded master pushed in real time over RTMP (`ffmpeg -re`) into an existing reusable YouTube stream key. `session-publish` v2 (hourly cron jobid 27) mints the liveBroadcast (unlisted, autoStart, DVR), binds the category reusable stream, and playlistItems.insert into the category playlist; `refresh-replay-videos` v2 (03:30 UTC) pulls the 8 playlists into `replay_videos` -> app Replays, so airing a session auto-populates Replays. RTMP key is NOT in Supabase -> resolved live via YouTube Data API `liveStreams.list(part=cdn)`. Pusher = self-hosted ffmpeg (over Castr), from an always-on ~GBP4/mo box (prove on Mac first); cannot run in an Edge Function. Worker `simulated-live-worker.py` is single-session, needs a multi-session scheduler wrapper.
+**Model.** Live sessions are simulated-live: a pre-recorded master pushed in real time over RTMP (`ffmpeg -re`) into a reusable YouTube stream key. **Autostart is DEAD on this channel** — a broadcast on autostart sits in `ready` forever and a manual transition is rejected. So: `session-publish` v5 (hourly cron job 27) PRE-CREATES the liveBroadcast (unlisted, autostart/monitor/autostop OFF, DVR), binds the category reusable stream, playlistItems.insert. The pusher `vyve-live-runner.py` (VYVEBrain scripts/, PM-446) then pushes ffmpeg, polls the bound stream active, transitions `ready->live`, and `live->complete` on push end. `refresh-replay-videos` v2 (03:30 UTC) pulls the 8 playlists into `replay_videos` -> Replays. RTMP key NOT in Supabase -> resolved live via `liveStreams.list(part=cdn)`. Runs on an always-on box (interim: Dean's Mac); cannot run in an Edge Function. Runner is the multi-session daemon (supersedes the single-session `simulated-live-worker.py`).
 
 **Cadence (3-4/day).** 07:00 Movement (themed) / 08:30 Mind (themed) / 13:00 Movement booster (blended) / 19:30 Wind-down (restore). Tuesday mornings = Healthy/mobility series. Repetition accepted.
 
@@ -450,6 +450,7 @@ Charity + certificate counters stay independently capped at 2/day via `get_chari
 | `refresh-replay-videos` | LIVE | Daily 03:30 UTC YouTube → `replay_videos` sync with DELETE-NOT-IN reconciliation (PM-410 — closes upsert-only stale-row gap; gated to run only if all 8 playlists fetch cleanly). |
 | `session-publish` | LIVE | v5 — PRE-CREATE only (mint+bind+playlistItems.insert) from `calendar_occurrences` within 60min lookahead. `enableAutoStart=false` (autostart DEAD on this channel — the worker transitions ready->live + ->complete explicitly), `enableAutoStop=false`, monitorStream off. Hourly cron. |
 | `broadcast-status` | LIVE | v1 (PM-445, verify_jwt) — member live-page probe. OAuth `liveBroadcasts.list?part=status` -> `{live:bool|null}` so `*-live.html` lets broadcast-live override the clock (§23.65). Fail-safe: returns live:null on YouTube/token error -> client clock-falls-back. |
+| `youtube-token-health` | LIVE | v1 (PM-447, verify_jwt:false, cron job 35 `0 4 * * *`) — daily YouTube OAuth tripwire. Refresh grant + authed `channels.list` probe; alerts team@ via send-email on failure, silent when healthy. Refresh token is Google "Testing" mode (~7-day expiry). |
 | `crisis-scan` | LIVE | Mental-health crisis scan on weekly check-in submissions. |
 
 ### Admin console + ops
@@ -1445,7 +1446,7 @@ When testing `*-live.html` against a real broadcast, schedule `calendar_occurren
 
 #### §23.66 — session-publish EF: enableAutoStop=false (PM-310)
 
-v1 had it true which auto-killed broadcasts at scheduled_end_time — bad UX if instructor runs over. Now broadcasts end only when instructor ends the Riverside stream (RTMP ingest stops → YouTube transitions to complete after ~30s idle). `enableAutoStart` stays true. Future safety-net: a cron could end any broadcast still live >2hr past scheduled_end_time as unattended-cleanup.
+v1 had it true which auto-killed broadcasts at scheduled_end_time. From v5 (PM-439) `enableAutoStart`, `enableAutoStop`, and monitorStream are ALL false — autostart is dead on this channel, so `session-publish` pre-creates only and the runner (`vyve-live-runner.py`) explicitly transitions `ready->live` (after confirming the bound stream is active) and `live->complete` (on push end). Future safety-net: a cron could complete any broadcast still live >2hr past scheduled_end_time as unattended-cleanup.
 
 #### §23.67 — RLS auth functions must be wrapped in (SELECT …)
 
@@ -1636,6 +1637,7 @@ Any member-facing video addressing suicide, self-harm, addiction crisis, bereave
 | 26 | vyve-refresh-replay-videos-daily | 30 3 * * * |
 | 27 | session-publish-hourly | 5 * * * * |
 | 28 | vyve-broadcast-scheduler | */5 * * * * |
+| 35 | youtube-token-health-daily | 0 4 * * * |
 | 29 | vyve-alert-digest-morning | 0 8 * * * |
 | 30 | vyve-alert-digest-afternoon | 0 14 * * * |
 | 31 | vyve-alert-digest-evening | 0 20 * * * |
