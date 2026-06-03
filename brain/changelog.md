@@ -1,3 +1,11 @@
+## PM-453 — Home live carousel reads the real upcoming schedule (2026-06-03)
+
+vyve-site (commit `44de2cf996b76a1c71446e1c4ba3fc0a9eb5bc8c`): rewrote `paintLiveCarousel()` in index.html so the home "live sessions this week" carousel reads the actual upcoming sessions from `calendar_occurrences` (Dexie store `VYVELocalDB.calendar_occurrences`) instead of the hardcoded `sessions-data.js` catalogue. Renders the same `.scroll-card` markup (background-image thumb from `image_url`, category, `session_title`, day/time + host sub-line; currently-live rows — `starts_at<=now<ends_at && youtube_broadcast_id` — float to the front with a "● LIVE" tag). Window = next 7 days, max 8 cards. `image_url` is absolute (https://online.vyvehealth.co.uk/assets/hosts/*.jpg) so the thumb builder skips the leading-slash prefix for http(s) srcs. Cold-boot safety preserved: if the Dexie calendar is empty (not yet synced) it falls back to the static `sessions-data.js` render exactly as before, then sets a bounded retry (6×1.5s) to auto-upgrade to the real schedule once Dexie hydrates — never blank (the PM-333 concern). `paintWhatsNext` stays a no-op.
+
+Lock-step bump: index.html + settings.html vbb-marker -> Update 332; sw.js CACHE_NAME -> `vyve-cache-v2026-06-03-pm453-home-live-carousel-a` (parallel sessions had already taken pm452-cardio-todays-run + marker 331). All 3 files md5-verified at the commit; extracted function passed `node --check`. Git Data API path (Composio MCP not used).
+
+This is the surface Dean flagged: the home carousel was the one live-session surface NOT wired to the re-curated calendar (it showed 8 generic recurring types). Now it shows specific dated sessions with the PM-451 host/type thumbnails. Other surfaces (per-category *-live pages, Sessions list) already read calendar_occurrences. Still owed: in-app eyeball; YouTube-side broadcast title/description + host-card thumbnail wiring; the type-vs-per-host thumbnail decision.
+
 ## PM-451 — Live session calendar content + host/type thumbnails applied (2026-06-03)
 
 Applied the approved go-live content to the simulated-live calendar and shipped the session thumbnails.
