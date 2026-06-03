@@ -1,3 +1,7 @@
+## 2026-06-03 PM-446 — runner box build #2 (a): vyve-live-runner.py version-controlled
+
+The simulated-live auto-runner (built PM-439, only in a session output) reconstructed faithfully and committed to VYVEBrain `scripts/vyve-live-runner/` — runner + systemd unit + macOS launchd plist + env.example + README. stdlib+ffmpeg daemon: reads calendar_occurrences, resolves master file (notes=filename + VYVE_MEDIA_DIR) + category reusable RTMP (liveStreams.list part=cdn) + broadcast (uses session-publish's pre-created one, else mints autostart-off + CAS write-back), ffmpeg -re push, polls stream active, transitions ready->live, then live->complete on push end. --once/--dry-run/--date. py_compile clean. NOT YET RUN — the --once --dry-run smoke test for 4 Jun 07:00 (Yoga Flexibility, occ 0be49b96-eec2-4c06-9e01-762e10c39118, stream …341014499) runs on Dean's Mac (ffmpeg + masters in ~/Desktop/VYVE LIVES + service key in env). session-publish-hourly cron (jobid 27) stays ON until the box is proven live, then off.
+
 ## 2026-06-03 PM-445 — *-live.html broadcast-status probe: broadcast-live overrides the clock (§23.65 RESOLVED)
 
 Build #1 of the simulated-live go-live (live-page status probe) shipped. The 8 `*-live.html` shells decided LIVE on clock alone (`now >= starts_at`); with autostart dead + worker-driven transitions the page embedded/autoplayed/bound player-tracker before YouTube actually put the broadcast live, and dropped LIVE at the `ends_at` clock during an over-run.

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- macOS interim box (Dean's Mac). Place at ~/Library/LaunchAgents/com.vyve.live-runner.plist
+     Edit the two paths + env values, then:
+       launchctl load  ~/Library/LaunchAgents/com.vyve.live-runner.plist
+       launchctl unload ~/Library/LaunchAgents/com.vyve.live-runner.plist  (to stop)
+     logs: tail -f /tmp/vyve-live-runner.out /tmp/vyve-live-runner.err -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.vyve.live-runner</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/CHANGEME/vyve/vyve-live-runner.py</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>VYVE_SUPABASE_URL</key><string>https://ixjfklpckgxrwjlfsaaz.supabase.co</string>
+    <key>VYVE_SUPABASE_SERVICE_KEY</key><string>REPLACE_WITH_SERVICE_ROLE_KEY</string>
+    <key>VYVE_MEDIA_DIR</key><string>/Users/CHANGEME/Desktop/VYVE LIVES</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/vyve-live-runner.out</string>
+  <key>StandardErrorPath</key><string>/tmp/vyve-live-runner.err</string>
+</dict>
+</plist>

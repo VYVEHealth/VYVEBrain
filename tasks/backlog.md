@@ -7,7 +7,7 @@
 - [ ] Token-health monitor: daily pg_net refresh probe -> Brevo alert to team@ on invalid_grant.
 - [ ] Stand up the always-on box; place vyve-live-runner.py; turn OFF session-publish hourly cron once box owns creation.
 - [ ] 3 missing talk videos: "Why I Founded VYVE", "Doing Hard Things", "Not Drinking Alcohol".
-- [ ] Place vyve-live-runner.py into a repo (currently only in a session output) — not yet version-controlled.
+- [x] Place vyve-live-runner.py into a repo — DONE PM-446: VYVEBrain scripts/vyve-live-runner/ (runner + systemd + launchd + env.example + README; reconstructed from the PM-439 autostart-dead model). Not yet smoke-tested on the box.
 
 
 - [ ] Resolve a category RTMP ingest+key live via YouTube Data API liveStreams.list(part=cdn) (Yoga/Pilates & Stretch first).

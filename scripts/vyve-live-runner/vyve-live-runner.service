@@ -1,0 +1,17 @@
+# Linux always-on box. Place at /etc/systemd/system/vyve-live-runner.service
+# sudo systemctl daemon-reload && sudo systemctl enable --now vyve-live-runner
+# logs: journalctl -u vyve-live-runner -f
+[Unit]
+Description=VYVE simulated-live auto-runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/vyve/vyve-runner.env
+ExecStart=/usr/bin/python3 /opt/vyve/vyve-live-runner.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
