@@ -1,30 +1,23 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-02, PM-439)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-03, PM-439)
 
-**Workstream: simulated-live content go-live. Plumbing PROVEN; content wiring is what's left.**
+**Workstream: simulated-live content go-live. Plumbing PROVEN + calendar WIRED. Two builds left.**
 
-- PROVEN tonight end-to-end (real push, then cleaned up): Mac ffmpeg -re -> YouTube live -> complete -> playlist -> app Replays.
-- **Autostart is DEAD on this channel.** `enableAutoStart` never flips ready->live (tested exhaustively; manual transition rejected invalidTransition while autostart=true). MODEL: create broadcast autostart=false + monitorStream=false + autostop=false, then explicitly transition ready->live once the bound stream is active, and live->complete when the push ends. `session-publish` redeployed **v5** (autostart/monitor/autostop all off) — it only pre-creates (mint+bind+playlist); the WORKER owns live/complete transitions. (§23 candidate, see changelog.)
-- Stream keys cached in Vault secret **YOUTUBE_STREAM_KEYS_CACHE** (category->{ingestionAddress,streamName}); push path needs no live token.
-- OAuth refresh token re-minted + stored (Vault YOUTUBE_OAUTH_REFRESH_TOKEN). App is ALREADY "In production" yet token still rotated -> unverified app on sensitive youtube scope can rotate anyway; durable fix = Workspace Internal or full verification (roadmapped). master §24 "7-day expiry while in Testing" note is STALE. `youtube-token-keepalive` cannot cure refresh-token death.
-- **Auto-runner built:** `vyve-live-runner.py` (stdlib + ffmpeg, single self-contained daemon for the always-on box). Reads the day's calendar_occurrences, waits to airtime, pushes, polls stream active, transitions live, transitions complete on file end. Reads OAuth + stream cache from Vault; only the Supabase service key lives on the box. CAS write-back prevents double-mint vs session-publish. Recommend turning OFF the session-publish hourly cron once the box owns creation. NOT yet on a box — Mac is the interim pusher.
-
-**The real 30-day schedule maps to real files.** 4 slots/day (07:00 Movement themed · 08:30 Mind themed · 13:00 booster · 19:30 wind-down); talks one-off then Replays; "Suicide and Men" held for Phil (§23.84); explainers -> Mind section. Masters on Dean's Mac ~/Desktop/VYVE LIVES. Inventory matched: every movement/mind-practice slot has a file, 10/12 talks do; **3 gaps with no file yet:** "Why I Founded VYVE", "Doing Hard Things", "Not Drinking Alcohol".
-
-**Naming:** folder had two styles (already-clean + raw riverside_). Decision: standardise on clean names. Validated rename script handed to Dean at `~/vyve_rename.py` (dry-run-first, no-clobber, never deletes, only touches riverside_*; skips riverside dups of files already cleaned).
+DONE since the schedule was locked:
+- Pipeline proven end-to-end (push -> live -> complete -> playlist -> app Replays). **Autostart is DEAD on this channel** -> broadcasts must be transitioned live/complete explicitly by the pusher. `session-publish` is **v5** (autostart/monitor/autostop OFF, pre-create only). Stream keys cached in Vault **YOUTUBE_STREAM_KEYS_CACHE**. OAuth refresh token re-minted + stored (re-minted again 03 Jun). `vyve-live-runner.py` built (stdlib+ffmpeg daemon for the box).
+- **Masters renamed** on Dean's Mac (~/Desktop/VYVE LIVES) via ~/vyve_rename.py. GOTCHA: the riverside_ export filenames contain literal `...` truncation, so ~12 movement files came out with the last word clipped ("10 Minute Flow with Al", "Calming Breathwork Pra", "Wake Up! 15 Minute Flo"); content fine, names are stubs. Several are different-bitrate encodes of the clean-named files (NOT dup-deletes — sizes differ, e.g. yoga 192MB vs 41MB). iCloud "storage full" = backup only; files ARE local.
+- **30-day calendar WIRED into calendar_occurrences** (120 rows, 3 Jun–2 Jul, 4 slots/day 07:00/08:30/13:00/19:30). Each row: category, starts_at/ends_at, session_title, notes=filename. Category scheme = content-based: movement -> "Yoga, Pilates & Stretch", mind -> "Mindfulness & Mindset" (so just 2 of 8 categories carry the whole schedule — Dean may want to spread talks->Education, mobility->Workouts; one bulk UPDATE). Hosts: only Alex/Nicola auto-filled from filenames. **session_description ALL BLANK — Lewis's member-facing copy.** 3 gaps inactive (no video yet): "Why I Founded VYVE", "Doing Hard Things", "Not Drinking Alcohol". Used clean-named (smaller) encodes; swap to big originals later = one-field edit.
 
 **EXACT NEXT ACTIONS (continue from here):**
-1. Dean runs `~/vyve_rename.py` (preview) then `--go` at the PC, pastes fresh `ls -1 ~/Desktop/"VYVE LIVES"`.
-2. Map schedule titles -> real filenames; generate calendar_occurrences rows (rotations for daily strands, one-offs placed; title/host/session_description/notes=filename/host_name/host_role). This REBUILDS the ~192 placeholder rows (currently blank: 0 title/host/desc/file, and on different times+categories than this schedule).
-3. **Live-page probe (named go-live blocker):** `*-live.html` decides live by CLOCK only; with worker-driven go-live (a few s after starts_at) the page won't flip at the true moment. Add a YouTube broadcast-status probe so broadcast-live overrides the clock. (Logged near master's "state-machine bug" note.)
-4. Token-health monitor: daily pg_net refresh probe -> Brevo alert to team@vyvehealth.co.uk on invalid_grant (so the next token death is loud).
-5. Prove one real slot end-to-end (airs; app shows live + host + description; replay appears), then let the runner take the schedule.
+1. **Live-page status probe (the build):** `*-live.html` decides LIVE by clock only; with worker-driven go-live (a few s after starts_at) the page won't flip at the true moment. Add a YouTube broadcast-status probe so broadcast-live overrides the clock. Production vyve-site front-end -> mockup/confirm then ship; bump vbb-marker in index.html+settings.html+sw.js. THIS is the next thing to build.
+2. Stand up the always-on box: place vyve-live-runner.py, ffmpeg, env (Supabase service key + VYVE_MEDIA_DIR), systemd. Interim: Dean's Mac as pusher. Prove first real slot (tomorrow 04 Jun 07:00) with `--once --dry-run` then live. Turn OFF session-publish hourly cron once box owns creation.
+3. Token-health monitor: daily pg_net refresh probe -> Brevo alert to team@ on invalid_grant.
+4. Lewis: session_description for all 120 + host_name for non-Alex/Nicola (member-facing copy).
+5. Optional: spread categories off the 2-category concentration if desired.
 
-**Amendments later = trivial:** runner + app both read calendar_occurrences; edit a row (time/file/title/host/desc) -> no redeploy, no app update. A swapped video file must be on the box. Member-facing copy via Lewis.
-
-**Note:** Replays currently shows 12 pre-existing videos in the category playlists (master previously had Replays empty post-PM-410) — flagged, untouched.
+**Amendments = trivial:** runner + app both read calendar_occurrences; edit a row (time/file/title/host/category), no redeploy/app-update. A copy of the calendar is exported to this session's outputs (VYVE_30-Day_Live_Schedule.xlsx).
 <!--CURRENT_FRONT_END-->
 
 

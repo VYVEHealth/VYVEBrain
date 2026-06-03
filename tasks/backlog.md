@@ -1,8 +1,8 @@
 ## Live content go-live (added 2026-06-02, PM-437)
 
 ### NEXT — live content go-live (PM-439, 2026-06-02) — continue here
-- [ ] Dean: run `~/vyve_rename.py` then `--go`; paste fresh VYVE LIVES `ls`.
-- [ ] Map schedule titles -> real filenames; generate calendar_occurrences rows (rebuilds 192 placeholders): daily-strand rotations + one-off talk placements; fill notes(filename)/session_title/host_name/host_role/session_description.
+- [x] Masters renamed via ~/vyve_rename.py (truncation gotcha logged).
+- [x] 30-day calendar WIRED (120 rows). session_description still blank for Lewis; hosts only Alex/Nicola.
 - [ ] `*-live.html` YouTube broadcast-status probe (override clock-only LIVE gate) — go-live blocker.
 - [ ] Token-health monitor: daily pg_net refresh probe -> Brevo alert to team@ on invalid_grant.
 - [ ] Stand up the always-on box; place vyve-live-runner.py; turn OFF session-publish hourly cron once box owns creation.

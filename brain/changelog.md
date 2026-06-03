@@ -1,3 +1,12 @@
+## 2026-06-03 PM-439 (cont.) Masters renamed + 30-day calendar WIRED (120 rows)
+
+Ran `~/vyve_rename.py --go` on Dean's Mac: 75 riverside_ files renamed to clean names, 10 dup copies skipped. GOTCHA captured: riverside export filenames carry literal `...` truncation, so ~12 movement files clipped to stubs (e.g. "10 Minute Flow with Al"); content intact. Several "stubs" are higher-bitrate encodes of the clean-named files, NOT identical dups (sizes differ markedly) — do not bulk-delete. iCloud "storage full" banner = backup-only; files are local on disk.
+
+Wired the locked 30-day schedule into calendar_occurrences: deleted the future blank placeholders (kept 4 that had broadcasts; later removed those 4 rows + deleted their stale broadcasts), inserted 120 rows (3 Jun–2 Jul, 4 slots/day). 117 with notes=filename, 3 gaps inactive (no video). Category scheme content-based (movement->Yoga,Pilates&Stretch; mind->Mindfulness&Mindset) => only 2 categories in use. Hosts Alex/Nicola auto from filenames; session_description all blank for Lewis. Verified count=120, placeholders=0. Calendar exported to outputs/VYVE_30-Day_Live_Schedule.xlsx.
+
+Next build = live-page YouTube broadcast-status probe (override clock-only LIVE gate), then box + token monitor + Lewis copy.
+
+
 ## 2026-06-02 PM-439 Simulated-live go-live: pipeline PROVEN end-to-end; autostart DEAD on channel -> worker-driven transitions; runner + rename built
 
 **Pipeline proven (real push, then cleaned up).** Mac ffmpeg -re -> reusable YouTube stream key -> bound liveBroadcast -> transition live -> transition complete -> playlistItems.insert -> refresh-replay-videos -> row in replay_videos -> app Replays. Test broadcasts (kXM0vq-YLgg, 9AbXyUdhQOs, lzuTWMja3RY), the test occurrence, the test replay row and a dangling "Deleted video" playlist item all deleted afterwards. Replays left at 12 pre-existing playlist videos (brain had it empty post-PM-410 — flagged, untouched).
