@@ -1,3 +1,10 @@
+## Thumbnails / Storage / deployment cleanup (added 2026-06-04, PM-475)
+
+- **Delete one-shot seed-host-thumbnails EF.** Seeded the session-thumbnails bucket from GitHub-pinned bytes (commit 153567ad); job done, EF is now dead weight. No MCP delete tool — remove via Supabase dashboard or CLI.
+- **Remove dormant /assets/hosts/*.jpg repo copies** from vyve-site — now unreferenced (image_url points at Storage). Tidy, low priority, harmless if left.
+- **Calum / Alan / Shan host thumbnails** are staged in Storage but unused until those hosts are scheduled in calendar_occurrences.
+- (carried) rotate the exposed service_role key; deactivate ~40 stale empty-notes calendar_occurrences rows; calendar regeneration before 2 Jul; move the live runner off Dean's Mac to a real 24/7 box.
+
 ## Replays follow-ups (added 2026-06-04, PM-465)
 
 - **Move playlist-insert pre-create → completion (optional hardening).** `session-publish` adds each broadcast to its playlist at creation (best-effort). The §23.91 duration guard already stops not-yet-aired (P0D) items surfacing, so this is belt-and-braces: inserting at the broadcast-complete transition (runner / broadcast-status) means playlists only ever contain aired sessions.
