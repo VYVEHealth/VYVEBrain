@@ -602,3 +602,10 @@ Captured here so the at-a-glance state of the recent past is one short list, not
 - Delete the ~00:43 BST test VOD (`qOmK6vZeTKo`, Yoga Flexibility) from YouTube Studio.
 - 41 stale pre-re-curation calendar rows (22 May–3 Jun) still active — cleanup.
 - Content calls: type-vs-per-host thumbnail mapping; drop numeric labels on flow/flexibility titles; connect-calendar card title reads `row.name` not `session_title`.
+
+
+## Go-live tail update — PM-460 (2026-06-04)
+- DONE: always-on runner installed as launchd LaunchAgent `com.vyve.live-runner` + relocated to `~/vyve-live` (macOS TCC); daemon healthy (PID, exit 0).
+- DONE: cron 27 `session-publish-hourly` deactivated — daemon is sole broadcast owner.
+- STILL OWED: rotate the exposed service_role key (now also in `~/vyve-live/vyve-runner.env`; reload the agent after); deactivate the 40 stale PAST empty-notes rows (22 May–2 Jun); delete test VOD `qOmK6vZeTKo`; watch first unattended air 4 Jun 07:00 (also the live:true device-walk sliver); content calls (type-vs-per-host thumbs, numeric labels, connect-calendar title row.name vs session_title).
+- Mac-as-box caveat: keep plugged in + lid open; real home is a 24/7 server (systemd unit in repo).

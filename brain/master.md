@@ -1,25 +1,24 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-04, PM-459)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-04, PM-460)
 
-**Workstream: simulated-live go-live. The runner aired a REAL live broadcast end-to-end (PM-459) — pipeline proven against reality. What's left is making it hands-off.**
+**Workstream: simulated-live go-live. DONE end-to-end and now HANDS-OFF — the runner aired a real broadcast (PM-459) and runs unattended as a launchd daemon (PM-460). What's left is housekeeping.**
 **Live DB is canonical for the calendar — read calendar_occurrences, do not trust counts cached here.**
 
 PROVEN / DONE:
-- **First real air (PM-459).** `vyve-live-runner.py` on Dean's Mac aired `0be49b96…` (Yoga Flexibility): minted `qOmK6vZeTKo`, set alex.jpg thumbnail (custom thumbnails enabled — no 403), pushed, `ready->live`, CAS write-back of youtube_broadcast_id. Confirmed live on YouTube. Cleared afterwards (youtube_broadcast_id back to NULL so 7am mints fresh). Only build-#1 sliver unseen = the front-end live:true flip (gated to the 10-min pre-roll; shows at a real 07:00).
-- Calendar content (PM-451); home carousel wired (PM-453/455/456); connect-calendar cards 16:9 + tap-to-expand description + click-through (PM-454).
-- **Thumbnails render.** image_url is now **root-relative** `/assets/hosts/<card>.jpg` (absolute online.vyvehealth URLs don't resolve in the local-first shell). url() builders must leave leading-slash paths intact (PM-456 carousel fix).
-- **Durations real.** ends_at backfilled from ffprobe master lengths (2–51 min; was flat-20 on Mindfulness).
-- **Explainers removed** (4 occ deactivated). Active future calendar = **112**.
-- Runner sets the YouTube thumbnail from image_url (host card) and is Python-3.9-safe (runner patch + PM-458 f-string fix). On Dean's Mac: runner `~/Desktop/Lives`, masters `~/Desktop/VYVE LIVES`, host cards `…/VYVE LIVES/hosts`. Mac python3 = system 3.9.
+- **First real air (PM-459):** runner minted `qOmK6vZeTKo`, set alex.jpg thumbnail, pushed, `ready->live`, CAS write-back; confirmed live on YouTube; cleared afterwards so 7am mints fresh.
+- **Always-on (PM-460):** runner runs unattended via launchd LaunchAgent `com.vyve.live-runner` (RunAtLoad+KeepAlive, `caffeinate -i`, `/usr/bin/python3` 3.9, daemon mode). Healthy: live PID, exit 0, `daemon up refresh=60s horizon=900s`.
+- **Runner working set is at `~/vyve-live`** (NOT ~/Desktop — launchd can't read TCC dirs, §23.89): runner `~/vyve-live/vyve-live-runner.py`, env `~/vyve-live/vyve-runner.env` (chmod 600), masters `~/vyve-live/media` (hosts at `~/vyve-live/media/hosts`), log `~/vyve-live/runner.log`. New master mp4s go in `~/vyve-live/media`.
+- **cron 27 `session-publish-hourly` = OFF** (`cron.alter_job(27, active:=false)`); daemon is sole broadcast owner. Reversible.
+- Calendar: 112 active upcoming live_session rows, all with master filename + real durations (2–51 min) + root-relative `/assets/hosts/*.jpg` thumbnails. 40 stale PAST empty-notes rows still active (the daemon's harmless `SKIP` lines).
 
 **EXACT NEXT ACTIONS (continue from here):**
-1. **Make the runner hands-off.** Leave `python3 vyve-live-runner.py` (daemon, no `--once`) running, or install `com.vyve.live-runner.plist` to `~/Library/LaunchAgents/` for unattended/reboot-safe (needs service key in an env file, not just a session export). First scheduled real air = 4 Jun 07:00 — daemon must be up by then.
-2. **Turn OFF session-publish-hourly (cron jobid 27)** once the daemon solely owns broadcast creation (until then they co-run safely via CAS write-back).
-3. **ROTATE the service_role key** — exposed in chat this session (legacy JWT, exp 2036). Reset JWT secret + update every consumer. Disruptive; plan it, not mid-air.
-4. Open content calls: type-vs-per-host thumbnail mapping; drop numeric labels on flow/flexibility titles; connect-calendar card title reads `row.name` not `session_title`. Lewis retains `session_description` copy sign-off.
-5. 41 stale pre-re-curation rows (22 May–3 Jun) still active — cleanup. Delete the ~00:43 test VOD (`qOmK6vZeTKo`) from YouTube Studio.
+1. **ROTATE the service_role key** — exposed in chat (PM-459), now also in `~/vyve-live/vyve-runner.env`. Reset Supabase JWT secret (also rotates `anon`), update every consumer INCLUDING the runner env file, then reload the agent (`launchctl unload/load -w`). Disruptive — plan it, not mid-air.
+2. **Deactivate the 40 stale rows** (active=true, PAST 22 May–2 Jun, empty notes) — one UPDATE; also silences the daemon SKIP noise. Safe (past + no master).
+3. Watch the **first unattended air at 4 Jun 07:00 BST** — also the one remaining build-#1 sliver: the front-end `effectiveState()` `live:true` flip (gated to the 10-min pre-roll, unseen so far). Mac must be plugged in + lid open.
+4. Content calls (Lewis/Dean): type-vs-per-host thumbnail mapping; drop numeric labels on flow/flexibility titles; connect-calendar card title reads `row.name` not `session_title`. Delete the test VOD `qOmK6vZeTKo` from Studio.
+5. Longer term: move the runner to a real 24/7 box (systemd unit in repo) instead of the MacBook.
 
 Sandbox can't reach online.vyvehealth.co.uk (egress allowlist) — a 403 is not an asset fault (§23.86).
 <!--CURRENT_FRONT_END-->
@@ -1539,6 +1538,10 @@ Tables built with `makeCatalogueTable()` in db.js (e.g. `calendar_occurrences`, 
 #### §23.88 — Version-controlled Python that runs on Dean's Mac must be Python 3.9-safe; no backslash inside an f-string expression (PM-458 — HARD RULE)
 
 Dean's Mac runs the Xcode Command Line Tools system `python3`, which is **3.9** (`/Applications/Xcode.app/.../Python3.framework/Versions/3.9/`). The Claude sandbox/container is 3.12, where PEP 701 allows backslashes inside f-string expression parts — so `python3 -m py_compile` in-container does NOT catch a backslash-in-`{...}` that is a hard `SyntaxError` on 3.9/3.10/3.11. The `vyve-live-runner.py` had `f"… {x or '(none found \u2014 …)'}"` and died at import on the Mac. RULE: any `.py` meant to run on Dean's box must avoid backslashes inside f-string expression parts — use a literal Unicode character (`—`) rather than the `\u2014` escape, or pull the string out of the brace. When committing a runner/script, AST-scan FormattedValue source segments for `\` (the 3.12 py_compile won't flag it).
+
+#### §23.89 — launchd LaunchAgents have NO access to ~/Desktop, ~/Documents, ~/Downloads (macOS TCC); keep an agent's working set in a non-protected dir (PM-460 — HARD RULE)
+
+A macOS user LaunchAgent runs outside the interactive Terminal's TCC grant, so it cannot read/write the TCC-protected folders (~/Desktop, ~/Documents, ~/Downloads, iCloud Drive, removable/network volumes), and there is no UI prompt for a background agent — accesses fail with `Operation not permitted` (EPERM) and a RunAtLoad+KeepAlive job exit-loops (`launchctl list` shows `- <n> <label>`). It "works when run by hand" only because interactive Terminal carries the user's grant. RULE: anything launchd runs — the script, its env file, AND its data/media — must live in a non-protected location (e.g. `~/vyve-live` or `~/Library/Application Support/<app>`). First instance: the vyve-live-runner LaunchAgent died on `~/Desktop/Lives` until runner + env + masters were relocated to `~/vyve-live` (PM-460). (Granting Full Disk Access to /usr/bin/python3 or /bin/zsh also works but is a broad grant requiring manual GUI steps — relocation is cleaner and scriptable.)
 
 ---
 
