@@ -1,3 +1,24 @@
+## PM-476 — Free-trial → £10/mo conversion model: design decisions locked (strategy session, no code) (2026-06-05)
+
+Strategy session with Dean on the public-launch free-trial mechanic. No code shipped; no new gotcha. Design locked on top of the PM-438 trial/membership build (§23.85). Two review docs produced for Lewis (in session outputs, NOT committed to repo): "VYVE — Trial-to-Membership Copy" (member-facing strings) and "VYVE — Free Trial & Conversion Model" (design memo).
+
+Decisions locked:
+- **Trial length stays 30 days** (not 14). Habit-formation product + no card on file → conversion depends on a routine actually forming; 14 days cuts that short. Coasting/forgetting risk handled by reminders, not by shortening the window.
+- **Conversion hook = a blended "easy first" charity milestone.** The steady-state charity rule (30 within a single pillar) almost never lands inside a 30-day trial, so that emotional moment would rarely fire in time. First donated month becomes ANY 30 activities across all pillars — reachable in-trial, rewards cross-pillar breadth. Counts off the existing `get_certificate_buckets()` buckets. Framed openly as the easy first milestone; per-pillar rule resumes after.
+- **No new anti-spam cap needed.** Verified live `get_certificate_buckets` this session: habits = COUNT(DISTINCT day) (1/day), mind/body/connect = SUM(LEAST(2,·)) (2/day each), check-ins = distinct weeks. Aggregate ceiling = 7/day → fastest legit route to 30 is ~5 days; typical engaged member ~1–2 weeks. A one-sitting 30-log spam cannot count past 7/day. Multi-day spread is the feature (repeat engagement). Do NOT add a weekly cap — new magic number + can punish genuine front-loaders (§23.33 spirit).
+- **Timing: celebrate early, convert late.** A keen member can hit the blended 30 by ~day 5 — too soon for a hard ask (habit unbuilt, no urgency → soft no). So the milestone is a CELEBRATION (charity win + offer merely AVAILABLE, "lock it in whenever you're ready"), not a sales push; the eager can self-convert there. The real urgency-led ask lands near the wall (~day 24) + the day-30 access wall itself. Third application this session of the decouple-the-moment pattern (access-window vs conversion-moment; milestone-trigger vs timed-nudge; celebration vs ask).
+- **Discount = £10-off-FOREVER is now the STANDING conversion price** (resolves the §22 open standing-price question). Matches VYVE10 as already configured (fixed £10 off, duration forever). Fixed reduction, so a future full-price rise leaves converters paying new-price − £10.
+- **Check-ins count toward the blended 30** — recommendation, pending Lewis (low volume, rewards wanted behaviour).
+
+Lewis-gated before member-facing: NAMED CHARITY PARTNER still unconfirmed (§17) — the plural "charity partners" claim in the copy is load-bearing and the one true gate on shipping; founding-member framing (optional tone call); confirm standing-price.
+
+ENG note (Dean, future price rise): keep the £10-off lifetime lock by updating the price on the SAME subscription / a persisting subscription-level discount — never migrate converters to a fresh Stripe Price object without re-attaching VYVE10, or the lock is silently stripped.
+
+Build-when-prioritised (see backlog Trial/membership): blended welcome-milestone derived metric off get_certificate_buckets; milestone celebration sheet (Member Prompts infra PM-375) firing on threshold-cross with offer-available; day-~24 timed conversion nudge (no "you earned a free month" claim); steady-state per-pillar unchanged.
+
+Tooling: Composio GitHub connector down again (no active connection) — brain load + this commit via Vault PAT `GITHUB_PAT_CLAUDE` + Git Data API per §23.27 (expires 20 Jun — rotate). Sandbox can't reach online/www vyvehealth domains (§23.86).
+
+
 ## PM-475 — Live-session host corrections, hybrid thumbnail model, Storage migration + on-device caching, deployment-model correction (2026-06-04)
 
 Brain close for vyve-site PM-471→474 plus DB-only calendar_occurrences work. Session theme: live-session thumbnails and the deployment reality behind them.

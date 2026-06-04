@@ -48,6 +48,12 @@
 - [ ] Web "Start free trial" sign-up flow (inverts the current pay-first signup) — NOT built (was step 6). Needed before public trial marketing.
 - [ ] `continue.html` no-`cid` path = manual reconcile (rare; member reaches checkout without a bound id). Decide auto-handling later.
 - [ ] GITHUB_PAT_CLAUDE expires 20 Jun 2026 — rotate before expiry (Vault `GITHUB_PAT_CLAUDE` on project ixjfklpckgxrwjlfsaaz).
+- [ ] PM-476 (design locked, BUILD PENDING): Blended "easy first" welcome milestone — ANY 30 activities (sum of the five `get_certificate_buckets` buckets) funds the first donated month. New one-shot derived metric; NO new daily/weekly cap (capped buckets give 7/day ceiling, ~5-day floor). Framed openly as easy-first; per-pillar rule resumes after.
+- [ ] PM-476: Milestone CELEBRATION sheet on threshold-cross (Member Prompts infra PM-375) — charity win + offer AVAILABLE ("lock in whenever ready"), NOT a hard ask. Keen members can self-convert here.
+- [ ] PM-476: Day-~24 timed conversion nudge before the wall — urgency-led, NO "you earned a free month" claim (members may not have hit the milestone).
+- [ ] PM-476 DECIDED: 30-day trial length stays (not 14); £10-off-FOREVER is the standing conversion price (resolves §22); check-ins count toward the blended 30 (recommendation, Lewis to confirm).
+- [ ] PM-476 GATE: named charity partner unconfirmed — plural "charity partners" copy claim is load-bearing; settle named partner or soften wording before member-facing. Lewis.
+- [ ] PM-476 ENG (Dean, future price rise): keep the £10-off lifetime lock by updating price on the SAME subscription / persisting subscription-level discount — never migrate converters to a fresh Stripe Price without re-attaching VYVE10.
 
 # VYVE Health — Backlog
 
