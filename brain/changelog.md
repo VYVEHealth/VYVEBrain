@@ -1,3 +1,11 @@
+## PM-466 — connect-calendar agenda: finished sessions drop off so the next session in the day surfaces (2026-06-04)
+
+Dean's call on connect-calendar.html: the agenda Upcoming list split future-vs-past by DAY (`rowDayStart >= todayStart`), so today's already-finished sessions stayed in today's group (dimmed) and cluttered the top of the calendar. Changed the split to each occurrence's END time — a session is Upcoming while `endMs > nowMs` (covers still-to-come AND live-now, which sits within [starts_at, ends_at]); once finished (`now >= ends_at`) it moves to the 'Show past' section. ends_at fallback `startMs + 20min` for any null-duration row (calendar has real durations since PM-459). NOT deleted — finished rows stay reachable in Show-past with the PM-454 'Watch replay' click-through. The existing 30s `render()` ticker (visible-only) re-runs the split, so sessions roll off the Upcoming list automatically as they end, not just on reload. `todayStart` local dropped (now unused in renderAgenda).
+
+Scope: agenda view only. Month grid + month-detail still treat 'past' at day granularity (`startOfDay(d) < todayStart`) — correct for a calendar grid; tapping a specific day shows its full schedule incl. what already aired. Easy follow-up if Dean wants month-detail to hide finished-today too.
+
+Ship `68d00f3a` (vyve-site, 4-file atomic: connect-calendar.html + index/settings vbb 338→339 + sw.js `vyve-cache-v2026-06-04-pm466-calendar-drop-finished-a`), all 4 md5-verified at commit SHA; renderAgenda fragment + sw.js passed `node --check`. **PM collision caught by §23.25:** drafted as PM-465 but the cross-repo scan found a parallel brain session had already claimed PM-465 (replays populated) — re-swept to PM-466 before commit. No vyve-site drift (HEAD `945020f0`). No new §23 rule. Composio still down — Vault PAT + Git Data API (§23.27).
+
 ## PM-465 — Replays populated + replay-pipeline hardening: duration guard, hourly refresh, junk cleanup (2026-06-04)
 
 **Symptom:** Dean — "none of the videos have gone into replay pages"; "we live streamed to YouTube but it should then save to the playlist after."
