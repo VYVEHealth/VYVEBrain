@@ -1572,6 +1572,19 @@ The in-app replay surfaces (replay-category.html and the live pages' QUIET state
 
 ---
 
+
+#### §23.91 — Replays only surface broadcasts with a REAL recorded duration; the broken-autostart back-catalogue is mostly dead (PM-465 — HARD RULE)
+
+Refines §23.90. Pipeline: `session-publish` (cron jobid 27, hourly :05) PRE-CREATES each upcoming broadcast and adds its video to the category playlist (`session_categories.youtube_playlist_id` == `replay_playlists.youtube_playlist_id`, verified identical) — the `playlistItems.insert` is BEST-EFFORT (`playlistOk` logged, never blocks the row). `refresh-replay-videos` reads `replay_playlists`, upserts `replay_videos`, then reconciliation-DELETEs rows no longer in any playlist.
+
+v4 (PM-465) DURATION GUARD: only upsert/seed items with `duration_sec > 0`. A pre-created-but-not-yet-aired broadcast reports `contentDetails.duration = "P0D"` (parses null); a live-but-unfinished one too. Without the guard those surfaced as 0-second replays. They are now held back until the recording finalises, then picked up next run. Verified live: upcoming `URgCwDw4Y2g` ("10 Minute Flow") held back (upcoming_leaked=false).
+
+Cron change: `refresh-replay-videos` moved daily 03:30 → HOURLY at :45 (`vyve-refresh-replay-videos-hourly`, jobid 36; old jobid 26 unscheduled) so replays appear within ~1h of a session ending, not next morning.
+
+Back-catalogue reality (4 Jun): of 21 `youtube_broadcast_id`s on file, only 4 were genuine watchable recordings (today's Yoga Flexibility `9b-xSEfEIKc` + Calming Breathwork `-LanVrrQGPA`, already in playlists; older Yoga `d-dNe6W-o4I` 51m + Mindfulness `24JKB3ufM4k` 18m48s). The rest: 10 deleted from YouTube, 5 zero-duration (P0D) shells, 1 stray PUBLIC "Big Buck Bunny" test (`aqz-KE-bpKQ`), 1 dev-test "PM-327 Device Walk" (`JEFNPGKhQqY`). 16 junk broadcast_ids NULLed in `calendar_occurrences` (the 10 deleted + 5 P0D + Big Buck Bunny); genuine + legit-upcoming + the dev-test record kept.
+
+Tool: `replay-playlist-backfill` EF (verify_jwt:false, `?dry=1` for report-only) — idempotent curated backfill; eligibility = on-YouTube + privacy `unlisted` + real duration + title NOT `/(\bpm-\d)|(device walk)|(big buck bunny)/i`. Used to add the 2 genuine older recordings. `replay_videos` now = 4, zero junk.
+
 ## 24. Key references, credentials & URLs
 
 ### Core infrastructure

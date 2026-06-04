@@ -1,3 +1,10 @@
+## Replays follow-ups (added 2026-06-04, PM-465)
+
+- **Move playlist-insert pre-create → completion (optional hardening).** `session-publish` adds each broadcast to its playlist at creation (best-effort). The §23.91 duration guard already stops not-yet-aired (P0D) items surfacing, so this is belt-and-braces: inserting at the broadcast-complete transition (runner / broadcast-status) means playlists only ever contain aired sessions.
+- **Replay ordering.** `refresh-replay-videos` labels "latest" by `published_at` = playlist-ADD time, not air time. The just-backfilled older Yoga `d-dNe6W-o4I` now ranks above today's `9b-xSEfEIKc`. If air-time order matters, sort by a stable recorded/scheduled date.
+- **Dev-test record.** `JEFNPGKhQqY` ("PM-327 Device Walk") still carries a broadcast_id on its occurrence; excluded from replays by the title filter — null it for full detachment if desired.
+- **`replay-playlist-backfill` EF** retained (idempotent, `?dry=1`, eligibility-guarded). Delete when no longer needed.
+
 ## Live content go-live (added 2026-06-02, PM-437)
 
 ### NEXT — live content go-live (PM-439, 2026-06-02) — continue here

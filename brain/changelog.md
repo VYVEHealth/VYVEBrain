@@ -1,3 +1,24 @@
+## PM-465 — Replays populated + replay-pipeline hardening: duration guard, hourly refresh, junk cleanup (2026-06-04)
+
+**Symptom:** Dean — "none of the videos have gone into replay pages"; "we live streamed to YouTube but it should then save to the playlist after."
+
+**Root cause:** `replay_videos` empty → replay pages blank. Replays mirror 8 YouTube playlists via `refresh-replay-videos` (reads `replay_playlists`, upserts `replay_videos`). Refresher ran clean at 03:30 but every playlist `video_count=0` → playlists genuinely empty. `session-publish` DOES add each broadcast to its category playlist at pre-create (best-effort) and it had worked for today's two live sessions — they were already in the playlists; the refresher just hadn't run since they aired (was daily 03:30). Older back-catalogue was never added (best-effort insert failed/predated) AND is mostly dead anyway.
+
+**Findings (backfill dry-run):** 21 broadcast IDs → only 4 genuine watchable: today's Yoga Flexibility `9b-xSEfEIKc` (51m) + Calming Breathwork `-LanVrrQGPA` (18.5m) already in playlists, plus older Yoga `d-dNe6W-o4I` (51m) + Mindfulness `24JKB3ufM4k` (18m48s). Rest: 10 deleted from YouTube, 5 zero-duration (P0D) shells (broken-autostart era), 1 PUBLIC "Big Buck Bunny" test `aqz-KE-bpKQ`, 1 dev-test "PM-327 Device Walk" `JEFNPGKhQqY`.
+
+**Shipped:**
+- `refresh-replay-videos` v4 — duration guard (skip `duration_sec<=0` / P0D). Pre-created/not-yet-aired + live-unfinished broadcasts no longer surface as 0-sec replays. Verified live: upcoming `URgCwDw4Y2g` held back.
+- Cron: `vyve-refresh-replay-videos-daily` (jobid 26, 03:30) unscheduled → `vyve-refresh-replay-videos-hourly` (jobid 36, `45 * * * *`). Replays refresh within ~1h of a session ending.
+- `replay-playlist-backfill` EF (new, verify_jwt:false, `?dry=1`) — idempotent eligibility-guarded curated backfill (on-YouTube + unlisted + real duration + non-test title). Added the 2 genuine older recordings.
+- Nulled 16 junk `youtube_broadcast_id`s in `calendar_occurrences` (10 deleted, 5 P0D shells, Big Buck Bunny). Kept genuine + legit-upcoming + dev-test record.
+- Ran refresher → `replay_videos` = 4 (2 Yoga, 2 Mindfulness), zero junk.
+
+**HARD RULE:** §23.91 (refines §23.90).
+
+**Open:** consider moving playlist-insert pre-create → broadcast-completion; replay "latest" ordering uses playlist-add time not air time; `replay-playlist-backfill` retained as a tool.
+
+---
+
 ## PM-464 — connect Live This Week carousel thumb height 84px → 120px (home parity) (2026-06-04)
 
 Follow-up to PM-463: Dean reviewed the now-calendar-driven connect carousel on device and wanted the thumbnails taller to match the home page. connect.html `.scroll-card-thumb` `height:84px` → `120px` — same value index.html took at PM-457. Single-property CSS change; card markup + data path (PM-463) untouched. Ship `945020f0` (vyve-site, 4-file atomic: connect.html + index/settings vbb 337→338 + sw.js `vyve-cache-v2026-06-04-pm464-connect-carousel-thumb-120-a`), all 4 md5-verified at commit SHA. No drift (HEAD `d1c2d49f`). Composio still down — Vault PAT + Git Data API (§23.27).
