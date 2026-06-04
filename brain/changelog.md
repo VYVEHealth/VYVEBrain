@@ -1,3 +1,15 @@
+## PM-463 — connect Live This Week carousel now reads the real calendar_occurrences schedule (mirrors home) (2026-06-04)
+
+connect.html: rewrote `renderLiveThisWeek()` to mirror the home carousel `paintLiveCarousel()` (PM-453/455/456). Was: static `window.VYVE_SESSIONS` (sessions-data.js) only — fixed per-category thumbnails (`thumb-yoga.jpg` etc), generic recurring types, `url('/'+s.thumb)`. Now: static sessions-data.js FIRST paint (never blank on cold boot, §23.47) then upgrades to the real upcoming schedule from Dexie `calendar_occurrences` — actual `session_title`, `host_name`, per-occurrence `image_url` thumbnail, currently-live row (`starts_at<=now<ends_at && youtube_broadcast_id`) floated to the front and flagged `● LIVE`. Window = next 7 days, max 8 cards; filtered to `type==='live_session'` (events stay in the separate "What's on" calendar tile below, `renderCalendarTile`). Routes by category via a local `LIVE_PAGE_BY_CATEGORY` map (identical 8-category map to index `CATEGORY_LIVE_PAGE`).
+
+Two traps respected, both proven on the home carousel: (1) **§23.87** — `calendar_occurrences` is a `makeCatalogueTable()` store, read via `.allFor(null)` NOT `.all()` (the latter throws → silent static fallback = the PM-455 bug). (2) **PM-456** — `image_url` is ROOT-RELATIVE (`/assets/hosts/*.jpg`); the thumb builder leaves leading-slash / http(s) paths intact and prepends `/` ONLY for bare-filename static thumbs — prepending to a root-relative value gives `//assets/..` = broken protocol-relative host (the exact PM-456 regression Dean flagged pre-emptively).
+
+Upgrade path = static-first + bounded retry (6×1.5s, single-chain `__liveCarouselUpgrading` guard so the foreground-repaint paintAll() calls don't stack chains) AND `renderLiveThisWeek()` added to the existing `vyve-localdb-table-pulled` subscriber so the strip repaints the moment sync.js hydrates the calendar. Added `.next-tag`/`.next-tag.live` pill CSS (copied verbatim from index.html) for the live flag; connect's `.scroll-card` look otherwise untouched — 84px thumb left as-is, PM-457's 120px home bump deliberately NOT carried over (Dean: change the feed + thumbnail source, not the look).
+
+Ship `d1c2d49f` (vyve-site, 4-file atomic: connect.html + index/settings vbb 336→337 + sw.js `vyve-cache-v2026-06-04-pm463-connect-live-carousel-calendar-a`), all 4 md5-verified at commit SHA; extracted function passed `node --check`. No drift (HEAD `af28875` unchanged session-start→commit; cross-repo PM scan vyve-site max 457 / brain 462 → 463). **No new §23 rule** — a clean re-application of §23.87 + the PM-456 url-builder lesson. Composio still down — Vault PAT + Git Data API throughout (§23.27).
+
+Note: connect Live This Week + home are now BOTH calendar_occurrences-driven with sessions-data.js as cold-boot fallback only — a step toward the PM-211 single-source-of-truth retirement of sessions-data.js.
+
 ## PM-462 — Live 'box' operational runbook finalised: Mac set never-sleep on mains; fully hands-off (2026-06-04)
 
 The simulated-live pipeline is now fully hands-off on Dean's Mac as the interim 24/7 box. Power/run config locked this session:
