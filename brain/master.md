@@ -1,24 +1,27 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-04, PM-461)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-04, PM-462)
 
-**Workstream: simulated-live go-live. DONE end-to-end and now HANDS-OFF — the runner aired a real broadcast (PM-459) and runs unattended as a launchd daemon (PM-460). What's left is housekeeping.**
+**Simulated-live is LIVE and fully hands-off.** The runner aired a real broadcast (PM-459) and now runs unattended as a launchd daemon on Dean's Mac (interim 24/7 box). Remaining = housekeeping + one first-air observation.
 **Live DB is canonical for the calendar — read calendar_occurrences, do not trust counts cached here.**
 
 PROVEN / DONE:
-- **First real air (PM-459):** runner minted `qOmK6vZeTKo`, set alex.jpg thumbnail, pushed, `ready->live`, CAS write-back; confirmed live on YouTube; cleared afterwards so 7am mints fresh.
-- **Always-on (PM-460):** runner runs unattended via launchd LaunchAgent `com.vyve.live-runner` (RunAtLoad+KeepAlive, `caffeinate -i`, `/usr/bin/python3` 3.9, daemon mode). Healthy: live PID, exit 0, `daemon up refresh=60s horizon=900s`.
-- **Runner working set is at `~/vyve-live`** (NOT ~/Desktop — launchd can't read TCC dirs, §23.89): runner `~/vyve-live/vyve-live-runner.py`, env `~/vyve-live/vyve-runner.env` (chmod 600), masters `~/vyve-live/media` (hosts at `~/vyve-live/media/hosts`), log `~/vyve-live/runner.log`. New master mp4s go in `~/vyve-live/media`.
-- **cron 27 `session-publish-hourly` = OFF** (`cron.alter_job(27, active:=false)`); daemon is sole broadcast owner. Reversible.
-- Calendar: 112 active upcoming live_session rows, all with master filename + real durations (2–51 min) + root-relative `/assets/hosts/*.jpg` thumbnails. 40 stale PAST empty-notes rows still active (the daemon's harmless `SKIP` lines).
+- First real air PM-459 (broadcast minted/thumbnailed/pushed/ready->live/CAS write-back, confirmed on YouTube, then cleared).
+- Always-on: launchd `com.vyve.live-runner` (PM-460), daemon mode, `caffeinate -i`, healthy. Working set at `~/vyve-live` (NOT ~/Desktop — TCC §23.89): runner/env/`media`(+`media/hosts`)/`runner.log`. New masters -> `~/vyve-live/media`.
+- Box power locked PM-462: `sudo pmset -c sleep 0` (never sleep on mains) + caffeinate. RUN RULE: plugged in + lid OPEN; screen may be black (display sleep != system sleep). Lid-close sleeps it.
+- cron 27 `session-publish-hourly` OFF (PM-460) — daemon is sole broadcast owner.
+- Calendar: 112 active upcoming live_session rows (4 Jun–2 Jul), all with master filename + real durations + root-relative `/assets/hosts/*.jpg`. 40 stale PAST empty-notes rows still active (harmless daemon SKIPs).
+- Replays wiped clean PM-461: all YT playlists empty + DB mirror zeroed; empty replay pages EXPECTED until sessions air. Auto-backfill (runner playlistItems.inserts each broadcast at creation; refresh cron pulls in). §23.90.
+- Live pages verified PM-461: 8 *-live + *-rp exist; yoga/mindfulness target exact category strings; session-live.js 6-state engine never-blank + cold-boot Supabase-REST fallback.
 
-**EXACT NEXT ACTIONS (continue from here):**
-1. **ROTATE the service_role key** — exposed in chat (PM-459), now also in `~/vyve-live/vyve-runner.env`. Reset Supabase JWT secret (also rotates `anon`), update every consumer INCLUDING the runner env file, then reload the agent (`launchctl unload/load -w`). Disruptive — plan it, not mid-air.
-2. **Deactivate the 40 stale rows** (active=true, PAST 22 May–2 Jun, empty notes) — one UPDATE; also silences the daemon SKIP noise. Safe (past + no master).
-3. Watch the **first unattended air at 4 Jun 07:00 BST** — also the one remaining build-#1 sliver: the front-end `effectiveState()` `live:true` flip (gated to the 10-min pre-roll, unseen so far). Mac must be plugged in + lid open.
-4. Content calls (Lewis/Dean): type-vs-per-host thumbnail mapping; drop numeric labels on flow/flexibility titles; connect-calendar card title reads `row.name` not `session_title`.
-5. Longer term: move the runner to a real 24/7 box (systemd unit in repo) instead of the MacBook.
+**EXACT NEXT ACTIONS:**
+1. **First unattended air 4 Jun 07:00 BST (Yoga Flexibility).** Lewis eyeballs the app 06:50–07:05 (yoga live page): 'Going live soon' -> 'Live now' + player ~07:00, right title/host; screenshot if blank/stuck past ~07:02. Proves the last sliver (front-end live:true flip).
+2. **ROTATE the service_role key** — exposed in chat (PM-459), also in `~/vyve-live/vyve-runner.env`. Reset JWT secret + update consumers + reload the agent. Disruptive; not mid-air.
+3. **Deactivate the 40 stale rows** (active, PAST 22 May–2 Jun, empty notes) — one UPDATE; silences daemon SKIPs.
+4. **Calendar regeneration** — rows end 2 Jul; add a fresh batch (+ helper) before then or live stops after 2 Jul.
+5. Content calls (Lewis/Dean): type-vs-per-host thumbnail mapping; numeric labels on flow/flexibility titles; connect-calendar card title `row.name` vs `session_title`.
+6. Longer term: move the runner off the MacBook to a real 24/7 box (systemd unit in repo).
 
 Sandbox can't reach online.vyvehealth.co.uk (egress allowlist) — a 403 is not an asset fault (§23.86).
 <!--CURRENT_FRONT_END-->

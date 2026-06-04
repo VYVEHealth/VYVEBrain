@@ -615,3 +615,10 @@ Captured here so the at-a-glance state of the recent past is one short list, not
 - DONE: all replay pages wiped to clean slate — 11 test videos deleted off YouTube, all 8 category playlists emptied, DB mirror (replay_videos/replay_playlists) zeroed. Empty replays are EXPECTED until sessions air from 4 Jun.
 - DONE: test VOD qOmK6vZeTKo deleted (was a separate owed item).
 - CONFIRMED: runner playlist-inserts each broadcast into its category youtube_playlist_id at creation; replays backfill automatically via the refresh cron. Live pages verified non-blank + correct category targeting (§23.90 / changelog PM-461).
+
+
+## Box runbook + state — PM-462 (2026-06-04)
+- DONE: live box operational runbook locked — launchd daemon + `caffeinate -i` + `sudo pmset -c sleep 0` (never sleep on mains). Run rule: plugged in, lid open, screen may be black. Sessions air automatically through 2 Jul.
+- DONE: 4 Jun–2 Jul schedule (112 sessions) shared with Alan + Lewis.
+- OPEN: first unattended air 4 Jun 07:00 — Lewis to eyeball the live:true flip.
+- OPEN (carried): rotate service_role key; deactivate 40 stale empty-notes rows; calendar regeneration before 2 Jul; content calls; move runner to a real 24/7 box.

@@ -1,3 +1,17 @@
+## PM-462 — Live 'box' operational runbook finalised: Mac set never-sleep on mains; fully hands-off (2026-06-04)
+
+The simulated-live pipeline is now fully hands-off on Dean's Mac as the interim 24/7 box. Power/run config locked this session:
+- launchd daemon `com.vyve.live-runner` (PM-460) + `caffeinate -i` in the plist holds the system awake while the runner runs.
+- `sudo pmset -c sleep 0` applied — system sleep on AC/charger = NEVER (belt-and-braces over caffeinate). The pmset warning about the Battery profile is benign and irrelevant (box stays on mains).
+- RUN RULE for Dean: plugged into mains + lid OPEN. Screen may be dimmed/black or display-sleep — display sleep != system sleep and does NOT stop the runner. Closing the lid (clamshell) DOES sleep the Mac and would miss sessions.
+- cron 27 OFF (PM-460); daemon is sole broadcast owner.
+
+Behaviour: the daemon airs every scheduled session automatically, in order, through the end of the current calendar (2 Jul). After 2 Jul it idles until fresh calendar_occurrences rows are added (calendar-regeneration helper still owed). New master mp4s go in `~/vyve-live/media`.
+
+First UNATTENDED air = 4 Jun 07:00 BST (Yoga Flexibility). Dean won't be up; Lewis to open the app 06:50–07:05 on the yoga live page and confirm: pre-roll 'Going live soon' (not blank) -> 'Live now' + player at ~07:00 -> correct title/host; screenshot + flag if stuck/blank past ~07:02. Last unproven sliver = the front-end live:true flip.
+
+Full 4 Jun–2 Jul schedule (112 sessions; 4 daily slots 07:00/08:30/13:00/19:30 UK; Yoga + Mindfulness only) shared with Alan + Lewis this session.
+
 ## PM-461 — Replay pages wiped to a clean slate (11 YouTube videos deleted, all 8 playlists emptied, mirror zeroed); live-page + playlist-routing wiring verified (2026-06-04)
 
 Ahead of tomorrow's first real sessions, cleared ALL pre-launch test content from the replay pages. The replay surfaces MIRROR the per-category YouTube playlists (replay_playlists.youtube_playlist_id -> replay_videos via a daily refresh cron ~03:30), so the clear was done at the YouTube SOURCE: videos.delete on 11 underlying test videos (all 204), playlistItems.delete on all 17 items across the 8 playlists (incl. 6 'Deleted video' ghosts and today's test VOD qOmK6vZeTKo — closes that backlog item). All 8 playlists verified empty (group-therapy showed a lingering item once = API propagation lag, cleared on recheck). Then zeroed the DB mirror (DELETE FROM replay_videos; replay_playlists video_count=0 + latest_* NULL + last_refreshed_at=now) so the pages read empty immediately, not at the next cron. EMPTY REPLAY PAGES ARE NOW EXPECTED until sessions air from 4 Jun — not a bug. New hard rule §23.90.
