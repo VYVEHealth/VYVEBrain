@@ -1,7 +1,7 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-04, PM-460)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-04, PM-461)
 
 **Workstream: simulated-live go-live. DONE end-to-end and now HANDS-OFF — the runner aired a real broadcast (PM-459) and runs unattended as a launchd daemon (PM-460). What's left is housekeeping.**
 **Live DB is canonical for the calendar — read calendar_occurrences, do not trust counts cached here.**
@@ -17,7 +17,7 @@ PROVEN / DONE:
 1. **ROTATE the service_role key** — exposed in chat (PM-459), now also in `~/vyve-live/vyve-runner.env`. Reset Supabase JWT secret (also rotates `anon`), update every consumer INCLUDING the runner env file, then reload the agent (`launchctl unload/load -w`). Disruptive — plan it, not mid-air.
 2. **Deactivate the 40 stale rows** (active=true, PAST 22 May–2 Jun, empty notes) — one UPDATE; also silences the daemon SKIP noise. Safe (past + no master).
 3. Watch the **first unattended air at 4 Jun 07:00 BST** — also the one remaining build-#1 sliver: the front-end `effectiveState()` `live:true` flip (gated to the 10-min pre-roll, unseen so far). Mac must be plugged in + lid open.
-4. Content calls (Lewis/Dean): type-vs-per-host thumbnail mapping; drop numeric labels on flow/flexibility titles; connect-calendar card title reads `row.name` not `session_title`. Delete the test VOD `qOmK6vZeTKo` from Studio.
+4. Content calls (Lewis/Dean): type-vs-per-host thumbnail mapping; drop numeric labels on flow/flexibility titles; connect-calendar card title reads `row.name` not `session_title`.
 5. Longer term: move the runner to a real 24/7 box (systemd unit in repo) instead of the MacBook.
 
 Sandbox can't reach online.vyvehealth.co.uk (egress allowlist) — a 403 is not an asset fault (§23.86).
@@ -1542,6 +1542,10 @@ Dean's Mac runs the Xcode Command Line Tools system `python3`, which is **3.9** 
 #### §23.89 — launchd LaunchAgents have NO access to ~/Desktop, ~/Documents, ~/Downloads (macOS TCC); keep an agent's working set in a non-protected dir (PM-460 — HARD RULE)
 
 A macOS user LaunchAgent runs outside the interactive Terminal's TCC grant, so it cannot read/write the TCC-protected folders (~/Desktop, ~/Documents, ~/Downloads, iCloud Drive, removable/network volumes), and there is no UI prompt for a background agent — accesses fail with `Operation not permitted` (EPERM) and a RunAtLoad+KeepAlive job exit-loops (`launchctl list` shows `- <n> <label>`). It "works when run by hand" only because interactive Terminal carries the user's grant. RULE: anything launchd runs — the script, its env file, AND its data/media — must live in a non-protected location (e.g. `~/vyve-live` or `~/Library/Application Support/<app>`). First instance: the vyve-live-runner LaunchAgent died on `~/Desktop/Lives` until runner + env + masters were relocated to `~/vyve-live` (PM-460). (Granting Full Disk Access to /usr/bin/python3 or /bin/zsh also works but is a broad grant requiring manual GUI steps — relocation is cleaner and scriptable.)
+
+#### §23.90 — Replay pages MIRROR YouTube playlists; remove a replay at the YouTube source, clearing the DB alone re-syncs (PM-461 — HARD RULE)
+
+The in-app replay surfaces (replay-category.html and the live pages' QUIET state) render from replay_videos + replay_playlists, a CACHED MIRROR of the per-category YouTube playlists (replay_playlists.youtube_playlist_id), refreshed by a daily cron (~03:30). So `DELETE FROM replay_videos` on its own is futile — the next refresh re-pulls whatever is still in the YouTube playlist. To remove a replay: delete it at YouTube (playlistItems.delete to unlink, or videos.delete to remove the content entirely — which also drops it from the playlist), THEN zero the DB mirror for immediate effect (else it clears at the next cron). YouTube creds in Vault (YOUTUBE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN); refresh-token grant -> scope youtube covers videos.delete + playlistItems.delete. Conversely replays APPEAR on their own: vyve-live-runner playlistItems.inserts each broadcast into its category playlist at creation, and the refresh cron pulls it in.
 
 ---
 

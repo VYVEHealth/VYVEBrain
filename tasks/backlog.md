@@ -609,3 +609,9 @@ Captured here so the at-a-glance state of the recent past is one short list, not
 - DONE: cron 27 `session-publish-hourly` deactivated — daemon is sole broadcast owner.
 - STILL OWED: rotate the exposed service_role key (now also in `~/vyve-live/vyve-runner.env`; reload the agent after); deactivate the 40 stale PAST empty-notes rows (22 May–2 Jun); delete test VOD `qOmK6vZeTKo`; watch first unattended air 4 Jun 07:00 (also the live:true device-walk sliver); content calls (type-vs-per-host thumbs, numeric labels, connect-calendar title row.name vs session_title).
 - Mac-as-box caveat: keep plugged in + lid open; real home is a 24/7 server (systemd unit in repo).
+
+
+## Replay clear — PM-461 (2026-06-04)
+- DONE: all replay pages wiped to clean slate — 11 test videos deleted off YouTube, all 8 category playlists emptied, DB mirror (replay_videos/replay_playlists) zeroed. Empty replays are EXPECTED until sessions air from 4 Jun.
+- DONE: test VOD qOmK6vZeTKo deleted (was a separate owed item).
+- CONFIRMED: runner playlist-inserts each broadcast into its category youtube_playlist_id at creation; replays backfill automatically via the refresh cron. Live pages verified non-blank + correct category targeting (§23.90 / changelog PM-461).
