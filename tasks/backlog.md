@@ -1,3 +1,27 @@
+## QUEUED BUILD — Check-in merge (weekly+monthly into one; weekly deepened) — spec'd PM-478, build pending
+
+**Status:** spec'd, NO code shipped. Build in a fresh session. Member-facing IA + content change -> Lewis owns question wording, Phil clears anything clinically deeper. ONE cadence decision is still OPEN (below) — settle before/at build. Claim fresh PM at commit time. Reasoning in changelog PM-478.
+
+GOAL: collapse the two duplicated check-in surfaces (wellbeing-checkin.html weekly + the monthly check-in) into one auto-routed entry, and deepen the weekly so it's not so thin vs the monthly.
+
+DECISIONS LOCKED:
+- One auto-routed "Check-in" entry; the monthly absorbs that week's weekly (no double check-in in a week).
+- One store with a type (weekly|monthly) discriminator — don't fork storage. checkin_questions already versions both cadences.
+- Weekly deepened from {1 feeling slider + optional free text} -> {a few dimension taps (energy/sleep/stress + overall mood) + a "what's affecting you this week?" driver multi-select + optional free text}. Keep ~30-60s (all taps) so weekly completion holds.
+- Layering: weekly = quick multi-dimension profile; monthly = weekly profile + the deep reflective questions.
+
+BUILD NOTES:
+- Question wording is a LEWIS deliverable; clinically-deeper dimensions need PHIL sign-off. Build structure with placeholder questions if needed; gate live copy on Lewis.
+- Surfaces: wellbeing-checkin.html (weekly), the monthly check-in page, checkin_questions table (versioned weekly+monthly sets), wellbeing-checkin EF (AI recs), weekly_scores / wellbeing_checkins (add type discriminator).
+- Keep the AI recommendation step; richer weekly inputs (dimensions + drivers) should feed the persona-voice recs.
+
+OPEN — SETTLE BEFORE BUILD:
+- CADENCE: when does the monthly fire? Claude's rec (NOT locked): calendar-anchored — first check-in on/after the 1st = the monthly, reflecting the month just gone (keeps phase with habit themes / monthly-report / charity months / leaderboard+employer "this month"). Late-join grace: join within ~last 2 weeks of a month -> skip that monthly, first monthly next boundary. Dean undecided — do NOT build cadence until locked.
+
+## QUEUED (GATED) — Live + replay merge — placeholder, do NOT build yet
+
+One channel surface per stream (live/upcoming on top, replays below) replacing the separate 8 *-live + 8 *-rp shells. Right pattern, but GATED: simulated-live runner aired its first unattended broadcast 4 Jun and is still in its observation window — touching the live shells mid-launch is the risky move. Revisit only after the daemon has several clean air-days; spec properly then.
+
 ## QUEUED BUILD — Habits autotick v2 (Dexie-first instant + server history-backfill) — spec'd PM-477, build pending
 
 **Status:** fully spec'd, NO code shipped. Build in a fresh session. Production-affecting (a live hub page on the whole server.url cohort + a production EF + a new Dexie store + a habit_library data change + history-backfill). Execute in order below; talk-first only if something here is genuinely unclear. Claim fresh PM number(s) at commit time. Full reasoning in changelog PM-477.

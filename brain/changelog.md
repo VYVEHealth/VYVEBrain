@@ -1,3 +1,19 @@
+## PM-478 — Check-in merge fully spec'd (weekly+monthly -> one auto-routed entry; weekly deepened); live/replay merge parked as gated placeholder; NO code shipped (2026-06-05)
+
+Continuation of the PM-477 session. Design discussion with Dean on consolidating duplicated entry points (originated from Alan's "the More section is too much" feedback — Dean & Claude agree breadth isn't the problem, duplicated entry points are). No code shipped; build queued (runbook top of tasks/backlog.md).
+
+CHECK-IN MERGE — decisions locked:
+- ONE auto-routed "Check-in" entry replaces separate weekly + monthly surfaces. The monthly ABSORBS that week's weekly (never two in one week) — the month-boundary check-in is a deeper version that also satisfies that week.
+- ONE store with a type (weekly|monthly) discriminator — do NOT fork storage; keeps trends/scores/pillar intact. checkin_questions already versions both cadences.
+- WEEKLY TO BE DEEPENED. Today the weekly is just one feeling slider (1-10) + optional free text — why it feels thin vs the ~10-question monthly. Deepen into a quick MULTI-DIMENSION PROFILE: a few dimension taps (e.g. energy / sleep / stress alongside overall mood) + a "what's affecting you this week?" driver multi-select (work/sleep/relationships/health/...), free text kept optional. All tapping -> stays a 30-60s weekly so completion doesn't suffer. "I feel a 6" -> "I feel a 6, low sleep, work's the driver" = richer signal for the AI recs.
+- LAYERING: weekly = the quick multi-dimension profile; monthly = that PLUS the deep reflective/longer-horizon questions.
+- OWNERSHIP: structure is ours; QUESTION WORDING is Lewis's (member-facing copy); any dimension leaning into mental-health depth needs Phil's clinical sign-off. Capture intent, not final copy.
+
+OPEN (parked, NOT decided — Dean wants to revisit):
+- CADENCE. Calendar-anchored vs join-anniversary + the exact monthly trigger. Claude's rec (NOT locked): calendar-anchored — first check-in on/after the 1st becomes the monthly (reflecting the month just gone), because the whole app already runs on calendar months (habit themes, monthly-report, charity months, leaderboard/employer "this month"); anniversary would be permanently out of phase. Late-join grace: join within ~last 2 weeks of a month -> skip that monthly, start on weeklies, first monthly next boundary. Dean not sold — settle before building cadence.
+
+LIVE/REPLAY MERGE — parked as gated placeholder (see backlog). One channel surface per stream (live/upcoming + replays) is the right pattern, but GATED on the simulated-live runner proving stable (first unattended air 4 Jun; observation window). Do NOT touch the 8 *-live / 8 *-rp shells mid-launch. Revisit after a few clean air-days.
+
 ## PM-477 — Habits autotick v2 fully spec'd (Dexie-first instant + server history-backfill); NO code shipped (2026-06-05)
 
 Spec/design session with Dean. No code shipped — build is QUEUED for a fresh session (full runbook at top of tasks/backlog.md). Started from Dean's review of the live habits surface; resolved three reported issues into one coherent build.

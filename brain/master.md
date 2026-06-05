@@ -30,6 +30,8 @@ Sandbox can't reach online.vyvehealth.co.uk (egress allowlist) — a 403 is not 
 
 **QUEUED BUILD (next session, spec'd PM-477):** Habits autotick v2 — Dexie-first instant tick + server history-backfill anchored to first-engagement; walking-workout rule replaces cumulative-distance on the 10-min walk; sleep in hours; home wiring + delete subForHabit. Full runbook at top of tasks/backlog.md. Production-affecting (live hub + production EF + new Dexie store) — build fresh, don't start mid-compaction.
 
+**QUEUED BUILD (spec'd PM-478):** Check-in merge — weekly+monthly into one auto-routed entry (monthly absorbs that week's weekly), one store + type flag, weekly deepened to a multi-dimension profile (dimension taps + driver multi-select). Question wording = Lewis, clinical depth = Phil. CADENCE still OPEN (calendar-anchored is the rec, not locked). Live/replay merge parked as gated placeholder. Runbook in tasks/backlog.md.
+
 <!--CURRENT_FRONT_END-->
 
 
