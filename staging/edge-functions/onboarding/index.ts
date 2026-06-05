@@ -480,12 +480,85 @@ async function sendAnswersBackup(data) {
     console.error('Answers backup failed:', e);
   }
 }
-async function sendWelcomeEmail(e, fn, persona, pr, r1, r2, r3, pwl, on, or, stream) {
+async function sendWelcomeEmail(e, fn, persona, pr, habits, on, planTypeDesc, sessionRec, pwl, stream) {
   if (!BREVO_KEY) return;
-  const lu = pwl || 'https://online.vyvehealth.co.uk/login.html', bl = pwl ? 'Set your password &amp; sign in' : 'Sign in to VYVE';
-  const streamIntro = stream === 'workouts' ? 'You are in. Habits loaded, 8-week programme ready.' : stream === 'movement' ? 'You are in. Habits loaded, your 8-week Movement plan is ready.' : 'You are in. Habits loaded, your Cardio hub is ready - generate your running plan when you want to start.';
+  const lu = pwl || 'https://online.vyvehealth.co.uk/login.html';
+  const bl = pwl ? 'Set your password &amp; sign in' : 'Sign in to VYVE';
+
+  const streamIntro = stream === 'workouts'
+    ? 'You are in. Habits loaded, 8-week programme ready.'
+    : stream === 'movement'
+    ? 'You are in. Habits loaded, your 8-week Movement plan is ready.'
+    : 'You are in. Habits loaded, your Cardio hub is ready \u2014 generate your running plan when you want to start.';
+
+  // Build habit rows HTML
+  const habitRowsHtml = (habits || []).map((h) => {
+    const label = h.habit_pot ? h.habit_pot.charAt(0).toUpperCase() + h.habit_pot.slice(1) : '';
+    return `<div style="display:flex;align-items:flex-start;margin-bottom:14px;">
+      <div style="flex-shrink:0;width:6px;height:6px;border-radius:50%;background:#4DAAAA;margin-top:6px;margin-right:12px;"></div>
+      <div>
+        <p style="margin:0;font-size:14px;font-weight:600;color:#0D2B2B;">${h.habit_title}</p>
+        ${label ? `<p style="margin:2px 0 0;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#4DAAAA;">${label}</p>` : ''}
+        <p style="margin:4px 0 0;font-size:13px;color:#3A5A5A;line-height:1.55;">${h.habit_description || ''}</p>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Session rec HTML
+  const sessionHtml = sessionRec
+    ? `<div style="background:#F0F9F9;border-radius:8px;padding:16px 20px;margin-bottom:24px;border-left:3px solid #1B7878;">
+        <p style="margin:0 0 2px;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1B7878;">Recommended live session</p>
+        <p style="margin:0;font-size:15px;font-weight:600;color:#0D2B2B;">${sessionRec.name}</p>
+        <p style="margin:4px 0 0;font-size:13px;color:#3A5A5A;">${sessionRec.schedule_day}s at ${sessionRec.schedule_time} &middot; ${sessionRec.duration_minutes} min</p>
+        <p style="margin:6px 0 0;font-size:13px;color:#3A5A5A;line-height:1.55;">${sessionRec.description || ''}</p>
+      </div>`
+    : '';
+
+  // App tip (stream-aware)
+  const appTip = stream === 'workouts'
+    ? 'Start with the Workouts tab \u2014 your full 8-week programme is waiting. Log each session as you go and your progress tracks automatically.'
+    : stream === 'movement'
+    ? 'Open the Movement tab to find your plan. Log each session and your streaks build in the background.'
+    : 'Head to the Running Plan tab to generate your personalised programme. Set your goal, your level, and your timeline \u2014 it takes 30 seconds.';
+
   const pwa = `<tr><td style="padding:0 32px 28px;"><p style="margin:0 0 12px;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1B7878;">Get the VYVE Health app</p><p style="margin:0 0 16px;font-size:14px;color:#3A5A5A;line-height:1.65;">Download from the App Store or Google Play, then sign in with your VYVE email.</p><table width="100%" cellpadding="0" cellspacing="0"><tr><td width="48%" style="vertical-align:middle;text-align:center;background:#0D2B2B;border-radius:8px;"><a href="https://apps.apple.com/gb/app/vyve-health/id6762100652" style="display:block;padding:14px 16px;color:#fff;text-decoration:none;font-size:14px;font-weight:600;">Download for iPhone &rarr;</a></td><td width="4%"></td><td width="48%" style="vertical-align:middle;text-align:center;background:#0D2B2B;border-radius:8px;"><a href="https://play.google.com/store/apps/details?id=co.uk.vyvehealth.app" style="display:block;padding:14px 16px;color:#fff;text-decoration:none;font-size:14px;font-weight:600;">Download for Android &rarr;</a></td></tr></table></td></tr>`;
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#F4FAFA;font-family:Helvetica Neue,Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#F4FAFA;padding:40px 20px;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;"><tr><td style="background:#0D2B2B;padding:24px 32px;"><div style="font-family:Georgia,serif;font-size:20px;letter-spacing:6px;color:#fff;">VYVE</div></td></tr><tr><td style="padding:32px;"><h2 style="margin:0 0 8px;font-size:24px;font-family:Georgia,serif;color:#0D2B2B;font-weight:400;">Welcome to VYVE, ${fn}.</h2><p style="margin:0 0 24px;font-size:15px;color:#3A5A5A;line-height:1.7;">${streamIntro}</p><div style="background:#F0F9F9;border-radius:8px;padding:20px 24px;margin-bottom:24px;"><p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1B7878;">Your Coach</p><p style="margin:0;font-size:20px;font-weight:700;color:#0D2B2B;">${persona}</p><p style="margin:8px 0 0;font-size:14px;color:#3A5A5A;line-height:1.6;">${pr}</p></div><div style="background:#F4FAFA;border-radius:8px;padding:16px 20px;margin-bottom:24px;border-left:3px solid #4DAAAA;"><p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1B7878;">Your Programme</p><p style="margin:0;font-size:15px;font-weight:600;color:#0D2B2B;">${on}</p><p style="margin:8px 0 0;font-size:14px;color:#3A5A5A;line-height:1.6;">${or}</p></div><p style="margin:0 0 12px;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1B7878;">Your first week</p><div style="border-left:3px solid #4DAAAA;padding:0 0 0 16px;margin-bottom:14px;"><p style="margin:0;font-size:14px;color:#3A5A5A;line-height:1.65;">${r1}</p></div><div style="border-left:3px solid #4DAAAA;padding:0 0 0 16px;margin-bottom:14px;"><p style="margin:0;font-size:14px;color:#3A5A5A;line-height:1.65;">${r2}</p></div><div style="border-left:3px solid #4DAAAA;padding:0 0 0 16px;margin-bottom:28px;"><p style="margin:0;font-size:14px;color:#3A5A5A;line-height:1.65;">${r3}</p></div><div style="text-align:center;margin:0 0 28px;"><a href="${lu}" style="background:#0D2B2B;color:#fff;text-decoration:none;padding:16px 36px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;">${bl} &rarr;</a></div></td></tr>${pwa}<tr><td style="background:#F4FAFA;padding:20px 32px;border-top:1px solid #C8E4E4;"><p style="margin:0;font-size:12px;color:#7A9A9A;">VYVE Health CIC &middot; team@vyvehealth.co.uk &middot; ICO 00013608608</p></td></tr></table></td></tr></table></body></html>`;
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#F4FAFA;font-family:Helvetica Neue,Arial,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#F4FAFA;padding:40px 20px;"><tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;">
+    <tr><td style="background:#0D2B2B;padding:24px 32px;"><div style="font-family:Georgia,serif;font-size:20px;letter-spacing:6px;color:#fff;">VYVE</div></td></tr>
+    <tr><td style="padding:32px;">
+      <h2 style="margin:0 0 8px;font-size:24px;font-family:Georgia,serif;color:#0D2B2B;font-weight:400;">Welcome to VYVE, ${fn}.</h2>
+      <p style="margin:0 0 28px;font-size:15px;color:#3A5A5A;line-height:1.7;">${streamIntro}</p>
+
+      <div style="background:#F0F9F9;border-radius:8px;padding:20px 24px;margin-bottom:28px;">
+        <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1B7878;">Your Coach</p>
+        <p style="margin:0;font-size:20px;font-weight:700;color:#0D2B2B;">${persona}</p>
+        <p style="margin:8px 0 0;font-size:14px;color:#3A5A5A;line-height:1.6;">${pr}</p>
+      </div>
+
+      <div style="background:#F4FAFA;border-radius:8px;padding:16px 20px;margin-bottom:28px;border-left:3px solid #4DAAAA;">
+        <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1B7878;">Your Programme</p>
+        <p style="margin:0;font-size:15px;font-weight:600;color:#0D2B2B;">${on}</p>
+        <p style="margin:8px 0 0;font-size:14px;color:#3A5A5A;line-height:1.6;">${planTypeDesc}</p>
+      </div>
+
+      <p style="margin:0 0 16px;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1B7878;">Your daily habits</p>
+      <div style="margin-bottom:28px;">${habitRowsHtml}</div>
+
+      ${sessionHtml}
+
+      <div style="background:#FFFBF0;border-radius:8px;padding:16px 20px;margin-bottom:28px;border-left:3px solid #C9A84C;">
+        <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#C9A84C;">Where to start</p>
+        <p style="margin:0;font-size:14px;color:#3A5A5A;line-height:1.6;">${appTip}</p>
+      </div>
+
+      <div style="text-align:center;margin:0 0 28px;">
+        <a href="${lu}" style="background:#0D2B2B;color:#fff;text-decoration:none;padding:16px 36px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;">${bl} &rarr;</a>
+      </div>
+    </td></tr>
+    ${pwa}
+    <tr><td style="background:#F4FAFA;padding:20px 32px;border-top:1px solid #C8E4E4;"><p style="margin:0;font-size:12px;color:#7A9A9A;">VYVE Health CIC &middot; team@vyvehealth.co.uk &middot; ICO 00013608608</p></td></tr>
+  </table></td></tr></table></body></html>`;
+
   await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
@@ -494,31 +567,43 @@ async function sendWelcomeEmail(e, fn, persona, pr, r1, r2, r3, pwl, on, or, str
       'Accept': 'application/json'
     },
     body: JSON.stringify({
-      sender: {
-        name: 'VYVE Health',
-        email: 'team@vyvehealth.co.uk'
-      },
-      to: [
-        {
-          email: e,
-          name: fn
-        }
-      ],
-      bcc: [
-        {
-          email: 'team@vyvehealth.co.uk',
-          name: 'VYVE Team'
-        }
-      ],
+      sender: { name: 'VYVE Health', email: 'team@vyvehealth.co.uk' },
+      to: [{ email: e, name: fn }],
+      bcc: [{ email: 'team@vyvehealth.co.uk', name: 'VYVE Team' }],
       subject: 'Welcome to VYVE, ' + fn + ' \u2014 your programme is ready',
       htmlContent: html,
-      tags: [
-        'welcome',
-        'onboarding'
-      ]
+      tags: ['welcome', 'onboarding']
     })
   });
 }
+
+const PLAN_TYPE_DESCRIPTIONS = {
+  Push_Pull_Legs: 'A classic compound split: Push days target chest, shoulders and triceps; Pull days hit back and biceps; Legs cover quads, hamstrings and glutes. Alternating A and B variants keep volume balanced across the 8 weeks.',
+  Upper_Lower: 'Alternates upper-body and lower-body sessions across the week. Efficient for building strength and muscle with 3–4 days of training.',
+  Full_Body: 'Each session trains the whole body with a mix of compound and accessory movements. Great for frequency and overall conditioning.',
+  Home_Workouts: 'Bodyweight and minimal-kit sessions designed to deliver real results wherever you are — no gym required.',
+  Movement_Wellbeing: 'Mobility, flexibility, and low-impact movement sessions to improve how you feel and move every day.',
+  Cardio: 'Your personalised running and cardio programme, built around your goal and fitness level.'
+};
+
+function pickSessionRec(persona, stream, catalogue) {
+  const sessions = (catalogue || []).filter((s) => s.type === 'live_session');
+  if (!sessions.length) return null;
+  // Priority map: persona -> preferred category
+  const personaPref = {
+    NOVA: 'Workouts',
+    SPARK: 'Workouts',
+    RIVER: 'Mindfulness & Mindset',
+    SAGE: 'Education & Experts',
+    HAVEN: 'Mindfulness & Mindset'
+  };
+  // Stream override: cardio members get pointed to workout session; movement gets mindfulness
+  const streamPref = stream === 'cardio' ? 'Workouts' : stream === 'movement' ? 'Mindfulness & Mindset' : null;
+  const preferred = streamPref || personaPref[persona] || 'Workouts';
+  return sessions.find((s) => s.category === preferred) || sessions[0];
+}
+
+
 function resolveStream(d) {
   const raw = String(d.exerciseStream || '').toLowerCase().trim();
   if (raw === 'movement' || raw === 'cardio' || raw === 'workouts') return raw;
@@ -1170,7 +1255,7 @@ serve(async (req)=>{
     phase = 'reset_existing_data';
     await resetMemberData(email);
     phase = 'secondary_writes';
-    const hlf = await fetch(SUPABASE_URL + '/rest/v1/habit_library?active=eq.true&select=id,habit_title', {
+    const hlf = await fetch(SUPABASE_URL + '/rest/v1/habit_library?active=eq.true&select=id,habit_title,habit_description,habit_pot', {
       headers: {
         apikey: SUPABASE_KEY,
         Authorization: 'Bearer ' + SUPABASE_KEY
@@ -1200,7 +1285,18 @@ serve(async (req)=>{
       }).catch(()=>{}) : Promise.resolve()
     ]);
     phase = 'welcome_email';
-    await sendWelcomeEmail(email, fn, persona, personaReason, r1, r2, r3, pwl, finalProgrammeName, ov.rationale, stream);
+    // Resolve full habit objects for the 5 selected habits (ordered to match hids)
+    const hlfArr = Array.isArray(hlf) ? hlf : [];
+    const hlfMap = Object.fromEntries(hlfArr.map((h) => [h.id, h]));
+    const habitsFull = hids.map((id) => hlfMap[id]).filter(Boolean);
+
+    // Pick the most relevant live session based on stream + persona
+    const sessionRec = pickSessionRec(persona, stream, cat);
+
+    // Workout type description
+    const planTypeDesc = PLAN_TYPE_DESCRIPTIONS[planType] || ov.rationale || '';
+
+    await sendWelcomeEmail(email, fn, persona, personaReason, habitsFull, finalProgrammeName, planTypeDesc, sessionRec, pwl, stream);
     console.log('DONE v87:', email, persona, 'stream:', stream);
     if (stream === 'workouts') {
       const bgPromise = (async ()=>{
