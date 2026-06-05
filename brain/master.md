@@ -1,36 +1,46 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-04, PM-475)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-05, PM-478 session 2)
 
-**Simulated-live is LIVE and fully hands-off.** The runner aired a real broadcast (PM-459) and now runs unattended as a launchd daemon on Dean's Mac (interim 24/7 box). Remaining = housekeeping + one first-air observation.
-**Live DB is canonical for the calendar — read calendar_occurrences, do not trust counts cached here.**
+**Simulated-live is LIVE and fully hands-off.** Runner aired unattended, launchd daemon healthy. See PM-475 for full status.
+**Deployment reality (PM-475):** WHOLE cohort runs server.url-live — every vyve-site main commit is live to everyone within WKWebView cache window (2-15min). No frozen-bundle cohort right now.
+**Live DB is canonical — never trust counts cached here.**
 
-PROVEN / DONE:
-- First real air PM-459 (broadcast minted/thumbnailed/pushed/ready->live/CAS write-back, confirmed on YouTube, then cleared).
-- Always-on: launchd `com.vyve.live-runner` (PM-460), daemon mode, `caffeinate -i`, healthy. Working set at `~/vyve-live` (NOT ~/Desktop — TCC §23.89): runner/env/`media`(+`media/hosts`)/`runner.log`. New masters -> `~/vyve-live/media`.
-- Box power locked PM-462: `sudo pmset -c sleep 0` (never sleep on mains) + caffeinate. RUN RULE: plugged in + lid OPEN; screen may be black (display sleep != system sleep). Lid-close sleeps it.
-- cron 27 `session-publish-hourly` OFF (PM-460) — daemon is sole broadcast owner.
-- Calendar: 112 active upcoming live_session rows (4 Jun–2 Jul), all with master filename + real durations + root-relative `/assets/hosts/*.jpg`. 40 stale PAST empty-notes rows still active (harmless daemon SKIPs).
-- Replays wiped clean PM-461: all YT playlists empty + DB mirror zeroed; empty replay pages EXPECTED until sessions air. Auto-backfill (runner playlistItems.inserts each broadcast at creation; refresh cron pulls in). §23.90.
-- Live pages verified PM-461: 8 *-live + *-rp exist; yoga/mindfulness target exact category strings; session-live.js 6-state engine never-blank + cold-boot Supabase-REST fallback.
+PROVEN / DONE (carry-forward):
+- Simulated-live daemon running, first unattended air confirmed 4 Jun.
+- Session thumbnails in Supabase Storage (PM-471-474). sw.js SWR-caches session-thumbnails bucket.
+- Habits autotick v2 SHIPPED (PM-482/483) — Dexie-first instant tick, walking-workout rule, local evaluator, history backfill with first-engagement anchor.
+- vyve-site HEAD: PM-483. VYVEBrain HEAD: PM-478 session 2 (this commit).
 
-**EXACT NEXT ACTIONS:**
-1. **First unattended air 4 Jun 07:00 BST (Yoga Flexibility).** Lewis eyeballs the app 06:50–07:05 (yoga live page): 'Going live soon' -> 'Live now' + player ~07:00, right title/host; screenshot if blank/stuck past ~07:02. Proves the last sliver (front-end live:true flip).
-2. **ROTATE the service_role key** — exposed in chat (PM-459), also in `~/vyve-live/vyve-runner.env`. Reset JWT secret + update consumers + reload the agent. Disruptive; not mid-air.
-3. **Deactivate the 40 stale rows** (active, PAST 22 May–2 Jun, empty notes) — one UPDATE; silences daemon SKIPs.
-4. **Calendar regeneration** — rows end 2 Jul; add a fresh batch (+ helper) before then or live stops after 2 Jul.
-5. Content calls (Lewis/Dean): type-vs-per-host thumbnail mapping; numeric labels on flow/flexibility titles; connect-calendar card title `row.name` vs `session_title`.
-6. Longer term: move the runner off the MacBook to a real 24/7 box (systemd unit in repo).
+**QUEUED BUILD — PM-478: Check-in merge. FULLY SIGNED OFF. BUILD-READY.**
+Full runbook in tasks/backlog.md. All decisions locked in session 2026-06-05.
 
-Sandbox can't reach online.vyvehealth.co.uk (egress allowlist) — a 403 is not an asset fault (§23.86).
-**Deployment reality (corrected PM-475): the WHOLE cohort runs server.url-live, NOT bundled.** capacitor.config.json on vyve-capacitor main ships server:{url:"https://online.vyvehealth.co.uk"} — every store binary loads the live web shell, so every vyve-site main commit is live to everyone within the WKWebView cache window (2-15min). There is no frozen-bundle cohort right now; §5 + §23.4's "members on bundled 1.3" framing is the FUTURE model, not today. Trade-off (walked through with Dean): instant ship + no OTA, but no real offline, 100%-blast-radius on a bad push, App Store 4.2/2.5.2 risk, single point of failure on the live site. Keep for trial; bundle (local shell + Capawesome OTA for code + Supabase/Storage for content) before public/Sage.
+WHAT IT IS: Weekly check-in deepened (branching 5-step flow, ~45 seconds) + AI debrief engine (5-8 sentences, persona voice, tone-matched) + habit recommendation card (suggest-only → settings) + content recommendation card (→ sessions page) + 7-day mood graph on results screen + activity recap strip. Monthly merge deferred until Dean locks cadence.
 
-**Live-session thumbnails are now content, not code (PM-471→474, then Storage migration).** Host/type thumbnails live in Supabase Storage public bucket session-thumbnails; calendar_occurrences.image_url points at the Storage public URL (was /assets/hosts/*.jpg). Hybrid model: per-host photo by default (alex/jamie/lewis/lucy/megan/nicola/stephen/calum/alan/shan .jpg) + type overrides pilates.jpg (Nicola Pilates ×6) / stretching.jpg (Alex "Healthy …" ×20). index.html warmThumbnailPool() prefetches the distinct pool on open; sw.js SWR-caches the Storage origin in vyve-session-thumbs-v1 (PRESERVE-listed, survives deploys). Net: instant + offline + auto-updating, no bundle — adding a thumbnail = Storage upload + DB pointer, no commit/OTA. Host attributions corrected: mindfulness talks moved off Lewis (now hosts zero) to Stephen/Jamie/Megan/Lucy. CLEANUP (backlog): delete one-shot seed-host-thumbnails EF; remove dormant /assets/hosts/*.jpg repo copies; Calum/Alan/Shan photos staged but unscheduled.
+BLOCKED ON (before any code):
+- Lewis: member-facing copy — dimension labels (Energy/Sleep/Stress/Body options), three branch prompts, improvement question wording. Spec doc drafted and ready to send.
+- Phil: negative branch prompt + stress dimension clinical review. Same doc.
+- Dean: monthly cadence decision (calendar-anchored rec, not locked). Does NOT block weekly build.
 
-**QUEUED BUILD (next session, spec'd PM-477):** Habits autotick v2 — Dexie-first instant tick + server history-backfill anchored to first-engagement; walking-workout rule replaces cumulative-distance on the 10-min walk; sleep in hours; home wiring + delete subForHabit. Full runbook at top of tasks/backlog.md. Production-affecting (live hub + production EF + new Dexie store) — build fresh, don't start mid-compaction.
+DECISIONS LOCKED THIS SESSION:
+- Full enriched AI signal block: member_home_state + member_stats + wellbeing_checkins (last 4) + daily_mood_checkins (last 7) + monthly_checkins (last 1) + member_health_daily/samples (HK only). Zero new tables.
+- HealthKit null-safety: <3 nights sleep → don't reference. <500 steps → don't reference. health_kit null → skip entirely.
+- Baseline = member's own 30d average. Never compare against an abstract ideal. Zero-cardio baseline = never flag missing cardio.
+- at_risk / needs_support flags pre-shift AI tone before member answers anything.
+- Habit suggest-only (Option A) — one tap → settings habits section.
+- Sonnet 4 for check-in AI. ~0.68p/call. Once/week cap. ~£14/month at 500 members.
+- New member grace: <7 days joined = no check-in.
+- Returning member: >=7 days inactive = wrapper before step 1.
+- 5 full end-to-end examples written (real cohort members) — in outputs, ready to send to Lewis.
 
-**QUEUED BUILD (spec'd PM-478):** Check-in merge — weekly+monthly into one auto-routed entry (monthly absorbs that week's weekly), one store + type flag, weekly deepened to a multi-dimension profile (dimension taps + driver multi-select). Question wording = Lewis, clinical depth = Phil. CADENCE still OPEN (calendar-anchored is the rec, not locked). Live/replay merge parked as gated placeholder. Runbook in tasks/backlog.md.
+NEXT ACTIONS:
+1. Send spec doc + full examples to Lewis for copy approval.
+2. Send spec doc to Phil for clinical review (negative branch + stress dimension).
+3. Dean: decide monthly cadence (calendar-anchored recommended).
+4. On Lewis copy return → start PM-484 build (fresh session, load brain, go straight to code).
+5. Rotate GITHUB_PAT_CLAUDE (expires 20 Jun 2026) — before next brain commit.
+6. Remaining simulated-live housekeeping: deactivate ~40 stale calendar_occurrences rows; calendar regeneration before 2 Jul; rotate exposed service_role key.
 
 <!--CURRENT_FRONT_END-->
 
