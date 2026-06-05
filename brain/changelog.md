@@ -1,3 +1,15 @@
+## PM-478 (session 3) — Monthly cadence LOCKED: calendar-anchored; all PM-478 decisions now complete; build fully unblocked pending Lewis/Phil copy (2026-06-05)
+
+Short session. One decision closed.
+
+MONTHLY CADENCE LOCKED:
+- Calendar-anchored. First check-in on or after the 1st of the month = the monthly check-in (absorbs that week's weekly — no double check-in in one week).
+- Rationale: the whole platform already runs on calendar months — habit themes, monthly-report cron, charity months, leaderboard/employer "this month" resets. Anniversary-based cadence would be permanently out of phase with every other monthly surface.
+- Late-join grace: member joined within the last 14 days of a month → skip that monthly, start on weeklies, first monthly fires at the next 1st. Members who joined mid-month (before the last 14 days) get their first monthly at the upcoming 1st.
+- Member never sees "weekly" vs "monthly" label — same entry point, same "Check-in" button, depth determined by date routing server-side.
+
+PM-478 is now fully unblocked architecturally. All decisions locked. Build blocked only on Lewis copy approval and Phil clinical sign-off. On receipt → PM-484 build session, load brain, go straight to code.
+
 ## PM-478 (session 2) — Check-in merge fully spec'd with enriched AI signal block; build runbook written; NO code shipped (2026-06-05)
 
 Extended design session with Dean. No code shipped — full build runbook now in tasks/backlog.md replacing the stub.

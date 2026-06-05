@@ -156,13 +156,13 @@ CACHE_NAME suffix bump + vbb-marker +1 in index.html AND settings.html in same c
 - Sonnet 4 for all check-in AI calls
 - New member grace: < 7 days joined, no check-in
 - Returning member: >= 7 days inactive, wrapper before step 1
-- Monthly cadence: OPEN — do not build until Dean decides
+- Monthly cadence: LOCKED — calendar-anchored. First check-in on/after 1st of month = monthly (absorbs that week's weekly). Late-join grace: joined within last 14 days of month → skip that monthly, weeklies only, first monthly at next 1st.
 
 ---
 
 ### DEFERRED
 
-- Monthly cadence routing — after Dean locks calendar-anchored decision
+- Monthly cadence routing — LOCKED calendar-anchored (see decisions). Build this slice in same session as weekly build.
 - Live/replay merge — separate gated backlog item, do not touch
 
 

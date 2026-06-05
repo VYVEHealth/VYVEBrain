@@ -21,7 +21,7 @@ WHAT IT IS: Weekly check-in deepened (branching 5-step flow, ~45 seconds) + AI d
 BLOCKED ON (before any code):
 - Lewis: member-facing copy — dimension labels (Energy/Sleep/Stress/Body options), three branch prompts, improvement question wording. Spec doc drafted and ready to send.
 - Phil: negative branch prompt + stress dimension clinical review. Same doc.
-- Dean: monthly cadence decision (calendar-anchored rec, not locked). Does NOT block weekly build.
+- ~~Cadence~~ LOCKED (see decisions below).
 
 DECISIONS LOCKED THIS SESSION:
 - Full enriched AI signal block: member_home_state + member_stats + wellbeing_checkins (last 4) + daily_mood_checkins (last 7) + monthly_checkins (last 1) + member_health_daily/samples (HK only). Zero new tables.
@@ -33,6 +33,7 @@ DECISIONS LOCKED THIS SESSION:
 - New member grace: <7 days joined = no check-in.
 - Returning member: >=7 days inactive = wrapper before step 1.
 - 5 full end-to-end examples written (real cohort members) — in outputs, ready to send to Lewis.
+- Monthly cadence LOCKED: calendar-anchored. First check-in on/after 1st of month = monthly (absorbs that week's weekly). Late-join grace: joined within last 14 days of month → skip that monthly, start on weeklies, first monthly at next 1st.
 
 NEXT ACTIONS:
 1. Send spec doc + full examples to Lewis for copy approval.
