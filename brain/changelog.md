@@ -1,3 +1,16 @@
+## PM-496 — 2026-06-05
+**Fix: certificates progress page — mind/movement/connect buckets not pulling through**
+
+**Root cause:** `member-dashboard` EF returned no raw pillar activity arrays for `mind_activities`, `movement_activities`, `connect_checkins`. `certificates.html` `computeJourneyBuckets()` received `s.mind = undefined`, counting as 0. Same issue for movement/connect buckets.
+
+**Fix:**
+- `member-dashboard` v76: adds three new parallel PostgREST queries returning raw 30d rows for `mind_activities`, `movement_activities`, `connect_checkins`. Response gains three new keys.
+- `certificates.html`: EF path now calls `computeJourneyBuckets()` from EF data when Dexie hasn't run, merging mind/movement/connect from new arrays with legacy progress totals for habits/workouts/cardio/checkins.
+
+**Files changed:** `certificates.html`, `index.html` (vbb 367→368), `settings.html` (vbb 367→368), `sw.js` (cache suffix pm496-cert-mind-fix-a), `member-dashboard` EF v69→v76 live.
+
+---
+
 ## PM-485 — Strategy: VYVE Command Centre scoped (2026-06-05)
 
 ### What shipped

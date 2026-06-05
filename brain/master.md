@@ -11,7 +11,7 @@ PROVEN / DONE (carry-forward):
 - Simulated-live daemon running, first unattended air confirmed 4 Jun.
 - Session thumbnails in Supabase Storage (PM-471-474). sw.js SWR-caches session-thumbnails bucket.
 - Habits autotick v2 SHIPPED (PM-482/483) — Dexie-first instant tick, walking-workout rule, local evaluator, history backfill with first-engagement anchor.
-- vyve-site HEAD: PM-483. VYVEBrain HEAD: PM-478 session 2 (this commit).
+- vyve-site HEAD: PM-496. VYVEBrain HEAD: PM-478 session 2 (this commit).
 
 **QUEUED BUILD — PM-478: Check-in merge. FULLY SIGNED OFF. BUILD-READY.**
 Full runbook in tasks/backlog.md. All decisions locked in session 2026-06-05.
@@ -408,7 +408,7 @@ Charity + certificate counters stay independently capped at 2/day via `get_chari
 | Function | Status | Purpose |
 |---|---|---|
 | `onboarding` | LIVE v87 (Supabase version 92) | New member onboarding. Two-phase (fast persona/habits/recs + `EdgeRuntime.waitUntil()` for 8-week workout JSON). Stream-aware. **Single-file build** (emails.ts + workouts.ts inlined into index.ts — see §23.79). v87 (PM-420 step 4b): `writeWorkoutPlan` deactivate-old now scoped by surface (`&programme_json->>surface=eq.<surface>`) so re-onboarding one stream can't wipe the other surface's active plan. Carries v86 (deactivate-old+insert-new) + v85 (PM-419 surface stamping) + v84 (PM-408 flat-progression + deterministic movement plan) + v83 (crisis-scan). `ezbr_sha256: 9fbfb39875120dddd4029b7d0974df7d229e2c06c623476a81ff1fbe2d199dd4`. |
-| `member-dashboard` | LIVE | Full dashboard data in one call. Includes `health_connections` + `health_feature_allowed` + `habits` block + `achievements` block. Reads `member_home_state` for `*_this_week` cached counts. |
+| `member-dashboard` | LIVE v76 (PM-496) | Full dashboard data in one call. Returns `mind_activities`, `movement_activities`, `connect_checkins` arrays for certificate bucket computation. Includes `health_connections` + `health_feature_allowed` + `habits` block + `achievements` block. Reads `member_home_state` for `*_this_week` cached counts. |
 | `employer-dashboard` | LIVE | Aggregate employer analytics. API-key auth (no PII). |
 | `wellbeing-checkin` | LIVE v22 | Branching 5-step check-in. Enriched signal from 7 tables (home_state, stats, checkin history, daily mood, monthly, HealthKit). Structured AI debrief: debrief_text + habit/content cards. Grace period check. Writes `ai_interactions`. |
 | `monthly-checkin` | LIVE | Monthly 8-pillar check-in. |

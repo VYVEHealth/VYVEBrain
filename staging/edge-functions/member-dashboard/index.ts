@@ -2,7 +2,8 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyOp, ukLocalDateISO, lastNightWindow, dailyMetricColumn, dailyUnitFor } from './_shared/taxonomy.ts';
 import { getMemberAchievementsPayload } from './_shared/achievements.ts';
-// member-dashboard v69 — PM-68b + PM-70: unified dirty-aware home-state RPC,
+// member-dashboard v70 — PM-496: add mind_activities / movement_activities / connect_checkins to response for certificate progress buckets.
+// PM-68b + PM-70 (original): unified dirty-aware home-state RPC,
 // with charity_total folded in to save one more round trip.
 //
 // CHANGES vs v68:
@@ -242,7 +243,7 @@ serve(async (req)=>{
     const sleepStartIso = sleepStart.toISOString();
     const sleepEndIso = sleepEnd.toISOString();
     const currentWeekStart = isoMondayUtcStr();
-    const [member, homeStateRpc, weeklyGoalsRow, habitsRecent, workoutsRecent, cardioRecent, sessionsRecent, replaysRecent, certificates, healthConnections, memberHabits, dailyToday, sleepLastNight, workoutsToday, cardioToday, habitsThisWeek, achievementsPayload] = await Promise.all([
+    const [member, homeStateRpc, weeklyGoalsRow, habitsRecent, workoutsRecent, cardioRecent, sessionsRecent, replaysRecent, certificates, healthConnections, memberHabits, dailyToday, sleepLastNight, workoutsToday, cardioToday, habitsThisWeek, mindActivities, movementActivities, connectCheckins, achievementsPayload] = await Promise.all([
       q('members', `email=eq.${enc}&select=*`).then((r)=>r[0]),
       rpc('member_home_state_get_fresh', {
         p_email: user.email
@@ -261,6 +262,9 @@ serve(async (req)=>{
       q('workouts', `member_email=eq.${enc}&activity_date=eq.${todayLocal}&select=id`),
       q('cardio', `member_email=eq.${enc}&activity_date=eq.${todayLocal}&select=id,duration_minutes`),
       q('daily_habits', `member_email=eq.${enc}&activity_date=gte.${currentWeekStart}&select=activity_date`),
+      q('mind_activities', `member_email=eq.${enc}&select=activity_date&activity_date=gte.${recent30Start}`),
+      q('movement_activities', `member_email=eq.${enc}&select=activity_date&activity_date=gte.${recent30Start}`),
+      q('connect_checkins', `member_email=eq.${enc}&select=checkin_date&checkin_date=gte.${recent30Start}`),
       getMemberAchievementsPayload(supabaseSr, user.email.toLowerCase(), {
         inflightLimit: 3,
         recentLimit: 8
@@ -448,6 +452,9 @@ serve(async (req)=>{
         checkins: checkinsTotal
       },
       activity_log: activityLog,
+      mind_activities: (mindActivities || []),
+      movement_activities: (movementActivities || []),
+      connect_checkins: (connectCheckins || []),
       weekly_goals: goalsPayload,
       wellbeing: {
         current_score: state.wellbeing_latest_score ?? null,
