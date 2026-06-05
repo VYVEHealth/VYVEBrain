@@ -1,39 +1,13 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-06, PM-508)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-06, PM-516)
 
-**Light mode UI pass COMPLETE across all portal pages (PM-494 through PM-508).** Every page has white cards via semantic tokens. Architecture is clean — one change to theme.css changes card appearance app-wide.
+**PM-516 — wellbeing-checkin v30 LIVE.** Enriched prompt + structured response for submitCheckinNew deepened flow. Dual-path EF: new path (body has `mood`) uses dimensions/drivers/improvement_focus/4-week trend in prompt → structured DEBRIEF/HABIT/CONTENT output. Legacy path (body has `score`) unchanged. max_tokens 800 both paths. daily_mood_7d fetched from DB and returned for chart. Deployed to Supabase as version 54.
 
-**vyve-site HEAD: PM-508, vbb 380, commit 949ee732.**
+**Light mode UI pass COMPLETE across all portal pages (PM-494 through PM-508).** Every page has white cards via semantic tokens.
 
-### Light mode token architecture (§23.60)
-- `--bg: #C8E6E2` — page background (light) / `#0A1F1F` (dark)
-- `--surface-card: #FFFFFF` — all card/pill backgrounds (light) / `var(--fill-subtle)` (dark)
-- `--border-card: rgba(27,120,120,0.18)` — card borders (light) / `var(--line-subtle)` (dark)
-- `--border-card-teal: rgba(27,120,120,0.25)` — stronger teal border
-- `--shadow-card: 0 1px 4px rgba(0,0,0,0.07)` — card shadow
-- `--shadow-card-md: 0 2px 8px rgba(0,0,0,0.08)` — medium card shadow
-All defined in theme.css dark + light blocks. Light-mode override blocks on all pages use these tokens.
-
-### PM-508 shipped (2026-06-06)
-46 remaining pages all received [data-theme="light"] override blocks in one atomic commit:
-- Mind: mind-insights, mind-library, mindfulness-live/rp
-- Focus: all 11 focus/* sub-pages (body-only bg fix, they use /focus.css)
-- Connect: connect-checkin, connect-feed, connect-challenge, connect-calendar
-- Body: workouts, cardio, movement, exercise-library, movement-plans, cardio-history, movement-history, workout-history, personal-bests, activity, shared-workout
-- Sessions/replays: replays, replay-category (--card token defined), yoga-rp, checkin-rp, therapy-rp, events-rp, education-rp, podcast-rp, podcast
-- Other: monthly-checkin, nutrition-setup, settings-account, how-to-pdfs, how-to-videos, apple-health, consent-gate
-
-### PM-507 shipped (2026-06-06)
-Settings (#F0FAF8 → #C8E6E2, --surface-card tokens, .settings-card/.profile-card white), leaderboard (white cards, body #C8E6E2), log-food (.cal-banner + .fd-cal-ring-wrap overrides). vbb 378→379.
-
-### Light mode pass: COMPLETE
-All portal pages now have correct light-mode. No pages outstanding.
-
-**QUEUED: Check-in copy (PM-478/484) — Lewis + Phil sign-off still pending.**
-**PAT expires 20 Jun 2026 — ROTATE URGENTLY, ~14 days left.**
-**Next build: VYVE Command Centre (scoped PM-485). Start after App Store re-approval.**
+**vyve-site HEAD: PM-515, vbb 380 (pre-PM-516).**
 
 <!--CURRENT_FRONT_END-->
 

@@ -1,3 +1,23 @@
+## PM-516 — wellbeing-checkin v30: enriched debrief prompt + structured output (2026-06-06)
+
+### What shipped
+- **wellbeing-checkin EF v30** deployed to Supabase (version 54).
+- Dual-path routing: body contains `mood` → new path; body contains `score` → legacy path (v29 unchanged).
+- New path assembles enriched context before Anthropic call: 4 dimension scores (energy/sleep/stress/body), selected drivers, improvement_focus, 4-week mood trend from DB, score movement vs previous week.
+- New system prompt: persona-voiced, dimension/driver-specific, score-band tone rules, tight 3–4 sentence debrief target. Banlist expanded (added "touch base").
+- Structured output format: DEBRIEF / HABIT (name|reason) / CONTENT (name|reason) — parsed server-side into separate response fields.
+- Response shape for new path: `{debrief_text, habit_name, habit_reason, content_name, content_reason, daily_mood_7d, persona, full}`.
+- daily_mood_7d: fetched from `daily_mood_checkins` table (last 7 days), returned as 7-element array (null for missing days) for client chart.
+- wellbeing_checkins write now stores dimension columns, drivers[], improvement_focus, check_in_type.
+- max_tokens: 800 on both paths (was 1200 on legacy path).
+- Legacy path response unchanged: `{success, ack, recs, persona, full, deferred}`.
+
+### Why
+Weekly check-in debrief was flat — generic wellness copy. Root cause: the EF and submitCheckinNew had drifted. submitCheckinNew sends mood + 4 dimensions + drivers + improvement_focus + free_text, but the EF was still reading score/answer/member from a different payload shape. None of the dimension or driver signal was reaching the AI prompt.
+
+### Files
+- `staging/edge-functions/wellbeing-checkin/index.ts` — v30
+
 ## PM-508 — Light mode full pass: 46 pages — mind, focus, connect, body, sessions, other (2026-06-06)
 
 ### What shipped
