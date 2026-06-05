@@ -1,3 +1,124 @@
+## PM-506 — Light mode: mind sub-pages white, focus.css tokens, completed tick fix (2026-06-06)
+
+### What shipped
+- meditation.html, sleep.html, visualisation.html, journal.html, breathwork.html, affirmations.html: white card pass via --surface-card/--border-card/--shadow-card tokens
+- focus.css: focus-card-surface white, fade band updated to C8E6E2, textarea light fix
+- index.html: focus-card completed tick moved to left panel in light (was hidden under photo in split layout)
+- vbb 377 → 378
+
+---
+
+## PM-505 — Token pass: all light-mode overrides use semantic tokens (2026-06-06)
+
+### What shipped
+- theme.css: added --border-card, --border-card-teal, --shadow-card, --shadow-card-md to both themes
+- All 12 portal pages: replaced hardcoded #fff/rgba values with tokens throughout light-mode override blocks
+- certificates.html: added missing light-mode block
+- One change to theme.css now changes card appearance across the entire app
+- vbb 376 → 377
+
+---
+
+## PM-504 — White cards: engagement-v2 (score/mult/metric/ach) + habits hero/theme (2026-06-06)
+
+### What shipped
+- engagement-v2.html: score hero, multiplier cards, pillar metric cards, streak cells, breakdown cards, tab strip, achievement cards, modals all white via tokens
+- habits.html: page-hero and theme-banner white
+- vbb 375 → 376
+
+---
+
+## PM-503 — Body nav pills white, connect checkin/challenge cards white (2026-06-06)
+
+### What shipped
+- exercise.html: stream-card nav pills white; hero-card white; progress track teal; hero-next teal-tinted
+- connect.html: checkin-card white (was teal gradient); challenge-empty white
+- vbb 374 → 375
+
+---
+
+## PM-502 — Light mode text pass: focus card, mood widget, engagement heading (2026-06-06)
+
+### What shipped
+- index.html: focus-card title/body dark text on light; mood question/labels/icons dark on light
+- engagement.html: inline heading color:#fff → var(--text)
+- vbb 373 → 374
+
+---
+
+## PM-501 — Light mode global pass: white cards + teal fades across all pages (2026-06-06)
+
+### What shipped
+- mind, connect, sessions, running-plan, nutrition, log-food, wellbeing-checkin: white card pass via injected [data-theme=light] blocks
+- mind, exercise, connect: old bg-fade rgba(240,250,248) → rgba(200,230,226) matches --bg
+- sessions, running-plan, nutrition, log-food: body bg #C8E6E2
+- vbb 372 → 373
+
+---
+
+## PM-500 — Fix focus card white bg + hero fade to correct teal (2026-06-06)
+
+### What shipped
+- index-hero-fade: rgba(240,250,248) → rgba(200,230,226) matches --bg
+- focus-card: background-color #fff (2-space indent caused PM-499 miss)
+- vbb 371 → 372
+
+---
+
+## PM-499 — Light mode: deeper bg #C8E6E2, hero fade to bg, focus card white (2026-06-06)
+
+### What shipped
+- theme.css/js: --bg #D8EDEA → #C8E6E2, --bg2 updated, theme-color updated
+- index.html: hero overlay fades to #C8E6E2 on light; focus card white on light; seam fade to white
+- vbb 370 → 371
+
+---
+
+## PM-498 — Light mode: deeper teal bg #D8EDEA (2026-06-06)
+
+### What shipped
+- theme.css: --bg #F0FAF8 → #D8EDEA, --bg2 #E0F2EE → #C4E0DC
+- vbb 369 → 370
+
+---
+
+## PM-497 — 'Coming up this week' → 'Up next' (2026-06-06)
+
+### What shipped
+- index.html: section label copy fix
+- vbb 368 → 369
+
+---
+
+## PM-496 — Light mode pass 3: session cards white, Up next label, elite card white (2026-06-06)
+
+### What shipped
+- index.html: Coming up this week; scroll-card white; cat label teal
+- connect.html: elite card white bg; scroll-card-cat teal
+- vbb 367 → 368
+
+---
+
+## PM-495 — Light mode pass 2: habit circles, elite card, connect dots (2026-06-06)
+
+### What shipped
+- index.html: habit-check border 45%; habit-row white; hk-progress-bar token
+- connect.html: elite streak text #006D6F; dots solid teal; scroll-cards white; checkin-card readable
+- vbb 366 → 367
+
+---
+
+## PM-494 — Light mode contrast pass: cards, pills, check-in buttons (2026-06-06)
+
+### What shipped
+- theme.css: --surface-card token added
+- habits.html: week-dot border, habit cards white
+- certificates.html: track-progress-bar fix, track/stat/cert cards white
+- wellbeing-checkin.html: dim-score-btn + chip borders tokenised
+- vbb 365 → 366
+
+---
+
 ## PM-497 — 2026-06-05
 **Fix: certificate progress buckets now authoritative from SQL**
 

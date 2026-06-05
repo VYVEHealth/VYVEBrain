@@ -1,47 +1,37 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-05, PM-478 session 2)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-06, PM-506)
 
-**Simulated-live is LIVE and fully hands-off.** Runner aired unattended, launchd daemon healthy. See PM-475 for full status.
-**Deployment reality (PM-475):** WHOLE cohort runs server.url-live — every vyve-site main commit is live to everyone within WKWebView cache window (2-15min). No frozen-bundle cohort right now.
-**Live DB is canonical — never trust counts cached here.**
+**Light mode UI pass COMPLETE (PM-494 through PM-506).** All portal pages have white cards via semantic tokens. Architecture is clean — one change to theme.css changes card appearance app-wide.
 
-PROVEN / DONE (carry-forward):
-- Simulated-live daemon running, first unattended air confirmed 4 Jun.
-- Session thumbnails in Supabase Storage (PM-471-474). sw.js SWR-caches session-thumbnails bucket.
-- Habits autotick v2 SHIPPED (PM-482/483) — Dexie-first instant tick, walking-workout rule, local evaluator, history backfill with first-engagement anchor.
-- vyve-site HEAD: PM-497. VYVEBrain HEAD: PM-478 session 2 (this commit).
+**vyve-site HEAD: PM-506, vbb 378.**
 
-**QUEUED BUILD — PM-478: Check-in merge. FULLY SIGNED OFF. BUILD-READY.**
-Full runbook in tasks/backlog.md. All decisions locked in session 2026-06-05.
+### Light mode token architecture (§23.60)
+- `--bg: #C8E6E2` — page background (light) / `#0A1F1F` (dark)
+- `--surface-card: #FFFFFF` — all card/pill backgrounds (light) / `var(--fill-subtle)` (dark)
+- `--border-card: rgba(27,120,120,0.18)` — card borders (light) / `var(--line-subtle)` (dark)
+- `--border-card-teal: rgba(27,120,120,0.25)` — stronger teal border
+- `--shadow-card: 0 1px 4px rgba(0,0,0,0.07)` — card shadow
+- `--shadow-card-md: 0 2px 8px rgba(0,0,0,0.08)` — medium card shadow
+All defined in theme.css dark + light blocks. Light-mode override blocks on all pages use these tokens.
 
-WHAT IT IS: Weekly check-in deepened (branching 5-step flow, ~45 seconds) + AI debrief engine (5-8 sentences, persona voice, tone-matched) + habit recommendation card (suggest-only → settings) + content recommendation card (→ sessions page) + 7-day mood graph on results screen + activity recap strip. Monthly merge deferred until Dean locks cadence.
+### Light mode remaining (continue next session)
+Pages still needing review/fixes (send photos to new session):
+- Settings.html — not fully checked
+- Leaderboard — not fully checked  
+- Sessions page — not fully checked
+- Running plan — not fully checked
+- Nutrition — not fully checked
+- Food log — not fully checked
+- Mind sub-pages deeper (meditation player, breathwork player states)
+- Workouts detail pages within Body
 
-BLOCKED ON (before any code):
-- Lewis: member-facing copy — dimension labels (Energy/Sleep/Stress/Body options), three branch prompts, improvement question wording. Spec doc drafted and ready to send.
-- Phil: negative branch prompt + stress dimension clinical review. Same doc.
-- ~~Cadence~~ LOCKED (see decisions below).
+### Continuing work handoff
+Next session brief: "Load VYVE brain. We're mid light-mode UI pass (PM-494 to PM-506, vbb 378). Token architecture is clean — --surface-card/--border-card/--shadow-card in theme.css. Continue checking remaining pages (settings, leaderboard, sessions, running plan, nutrition, food log) and any Mind/Body sub-pages not yet checked. Same pattern: white cards via tokens, teal bg #C8E6E2, fades to rgba(200,230,226). Claim PM-507+."
 
-DECISIONS LOCKED THIS SESSION:
-- Full enriched AI signal block: member_home_state + member_stats + wellbeing_checkins (last 4) + daily_mood_checkins (last 7) + monthly_checkins (last 1) + member_health_daily/samples (HK only). Zero new tables.
-- HealthKit null-safety: <3 nights sleep → don't reference. <500 steps → don't reference. health_kit null → skip entirely.
-- Baseline = member's own 30d average. Never compare against an abstract ideal. Zero-cardio baseline = never flag missing cardio.
-- at_risk / needs_support flags pre-shift AI tone before member answers anything.
-- Habit suggest-only (Option A) — one tap → settings habits section.
-- Sonnet 4 for check-in AI. ~0.68p/call. Once/week cap. ~£14/month at 500 members.
-- New member grace: <7 days joined = no check-in.
-- Returning member: >=7 days inactive = wrapper before step 1.
-- 5 full end-to-end examples written (real cohort members) — in outputs, ready to send to Lewis.
-- Monthly cadence LOCKED: calendar-anchored. First check-in on/after 1st of month = monthly (absorbs that week's weekly). Late-join grace: joined within last 14 days of month → skip that monthly, start on weeklies, first monthly at next 1st.
-
-NEXT ACTIONS:
-1. Send spec doc + full examples to Lewis for copy approval.
-2. Send spec doc to Phil for clinical review (negative branch + stress dimension).
-3. Dean: decide monthly cadence (calendar-anchored recommended).
-4. On Lewis copy return → start PM-484 build (fresh session, load brain, go straight to code).
-5. Rotate GITHUB_PAT_CLAUDE (expires 20 Jun 2026) — **ROTATE URGENTLY, 15 days left**. Generate new PAT on GitHub, update vault.decrypted_secrets.
-6. Remaining simulated-live housekeeping: deactivate ~40 stale calendar_occurrences rows; calendar regeneration before 2 Jul; rotate exposed service_role key.
+**QUEUED: Check-in copy (PM-478/484) — Lewis + Phil sign-off still pending.**
+**PAT expires 20 Jun 2026 — ROTATE URGENTLY, ~14 days left.**
 
 <!--CURRENT_FRONT_END-->
 
