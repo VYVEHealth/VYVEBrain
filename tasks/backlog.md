@@ -1,8 +1,8 @@
-## QUEUED BUILD — Check-in merge (PM-478)
+## IN PROGRESS — Check-in merge (PM-484 / PM-478 spec)
 ### Weekly deepened + monthly merge + AI debrief engine
-### Spec locked 2026-06-05. Build pending Lewis copy + Phil clinical sign-off + Dean cadence decision.
+### Structure shipped PM-484 (2026-06-05). Pending Lewis copy + Phil clinical sign-off for question wording.
 
-**Status:** fully spec'd, NO code shipped. Build in a fresh session. Member-facing change on the whole server.url cohort. Claim fresh PM number(s) at commit time.
+**Status:** DB migration + EF v22 + HTML branching flow LIVE. Question copy is placeholder pending Lewis/Phil sign-off. Build in a fresh session. Member-facing change on the whole server.url cohort. Claim fresh PM number(s) at commit time.
 
 **Blocked on:**
 - Lewis: member-facing copy for dimension labels, branch prompts, improvement question

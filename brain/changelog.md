@@ -1,3 +1,22 @@
+## PM-484 — Check-in merge: branching flow + enriched AI debrief engine (2026-06-05)
+
+### What shipped
+- **DB migration**: 8 new columns on `wellbeing_checkins` — `check_in_type` (text, default 'weekly'), `dimension_energy/sleep/stress/body` (smallint 1-3, nullable), `branch` (text), `drivers` (text[]), `improvement_focus` (text). All nullable, 30 existing rows defaulted to weekly, constraints applied.
+- **wellbeing-checkin EF v22** (Supabase deploy version 48): full enriched signal assembly from 7 existing tables (`member_home_state`, `member_stats`, `wellbeing_checkins` last 4, `daily_mood_checkins` last 7, `monthly_checkins` last 1, `member_health_daily/samples` for HealthKit). HealthKit null-safety (sleep <3 nights = null, steps <500 = null, no HK = null block omitted). Branch computed server-side from mood + dims. tone_required derived from branch (with at_risk/needs_support override to empathetic). Anthropic call: claude-sonnet-4, 600 max_tokens. Structured response parsing: `debrief_text` / `habit_name` / `habit_reason` / `content_name` / `content_reason`. Grace period check (< 7 days joined). DB upsert on member_email+iso_week+iso_year conflict.
+- **wellbeing-checkin.html rebuild**: 5-step branching flow replacing single slider. Step 1: mood 1-10. Step 2: 4 dimension taps (energy/sleep/stress/body, 3 options each). Step 3: branch-adaptive multi-select driver chips. Step 4: branch-adaptive single-select improvement focus. Step 5: optional free text. Returns member card (7+ days inactive). Grace state for new members <7 days. Results screen: activity recap strip (habits/workouts/cardio vs goals), 7-day mood bar chart (graceful no-data state), AI debrief prose, habit card + content card with deep links. All existing bus wiring, offline queue, auth, service worker registration preserved.
+- **vbb**: Update 356 → 357. sw.js CACHE_NAME: pm484-checkin-merge-a.
+- **vyve-site commit**: `97756ebb`
+
+### Pending (blocked on sign-off)
+- Lewis: copy approval for dimension labels, branch prompt text, improvement focus options
+- Phil: clinical review of negative branch prompt + stress dimension
+
+### Key gotchas / §23 candidates
+- wellbeing-checkin EF v22 uses `mood` field name (not `score`) — client sends `mood`, EF reads `body.mood`
+- dim values 1/2/3 map to low/mid/high (not 1-10 scale) — different from score_* columns
+- `check_in_type` column CHECK constraint currently only allows 'weekly'|'monthly' — monthly routing is deferred
+- branch computation is mirrored client + server (computeBranchClient in HTML, computeBranch in EF) — keep in sync if thresholds change
+
 ## PM-478 (session 3) — Monthly cadence LOCKED: calendar-anchored; all PM-478 decisions now complete; build fully unblocked pending Lewis/Phil copy (2026-06-05)
 
 Short session. One decision closed.

@@ -40,7 +40,7 @@ NEXT ACTIONS:
 2. Send spec doc to Phil for clinical review (negative branch + stress dimension).
 3. Dean: decide monthly cadence (calendar-anchored recommended).
 4. On Lewis copy return → start PM-484 build (fresh session, load brain, go straight to code).
-5. Rotate GITHUB_PAT_CLAUDE (expires 20 Jun 2026) — before next brain commit.
+5. Rotate GITHUB_PAT_CLAUDE (expires 20 Jun 2026) — **ROTATE URGENTLY, 15 days left**. Generate new PAT on GitHub, update vault.decrypted_secrets.
 6. Remaining simulated-live housekeeping: deactivate ~40 stale calendar_occurrences rows; calendar regeneration before 2 Jul; rotate exposed service_role key.
 
 <!--CURRENT_FRONT_END-->
@@ -410,7 +410,7 @@ Charity + certificate counters stay independently capped at 2/day via `get_chari
 | `onboarding` | LIVE v87 (Supabase version 92) | New member onboarding. Two-phase (fast persona/habits/recs + `EdgeRuntime.waitUntil()` for 8-week workout JSON). Stream-aware. **Single-file build** (emails.ts + workouts.ts inlined into index.ts — see §23.79). v87 (PM-420 step 4b): `writeWorkoutPlan` deactivate-old now scoped by surface (`&programme_json->>surface=eq.<surface>`) so re-onboarding one stream can't wipe the other surface's active plan. Carries v86 (deactivate-old+insert-new) + v85 (PM-419 surface stamping) + v84 (PM-408 flat-progression + deterministic movement plan) + v83 (crisis-scan). `ezbr_sha256: 9fbfb39875120dddd4029b7d0974df7d229e2c06c623476a81ff1fbe2d199dd4`. |
 | `member-dashboard` | LIVE | Full dashboard data in one call. Includes `health_connections` + `health_feature_allowed` + `habits` block + `achievements` block. Reads `member_home_state` for `*_this_week` cached counts. |
 | `employer-dashboard` | LIVE | Aggregate employer analytics. API-key auth (no PII). |
-| `wellbeing-checkin` | LIVE | Weekly check-in flow. AI recs from activity + persona. Writes `ai_interactions` audit. |
+| `wellbeing-checkin` | LIVE v22 | Branching 5-step check-in. Enriched signal from 7 tables (home_state, stats, checkin history, daily mood, monthly, HealthKit). Structured AI debrief: debrief_text + habit/content cards. Grace period check. Writes `ai_interactions`. |
 | `monthly-checkin` | LIVE | Monthly 8-pillar check-in. |
 | `log-activity` | LIVE | PWA activity logging. Also serves as `evaluate_only` endpoint for trigger pages that write direct to PostgREST. Inline achievement evaluation + push fan-out under `EdgeRuntime.waitUntil()`. |
 | `log-perf` | LIVE | Anonymous-friendly client telemetry sink (per-page TTFB / FP / FCP / LCP / INP / custom `auth_rdy` / `paint_done`). JWT-validated. Writes `perf_telemetry`. |
@@ -1065,6 +1065,12 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ## 19. Current status
 
+### PM-484 — Check-in merge: branching 5-step flow + enriched AI debrief (2026-06-05)
+
+DB migration landed (8 new columns on `wellbeing_checkins`). `wellbeing-checkin` EF updated to v22 with full enriched signal assembly from 7 tables and structured AI response. `wellbeing-checkin.html` rebuilt as 5-step branching flow with new results screen. vbb Update 357. **Pending Lewis copy + Phil clinical sign-off for question wording** — structure is live, placeholders active.
+
+
+
 Rolling 3-5 most recent ship narratives. Anything older lives in `brain/changelog.md` with full detail; §19 is a status board, not an archive.
 
 ### PM-471→475 — Live-session host corrections + hybrid thumbnail model + Storage migration + on-device caching + deployment-model correction (4 Jun 2026)
@@ -1168,6 +1174,8 @@ Achievements system overhaul (PM-94) — post-trial, 2-3 sessions, own campaign.
 ---
 
 ## 23. Known gotchas & architecture rules
+
+| `dim values 1/2/3` | `dimension_energy/sleep/stress/body` use 1/2/3 (low/mid/high tap), not the 1-10 scale of `score_*` columns. Branch thresholds: mood≤4 OR stress=1 OR energy=1 → negative; mood≥7 + 2×dim=3 → positive; else neutral. Mirror in EF `computeBranch` and client `computeBranchClient`. |
 
 Curated and renumbered. Rules organised by topic family with monotonic numbering within each family. Promotion criterion: candidate after first occurrence, hard rule after second-or-third recurrence. Historical lineage preserved in `brain/changelog.md` — read the PM cited on each rule for the worked example.
 
