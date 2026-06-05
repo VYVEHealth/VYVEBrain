@@ -1,3 +1,12 @@
+## PM-497 — 2026-06-05
+**Fix: certificate progress buckets now authoritative from SQL**
+
+`get_certificate_buckets_for(p_email)` SQL function created (mirrors `get_certificate_buckets` but per-member). `member-dashboard` v77 calls it in the parallel fan-out and returns `_buckets: {habits,mind,body,connect,checkins}` on the response. `certificates.html` simplified — EF path now just assigns `data._buckets` directly, removes all client-side recompute logic that was producing wrong body/connect counts.
+
+vbb 368→369. sw cache pm497-cert-buckets-b.
+
+---
+
 ## PM-496 — 2026-06-05
 **Fix: certificates progress page — mind/movement/connect buckets not pulling through**
 
