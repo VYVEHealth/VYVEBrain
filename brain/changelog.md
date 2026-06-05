@@ -1,3 +1,37 @@
+## PM-485 — Strategy: VYVE Command Centre scoped (2026-06-05)
+
+### What shipped
+- Strategy session only — no code shipped.
+
+### Decisions made
+- VYVE Command Centre confirmed as next major build project post-App Store resubmission.
+- Sequencing agreed: MVP locked → app bundled → App Store resubmit → Apple review window (~1-2 weeks) → build Command Centre → app approved → back to product iteration.
+- Stack confirmed: GitHub Pages (front end), Supabase Auth (login), Supabase Storage (documents), Supabase DB (tasks/roles/people), Edge Functions + Anthropic API (AI layer). Same stack as VYVE portal — no new tools.
+- Hosting: private web app, not native app. PWA on home screen is sufficient for internal tooling.
+- Document storage: Supabase Storage, NOT Google Drive. Keeps everything in one ecosystem, enables RLS, enables AI referencing metadata.
+
+### Command Centre modules scoped (v1 target: Apple review window)
+1. Admin CRM — view/edit any member profile, habits, workout, persona. Critical before first enterprise contract.
+2. Task & role management — assign work, people see their jobs, mark done. Solves immediate team stagnation problem.
+3. Document hub — upload, categorise, notify team on new uploads. Solves Calum/Drive visibility problem.
+4. App health dashboard — VYVE errors and key metrics surfaced in-app, not buried in email.
+5. Meeting scheduling — generate Riverside links, send calendar invites.
+
+### Future phases (not v1)
+- Partner/PT portal — B2B2C model, PTs manage clients within VYVE ecosystem.
+- SSO integration — enterprise requirement, 3-6 month roadmap item.
+- API access for enterprise data export.
+- ISO 27001 / pen testing — 3-6 month roadmap.
+
+### Enterprise readiness gaps identified (Sage-specific)
+- Cyber liability insurance — get quote this week (Lewis action).
+- MSA template — solicitor to draft, one-off cost (Lewis action).
+- Enterprise onboarding playbook — how 200 Sage employees get onto VYVE.
+- SSO roadmap — present as roadmap not blocker at initial proposal stage.
+- Admin CRM — must exist before Sage signs so member management doesn't require direct DB access.
+
+---
+
 ## PM-484 — Check-in merge: branching flow + enriched AI debrief engine (2026-06-05)
 
 ### What shipped

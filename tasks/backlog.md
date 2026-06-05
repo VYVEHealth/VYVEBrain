@@ -1,3 +1,25 @@
+## NEXT — VYVE Command Centre (post-App Store resubmission)
+### Internal ops, admin CRM, document hub, app health monitoring
+
+**Trigger:** Start during Apple review window after app resubmission.
+
+**v1 modules (priority order):**
+1. Admin CRM — view/edit member profiles, habits, workouts, personas. Critical before first enterprise contract.
+2. Task & role management — assign work to the 11-person team, status visibility, output upload.
+3. Document hub — Supabase Storage, upload/categorise/notify. Replaces Google Drive for internal docs.
+4. App health dashboard — VYVE error feed, key metrics, alerts surfaced here not email inbox.
+5. Meeting scheduling — Riverside link generation, calendar invites.
+
+**Stack:** GitHub Pages + Supabase Auth + Supabase Storage + Supabase DB + Edge Functions + Anthropic API. New repo: vyve-command-centre (admin.vyvehealth.co.uk already exists).
+
+**Future phases:** PT/partner portal (B2B2C), SSO integration, API access for enterprise data export.
+
+**Architecture note:** Design for multi-tenancy from day one — PT portal and employer access require role-based permissions that must be in the schema before v1 ships.
+
+**Session start:** Load VYVEBrain, claim PM number, spec DB schema first before any parallel build sessions open.
+
+---
+
 ## IN PROGRESS — Check-in merge (PM-484 / PM-478 spec)
 ### Weekly deepened + monthly merge + AI debrief engine
 ### Structure shipped PM-484 (2026-06-05). Pending Lewis copy + Phil clinical sign-off for question wording.
