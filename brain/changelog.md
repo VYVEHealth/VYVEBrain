@@ -1,3 +1,22 @@
+## PM-478 (session 2) — Check-in merge fully spec'd with enriched AI signal block; build runbook written; NO code shipped (2026-06-05)
+
+Extended design session with Dean. No code shipped — full build runbook now in tasks/backlog.md replacing the stub.
+
+KEY DECISIONS ADDED THIS SESSION (beyond the initial PM-478 spec):
+- AI signal block fully designed using live DB analysis. Sources locked: member_home_state (this_week counts, goals, streaks), member_stats (30d baselines, at_risk, needs_support, programme context), wellbeing_checkins last 4 (weekly mood trend), daily_mood_checkins last 7 (daily trend), monthly_checkins last 1 (dimension score history), member_health_daily + member_health_samples (HealthKit steps + sleep). All existing tables — zero new infrastructure.
+- Baseline comparison: member's own 30d average is the benchmark. AI never flags a zero-cardio week for a member whose baseline cardio is 0.
+- HealthKit null-safety: < 3 nights sleep data → don't reference sleep. < 500 steps → don't reference steps. health_kit null → skip entirely. Self-reported dimension taps are always the fallback.
+- monthly_checkins dimension scores (sleep/stress/energy/social/physical going back months) used for pattern detection — "sleep has been low for two months" vs "sleep improved since last month".
+- AI output upgraded: 5-8 sentences flowing prose (was 3-4). Habit recommendation card (suggest-only, links to settings habits section — Option A). Content recommendation card (links to sessions page). Both filtered from live service_catalogue + habit_library data.
+- Habit pre-filtering: pass 6-8 relevant habits to AI based on branch + improvement_focus, not all 34. Keeps prompt lean, improves relevance.
+- Cost confirmed: ~0.68p per check-in on Sonnet 4. Capped once/week. ~£14/month at 500 members. No optimisation until 5,000+ check-ins/month.
+- Sonnet 4 confirmed for this call — quality on empathetic/HAVEN cases justifies over Haiku.
+- Activity recap strip added to results screen (this week vs goals, no AI, pure data display).
+- 7-day mood graph on results screen reads existing daily_mood_checkins — no new table.
+- New member grace (< 7 days): no check-in offered.
+- Returning member (>= 7 days inactive): wrapper card before step 1.
+- Monthly cadence still OPEN — Dean undecided. Do not build cadence slice until locked.
+
 ## PM-478 — Check-in merge fully spec'd (weekly+monthly -> one auto-routed entry; weekly deepened); live/replay merge parked as gated placeholder; NO code shipped (2026-06-05)
 
 Continuation of the PM-477 session. Design discussion with Dean on consolidating duplicated entry points (originated from Alan's "the More section is too much" feedback — Dean & Claude agree breadth isn't the problem, duplicated entry points are). No code shipped; build queued (runbook top of tasks/backlog.md).

@@ -1,26 +1,170 @@
-## QUEUED BUILD — Check-in merge (weekly+monthly into one; weekly deepened) — spec'd PM-478, build pending
+## QUEUED BUILD — Check-in merge (PM-478)
+### Weekly deepened + monthly merge + AI debrief engine
+### Spec locked 2026-06-05. Build pending Lewis copy + Phil clinical sign-off + Dean cadence decision.
 
-**Status:** spec'd, NO code shipped. Build in a fresh session. Member-facing IA + content change -> Lewis owns question wording, Phil clears anything clinically deeper. ONE cadence decision is still OPEN (below) — settle before/at build. Claim fresh PM at commit time. Reasoning in changelog PM-478.
+**Status:** fully spec'd, NO code shipped. Build in a fresh session. Member-facing change on the whole server.url cohort. Claim fresh PM number(s) at commit time.
 
-GOAL: collapse the two duplicated check-in surfaces (wellbeing-checkin.html weekly + the monthly check-in) into one auto-routed entry, and deepen the weekly so it's not so thin vs the monthly.
+**Blocked on:**
+- Lewis: member-facing copy for dimension labels, branch prompts, improvement question
+- Phil: negative branch prompt + stress dimension clinical review
+- Dean: monthly cadence trigger decision (calendar-anchored rec, not locked)
 
-DECISIONS LOCKED:
-- One auto-routed "Check-in" entry; the monthly absorbs that week's weekly (no double check-in in a week).
-- One store with a type (weekly|monthly) discriminator — don't fork storage. checkin_questions already versions both cadences.
-- Weekly deepened from {1 feeling slider + optional free text} -> {a few dimension taps (energy/sleep/stress + overall mood) + a "what's affecting you this week?" driver multi-select + optional free text}. Keep ~30-60s (all taps) so weekly completion holds.
-- Layering: weekly = quick multi-dimension profile; monthly = weekly profile + the deep reflective questions.
+Everything else is build-ready. Structure, data sources, AI rules, fallbacks all locked.
 
-BUILD NOTES:
-- Question wording is a LEWIS deliverable; clinically-deeper dimensions need PHIL sign-off. Build structure with placeholder questions if needed; gate live copy on Lewis.
-- Surfaces: wellbeing-checkin.html (weekly), the monthly check-in page, checkin_questions table (versioned weekly+monthly sets), wellbeing-checkin EF (AI recs), weekly_scores / wellbeing_checkins (add type discriminator).
-- Keep the AI recommendation step; richer weekly inputs (dimensions + drivers) should feed the persona-voice recs.
+---
 
-OPEN — SETTLE BEFORE BUILD:
-- CADENCE: when does the monthly fire? Claude's rec (NOT locked): calendar-anchored — first check-in on/after the 1st = the monthly, reflecting the month just gone (keeps phase with habit themes / monthly-report / charity months / leaderboard+employer "this month"). Late-join grace: join within ~last 2 weeks of a month -> skip that monthly, first monthly next boundary. Dean undecided — do NOT build cadence until locked.
+### WHY
 
-## QUEUED (GATED) — Live + replay merge — placeholder, do NOT build yet
+The current weekly check-in is one mood slider + optional free text. It produces thin AI recommendations that don't reflect what the member actually did, how their week compared to their normal, or what's driven their mood. A member can score 4 after a strong week because of one bad day — the AI has no way to know. The monthly check-in is substantially better but lives as a separate surface duplicating the entry point. This build collapses both into one intelligent, branching, data-rich check-in that produces a genuine weekly debrief.
 
-One channel surface per stream (live/upcoming on top, replays below) replacing the separate 8 *-live + 8 *-rp shells. Right pattern, but GATED: simulated-live runner aired its first unattended broadcast 4 Jun and is still in its observation window — touching the live shells mid-launch is the risky move. Revisit only after the daemon has several clean air-days; spec properly then.
+---
+
+### BUILD ORDER
+
+**1. DB — Add columns to wellbeing_checkins**
+
+Add: `check_in_type` (text, default 'weekly', values: weekly|monthly), `dimension_energy` (smallint, nullable), `dimension_sleep` (smallint, nullable), `dimension_stress` (smallint, nullable), `dimension_body` (smallint, nullable), `branch` (text, nullable), `drivers` (text[], nullable), `improvement_focus` (text, nullable). All nullable — existing rows unaffected.
+
+VERIFY: migration applied, existing rows intact.
+
+**2. DB — checkin_questions new weekly version**
+
+Add new weekly question set version to `checkin_questions` reflecting deepened structure (dimension taps + branching driver + improvement question). Keep existing monthly set intact. New weekly version active from build date forward.
+
+**3. wellbeing-checkin EF — enriched signal assembly**
+
+Before the Anthropic call, assemble full signal block. Sources (all existing tables, no new infrastructure):
+
+- `member_home_state` WHERE member_email — this_week counts (habits/workouts/cardio/sessions), goals (target vs done), streaks (current + best per type)
+- `member_stats` WHERE member_email — baseline_30d averages per activity type, at_risk, needs_support, programme name + week + active flag
+- `wellbeing_checkins` ORDER BY created_at DESC LIMIT 4 — weekly_mood_last_4 scores
+- `daily_mood_checkins` WHERE mood_date >= today-7 — daily_mood_7d array (null for missing days)
+- `monthly_checkins` ORDER BY created_at DESC LIMIT 1 — last monthly dimension scores (sleep/stress/energy/social/physical)
+- `member_health_daily` WHERE date >= today-7 — steps per day (HealthKit members only)
+- `member_health_samples` WHERE sample_type='sleep' AND start_at >= today-7 — sleep per night (HealthKit only)
+- `session_views` + `replay_video_views` WHERE logged_at >= week_start — session_types watched this week
+
+HealthKit null-safety (applied during assembly, before prompt build):
+- Sleep: count nights with data in the week. If < 3 → sleep_avg_hrs: null, sleep_data_confidence: 'insufficient'
+- Steps: if weekly sum < 500 (phone left home) → steps_this_week: null
+- No HealthKit connection → health_kit: null
+- AI prompt instruction: never reference any field that is null — skip it entirely
+
+Derive server-side before call:
+- tone_required: positive branch → 'affirming', negative → 'empathetic', neutral → 'balanced'
+- returning_member: days_since_last_activity >= 7
+- branch: mood >= 7 AND >= 2 positive dims → positive; mood <= 4 OR stress=high OR energy=low → negative; else neutral
+
+Pre-filter habits list to 6-8 relevant to branch + improvement_focus (do not pass all 34 to the model). Pre-filter content list to 4-5 relevant options.
+
+VERIFY: real invocation against a member with full data. Check null fields absent from output. Check tone on negative branch.
+
+**4. wellbeing-checkin EF — Anthropic call + response parsing**
+
+Model: claude-sonnet-4 (keep — quality matters on empathetic cases).
+Max tokens: 600 (up from previous cap).
+
+Update system prompt with full AI hard rules:
+1. tone_required mandatory — never open with positivity when empathetic
+2. Compare against member's own baseline_30d, never an abstract ideal. If baseline cardio = 0, never flag missing cardio.
+3. daily_mood_7d contrast detection — mostly high trend + low weekly mood = likely one hard day, say so. Consistently low trend = acknowledge and support, no contrast framing.
+4. monthly_scores_last for pattern detection — sleep low 2+ months = name the pattern. Improved = acknowledge progress.
+5. Reference this_week vs baseline: "two workouts is ahead of your usual" not "you only did two workouts"
+6. Active streaks are motivational fuel — reference them. Never mention a streak of 0.
+7. Null fields are invisible — never reference absent data.
+8. at_risk / needs_support flags silently shift tone before member answers anything.
+9. 5-8 sentences flowing prose — no bullet points, no headers, no lists.
+10. End with one concrete suggestion tied to improvement_focus.
+11. New line: HABIT: [name from filtered list] — [one sentence why]
+12. New line: CONTENT: [name from filtered list] — [one sentence why]
+
+Parse response server-side: split on HABIT: and CONTENT: lines, return as structured fields (debrief_text, habit_name, habit_reason, content_name, content_reason).
+
+**5. wellbeing-checkin.html — Question flow rebuild**
+
+Replace single-slider flow with 5-step branching flow:
+
+Step 1: mood slider 1-10 (unchanged UI)
+Step 2: dimension taps — 4 cards (Energy/Sleep/Stress/Body), 3 options each, single-tap select. Labels per Lewis sign-off.
+Step 3: branching driver question — multi-select chips. Prompt text + options set by branch computed from steps 1+2. Same branch thresholds as server.
+Step 4: improvement question — single-select chips. Prompt adapts (positive vs neutral/negative). Positive branch includes "Nothing — I'm happy with everything" option.
+Step 5: free text optional (unchanged).
+
+Progress indicator shown across all steps.
+
+New member grace: if days_since_joined < 7 → show "come back on [date]" state, no flow.
+Returning member: if days_since_last_activity >= 7 → show wrapper card before step 1: "Welcome back — we've missed you. Take a moment to check in."
+
+**6. wellbeing-checkin.html — Results screen**
+
+Three components rendered after EF response:
+
+6a — Activity recap strip: habits/workouts/cardio/sessions this week vs goals. Read from EF response. Simple count display, no AI.
+
+6b — 7-day mood graph: bar chart from daily_mood_checkins last 7 days. Y axis 1-5 (Not great/Meh/Good/Great/Amazing). Graceful "no data" state if < 3 entries.
+
+6c — AI debrief: prose paragraph. Below it two cards:
+  - Habit card: habit_name + habit_reason + "Manage my habits →" deep link to settings habits section
+  - Content card: content_name + content_reason + link to sessions page
+
+**7. sw.js + vbb-marker atomic bump**
+
+CACHE_NAME suffix bump + vbb-marker +1 in index.html AND settings.html in same commit. PM-299 invariant.
+
+**8. VERIFY end-to-end**
+
+- New member (< 7 days joined): grace state shown, no flow
+- Returning member (>= 7 days inactive): wrapper shown before step 1
+- Positive branch: affirming opener, "nothing" option present, habit from movement/nutrition pot
+- Negative branch: empathetic opener, never upbeat, habit from sleep/mindfulness pot
+- HealthKit member, patchy sleep (< 3 nights): sleep not referenced in debrief
+- Non-HealthKit member: no HK fields referenced anywhere
+- at_risk=true member: tone pre-shifted before questions answered
+- Monthly cadence slice: SKIP until Dean locks cadence decision
+
+---
+
+### KEY FILES
+
+- wellbeing-checkin.html (full page rebuild)
+- wellbeing-checkin EF (signal assembly + Anthropic call + response parsing)
+- DB migration (wellbeing_checkins new columns)
+- checkin_questions (new weekly version row)
+- sw.js + index.html + settings.html (vbb-marker + cache bump)
+
+---
+
+### COST
+
+~0.68p per check-in on Sonnet 4 (~1,100 input + ~350 output tokens). Capped once/week. ~£14/month at 500 members. No optimisation needed until 5,000+ active check-ins/month.
+
+---
+
+### DECISIONS LOCKED 2026-06-05
+
+- One auto-routed entry replaces separate weekly + monthly surfaces
+- One store (wellbeing_checkins) + type discriminator — no forked storage
+- Weekly deepened to branching multi-dimension flow (~45 seconds)
+- Branch thresholds: mood >= 7 + 2 positive dims = positive; mood <= 4 OR stress overwhelming OR energy drained = negative; else neutral
+- Habit recommendation: suggest only (Option A) — one tap to settings habits section. No auto-swap, no cap enforcement in this flow.
+- Content recommendation: one link to relevant session/replay category
+- AI signal enriched with full member context: home_state + stats + trends + HealthKit
+- HealthKit null-safety: < 3 nights sleep = don't reference; < 500 steps = don't reference; null health_kit = skip entirely
+- Baseline = member's own 30d average, never an abstract ideal
+- tone_required derived server-side from branch
+- 5-8 sentence debrief, flowing prose, no bullet points
+- Sonnet 4 for all check-in AI calls
+- New member grace: < 7 days joined, no check-in
+- Returning member: >= 7 days inactive, wrapper before step 1
+- Monthly cadence: OPEN — do not build until Dean decides
+
+---
+
+### DEFERRED
+
+- Monthly cadence routing — after Dean locks calendar-anchored decision
+- Live/replay merge — separate gated backlog item, do not touch
+
 
 ## QUEUED BUILD — Habits autotick v2 (Dexie-first instant + server history-backfill) — spec'd PM-477, build pending
 
