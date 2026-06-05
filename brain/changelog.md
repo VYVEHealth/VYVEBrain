@@ -1,3 +1,27 @@
+## PM-508 — Light mode full pass: 46 pages — mind, focus, connect, body, sessions, other (2026-06-06)
+
+### What shipped
+- **46 portal pages** received [data-theme="light"] override blocks in one atomic commit (949ee732)
+- Mind: mind-insights.html, mind-library.html, mindfulness-live.html, mindfulness-rp.html
+- Focus sub-pages (11): all focus/*.html — body bg #C8E6E2 only (shared /focus.css handles card tokens)
+- Connect sub-pages: connect-checkin.html, connect-feed.html, connect-challenge.html, connect-calendar.html
+- Body sub-pages: workouts.html, cardio.html, movement.html, exercise-library.html, movement-plans.html, cardio-history.html, movement-history.html, workout-history.html, personal-bests.html, activity.html, shared-workout.html
+- Sessions/replays: replays.html + replay-category.html (also defined --card:#fff / --card-border token), yoga-rp, checkin-rp, therapy-rp, events-rp, education-rp, podcast-rp, podcast.html
+- Other: monthly-checkin.html, nutrition-setup.html, settings-account.html, how-to-pdfs.html, how-to-videos.html, apple-health.html, consent-gate.html
+- vbb 379 → 380, sw cache: pm508-full-light-pass
+
+---
+
+## PM-507 — Light mode: settings bg + cards white, leaderboard cards white, log-food cal-banner white (2026-06-06)
+
+### What shipped
+- settings.html: --bg #F0FAF8→#C8E6E2, --nav-bg rgba(240...)→rgba(200,230,226,0.90), --surface-card/--border-card/--shadow-card tokens added, .settings-card + .profile-card white in light
+- leaderboard.html: --surface-card/--border-card tokens added, body #C8E6E2, .board-row/.gap-inner/.your-block/.footer-row/.lb-error-inner all white in light
+- log-food.html: .cal-banner + .fd-cal-ring-wrap light overrides added (were still teal gradient)
+- vbb 378 → 379, sw cache: pm507-settings-leaderboard-logfood
+
+---
+
 ## PM-506 — Light mode: mind sub-pages white, focus.css tokens, completed tick fix (2026-06-06)
 
 ### What shipped

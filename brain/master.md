@@ -1,11 +1,11 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-06, PM-506)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-06, PM-508)
 
-**Light mode UI pass COMPLETE (PM-494 through PM-506).** All portal pages have white cards via semantic tokens. Architecture is clean — one change to theme.css changes card appearance app-wide.
+**Light mode UI pass COMPLETE across all portal pages (PM-494 through PM-508).** Every page has white cards via semantic tokens. Architecture is clean — one change to theme.css changes card appearance app-wide.
 
-**vyve-site HEAD: PM-506, vbb 378.**
+**vyve-site HEAD: PM-508, vbb 380, commit 949ee732.**
 
 ### Light mode token architecture (§23.60)
 - `--bg: #C8E6E2` — page background (light) / `#0A1F1F` (dark)
@@ -16,22 +16,24 @@
 - `--shadow-card-md: 0 2px 8px rgba(0,0,0,0.08)` — medium card shadow
 All defined in theme.css dark + light blocks. Light-mode override blocks on all pages use these tokens.
 
-### Light mode remaining (continue next session)
-Pages still needing review/fixes (send photos to new session):
-- Settings.html — not fully checked
-- Leaderboard — not fully checked  
-- Sessions page — not fully checked
-- Running plan — not fully checked
-- Nutrition — not fully checked
-- Food log — not fully checked
-- Mind sub-pages deeper (meditation player, breathwork player states)
-- Workouts detail pages within Body
+### PM-508 shipped (2026-06-06)
+46 remaining pages all received [data-theme="light"] override blocks in one atomic commit:
+- Mind: mind-insights, mind-library, mindfulness-live/rp
+- Focus: all 11 focus/* sub-pages (body-only bg fix, they use /focus.css)
+- Connect: connect-checkin, connect-feed, connect-challenge, connect-calendar
+- Body: workouts, cardio, movement, exercise-library, movement-plans, cardio-history, movement-history, workout-history, personal-bests, activity, shared-workout
+- Sessions/replays: replays, replay-category (--card token defined), yoga-rp, checkin-rp, therapy-rp, events-rp, education-rp, podcast-rp, podcast
+- Other: monthly-checkin, nutrition-setup, settings-account, how-to-pdfs, how-to-videos, apple-health, consent-gate
 
-### Continuing work handoff
-Next session brief: "Load VYVE brain. We're mid light-mode UI pass (PM-494 to PM-506, vbb 378). Token architecture is clean — --surface-card/--border-card/--shadow-card in theme.css. Continue checking remaining pages (settings, leaderboard, sessions, running plan, nutrition, food log) and any Mind/Body sub-pages not yet checked. Same pattern: white cards via tokens, teal bg #C8E6E2, fades to rgba(200,230,226). Claim PM-507+."
+### PM-507 shipped (2026-06-06)
+Settings (#F0FAF8 → #C8E6E2, --surface-card tokens, .settings-card/.profile-card white), leaderboard (white cards, body #C8E6E2), log-food (.cal-banner + .fd-cal-ring-wrap overrides). vbb 378→379.
+
+### Light mode pass: COMPLETE
+All portal pages now have correct light-mode. No pages outstanding.
 
 **QUEUED: Check-in copy (PM-478/484) — Lewis + Phil sign-off still pending.**
 **PAT expires 20 Jun 2026 — ROTATE URGENTLY, ~14 days left.**
+**Next build: VYVE Command Centre (scoped PM-485). Start after App Store re-approval.**
 
 <!--CURRENT_FRONT_END-->
 
