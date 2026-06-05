@@ -1,3 +1,22 @@
+## PM-477 — Habits autotick v2 fully spec'd (Dexie-first instant + server history-backfill); NO code shipped (2026-06-05)
+
+Spec/design session with Dean. No code shipped — build is QUEUED for a fresh session (full runbook at top of tasks/backlog.md). Started from Dean's review of the live habits surface; resolved three reported issues into one coherent build.
+
+ROOT-CAUSE FINDINGS (verified vs live DB + vyve-site main):
+- "10-minute walk shows 8,000 steps under it" AND "home doesn't reflect Apple Health like the habits page" are ONE root cause: index.html paints habit sub-lines via subForHabit() — a never-replaced mockup stub ("v2 replaces with real progress once shipped") that regex-matches the title and returns a hardcoded '8,000 steps' for any walk/step habit. index.html loadHabits() selects only habit_title/habit_pot and never fetches member-dashboard v51 health_progress, so home shows static placeholders while habits.html renders the real evaluator (live progress + autotick + "from Apple Health"). habit_library data is CORRECT — the 10-min-walk rule was distance_km>=1, not steps.
+- HK pipeline already ingests workout samples (member_health_samples.workout_type): 188 'walking' workouts (latest 3 Jun) with start/end -> duration computable. Deliberate-walk autotick feasible from existing data.
+- HK samples are PROMOTED into activity credit dated to when they happened: 296 -> cardio, 65 -> workouts, 99 -> weight_logs; 249 cardio rows logged_via='healthkit'. So ACTIVITY credit backdates. But HABIT autotick is today-only: of 18 daily_habits notes='autotick' rows, ZERO backdated. This asymmetry is what the build closes.
+- No HK background delivery — healthbridge.js syncs foreground-only (visibilitychange / Capacitor appStateChange / resume). App closed = nothing pulled; HealthKit (Apple's always-on recorder) holds history, we read+backfill on next open. While-closed real-time credit needs heavy native background-delivery work (Capgo plugin may not expose it; iOS throttles) — not worth it for trial.
+
+DECISIONS LOCKED:
+- Autotick eval moves CLIENT/Dexie-first for the instant today-tick (network never gates the tick). Server = reconciler + cross-device truth, no longer the gate. JS<->SQL compute parity (same pattern as engagement score PM-295).
+- History backfill anchored to FIRST GENUINE ENGAGEMENT, not signup. Engaged-then-lapsed -> gap days backfill; dormant-since-signup -> first engagement IS that first login, today forward only, no retroactive flood / no instant certs+charity for carrying a phone.
+- Backfill rule UNIFORM across B2C/B2B. Rejected juicing corporate engagement via a tier-forked backfill flood — poisons the metric Sage buys/renews on, sets a fake-high baseline, one cross-check from detonating enterprise trust, contradicts "evidence over assumption / radical transparency". First-engagement anchor PROTECTS the corporate story (genuinely-engaged-then-lapsed staff still backfill legitimately; never-engaged dormant accounts are exactly what you don't want shown as "engaged" to a buyer). -> §23.93.
+- "10-minute walk" rule: cumulative distance_km>=1 (auto-fires off incidental daily movement) -> discrete walking WORKOUT >=10 min today. Keeps it a deliberate walk; iPhone-only/no-workout members tap manually; "moved a lot" stays the 8k/10k step habits' job.
+- Sleep stays 420 min = 7h (already correct — Dean misread 420 as 4h20). Progress must render in HOURS, never minutes.
+
+Tooling: Composio GitHub connection DOWN this session (no active connection for github toolkit) — used §23.27 vault-PAT fallback (GITHUB_PAT_CLAUDE) + GitHub Git Data API via curl/urllib for this commit. Next session: expect it may still be down; go straight to fallback.
+
 ## PM-476 — Free-trial → £10/mo conversion model: design decisions locked (strategy session, no code) (2026-06-05)
 
 Strategy session with Dean on the public-launch free-trial mechanic. No code shipped; no new gotcha. Design locked on top of the PM-438 trial/membership build (§23.85). Two review docs produced for Lewis (in session outputs, NOT committed to repo): "VYVE — Trial-to-Membership Copy" (member-facing strings) and "VYVE — Free Trial & Conversion Model" (design memo).

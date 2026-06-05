@@ -1,3 +1,31 @@
+## QUEUED BUILD — Habits autotick v2 (Dexie-first instant + server history-backfill) — spec'd PM-477, build pending
+
+**Status:** fully spec'd, NO code shipped. Build in a fresh session. Production-affecting (a live hub page on the whole server.url cohort + a production EF + a new Dexie store + a habit_library data change + history-backfill). Execute in order below; talk-first only if something here is genuinely unclear. Claim fresh PM number(s) at commit time. Full reasoning in changelog PM-477.
+
+WHY: home shows a fake "8,000 steps" under the 10-min walk and no live Apple Health progress (both = the subForHabit stub); habit autotick is today-only while activity credit already backdates. We're making habits tick instantly from Dexie and backdate like workouts do.
+
+BUILD ORDER:
+1. WALKING-WORKOUT RULE (data + server parity).
+   - habit_library "10-minute walk": replace health_rule {op:gte,agg:sum,value:1,metric:distance_km,source:daily,window:today_local} with a discrete walking-workout rule — member_health_samples sample_type='workout', workout_type='walking', duration (end_at-start_at) >= 10 min (600s), window today_local. Define the new shape (e.g. source:'samples_workout', workout_type:'walking', agg:'duration_minutes', op:'gte', value:10).
+   - member-dashboard EF: add evaluator branch for the new workout-duration shape so server reconciliation matches client. VERIFY by real invocation against a member with a walking workout today (188 walking samples exist to test).
+2. LOCAL EVALUATOR (new shared JS, e.g. health-eval.js).
+   - Pure fn (health_rule, hk_snapshot, dexie_local) -> {satisfied, progress:{value,target,unit}}. Mirror member-dashboard logic EXACTLY (JS<->SQL parity). Handle all live shapes: steps gte (daily), distance, sleep duration last_night, walking-workout duration today, plus activity-table rules (30-min cardio, complete-a-workout) read from Dexie cardio/workouts (already local).
+   - Sleep progress emitted in HOURS (value/target 1dp + 'hrs'), never minutes (rule value stays 420 internally).
+3. DEXIE HK SNAPSHOT STORE (NEW store — never re-key an existing store, §23.83).
+   - healthbridge.js caches today's aggregates each sync: steps, distance, sleep_minutes, walking-workout total/longest duration. New Dexie store + additive db.version bump. FALLBACK_* const for cold paint. Lets index/habits paint progress instantly from local before the plugin re-reads.
+4. WIRE index.html + habits.html TO THE LOCAL EVALUATOR.
+   - Both pages: read HK snapshot from Dexie -> run local evaluator -> instant progress + optimistic autotick write (daily_habits Dexie-first, REST sync background; reuse existing write path + synthetic key member|date|habit).
+   - DELETE subForHabit() in index.html (~L2176) and its call site; home habit rows render real health_progress via formatProgress parity with habits.html.
+   - sw.js precache + vbb-marker (index + settings) + CACHE_NAME bump in the SAME commit (PM-299 invariant).
+5. SERVER HISTORY BACKFILL (reconciler).
+   - On sync and/or a member-dashboard pass: walk synced HK history (member_health_daily per-date steps; member_health_samples dated workouts/sleep) and write backdated daily_habits autotick rows per qualifying day.
+   - ANCHOR floor = max(member join, habit_assigned_at, FIRST GENUINE ENGAGEMENT). First engagement = earliest real VYVE activity (first daily_habits/workout/cardio/session/checkin), NOT first login, NOT the Stripe date.
+   - Only write (member, day, habit) with NO existing daily_habits row (never override manual yes/no/skip). Respect 1/day cap (over-cap -> activity_dedupe).
+   - UNIFORM across B2C/B2B (§23.93). Backfill retroactively rebuilds streak/score/certificates/charity for those days (desired — real activity; a returning member may get a streak/certificate on login).
+6. VERIFY end-to-end: member-dashboard invocation for the walking rule; home shows live progress + auto-ticks on open; backfill writes only within the engagement window and skips manual rows.
+
+KEY FILES: index.html (subForHabit ~L2176, loadHabits ~L2031, renderHabitList ~L2108), habits.html (runAutotickPass, formatProgress ~L680, member-dashboard v51 fetch), healthbridge.js (foreground sync, queryAggregated/queryWorkouts, _localTodayDate), db.js (Dexie SCHEMA_V22 — add new store as next version), member-dashboard EF (rule evaluator + health_progress), habit_library (the walk rule row). Autotick habits with rules: 8k steps, 10k steps, sleep 7+ (420min/last_night), 30-min cardio (activity_tables), complete-a-workout (activity_tables), + new walking-workout walk.
+
 ## Thumbnails / Storage / deployment cleanup (added 2026-06-04, PM-475)
 
 - **Delete one-shot seed-host-thumbnails EF.** Seeded the session-thumbnails bucket from GitHub-pinned bytes (commit 153567ad); job done, EF is now dead weight. No MCP delete tool — remove via Supabase dashboard or CLI.
