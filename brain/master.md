@@ -1,11 +1,15 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-06, PM-532)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-07, audit session)
 
-**PM-532 — workout-plan-wizard.html LIVE.** New standalone portal page: single-scroll questionnaire (location, experience, days/week stepper, goals chips, optional avoid field). Calls `generate-workout-plan` EF directly, shows generating overlay with step ticker, redirects to workouts.html on success. workouts.html `#no-plan` state updated: dead-end "being prepared" copy replaced with "No programme yet" + two CTAs (Build my plan → wizard, Browse exercise library → switchTab('library')). `verify_jwt: false` on generate-workout-plan EF means no JWT header needed — email pulled from vyveCurrentUser/supabase.auth.getSession().
+**Session 2026-06-07 — Full Platform Audit + Miro Map.** Complete audit of all VYVE surfaces: 420+ screenshots captured across portal (86 pages × dark/light × mobile/desktop), marketing site (19 pages), onboarding, and 10 email renders. Miro board built with 13 section frames, 120 page cards, flow connectors. Screenshot upload to Miro in progress. UX/UI critique next session.
+
+**PM-532 — workout-plan-wizard.html LIVE.** New standalone portal page: single-scroll questionnaire (location, experience, days/week stepper, goals chips, optional avoid field). Calls `generate-workout-plan` EF directly, shows generating overlay with step ticker, redirects to workouts.html on success. workouts.html `#no-plan` state updated: dead-end "being prepared" copy replaced with "No programme yet" + two CTAs (Build my plan → wizard, Browse exercise library → switchTab('library')`). `verify_jwt: false` on generate-workout-plan EF means no JWT header needed — email pulled from vyveCurrentUser/supabase.auth.getSession().
 
 **vyve-site HEAD: PM-532, vbb 406.**
+**Miro board: https://miro.com/app/board/uXjVHImNV8E=/**
+**⚠️ GITHUB_PAT_CLAUDE expires 20 June 2026 — rotate now.**
 
 <!--CURRENT_FRONT_END-->
 

@@ -1,3 +1,25 @@
+## Session — Full Platform Audit + Miro App Map (2026-06-07)
+
+### What happened
+- **Full platform audit script built** (`vyve-audit-full.js`). Playwright headless Chromium captures every portal page, marketing site, onboarding flow, and email previews automatically. Outputs to `vyve-audit-full/` with sections: portal (86 pages × 2 themes × 2 viewports), marketing (19 pages × 2 viewports), onboarding (2 steps captured), emails (10 renders).
+- **420+ screenshots captured** in ~17 minutes. One known miss: `exercise-library.html` times out in light mode (heavy data fetch). Onboarding captures step 1 and 2 only (conditional form flow stops at step 3).
+- **Miro board built** — "VYVE — Full Platform Map" (board ID: uXjVHImNV8E=). 13 colour-coded section frames, 120 page cards with URLs, 12 flow connector nodes showing full user journey: marketing → Stripe → onboarding → login → portal sections → milestones → certificate emails → re-engagement loop.
+- **Miro screenshot upload script built** (`vyve-miro-upload.js`). Multipart form upload attaches dark/light × mobile/desktop screenshots to each page card on the board. Running at session close.
+- **Composio→Miro connection established** for programmatic board building.
+- **GITHUB_PAT_CLAUDE** expires 20 June 2026 — rotation needed urgently.
+
+### Key files
+- `vyve-audit-full.js` — full audit screenshot script (Desktop)
+- `vyve-miro-upload.js` — Miro image uploader (Desktop)
+- Miro board: https://miro.com/app/board/uXjVHImNV8E=/
+
+### Known issues / next steps
+- exercise-library.html light mode screenshot missing — re-run with `SECTION=portal MOBILE_ONLY=1` targeting just that page
+- Onboarding beyond step 2 not captured — welcome.html has conditional JS flow, needs manual screenshots
+- Miro image positioning approximate — may need manual tidy in Miro after upload completes
+- UX/UI critique not yet run — pending screenshot upload completion
+- GITHUB_PAT_CLAUDE rotation due 20 June 2026
+
 ## PM-532 — workout-plan-wizard.html + workouts.html no-plan state (2026-06-06)
 
 ### What shipped
