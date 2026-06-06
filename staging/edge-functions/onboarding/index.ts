@@ -1,4 +1,4 @@
-// onboarding v91 - PM-524: restore full writeMember column set (50 columns lost in v90 partial-fix). Carries v90 (email improvements) + v89 + v87. writeWorkoutPlan deactivate-old now scoped by surface (preserves co-active workouts + movement plans). Carries v86 (wpc deactivate-old+insert-new) + v85 (surface pillar stamping) + v84 (flat-progression workouts + deterministic movement plan) + v83 (crisis-scan).
+// onboarding v92 - PM-524: manual onboard alert email on failure. Carries v91 (full writeMember) + v90 + v89 + v87. writeWorkoutPlan deactivate-old now scoped by surface (preserves co-active workouts + movement plans). Carries v86 (wpc deactivate-old+insert-new) + v85 (surface pillar stamping) + v84 (flat-progression workouts + deterministic movement plan) + v83 (crisis-scan).
 // Single-file build (inlined emails.ts + workouts.ts) to deploy in one tool call.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
@@ -480,6 +480,50 @@ async function sendAnswersBackup(data) {
     console.error('Answers backup failed:', e);
   }
 }
+async function sendManualOnboardAlert(data, phase, err) {
+  if (!BREVO_KEY || !data) return;
+  const name = `${String(data.firstName || '')} ${String(data.lastName || '')}`.trim();
+  const email = String(data.email || 'unknown');
+  const ts = new Date().toISOString();
+  const se = String(err).replace(/</g, '&lt;').replace(/>/g, '&gt;').slice(0, 1000);
+  const html = `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#FFF8F0;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#FFF8F0;padding:30px 16px;">
+<tr><td align="center"><table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:10px;overflow:hidden;">
+<tr><td style="background:#C9A84C;padding:18px 28px;"><span style="font-family:Georgia,serif;font-size:16px;letter-spacing:4px;color:#fff;">VYVE &#8212; ACTION REQUIRED</span></td></tr>
+<tr><td style="padding:28px;">
+<h2 style="margin:0 0 6px;font-size:20px;color:#0D2B2B;">Manual onboard needed</h2>
+<p style="margin:0 0 20px;font-size:14px;color:#3A5A5A;">A member completed the onboarding questionnaire but their account could not be created automatically. Their answers are saved below &#8212; please onboard them manually.</p>
+<table width="100%" cellpadding="8" cellspacing="0" style="font-size:14px;color:#333;border-collapse:collapse;">
+<tr><td style="font-weight:700;width:120px;border-bottom:1px solid #eee;">Name</td><td style="border-bottom:1px solid #eee;">${name}</td></tr>
+<tr><td style="font-weight:700;border-bottom:1px solid #eee;">Email</td><td style="border-bottom:1px solid #eee;">${email}</td></tr>
+<tr><td style="font-weight:700;border-bottom:1px solid #eee;">Time</td><td style="border-bottom:1px solid #eee;">${ts}</td></tr>
+<tr><td style="font-weight:700;border-bottom:1px solid #eee;">Failed at</td><td style="border-bottom:1px solid #eee;color:#8B4513;">${phase}</td></tr>
+<tr><td style="font-weight:700;vertical-align:top;padding-top:10px;">Error</td><td style="font-family:monospace;font-size:12px;color:#8B0000;word-break:break-all;padding-top:10px;">${se}</td></tr>
+</table>
+<div style="margin-top:24px;padding:16px 20px;background:#F4FAFA;border-radius:8px;border-left:3px solid #1B7878;">
+<p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1B7878;">Next steps</p>
+<p style="margin:0;font-size:14px;color:#3A5A5A;line-height:1.6;">1. Reply to the member at <a href="mailto:${email}" style="color:#1B7878;">${email}</a> to confirm their plan is being set up.<br>2. Use the admin onboarding tool or re-fire the EF with their answers to complete setup.</p>
+</div>
+</td></tr>
+</table></td></tr></table></body></html>`;
+  try {
+    await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { 'api-key': BREVO_KEY, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({
+        sender: { name: 'VYVE Onboarding Alert', email: 'team@vyvehealth.co.uk' },
+        to: [{ email: 'team@vyvehealth.co.uk', name: 'VYVE Team' }],
+        subject: `\u26A0\uFE0F MANUAL ONBOARD NEEDED \u2014 ${name} (${email})`,
+        htmlContent: html,
+        tags: ['manual-onboard', 'onboarding-alert']
+      })
+    });
+    console.log('Manual onboard alert sent for', email);
+  } catch (e) {
+    console.error('Manual onboard alert failed:', e);
+  }
+}
+
 async function sendWelcomeEmail(e, fn, persona, pr, habits, on, planTypeDesc, sessionRec, pwl, stream) {
   if (!BREVO_KEY) return;
   const lu = pwl || 'https://online.vyvehealth.co.uk/login.html';
@@ -1298,7 +1342,7 @@ serve(async (req)=>{
     const planTypeDesc = PLAN_TYPE_DESCRIPTIONS[planType] || ov.rationale || '';
 
     await sendWelcomeEmail(email, fn, persona, personaReason, habitsFull, finalProgrammeName, planTypeDesc, sessionRec, pwl, stream);
-    console.log('DONE v91:', email, persona, 'stream:', stream);
+    console.log('DONE v92:', email, persona, 'stream:', stream);
     if (stream === 'workouts') {
       const bgPromise = (async ()=>{
         try {
@@ -1364,6 +1408,11 @@ serve(async (req)=>{
         await sendAnswersBackup(data);
       } catch (_) {
         console.error('Answers backup failed');
+      }
+      try {
+        await sendManualOnboardAlert(data, phase, String(err));
+      } catch (_) {
+        console.error('Manual onboard alert failed');
       }
     }
     return new Response(JSON.stringify({
