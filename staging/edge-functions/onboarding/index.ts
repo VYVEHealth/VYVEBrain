@@ -1,4 +1,4 @@
-// onboarding v92 - PM-524: manual onboard alert email on failure. Carries v91 (full writeMember) + v90 + v89 + v87. writeWorkoutPlan deactivate-old now scoped by surface (preserves co-active workouts + movement plans). Carries v86 (wpc deactivate-old+insert-new) + v85 (surface pillar stamping) + v84 (flat-progression workouts + deterministic movement plan) + v83 (crisis-scan).
+// onboarding v93 - PM-524: welcome email adds 'Your First Week' recs section. Carries v92 + v91 + v90. writeWorkoutPlan deactivate-old now scoped by surface (preserves co-active workouts + movement plans). Carries v86 (wpc deactivate-old+insert-new) + v85 (surface pillar stamping) + v84 (flat-progression workouts + deterministic movement plan) + v83 (crisis-scan).
 // Single-file build (inlined emails.ts + workouts.ts) to deploy in one tool call.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
@@ -524,7 +524,7 @@ async function sendManualOnboardAlert(data, phase, err) {
   }
 }
 
-async function sendWelcomeEmail(e, fn, persona, pr, habits, on, planTypeDesc, sessionRec, pwl, stream) {
+async function sendWelcomeEmail(e, fn, persona, pr, habits, recs, on, planTypeDesc, sessionRec, pwl, stream) {
   if (!BREVO_KEY) return;
   const lu = pwl || 'https://online.vyvehealth.co.uk/login.html';
   const bl = pwl ? 'Set your password &amp; sign in' : 'Sign in to VYVE';
@@ -545,6 +545,14 @@ async function sendWelcomeEmail(e, fn, persona, pr, habits, on, planTypeDesc, se
         ${label ? `<p style="margin:2px 0 0;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#4DAAAA;">${label}</p>` : ''}
         <p style="margin:4px 0 0;font-size:13px;color:#3A5A5A;line-height:1.55;">${h.habit_description || ''}</p>
       </div>
+    </div>`;
+  }).join('');
+
+  // Build first week recs HTML
+  const recsHtml = (recs || []).filter(Boolean).map((rec) => {
+    return `<div style="display:flex;align-items:flex-start;margin-bottom:14px;">
+      <div style="flex-shrink:0;width:6px;height:6px;border-radius:50%;background:#1B7878;margin-top:7px;margin-right:12px;"></div>
+      <p style="margin:0;font-size:14px;color:#3A5A5A;line-height:1.65;">${rec}</p>
     </div>`;
   }).join('');
 
@@ -587,6 +595,11 @@ async function sendWelcomeEmail(e, fn, persona, pr, habits, on, planTypeDesc, se
 
       <p style="margin:0 0 16px;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1B7878;">Your daily habits</p>
       <div style="margin-bottom:28px;">${habitRowsHtml}</div>
+
+      <div style="margin-bottom:28px;">
+        <p style="margin:0 0 14px;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1B7878;">Your first week</p>
+        ${recsHtml}
+      </div>
 
       ${sessionHtml}
 
@@ -1341,8 +1354,8 @@ serve(async (req)=>{
     // Workout type description
     const planTypeDesc = PLAN_TYPE_DESCRIPTIONS[planType] || ov.rationale || '';
 
-    await sendWelcomeEmail(email, fn, persona, personaReason, habitsFull, finalProgrammeName, planTypeDesc, sessionRec, pwl, stream);
-    console.log('DONE v92:', email, persona, 'stream:', stream);
+    await sendWelcomeEmail(email, fn, persona, personaReason, habitsFull, [r1, r2, r3], finalProgrammeName, planTypeDesc, sessionRec, pwl, stream);
+    console.log('DONE v93:', email, persona, 'stream:', stream);
     if (stream === 'workouts') {
       const bgPromise = (async ()=>{
         try {
