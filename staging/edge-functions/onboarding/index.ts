@@ -1,4 +1,4 @@
-// onboarding v93 - PM-524: welcome email adds 'Your First Week' recs section. Carries v92 + v91 + v90. writeWorkoutPlan deactivate-old now scoped by surface (preserves co-active workouts + movement plans). Carries v86 (wpc deactivate-old+insert-new) + v85 (surface pillar stamping) + v84 (flat-progression workouts + deterministic movement plan) + v83 (crisis-scan).
+// onboarding v94 - PM-524: fix selectHabits UUID prompt (was returning integers). Carries v93 + v92 + v91. writeWorkoutPlan deactivate-old now scoped by surface (preserves co-active workouts + movement plans). Carries v86 (wpc deactivate-old+insert-new) + v85 (surface pillar stamping) + v84 (flat-progression workouts + deterministic movement plan) + v83 (crisis-scan).
 // Single-file build (inlined emails.ts + workouts.ts) to deploy in one tool call.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
@@ -881,13 +881,15 @@ async function generateProgrammeOverview(d, stream) {
 }
 async function selectHabits(d, lib) {
   const s = d.scores || {}, lc = d.lifeContext || [];
-  const txt = await callAnthropic(null, `Select 5 habits. STRESS:1=stressed,10=calm.\nMember:Goals=${(d.trainingGoals || []).join(',') || 'general'},W=${s.wellbeing}/10,St=${s.stress}/10,Sl=${s.sleep}/10,E=${s.energy}/10,Ctx=${lc.join(',') || 'stable'},Exp=${d.gymExperience || 'N/A'},Sleep=${(d.sleepIssues || []).join(',') || 'none'},Act=${d.activityLevel || 'N/A'}\nLIB:\n${lib.map((h)=>`${h.id}|${h.habit_pot}|${h.habit_title}|${h.difficulty}`).join('\n')}\nJSON:{\"ids\":[5],\"reasoning\":\"brief\"}`, 400);
+  const libLines = lib.map((h)=>`${h.id}|${h.habit_pot}|${h.habit_title}|${h.difficulty}`).join('\n');
+  const exampleId = lib[0]?.id || 'uuid-here';
+  const txt = await callAnthropic(null, `Select exactly 5 habits from the library below for this VYVE member. STRESS:1=stressed,10=calm.\nMember:Goals=${(d.trainingGoals || []).join(',') || 'general'},W=${s.wellbeing}/10,St=${s.stress}/10,Sl=${s.sleep}/10,E=${s.energy}/10,Ctx=${lc.join(',') || 'stable'},Exp=${d.gymExperience || 'N/A'},Sleep=${(d.sleepIssues || []).join(',') || 'none'},Act=${d.activityLevel || 'N/A'}\nLIB (id|pot|title|difficulty):\n${libLines}\nIMPORTANT: ids must be copied exactly from the LIB above. Do not use integers or invent ids.\nJSON:{"ids":["${exampleId}","...","...","...","..."],"reasoning":"brief"}`, 500);
   try {
-    const o = JSON.parse(txt.replace(/```json|```/g, '').trim());
-    if (Array.isArray(o.ids) && o.ids.length === 5) return {
-      ids: o.ids,
-      reasoning: o.reasoning || 'Selected.'
-    };
+    const o = JSON.parse(txt.replace(/\`\`\`json|\`\`\`/g, '').trim());
+    if (Array.isArray(o.ids) && o.ids.length === 5) {
+      const validIds = o.ids.filter((id) => lib.some((h) => h.id === id));
+      if (validIds.length === 5) return { ids: validIds, reasoning: o.reasoning || 'Selected.' };
+    }
   } catch (_) {}
   return {
     ids: lib.filter((h)=>h.difficulty === 'easy').slice(0, 5).map((h)=>h.id),
@@ -1355,7 +1357,7 @@ serve(async (req)=>{
     const planTypeDesc = PLAN_TYPE_DESCRIPTIONS[planType] || ov.rationale || '';
 
     await sendWelcomeEmail(email, fn, persona, personaReason, habitsFull, [r1, r2, r3], finalProgrammeName, planTypeDesc, sessionRec, pwl, stream);
-    console.log('DONE v93:', email, persona, 'stream:', stream);
+    console.log('DONE v94:', email, persona, 'stream:', stream);
     if (stream === 'workouts') {
       const bgPromise = (async ()=>{
         try {
