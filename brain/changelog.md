@@ -1,3 +1,23 @@
+## PM-532 — workout-plan-wizard.html + workouts.html no-plan state (2026-06-06)
+
+### What shipped
+- **workout-plan-wizard.html** — new standalone auth-gated portal page. Single-scroll questionnaire: where do you train (3 option cards), experience level (3 option cards), days/week (stepper 2–5), training goals (chip multi-select), optional avoid/injury text field. Generate button disabled until location + experience + at least one goal selected. On submit: shows generating overlay with 5-step ticker (timed to match ~30s EF duration), calls `generate-workout-plan` EF with payload, redirects to `/workouts.html` on success, surfaces error banner on failure.
+- **workouts.html** — `#no-plan` state overhauled. Dead-end "Your plan is being prepared" message replaced with "No programme yet" heading + descriptive sub + two action buttons: "Build my plan" (→ `/workout-plan-wizard.html`) and "Browse exercise library" (→ `switchTab('library')`). CSS updated: icon emoji removed, replaced with SVG dumbbell icon in teal tile; new `.no-plan-actions`, `.np-btn-primary`, `.np-btn-secondary` classes added.
+- **vbb 406, sw cache `vyve-cache-v2026-06-06-pm532-workout-plan-wizard`.**
+
+### Key decisions
+- Single-page scroll (not multi-step wizard) — Dean's call after mockup review.
+- Wizard calls `generate-workout-plan` EF directly (verify_jwt: false, email from client auth session). No new EF needed.
+- Neutral scores sent (wellbeing/stress/energy all 5) since this flow has no check-in data — EF handles this gracefully.
+- Plan overwrites existing cache row (EF upsert on member_email). Acceptable for now; plan history deferred.
+- "Browse exercise library" uses existing `switchTab('library')` function — no new JS.
+
+### Files
+- `workout-plan-wizard.html` — new (412 lines)
+- `workouts.html` — CSS + HTML no-plan block patched
+- `index.html`, `settings.html` — vbb 406
+- `sw.js` — cache name bumped
+
 ## PM-516 — wellbeing-checkin v30: enriched debrief prompt + structured output (2026-06-06)
 
 ### What shipped

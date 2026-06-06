@@ -1,13 +1,11 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-06, PM-516)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-06, PM-532)
 
-**PM-516 — wellbeing-checkin v30 LIVE.** Enriched prompt + structured response for submitCheckinNew deepened flow. Dual-path EF: new path (body has `mood`) uses dimensions/drivers/improvement_focus/4-week trend in prompt → structured DEBRIEF/HABIT/CONTENT output. Legacy path (body has `score`) unchanged. max_tokens 800 both paths. daily_mood_7d fetched from DB and returned for chart. Deployed to Supabase as version 54.
+**PM-532 — workout-plan-wizard.html LIVE.** New standalone portal page: single-scroll questionnaire (location, experience, days/week stepper, goals chips, optional avoid field). Calls `generate-workout-plan` EF directly, shows generating overlay with step ticker, redirects to workouts.html on success. workouts.html `#no-plan` state updated: dead-end "being prepared" copy replaced with "No programme yet" + two CTAs (Build my plan → wizard, Browse exercise library → switchTab('library')). `verify_jwt: false` on generate-workout-plan EF means no JWT header needed — email pulled from vyveCurrentUser/supabase.auth.getSession().
 
-**Light mode UI pass COMPLETE across all portal pages (PM-494 through PM-508).** Every page has white cards via semantic tokens.
-
-**vyve-site HEAD: PM-515, vbb 380 (pre-PM-516).**
+**vyve-site HEAD: PM-532, vbb 406.**
 
 <!--CURRENT_FRONT_END-->
 
