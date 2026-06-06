@@ -1,4 +1,4 @@
-// onboarding v87 - PM-420 step 4b: writeWorkoutPlan deactivate-old now scoped by surface (preserves co-active workouts + movement plans). Carries v86 (wpc deactivate-old+insert-new) + v85 (surface pillar stamping) + v84 (flat-progression workouts + deterministic movement plan) + v83 (crisis-scan).
+// onboarding v91 - PM-524: restore full writeMember column set (50 columns lost in v90 partial-fix). Carries v90 (email improvements) + v89 + v87. writeWorkoutPlan deactivate-old now scoped by surface (preserves co-active workouts + movement plans). Carries v86 (wpc deactivate-old+insert-new) + v85 (surface pillar stamping) + v84 (flat-progression workouts + deterministic movement plan) + v83 (crisis-scan).
 // Single-file build (inlined emails.ts + workouts.ts) to deploy in one tool call.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
@@ -919,6 +919,7 @@ async function writeMember(d, persona, pr, r1, r2, r3, stream) {
     additional_info: d.anythingElse || null,
     gender: d.gender || null,
     gender_self_describe: (d.gender_self_describe || '').trim() || null,
+    company: d.company || null,
     tdee_formula: d.tdee_formula || null,
     onboarding_complete: true,
     onboarding_completed_at: new Date().toISOString(),
@@ -1297,7 +1298,7 @@ serve(async (req)=>{
     const planTypeDesc = PLAN_TYPE_DESCRIPTIONS[planType] || ov.rationale || '';
 
     await sendWelcomeEmail(email, fn, persona, personaReason, habitsFull, finalProgrammeName, planTypeDesc, sessionRec, pwl, stream);
-    console.log('DONE v87:', email, persona, 'stream:', stream);
+    console.log('DONE v91:', email, persona, 'stream:', stream);
     if (stream === 'workouts') {
       const bgPromise = (async ()=>{
         try {
