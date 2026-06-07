@@ -1,14 +1,14 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-07, HK sleep/refresh session)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-07, PF-23 v1 first-run design session)
 
-**Session 2026-06-07 — HealthKit sleep window + snapshot refresh.** Fixed sleep habit showing wrong value (6.3h instead of 7.7h) — window was cutting off segments after 11:00 BST, extended to 13:00 BST. Decoupled snapshot refresh from full server sync — new `refreshSnapshot()` fires on foreground + every 15 min so hike/workout data appears immediately without waiting for the EF round-trip.
+**Session 2026-06-07 — PF-23 v1 first-run experience fully scoped (design only, no vyve-site code).** Dean approved three decisions: (1) descope PF-23 from the action-tutorial to an explanatory intro-slides + spotlight tour — this decouples it from the Achievements overhaul, so it can ship in the next binary or as the first OTA, Dean's call; (2) multi-page in-context spotlight (home -> mind -> sessions), viable because snapshot-first paint makes hops <200ms; (3) approved `members.tour_completed_at timestamptz` migration as the durable gate. Full build spec is in tasks/backlog.md "READY TO BUILD — PF-23 v1". Copy is drafted (this is the ~35-line doc PF-23 was waiting on) — Lewis owns final wording.
 
-**PM-543 — `refreshSnapshot()` + 15-min interval. PM-542 — sleep window 13:00 BST / 19h.**
-**vyve-site HEAD: PM-543, vbb 414.**
+**This session = PM-553 (standalone brain, no code ship).**
+**vyve-site HEAD: PM-552, vbb 423 (index/connect scroll-jank + GPU compositing + dark-mode pill polish, PM-548->552 — NOT yet broken out per-PM in changelog; reconcile next session).**
 **⚠️ GITHUB_PAT_CLAUDE expires 20 June 2026 — rotate now.**
-**⚠️ Server-side HK sync dead since 24 May — investigate `sync-health-data` EF next session.**
+**⚠️ Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
 
 <!--CURRENT_FRONT_END-->
 
@@ -1104,7 +1104,7 @@ The bundle-ready campaign drove the work for most of late May. iOS 1.4 + Android
 
 ### Post-launch backlog (do not work on before 31 May)
 
-Achievements system overhaul (PM-94) — post-trial, 2-3 sessions, own campaign. In-App Tour PF-23 — elevated per PM-404, ships as first Capawesome OTA push once Achievements lands + Lewis ~35-line copy doc. Realtime cross-device sync (PF-5b). Apple Health page redesign. `auth_blocked` banner in member UI. HealthKit background sync (~400 LOC Swift plugin, 4-5 sessions, 1 week soak). Health Connect (Android) — parked until Dean has Pixel/Galaxy device. The Fore grant register June/July 2026. WHISPA research partnership monitor.
+Achievements system overhaul (PM-94) — post-trial, 2-3 sessions, own campaign. In-App Tour PF-23 — v1 DESCOPED to explanatory (intro slides + in-context spotlight, no per-step achievement), decoupling it from Achievements; full build spec in tasks/backlog.md "READY TO BUILD — PF-23 v1", copy drafted PM-553, `members.tour_completed_at` migration approved. Build-ready; ship vehicle (next binary vs first OTA `--rollout 0.1` canary) is Dean's call. Realtime cross-device sync (PF-5b). Apple Health page redesign. `auth_blocked` banner in member UI. HealthKit background sync (~400 LOC Swift plugin, 4-5 sessions, 1 week soak). Health Connect (Android) — parked until Dean has Pixel/Galaxy device. The Fore grant register June/July 2026. WHISPA research partnership monitor.
 
 ### Backlog — security & hygiene
 
@@ -1624,7 +1624,7 @@ All portal page code that needs a JWT MUST call `window.vyveGetJWT()` (defined i
 |---|---|
 | iOS App Store | VYVE Health app — version 1.3 `Ready for Distribution`, version **1.4 `Waiting for Review`** (PM-413, 26 May). App ID `co.uk.vyvehealth.app`. |
 | Android Play Store | **1.0.5** versionCode 50 — production release saved, "Send 1 change for review" staged (PM-413). 1.0.2 was last live (April resubmission with icon fix). |
-| Capacitor OTA | Capawesome live update. App ID `f9961f66`, prod channel `89e12796`. First OTA push planned with In-App Tour PF-23 ship — consider `--rollout 0.1` canary. |
+| Capacitor OTA | Capawesome live update. App ID `f9961f66`, prod channel `89e12796`. First OTA push candidate = PF-23 v1 first-run (build-ready PM-553) if not shipped in-binary — consider `--rollout 0.1` canary. |
 
 ### Secrets & PATs
 

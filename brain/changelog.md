@@ -1,3 +1,26 @@
+## PM-553 — PF-23 v1 first-run experience spec (design session, 2026-06-07)
+
+### What happened
+Design + scoping session with Dean. PF-23 (first-run experience) fully specced and approved for build. No vyve-site code shipped. Selectors in the backlog spec were verified against live vyve-site main today.
+
+### Decisions locked
+1. **Descope to explanatory v1.** PF-23's brained spec was an action-tutorial (5 persona-voiced micro-actions, achievement-per-step) — that is *why* the brain had it gated on the Achievements overhaul. v1 is now explanatory only: intro slides + spotlight coachmarks, no forced actions, no per-step achievement. Removes the Achievements dependency; v1 can ship in the next binary or as the first Capawesome OTA (Dean's call). Action-tutorial remains a later iteration.
+2. **Multi-page in-context spotlight.** Two of the seven targets are off-home (literal "0 / 2" = `#today-progress` on mind.html; replays via sessions.html `.card-replay`). Tour walks home -> mind -> sessions. Viable because snapshot-first paint (PM-396/397) renders each hub <200ms, so 2 hops cost ~1s and the <90s budget holds (~84s followed fully).
+3. **`members.tour_completed_at timestamptz` migration approved** as the durable, reinstall-safe, cross-device gate; also unlocks the `tour_complete` achievement metric (currently locked for all). Pairs with adding the field to the member-dashboard snapshot payload. Bundled into the build, NOT applied this session.
+
+### Architecture (full spec in tasks/backlog.md "READY TO BUILD — PF-23 v1")
+- `firstrun.js` + `firstrun.css`, loaded on index/mind/sessions only; inert on mind/sessions unless a tour is active.
+- Gate: localStorage `vyve_firstrun_done` instant short-circuit -> else `tour_completed_at` from snapshot/Dexie -> else run. Resume cursor `vyve_tour_active` / `vyve_tour_step` across hops.
+- Dismissal (skip OR done, identical): set `vyve_firstrun_done`, un-awaited `members.update({tour_completed_at})` via member-scoped RLS (no EF) — §23.31 optimistic-first.
+- Spotlight = scrim + box-shadow cutout over anchor rect + tooltip card; anchor-ready guard (selector exists AND non-empty, rAF poll ~1.5s -> fall back to container) to avoid spotlighting empty skeletons (§23.36/§23.47). Safe-area insets §23.58; haptics on advance; suppress web tells §23.59.
+
+### Copy (draft — Lewis owns final)
+4 intro slides (what VYVE is / five areas / certificates+charity / your day) + 7 spotlight steps, full copy in backlog. "Today's focus" label reconciliation (Dean said "Tonight's") flagged for Lewis — recommend mirroring the live label. Emoji-free.
+
+### Flags for next session
+- vyve-site HEAD advanced PM-543->552 (index/connect scroll-jank + GPU compositing + dark-mode pill polish) without per-PM changelog entries — reconcile.
+- GITHUB_PAT_CLAUDE rotation due 20 June. HK server sync dead since 24 May.
+
 ## Session — HealthKit sleep window + snapshot refresh (2026-06-07)
 
 ### What shipped

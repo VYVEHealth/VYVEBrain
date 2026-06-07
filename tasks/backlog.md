@@ -20,6 +20,48 @@
 
 ---
 
+## READY TO BUILD — PF-23 v1 First-Run Experience
+### Intro slides + in-context spotlight tour (explanatory; first-login once, never again)
+### Spec locked PM-553 (2026-06-07). Selectors verified vs live main. Copy DRAFT — Lewis owns final wording.
+
+**Ship target:** in the next binary OR first Capawesome OTA (`--rollout 0.1` canary) — Dean's call. Decoupled from Achievements (explanatory v1, no per-step achievement).
+
+**Production change (approved):** `ALTER TABLE members ADD COLUMN tour_completed_at timestamptz;` + add `tour_completed_at` to member-dashboard EF snapshot payload. Bundle together; verify via real invocation.
+
+**Component approach:** `firstrun.js` + `firstrun.css`, self-contained. Loaded on index.html, mind.html, sessions.html only (add to all three script stacks; confirm haptics.js present — §23.44). Add both new files to sw.js precache, same commit (§23.76). Inert on mind/sessions unless tour active.
+
+**Trigger / gate:**
+1. index.html boot: `if (localStorage['vyve_firstrun_done']) return;`
+2. else read `tour_completed_at` from home snapshot / hydrated Dexie members row -> if set, write `vyve_firstrun_done`, return.
+3. else (null + past consent gate) -> run Part 1.
+
+**Resume cursor:** `vyve_tour_active` (bool) + `vyve_tour_step` (int). firstrun.js on mind/sessions: if active and page matches the current step's host, anchor-ready wait then draw; else inert.
+
+**Dismissal (skip any step OR final Done — identical):** set `vyve_firstrun_done=1`, clear cursor, remove overlay, fire UN-AWAITED `supabase.from('members').update({tour_completed_at:new Date().toISOString()}).eq('email',<authEmail>)` (member-scoped RLS on auth.email(); no EF). §23.31 — never await on dismissal path. Reinstall self-heals via cold hydrate.
+
+**Overlay mechanics:** full-viewport scrim; transparent cutout element over the anchor's bounding rect via large-spread box-shadow; tooltip card = copy + Next/Skip + step dots. Auto-scroll anchor into view; reposition on scroll/resize. Anchor-ready guard per step (selector exists AND non-empty; rAF poll ~1.5s; on timeout anchor to section container) — never spotlight an empty skeleton (§23.36/§23.47). Safe-area insets on all fixed controls (§23.58). VYVEHaptics.selection() on advance. Suppress web tells (§23.59).
+
+**Part 1 — 4 intro slides (swipeable, Skip always visible):**
+1. What VYVE is — "Most health apps wait for something to go wrong. VYVE helps you build health before it breaks — a little, every day."
+2. Five areas — "Five places to look after yourself: Body to move, Mind to settle, Nutrition to fuel, Sessions to join live, and Connect for the people around you." (Areas, not nav — bottom nav is Home/Mind/Body/Connect/More; Nutrition+Sessions live under More; spotlight teaches the real nav.)
+3. Earn it, give it — "Every habit, workout and session you log builds toward a certificate. Each certificate you earn donates a free month of wellness to someone who needs it through our charity partners."
+4. Your day — "A few minutes is enough. Check your focus, tick a habit, drop into a session. Come back tomorrow and keep it going." CTA "Show me around" (-> Part 2) / "Skip" (-> done-flag, home).
+
+**Part 2 — 7 spotlight steps (host / selector / anchor-ready / copy). Path: home(1-4) -> mind(5) -> sessions(6-7), 2 hops.**
+1. index `#focus-carousel` (label `#focus-section-label`) — ready: has `.focus-card` — "Your daily focus — one small guided action, picked for you. Tap to begin."
+2. index `#habit-list .habit-row:first-child .habit-check` (fallback `#habit-empty`) — ready: `#habit-list` visible & has a row, else empty-state — "Tap the circle to tick off a habit. That's a log — it counts."
+3. index `#pills-row` — ready: has `.pill` — "Five rings, one per area. Each fills toward your next certificate at 30."
+4. index `#live-carousel` (header 'Up next'; View all -> /sessions.html) — ready: has `.scroll-card` — "What's on this week. Tap a card to join a live session, or View all for everything."
+5. mind `#today-progress` (in `.progress-card`) — ready: textContent matches /\d \/ 2/ — "This is today's Mind count — up to 2 a day count toward your certificate. It caps what counts, never what you can do."
+6. sessions `#sessionList` + first `.status-badge.live` (up next = `#nextSession`) — ready: `#sessionList` has a card — "Every session in one place. Live ones carry a red badge; the next one's always up top."
+7. sessions first `.card-replay` (-> replay-category/replays.html) — ready: a `.card-replay` exists — "Missed one? Every session becomes a replay you can watch any time." -> Done.
+
+**Copy notes for Lewis:** live label says "Today's focus" not "Tonight's" — recommend mirroring it. All copy emoji-free. This IS the ~35-line copy doc PF-23 was waiting on.
+
+**Build checklist:** §23.72 vbb-marker (index + settings) + sw.js CACHE_NAME bump, same atomic commit; §23.24/25 recompute PM across vyve-site + VYVEBrain at commit time; §23.76 precache both new files; honour §23.36/§23.47/§23.58/§23.59. Budget ~84s followed fully (4x5s slides + 7x8s spotlights + 2 hops + fades).
+
+---
+
 ## IN PROGRESS — Check-in merge (PM-484 / PM-478 spec)
 ### Weekly deepened + monthly merge + AI debrief engine
 ### Structure shipped PM-484 (2026-06-05). Pending Lewis copy + Phil clinical sign-off for question wording.
