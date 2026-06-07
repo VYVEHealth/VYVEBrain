@@ -1,16 +1,20 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-07, PM-557 session close)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-08, PM-559 session close)
 
-**Session 2026-06-07 — PM-557. iOS 1.5 bundled + submitted to App Store. Android 1.0.6 bundled + submitted to Play Store. PM-555/556 portal removals (food log coming-soon, this week's challenge, live pill green). vbb 443.**
+**Session 2026-06-08 — PM-559. Spec-only (Sonnet builds, Claude specs). Command Centre direction set + App Health module specced.**
 
-**Both apps now in bundled mode — server.url removed. Members stay on server.url live until 1.5 approved and installed.**
+**Command Centre reality: Lewis's `vyve-command-centre` SPA is mature but localStorage-backed; all 19 `cc_*` tables EMPTY. Plan: keep the shell, move data onto Supabase, lead with App Health. No data to migrate.**
 
-**✅ GITHUB_PAT_CLAUDE rotated 07 June 2026 — good for 90 days.**
-**⚠️ Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
-**⚠️ www folder must be re-cloned from GitHub before every bundle build (§23.95).**
-**⚠️ App Store Connect API key setup needed next session.**
+**PostHog WIRED: confirmed live (22k events/25 people/7d). `POSTHOG_API_KEY` stored in EF secrets. Query API verified (project 138491, EU). Load times live in PostHog as `perf_*` events — NOT the dead `perf_telemetry` table (rerouted PM-408).**
+
+**App Health spec at `/mnt/user-data/outputs/app-health-build-spec.md` — build-ready, handed to Sonnet. Errors-first ranked by member-impact; `platform_alerts.resolved` never triaged (2,846 rows). SMS alerts parked (needs Twilio).**
+
+**WARN: Throwaway EF `posthog-test` ACTIVE-but-retired — delete via dashboard.**
+**WARN: Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
+**WARN: App Store Connect API key setup needed next session.**
+**iOS 1.5 / Android 1.0.6 in store review (PM-557); members on server.url live until approved+installed.**
 
 <!--CURRENT_FRONT_END-->
 

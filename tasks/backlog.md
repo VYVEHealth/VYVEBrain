@@ -795,6 +795,11 @@ Deferred from current scope: boot_id + app_version client injection (Stage 2, au
 
 ## Backlog — security & hygiene
 
+- **Delete throwaway EF `posthog-test`** (PM-559) — used once to verify PostHog connection; retired-but-ACTIVE. Composio has no delete-EF tool; remove via Supabase dashboard.
+- **Command Centre App Health build (PM-559 spec).** Spec at `/mnt/user-data/outputs/app-health-build-spec.md` (NOT in repo — re-request from Dean or rebuild from changelog PM-559). Build: `cc_app_health` cache table + `cc-app-health` EF (hourly cron, reads `POSTHOG_API_KEY`) + `app-health.html`. Errors-first ranked by members-hit; live-read `platform_alerts` for instant resolve; usage/dead-pages/load-times cached from PostHog; VYVE light+dark; reviewer-only via `is_admin()`. Unconfirmed for builder: exact numeric property name on `perf_*` events (probe before wiring load-times).
+- **Command Centre data-layer migration (PM-559).** Lewis's SPA runs on localStorage; `cc-adapter.js` written but OFF; `cc_*` tables empty. Future: keep shell, wire pages to `cc_*` + Storage, RLS reviewer-vs-own visibility. Honour multi-tenancy/role dimension in schema before parallel build sessions.
+- **Command Centre SMS/text alerts (PM-559, Dean-wanted).** "Drop everything" alerts via text — email insufficient. Needs Twilio wired into App Health detector EF; fire only on real threshold (e.g. serious error hitting 3+ members/hour) to stay rare. Build after dashboard reveals what qualifies.
+
 **Security Quick Wins (from 16 April audit — long-tail).**
 - Fix XSS: escape `firstName` in `index.html` before `innerHTML` rendering
 - Fix `running_plan_cache` RLS: change `public_update` policy to `member_email = auth.email()`
