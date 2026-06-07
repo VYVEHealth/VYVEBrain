@@ -1,12 +1,12 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-07, PF-23 v1 first-run design session)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-07, PM-554 PF-23 v1 shipped)
 
-**Session 2026-06-07 — PF-23 v1 first-run experience fully scoped (design only, no vyve-site code).** Dean approved three decisions: (1) descope PF-23 from the action-tutorial to an explanatory intro-slides + spotlight tour — this decouples it from the Achievements overhaul, so it can ship in the next binary or as the first OTA, Dean's call; (2) multi-page in-context spotlight (home -> mind -> sessions), viable because snapshot-first paint makes hops <200ms; (3) approved `members.tour_completed_at timestamptz` migration as the durable gate. Full build spec is in tasks/backlog.md "READY TO BUILD — PF-23 v1". Copy is drafted (this is the ~35-line doc PF-23 was waiting on) — Lewis owns final wording.
+**Session 2026-06-07 — PM-554 PF-23 v1 first-run experience SHIPPED.** `firstrun.js` + `firstrun.css` live on index/mind/sessions. DB migration applied (`members.tour_completed_at`). `member-dashboard` EF v78 exposes the field. vbb 424, sw `vyve-cache-v2026-06-07-pm554-firstrun`. Commit `a5a4cadc`.
 
-**This session = PM-553 (standalone brain, no code ship).**
-**vyve-site HEAD: PM-552, vbb 423 (index/connect scroll-jank + GPU compositing + dark-mode pill polish, PM-548->552 — NOT yet broken out per-PM in changelog; reconcile next session).**
+**Copy is DRAFT — Lewis edits the `COPY` object at top of `firstrun.js` (one object, zero logic). No vyve-site commit needed for copy changes once deployed via OTA.**
+
 **⚠️ GITHUB_PAT_CLAUDE expires 20 June 2026 — rotate now.**
 **⚠️ Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
 

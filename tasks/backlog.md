@@ -20,9 +20,9 @@
 
 ---
 
-## READY TO BUILD — PF-23 v1 First-Run Experience
+## SHIPPED PM-554 — PF-23 v1 First-Run Experience
 ### Intro slides + in-context spotlight tour (explanatory; first-login once, never again)
-### Spec locked PM-553 (2026-06-07). Selectors verified vs live main. Copy DRAFT — Lewis owns final wording.
+### Shipped PM-554 (2026-06-07). Copy DRAFT in COPY object at top of firstrun.js — Lewis edits in place.
 
 **Ship target:** in the next binary OR first Capawesome OTA (`--rollout 0.1` canary) — Dean's call. Decoupled from Achievements (explanatory v1, no per-step achievement).
 
