@@ -1,3 +1,18 @@
+## Session — JWT auto-refresh + Supabase session config (2026-06-07)
+
+### What shipped
+- **PM-540 — `auth.js` + `habits.html` + `notifications.html`: JWT auto-refresh** (vbb 411). Added `window.vyveGetJWT` to `auth.js` — shared helper that calls `getSession()`, silently calls `refreshSession()` if the access token is stale, and returns the fresh token. Returns `null` (never redirects) on genuine refresh failure; callers decide UX. `habits.html` `supa()` updated to use `vyveGetJWT`; `notifications.html` `getJWT` local stub wired to delegate to `window.vyveGetJWT`. Root cause of Paige's 3× simultaneous 401 incidents: habits.html fired three parallel RLS-gated queries with an expired access token; none retried. Now invisible to members.
+- **PM-541 — Remove redirect from `vyveGetJWT`, redirect only on dead session** (vbb 412). `vyveGetJWT` never redirects to login — returns `null` on refresh failure and lets the caller decide. `habits.html` `supa()` redirects to login only when `vyveGetJWT` returns `null` (genuinely dead session after days of inactivity). Notifications shows empty state. Matches Gmail/Spotify pattern: token expiry is a normal event, not a logout trigger.
+- **Supabase Auth config — sessions never expire**. Via Management API PATCH: `sessions_timebox: 0`, `sessions_inactivity_timeout: 0`. Members are never force-logged-out due to inactivity. `refresh_token_rotation_enabled: true`, `security_refresh_token_reuse_interval: 10` confirmed in place.
+
+### Incidents resolved
+- `auth_401_daily_habits`, `auth_401_habit_library`, `auth_401_member_habits` — paigecoult98@hotmail.com — single expired session firing 3 parallel queries. Now silently refreshed.
+- `promise_rejection` `getJWT not defined` on `notifications.html` — test1@test.com — missing function definition. Fixed.
+
+### Key decisions
+- Hard login redirect lives only in `vyveInitAuth` (cold boot). All per-request JWT fetches return null on failure — no mid-session surprise redirects.
+- Supabase session timebox and inactivity timeout both set to 0 (never). Access token still 1hr (correct — refresh is silent). Refresh token rotation on (security best practice).
+
 ## Session — Miro Platform Map + Drop Zones (2026-06-07 continued)
 
 ### What shipped
