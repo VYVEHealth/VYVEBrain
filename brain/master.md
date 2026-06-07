@@ -1,14 +1,16 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-07, PM-554 session close)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-07, PM-557 session close)
 
-**Session 2026-06-07 — PM-554 PF-23 v1 first-run experience shipped and stabilised.** Per-page independent tours on 6 pages. VYVE logo on intro slides. Achievement toasts suppressed during home tour. vbb 439, commit `a48a417b`.
+**Session 2026-06-07 — PM-557. iOS 1.5 bundled + submitted to App Store. Android 1.0.6 bundled + submitted to Play Store. PM-555/556 portal removals (food log coming-soon, this week's challenge, live pill green). vbb 443.**
 
-**Copy is DRAFT — Lewis owns final wording in the `COPY` object at top of firstrun.js.**
+**Both apps now in bundled mode — server.url removed. Members stay on server.url live until 1.5 approved and installed.**
 
-**⚠️ GITHUB_PAT_CLAUDE expires 20 June 2026 — rotate now.**
+**⚠️ GITHUB_PAT_CLAUDE expires 20 June 2026 — rotate NOW.**
 **⚠️ Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
+**⚠️ www folder must be re-cloned from GitHub before every bundle build (§23.95).**
+**⚠️ App Store Connect API key setup needed next session.**
 
 <!--CURRENT_FRONT_END-->
 
@@ -1342,7 +1344,7 @@ Pre-flight audits run against the whole tree, not a hand-picked subset. Audit-co
 
 #### §23.44 — Script-tag inclusion auditing during new-feature ship (PM-304)
 
-A new feature lands runtime code on one page but the script tag is missing from a CONSUMING page. The consumer's `window.VYVEModuleName.foo()` silently bails because the global is undefined; defensive guards swallow it. Failure mode is invisible until tested on a surface the original wiring didn't think to test. Audit: `grep -l 'VYVE<Name>\b' *.html` then check each for the bridge script tag. Apply to every module surface added or removed by a refactor. Sibling: §23.51 (bridge-load coverage audit).
+A new feature lands runtime code on one page but the script tag is missing from a CONSUMING page. The consumer's `window.VYVEModuleName.foo()` silently bails because the global is undefined; defensive guards swallow it. Failure mode is invisible until tested on a surface the original wiring didn't think to test. Audit: `grep -l 'VYVE<Name>' *.html` then check each for the bridge script tag. Apply to every module surface added or removed by a refactor. Sibling: §23.51 (bridge-load coverage audit).
 
 #### §23.45 — Catalogue imagery is DB-driven, nullable, with onerror fallback (PM-190)
 
@@ -1435,7 +1437,7 @@ Brain-load is not sufficient. The spec docs in `/playbooks/` carry the worked-ex
 
 #### §23.63 — Pre-bundle debug surface gating discipline (PM-409)
 
-Before any production bundle commits, every debug surface on the member-facing app must be either (a) hidden behind `localStorage.vyve_dev_panel_unlocked === '1'`, (b) hidden behind a URL parameter that can't be set in the native app (`?debug=`-style — safe because Capacitor has no address bar), or (c) deleted. "Debug-labelled but technically harmless" UI is not acceptable; the label is the problem. Canonical pattern: one flag, multiple surfaces, one gesture (5 taps in 3 seconds on a benign UI element). Audit signal at scan time: repo-wide grep for `force[\s-]*refresh`, `reset.{0,20}(achievement|cache|local|dexie|data|member)`, `\?debug=`, `dev[\s_-]?panel`, `developer[\s_-]*tools?`, `\bdiagnostic\b`. Console logging is exempt (not member-visible; preserves diagnostic trail). Bundle prep is the forcing function — debug surfaces drift in by predictable mechanism: "I'll hide it once X is proven" then attention moves to Y, surface stays.
+Before any production bundle commits, every debug surface on the member-facing app must be either (a) hidden behind `localStorage.vyve_dev_panel_unlocked === '1'`, (b) hidden behind a URL parameter that can't be set in the native app (`?debug=`-style — safe because Capacitor has no address bar), or (c) deleted. "Debug-labelled but technically harmless" UI is not acceptable; the label is the problem. Canonical pattern: one flag, multiple surfaces, one gesture (5 taps in 3 seconds on a benign UI element). Audit signal at scan time: repo-wide grep for `force[\s-]*refresh`, `reset.{0,20}(achievement|cache|local|dexie|data|member)`, `\?debug=`, `dev[\s_-]?panel`, `developer[\s_-]*tools?`, `diagnostic`. Console logging is exempt (not member-visible; preserves diagnostic trail). Bundle prep is the forcing function — debug surfaces drift in by predictable mechanism: "I'll hide it once X is proven" then attention moves to Y, surface stays.
 
 **Sharpening (PM-424, candidate):** gating a debug surface behind a flag must guard the **render function's entry**, not only the call site that opens it. PM-418 gated `mind.html`'s open-time `renderDebugStrip()` call but left a `setInterval(…1000)` poller calling it unconditionally — the strip wiped on open then re-leaked within ≤1s on the next tick. Guarding the function entry (`if flag !== '1' return`) kills every path at once: open, poller, and future callers. Audit signal when gating any overlay: grep for **every** caller of the render fn. Promotes to a numbered sub-rule on second occurrence.
 
@@ -1586,7 +1588,7 @@ Cron change: `refresh-replay-videos` moved daily 03:30 → HOURLY at :45 (`vyve-
 
 Back-catalogue reality (4 Jun): of 21 `youtube_broadcast_id`s on file, only 4 were genuine watchable recordings (today's Yoga Flexibility `9b-xSEfEIKc` + Calming Breathwork `-LanVrrQGPA`, already in playlists; older Yoga `d-dNe6W-o4I` 51m + Mindfulness `24JKB3ufM4k` 18m48s). The rest: 10 deleted from YouTube, 5 zero-duration (P0D) shells, 1 stray PUBLIC "Big Buck Bunny" test (`aqz-KE-bpKQ`), 1 dev-test "PM-327 Device Walk" (`JEFNPGKhQqY`). 16 junk broadcast_ids NULLed in `calendar_occurrences` (the 10 deleted + 5 P0D + Big Buck Bunny); genuine + legit-upcoming + the dev-test record kept.
 
-Tool: `replay-playlist-backfill` EF (verify_jwt:false, `?dry=1` for report-only) — idempotent curated backfill; eligibility = on-YouTube + privacy `unlisted` + real duration + title NOT `/(\bpm-\d)|(device walk)|(big buck bunny)/i`. Used to add the 2 genuine older recordings. `replay_videos` now = 4, zero junk.
+Tool: `replay-playlist-backfill` EF (verify_jwt:false, `?dry=1` for report-only) — idempotent curated backfill; eligibility = on-YouTube + privacy `unlisted` + real duration + title NOT `/(pm-\d)|(device walk)|(big buck bunny)/i`. Used to add the 2 genuine older recordings. `replay_videos` now = 4, zero junk.
 
 #### §23.92 — Frequently-changing media lives in Storage + DB pointer, never bundled repo assets; warm-on-open + SW-SWR cache makes it local-fast (PM-471→474 — HARD RULE)
 
