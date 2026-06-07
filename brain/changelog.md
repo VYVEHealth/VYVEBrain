@@ -1,3 +1,15 @@
+## Session — HealthKit sleep window + snapshot refresh (2026-06-07)
+
+### What shipped
+- **PM-542 — Extend `_lastNightWindowMs()` 11→13:00 BST, 17→19h (vbb 413).** Sleep habit was showing 6.3h instead of 7.7h. Root cause: sleep window ended at 11:00 BST — segments after 11:00 (e.g. waking at 12:24) were excluded from the `readSamples` query. Extended end to 13:00 BST, start moves back to 18:00 BST previous day. Fix is in `_lastNightWindowMs()` in `healthbridge.js`.
+- **PM-543 — Independent `refreshSnapshot()` + 15-min interval (vbb 414).** `_writeTodayHealthSnapshot` was only called at the end of the full `sync()` — after all EF network calls. If the server sync hangs/fails (as it has since 24 May), the snapshot never updates and habit progress goes stale. New `refreshSnapshot()` function: lightweight, device-only (no network), queries sleep + walk workouts live, writes Dexie, dispatches `vyve:health-snapshot`. Wired to both `appStateChange` and `resume` Capacitor listeners (fires alongside `maybeAutoSync`), plus `setInterval` every 15 min on native. Exposed on public `healthBridge` API.
+
+### Known issue logged
+- **Server-side HK sync dead since 24 May.** `member_health_samples` shows no new rows after 2026-05-24 for any type (steps/sleep/heart_rate/workout). `sync()` EF calls may be failing silently. Separate investigation needed — does not affect habit progress bar (now decoupled via `refreshSnapshot`), but means server has no current health data.
+
+### §23 rules added
+- **§23.91:** `_writeTodayHealthSnapshot` must never be the sole path for keeping habit progress current — it sits at the end of `sync()` and will silently fail if any EF call hangs. Use `refreshSnapshot()` (device-only, no network) for anything that needs to be fast and reliable.
+
 ## Session — JWT auto-refresh + Supabase session config (2026-06-07)
 
 ### What shipped

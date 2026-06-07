@@ -1,15 +1,14 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-07, audit session)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-07, HK sleep/refresh session)
 
-**Session 2026-06-07 (continued) — Miro drop zones + Drive screenshots live.** Complete audit of all VYVE surfaces: 420+ screenshots captured across portal (86 pages × dark/light × mobile/desktop), marketing site (19 pages), onboarding, and 10 email renders. Miro board built with 13 section frames, 120 page cards, flow connectors. Screenshot upload to Miro in progress. UX/UI critique next session.
+**Session 2026-06-07 — HealthKit sleep window + snapshot refresh.** Fixed sleep habit showing wrong value (6.3h instead of 7.7h) — window was cutting off segments after 11:00 BST, extended to 13:00 BST. Decoupled snapshot refresh from full server sync — new `refreshSnapshot()` fires on foreground + every 15 min so hike/workout data appears immediately without waiting for the EF round-trip.
 
-**PM-532 — workout-plan-wizard.html LIVE.** New standalone portal page: single-scroll questionnaire (location, experience, days/week stepper, goals chips, optional avoid field). Calls `generate-workout-plan` EF directly, shows generating overlay with step ticker, redirects to workouts.html on success. workouts.html `#no-plan` state updated: dead-end "being prepared" copy replaced with "No programme yet" + two CTAs (Build my plan → wizard, Browse exercise library → switchTab('library')`). `verify_jwt: false` on generate-workout-plan EF means no JWT header needed — email pulled from vyveCurrentUser/supabase.auth.getSession().
-
-**vyve-site HEAD: PM-532, vbb 406.**
-**Miro board v3: https://miro.com/app/board/uXjVHImZ8cQ=/** (174 drop zones, drag screenshots from Drive)
+**PM-543 — `refreshSnapshot()` + 15-min interval. PM-542 — sleep window 13:00 BST / 19h.**
+**vyve-site HEAD: PM-543, vbb 414.**
 **⚠️ GITHUB_PAT_CLAUDE expires 20 June 2026 — rotate now.**
+**⚠️ Server-side HK sync dead since 24 May — investigate `sync-health-data` EF next session.**
 
 <!--CURRENT_FRONT_END-->
 
