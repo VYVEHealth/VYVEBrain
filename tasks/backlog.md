@@ -41,10 +41,12 @@
 
 **Overlay mechanics:** full-viewport scrim; transparent cutout element over the anchor's bounding rect via large-spread box-shadow; tooltip card = copy + Next/Skip + step dots. Auto-scroll anchor into view; reposition on scroll/resize. Anchor-ready guard per step (selector exists AND non-empty; rAF poll ~1.5s; on timeout anchor to section container) — never spotlight an empty skeleton (§23.36/§23.47). Safe-area insets on all fixed controls (§23.58). VYVEHaptics.selection() on advance. Suppress web tells (§23.59).
 
+**Copy is a swappable table (basics-first):** every slide + spotlight string lives in ONE `COPY` object at the top of firstrun.js (mirror the hydration.js COPY_TABLE pattern). Build the mechanism solid once; treat all strings as DRAFT and iterate wording in place — Lewis edits the object, never the logic. Do not block the build on copy being final.
+
 **Part 1 — 4 intro slides (swipeable, Skip always visible):**
 1. What VYVE is — "Most health apps wait for something to go wrong. VYVE helps you build health before it breaks — a little, every day."
 2. Five areas — "Five places to look after yourself: Body to move, Mind to settle, Nutrition to fuel, Sessions to join live, and Connect for the people around you." (Areas, not nav — bottom nav is Home/Mind/Body/Connect/More; Nutrition+Sessions live under More; spotlight teaches the real nav.)
-3. Earn it, give it — "Every habit, workout and session you log builds toward a certificate. Each certificate you earn donates a free month of wellness to someone who needs it through our charity partners."
+3. Help yourself, help others — "Help yourself, help others. Every habit, workout and session you log builds toward a certificate — and each one you earn donates a free month of wellness to someone who needs it." (Echoes the VYVE tagline: Help yourself. Help others. Change the world. THIS is the "why" of the cap — see step 5.)
 4. Your day — "A few minutes is enough. Check your focus, tick a habit, drop into a session. Come back tomorrow and keep it going." CTA "Show me around" (-> Part 2) / "Skip" (-> done-flag, home).
 
 **Part 2 — 7 spotlight steps (host / selector / anchor-ready / copy). Path: home(1-4) -> mind(5) -> sessions(6-7), 2 hops.**
@@ -52,7 +54,7 @@
 2. index `#habit-list .habit-row:first-child .habit-check` (fallback `#habit-empty`) — ready: `#habit-list` visible & has a row, else empty-state — "Tap the circle to tick off a habit. That's a log — it counts."
 3. index `#pills-row` — ready: has `.pill` — "Five rings, one per area. Each fills toward your next certificate at 30."
 4. index `#live-carousel` (header 'Up next'; View all -> /sessions.html) — ready: has `.scroll-card` — "What's on this week. Tap a card to join a live session, or View all for everything."
-5. mind `#today-progress` (in `.progress-card`) — ready: textContent matches /\d \/ 2/ — "This is today's Mind count — up to 2 a day count toward your certificate. It caps what counts, never what you can do."
+5. mind `#today-progress` (in `.progress-card`) — ready: textContent matches /\d \/ 2/ — "Two a day per area count toward your certificate. The cap is the point — it rewards turning up daily, not grinding, and those steady days are what donate months to others. Log as much as you like."
 6. sessions `#sessionList` + first `.status-badge.live` (up next = `#nextSession`) — ready: `#sessionList` has a card — "Every session in one place. Live ones carry a red badge; the next one's always up top."
 7. sessions first `.card-replay` (-> replay-category/replays.html) — ready: a `.card-replay` exists — "Missed one? Every session becomes a replay you can watch any time." -> Done.
 

@@ -1,3 +1,7 @@
+## PM-553a — PF-23 v1 copy framing + COPY_TABLE directive (same session)
+
+Dean refinement on the PM-553 spec. (1) The "why" of the daily cap is the tagline — Help yourself, help others: a bit each day (help yourself); the per-day cap rewards daily consistency and those steady days fund the donated months (help others). Slide 3 + spotlight step 5 reworded to say this. (2) Architecture directive added: all slide/spotlight strings live in a single `COPY` object at the top of firstrun.js (hydration.js COPY_TABLE pattern) so copy is a one-object, zero-logic edit — build basics first, iterate wording live. Backlog "READY TO BUILD — PF-23 v1" updated. No vyve-site code.
+
 ## PM-553 — PF-23 v1 first-run experience spec (design session, 2026-06-07)
 
 ### What happened
