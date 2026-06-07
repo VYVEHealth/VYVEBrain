@@ -1,3 +1,24 @@
+## PM-554 session close — PF-23 v1 stabilised + per-page tours shipped (2026-06-07)
+
+### Final state
+- **firstrun.js** reverted to last working version (e2be18d4) + VYVE logo on slides only. No other changes.
+- **Per-page independent tours** live on index, mind, exercise, connect, wellbeing-checkin, monthly-checkin.
+- **achievements.js** — toasts suppressed during home tour; retry 3s after `vyve_seen_home` set.
+- **settings.html** — Reset tour clears all 8 localStorage keys + writes `tour_completed_at: null` to server + Dexie + navigates to index.html.
+- **10s auto-release safety timer** on `lockBody()` — page can never be permanently frozen.
+- **No early lock scripts** — all removed. Body lock is JS-only inside firstrun.js.
+
+### Gates (simple)
+- `vyve_firstrun_done` — full tour done, nothing ever shows again
+- `vyve_firstrun_slides_done` — intro slides seen
+- `vyve_seen_home/mind/body/connect/checkin/monthly` — per-page tour seen
+
+### vyve-site HEAD: commit `a48a417b`, vbb 439
+
+### §23 rules
+- §23.97: Achievement toasts must not fire while `vyve_seen_home` is unset. `showNext()` is the single chokepoint.
+- §23.98: firstrun.js lockBody() must always have a 10s auto-release timer. Never lock without it.
+
 ## PM-554 stabilisation — first-run tour fixed to 4-step home-only (2026-06-07)
 
 Multiple fix commits (fix2–fix8) through session. Root causes resolved:

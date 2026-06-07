@@ -1,13 +1,11 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-07, PM-554 stabilised)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-07, PM-554 session close)
 
-**Session 2026-06-07 — PM-554 PF-23 v1 first-run tour stabilised.** After 8 fix commits, tour is now 4 slides + 4 home-only spotlight steps (mood → focus → habits → rings). No page hops. Completes reliably. vbb 431, commit `a47b5f84`.
+**Session 2026-06-07 — PM-554 PF-23 v1 first-run experience shipped and stabilised.** Per-page independent tours on 6 pages. VYVE logo on intro slides. Achievement toasts suppressed during home tour. vbb 439, commit `a48a417b`.
 
 **Copy is DRAFT — Lewis owns final wording in the `COPY` object at top of firstrun.js.**
-
-**PF-23 v2 (action-tutorial + per-hub contextual tours) is in the backlog.** See tasks/backlog.md.
 
 **⚠️ GITHUB_PAT_CLAUDE expires 20 June 2026 — rotate now.**
 **⚠️ Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
