@@ -1,3 +1,9 @@
+## PM-558 — GITHUB_PAT_CLAUDE rotated in Supabase Vault (2026-06-07)
+
+- Old `vyve-cto-claude` PAT (expiring 20 Jun 2026) replaced with new token.
+- Vault updated via `vault.update_secret()`. Edge Function secrets GITHUB_PAT + GITHUB_PAT_BRAIN also updated by Dean.
+- New PAT verified working against VYVEBrain repo.
+
 ## PM-557 session close — bundled iOS 1.5 + Android 1.0.6 submitted; portal removals (2026-06-07)
 
 ### Portal (vyve-site)

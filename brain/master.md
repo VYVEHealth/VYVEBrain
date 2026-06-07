@@ -7,7 +7,7 @@
 
 **Both apps now in bundled mode — server.url removed. Members stay on server.url live until 1.5 approved and installed.**
 
-**⚠️ GITHUB_PAT_CLAUDE expires 20 June 2026 — rotate NOW.**
+**✅ GITHUB_PAT_CLAUDE rotated 07 June 2026 — good for 90 days.**
 **⚠️ Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
 **⚠️ www folder must be re-cloned from GitHub before every bundle build (§23.95).**
 **⚠️ App Store Connect API key setup needed next session.**
