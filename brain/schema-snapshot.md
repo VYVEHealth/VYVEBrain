@@ -2,13 +2,13 @@
 
 > Auto-generated from live Supabase project `ixjfklpckgxrwjlfsaaz`.
 > DO NOT EDIT — overwritten weekly by the `schema-snapshot-refresh` Edge Function.
-> Last refresh: 2026-05-31T03:00:48.649Z
+> Last refresh: 2026-06-07T03:00:57.841Z
 
-**Totals:** 121 tables (121 with RLS) · 1480 columns · 42 FKs · 231 triggers · 86 public functions · 146 RLS policies · 346 indexes · 30 cron jobs
+**Totals:** 122 tables (122 with RLS) · 1502 columns · 42 FKs · 236 triggers · 95 public functions · 146 RLS policies · 350 indexes · 32 cron jobs
 
 ---
 
-## Tables (121)
+## Tables (122)
 
 ### `achievement_metrics` · RLS
 
@@ -447,6 +447,7 @@
 - `member_email` → `members.email` (`cardio_member_email_fkey`)
 
 **Triggers:**
+- `aaa_membership_guard` — BEFORE INSERT
 - `auto_time_fields_cardio` — BEFORE INSERT
 - `charity_count_cardio` — AFTER DELETE/INSERT
 - `counter_cardio` — AFTER INSERT
@@ -970,9 +971,10 @@
 | `charity_partner` | text | YES |  |  |  |
 | `certificate_url` | text | YES |  |  |  |
 | `global_cert_number` | integer | YES |  |  |  |
+| `pillar` | text | YES |  |  |  |
 
 **Check constraints:**
-- `certificates_activity_type_check`: CHECK ((activity_type = ANY (ARRAY['habits'::text, 'workouts'::text, 'cardio'::text, 'checkins'::text, 'sessions'::text])))
+- `certificates_activity_type_check`: CHECK ((activity_type = ANY (ARRAY['habits'::text, 'mind'::text, 'body'::text, 'connect'::text, 'checkins'::text, 'workouts'::text, 'cardio'::text, 'sessions'::text])))
 
 **Foreign keys:**
 - `member_email` → `members.email` (`certificates_member_email_fkey`)
@@ -984,6 +986,7 @@
 - `certificates_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
+- `certificates_member_type_milestone_uniq`
 - `certificates_pkey`
 - `idx_certificates_earned_at`
 - `idx_certificates_member_email`
@@ -1192,6 +1195,7 @@
 - `member_email` → `members.email` (`daily_habits_member_email_fkey`)
 
 **Triggers:**
+- `aaa_membership_guard` — BEFORE INSERT
 - `auto_time_fields_daily_habits` — BEFORE INSERT
 - `charity_count_daily_habits` — AFTER DELETE/INSERT
 - `counter_daily_habits` — AFTER INSERT
@@ -2335,8 +2339,15 @@
 | `target_suggestion_dismissed_at` | timestamp with time zone | YES |  |  |  |
 | `planfit_suggestion_dismissed_at` | timestamp with time zone | YES |  |  |  |
 | `planfit_suggestion` | jsonb | YES |  |  |  |
+| `account_type` | text | NO | 'trial'::text |  |  |
+| `trial_started_at` | timestamp with time zone | YES |  |  |  |
+| `trial_ends_at` | timestamp with time zone | YES |  |  |  |
+| `signup_campaign` | text | YES |  |  |  |
+| `signup_campaign_code` | text | YES |  |  |  |
+| `device_platform` | text | YES |  |  |  |
 
 **Check constraints:**
+- `members_account_type_chk`: CHECK ((account_type = ANY (ARRAY['trial'::text, 'paid'::text, 'comp'::text, 'enterprise'::text])))
 - `members_baseline_activity_band_check`: CHECK (((baseline_activity_band IS NULL) OR (baseline_activity_band = ANY (ARRAY['under_3k'::text, '3k_5k'::text, '5k_8k'::text, 'over_8k'::text]))))
 - `members_baseline_diet_check`: CHECK (((baseline_diet >= 1) AND (baseline_diet <= 10)))
 - `members_baseline_energy_check`: CHECK (((baseline_energy >= 1) AND (baseline_energy <= 10)))
@@ -2348,6 +2359,7 @@
 - `members_baseline_stress_check`: CHECK (((baseline_stress >= 1) AND (baseline_stress <= 10)))
 - `members_baseline_wellbeing_check`: CHECK (((baseline_wellbeing >= 1) AND (baseline_wellbeing <= 10)))
 - `members_custom_step_target_positive`: CHECK (((custom_step_target IS NULL) OR ((custom_step_target >= 500) AND (custom_step_target <= 50000))))
+- `members_device_platform_check`: CHECK ((device_platform = ANY (ARRAY['ios'::text, 'android'::text, 'web'::text])))
 - `members_display_name_preference_check`: CHECK ((display_name_preference = ANY (ARRAY['anonymous'::text, 'initials'::text, 'first_name'::text, 'full_name'::text])))
 - `members_exercise_stream_check`: CHECK (((exercise_stream)::text = ANY ((ARRAY['workouts'::character varying, 'movement'::character varying, 'cardio'::character varying])::text[])))
 - `members_persona_check`: CHECK ((persona = ANY (ARRAY['NOVA'::text, 'RIVER'::text, 'SPARK'::text, 'SAGE'::text, 'HAVEN'::text])))
@@ -2355,6 +2367,7 @@
 - `members_theme_preference_check`: CHECK ((theme_preference = ANY (ARRAY['light'::text, 'dark'::text, 'system'::text])))
 
 **Triggers:**
+- `aab_grant_trial_on_signup` — BEFORE INSERT
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zzz_mark_home_state_dirty_del` — AFTER DELETE
 - `zzz_mark_home_state_dirty_ins` — AFTER INSERT
@@ -2364,8 +2377,10 @@
 - `members_own_data` (ALL, roles: public) — (email = ( SELECT auth.email() AS email)) / CHECK: (email = ( SELECT auth.email() AS email))
 
 **Indexes:**
+- `members_account_type_idx`
 - `members_email_key`
 - `members_pkey`
+- `members_trial_ends_at_idx`
 
 ### `mind_activities` · RLS
 
@@ -3323,6 +3338,7 @@
 - `member_email` → `members.email` (`session_views_member_email_fkey`)
 
 **Triggers:**
+- `aaa_membership_guard` — BEFORE INSERT
 - `auto_time_fields_session_views` — BEFORE INSERT
 - `charity_count_session_views` — AFTER DELETE/INSERT
 - `session_views_cert_count_trigger` — AFTER DELETE/INSERT/UPDATE
@@ -3401,6 +3417,24 @@
 - `taglines_hub_active_position_idx`
 - `taglines_hub_position_unique`
 - `taglines_pkey`
+
+### `trial_campaigns` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `code` | text | NO |  | ✓ |  |
+| `trial_days` | integer | NO |  |  |  |
+| `label` | text | NO |  |  |  |
+| `active` | boolean | NO | true |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `trial_campaigns_trial_days_check`: CHECK (((trial_days >= 1) AND (trial_days <= 365)))
+
+**RLS policies:** _(none — service-role only)_
+
+**Indexes:**
+- `trial_campaigns_pkey`
 
 ### `vyve_job_runs` · RLS
 
@@ -3599,8 +3633,24 @@
 | `logged_at` | timestamp with time zone | YES | now() |  |  |
 | `engagement_score` | integer | YES |  |  |  |
 | `client_id` | uuid | YES |  |  |  |
+| `free_text` | text | YES |  |  |  |
+| `free_text_question` | text | YES |  |  |  |
+| `check_in_type` | text | YES | 'weekly'::text |  |  |
+| `dimension_energy` | smallint | YES |  |  |  |
+| `dimension_sleep` | smallint | YES |  |  |  |
+| `dimension_stress` | smallint | YES |  |  |  |
+| `dimension_body` | smallint | YES |  |  |  |
+| `branch` | text | YES |  |  |  |
+| `drivers` | text[] | YES |  |  |  |
+| `improvement_focus` | text | YES |  |  |  |
 
 **Check constraints:**
+- `wellbeing_checkins_branch_check`: CHECK (((branch IS NULL) OR (branch = ANY (ARRAY['positive'::text, 'neutral'::text, 'negative'::text]))))
+- `wellbeing_checkins_check_in_type_check`: CHECK ((check_in_type = ANY (ARRAY['weekly'::text, 'monthly'::text])))
+- `wellbeing_checkins_dimension_body_check`: CHECK (((dimension_body IS NULL) OR ((dimension_body >= 1) AND (dimension_body <= 10))))
+- `wellbeing_checkins_dimension_energy_check`: CHECK (((dimension_energy IS NULL) OR ((dimension_energy >= 1) AND (dimension_energy <= 10))))
+- `wellbeing_checkins_dimension_sleep_check`: CHECK (((dimension_sleep IS NULL) OR ((dimension_sleep >= 1) AND (dimension_sleep <= 10))))
+- `wellbeing_checkins_dimension_stress_check`: CHECK (((dimension_stress IS NULL) OR ((dimension_stress >= 1) AND (dimension_stress <= 10))))
 - `wellbeing_checkins_flow_type_check`: CHECK ((flow_type = ANY (ARRAY['active'::text, 'quiet'::text])))
 - `wellbeing_checkins_score_diet_check`: CHECK (((score_diet IS NULL) OR ((score_diet >= 1) AND (score_diet <= 10))))
 - `wellbeing_checkins_score_energy_check`: CHECK (((score_energy IS NULL) OR ((score_energy >= 1) AND (score_energy <= 10))))
@@ -3730,6 +3780,7 @@
 - `member_email` → `members.email` (`workouts_member_email_fkey`)
 
 **Triggers:**
+- `aaa_membership_guard` — BEFORE INSERT
 - `auto_time_fields_workouts` — BEFORE INSERT
 - `charity_count_workouts` — AFTER DELETE/INSERT
 - `counter_workouts` — AFTER INSERT
@@ -3753,10 +3804,12 @@
 
 ---
 
-## Public Functions (86)
+## Public Functions (95)
 
 - `_vyve_daily_streak(p_dates date[], p_today date)` — func
 - `_vyve_daily_streak_best(p_dates date[])` — func
+- `apply_trial_campaign(p_email text, p_code text)` — func
+- `assert_member_not_expired()` — func
 - `backfill_platform_metrics(p_days integer)` — func
 - `bump_charity_total(p_delta integer)` — func
 - `bump_member_activity(p_email text, p_type text, p_date date, p_at timestamp with time zone)` — func
@@ -3775,24 +3828,30 @@
 - `compute_engagement_components(p_last_activity_at timestamp with time zone, p_active_days_30d integer, p_distinct_types_7d integer, p_latest_wellbeing integer)` — func
 - `compute_engagement_components_v2(p_member_email text)` — func
 - `compute_engagement_score(p_last_activity_at timestamp with time zone, p_active_days_30d integer, p_distinct_types_7d integer, p_latest_wellbeing integer)` — func
+- `convert_member_to_paid(p_member_id uuid, p_stripe_customer text)` — func
 - `drain_member_home_state_dirty(p_max_age_seconds integer)` — func
 - `evaluate_plan_fit()` — func
 - `exercise_logs_canonical_normalise()` — func
 - `exercise_name_canonical_normalise_generic()` — func
+- `expire_lapsed_trials()` — func
 - `gdpr_erase_purge_subject(subject_email text)` — func
 - `gdpr_erasure_lc_email()` — func
 - `gdpr_erasure_pick_due(limit_n integer)` — func
 - `gdpr_erasure_purge(p_email text)` — func
 - `gdpr_export_pick_due(limit_n integer)` — func
 - `get_capped_activity_count(p_email text, p_activity_type text)` — func
+- `get_certificate_buckets()` — func
+- `get_certificate_buckets_for(p_email text)` — func
 - `get_charity_total()` — func
 - `get_leaderboard(p_email text, p_scope text, p_range text)` — func
 - `get_youtube_oauth_secrets()` — func
+- `grant_trial_on_signup()` — func
 - `increment_cardio_counter()` — func
 - `increment_checkin_counter()` — func
 - `increment_habit_counter()` — func
 - `increment_workout_counter()` — func
 - `is_admin()` — func
+- `mark_member_lapsed(p_member_id uuid)` — func
 - `member_age(birth_date date)` — func
 - `member_home_state_get_fresh(p_email text)` — func
 - `next_certificate_number()` — func
@@ -3813,6 +3872,7 @@
 - `refresh_member_home_state_v1_internal(p_email text)` — func
 - `replay_videos_set_updated_at()` — func
 - `resolve_broadcast_audience(criteria jsonb)` — func
+- `resolve_trial_campaign(p_code text)` — func
 - `session_categories_set_updated_at()` — func
 - `set_activity_time_fields()` — func
 - `set_broadcast_schedules_updated_at()` — func
@@ -3844,7 +3904,7 @@
 
 ---
 
-## Cron Jobs (30)
+## Cron Jobs (32)
 
 | Job | Schedule | Active | Command preview |
 |---|---|---|---|
@@ -3852,7 +3912,7 @@
 | `habit-reminder-daily` | `0 20 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `monthly-report` | `15 8 1 * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
 | `process-scheduled-pushes` | `*/5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
-| `session-publish-hourly` | `5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `session-publish-hourly` | `5 * * * *` | ✗ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `streak-reminder-daily` | `0 18 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve_charity_reconcile_daily` | `30 2 * * *` | ✓ | ` SELECT public.charity_total_reconcile_and_heal(); ` |
 | `vyve_drain_home_state_dirty` | `*/5 * * * *` | ✓ | ` SELECT public.drain_member_home_state_dirty(); ` |
@@ -3869,14 +3929,16 @@
 | `vyve-certificate-checker` | `0 9 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-daily-report` | `5 8 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-evaluate-plan-fit` | `0 4 * * *` | ✓ | `SELECT public.evaluate_plan_fit();` |
+| `vyve-expire-trials` | `0 1 * * *` | ✓ | `SELECT public.expire_lapsed_trials();` |
 | `vyve-gdpr-erase-daily` | `0 3 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-gdpr-export-tick` | `*/15 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-recompute-step-baselines` | `10 4 * * *` | ✓ | `SELECT public.recompute_step_baselines();` |
 | `vyve-reengagement-daily` | `0 8 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
-| `vyve-refresh-replay-videos-daily` | `30 3 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `vyve-refresh-replay-videos-hourly` | `45 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-seed-weekly-goals` | `1 0 * * 1` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `warm-ping-every-5min` | `*/5 * * * *` | ✓ | ` select net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `weekly-report` | `10 8 * * 1` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
+| `youtube-token-health-daily` | `0 4 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `youtube-token-keepalive-daily` | `0 3 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 
 ---
