@@ -1,3 +1,13 @@
+## PM-554 stabilisation — first-run tour fixed to 4-step home-only (2026-06-07)
+
+Multiple fix commits (fix2–fix8) through session. Root causes resolved:
+- **fix5:** `_started` guard + single `vyveAuthReady` trigger prevented double-init race between 1500ms setTimeout and auth event.
+- **fix6:** sessions.html was retired (PM-555 redirect) — tour destination corrected to connect-calendar.html.
+- **fix8 (final):** Eliminated all cross-page hops entirely. Tour is now 4 steps, all on index.html — mood, focus, habits, rings. No resume cursor, no page navigation, no race conditions. Completes reliably and sets `vyve_firstrun_done` on Done.
+
+**Final state:** intro slides (4) + home spotlight (4 steps). Copy is DRAFT in `COPY` object top of firstrun.js — Lewis edits in place.
+**vyve-site commit `a47b5f84`, vbb 431, cache `vyve-cache-v2026-06-07-pm554-fr-homeonly`.**
+
 ## PM-554 — PF-23 v1 first-run experience shipped (2026-06-07)
 
 ### What shipped

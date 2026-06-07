@@ -1,11 +1,13 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-07, PM-554 PF-23 v1 shipped)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-07, PM-554 stabilised)
 
-**Session 2026-06-07 — PM-554 PF-23 v1 first-run experience SHIPPED.** `firstrun.js` + `firstrun.css` live on index/mind/sessions. DB migration applied (`members.tour_completed_at`). `member-dashboard` EF v78 exposes the field. vbb 424, sw `vyve-cache-v2026-06-07-pm554-firstrun`. Commit `a5a4cadc`.
+**Session 2026-06-07 — PM-554 PF-23 v1 first-run tour stabilised.** After 8 fix commits, tour is now 4 slides + 4 home-only spotlight steps (mood → focus → habits → rings). No page hops. Completes reliably. vbb 431, commit `a47b5f84`.
 
-**Copy is DRAFT — Lewis edits the `COPY` object at top of `firstrun.js` (one object, zero logic). No vyve-site commit needed for copy changes once deployed via OTA.**
+**Copy is DRAFT — Lewis owns final wording in the `COPY` object at top of firstrun.js.**
+
+**PF-23 v2 (action-tutorial + per-hub contextual tours) is in the backlog.** See tasks/backlog.md.
 
 **⚠️ GITHUB_PAT_CLAUDE expires 20 June 2026 — rotate now.**
 **⚠️ Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**

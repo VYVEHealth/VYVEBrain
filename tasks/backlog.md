@@ -20,6 +20,31 @@
 
 ---
 
+## BACKLOG — PF-23 v2 First-Run Experience (action-tutorial + per-hub contextual tours)
+
+**Depends on:** Achievements overhaul (per-step achievement unlocks), Lewis copy sign-off.
+
+**Two-track design (Dean + Lewis agreed 2026-06-07):**
+
+**Track A — Action-tutorial home tour (replaces v1 explanatory tour)**
+Each step prompts a real action. Member finishes the tour with actual activity credited.
+- Mood tap → logs to `daily_mood_checkins` → fires mood achievement toast
+- Focus tap → completes focus activity → counts toward rings
+- Habit tap → logs the habit → the spotlit circle is tappable-through (pointer-events allowed on that element during that step)
+- Tour ends with rings visibly ticked up
+
+Implementation note: spotlight needs tap-through mode for specific steps — remove pointer-events block from the spotlit element only, listen to VYVEBus for `mood:logged` / `focus:completed` / `habit:logged` to auto-advance.
+
+**Track B — Per-hub contextual first-visit tooltips**
+Each hub page shows a 2-3 step spotlight the first time a member visits. Independent localStorage gate per page (`vyve_seen_body`, `vyve_seen_mind`, `vyve_seen_connect`). No cross-page navigation. Member can dismiss at any step.
+
+- Home: already covered by v1 (or v2 Track A)
+- Body: workout card, movement ring, exercise library
+- Mind: today's focus, tools grid (breathwork/journal/meditation), progress counter
+- Connect: sessions calendar, community feed, weekly check-in
+
+**Sequencing:** Build Track B first (simpler, no Achievements dependency). Track A after Achievements overhaul lands.
+
 ## SHIPPED PM-554 — PF-23 v1 First-Run Experience
 ### Intro slides + in-context spotlight tour (explanatory; first-login once, never again)
 ### Shipped PM-554 (2026-06-07). Copy DRAFT in COPY object at top of firstrun.js — Lewis edits in place.
