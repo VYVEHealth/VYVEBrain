@@ -1,3 +1,25 @@
+## Session — Miro Platform Map + Drop Zones (2026-06-07 continued)
+
+### What shipped
+- **Miro flow map v3 built** (board: uXjVHImZ8cQ=). 26 nodes, 27 connectors. Full user journey: Marketing → Stripe → Onboarding → Login → Core Dashboard (hub) → 6 spokes (Body, Mind, Focus, Connect, Sessions, Habits) → Achievements → Emails → Re-engagement loop.
+- **174 labelled drop zones** created below each section node — dark mode row (dark grey boxes) + light mode row (white boxes), one box per screen per theme. Lewis/Alan drag screenshots directly from Finder onto matching box, then leave sticky note comments on screens.
+- **Screenshots uploaded to Google Drive** — https://drive.google.com/drive/folders/1LP10B4bvMI2MoCOI2cm0FNvKRpu7aZ38 — organised by section (portal/dark/mobile/, portal/light/mobile/, emails/).
+- **Workflow established**: audit script → screenshots → Drive → drag to Miro → comment → Dean fixes → re-run audit → drag new screenshot over old.
+
+### Key decisions
+- Miro chosen over Figma because Lewis and Alan already use it.
+- Drop-and-replace approach for screenshots — no API upload (Miro API unreliable for image positioning).
+- Drive folder shared with anyone-with-link viewer access.
+- Flow map sits at top of board, drop zones below — scroll down to see screenshot grids.
+
+### Miro board
+https://miro.com/app/board/uXjVHImZ8cQ=/
+
+### Known issues
+- Screenshot node links (clicking node → Drive folder) requires Miro Pro plan — not implemented.
+- exercise-library.html light mode screenshot missing (timeout) — re-run with SECTION=portal targeting just that page if needed.
+- GITHUB_PAT_CLAUDE expires 20 June 2026 — rotate now.
+
 ## Session — Full Platform Audit + Miro App Map (2026-06-07)
 
 ### What happened
