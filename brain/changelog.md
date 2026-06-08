@@ -1,3 +1,23 @@
+## PM-559 session close — App Health dashboard v1 shipped (2026-06-08)
+
+### What shipped
+- `cc_app_health` migration — single-row cache, RLS admin-read + service-role-write. pg_cron hourly.
+- `cc-app-health` EF v4 — PostHog usage (100-page limit, slash-normalised dead pages), perf_telemetry LCP, platform_metrics_daily headlines. POSTHOG_API_KEY now in vault.
+- `pages/app-health.html` in vyve-command-centre — live errors ranked by blast radius, at-a-glance strip, page usage, dead pages, load times, drill-down modal on every error row, bulk resolve settled, text alerts placeholder.
+- `assets/sidebar-config.js` — app-health slug in Delivery section.
+- CC commits: `7ab3e7af`, `7ba10f40`, `49b90b5`, `bf8c312b`, `49b90b5d`.
+
+### Key state
+- Page fully working: 0 active errors, 14 active members 7d, page usage + dead pages accurate, load times from perf_telemetry.
+- POSTHOG_API_KEY in Supabase vault (added this session).
+- 158 unresolved alerts — bulk resolve button on settled section when ready to triage.
+- perf.js stopped collecting after 13 May — load times data is stale. Fix perf.js in a future session.
+- App Health in Delivery nav — working via router slug.
+
+### §23 rules
+- §23.99 (NEW): POSTHOG_API_KEY must be in Supabase vault for cc-app-health EF to populate usage/perf. Key: query:read scope only.
+- §23.100 (NEW): cc-app-health EF can only be triggered from Composio workbench (urllib), not bash_tool curl — sandbox blocks *.supabase.co per §23.86.
+
 ## PM-559 — Command Centre App Health: PostHog API wired + dashboard spec (2026-06-08)
 
 Talk-first / spec-only session (Dean: Sonnet builds, Claude specs). No vyve-site or member-app code shipped.

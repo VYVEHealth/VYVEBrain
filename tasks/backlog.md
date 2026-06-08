@@ -1,3 +1,8 @@
+## SHIPPED PM-559 — App Health Dashboard v1
+### Live at admin.vyvehealth.co.uk/#/app-health (2026-06-08)
+
+---
+
 ## NEXT — VYVE Command Centre (post-App Store resubmission)
 ### Internal ops, admin CRM, document hub, app health monitoring
 
