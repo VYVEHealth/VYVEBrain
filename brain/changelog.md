@@ -1,3 +1,28 @@
+## Employer Dashboard — projection toggle + colour preview shipped; parallel build reverted (2026-06-08)
+
+### What shipped
+- `Test-Site-Finalv3/vyve-dashboard-live-preview.html` (commit `3b2aa9e0`) — standalone preview of the employer dashboard. Adds a **Live / Projection** view toggle: Projection scales the live `employer-dashboard` EF response client-side to an adjustable headcount (default 10,000), holding rates (engagementRate, avgPerMember) constant while counts scale; amber "Illustrative projection — not real members" badge. Plus a light KPI colour lift (persistent gradient accents + amber/purple/pink variants on previously-plain cards). **Live `vyve-dashboard-live.html` left untouched.**
+
+### Canonical employer system (confirmed — repo overrides memory)
+- Data engine: deployed EF `employer-dashboard` (v41; source header says v20) — reads `members.company`, auth via `EMPLOYER_DASHBOARD_API_KEY` (x-api-key header / api_key param), CORS locked to https://www.vyvehealth.co.uk, in-memory rate limit 100/hr. Returns members{total,active,quiet,inactive,engagementRate} / activities / sessions{byCategory} / charity / trend. No wellbeing scores in this payload.
+- Front-end: `Test-Site-Finalv3/vyve-dashboard-live.html` (live employer dashboard, www), plus `dashboard.html`, `employers.html`, `roi-calculator.html`.
+- Company linkage is the `members.company` column (Sage, BT, Individual currently tagged) — NOT the `employer_members` table.
+
+### Reverted / cleaned up (a parallel build was created before the canonical system was found)
+- Dropped SQL RPC `public.employer_dashboard(text,int)`.
+- Emptied `employer_members` (a 34-row "Northwind Group" demo seed was removed; table back to original empty state).
+- Reverted the Employer Dashboard section out of `vyve-site/internal-dashboard/index.html` — vyve-site commit `ba12a486`, back to original 56,241 bytes.
+
+### Open decisions
+- Promote preview → live `vyve-dashboard-live.html`? (one commit when approved.)
+- Should the projection toggle live on the real client-facing dashboard (real clients would see it) or only a separate demo page? Currently leaning: separate demo.
+
+### Reference (for ROI if wired later)
+- CIPD/Simplyhealth Health & Wellbeing at Work 2025: 9.4 sickness-absence days/employee/yr. Deloitte Mental Health & Employers 2024: £51bn UK cost, ~£1,900/employee, £4.70 return per £1 invested. A dedicated `roi-calculator.html` already exists.
+
+### §23 rule
+- §23.103 (NEW): Before building ANY employer/dashboard feature, run an org-wide code search across VYVEHealth first. The `employer-dashboard` EF, the Test-Site-Finalv3 employer pages, and the `members.company` model all already existed. Repo state overrides chat/memory — recon the full org before building, not just the obvious repo.
+
 ## PM-559 final state — App Health dashboard fully working (2026-06-08)
 
 ### Final fixes this session
