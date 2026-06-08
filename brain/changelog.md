@@ -1,3 +1,21 @@
+## PM-559 final state — App Health dashboard fully working (2026-06-08)
+
+### Final fixes this session
+- `assets/app-health.js` extracted from inline script (router injectPage replaceChild error)
+- `lib/router.js` patched: skip `s.text` for external scripts; never cache app-health slug
+- Missing comma in SYSTEM_CHECKS array fixed
+- Admin RLS policies added: `platform_metrics_daily` + `certificates`
+- System health panel: removed sync-health-data + log-perf (permanent red noise)
+- 4 checks live: cc-app-health (green), daily-report (green), re-engagement (amber), certificate-checker (amber)
+- Usage pagination 10/page working (1-10 of 61 pages)
+- First-seen + last-seen on all error rows
+- Drill-down modal + bulk resolve settled working
+- Dead pages accurate, load times from perf_telemetry
+
+### §23 rules
+- §23.101 (NEW): CC router injectPage re-executes scripts via replaceChild — inline JS with template literals breaks. Always use external src JS files for CC pages with complex JS.
+- §23.102 (NEW): After removing array items in JS, always run `node --check` before committing.
+
 ## PM-559 session close — App Health dashboard v1 shipped (2026-06-08)
 
 ### What shipped
