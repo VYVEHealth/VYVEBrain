@@ -1,3 +1,10 @@
+## PM-585 / PM-586 — retention.js cache-bust + missing function definitions fixed (2026-06-09)
+
+- PM-585: retention.html script tag version bumped from PM-580-v1 → PM-584-v1 to bust browser cache
+- PM-586: Three render function definitions (retRenderDayN, retRenderStreaks, retRenderCriticalEvents) were missing from retention.js — the insert anchor used was an HTML comment that doesn't exist in JS files. Fixed by inserting before the `// ── Boot ─────` anchor which is stable. Verified all three definitions present in committed file (18,019 chars).
+- Root cause lesson: always assert that str.replace() actually changed the string, not just that the target string appears somewhere in the result (it was already present in the function call added by a prior patch).
+- Retention page fully working: all six sections render. §23.101 reminder: bump JS query-string version in HTML on every JS update.
+
 ## PM-584 — Retention page: day-N curve, streaks, critical events (2026-06-09)
 
 - Day-N retention curve live: D1 61%, D3 50%, D7 68%, D14 47%, D30 69%, D60 57% vs industry benchmarks (D1:30%, D7:15%, D30:8%). VYVE well above at every interval.
