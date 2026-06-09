@@ -1,3 +1,23 @@
+## PM-571 — Capawesome OTA gap diagnosed (no sync/ready in shell); Dean's dev-phone restored to server.url loop; SPM xcodeproj gotcha (2026-06-09)
+
+Follow-on to PM-569. Got Dean's iPhone back onto the server.url dev-loop (he'd installed bundled 1.7 from the App Store and lost live changes), and pinned down *why* the Capawesome OTA has never run end-to-end.
+
+### OTA diagnosis (sharpens §23.106 -> new §23.107)
+- `@capawesome/capacitor-live-update@8.2.2` IS installed + native-linked (confirmed in `npx cap sync ios` plugin list, 17 plugins) and CONFIGURED in Mac-local `capacitor.config.json`: `plugins.LiveUpdate = { appId: "f9961f66-eb66-4102-b1c5-f9b2c7baeebf", autoDeleteBundles: true, publicKey: "" }`.
+- BUT there are NO `LiveUpdate.sync()` / `LiveUpdate.ready()` calls ANYWHERE in the vyve-site web shell — swept app.js/boot.js/init.js/auth.js/nav.js/sw.js/index.html/settings.html + org code search = 0 hits (only an unrelated "live-update" comment in personal-bests.html). The plugin does not auto-sync; without `sync()` nothing fetches, without `ready()` an applied bundle rolls back.
+- Consequence: the rails are physically in 1.7 but the switch was never flipped. **1.7 CANNOT receive an OTA.** The fix is JS-only but gated on a NEW bundled binary: wire `sync()` on launch + `ready()` after first paint + channel `89e12796`, native-guarded, into the shell -> ship 1.8 -> only then can a bundle push land. The §23.106 canary therefore targets 1.8, not 1.7.
+- Not ruled out: a native auto-sync in vyve-capacitor `AppDelegate.swift` (not checked) — but config has no autoUpdate flag and Capawesome doesn't auto-sync without the JS calls, so near-certain.
+
+### Dean's dev phone
+- Restored `server` block to Mac-local `capacitor.config.json` (`server.url = https://online.vyvehealth.co.uk`, cleartext false), kept LiveUpdate block intact (dormant under server.url). `npx cap sync ios` -> ran to device from Xcode -> confirmed back on the live loop. Live HEAD was vbb 447/PM-563 at session time; vyve-site has since advanced to PM-565 via a parallel session.
+- DISCIPLINE: that `server` block is DEV-ONLY on Mac-local — strip it before the next store binary or 1.8 ships in server.url mode and breaks the bundled migration.
+
+### SPM gotcha (new §23.108)
+- vyve-capacitor is an SPM-based Capacitor project (`Package.swift`; "not compatible with SPM" warns) — there is NO `App.xcworkspace`. Open `ios/App/App.xcodeproj` directly. `open ...App.xcworkspace` fails "does not exist".
+
+### No code shipped
+- Diagnosis + brain only. No vyve-site / EF / vyve-capacitor commits. Mac-local config edit is uncommitted (dev-loop, intentional).
+
 ## PM-570 — Changelog history recovered into changelog-archive.md (2026-06-09)
 
 The PM-554 consolidation (7 Jun) trimmed changelog.md from 504 entries (~2.96MB, back to 22 Apr) down to PM-554 onward, but master §19 still pointed at changelog.md for older detail — a stale/false pointer. Recovered the full pre-PM-554 history from git commit `5deea4fd` into new `brain/changelog-archive.md` (504 entries, 22 Apr — 7 Jun / PM-553a). changelog.md unchanged below (still PM-554—569). §19 pointer corrected to reference the archive for pre-PM-554. Nothing was lost — git retained every version; this relocates it to where the pointer claims it lives.
