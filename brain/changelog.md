@@ -1,3 +1,54 @@
+## Enterprise-readiness bridge session — documentation pack + consent schema + GDPR cron fix (2026-06-09)
+
+### What shipped
+
+**Documentation pack (6 documents):**
+- `01_ropa_and_data_flow.md` — ROPA covering 8 processing activities with lawful bases (Art 6 + Art 9), data flow diagram, subprocessor calls. Delivered to outputs.
+- `02_disaster_recovery_note.md` — DR/BCP note: RTO 4h / RPO 24h, named owner (Dean Brown), restore procedures for all 5 key scenarios, open actions before Sage pilot.
+- `03_subprocessor_register.md` — 10-processor register (Supabase, Anthropic, Brevo, Stripe, PostHog, HubSpot, Apple, YouTube, Capawesome, Riverside) with DPA status and required actions.
+- `04_how_we_handle_your_data.md` — External 2-page plain-language summary for procurement reviewers / employees.
+- `05_security_questionnaire_updated.md` — Updated security questionnaire committed to `brain/security_questionnaire.md`. Updated from May 2026 to reflect: §23.104 audit clean (June 2026), 120 RLS tables, SECURITY DEFINER audit results, iOS 1.5/Android 1.0.6 in review, RLS cross-account test results, GDPR pipelines live.
+- `06_consent_work.md` — Consent and transparency work: HealthKit disclosure copy (DRAFT, Phil + Lewis sign-off needed), privacy notice additions required (Art 6/9 lawful bases, PostHog session recording, data retention table), re-consent prompt spec, `privacy_employer_reporting` default decision brief, B2B employee consent model flag for DPA.
+
+**Schema migration: `add_consent_version_columns`**
+- Added `privacy_version TEXT` and `health_consent_version TEXT` to `members` table.
+- Existing consented members stamped `'pre-versioning'` as sentinel. Non-consented members NULL.
+- Column comments documenting intent added.
+- Mirrors the existing `terms_version` versioning pattern.
+
+**GDPR cron fix:**
+- Jobs 21 (`vyve-gdpr-export-tick`) and 22 (`vyve-gdpr-erase-daily`): hardcoded bearer `dd536f57...` removed from `cron.job.command`.
+- Finding: CRON_SECRET env var was not set on the EF, so the bearer was never validated — it was a visible artifact in pg_cron with no functional effect. Service-role client is the actual auth layer.
+- Both jobs now call EFs with Content-Type only; EF security unchanged.
+
+**RLS cross-account isolation test:**
+- Impersonated member A (`calumdenham@gmail.com`) attempting to read member B (`deanonbrown@hotmail.com`) across 15 member-scoped tables.
+- Result: zero rows visible on all 15 tables.
+- Policy audit: all 15 tables confirmed `auth.email() = member_email` on both QUAL and WITH CHECK.
+
+**Security questionnaire updated in `brain/security_questionnaire.md`** — reflects current live state (June 2026 audit, 120 tables, iOS/Android store status).
+
+### Open decisions (not resolved this session — awaiting Dean/Lewis input)
+
+1. **`privacy_employer_reporting` default** — keep `true` (LI basis, defensible) vs flip to `false` (explicit opt-in, safer for Sage procurement). Decision brief in `06_consent_work.md` §4.
+2. **PostHog session recording** — Option A (LI basis + opt-out disclosure in privacy notice) vs Option B (explicit consent capture). Note: opt-out mechanism not yet built; don't publish privacy notice addition until it is.
+
+### APNs key rotation (Dean's action items — not built this session)
+
+Dean to action before Sage diligence (walk-through to be done as a dedicated focus):
+1. Revoke the non-production APNs key in Apple Developer portal to free a slot (Apple's 2-keys-per-team cap)
+2. Register new key
+3. Update 5 Supabase secrets with new key values
+4. Verify push delivery
+5. Revoke old exposed key (KEY_ID `2MWXR57BU4`)
+
+### Reminders for Dean
+
+- Enable PITR on Supabase project (Dashboard > Billing > Add-ons) — reduces RPO from 24h to minutes, documented in DR note as open action.
+- Store Android keystore (`vyve-release-key.jks`) + password in 1Password — flagged P0 in DR note.
+
+### §23 rules (none earned — all work was data/config/docs, no novel architectural patterns)
+
 ## PM-567 — Security Tier 2c/2d: search_path + ai_decisions policy + final audit clean (2026-06-09)
 
 ### What changed
