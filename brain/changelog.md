@@ -1,3 +1,10 @@
+## PM-576 — GDPR-safe send_never_active: suppression check + unsubscribe link (2026-06-09)
+
+- `cc-usage` EF → v4: `sendNeverActive()` now checks `engagement_emails.suppressed = true` before sending; suppressed members are skipped and returned in `skipped_suppressed[]`
+- Unsubscribe link added to email footer (routes to settings.html#notifications)
+- Sent emails recorded in `engagement_emails` table (stream: `never_active`, key: `never_active_manual`) so open/click tracking and suppression works
+- jordz279@hotmail.com and kieranday97@gmail.com have existing suppressed=true rows — will be skipped automatically
+
 ## PM-575 — Fix session/replay activity log pipeline (2026-06-09)
 
 ### Root cause

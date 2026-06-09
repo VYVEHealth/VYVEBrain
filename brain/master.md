@@ -1,20 +1,20 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-575 session close)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-576 session close)
 
-**Session 2026-06-09 — PM-571 through PM-575. Usage Analytics + session/replay pipeline fix.**
+**Session 2026-06-09 — PM-571 through PM-576. Usage Analytics + session/replay fix + GDPR email safety.**
 
-**PM-575: session/replay log pipeline fixed. Backfill done. player-tracker + replay-tracker now call log-activity on first write. vbb 450.**
-**§23.107 (NEW): any new view/watch-time table MUST wire log-activity call from its tracker — rollup pipeline only reads member_activity_log.**
+**PM-576: send_never_active EF now GDPR-safe — checks suppression, includes unsubscribe link, records sends in engagement_emails.**
+**PM-575: session/replay pipeline fixed. vbb 450.**
 **CC Usage Analytics live at admin.vyvehealth.co.uk/#/usage. Phase 1 complete.**
 
 **WARN: Throwaway EF `posthog-test` ACTIVE-but-retired — delete via dashboard.**
 **WARN: Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
 **WARN: App Store Connect API key setup needed next session.**
-**WARN: `session-reminder-cron` failing — `current_setting('app.service_role_key')` format issue (§23.7). Fix pending.**
+**WARN: `session-reminder-cron` failing — §23.7. Fix pending.**
 **iOS 1.5 / Android 1.0.6 in store review (PM-557).**
-**DEPLOYMENT MODEL: iOS 1.7 bundled — vyve-site commits reach Dean + Android only. iOS members via Capawesome OTA only (§23.106 — never yet run end-to-end).**
+**DEPLOYMENT MODEL: iOS 1.7 bundled — vyve-site commits reach Dean + Android only. Capawesome OTA never run (§23.106).**
 
 <!--CURRENT_FRONT_END-->
 
