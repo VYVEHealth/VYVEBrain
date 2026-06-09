@@ -1,3 +1,11 @@
+## PM-572 — Usage Analytics: is_test cohort filter (2026-06-09)
+
+- `members.is_test BOOLEAN DEFAULT false` column added; 6 test accounts backfilled (`@test.com`)
+- `cc-usage` EF → v2: `is_test` included in members enrichment
+- `assets/usage.js`: `usageFilterMembers()` defaults to excluding test accounts (checkbox checked by default)
+- `pages/usage.html`: "Exclude test" checkbox wired to filter
+- Cache rebuilt — `members_json` now carries `is_test` field
+
 ## PM-571 — Usage Analytics v1: Overview + Members tabs (2026-06-09)
 
 ### What shipped

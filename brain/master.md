@@ -1,14 +1,12 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-571 session close)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-572 session close)
 
-**Session 2026-06-09 — PM-571. Usage Analytics v1 shipped.**
+**Session 2026-06-09 — PM-571 + PM-572. Usage Analytics v1 shipped + is_test cohort filter.**
 
-**CC Usage Analytics Phase 1 live at admin.vyvehealth.co.uk/#/usage: Overview + Members tabs + Member 360 drill-down.**
-**`cc-usage` EF v1, `cc_usage` table, cron job 39, RLS policies on member_stats/company_summary/member_activity_daily.**
-
-**Open: `is_test` flag decision — Dean to confirm test/admin email list for meaningful cohort filter.**
+**CC Usage Analytics live at admin.vyvehealth.co.uk/#/usage. Phase 1 complete.**
+**`members.is_test` column live — 6 @test.com accounts flagged. Filter defaults to exclude test.**
 **Phase 2 next: Activity depth + Sessions/watch-time tabs.**
 
 **WARN: Throwaway EF `posthog-test` ACTIVE-but-retired — delete via dashboard.**
@@ -16,6 +14,7 @@
 **WARN: App Store Connect API key setup needed next session.**
 **WARN: `session-reminder-cron` failing — `current_setting('app.service_role_key')` format issue (§23.7). Fix pending.**
 **iOS 1.5 / Android 1.0.6 in store review (PM-557); members on server.url live until approved+installed.**
+**DEPLOYMENT MODEL: iOS 1.7 bundled — vyve-site commits reach Dean + Android only. iOS members via Capawesome OTA only (never yet run end-to-end — §23.106).**
 
 <!--CURRENT_FRONT_END-->
 
