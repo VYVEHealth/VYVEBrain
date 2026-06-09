@@ -1,3 +1,33 @@
+## PM-566 — Security Tier 2b: P0 vault exposure + remaining callable functions locked (2026-06-09)
+
+### What changed
+31 more SECURITY DEFINER functions revoked. No vyve-site changes. No member impact.
+
+**P0 CRITICAL — now closed:**
+- `read_vault_secret(text)` — any authenticated member could pull any Vault secret by name (Anthropic key, YouTube OAuth, PostHog key, all of it)
+- `get_youtube_oauth_secrets()` — literally returned YouTube client_id + secret + refresh_token to any authenticated caller
+- `gdpr_erase_purge_subject(text)` — any authenticated member could erase any other member's data
+
+**HIGH — now closed:**
+- `gdpr_export_pick_due()`, `refresh_member_home_state_v1_internal()`, `refresh_member_home_state_if_dirty()`, `vyve_refresh_daily()`
+
+**MEDIUM/cron — now closed:**
+- `evaluate_plan_fit()`, `charity_total_reconcile_and_heal()`
+
+**Trigger functions (cosmetic cleanup — PostgREST blocks these regardless):**
+- `assert_member_not_expired`, `calendar_occurrences_set_updated_at`, `charity_count_*` (6), `increment_habit_counter`, `podcast_episodes_set_updated_at`, `set_daily_mood_updated_at`, `set_updated_at_checkin_questions`, `tg_mark_home_state_dirty_*` (5), `tg_refresh_home_state_from_members`, `tg_refresh_member_home_state`, `vyve_sync_activity_log`
+
+### Final audit state
+§23.104 audit returns zero violations except two deliberate exceptions:
+- `resolve_trial_campaign` — intentionally public (onboarding needs unauthenticated campaign code lookup)
+- `watchdog_cron_failures` — internal ops, low risk, park for next session
+
+### Full session security summary (PM-564 → PM-566)
+- Tier 0: 17 service-only functions locked (both original CRITICALs)
+- Tier 1: anon door closed on 4 client-callable functions
+- Tier 2a: authenticated IDOR closed on refresh_member_home_state + compute_engagement_components_v2
+- Tier 2b: 31 more functions locked including 2 P0 vault exposure holes + gdpr_erase_purge_subject
+
 ## PM-565 — Security Tier 2a: IDOR self-scope on refresh_member_home_state + compute_engagement_components_v2 (2026-06-09)
 
 ### What changed

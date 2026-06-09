@@ -1,13 +1,13 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-565 session close)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-566 session close)
 
-**Session 2026-06-09 — PM-564 + PM-565. Security Tier 0+1+2a complete. No vyve-site changes. No member impact.**
+**Session 2026-06-09 — PM-564 through PM-566. Security work complete for this session.**
 
-**Tier 2a done: `refresh_member_home_state` + `compute_engagement_components_v2` self-scoped — authenticated IDOR closed.**
+**All SECURITY DEFINER functions now locked down. §23.104 audit clean — zero violations except two deliberate exceptions (`resolve_trial_campaign` public for onboarding; `watchdog_cron_failures` low-risk ops).**
 
-**Remaining Tier 2 (next session): search_path pin on ~40 functions; exercise_canonical_set view fix; running_plan_cache/ai_decisions RLS tighten; bucket listing restrict. All need branch-test first.**
+**Remaining Tier 2 (next session — needs Supabase branch): search_path pin on ~40 functions; exercise_canonical_set view invoker fix; running_plan_cache/ai_decisions RLS WITH CHECK tighten; bucket listing restrict; watchdog_cron_failures tighten.**
 
 **WARN: Throwaway EF `posthog-test` ACTIVE-but-retired — delete via dashboard.**
 **WARN: Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
