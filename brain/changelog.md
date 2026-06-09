@@ -1,3 +1,26 @@
+## PM-565 — Security Tier 2a: IDOR self-scope on refresh_member_home_state + compute_engagement_components_v2 (2026-06-09)
+
+### What changed
+Two `SECURITY DEFINER` functions patched to self-scope authenticated callers.
+Role-guard added as first statement in BEGIN: `IF auth.role() <> 'service_role' THEN p_email := auth.email(); END IF;`
+service_role callers (all EFs, all cron jobs) bypass the guard — auth.email() is NULL under service_role so the bypass is mandatory.
+
+**`refresh_member_home_state(p_email text)`** — authenticated callers now forced to own home state. Guard placed before `e := lower(trim(p_email))` normalisation so the scoped value flows through correctly.
+
+**`compute_engagement_components_v2(p_member_email text)`** — authenticated callers now forced to own engagement data.
+
+**`is_admin()` and `queue_health_write_back()`** — confirmed safe by construction (no email param / trigger function). No changes needed.
+
+### Verification
+- `pg_get_functiondef` confirms `auth.role() <> 'service_role'` guard present in both functions.
+- Zero `permission denied` / `42501` / function-name hits in `platform_alerts` post-apply.
+
+### Remaining Tier 2 work (next session)
+- Pin `search_path = public, pg_temp` on ~40 flagged functions (branch-test first).
+- Recreate `exercise_canonical_set` view as invoker security.
+- Tighten `running_plan_cache` / `ai_decisions` RLS WITH CHECK to own rows.
+- Restrict bucket listing on `certificates` + `member-avatars`.
+
 ## PM-564 — Security Tier 0 + Tier 1: EXECUTE grants locked down (2026-06-09)
 
 ### What changed
