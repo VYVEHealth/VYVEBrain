@@ -1,3 +1,20 @@
+## PM-575 — Fix session/replay activity log pipeline (2026-06-09)
+
+### Root cause
+`player-tracker.js` and `replay-tracker.js` write to `session_live_views` / `replay_video_views` but never called `log-activity` EF, so sessions/replays never landed in `member_activity_log` → never rolled up into `member_activity_daily` or `member_stats`. Sessions stopped at 25 May when old tracker was retired; replays never worked at all.
+
+### What shipped
+- **Backfill:** 2 `session_live_views` + 6 `replay_video_views` rows inserted into `member_activity_log` (idempotent, deduped on source_id)
+- `rebuild_member_activity_daily_incremental()` run — sessions/replays now visible in rollup (65 session rows back to Mar 2026, 8 replay rows Jun 2026)
+- `recompute_all_member_stats()` run — `member_stats` updated (39 rows)
+- `cc_usage` cache rebuilt
+- **`player-tracker.js`** (PM-575): on first write (`isInsert=true`) for `live` and `replay` modes, fire-and-forget `POST /functions/v1/log-activity` with `{type:'session_views'/'replay_views', activity_date}`. JWT from `session.cachedJwt`.
+- **`replay-tracker.js`** (PM-575): same injection on `isInsert=true`.
+- vbb bumped to 450. sw.js: `vyve-cache-v2026-06-09-pm575-session-replay-fix`
+
+### §23.XXX — new hard rule
+**§23.107:** When adding new watch-time/view tables (`session_live_views`, `replay_video_views`, or future equivalents), always wire a `log-activity` call from the tracker on first qualifying write. The rollup pipeline (`rebuild_member_activity_daily_incremental`) only reads from `member_activity_log` — any tracker that writes directly to a separate table without also calling `log-activity` will be silently invisible in all rollups, `member_stats`, dashboards, and achievements.
+
 ## PM-574 — Usage Analytics: today column + email never-active (2026-06-09)
 
 - **Today column** added to Members table — live fetch from `member_activity_daily` on page load (not from cache), highlights in green when > 0
