@@ -1,3 +1,49 @@
+## PM-569 — iOS 1.7 live + deployment model flipped to bundled; brain consolidation + exec brief (2026-06-09)
+
+### Context
+Brain-consolidation session (ran parallel to the PM-568 cron-fix session; rebased onto its commit 9ca8b9c3). Trigger: Apple approved iOS 1.7 → it is now LIVE; the whole iOS member cohort sees a bundled build while Dean alone is on the server.url live shell. Reconciled against the brain, which (PM-475, 4 Jun) still asserted the opposite — "whole cohort server.url-live, no frozen bundle." That correction is now itself wrong and has been reverted.
+
+### iOS train (clarified with Dean)
+- 1.5 = first genuinely bundled submit (server.url removed) — PM-557, 7 Jun, was in review.
+- 1.6 submitted then CANCELLED.
+- Went straight to 1.7 — now APPROVED + LIVE on the App Store.
+- 1.7 ships server.url removed → iOS members frozen on the vyve-site SHA baked into the binary.
+
+### Android
+- Bundled 1.0.6 versionCode 51 submitted ~5-6 Jun (PM-557), approval UNCONFIRMED, still in review as of 9 Jun (Dean to recheck Play Console).
+- Prior live Android build is still a server.url build → Android members remain on the live shell until 1.0.6 lands.
+
+### Deployment model — now live (reverts PM-475)
+- iOS members: FROZEN on bundled 1.7, updatable ONLY via Capawesome OTA (app f9961f66 / prod channel 89e12796).
+- Capawesome OTA has NEVER run end-to-end → iOS members currently have NO working update path short of a full App Store resubmit (days/cycle).
+- Dean: server.url dev-loop on his iPhone → sees every vyve-site commit live (2-15min WKWebView cache).
+- Net: a vyve-site commit reaches Dean + Android members, NOT iOS members. Settings vbb-marker verifies Dean's view only.
+
+### vyve-capacitor remote drift
+- Remote latest commit is PM-560 (splash). The 1.5/1.6/1.7 bundle ship-state lives only on Dean's Mac local, uncommitted. Curate + atomic-commit Mac-local → remote per PM-413 Pending #2.
+
+### Brain edits applied this session
+- CURRENT FRONT: surgical merge onto the PM-568 front (kept their cron-fix lines + cleared WARN) — replaced the stale "1.5 in review" line with the deployment-flip block + §23.106.
+- §5 native app delivery row rewritten to the flipped model.
+- §23.4 — PM-475 correction reverted; original bundled-split is the live truth again for iOS.
+- §23.92 — flagged now load-bearing (iOS bundled).
+- §19 — new entry (this PM).
+- §23.106 (NEW HARD RULE) — bundled iOS cohort has no proven delivery channel; verified Capawesome OTA is the gating capability before Sage and before any member-facing iOS fix.
+- backlog — capacitor.config.json doctrine marked RESOLVED (bundled chosen, shipped); OTA verification elevated to P0 native priority.
+
+### Deliverable
+- Exec brief for Lewis + Alan: `/mnt/user-data/outputs/VYVE_Platform_Update_2026-06-09.md`. NOT committed to repo — handed to Dean to share.
+
+### No code shipped
+- Consolidation + brain only. No vyve-site / EF / migration changes.
+
+### Open / next
+- Dean: confirm Android 1.0.6 approval state in Play Console → update brief's pending line + §5.
+- Prove + verify ONE Capawesome OTA end-to-end (TOP native priority, pre-Sage gate).
+- §23.105 (PM-568 cron-fix rule) has a changelog body but no §23 rule body in master.md — PM-568 session to back-fill.
+- Changelog history: changelog.md only reaches back to PM-554 (07 Jun) — confirm whether late-May entries were trimmed at PM-554 or need recovery from an archive.
+- Carried WARNs: posthog-test EF delete, server-side HK sync dead since 24 May, App Store Connect API key. (session-reminder-cron resolved by PM-568.)
+
 ## PM-568 — Fix: 9 cron jobs broken by null app.service_role_key (2026-06-09)
 
 ### Root cause
