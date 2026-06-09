@@ -1,3 +1,11 @@
+## PM-579 — Fix ACT_ICONS scope + sessions in platform_metrics_daily (2026-06-09)
+
+- `platform_metrics_daily.sessions_count` was 0 for all dates because the cron ran before the PM-575 backfill. Fixed by running `recompute_platform_metrics()` for all dates with session/replay entries in `member_activity_log` (~51 dates).
+- `ACT_ICONS`/`ACT_LABELS` moved to `window.VYVE_ACT_ICONS`/`VYVE_ACT_LABELS` globals at top of usage.js — survives router replaceChild re-injection and browser caching edge cases.
+- Leftover `const score/scoreCls` removed from `usageOpen360` (syntax noise from patching).
+- Modal title now shows "First Last" instead of email.
+- cc_usage cache rebuilt.
+
 ## PM-578 — Fix ACT_ICONS scope + sessions in week-on-week (2026-06-09)
 
 - **ACT_ICONS/usageFmtMeta not defined:** `const` declarations for `ACT_ICONS` and `ACT_LABELS` never landed in PM-577 (string replacement missed). `usageFmtMeta` also missing. Fixed by inlining both as `var` inside `usageLoadMemberLog` — avoids const hoisting/scope issues with router replaceChild entirely.

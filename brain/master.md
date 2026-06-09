@@ -1,17 +1,20 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-578 session close)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-579 session close)
 
-**Session 2026-06-09 — PM-571 through PM-578. Full usage analytics session + pipeline fixes.**
+**Session 2026-06-09 — PM-571 through PM-579. Full usage analytics session complete.**
 
-**All known usage.html issues resolved. Activity log, sessions in WoW, sort persist, names — all live.**
+**PM-579: sessions now showing in WoW chart; ACT_ICONS scope fixed; modal title shows name.**
+**CC Usage Analytics fully live at admin.vyvehealth.co.uk/#/usage.**
+
 **WARN: Throwaway EF `posthog-test` ACTIVE-but-retired — delete via dashboard.**
 **WARN: Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
 **WARN: App Store Connect API key setup needed next session.**
 **WARN: `session-reminder-cron` failing — §23.7. Fix pending.**
 **iOS 1.5 / Android 1.0.6 in store review (PM-557).**
-**DEPLOYMENT MODEL: iOS 1.7 bundled — vyve-site commits reach Dean + Android only. Capawesome OTA never run (§23.106).**
+**DEPLOYMENT MODEL: iOS 1.7 bundled — Capawesome OTA never run (§23.106).**
+
 <!--CURRENT_FRONT_END-->
 
 
