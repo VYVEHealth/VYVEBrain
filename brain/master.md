@@ -1047,7 +1047,7 @@ DB migration landed (8 new columns on `wellbeing_checkins`). `wellbeing-checkin`
 
 
 
-Rolling 3-5 most recent ship narratives. Anything older lives in `brain/changelog.md` with full detail; §19 is a status board, not an archive.
+Rolling 3-5 most recent ship narratives. Full detail for recent sessions lives in `brain/changelog.md`; everything pre-PM-554 (22 Apr — 7 Jun, trimmed from changelog.md at the PM-554 consolidation) is preserved in `brain/changelog-archive.md`. §19 is a status board, not an archive.
 
 ### PM-540/541 — JWT auto-refresh + session never-expire config (7 Jun 2026)
 

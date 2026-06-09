@@ -1,3 +1,7 @@
+## PM-570 — Changelog history recovered into changelog-archive.md (2026-06-09)
+
+The PM-554 consolidation (7 Jun) trimmed changelog.md from 504 entries (~2.96MB, back to 22 Apr) down to PM-554 onward, but master §19 still pointed at changelog.md for older detail — a stale/false pointer. Recovered the full pre-PM-554 history from git commit `5deea4fd` into new `brain/changelog-archive.md` (504 entries, 22 Apr — 7 Jun / PM-553a). changelog.md unchanged below (still PM-554—569). §19 pointer corrected to reference the archive for pre-PM-554. Nothing was lost — git retained every version; this relocates it to where the pointer claims it lives.
+
 ## PM-569 — iOS 1.7 live + deployment model flipped to bundled; brain consolidation + exec brief (2026-06-09)
 
 ### Context
