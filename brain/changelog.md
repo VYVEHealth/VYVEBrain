@@ -1,3 +1,37 @@
+## PM-567 — Security Tier 2c/2d: search_path + ai_decisions policy + final audit clean (2026-06-09)
+
+### What changed
+
+**search_path pin (Tier 2c):**
+- Only ONE function was missing it: `watchdog_cron_failures`. All others already had `SET search_path TO 'public'` in place.
+- Pinned to `public, cron, pg_temp` (must include `cron` schema — queries `cron.job` + `cron.job_run_details`).
+- ACL also locked to service_role only in same migration.
+- Smoke-tested: function executes and returns real results.
+- Side-finding: `session-reminder-cron` failing every 5min with JSON construction error — `current_setting('app.service_role_key')` string-concatenated into JSON breaks with `sb_secret_*` key format. §23.7 class bug, separate fix needed.
+
+**`exercise_canonical_set` view:** confirmed non-issue. `reloptions` null = Postgres default (security_invoker=false). Underlying tables are public-read anyway, no privilege escalation possible.
+
+**`ai_decisions` INSERT policy (Tier 2d):**
+- Old: `service_insert_decisions` — INSERT for `{public}` with `WITH CHECK (true)` — any authenticated member could insert decision rows attributed to any email.
+- New: `service_insert_decisions_v2` — INSERT for `{service_role}` only. EFs write this table, members only read their own rows via `member_own_decisions` SELECT policy (unchanged).
+
+**Storage buckets (`certificates`, `member-avatars`):** confirmed already correct. SELECT is public (intentional — certs downloaded, avatars displayed). Write ops are correctly scoped to own email. No changes needed.
+
+**`running_plan_cache`:** shared parametric cache — no member_email column to scope against by design. Park.
+
+### Final §23.104 audit result
+**ZERO violations** (excluding deliberate exception `resolve_trial_campaign` — public for onboarding unauthenticated campaign lookup).
+
+All SECURITY DEFINER functions: service_role only, or authenticated+service_role for the 4 legitimate member-facing ones (is_admin, refresh_member_home_state, queue_health_write_back, compute_engagement_components_v2).
+
+### Complete security session summary (PM-564 → PM-567)
+Starting: 50+ SECURITY DEFINER functions open to anon/public including 2 CRITICALs.
+Ending: §23.104 audit fully clean. Zero open violations.
+- PM-564 Tier 0+1: 21 functions locked including both CRITICALs
+- PM-565 Tier 2a: authenticated IDOR self-scoped on 2 home-state/engagement fns
+- PM-566 Tier 2b: 31 more locked including P0 vault/GDPR exposure
+- PM-567 Tier 2c/2d: search_path pinned, ai_decisions INSERT locked, full audit clean
+
 ## PM-566 — Security Tier 2b: P0 vault exposure + remaining callable functions locked (2026-06-09)
 
 ### What changed
