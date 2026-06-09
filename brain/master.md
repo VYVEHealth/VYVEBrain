@@ -1,12 +1,12 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-576 session close)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-577 session close)
 
-**Session 2026-06-09 — PM-571 through PM-576. Usage Analytics + session/replay fix + GDPR email safety.**
+**Session 2026-06-09 — PM-571 through PM-577. Full usage analytics session complete.**
 
-**PM-576: send_never_active EF now GDPR-safe — checks suppression, includes unsubscribe link, records sends in engagement_emails.**
-**PM-575: session/replay pipeline fixed. vbb 450.**
+**PM-577: names, sort persist, activity log detail, tracker REST fix. vbb 451.**
+**member_activity_log now has RLS (admin-read, member-self-read/insert).**
 **CC Usage Analytics live at admin.vyvehealth.co.uk/#/usage. Phase 1 complete.**
 
 **WARN: Throwaway EF `posthog-test` ACTIVE-but-retired — delete via dashboard.**

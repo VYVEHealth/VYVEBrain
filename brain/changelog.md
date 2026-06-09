@@ -1,3 +1,19 @@
+## PM-577 — Usage: names + sort persist + activity log detail + tracker REST fix (2026-06-09)
+
+### What shipped
+- `members.first_name` + `last_name` added to cc-usage EF enrichment and `members_json` cache
+- Members table: displays "First Last" with email below; initials avatar uses name initials
+- Column sort state persisted to `localStorage` (`vyve_cc_usage_sort`) — survives page reload
+- Member column now sorts by `last_name`; all other headers unchanged
+- **Member detail view:** clicking a row fetches `action: member_detail` from cc-usage EF; renders full activity log timeline (last 60 entries) grouped by date with type icons, labels, metadata (duration, distance, watch%, scores)
+- **Tracker REST fix (PM-577):** player-tracker.js + replay-tracker.js now POST directly to `/rest/v1/member_activity_log` on first qualifying write (bypasses log-activity CAPS which has no replay type); `member_activity_log` RLS updated with member-self-insert + admin-read + member-self-read policies
+- `cc-usage` EF → v5
+- vbb 451 | sw: pm577-tracker-fix
+
+### Replay test account clarification
+- Test account replays visible: uncheck "Exclude test" in Members tab
+- Overview chart uses `platform_metrics_daily` (02:15 UTC rebuild) — today's activity shows tomorrow; "today" column reads live from `member_activity_daily`
+
 ## PM-576 — GDPR-safe send_never_active: suppression check + unsubscribe link (2026-06-09)
 
 - `cc-usage` EF → v4: `sendNeverActive()` now checks `engagement_emails.suppressed = true` before sending; suppressed members are skipped and returned in `skipped_suppressed[]`
