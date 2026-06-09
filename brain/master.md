@@ -9,7 +9,6 @@
 
 **Tier 2 pending (next session): self-scope the 4 client-callable functions (authenticated IDOR); search_path pin on ~40 functions; view security fix; bucket listing tighten. Branch-test first.**
 
-**WARN: MGMT_PAT missing from Vault (expired 6 Jun, not rotated) — `backup-edge-functions.yml` GitHub Actions silently broken. Dean to rotate urgently.**
 **WARN: Throwaway EF `posthog-test` ACTIVE-but-retired — delete via dashboard.**
 **WARN: Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
 **WARN: App Store Connect API key setup needed next session.**
@@ -1642,7 +1641,7 @@ Every `SECURITY DEFINER` function in `public` must `REVOKE EXECUTE FROM PUBLIC, 
 | GitHub PAT (Composio fallback) | Supabase Vault as `GITHUB_PAT_CLAUDE` (project `ixjfklpckgxrwjlfsaaz`, secret UUID `0c17013f-c79b-4950-8e2f-589ef81078cc`). Fine-grained, VYVEHealth org owner, all-repos, Contents + PRs + Workflows R/W. Fetch via Supabase MCP `execute_sql` — never ask Dean to paste. Expires **20 June 2026** (calendar rotation required). |
 | GitHub PAT (brain-scoped) | `GITHUB_PAT_BRAIN` — Contents R/W on `VYVEHealth/VYVEBrain` only. Expires **18 April 2027**. |
 | GitHub PAT (capacitor-scoped) | Fine-scoped, Contents R/W on `VYVEHealth/vyve-capacitor` only. Expires **7 May 2027**. Cached in macOS Keychain on Dean's Mac. |
-| Supabase Management PAT | Supabase Edge Function secret `MGMT_PAT` (NOT `SUPABASE_MGMT_PAT` — Supabase reserves the `SUPABASE_` prefix). ALSO stored as GitHub Actions repo secret `MGMT_PAT` on `VYVEHealth/VYVEBrain` for `backup-edge-functions.yml`. Expires **6 Jun 2026** — when rotating, update both copies in the same session. |
+| Supabase Management PAT | Supabase Vault secret `MGMT_PAT` + GitHub Actions repo secret `MGMT_PAT` on `VYVEHealth/VYVEBrain` for `backup-edge-functions.yml`. **No expiry** (rotated 9 Jun 2026). Update both copies in same session if ever rotated. |
 | Legacy service-role JWT | Supabase secret `LEGACY_SERVICE_ROLE_JWT` (dual-auth pattern for `send-push`, `achievement-earned-push`, broadcast EFs). |
 | VAPID public key | `BDbz2-0k3JcqRWKyasr3MNgEZrXhKsVvjS-otCyyV7Ya4Pi2xXOxXGETUpVoE56VorKzSNy7uyep53gOzNEMTu4` |
 | YouTube Data API v3 OAuth | Vault secrets `YOUTUBE_OAUTH_CLIENT_ID`, `YOUTUBE_OAUTH_CLIENT_SECRET`, `YOUTUBE_OAUTH_REFRESH_TOKEN`. Google Cloud project `vyve-website`. Scope `https://www.googleapis.com/auth/youtube`. Owner `team@vyvehealth.co.uk`. Refresh token 7-day expiry while consent screen in Testing — re-mint via `developers.google.com/oauthplayground` weekly. Submit consent screen for Google verification post-launch to eliminate rotation. |
