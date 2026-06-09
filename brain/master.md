@@ -1,20 +1,21 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-573 session close)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-574 session close)
 
-**Session 2026-06-09 — PM-573 brain consolidation: recent-window review + currency fixes; Android 1.0.6 LIVE; front re-fixed. (Also today: PM-571/572 Usage Analytics + is_test, PM-568 9 cron jobs fixed, PM-564→567 security overhaul.)**
+**Session 2026-06-09 — PM-571 through PM-574. Usage Analytics v1 complete.**
 
-**DEPLOYMENT — BOTH PLATFORMS NOW BUNDLED (standing fact; source of truth §5/§23.4/§23.106). iOS 1.7 (live 9 Jun) + Android 1.0.6 vc51 (approved 9 Jun) both ship with `server.url` REMOVED. Members freeze on the bundled vyve-site SHA once they install/update; changes reach them ONLY via a Capawesome OTA. Dean alone runs server.url-live on his iPhone (sees every commit). The PM-475 "no frozen cohort" correction is dead.**
-
-**§23.106 — Capawesome OTA has NEVER run end-to-end → the WHOLE installed cohort (iOS + Android) has no working update path short of a full store resubmit. A verified OTA push (app `f9961f66` / prod channel `89e12796`) is the gating capability before Sage. TOP native priority.**
-
-**§23.104 audit (PM-567): zero violations; all SECURITY DEFINER functions locked.**
+**CC Usage Analytics live at admin.vyvehealth.co.uk/#/usage.**
+**Features: Overview + Members tabs, Member 360 drill-down, today column (live), email never-active, is_test cohort filter.**
+**13 never-active real members identified. 9 eligible for re-engagement (joined before today).**
+**Phase 2 next: Activity depth + Sessions/watch-time tabs.**
 
 **WARN: Throwaway EF `posthog-test` ACTIVE-but-retired — delete via dashboard.**
 **WARN: Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
 **WARN: App Store Connect API key setup needed next session.**
-**Recent: CC Usage Analytics live (PM-571/572) at admin.vyvehealth.co.uk/#/usage; `members.is_test` filter excludes 6 test accounts by default.**
+**WARN: `session-reminder-cron` failing — `current_setting('app.service_role_key')` format issue (§23.7). Fix pending.**
+**iOS 1.5 / Android 1.0.6 in store review (PM-557).**
+**DEPLOYMENT MODEL: iOS 1.7 bundled — vyve-site commits reach Dean + Android only. iOS members via Capawesome OTA only (§23.106 — never yet run end-to-end).**
 
 <!--CURRENT_FRONT_END-->
 

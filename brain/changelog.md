@@ -1,3 +1,10 @@
+## PM-574 — Usage Analytics: today column + email never-active (2026-06-09)
+
+- **Today column** added to Members table — live fetch from `member_activity_daily` on page load (not from cache), highlights in green when > 0
+- **Email never-active modal** — "✉ Email never-active" button in Members filter bar; shows list of members with 0 total activities, confirms before send; respects exclude-test toggle
+- `cc-usage` EF → v3: `send_never_active` action — persona-voiced re-engagement email per recipient, sent directly via Brevo, tagged `never-active-reengage`; admin JWT required for send action; cron cache rebuild unchanged
+- Paige Coult confirmed: last activity genuinely 21 April (49d ago), `member_stats` is correct
+
 ## PM-573 — Recent-window review + brain currency fixes; Android 1.0.6 live; front re-fixed (2026-06-09)
 
 Completed the changelog-window review Dean asked for (recovered archive PM-433→553a). Most of the window was already in the living brain; five drift/gap items fixed plus a front repair.
