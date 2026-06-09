@@ -1,3 +1,27 @@
+## PM-587 — Activity Depth analytics page live (2026-06-10)
+
+### What shipped
+- `pages/activity-depth.html` + `assets/activity-depth.js` — Activity Depth page at `admin.vyvehealth.co.uk/#/activity-depth`
+- `cc-activity` EF v1 (`verify_jwt:false`, admin-gated via admin_users table check)
+- `cc_activity` table — single-row JSONB cache; admin-read RLS via `is_admin()` policy
+- `compute_cc_activity()` SECURITY DEFINER SQL function — all 6 analytics sections in one RPC call; §23.104 revoke applied
+- Cron `cc-activity-hourly` (`45 * * * *`)
+- **Sidebar fix:** Insights Activity Depth slug `activity` → `activity-depth` (was colliding with Daily Activity audit log)
+- **Router:** `activity-depth` added to no-cache list
+
+### Page sections
+1. Headline strip: total activities (1215 real-member), active 7d, avg sets/session, watch time, top cardio, running plan cache count
+2. Feature adoption bars: Workouts, Cardio, Weight Tracking, Apple Health, Custom Workouts, Food Log — % of 33 real members
+3. Exercise depth: total sessions/sets, avg/P50/P75/P95 sets per session
+4. Cardio breakdown: type bars with session count, avg duration, avg distance (outliers >100km excluded)
+5. Watch time: summary stats + category table (session_live_views + replay_video_views; small sample noted)
+6. Pillar balance: 4-cell grid + proportional bar chart by total volume
+7. Time-of-day heatmap: 24 CSS bars from member_activity_log.logged_at AT TIME ZONE 'Europe/London'
+
+### Key numbers from first build
+- Walking 183 sessions (top) · Running 92 · avg 6.7 sets/workout session
+- HealthKit: 12/33 members · Weight: 15/33 · Connect gap: only 8 watch rows total
+
 ## PM-585 / PM-586 — retention.js cache-bust + missing function definitions fixed (2026-06-09)
 
 - PM-585: retention.html script tag version bumped from PM-580-v1 → PM-584-v1 to bust browser cache
