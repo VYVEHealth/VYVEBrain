@@ -1,3 +1,9 @@
+## PM-578 — Fix ACT_ICONS scope + sessions in week-on-week (2026-06-09)
+
+- **ACT_ICONS/usageFmtMeta not defined:** `const` declarations for `ACT_ICONS` and `ACT_LABELS` never landed in PM-577 (string replacement missed). `usageFmtMeta` also missing. Fixed by inlining both as `var` inside `usageLoadMemberLog` — avoids const hoisting/scope issues with router replaceChild entirely.
+- **Sessions 0 in week-on-week:** `platform_metrics_daily` rows for 4–9 Jun were computed before the PM-575 backfill landed session/replay entries in `member_activity_log`. `recompute_platform_metrics` reads from `member_activity_log` so historical rows had no sessions. Fixed by running `backfill_platform_metrics(10)` — sessions now showing (4 Jun: 2, 5 Jun: 3, 6 Jun: 1, etc.).
+- Cache rebuilt.
+
 ## PM-577 — Usage: names + sort persist + activity log detail + tracker REST fix (2026-06-09)
 
 ### What shipped
