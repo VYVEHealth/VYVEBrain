@@ -1,3 +1,28 @@
+## PM-571 — Usage Analytics v1: Overview + Members tabs (2026-06-09)
+
+### What shipped
+- `pages/usage.html` + `assets/usage.js` — Usage Analytics page at `admin.vyvehealth.co.uk/#/usage`
+- `cc-usage` Edge Function v1 (`verify_jwt:false`, service-role, admin-gate) — hourly cron job 39 (`cc-usage-hourly`, `:30 * * * *`)
+- `cc_usage` table — single-row JSONB cache mirroring `cc_app_health` pattern (id=1, seeded)
+- Admin-read RLS policies added on: `cc_usage`, `member_stats`, `company_summary`, `member_activity_daily`
+- Member-self-read RLS policies added on: `member_stats`, `member_activity_daily` (portal safety)
+- Sidebar `assets/sidebar-config.js`: new **Insights** section with `usage` slug + `VYVE_NAV_TOP` Insights entry
+- Router `lib/router.js`: `usage` slug added to no-cache list (same treatment as `app-health`)
+- First cache built and verified: 38 member rows, 3 companies, 30-day daily series, headline 34 members / 15 active 7d
+
+### Phase 1 scope (what's live)
+- Headline strip: total members, active 7d/30d, DAU/MAU stickiness, activities 7d, at-risk count
+- **Overview tab:** 30-day daily bar chart, activity breakdown by type (7d), week-on-week delta table, company breakdown
+- **Members tab:** sortable table (email, engagement score ring, 7d/30d acts, active days, last active, programme, persona, status pill), search + filter (at-risk/needs-support/active/inactive), pagination (25/page)
+- **Member 360 drill-down modal:** profile (persona, programme, programme week, at-risk/support flags, certs), engagement score with component bars, activity totals grid (total/7d/30d/90d/active-days/distinct-types), latest signals (wellbeing/stress/energy/weight)
+- Data sources: `platform_metrics_daily` (headline + daily series, ~1 day behind), `member_activity_daily` (replays + DAU augment), `member_stats` (member list), `company_summary` (enterprise tab), `members` (persona/company enrichment)
+
+### Open items (Phase 2+)
+- `is_test` flag: open decision — Dean to confirm test/admin email list, then 1-column migration + backfill (blocks meaningful cohort filter)
+- Phase 2: Activity depth tab (exercise_logs volume, cardio depth, time-of-day heatmap), Sessions/watch-time tab
+- Phase 3: Wellbeing trends, Achievements, Retention cohorts
+- Phase 4: Pages & UX (PostHog), Enterprise tab
+
 ## PM-571 — Capawesome OTA gap diagnosed (no sync/ready in shell); Dean's dev-phone restored to server.url loop; SPM xcodeproj gotcha (2026-06-09)
 
 Follow-on to PM-569. Got Dean's iPhone back onto the server.url dev-loop (he'd installed bundled 1.7 from the App Store and lost live changes), and pinned down *why* the Capawesome OTA has never run end-to-end.

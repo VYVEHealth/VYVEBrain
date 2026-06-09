@@ -1,19 +1,21 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-569 session close)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-571 session close)
 
-**Session 2026-06-09 — PM-564 through PM-569. Security overhaul + 9 cron jobs fixed (PM-568); iOS 1.7 LIVE + deployment flipped to bundled (PM-569).**
+**Session 2026-06-09 — PM-571. Usage Analytics v1 shipped.**
 
-**§23.104 audit: ZERO violations. All SECURITY DEFINER functions locked.**
-**9 cron jobs fixed: null app.service_role_key was silently breaking habit-reminder, streak-reminder, achievements-sweep, alert-digests, seed-weekly-goals, session-reminder, process-scheduled-pushes. All now verified succeeded.**
+**CC Usage Analytics Phase 1 live at admin.vyvehealth.co.uk/#/usage: Overview + Members tabs + Member 360 drill-down.**
+**`cc-usage` EF v1, `cc_usage` table, cron job 39, RLS policies on member_stats/company_summary/member_activity_daily.**
+
+**Open: `is_test` flag decision — Dean to confirm test/admin email list for meaningful cohort filter.**
+**Phase 2 next: Activity depth + Sessions/watch-time tabs.**
 
 **WARN: Throwaway EF `posthog-test` ACTIVE-but-retired — delete via dashboard.**
 **WARN: Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
 **WARN: App Store Connect API key setup needed next session.**
-**DEPLOYMENT FLIP (PM-569) — iOS members are now FROZEN on bundled 1.7. The PM-475 "whole cohort is server.url-live, no frozen bundle" correction is itself now WRONG and has been reverted in §5 / §23.4 / §23.92. Live model: App Store iOS 1.7 ships with `server.url` REMOVED → iOS members run the vyve-site SHA baked into the 1.7 binary, updated ONLY via a Capawesome OTA. Dean alone runs server.url-live on his iPhone (sees every commit). Android still on the live shell until bundled 1.0.6 vc51 clears review (in review, approval UNCONFIRMED — Dean to recheck). Net: a vyve-site commit reaches Dean + Android members but NOT iOS members; the Settings vbb-marker verifies Dean's view only.**
-
-**§23.106 (NEW HARD RULE) — Capawesome OTA has NEVER run end-to-end. iOS members therefore have NO working update path: the only route to change anything iOS-side is a full App Store resubmit (days/cycle). A verified OTA push (app `f9961f66` / prod channel `89e12796`) is the gating capability before Sage and before any member-facing iOS fix. TOP native priority.**
+**WARN: `session-reminder-cron` failing — `current_setting('app.service_role_key')` format issue (§23.7). Fix pending.**
+**iOS 1.5 / Android 1.0.6 in store review (PM-557); members on server.url live until approved+installed.**
 
 <!--CURRENT_FRONT_END-->
 
