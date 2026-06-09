@@ -1,16 +1,15 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-08, PM-559 session close)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-564 session close)
 
-**Session 2026-06-08 — PM-559. Spec-only (Sonnet builds, Claude specs). Command Centre direction set + App Health module specced.**
+**Session 2026-06-09 — PM-564. Security Tier 0 + Tier 1 executed. No vyve-site changes. No member impact.**
 
-**Command Centre reality: Lewis's `vyve-command-centre` SPA is mature but localStorage-backed; all 19 `cc_*` tables EMPTY. Plan: keep the shell, move data onto Supabase, lead with App Health. No data to migrate.**
+**Both CRITICALs closed: `convert_member_to_paid` + `gdpr_erasure_purge` now service_role only. 17 service-only functions locked. 4 client-callable functions: anon door closed, authenticated retained.**
 
-**PostHog WIRED: confirmed live (22k events/25 people/7d). `POSTHOG_API_KEY` stored in EF secrets. Query API verified (project 138491, EU). Load times live in PostHog as `perf_*` events — NOT the dead `perf_telemetry` table (rerouted PM-408).**
+**Tier 2 pending (next session): self-scope the 4 client-callable functions (authenticated IDOR); search_path pin on ~40 functions; view security fix; bucket listing tighten. Branch-test first.**
 
-**App Health spec at `/mnt/user-data/outputs/app-health-build-spec.md` — build-ready, handed to Sonnet. Errors-first ranked by member-impact; `platform_alerts.resolved` never triaged (2,846 rows). SMS alerts parked (needs Twilio).**
-
+**WARN: MGMT_PAT missing from Vault (expired 6 Jun, not rotated) — `backup-edge-functions.yml` GitHub Actions silently broken. Dean to rotate urgently.**
 **WARN: Throwaway EF `posthog-test` ACTIVE-but-retired — delete via dashboard.**
 **WARN: Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
 **WARN: App Store Connect API key setup needed next session.**
@@ -1604,6 +1603,10 @@ The auto-tick must fire from local/Dexie the moment HealthKit loads on open — 
 #### §23.94 — `vyveGetJWT` is the only correct way to get a JWT in portal pages; hard redirects on token failure belong only in `vyveInitAuth` (PM-540/541 — HARD RULE)
 
 All portal page code that needs a JWT MUST call `window.vyveGetJWT()` (defined in `auth.js`). It calls `getSession()` first; if the access token is expired, silently calls `refreshSession()` and returns the fresh token — invisible to the member. Returns `null` only when the refresh token itself is gone (days of inactivity). NEVER call `vyveSupabase.auth.getSession()` directly in page code for this purpose — it does not refresh and will return a stale token that causes 401s on RLS-gated queries. NEVER redirect to login from a per-request JWT fetch (`vyveGetJWT` does not redirect). The hard redirect lives ONLY in `vyveInitAuth` on cold boot. On a `null` return from `vyveGetJWT`, page code may redirect to login with `VYVE_RETURN_TO` set — but a failed page load (e.g. notifications empty state) should show an error state, not force a logout. Supabase session config: `sessions_timebox: 0`, `sessions_inactivity_timeout: 0` (never force-logout). Access token JWT expiry stays 1hr (correct — refresh is silent). Earned from PM-540: habits.html fired 3 parallel RLS queries with an expired access token, generating 3 simultaneous `critical` incidents for one member's normal hourly token expiry.
+
+#### §23.104 — Every SECURITY DEFINER function defaults to service_role only (PM-564 — HARD RULE)
+
+Every `SECURITY DEFINER` function in `public` must `REVOKE EXECUTE FROM PUBLIC, anon, authenticated` unless it is deliberately member-callable. The Postgres default grants EXECUTE to PUBLIC on function creation — this is wrong for SECURITY DEFINER functions and must be corrected at creation time. Member-callable functions that accept an email/id parameter must self-scope: `IF auth.role() <> 'service_role' THEN p_email := auth.email(); END IF;` — prevents authenticated-role IDOR while keeping EF service-role calls working (where `auth.email()` is NULL). Audit signal: `SELECT proname, proacl FROM pg_proc JOIN pg_namespace n ON n.oid=pronamespace WHERE n.nspname='public' AND prosecdef AND proacl::text LIKE '%anon%'` — any hit is a violation. Earned PM-564 (Tier 0/1 remediation of 21 functions, 2 CRITICALs among them).
 
 ## 24. Key references, credentials & URLs
 

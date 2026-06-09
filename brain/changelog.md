@@ -1,3 +1,43 @@
+## PM-564 — Security Tier 0 + Tier 1: EXECUTE grants locked down (2026-06-09)
+
+### What changed
+Two Supabase migrations applied. No vyve-site code changes. No member impact.
+
+**Tier 0 — 17 service-only functions: PUBLIC + anon + authenticated all revoked. `postgres` + `service_role` only.**
+- `convert_member_to_paid` (CRITICAL — was callable by anyone unauthenticated)
+- `gdpr_erasure_purge` (CRITICAL — same)
+- `resolve_broadcast_audience`, `member_home_state_get_fresh`, `mark_member_lapsed` (HIGH)
+- `expire_lapsed_trials`, `bump_charity_total`, `charity_total_reconcile`
+- `get_certificate_buckets`, `get_certificate_buckets_for`, `get_charity_total`, `get_leaderboard`
+- `apply_trial_campaign`, `grant_trial_on_signup`
+- `drain_member_home_state_dirty`, `recompute_step_baselines`, `gdpr_erasure_pick_due`
+
+**Tier 1 — 4 client-called functions: PUBLIC + anon revoked. `authenticated` + `service_role` retained.**
+- `is_admin()` — Command Centre admin gating
+- `refresh_member_home_state(text)` — connect.html + home-state-local.js
+- `queue_health_write_back()` — healthbridge.js
+- `compute_engagement_components_v2(text)` — home-state-local.js
+
+### Verification
+- Static call-path audit (remediation plan 2026-06-08): no vyve-site or vyve-command-centre client calls the Tier 0 set.
+- `platform_alerts`: zero permission-denied hits on all target functions.
+- `pg_stat_user_functions`: `track_functions=none` on Supabase Pro — call counters unavailable; static audit + alerts were the evidence layers.
+- Post-migration ACL spot-check: all 21 functions confirmed correct. Zero `permission denied` / `42501` alerts in 10-minute observation window.
+
+### MGMT_PAT status
+`MGMT_PAT` not present in Vault (expired 6 Jun, not rotated). `backup-edge-functions.yml` GitHub Actions workflow silently broken. Dean to rotate: new Supabase Management API token → update Vault secret + GitHub Actions repo secret on VYVEBrain.
+
+### Remaining security work (Tier 2 — next session)
+- Self-scope the 4 client-callable functions (authenticated IDOR residual).
+- Pin `search_path = public, pg_temp` on ~40 flagged functions.
+- Recreate `exercise_canonical_set` view as invoker security.
+- Tighten `running_plan_cache` / `ai_decisions` RLS policies.
+- Restrict bucket listing on `certificates` + `member-avatars`.
+- Branch-test all Tier 2 changes before prod.
+
+### §23 rule
+- **§23.104 (NEW):** Every `SECURITY DEFINER` function must `REVOKE EXECUTE FROM PUBLIC, anon, authenticated` unless deliberately member-callable. Member-callable ones must self-scope with service_role bypass.
+
 ## Employer Dashboard — projection toggle + colour preview shipped; parallel build reverted (2026-06-08)
 
 ### What shipped
