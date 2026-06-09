@@ -1,3 +1,21 @@
+## PM-568 — Fix: 9 cron jobs broken by null app.service_role_key (2026-06-09)
+
+### Root cause
+9 cron jobs used `current_setting('app.service_role_key', true)` string-concatenated into a JSON header literal. `app.service_role_key` was null (never set, or cleared at some point). The `::jsonb` cast on `session-reminder-cron` and `process-scheduled-pushes` threw `invalid input syntax for type json` on every tick. Other jobs using `jsonb_build_object` silently sent `Bearer ` (empty token) — EF auth rejected but no cron-level error.
+
+### Fix
+Rewrote all 9 cron job commands via `cron.alter_job()` to embed the service_role JWT literal directly inside `jsonb_build_object(...)`. Eliminates `current_setting()` dependency entirely — cleaner and not fragile to database-level config changes.
+
+**Jobs fixed:**
+`session-reminder-cron`, `process-scheduled-pushes`, `habit-reminder-daily`, `streak-reminder-daily`, `vyve-achievements-sweep-daily`, `vyve-alert-digest-morning`, `vyve-alert-digest-afternoon`, `vyve-alert-digest-evening`, `vyve-seed-weekly-goals`
+
+### Verification
+`session-reminder-cron` 20:40 UTC tick: `succeeded`. First clean run confirmed.
+`process-scheduled-pushes` also `succeeded` at same tick.
+
+### §23 rule
+- **§23.105 (NEW):** Never use `current_setting('app.*', true)` in cron job commands for auth headers. The setting is null by default and `ALTER DATABASE` is blocked on Supabase Pro. Embed the JWT literal directly in `jsonb_build_object()` instead. If the key ever needs rotating, update cron job commands via `cron.alter_job()` — 9 jobs, one SQL block.
+
 ## Enterprise-readiness bridge session — documentation pack + consent schema + GDPR cron fix (2026-06-09)
 
 ### What shipped

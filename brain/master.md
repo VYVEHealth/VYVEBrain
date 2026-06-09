@@ -1,13 +1,12 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-567 session close)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-568 session close)
 
-**Session 2026-06-09 — PM-564 through PM-567. Full security overhaul complete.**
+**Session 2026-06-09 — PM-564 through PM-568. Security overhaul + 9 broken cron jobs fixed.**
 
-**§23.104 audit: ZERO violations. All SECURITY DEFINER functions locked. Both original CRITICALs + 2 P0 vault exposure holes closed.**
-
-**One new bug found: `session-reminder-cron` failing every 5min — `current_setting('app.service_role_key')` string-concatenated into JSON breaks with `sb_secret_*` key format. §23.7 class. Fix next session.**
+**§23.104 audit: ZERO violations. All SECURITY DEFINER functions locked.**
+**9 cron jobs fixed: null app.service_role_key was silently breaking habit-reminder, streak-reminder, achievements-sweep, alert-digests, seed-weekly-goals, session-reminder, process-scheduled-pushes. All now verified succeeded.**
 
 **WARN: Throwaway EF `posthog-test` ACTIVE-but-retired — delete via dashboard.**
 **WARN: Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
