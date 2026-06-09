@@ -1,3 +1,13 @@
+## PM-584 — Retention page: day-N curve, streaks, critical events (2026-06-09)
+
+- Day-N retention curve live: D1 61%, D3 50%, D7 68%, D14 47%, D30 69%, D60 57% vs industry benchmarks (D1:30%, D7:15%, D30:8%). VYVE well above at every interval.
+- Streak analytics: avg current 1.6d, avg best 2.7d, max 16d, 2 members at 7+ streak now. Distribution chart by best-ever streak.
+- Critical events (aha moment): 15 retained vs 3 churned (low confidence). Cardio in week 1 = +20pp retained. Check-in = +13pp. Sample too small for definitive conclusions.
+- Consent gate removed from funnel — signal unreliable (10-min timeout bug). member_home_state also unusable (backfilled by cron for all members).
+- created_at fixed for Dean (2025-12-07), Lewis (2025-12-19), Kelly (2026-02-28), Callum (2026-02-28) — first activity date at 09:00 UTC.
+- Median TTF now 0h (same-day), 16 same-day activations. Mean 9d skewed by Kelly/Callum outliers.
+- cc-retention EF → v4
+
 ## PM-580 — Retention & Activation page live (2026-06-09)
 
 ### What shipped
