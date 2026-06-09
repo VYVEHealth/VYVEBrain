@@ -1,3 +1,28 @@
+## PM-573 — Recent-window review + brain currency fixes; Android 1.0.6 live; front re-fixed (2026-06-09)
+
+Completed the changelog-window review Dean asked for (recovered archive PM-433→553a). Most of the window was already in the living brain; five drift/gap items fixed plus a front repair.
+
+### Fixes
+- **§3 business model** reconciled: 30-day free trial → £10/mo-forever conversion (VYVE10, separate Stripe link from the £20 new-signup link), access gated on `subscription_status` per §23.85. Conversion **LIVE end-to-end** (Stripe webhook secret set — Dean confirmed). New §3 row.
+- **wellbeing-checkin EF** v22 → **v30** (PM-516 enriched debrief + structured output) in §7 inventory.
+- **workout-plan-wizard.html** (PM-532 no-plan questionnaire) added to §8 (Body—Workouts).
+- **Light-mode 46-page pass** (PM-494→508) recorded on the theme line.
+- **Android 1.0.6 APPROVED + live** (Dean confirmed 9 Jun): both platforms bundled. §5/§23.4/§23.106 updated — OTA gap now COHORT-WIDE, not iOS-only. Only Dean's dev-loop iPhone stays on server.url.
+- **CURRENT FRONT re-fixed:** the PM-571/572 closes had rewritten the front from a stale template, reverting the PM-569 deployment-flip line and re-adding the `session-reminder-cron` WARN that PM-568 cleared. Rewritten to lead with standing deployment facts + correct WARN set.
+
+### New rule
+- **§23.107 (HARD RULE):** never regenerate the shared CURRENT FRONT block from an in-context template — re-fetch fresh + edit surgically; standing facts owned by §5/§23, front only mirrors.
+
+### Parallel-session churn
+Heavy today: rebased four times. PM-568 (cron) → PM-545971 enterprise-bridge → PM-571 (usage v1) → PM-572 (is_test) all committed during this session; I claimed PM-569 (flip), PM-570 (changelog archive), PM-573 (this). Fresh-HEAD guard caught every collision — no clobbers on my side. (The front clobber that earned §23.107 was theirs, fixed here.)
+
+### No code shipped
+- Brain only.
+
+### Open
+- Verify ONE Capawesome OTA end-to-end (now cohort-wide blocker; pre-Sage gate, §23.106).
+- Exec brief for Lewis + Alan updated (Android live + trial model): `VYVE_Platform_Update_2026-06-09.md`.
+
 ## PM-572 — Usage Analytics: is_test cohort filter (2026-06-09)
 
 - `members.is_test BOOLEAN DEFAULT false` column added; 6 test accounts backfilled (`@test.com`)
