@@ -1,16 +1,18 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-579 session close)
+## CURRENT FRONT — read first, continue from here (updated 2026-06-09, PM-580 session close)
 
-**Session 2026-06-09 — PM-571 through PM-579. Full usage analytics session complete.**
+**Session 2026-06-09 — PM-571 through PM-580. Usage Analytics + Retention page live.**
 
-**PM-579: sessions now showing in WoW chart; ACT_ICONS scope fixed; modal title shows name.**
-**CC Usage Analytics fully live at admin.vyvehealth.co.uk/#/usage.**
+**PM-580: Retention & Activation page live at admin.vyvehealth.co.uk/#/retention.**
+**Insights sidebar now has 5 entries. cc-retention EF + cron job 40 + cc_retention table.**
+**Key data: avg 17 days to first activity — structural issue, not engagement. Flag to Lewis.**
+**Next: Activity Depth page (activity.html) → feature adoption, watch-time, heatmap.**
 
 **WARN: Throwaway EF `posthog-test` ACTIVE-but-retired — delete via dashboard.**
 **WARN: Server-side HK sync dead since 24 May — investigate `sync-health-data` EF.**
-**WARN: App Store Connect API key setup needed next session.**
+**WARN: App Store Connect API key needed + APNs key rotation before Sage.**
 **WARN: `session-reminder-cron` failing — §23.7. Fix pending.**
 **iOS 1.5 / Android 1.0.6 in store review (PM-557).**
 **DEPLOYMENT MODEL: iOS 1.7 bundled — Capawesome OTA never run (§23.106).**

@@ -1,3 +1,34 @@
+## PM-580 — Retention & Activation page live (2026-06-09)
+
+### What shipped
+- `pages/retention.html` + `assets/retention.js` — Retention page at `admin.vyvehealth.co.uk/#/retention`
+- `cc-retention` Edge Function v1 (`verify_jwt:false`, admin-gated via `assertAdmin()`)
+- `cc_retention` table — single-row JSONB cache (funnel_json, cohorts_json, dormancy_json, atrisk_json); admin-read RLS
+- Cron job 40 (`cc-retention-hourly`, `:15 * * * *`)
+- **Sidebar restructured:** Insights section now has 5 entries — Overview & Members (usage), Retention (live), Activity Depth, Wellbeing, Platform & UX (last 3 as coming-soon stubs)
+- **Router:** retention/activity/wellbeing/platform all added to no-cache slugs
+
+### Cache data (first build, 2026-06-09)
+- 33 real members · 20 ever active (61%) · 13 never active · avg 411h (~17 days) to first activity
+- Dormancy: 15 active · 2 quiet · 3 inactive · 13 never
+- 5 monthly cohorts (Dec 2025–Jun 2026) · 16 at-risk entries
+
+### Key insight from first data
+Average time to first activity is 17 days — almost certainly because many members are trial/BT/Sage contacts who got added without paying. The never-active problem is structural, not engagement. Worth flagging to Lewis.
+
+### Retention page sections
+1. Headline strip: total, ever active, active 7d, avg time to first, at-risk, never active
+2. Activation funnel: signup → onboarding → PWA installed → first activity → active week 1 → active last 30d
+3. Dormancy breakdown: active / quiet / inactive / never (4-cell grid)
+4. Cohort retention table: monthly cohorts × week1/week2/month1/month2/still-active with heatmap colouring
+5. At-risk members table: name, persona, joined, last active, total acts, 7d acts, trend (▲/▼/=), flags
+
+### Next pages to build
+- Activity Depth (`activity.html`) — feature adoption, watch-time leaderboard, time-of-day heatmap
+- Wellbeing (`wellbeing.html`) — score trajectory vs baselines, mood pulse, 8-dimension radar
+- Platform & UX (`platform.html`) — PostHog pages, rage clicks, paths
+- Enterprise (`enterprise.html`) — team breakdown, Sage-ready
+
 ## PM-579 — Fix ACT_ICONS scope + sessions in platform_metrics_daily (2026-06-09)
 
 - `platform_metrics_daily.sessions_count` was 0 for all dates because the cron ran before the PM-575 backfill. Fixed by running `recompute_platform_metrics()` for all dates with session/replay entries in `member_activity_log` (~51 dates).
