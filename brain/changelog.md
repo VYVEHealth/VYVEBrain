@@ -1,3 +1,12 @@
+## PM-595 — Usage page: phone numbers in member 360 modal + never-active outreach list (2026-06-10)
+
+### What shipped
+- **cc-usage EF v8** (Supabase): added `phone` to members select + `phoneMap` enrichment; `phone` now in every `members_json` row in the cache
+- **vyve-command-centre commit `8a626dd`**: `assets/usage.js` — phone as tappable tel: link in 360 modal Profile section; never-active outreach modal now shows full name + email + phone per member; `pages/usage.html` — cache buster bumped to PM-595-v1
+
+### Never-active password analysis (live query 2026-06-10)
+15 real never-active members (zero activity across all tables). All have `encrypted_password` set (onboarding EF creates auth users). **9 have never signed in at all** (last_sign_in_at IS NULL): Melanie Eaton, Molly Moran, Ana Luna, Lisa Fox, David McCormack, Katrina Melia, Pippa Shanks, Jack Lambert, Dan Zadeh. 6 have logged in but not acted: Lou Walker (signed in today), Heidi Khoshtaghaza-Hay, Carly Doogan, Mark Maddison, Alex Jordon, Kieran Day. To see phone numbers and trigger outreach: Usage page → Members tab → filter "Never active" → click member for 360 modal, OR use the never-active modal.
+
 ## PM-594 — AI Usage page, wellbeing×activity correlation, HAVEN compliance flag (2026-06-10)
 
 ### What shipped
