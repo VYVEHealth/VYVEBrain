@@ -1,20 +1,18 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT (updated 2026-06-10, PM-588 session close)
+## CURRENT FRONT (updated 2026-06-10, PM-590)
 
-**Retention page fully live and working. PM-585/586 fixed cache-bust + missing JS function definitions.**
-**All six sections: funnel · dormancy · day-N curve · streak analytics · critical events · cohort table · at-risk.**
-**New §23 rule: always assert str.replace() changed the string, not just that the target substring exists in result.**
-**Next session: Activity Depth page (activity.html) — feature adoption, watch-time, time-of-day heatmap.**
-**PM-588: Cyber Essentials strategy agreed — do CE self-assessed now (IASME, ~£300-400, days); hold CE+ + pen test until a deal requires them.**
+**Wellbeing analytics page live at admin.vyvehealth.co.uk/#/wellbeing (PM-590).**
+**cc-wellbeing EF v1 · cc_wellbeing table · compute_cc_wellbeing() · cron :55.**
+**Activity Depth PM-587/589 live. Auth pattern fixed (vyve-cc-supabase-auth + is_admin() RPC).**
+**Next: Platform & UX page (platform.html) — PostHog pages, errors, paths.**
 
 **WARN: posthog-test EF still active-but-retired — delete via dashboard.**
 **WARN: sync-health-data EF dead since 24 May.**
 **WARN: session-reminder-cron failing — §23.7.**
-**WARN: JS query-string version in HTML must be bumped on every CC JS file update (§23.101 extension).**
-**iOS 1.5 / Android 1.0.6 in store review. Capawesome OTA never run (§23.106).**
-
+**WARN: JS query-string version in HTML must be bumped on every CC JS file update (§23.10x).**
+**iOS 1.7 + Android 1.0.6 bundled/frozen. No OTA ever pushed — §23.106/107 blocking Sage.**
 <!--CURRENT_FRONT_END-->
 
 

@@ -1,3 +1,30 @@
+## PM-590 — Wellbeing analytics page live (2026-06-10)
+
+### What shipped
+- `pages/wellbeing.html` + `assets/wellbeing.js` — Wellbeing page at `admin.vyvehealth.co.uk/#/wellbeing`
+- `cc-wellbeing` EF v1 (same assertAdmin pattern as cc-retention: user-context client + is_admin() RPC)
+- `cc_wellbeing` table — 6 JSONB columns: headline, trend, members, distribution, baseline, participation
+- `compute_cc_wellbeing()` SECURITY DEFINER function; §23.104 revoke applied
+- Cron `cc-wellbeing-hourly` (`55 * * * *`)
+- Sidebar: wellbeing status `coming-soon` → `live`
+
+### Also shipped this session (PM-589)
+- Fix activity-depth auth: `actGetJwt()` now uses `vyve-cc-supabase-auth` key (matches retention.js)
+- Read path changed from EF to PostgREST direct on `cc_activity` table (RLS handles auth)
+- EF auth pattern fix: cc-activity v2 now uses user-context client + `is_admin()` RPC (matches cc-retention)
+
+### Wellbeing page sections
+1. Headline strip: avg wellbeing (7.5), checked-in members (7/33), total check-ins (31), at-risk (1 — Cole, score 1), improving vs baseline, participation %
+2. Weekly score trend: 18 weeks (Jan–Jun 2026), colour-coded bars, hover for submission count
+3. Member table: baseline vs latest, delta, trend arrow, status pill, check-in count — sorted at-risk first
+4. Score distribution: per-bucket histogram (1–10)
+5. 8-dimension baseline profile: avg onboarding self-assessments from members table (clearly labelled as baseline, not live check-in data — check-in sub-scores are NULL in current form)
+
+### Key data
+- 31 check-ins, 10 members ever checked in (but 7 of 33 real members with complete data)
+- Dean: 14 check-ins (most engaged), Calum: +4 delta, Cole: -4 delta (at risk, score 1)
+- Avg 7.5/10 overall wellbeing
+
 ## PM-588 — Cyber Essentials strategy agreed (2026-06-10)
 
 - Decision: do CE (self-assessed) now via IASME (~£300-400, days to certificate). VYVE stack passes trivially — managed cloud, no on-prem, JWT auth, RLS everywhere.
