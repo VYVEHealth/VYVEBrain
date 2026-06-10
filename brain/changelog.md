@@ -1,3 +1,40 @@
+## PM-592 — CC analytics audit: Revenue page, wellbeing EF v2, account type, WoW deltas (2026-06-10)
+
+### What shipped
+**Supabase:**
+- cc-wellbeing EF v3 (real build — prior versions were stubs; computes from wellbeing_checkins + members baseline cols)
+- cc-platform EF v2 (is_dean PostHog filter; perf_note added about 79-row coverage gap)
+- cc-revenue EF v1 (MRR, subscription breakdown, trial pipeline, 12-week new-member trend)
+- cc-usage EF v7 (adds account_type + subscription_status to member enrichment)
+- cc_revenue_cache table (BIGINT PK, 5 JSONB cols, admin-read RLS, §23.104 applied)
+- Cron `cc-revenue-hourly` jobid 44 at `20 * * * *`
+
+**vyve-command-centre (PM-592 commit `5360249b9045`):**
+- `pages/revenue.html` + `assets/revenue.js` — Revenue page at `/#/revenue` (MRR hero, breakdown table, trial pipeline, 12-week new-member trend)
+- `assets/usage.js` patched: account_type pill column + week-over-week activity/DAU deltas in headline
+- `pages/usage.html` patched: Account column header, delta sub-elements
+- `assets/sidebar-config.js`: Revenue entry added (6th Insights page)
+- `lib/router.js`: revenue added to no-cache slug list
+
+### First cache data (2026-06-10)
+- Wellbeing: avg 7.5/10 · 7/33 members ever checked in (21% participation) · 1 at-risk · 18 trend weeks
+- Revenue: MRR £40 (1× £20 paid B2C + 2× £10 enterprise) · 22 trial pipeline · 9% conversion
+- Platform (is_dean filtered): 13,730 views (down from 14,054) · 625 unique sessions
+
+### Audit gaps resolved this session
+- Wellbeing page was completely empty (stub EF) — now live with real data
+- Platform page showing Dean's dev traffic — is_dean filter applied
+- No revenue visibility anywhere — Revenue page created
+- Members table had no subscription type column — Account pill added
+- Headline had no trend direction — WoW delta arrows added for acts7d + active7d
+
+### Remaining from audit (carry to next sessions)
+- Day-N retention: still a table, needs visual line chart with benchmark
+- Re-engagement email effectiveness (returned % after contact)
+- cc-activity EF is a stub (data is stale, refresh broken)
+- log-perf only wired on 5 pages from May testing — needs broader wiring
+- AI usage + cost page; Notification effectiveness; Wellbeing × activity correlation
+
 ## PM-591 — Platform & UX analytics page live (2026-06-10)
 
 ### What shipped

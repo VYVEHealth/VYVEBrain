@@ -1,17 +1,18 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT (updated 2026-06-10, PM-591)
+## CURRENT FRONT (updated 2026-06-10, PM-592)
 
-**Platform & UX analytics page live at admin.vyvehealth.co.uk/#/platform (PM-591).**
-**cc-platform EF v1 · cc_platform table · cron :05 · PostHog + perf_telemetry data source.**
-**All five CC Insights pages now live: Overview, Retention, Activity Depth, Wellbeing, Platform & UX.**
-**First cache: 14,054 views · 639 unique sessions · 76 pages · median LCP 391ms · 0 errors.**
+**PM-592: CC analytics audit — Revenue page live · wellbeing EF real build · account type column · WoW deltas.**
+**Six CC Insights pages live: Overview, Retention, Activity Depth, Wellbeing, Platform & UX, Revenue.**
+**Revenue: £40 MRR · 22 trial pipeline · 9% conversion rate.**
+**Wellbeing cache: avg 7.5/10 · 21% participation · 1 at-risk.**
 
 **WARN: posthog-test EF still active-but-retired — delete via dashboard.**
 **WARN: sync-health-data EF dead since 24 May.**
 **WARN: session-reminder-cron failing — §23.7.**
-**WARN: JS query-string version in HTML must be bumped on every CC JS file update (§23.10x).**
+**WARN: log-perf only wired on 5 pages from May 2026 testing — needs broader portal wiring.**
+**WARN: cc-activity EF is a stub — cache is stale, refresh broken.**
 **iOS 1.7 + Android 1.0.6 bundled/frozen. No OTA ever pushed — §23.106/107 blocking Sage.**
 <!--CURRENT_FRONT_END-->
 
@@ -1038,6 +1039,10 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 ---
 
 ## 19. Current status
+### PM-592 — CC analytics audit improvements (2026-06-10)
+
+cc-wellbeing EF v3 real build (was stub). cc-platform EF v2 is_dean filter. cc-revenue EF v1 + cc_revenue_cache + cron 44. cc-usage EF v7 account_type. Revenue page at `/#/revenue` (MRR £40, 22 trial pipeline). Usage: Account column + WoW deltas. Sidebar: 6 Insights entries.
+
 ### PM-591 — Platform & UX analytics page live (2026-06-10)
 
 `cc-platform` EF v1, `cc_platform` table, cron jobid 43 at `:05 * * * *`. Page lives at `admin.vyvehealth.co.uk/#/platform`. Data: PostHog HogQL for page views + ef_error events; Supabase `perf_telemetry` for load time percentiles. Five CC Insights pages all live. First cache: 14,054 views, 639 unique sessions, 76 pages tracked, median LCP 391ms, 0 errors, 5 low-traffic pages.
@@ -1729,6 +1734,7 @@ The CURRENT FRONT block is overwritten by every session close. A session holding
 | 32 | vyve-evaluate-plan-fit | 0 4 * * * |
 | 33 | vyve-recompute-step-baselines | 10 4 * * * |
 | 43 | cc-platform-hourly | 5 * * * * |
+| 44 | cc-revenue-hourly | 20 * * * * |
 
 ### Make scenarios (Lewis-side)
 
