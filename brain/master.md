@@ -1,18 +1,17 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT (updated 2026-06-10, PM-593)
+## CURRENT FRONT (updated 2026-06-10, PM-594)
 
-**PM-593: cc-activity EF real build, SVG Day-N chart, re-engagement effectiveness section live.**
-**All six CC Insights pages fully live with real EF-backed data caches.**
-**Re-engagement: Stream A 52% return rate, Stream B 24% (overall 43%).**
-**Retention Day-N: SVG line chart with benchmark comparison.**
+**PM-594: AI Usage page live · wellbeing×activity correlation · HAVEN compliance flag · cc-activity watch fix.**
+**Seven CC Insights pages: Overview, Retention, Activity Depth, Wellbeing, Platform & UX, Revenue, AI Usage.**
+**CRITICAL: HAVEN active in production for 3 real members without Phil's clinical sign-off. 9 interactions total.**
+**Correlation signal: top-3 most active members avg wb 8.0 vs bottom-3 avg 5.0 — directional (n=7).**
 
-**WARN: cc-activity total_watch_minutes=0 (watch column mapping issue — backlog).**
+**WARN: cc-activity total_watch_minutes=5.9 fixed (was 0). Column bug resolved.**
 **WARN: log-perf only wired on 5 pages from May 2026 testing — needs broader portal wiring.**
 **WARN: posthog-test EF still active-but-retired — delete via dashboard.**
 **WARN: sync-health-data EF dead since 24 May.**
-**WARN: session-reminder-cron failing — §23.7.**
 **iOS 1.7 + Android 1.0.6 bundled/frozen. No OTA ever pushed — §23.106/107 blocking Sage.**
 <!--CURRENT_FRONT_END-->
 
@@ -1039,6 +1038,10 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 ---
 
 ## 19. Current status
+### PM-594 — AI Usage page, correlation, HAVEN flag (2026-06-10)
+
+cc-ai EF v1 + cc_ai table + cron 45. AI Usage page at `/#/ai-usage`. HAVEN compliance alert live (9 interactions, 3 real non-test members, clinical gate not passed). cc-wellbeing EF v4 + correlation_json. cc-activity EF v5 fixes watch column names (total_watch_minutes=5.9). 7 CC Insights pages now live.
+
 ### PM-593 — CC audit cont. (2026-06-10)
 
 cc-activity EF v4 real build (was stub). cc-retention EF v5 adds reengage_json (per-stream email effectiveness). retention.js: SVG Day-N line chart + re-engagement section. Re-engagement: Stream A 52%, Stream B 24%, overall 43%.
@@ -1739,6 +1742,7 @@ The CURRENT FRONT block is overwritten by every session close. A session holding
 | 33 | vyve-recompute-step-baselines | 10 4 * * * |
 | 43 | cc-platform-hourly | 5 * * * * |
 | 44 | cc-revenue-hourly | 20 * * * * |
+| 45 | cc-ai-hourly | 35 * * * * |
 
 ### Make scenarios (Lewis-side)
 

@@ -1,3 +1,34 @@
+## PM-594 — AI Usage page, wellbeing×activity correlation, HAVEN compliance flag (2026-06-10)
+
+### What shipped
+**Supabase:**
+- cc-ai EF v1 (ai_interactions analysis: usage by trigger/persona, HAVEN compliance detail, 12-week trend)
+- cc_ai table (BIGINT PK, headline/usage/haven/trend JSONB cols, admin-read RLS)
+- Cron `cc-ai-hourly` jobid 45 at `35 * * * *`
+- cc-activity EF v5 (fixes watch column names: pct_watched not watch_pct, watch_seconds for both tables; total_watch_minutes now shows 5.9 correctly)
+- cc-wellbeing EF v4 (adds correlation_json: per-member avg_wb vs total_acts)
+- cc_wellbeing.correlation_json column added
+
+**vyve-command-centre (PM-594 commit `ef65f670f6ad`):**
+- `pages/ai-usage.html` + `assets/ai-usage.js` — AI Usage page at `/#/ai-usage`
+- `pages/wellbeing.html` + `assets/wellbeing.js` — correlation section added + wbRenderCorrelation function
+- `assets/sidebar-config.js` — AI Usage entry added (7th Insights page)
+- `lib/router.js` — ai-usage added to no-cache slug list
+
+### Cache data (2026-06-10T07:18)
+- AI: 68 interactions · 23 unique members · HAVEN alert active (9 interactions, clinical_gate_passed=false)
+- HAVEN: 3 real members (Calum Denham, Conor Warren, Kieran Day) + Phil Hurwood (clinical lead himself). Mix of onboarding + re_engagement triggers. Compliance risk — needs Phil sign-off before Sage.
+- Wellbeing correlation: 7 data points. Top 3 most active members avg wb 8.0, bottom 3 avg 5.0 — +3.0 difference, directionally consistent with VYVE hypothesis. n=7 is directional only.
+- Activity: total_watch_minutes=5.9 fixed (was 0 due to wrong column names).
+
+### HAVEN compliance summary
+9 HAVEN interactions in production with real non-test members:
+- calumdenham@gmail.com: onboarding 13 Apr
+- conor@conorwarren.co.uk: onboarding 15 Apr + 3x re_engagement (May)
+- kieranday97@gmail.com: onboarding 13 May + 2x re_engagement (May)
+- phil_hurwood@hotmail.co.uk: onboarding 27 May (Phil is the clinical lead himself)
+Action required: Dean to brief Lewis; coordinate Phil sign-off before Sage demo.
+
 ## PM-593 — CC audit cont.: cc-activity EF real build, SVG Day-N chart, re-engagement effectiveness (2026-06-10)
 
 ### What shipped
