@@ -1,12 +1,12 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT (updated 2026-06-10, PM-590)
+## CURRENT FRONT (updated 2026-06-10, PM-591)
 
-**Wellbeing analytics page live at admin.vyvehealth.co.uk/#/wellbeing (PM-590).**
-**cc-wellbeing EF v1 · cc_wellbeing table · compute_cc_wellbeing() · cron :55.**
-**Activity Depth PM-587/589 live. Auth pattern fixed (vyve-cc-supabase-auth + is_admin() RPC).**
-**Next: Platform & UX page (platform.html) — PostHog pages, errors, paths.**
+**Platform & UX analytics page live at admin.vyvehealth.co.uk/#/platform (PM-591).**
+**cc-platform EF v1 · cc_platform table · cron :05 · PostHog + perf_telemetry data source.**
+**All five CC Insights pages now live: Overview, Retention, Activity Depth, Wellbeing, Platform & UX.**
+**First cache: 14,054 views · 639 unique sessions · 76 pages · median LCP 391ms · 0 errors.**
 
 **WARN: posthog-test EF still active-but-retired — delete via dashboard.**
 **WARN: sync-health-data EF dead since 24 May.**
@@ -1038,6 +1038,10 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 ---
 
 ## 19. Current status
+### PM-591 — Platform & UX analytics page live (2026-06-10)
+
+`cc-platform` EF v1, `cc_platform` table, cron jobid 43 at `:05 * * * *`. Page lives at `admin.vyvehealth.co.uk/#/platform`. Data: PostHog HogQL for page views + ef_error events; Supabase `perf_telemetry` for load time percentiles. Five CC Insights pages all live. First cache: 14,054 views, 639 unique sessions, 76 pages tracked, median LCP 391ms, 0 errors, 5 low-traffic pages.
+
 
 ### PM-569 — iOS 1.7 LIVE + deployment model flipped to bundled (2026-06-09)
 
@@ -1724,6 +1728,7 @@ The CURRENT FRONT block is overwritten by every session close. A session holding
 | 31 | vyve-alert-digest-evening | 0 20 * * * |
 | 32 | vyve-evaluate-plan-fit | 0 4 * * * |
 | 33 | vyve-recompute-step-baselines | 10 4 * * * |
+| 43 | cc-platform-hourly | 5 * * * * |
 
 ### Make scenarios (Lewis-side)
 

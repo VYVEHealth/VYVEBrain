@@ -1,3 +1,30 @@
+## PM-591 — Platform & UX analytics page live (2026-06-10)
+
+### What shipped
+- `pages/platform.html` + `assets/platform.js` — Platform & UX page at `admin.vyvehealth.co.uk/#/platform`
+- `cc-platform` EF v1 (`verify_jwt:false`, admin-gated when JWT present, open to cron)
+- `cc_platform` table — id=1 JSONB cache: headline_json, pages_json, errors_json, perf_json, dead_json; admin-read RLS; §23.104 revoke applied
+- Cron `cc-platform-hourly` (jobid 43, `5 * * * *`)
+- Sidebar: platform status `coming-soon` → `live`
+
+### Data sources
+- **PostHog HogQL** (eu.posthog.com, project 138491, `POSTHOG_API_KEY` from Vault):
+  - `$pageview` events — top 50 pages by visit volume, unique users, % of total (last 30 days)
+  - `ef_error` events — grouped by ef_name + status, count, last seen (last 30 days)
+- **Supabase `perf_telemetry`** — fetched raw (79 rows), pivoted in EF to p50/p75/p95 per page for LCP/FCP/TTFB/INP
+
+### Page sections
+1. Headline strip: total views, unique sessions, EF error count, median LCP, pages tracked, low/dead count
+2. Top pages — horizontal bar chart (top 20) + full sortable table (views / unique users / % of total)
+3. EF error log — table by ef_name + status, colour-coded count pill, last-seen
+4. Load time percentiles — per-page LCP p50/p75/p95, FCP p50, TTFB p50, INP p75, colour-coded by Web Vitals thresholds
+5. Coverage — low-traffic (<10 views) and dead (0 views) vs 34 known pages
+
+### First cache data (2026-06-10T00:32:09Z)
+- 14,054 page views · 639 unique sessions · 76 pages tracked · 0 ef_errors · median LCP 391ms (excellent)
+- 5 low-traffic pages · 0 dead pages · 7 pages with perf data
+- All four Insights sidebar pages now live
+
 ## PM-590 — Wellbeing analytics page live (2026-06-10)
 
 ### What shipped
