@@ -1,3 +1,8 @@
+## PM-596 — welcome.html: download app card after recs (2026-06-10)
+
+### What shipped
+- **Test-Site-Finalv3 commit `d62df2b`**: `welcome.html` — download app card inserted between `#resultContent` (AI recs) and `next-steps-card` (email info). Full-width teal gradient card with headline, sub-copy, and store badges. Device-sniffed: iPhone/iPad shows App Store badge only; Android shows Play Store badge only; desktop/unknown shows both side-by-side. App Store: `https://apps.apple.com/gb/app/vyve-health/id6762100652`. Play Store: `https://play.google.com/store/apps/details?id=co.uk.vyvehealth.app`.
+
 ## PM-595 — Usage page: phone numbers in member 360 modal + never-active outreach list (2026-06-10)
 
 ### What shipped
