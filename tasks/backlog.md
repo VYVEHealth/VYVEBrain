@@ -3,6 +3,24 @@
 
 ---
 
+## BACKLOG — PM-591 — Staff account_type flag (exclude staff data from analytics)
+
+**Problem:** Analytics (retention, wellbeing, activity depth, all Command Centre pages) are skewed by heavy test usage from Dean, Lewis, Calum, Kelly and other team members. Real member signal is diluted — day-N curves, wellbeing averages, and engagement metrics are not representative.
+
+**Solution:** Add `'staff'` to `members.account_type` enum. Exclude staff rows from all analytics by default.
+
+**Scope:**
+- DB: add `'staff'` to `account_type` check constraint
+- `compute_cc_wellbeing()`, `compute_cc_retention()`, `compute_cc_activity()` — add `AND account_type != 'staff'` to all member queries
+- `employer-dashboard` EF — exclude staff
+- `expire_lapsed_trials` cron (pg_cron job 34) — staff never expire
+- `auth.js` `vyveCheckAccess` — staff always pass access gate regardless of subscription status
+- Command Centre admin UI — toggle to include/exclude staff data per page (default: exclude)
+
+**Members to flag on deploy:** Dean, Lewis, Calum, Kelly + any other team test accounts identified at time of build.
+
+**Effort:** ~half day.
+
 ## NEXT — VYVE Command Centre (post-App Store resubmission)
 ### Internal ops, admin CRM, document hub, app health monitoring
 
