@@ -1,3 +1,26 @@
+## PM-593 — CC audit cont.: cc-activity EF real build, SVG Day-N chart, re-engagement effectiveness (2026-06-10)
+
+### What shipped
+**Supabase:**
+- cc-activity EF v4 (real build — stubs were v1-3; queries mal, exercise_logs, mind_activities, replay_video_views, session_live_views, weight_logs, member_running_plans, member_health_connections for all 7 sections)
+- cc-retention EF v5 (adds reengage_json: per-stream email effectiveness, 7-day return rate)
+- cc_retention.reengage_json column added
+
+**vyve-command-centre (PM-593 commit `d88a35c3af04`):**
+- `assets/retention.js`: Day-N horizontal bars → SVG line chart with benchmark dashed line, colour-coded points (green above / orange below), data table with pp delta vs benchmark, ⚠ low-confidence flag (n<10)
+- `assets/retention.js`: retRenderReengage function + re-engagement effectiveness section added
+- `pages/retention.html`: re-engagement card added after at-risk section, version bumped
+
+### Cache data (2026-06-10T01:08)
+- Re-engagement: Stream A (7-day inactive) 52% return rate (26/50 sent), Stream B (30-day inactive) 24% return rate (6/25 sent), overall 43%. Strong numbers — industry average is 5-15%.
+- Activity: rebuilt with 11 adoption features, full pillar breakdown, heatmap, exercise depth. total_watch_minutes=0 (watch query column mapping issue — backlog).
+
+### Remaining audit items (carry forward)
+- Watch time query: replay_video_views column names differ — total_watch_minutes shows 0
+- log-perf: only 79 rows from May 2026 testing; needs broader wiring across portal pages
+- AI usage + cost page (ai_interactions table has all the data)
+- Wellbeing × activity correlation chart (the VYVE ROI story)
+
 ## PM-592 — CC analytics audit: Revenue page, wellbeing EF v2, account type, WoW deltas (2026-06-10)
 
 ### What shipped
