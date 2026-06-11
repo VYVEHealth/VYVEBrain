@@ -823,7 +823,7 @@ Submitting an honest "I feel rough today — 3/10" should never penalise the sco
 
 ### Compute parity — JS ↔ SQL
 
-`compute_engagement_components_v2(p_member_email text)` SQL function in `public`, SECURITY DEFINER, returns 13-field record. `computeEngagementComponentsV2(tables, today)` in `home-state-local.js` returns same 13-field shape. Parity proven at 72/72 exact match on real member data.
+`compute_engagement_components_v2(p_member_email text)` SQL function in `public`, SECURITY DEFINER, returns 13-field record. `computeEngagementComponentsV2(tables, today)` in `home-state-local.js` returns same 13-field shape. **Formula parity holds; DATA parity does NOT — see PM-601.** The JS path computes off Dexie, and if any activity table's hydrate dropped its `id` (the `daily_habits` `select=` bug, §23.109) the local store collapses multi-day history to today only, so the client renders a low score (Kelly 74) while SQL reads true (83). The historic '72/72 exact match' was SQL-vs-JS on identical inputs; it never guarded the input completeness. Treat parity as conditional on full Dexie hydration.
 
 ### Page architecture (`engagement-v2.html`)
 
@@ -1642,6 +1642,10 @@ As of iOS 1.7 (live 2026-06-09, server.url removed), iOS members are pinned to t
 
 #### §23.108 — vyve-capacitor is SPM, not CocoaPods: open App.xcodeproj (PM-571)
 **The Capacitor iOS project uses Swift Package Manager (`Package.swift`), so there is NO `App.xcworkspace`. Open `ios/App/App.xcodeproj` directly — `open ios/App/App.xcworkspace` fails "does not exist". CocoaPods-era Capacitor used the workspace; this project does not.**
+
+#### §23.109 — every explicit PostgREST `select=` on a member-scoped activity table MUST include `id` (PM-601 — HARD RULE)
+
+The Dexie merge-not-wipe `replaceForMember` (§23.43) keys incoming rows on `r.id`. If a hydrate's `select=` column list omits the primary key, PostgREST returns rows with no `id`; every row collapses onto a single null-keyed Dexie slot and **all but the most-recent day silently vanish** from the local store. No error is thrown — the only symptom is a client-computed value (engagement score, streak, counts) reading low versus server truth. Root-caused as Kelly's engagement score showing 74 vs server 83: `daily_habits` was the one activity table with a hand-written `select=member_email,activity_date,...` that dropped `id` while every other table used `select=*`. Fix was adding `id` to the select. **Rule:** prefer `select=*` for member-scoped activity tables; if an explicit column list is required, `id` is non-negotiable and the first column. When auditing a "client number doesn't match server" bug, check the hydrate select for a missing PK before anything else.
 
 #### §23.107 — CURRENT FRONT is a shared single block; never rewrite it from an in-context template (PM-573 — HARD RULE)
 

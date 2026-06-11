@@ -1,3 +1,18 @@
+## PM-601 — fix daily_habits hydrate dropping PK (engagement score read low) (2026-06-11)
+
+### Root cause
+Kelly's "Your Journey → Score" showed 74 at 23:10; server `compute_engagement_components_v2` returned 83. Not v1/v2 confusion, not decay, not midnight rollover. The v2 page computes from Dexie via `computeEngagementV2FromDexie` → `allFor(email)`. Her Dexie `daily_habits` held only TODAY's row (habits pillar rendered 5.0pts = today capped, vs SQL 19.71 = full decayed week). Server had habits on all 7 days. The `daily_habits` hydrate in `sync.js` used a hand-written `select=member_email,activity_date,habit_id,habit_completed,notes` — **no `id`**. PostgREST returned PK-less rows; Dexie's §23.43 merge keys on `r.id`, so all 365 days collapsed onto one null-keyed slot. Only the locally-autoticked today row (written with a real id by member-dashboard mirror) survived. Every OTHER activity table uses `select=*` (includes id) — habits was the sole offender.
+
+### What shipped
+- **vyve-site commit `d3fc35b`** (Git Data API fallback — Composio GitHub had no active connection this session): `sync.js` — added `id` to the `daily_habits` hydrate select (now `select=id,member_email,activity_date,habit_id,habit_completed,notes`). `index.html` + `settings.html` vbb-marker 455→456. `sw.js` CACHE_NAME → `vyve-cache-v2026-06-11-pm601-habits-id`. Verified all four at commit SHA.
+
+### Brain corrections
+- §11C parity claim ("72/72 exact match") annotated: formula parity holds, DATA parity is conditional on full Dexie hydration. Was masking this bug class.
+- New **§23.109** (HARD RULE): explicit PostgREST `select=` on member-scoped activity tables must include `id`; prefer `select=*`. Missing-PK collapses local history silently.
+
+### Not yet reaching members
+Fix is on main; Dean sees it via server.url dev loop. Members on bundled iOS 1.7 / Android 1.0.6 frozen binaries will NOT get it until an OTA push — never fired (§23.106/107, Sage blocker). OTA push is the next action. A member force-quit only self-heals if their shell loads current main, which a bundled build does not.
+
 ## PM-596 — welcome.html: download app card after recs (2026-06-10)
 
 ### What shipped
