@@ -1,3 +1,23 @@
+## PM-602 — iOS 1.8 + Android 1.0.7 submitted; OTA wiring live in both binaries (2026-06-11)
+
+End-to-end OTA setup session. Closes §23.107 (wiring now in binary) and advances §23.106 to "pending first canary verification."
+
+### What shipped
+- **`live-update.js` (PM-597/PM-600)** — `LiveUpdate.ready()` + `LiveUpdate.setChannel('production')` + `LiveUpdate.sync()` wired into vyve-site web shell. Native-guarded IIFE; no-op on server.url dev shell and web. `production` is the Capawesome channel name (not the UUID). File included on index.html and login.html (cold-start pages).
+- **`.github/workflows/ota-deploy.yml`** — dormant OTA push workflow committed to vyve-site. Manual trigger via GitHub Actions UI (`workflow_dispatch`), rollout % input (default 10% canary). Authenticates via `CAPAWESOME_TOKEN` repo secret. Pushes to app `f9961f66-eb66-4102-b1c5-f9b2c7baeebf`, channel `production`. Ready to fire the moment 1.8 installs on a real device.
+- **`CAPAWESOME_TOKEN`** — added to vyve-site GitHub Actions repo secrets (token name `vyve-ota-ci`, no expiry, created 11 Jun 2026).
+- **iOS 1.8 (build 3)** — submitted to App Store Connect for review. `server.url` removed, `channel: production` in LiveUpdate block, `live-update.js` bundled. Screenshots uploaded (5 × 1284×2778 px). "What's New": OTA support messaging.
+- **Android 1.0.7 (versionCode 53)** — AAB built and uploaded to Play Console production track. Same web shell as iOS 1.8.
+
+### Capawesome channel clarification (banked)
+Brain previously recorded channel as `89e12796` (the internal UUID). Live Channels page shows two channels: **`production`** (0 devices, 0 deployments — the correct target) and **`default`** (4 devices — where trial cohort landed due to no explicit channel in prior config). `live-update.js` + `capacitor.config.json` now both pin `production` explicitly.
+
+### §23.107 update
+The "no sync/ready calls" rule is now RESOLVED for 1.8+. `live-update.js` ships the wiring. §23.107 rewritten below.
+
+### Next action
+Once 1.8 is approved + installed on a real device (not Dean's server.url dev phone): trigger `ota-deploy.yml` from GitHub Actions with rollout=10. Watch Capawesome Cloud → VYVE Health → Live Updates → Channels → production → Logs for bundle receipt. Verify vbb marker updates on the device on next cold start. That closes §23.106.
+
 ## PM-601 — fix daily_habits hydrate dropping PK (engagement score read low) (2026-06-11)
 
 ### Root cause
