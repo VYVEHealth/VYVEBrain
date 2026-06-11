@@ -1,3 +1,39 @@
+## PM-603 — Full brain reconciliation vs live (§23 holes filled, inventories/counts to live, stale items closed) (2026-06-12)
+
+Dean flagged recurring wrong answers from sessions. Root cause: sessions faithfully updated the CURRENT FRONT, changelog, and (mostly) §23/§19 ship-narratives, but the durable inventory/count tables (§6/§7/§24) and the §20–22 status board rotted, and several §23 hard rules existed ONLY in the changelog. Full read of master + changelog, cross-checked against live Supabase (`execute_sql` + `list_edge_functions`) and GitHub.
+
+### §23 reconciliation (the wrong-answers engine)
+- Master's §23 jumped §23.94 → §23.104. The §23.95–103 band + §23.105 + a third §23.107 lived only in the changelog.
+- **§23.105 back-filled** from PM-568 (no `current_setting('app.*')` in cron auth headers; embed the JWT literal).
+- **Duplicate §23.107 → §23.110** (PM-573 CURRENT-FRONT rule; the PM-571 OTA rule keeps §23.107).
+- **Promoted changelog → master §23.111–116:** tracker→log-activity-or-invisible (PM-575, was a 3rd §23.107), www-clone-before-bundle (PM-557 §23.95), Java-21-for-gradlew (PM-557, was a 2nd §23.94), achievement-toast-gate (PM-554 §23.97), lockBody-10s-timer (PM-554 §23.98), JS-cachebust-query-string (PM-585 §23.101).
+- Orphan `dim values 1/2/3` table fragment at top of §23 reformatted to a note.
+
+### Inventories + counts → live (12 Jun)
+- §5/§6: 120 → **133 public tables**; §16 RLS 120 → 133; §6/§14 workout_plans ~297 → ~313; §23.91 replay_videos "=4" → 31.
+- §1 members: 23 → **47** (trial 36, comp 10, paid 1; NO enterprise). §6 members row: added `is_test`, `privacy_version`, `health_consent_version`, `tour_completed_at`.
+- §6/§7: documented the **CC Insights suite** (cc-app-health/usage/retention/wellbeing/platform/activity/revenue/ai EFs + `cc_*` cache tables + crons 38–45 + 8 admin pages) + `stripe-webhook` + `apply-trial` + `session-reminder-cron`. §7 count 124 → ~150.
+- Cron: three divergent brain tables (28/29/30 "active") replaced by one live §24 table (41 jobs, **40 active**; jobid 27 disabled; jobid 26 daily → 36 hourly). §7 sub-table + §12 pointer marked superseded.
+
+### Stale "open" items closed / contradictions resolved
+- **GITHUB_PAT_CLAUDE rotation DONE** (PM-558, no expiry). §24 + front corrected — stop re-flagging "expires 20 June".
+- **GDPR cron static-PSK** removed — §21/§22 marked resolved.
+- **sync-health-data** "dead since 24 May" clarified: server-side scheduled path retired for foreground-only sync (§23.93); EF is live/ACTIVE v22.
+- **Make** §12 reconciled to §24 (retired, not "broken/133 stuck").
+- **changelog.md size** §21 corrected: 67KB/~800 lines (pre-PM-554 in `changelog-archive.md`), not 2.5MB.
+- §19–22 status board refreshed off the 26-May snapshot (iOS 1.8/1.0.7 in review not 1.4/1.0.5; HAVEN 3 members not "Conor since 15 April"; OTA wiring DONE PM-602; dropped "before 31 May" guard).
+
+### Production data fix
+- 2 fake `enterprise` members (Callum Budzinski, Kelly Bestford — team) → `account_type='comp'`, `is_test=true`. They had inflated Revenue MRR by £20 (£40 → real £20, Paige only) and skewed cohort denominators.
+
+### Open / confirm
+- cron jobid 27 `session-publish-hourly` is DISABLED — Dean to confirm intentional.
+- §23.106 OTA canary still unverified (top native, pre-Sage gate).
+- Not line-audited this pass: master 943–990 (brand palette) + §23.34–86 rule bodies (stable doctrine).
+
+### Commit
+Brain-only (master.md + changelog.md, atomic via Git Data API; Composio not used). No vyve-site / EF / migration changes beyond the 2-row members data fix above.
+
 ## PM-602 — iOS 1.8 + Android 1.0.7 submitted; OTA wiring live in both binaries (2026-06-11)
 
 End-to-end OTA setup session. Closes §23.107 (wiring now in binary) and advances §23.106 to "pending first canary verification."

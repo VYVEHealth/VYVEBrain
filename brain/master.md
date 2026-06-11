@@ -1,18 +1,18 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT (updated 2026-06-10, PM-594)
+## CURRENT FRONT (updated 2026-06-12, PM-603)
 
-**PM-594: AI Usage page live · wellbeing×activity correlation · HAVEN compliance flag · cc-activity watch fix.**
-**Seven CC Insights pages: Overview, Retention, Activity Depth, Wellbeing, Platform & UX, Revenue, AI Usage.**
-**CRITICAL: HAVEN active in production for 3 real members without Phil's clinical sign-off. 9 interactions total.**
-**Correlation signal: top-3 most active members avg wb 8.0 vs bottom-3 avg 5.0 — directional (n=7).**
+**PM-603: full brain reconciliation vs live Supabase + GitHub. §23 holes filled — §23.105 back-filled, §23.111–116 promoted from changelog (tracker→log-activity, www-clone, Java-21, toast-gate, lockBody-timer, JS-cachebust), duplicate §23.107 → §23.110. §6/§7/§24 inventories + counts brought to live: 133 tables, 47 members (NO enterprise), 41 cron jobs (40 active), CC Insights EF/cache/cron suite documented.**
+**Stale "open" items CLOSED: GITHUB_PAT_CLAUDE rotation is DONE (PM-558 — no expiry, stop re-flagging "expires 20 June"). GDPR cron static-PSK removed (no-op artefact).**
+**CRITICAL: HAVEN live in production for 3 real members (Calum Denham, Conor Warren, Kieran Day) + Phil — 9 interactions, clinical gate NOT passed. Pre-Sage blocker; Dean to brief Lewis + chase Phil sign-off.**
+**8 CC Insights pages live: App Health, Usage, Retention, Activity Depth, Wellbeing, Platform & UX, Revenue, AI Usage.**
+**Data fix: 2 fake `enterprise` rows (Callum Budzinski, Kelly Bestford) relabelled comp+is_test — were inflating Revenue MRR by £20. Real MRR = £20 (Paige only).**
 
-**WARN: cc-activity total_watch_minutes=5.9 fixed (was 0). Column bug resolved.**
-**WARN: log-perf only wired on 5 pages from May 2026 testing — needs broader portal wiring.**
+**WARN: log-perf only wired on ~5 pages from May 2026 testing — needs broader portal wiring.**
 **WARN: posthog-test EF still active-but-retired — delete via dashboard.**
-**WARN: sync-health-data EF dead since 24 May.**
-**iOS 1.8 + Android 1.0.7 IN REVIEW (submitted 11 Jun 2026, PM-602). OTA wiring live in both binaries — §23.106 pending first canary push verification.**
+**WARN: cron jobid 27 `session-publish-hourly` is DISABLED — confirm intentional (live-sessions pipeline).**
+**iOS 1.8 + Android 1.0.7 IN REVIEW (submitted 11 Jun 2026, PM-602). OTA wiring live in both binaries — §23.106 pending first canary push verification (TOP native priority, pre-Sage gate).**
 <!--CURRENT_FRONT_END-->
 
 
@@ -35,7 +35,7 @@
 | Sales | Vicki — outbound pipeline, enterprise prospecting |
 | Community | Cole — member engagement, retention |
 | Stage | Pre-revenue · MVP · trial cohort · iOS + Android live in stores |
-| Cohort | Build/test cohort. ~20 trial-cohort members (23 in `members` live, mostly test accounts not real paying members). Single paying B2C: Paige Coult (joined 13 April, £20/month, still the only paying member). 3 admin operators in `admin_users`. Public push starting now. |
+| Cohort | Build/test cohort. **47 rows in `members` live (12 Jun 2026): account_type trial 36, comp 10, paid 1 — NO enterprise.** Most are test/team accounts, not real members; `members.is_test=true` flags known test accounts (8+ flagged) and analytics exclude them. The two former `enterprise` rows (Callum Budzinski, Kelly Bestford — team) were relabelled `comp`+`is_test` PM-603 (they had been inflating Revenue MRR by £20). Single paying B2C: Paige Coult (joined 13 April, £20/month, still the only paying member). 3 admin operators in `admin_users`. Public push starting now. |
 | Tagline | *Help yourself. Help others. Change the world.* |
 | Mission | Proactive workplace wellbeing across three strategic pillars (Physical, Mental, Social) — expressed on the website as five (Mental, Physical, Nutrition, Education, Purpose) |
 
@@ -122,7 +122,7 @@ Pre-call briefs via Sales Intelligence skill (8-step deep dive, ROI calculator, 
 | Native app delivery | `VYVEHealth/vyve-capacitor` (Dean's Mac at `~/Projects/vyve-capacitor`) is the Capacitor project that bundles the `vyve-site` web shell into both store binaries. **iOS: App Store 1.8 (build 3) IN REVIEW (submitted 11 Jun 2026, PM-602) — `server.url` removed, `channel: production` in LiveUpdate block, `live-update.js` OTA wiring bundled.** (1.7 was live; 1.8 supersedes.) **Android: Play Store 1.0.7 versionCode 53 IN REVIEW (submitted 11 Jun 2026, PM-602) — same web shell as iOS 1.8.** Both stores ship the same web shell — single codebase, two binaries. **Deployment model (FLIPPED 2026-06-09 PM-569 — this reverses the PM-475 correction, which is now wrong):** iOS 1.7 ships with `server.url` removed, so **iOS members are FROZEN** on the vyve-site SHA baked into the 1.7 binary and receive changes ONLY via a Capawesome OTA (app `f9961f66` / prod channel `89e12796`). **No OTA has ever been pushed end-to-end (§23.106) — iOS members currently have no working update path short of a full store resubmit.** Dean alone runs the dev-loop server.url shell on his iPhone (→ `online.vyvehealth.co.uk`), so he sees every vyve-site commit live within the WKWebView cache window (2-15min); members do NOT. **Both platforms are now bundled (iOS 1.7 + Android 1.0.6).** A member freezes on the bundled vyve-site SHA the moment they install/update, so the OTA gap (§23.106) applies to the WHOLE cohort, not iOS-only. A member still on an older pre-bundle Android build keeps seeing live commits until they update. Only Dean's dev-loop iPhone is deliberately kept on server.url. vyve-capacitor REMOTE is behind Mac-local: the 1.5/1.6/1.7 ship-state (config server.url removal, version bumps) is uncommitted on remote (latest remote commit PM-560) — curate + commit per PM-413 Pending #2. |
 | Brain | `VYVEHealth/VYVEBrain` — markdown source of truth, session-loaded at start of every Claude session |
 | Authentication | Supabase Auth. `auth.js` v2.5 gates every portal page. `VYVE_RETURN_TO_KEY` in localStorage. Admin Console uses separate admin-side session. `is_admin()` SECURITY DEFINER RPC for Command Centre admin gating (PM-402). |
-| Primary datastore | Supabase — project `ixjfklpckgxrwjlfsaaz` (West EU/Ireland, Pro plan). **120 public tables** as of 26 May 2026. |
+| Primary datastore | Supabase — project `ixjfklpckgxrwjlfsaaz` (West EU/Ireland, Pro plan). **133 public tables** as of 12 June 2026. |
 | Portal AI | Anthropic API (Claude Sonnet 4). Server-side via Supabase Edge Functions only — never in committed HTML. Spend cap ~£50/month. |
 | Operational AI | 24 custom Claude skills running daily/weekly/monthly intelligence, content, sales, and monitoring workflows for Lewis. |
 | Automation | Make (Lewis only, social publishing). Dean uses `log-activity` EF directly — Make retired from Dean's stack. |
@@ -153,13 +153,13 @@ Pre-call briefs via Sales Intelligence skill (8-step deep dive, ROI calculator, 
 
 ## 6. Supabase architecture
 
-Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). **120 public base tables as of 26 May 2026**, all RLS-enabled. Live row counts are never cached in brain — query Supabase directly or read the auto-refreshed `brain/schema-snapshot.md` (regenerated weekly Sunday 03:00 UTC by `schema-snapshot-refresh` cron). Tables grouped below by purpose; the full live list lives in the DB.
+Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). **133 public base tables as of 12 June 2026**, all RLS-enabled (member-scoped tables on `auth.email()=member_email`; the `cc_*` analytics caches are admin-read). Live row counts are never cached in brain — query Supabase directly or read the auto-refreshed `brain/schema-snapshot.md` (regenerated weekly Sunday 03:00 UTC by `schema-snapshot-refresh` cron). Tables grouped below by purpose; the full live list lives in the DB.
 
 ### Core member + activity (member-scoped RLS)
 
 | Table | Purpose |
 |---|---|
-| `members` | Core member profiles. Email PK. Persona, welcome recs, goals, consent flags, `exercise_stream`, `avatar_url`. **PM-420 step 3:** added `baseline_steps_p50`/`baseline_steps_p25`/`baseline_steps_p75` INT NULL + `baseline_source` (CHECK in `healthkit_history` / `manual_chip` / `deferred`) + `baseline_computed_at` + `baseline_days_available` + `baseline_activity_band` (CHECK in `under_3k` / `3k_5k` / `5k_8k` / `over_8k`). Populated by `pull-baseline-steps` EF v1 at consent time via Capgo `queryAggregated` 90-day window. **PM-428:** `baseline_steps_p50` is now kept live by `public.recompute_step_baselines()` (SECURITY DEFINER) — medians `member_health_daily` steps over a rolling **90-day** window EXCLUDING non-wear days (`< 1000` steps), min 5 wear-days, for members with a live `member_health_connections` row; source stays `'healthkit_history'`; idempotent. Cron jobid 33 daily 04:10 UTC. The consent-time snapshot was going stale (e.g. deanonbrown2 stuck at 7,500 vs live 5,882) — the picker reads this column for its Just Steps slider default/baseline. |
+| `members` | Core member profiles. Email PK. Persona, welcome recs, goals, consent flags, `exercise_stream`, `avatar_url`. **PM-420 step 3:** added `baseline_steps_p50`/`baseline_steps_p25`/`baseline_steps_p75` INT NULL + `baseline_source` (CHECK in `healthkit_history` / `manual_chip` / `deferred`) + `baseline_computed_at` + `baseline_days_available` + `baseline_activity_band` (CHECK in `under_3k` / `3k_5k` / `5k_8k` / `over_8k`). Populated by `pull-baseline-steps` EF v1 at consent time via Capgo `queryAggregated` 90-day window. **PM-428:** `baseline_steps_p50` is now kept live by `public.recompute_step_baselines()` (SECURITY DEFINER) — medians `member_health_daily` steps over a rolling **90-day** window EXCLUDING non-wear days (`< 1000` steps), min 5 wear-days, for members with a live `member_health_connections` row; source stays `'healthkit_history'`; idempotent. Cron jobid 33 daily 04:10 UTC. The consent-time snapshot was going stale (e.g. deanonbrown2 stuck at 7,500 vs live 5,882) — the picker reads this column for its Just Steps slider default/baseline. **Also added since the 26 May audit:** `is_test BOOLEAN DEFAULT false` (PM-572 — test/team accounts; analytics exclude where true), `privacy_version` + `health_consent_version TEXT` (PM-603 enterprise-bridge — consent versioning, existing consenters stamped `'pre-versioning'`), `tour_completed_at TIMESTAMPTZ` (PM-554 first-run gate). |
 | `employer_members` | Employer–member relationships (empty until first enterprise goes live). |
 | `daily_habits` | Habit completions. Cap 10/day via BEFORE INSERT trigger; over-cap routed to `activity_dedupe`. `notes='autotick'` distinguishes HK auto-ticked rows. |
 | `workouts` | Workout completions. `source` column (`'manual'` vs `'healthkit'`). Cap 2/day for `source='manual'` only. HK-sourced rows bypass entirely. |
@@ -196,7 +196,7 @@ Project `ixjfklpckgxrwjlfsaaz` (Pro plan, West EU/Ireland). **120 public base ta
 
 | Table | Purpose |
 |---|---|
-| `workout_plans` | Workout library rows across plan days (~297 rows). |
+| `workout_plans` | Workout library rows across plan days (~313 rows, 12 Jun 2026). |
 | `workout_plan_cache` | Per-member workout programme (JSONB). UNIQUE constraint contradiction (surfaced PM-411) being resolved in PM-420 step 4a-pre-2: drop `workout_plan_cache_member_email_key` (full unique on `member_email`) and keep `workout_plan_cache_one_active_per_member` (partial unique WHERE `is_active=true`). Enables plan history (multiple wpc rows per member, only one active at a time). Onboarding EF v86 LIVE (deactivate-old + insert-new pattern). Site patch for `workouts-session.js` (PATCH must filter `is_active=eq.true`) **pending atomic 4-file commit**. Full-unique drop migration pending site patch landing. |
 | `manual_step_estimates` | PM-420 step 4a-pre-1. Daily 4-band chip estimate for non-HK members on Movement page. PK `(member_email, estimate_date)`, UPSERT on band tap. Bands: `under_2k` (2000) / `5k` (5000) / `7_5k` (7500) / `over_10k` (10000). RLS member-scoped. `vyve_lc_email` trigger. Empty post-create (zero rows yet). |
 | `exercise_logs` | Plan-agnostic set/rep/weight logs. |
@@ -346,6 +346,7 @@ This is now a first-class pattern with 9+ catalogues built on it. Edit via Supab
 | `cc_tasks`, `cc_decisions`, `cc_okrs` | Task/decision/OKR tracking. |
 | `cc_finance`, `cc_revenue`, `cc_grants`, `cc_invoices` | Financial tracking. |
 | `cc_posts`, `cc_sessions`, `cc_intel`, `cc_knowledge`, `cc_documents`, `cc_swot`, `cc_episodes`, `cc_calendar_events` | Content + intel. |
+| `cc_app_health`, `cc_usage`, `cc_retention`, `cc_wellbeing`, `cc_platform`, `cc_activity`, `cc_revenue_cache`, `cc_ai` | **Command Centre Insights analytics caches (PM-559→594).** One JSONB-cache row per page, admin-read RLS, §23.104 revoke applied. Each rebuilt by its own hourly cron (jobids 38–45) from its `cc-<page>` EF. Drive the 8 admin Insights pages (App Health, Usage, Retention, Wellbeing, Platform & UX, Activity Depth, Revenue, AI Usage) at `admin.vyvehealth.co.uk/#/<page>`. |
 | `vyve_job_runs` | Background job execution log. |
 
 ### GDPR pipeline (07 May 2026)
@@ -370,7 +371,7 @@ Charity + certificate counters stay independently capped at 2/day via `get_chari
 
 ## 7. Edge Functions — live inventory
 
-**124 Edge Functions deployed (26 May 2026).** ~70 actively operational; the remainder are one-shot patchers / seeders / debug helpers / dormant throwaways. The 9 April security audit identified ~89 for deletion — partial cleanup complete; backlog item still open.
+**~150 Edge Functions deployed (12 June 2026)** — the live `list_edge_functions` is canonical; this inventory is not exhaustive. ~80 actively operational; the remainder are one-shot patchers / seeders / debug helpers / dormant throwaways. The 9 April security audit identified ~89 for deletion — partial cleanup complete; backlog item still open. **Added since the 26 May snapshot:** the `cc-*` Insights suite, `stripe-webhook`, `apply-trial`, `session-reminder-cron`, `broadcast-status`, `youtube-token-health`, `replay-playlist-backfill`, `seed-host-thumbnails`, `exercise-storage-batch` (see CC + trial subsection below).
 
 > **Versioning note.** Source-level semantic versions live in the EF source-file header comment (`// <ef-name> v<N> — <one-liner>`). To check the deployed version, read the source. The Supabase platform deploy counter (`version: N` in `list_edge_functions`) is a deploy/redeploy artefact and not surfaced here.
 
@@ -387,7 +388,7 @@ Charity + certificate counters stay independently capped at 2/day via `get_chari
 | `log-perf` | LIVE | Anonymous-friendly client telemetry sink (per-page TTFB / FP / FCP / LCP / INP / custom `auth_rdy` / `paint_done`). JWT-validated. Writes `perf_telemetry`. |
 | `anthropic-proxy` | LIVE | Server-side Anthropic proxy for running plans + misc AI calls. `verify_jwt:false` at platform with internal `supabase.auth.getUser()` validation. Writes `ai_interactions` audit. |
 | `generate-workout-plan` | LIVE | AI workout plan generation (invoked from onboarding's waitUntil path). |
-| `sync-health-data` | LIVE | HealthKit sync. Stamps `source:'healthkit'` on promoted workout/cardio rows. |
+| `sync-health-data` | LIVE (v22, ACTIVE) | HealthKit sync. Stamps `source:'healthkit'` on promoted workout/cardio rows. **Clarification (resolves the old "dead since 24 May" WARN):** the *server-side scheduled* HK sync path was retired 24 May in favour of foreground-only/Dexie-first sync (§23.93) — the EF itself is alive and invoked on app foreground, not dead. No HK background delivery by design. |
 | `get-health-data` | LIVE | Reads back health data for portal display. |
 | `leaderboard` | LIVE | Privacy-aware leaderboard. Thin wrapper over `get_leaderboard(p_email, p_scope, p_range)` RPC — sort + top-100 slice + caller-row lookup all in Postgres window functions over `member_home_state`. Scales to 100K members without wire bloat. |
 | `notifications` | LIVE | In-app notifications read/write. |
@@ -460,6 +461,25 @@ Charity + certificate counters stay independently capped at 2/day via `get_chari
 | `broadcast-announcement` | LIVE | Broadcast announcement helper. |
 | `connect-feed-preview` | LIVE | (Listed above.) |
 
+### Command Centre Insights + trial conversion (PM-559→594)
+
+| Function | Status | Purpose |
+|---|---|---|
+| `cc-app-health` | LIVE | App Health dashboard cache (errors-first, ranked by members-hit-now; usage; dead pages; load times). Cron jobid 38 hourly `:00`. Writes `cc_app_health`. |
+| `cc-usage` | LIVE | Usage Analytics (Overview + Members tabs, 360 modal, never-active outreach). Cron jobid 39 hourly `:30`. Writes `cc_usage`. Admin send-actions (never-active re-engagement) JWT-gated. |
+| `cc-retention` | LIVE | Retention & Activation (funnel, dormancy, cohorts, at-risk, Day-N curve, re-engagement effectiveness). Cron jobid 40 hourly `:15`. Writes `cc_retention`. |
+| `cc-wellbeing` | LIVE | Wellbeing analytics (score trend, member table, distribution, 8-dim baseline, wellbeing×activity correlation). Cron jobid 42 hourly `:55`. Writes `cc_wellbeing`. |
+| `cc-platform` | LIVE | Platform & UX (PostHog HogQL page views + `ef_error`; `perf_telemetry` percentiles). `is_dean` filter to drop dev traffic. Cron jobid 43 hourly `:05`. Writes `cc_platform`. |
+| `cc-activity` | LIVE | Activity Depth (adoption features, pillar breakdown, watch-time, exercise depth, heatmap). Cron jobid 41 hourly `:45`. Writes `cc_activity`. |
+| `cc-revenue` | LIVE | Revenue (MRR, subscription breakdown, trial pipeline, 12-week new-member trend). Cron jobid 44 hourly `:20`. Writes `cc_revenue_cache`. |
+| `cc-ai` | LIVE | AI Usage (`ai_interactions` by trigger/persona, HAVEN compliance detail, 12-week trend). Cron jobid 45 hourly `:35`. Writes `cc_ai`. |
+| `cc-data` | LIVE | Command Centre data API (CRM/ops tables). |
+| `stripe-webhook` | LIVE | Trial→paid conversion webhook (`verify_jwt:false`, signature-verified). Flips `account_type→paid` + `subscription_status→active` on checkout. §3 conversion path. |
+| `apply-trial` | LIVE | Trial activation helper (`resolve_trial_campaign` lookup). |
+| `session-reminder-cron` | LIVE | 5-min cron (jobid 37) — upcoming-session reminder push. Was the trigger for the PM-568 cron-auth fix (§23.105). |
+| `youtube-token-health` | LIVE | Daily YouTube OAuth tripwire (jobid 35). |
+| `broadcast-status` / `replay-playlist-backfill` / `seed-host-thumbnails` / `exercise-storage-batch` | LIVE | Live-page broadcast probe (§23.65); curated replay backfill (§23.91); Storage thumbnail seeder (§23.92); exercise media batch. |
+
 ### Shared modules
 
 Two `_shared/*.ts` files referenced by multiple EFs (must redeploy in lockstep when modified):
@@ -480,7 +500,7 @@ Roughly 40+ functions in the deployed list are dormant: one-shot seeders (`seed-
 - `SUPABASE_DEPLOY_FUNCTION` for body changes; `SUPABASE_UPDATE_A_FUNCTION` corrupts deployed bundles.
 - `SUPABASE_GET_FUNCTION_BODY` returns ESZIP binary (not human-readable); use native `Supabase:get_edge_function` MCP for source.
 
-### Cron jobs — 29 active (all `active=true`; +`vyve-evaluate-plan-fit` PM-420 4d, 28 May)
+### Cron jobs — **SUPERSEDED: see §24 for the live 41-job table (40 active as of 12 Jun 2026).** The list below is a stale 28-May snapshot kept only for narrative; do not trust its count or the `refresh-replay-videos-daily`/`session-publish` rows (now hourly jobid 36 / disabled respectively).
 
 | Job | Schedule | Function |
 |---|---|---|
@@ -865,15 +885,13 @@ Re-engagement-scheduler v11 with soft-slide / pillar-gap / re-engagement thresho
 - Content calendar (month-end) — 25 pieces across 4 themed weeks.
 - Thought leadership (1st of month) — macro-trend synthesis for external distribution.
 
-### Make social analytics
+### Make (retired)
 
-Scenario 4993944 (IG), 4993948 (FB), 4993949 (LinkedIn) → Data Store 107716.
-
-**Social publisher Scenario 4950386 — BROKEN since 23 March. 133 posts stuck. Lewis to fix.**
+Make is retired on Lewis's side too — no analytics collectors, no social publisher running. The old scenarios (4993944/4993948/4993949 collectors, 4950386 publisher) and Data Store 107716 are no longer tracked. (This reconciles the old "publisher broken, 133 posts stuck" note — that workflow is gone, not pending-fix. §24 is the canonical statement.) If Lewis returns to Make, repopulate here.
 
 ### Cron jobs
 
-See §7 for the 30 active pg_cron jobs.
+See §24 for the live pg_cron job table (41 jobs, 40 active as of 12 Jun 2026).
 
 ---
 
@@ -912,7 +930,7 @@ All admin writes audited to `admin_audit_log`.
 | Full Body | 7 workout days. |
 | Home Workouts | 7 workout days. |
 | Movement & Wellbeing | 7 content tabs. |
-| Total in Supabase | ~297 rows in `workout_plans` across ~40 workout days. |
+| Total in Supabase | ~313 rows in `workout_plans` across ~40 workout days (12 Jun 2026). |
 
 **Cache.** `workout_plan_cache` — historically one row per member, full 8-week JSONB programme. Generated at onboarding in background (Phase 2 waitUntil). **UNIQUE constraint contradiction being resolved (PM-420 step 4a-pre-2):** dropping `workout_plan_cache_member_email_key` (full unique on `member_email`); keeping `workout_plan_cache_one_active_per_member` (partial unique WHERE `is_active=true`). Enables plan history. Onboarding EF v86 already uses deactivate-old + insert-new write pattern. Pending: site patch (`workouts-session.js` filter add) + full-unique drop migration.
 
@@ -991,7 +1009,7 @@ Rebrand *The Everyman* → *The VYVE Podcast* in progress. Guest expression-of-i
 | Microsoft Exchange (GoDaddy) | `team@vyvehealth.co.uk` is on a personal Microsoft Exchange via GoDaddy. Migrate to proper Workspace tenant post-first-enterprise-contract. SCCs: not in place; required if/when EU subprocessing involved. |
 | External DPO | Required before 500 members. Budget £2–5K/year. |
 | Employer reporting | Aggregate only — no individual names ever. |
-| RLS | All 120 public tables have RLS enabled (26 May 2026 audit). |
+| RLS | All 133 public tables have RLS enabled (12 Jun 2026; was 120 at the 26 May audit — the 13 new tables, mostly `cc_*` admin-read caches, carry RLS per their build PMs). |
 | Security questionnaire | `brain/security_questionnaire.md` — pre-canned answers for procurement reviewers. |
 | Cyber Essentials (CE) | **Do immediately** — IASME self-assessed, ~£300-400, days to certificate. VYVE stack passes trivially. Checks most enterprise supplier questionnaire boxes including Sage. |
 | Cyber Essentials Plus (CE+) | Hold until a specific deal requires it. ~£1.5k, 4-6 weeks lead time (CE first, then auditor books the hands-on check). Ask Sage procurement what they actually need before spending. |
@@ -1114,22 +1132,22 @@ Lewis-facing manual broadcast UI live at `admin.vyvehealth.co.uk/#/broadcast`; s
 
 ## 21. Outstanding build items & priorities
 
-The bundle-ready campaign drove the work for most of late May. iOS 1.4 + Android 1.0.5 are now in App Review (PM-413), so the immediate next state depends on review outcome. Re-pillar items below by phase only when bundle clears.
+The bundle-ready campaign shipped: iOS is live (1.7 bundled) and **iOS 1.8 + Android 1.0.7 are now in App Review (PM-602, submitted 11 Jun)** carrying the OTA wiring. The dominant near-term priority is **verifying one Capawesome OTA end-to-end** (§23.106) — until that lands, no iOS member-facing fix ships without a full store resubmit. (Note: the §19→§22 status board below was a 26-May snapshot; refreshed for currency PM-603, but the rolling ship narratives in §19 + the changelog are the freshest source.)
 
 ### Pre-launch (next sessions)
 
 - **Body-hub overhaul (PM-411 backlog).** Bug A architectural (movement plan structurally homeless — programme_library category backfill + onboarding EF v37 to write category + exercise.html branching + movement.html programme-card section). Bug B surgical (activateProgramme cache-bust race in workouts-library.js / workouts-programme.js). Bug C surgical (Browse Library tab runtime error swallowed by try/catch). Mockup-first per the working style; Bug A is post-trial scope, B/C are Thursday-grade.
 - **vyve-capacitor remote sync.** Dean's Mac at session end (PM-413) has uncommitted changes to capacitor.config.json + android/app/build.gradle + ios/App/App/Info.plist + package.json + ic_launcher_background.xml + regenerated mipmap PNGs. Selective audit-and-curate commit pending; remote `7a54c876` is missing the bundle session's recovery work.
-- **Phil sign-off chase.** HAVEN persona auto-assignment still active in production (Conor Warren since 15 April) without clinical review. `VYVE_Health_Hub.html` staged in web root awaiting same. Both gated on Phil.
+- **Phil sign-off chase.** HAVEN persona auto-assignment is live in production for **3 real members (Calum Denham, Conor Warren, Kieran Day) + Phil himself — 9 interactions, clinical gate NOT passed (PM-594)**, without clinical review. Pre-Sage compliance risk. Dean to brief Lewis + coordinate Phil sign-off. `VYVE_Health_Hub.html` staged in web root awaiting same. Both gated on Phil.
 - **iOS 1.4 / Android 1.0.5 review outcomes.** Confirm Play Console shows `In review` not `Draft` next session (Dean had the "Send 1 change for review" button staged at PM-413 commit time).
 
 ### Pre-launch hygiene
 
-- **OTA bundle prep.** Capawesome live update wiring needs a clean commit on `package.json` (Mac local has LiveUpdate via SPM in Xcode but not in package.json). First-ever Capawesome OTA push consider `--rollout 0.1` canary.
+- **OTA bundle prep — DONE in 1.8/1.0.7 (PM-600/602).** `live-update.js` (sync/ready/setChannel `production`) ships in the web shell; `ota-deploy.yml` + `CAPAWESOME_TOKEN` are in vyve-site CI. Remaining: once 1.8 installs on a real device, fire `ota-deploy.yml` at rollout=10 and verify the bundle lands (§23.106 — top native priority, pre-Sage gate).
 - **Replay catalogue refill.** PM-410 wiped all 33 test-content replay videos; Replays hub shows empty state until Lewis lands real content. Throwaway EFs (`replay-inventory-tmp`, `replay-archive-tmp`, `replay-ghost-cleanup-tmp`) still ACTIVE in Supabase pending dashboard delete.
 - **PostHog duplicate-init follow-up (PM-408).** index.html L1043-1046 duplicate `posthog.init` pre-empts auth.js deferred init; needs incognito-verified ship.
 
-### Post-launch backlog (do not work on before 31 May)
+### Post-launch backlog
 
 Achievements system overhaul (PM-94) — post-trial, 2-3 sessions, own campaign. In-App Tour PF-23 — v1 DESCOPED to explanatory (intro slides + in-context spotlight, no per-step achievement), decoupling it from Achievements; full build spec in tasks/backlog.md "READY TO BUILD — PF-23 v1", copy drafted PM-553, `members.tour_completed_at` migration approved. Build-ready; ship vehicle (next binary vs first OTA `--rollout 0.1` canary) is Dean's call. Realtime cross-device sync (PF-5b). Apple Health page redesign. `auth_blocked` banner in member UI. HealthKit background sync (~400 LOC Swift plugin, 4-5 sessions, 1 week soak). Health Connect (Android) — parked until Dean has Pixel/Galaxy device. The Fore grant register June/July 2026. WHISPA research partnership monitor.
 
@@ -1137,8 +1155,8 @@ Achievements system overhaul (PM-94) — post-trial, 2-3 sessions, own campaign.
 
 - Edge Functions deletion pass — one-shot patchers + debug EFs accumulate; ~32 active candidates plus the three throwaway replay EFs from PM-410.
 - Anon-key rotation (admin console).
-- Brain hygiene: changelog.md is 22,815 lines / ~2.5MB. Split pre-23 April entries into `changelog-archive/2026-Q1.md`. Base64-encoded historical blob cleanup pending.
-- GDPR cron static-PSK exposure (accepted risk, rotate if Sage diligence surfaces).
+- Brain hygiene: changelog.md is now **67KB / ~800 lines** (PM-554 onward) — the pre-PM-554 history (~2.96MB, 504 entries back to 22 Apr) was split into `brain/changelog-archive.md` (PM-570). The old ">1MB → route via /git/blobs" handling now applies to `changelog-archive.md`, not `changelog.md`.
+- GDPR cron static-PSK exposure — RESOLVED PM-603 (hardcoded bearer removed from jobs 21/22; it was a no-op artefact).
 - APNs key rotation (accepted risk, blocked on Apple 2-keys-per-team cap).
 - Stripe secret on EF environment (carried from earlier sessions).
 - Cron auth migration from hardcoded literals to Vault (cron jobs 21 + 22 hardcode PSK directly in `cron.job.command`).
@@ -1152,7 +1170,7 @@ Achievements system overhaul (PM-94) — post-trial, 2-3 sessions, own campaign.
 
 - **B2B volume discount tiers** — formally define before first enterprise contract.
 - **Annual pricing discount %** — Lewis decision, Dean adds to Stripe once confirmed.
-- **HAVEN go-live** — Phil's clinical review. Auto-assignment currently active in production (Conor Warren on HAVEN since 15 April). Decide: pause auto-assignment until sign-off, or accelerate Phil's review.
+- **HAVEN go-live** — Phil's clinical review. Auto-assignment is live in production for 3 real members + Phil (9 interactions, gate not passed — PM-594). Decide: pause auto-assignment until sign-off, or accelerate Phil's review. Pre-Sage compliance risk.
 - **`VYVE_Health_Hub.html` go-live** — Phil's clinical review of assessment instruments, scoring/risk thresholds, signposting copy. Page is staged in web root; promote to nav once approved.
 - **Microsoft Exchange / GoDaddy migration (`team@vyvehealth.co.uk`)** — currently a personal account; migrate to a proper enterprise tenant post-first-enterprise-contract.
 - **External DPO service** — required before 500 members.
@@ -1164,7 +1182,7 @@ Achievements system overhaul (PM-94) — post-trial, 2-3 sessions, own campaign.
 - **Free-trial conversion model (PM-476, design locked, build pending)** — 30-day trial (not 14); blended "easy first" charity milestone = ANY 30 activities (sum of `get_certificate_buckets`) funds the first donated month, then per-pillar resumes; no new anti-spam cap (capped buckets = 7/day ceiling → ~5-day floor); celebrate the milestone early but make the real conversion ask near the wall (~day 24) + day-30 wall; £10-off-FOREVER confirmed as the standing conversion price (resolves the standing-price question). Detail in changelog PM-476 + backlog Trial/membership; two review docs produced for Lewis (not in repo).
 - **APNs key rotation** — accepted risk pending Sage procurement diligence. KEY_ID `2MWXR57BU4` exposed in chat 27 April 2026 PM, rotation attempted 07 May hit Apple's 2-keys-per-team cap. Risk profile low; rotate if Sage's security review surfaces it.
 - **Secondary email service provider** — Brevo is single-provider for onboarding welcomes / certificates / re-engagement / push fan-outs. No failover ESP. Pre-Sage acceptable; post-Sage evaluate AWS SES as secondary.
-- **GDPR cron static-PSK exposure** — cron jobids 21 + 22 hardcode SHA-256-shaped bearer in `cron.job.command`. Procurement reviewers will flag; either replace with `current_setting('app.gdpr_cron_psk')` lookup or drop bearer entirely (EFs already enforce service-role checks). Backlog rotation when convenient; not blocking Sage diligence unless raised.
+- **GDPR cron static-PSK exposure — RESOLVED (PM-603 enterprise-bridge).** Jobs 21 + 22 previously hardcoded a bearer in `cron.job.command`; the bearer was a no-op artefact (CRON_SECRET was never set on the EF, so it was never validated — service-role client is the real auth layer). The hardcoded bearer has been removed; both jobs now call their EFs with Content-Type only. No longer a procurement flag.
 - **Goal re-pillaring (PM-159, partial)** — certificate re-pillaring SHIPPED PM-435 (certs now read the five Your Journey buckets via `get_certificate_buckets()`). The per-activity GOAL-target half (weekly goal targets mapped onto the pillars) is still open. Revisit alongside home-redesign EF trim.
 - **5 disabled Make tasks** — keep or remove: LinkedIn article, podcast brief, LinkedIn newsletter, PR pitch, employee advocacy pack.
 - **Autotick evaluator multi-source arbiter** — when/if a future member has two sources (HealthKit + Fitbit).
@@ -1173,7 +1191,7 @@ Achievements system overhaul (PM-94) — post-trial, 2-3 sessions, own campaign.
 
 ## 23. Known gotchas & architecture rules
 
-| `dim values 1/2/3` | `dimension_energy/sleep/stress/body` use 1/2/3 (low/mid/high tap), not the 1-10 scale of `score_*` columns. Branch thresholds: mood≤4 OR stress=1 OR energy=1 → negative; mood≥7 + 2×dim=3 → positive; else neutral. Mirror in EF `computeBranch` and client `computeBranchClient`. |
+**Dimension scale note (check-in branching):** `dimension_energy/sleep/stress/body` use 1/2/3 (low/mid/high tap), not the 1-10 scale of `score_*` columns. Branch thresholds: mood≤4 OR stress=1 OR energy=1 → negative; mood≥7 + 2×dim=3 → positive; else neutral. Mirror in EF `computeBranch` and client `computeBranchClient`.
 
 Curated and renumbered. Rules organised by topic family with monotonic numbering within each family. Promotion criterion: candidate after first occurrence, hard rule after second-or-third recurrence. Historical lineage preserved in `brain/changelog.md` — read the PM cited on each rule for the worked example.
 
@@ -1613,7 +1631,7 @@ Cron change: `refresh-replay-videos` moved daily 03:30 → HOURLY at :45 (`vyve-
 
 Back-catalogue reality (4 Jun): of 21 `youtube_broadcast_id`s on file, only 4 were genuine watchable recordings (today's Yoga Flexibility `9b-xSEfEIKc` + Calming Breathwork `-LanVrrQGPA`, already in playlists; older Yoga `d-dNe6W-o4I` 51m + Mindfulness `24JKB3ufM4k` 18m48s). The rest: 10 deleted from YouTube, 5 zero-duration (P0D) shells, 1 stray PUBLIC "Big Buck Bunny" test (`aqz-KE-bpKQ`), 1 dev-test "PM-327 Device Walk" (`JEFNPGKhQqY`). 16 junk broadcast_ids NULLed in `calendar_occurrences` (the 10 deleted + 5 P0D + Big Buck Bunny); genuine + legit-upcoming + the dev-test record kept.
 
-Tool: `replay-playlist-backfill` EF (verify_jwt:false, `?dry=1` for report-only) — idempotent curated backfill; eligibility = on-YouTube + privacy `unlisted` + real duration + title NOT `/(pm-\d)|(device walk)|(big buck bunny)/i`. Used to add the 2 genuine older recordings. `replay_videos` now = 4, zero junk.
+Tool: `replay-playlist-backfill` EF (verify_jwt:false, `?dry=1` for report-only) — idempotent curated backfill; eligibility = on-YouTube + privacy `unlisted` + real duration + title NOT `/(pm-\d)|(device walk)|(big buck bunny)/i`. Used to add the 2 genuine older recordings. `replay_videos` = **31 live (12 Jun 2026)** — grew via the YouTube DELETE-NOT-IN reconciliation as real replays were published; the "= 4 zero junk" figure was the post-cleanup moment only.
 
 #### §23.92 — Frequently-changing media lives in Storage + DB pointer, never bundled repo assets; warm-on-open + SW-SWR cache makes it local-fast (PM-471→474 — HARD RULE)
 
@@ -1633,9 +1651,13 @@ All portal page code that needs a JWT MUST call `window.vyveGetJWT()` (defined i
 
 Every `SECURITY DEFINER` function in `public` must `REVOKE EXECUTE FROM PUBLIC, anon, authenticated` unless it is deliberately member-callable. The Postgres default grants EXECUTE to PUBLIC on function creation — this is wrong for SECURITY DEFINER functions and must be corrected at creation time. Member-callable functions that accept an email/id parameter must self-scope: `IF auth.role() <> 'service_role' THEN p_email := auth.email(); END IF;` — prevents authenticated-role IDOR while keeping EF service-role calls working (where `auth.email()` is NULL). Audit signal: `SELECT proname, proacl FROM pg_proc JOIN pg_namespace n ON n.oid=pronamespace WHERE n.nspname='public' AND prosecdef AND proacl::text LIKE '%anon%'` — any hit is a violation. Earned PM-564 (Tier 0/1 remediation of 21 functions, 2 CRITICALs among them).
 
+#### §23.105 — Never use `current_setting('app.*', true)` for auth headers in cron job commands (PM-568 — HARD RULE)
+
+Cron job commands must NOT build an `Authorization: Bearer` header from `current_setting('app.service_role_key', true)` (or any `app.*` GUC). The setting is null by default and `ALTER DATABASE … SET app.*` is blocked on Supabase Pro, so the header silently resolves to `Bearer ` (empty) — and any `::jsonb` cast on a header literal built that way throws `invalid input syntax for type json` on every tick (this broke `session-reminder-cron` + `process-scheduled-pushes`; the `jsonb_build_object` jobs failed silently with empty tokens). Embed the service-role JWT literal directly inside `jsonb_build_object(...)` instead — no `current_setting()` dependency. If the key is ever rotated, rewrite the affected job commands in one SQL block via `cron.alter_job()`. Earned PM-568 (9 cron jobs broken simultaneously). (Companion: §23.7 — the JWT-format `LEGACY_SERVICE_ROLE_JWT`, not the rotated `sb_secret_*` value, is what any JWT-verifying callee needs.)
+
 #### §23.106 — Bundled iOS cohort has no proven delivery channel; a verified Capawesome OTA is the gating capability (PM-569 — HARD RULE)
 
-As of iOS 1.7 (live 2026-06-09, server.url removed), iOS members are pinned to the vyve-site SHA baked into the binary. The ONLY fast path to change anything for them is a Capawesome OTA (app `f9961f66` / prod channel `89e12796`) — and that path has NEVER been exercised end-to-end. Until one OTA bundle is pushed and verified landing on a real member device, the sole way to ship an iOS member-facing fix is a full App Store resubmit (multi-day review per cycle). Consequences to keep front-of-mind every session until resolved: (1) a vyve-site commit does NOT reach iOS members — never tell Dean "members will see this in 2-15min" for iOS; that's Dean's server.url view only. (2) Verifying a build via the Settings vbb-marker confirms Dean's cohort, not iOS members. (3) Any urgent iOS member-facing bug is currently unshippable without store review — treat iOS member-facing regressions as high-severity accordingly. A verified OTA push is the top native priority, ahead of new features, and a hard pre-Sage gate. Android 1.0.6 is now live too (approved 9 Jun, PM-573) — the gap applies to the Android cohort as well; once members update, the entire installed base is bundled/frozen with no OTA path. (Numbering note: §23.105 is reserved by the PM-568 cron-fix session — its rule body is in the PM-568 changelog and should be back-filled into §23 by that session.)
+As of iOS 1.7 (live 2026-06-09, server.url removed), iOS members are pinned to the vyve-site SHA baked into the binary. The ONLY fast path to change anything for them is a Capawesome OTA (app `f9961f66` / prod channel `89e12796`) — and that path has NEVER been exercised end-to-end. Until one OTA bundle is pushed and verified landing on a real member device, the sole way to ship an iOS member-facing fix is a full App Store resubmit (multi-day review per cycle). Consequences to keep front-of-mind every session until resolved: (1) a vyve-site commit does NOT reach iOS members — never tell Dean "members will see this in 2-15min" for iOS; that's Dean's server.url view only. (2) Verifying a build via the Settings vbb-marker confirms Dean's cohort, not iOS members. (3) Any urgent iOS member-facing bug is currently unshippable without store review — treat iOS member-facing regressions as high-severity accordingly. A verified OTA push is the top native priority, ahead of new features, and a hard pre-Sage gate. Android 1.0.6 is now live too (approved 9 Jun, PM-573) — the gap applies to the Android cohort as well; once members update, the entire installed base is bundled/frozen with no OTA path. (§23.105 now filled above — PM-568 cron-auth rule back-filled PM-603.)
 
 #### §23.107 — Why the Capawesome OTA has never worked: no sync/ready in the shell (PM-571 — HARD RULE)
 **RESOLVED for 1.8+ (PM-600, PM-602).** `live-update.js` now ships in the vyve-site web shell with `LiveUpdate.ready()` (unconditional, rollback protection), `LiveUpdate.setChannel({ channel: 'production' })`, and `LiveUpdate.sync()` (session-guarded, fires 3s after boot). Native-guarded IIFE — no-op on server.url dev shell and web. iOS 1.8 + Android 1.0.7 both bundle this wiring. **The §23.106 canary push must target 1.8/1.0.7, not 1.7/1.0.6.** Channel name is `production` (not the UUID `89e12796`). `CAPAWESOME_TOKEN` is in vyve-site GitHub Actions secrets; `ota-deploy.yml` workflow is ready to trigger once 1.8 installs on a real device.
@@ -1647,9 +1669,33 @@ As of iOS 1.7 (live 2026-06-09, server.url removed), iOS members are pinned to t
 
 The Dexie merge-not-wipe `replaceForMember` (§23.43) keys incoming rows on `r.id`. If a hydrate's `select=` column list omits the primary key, PostgREST returns rows with no `id`; every row collapses onto a single null-keyed Dexie slot and **all but the most-recent day silently vanish** from the local store. No error is thrown — the only symptom is a client-computed value (engagement score, streak, counts) reading low versus server truth. Root-caused as Kelly's engagement score showing 74 vs server 83: `daily_habits` was the one activity table with a hand-written `select=member_email,activity_date,...` that dropped `id` while every other table used `select=*`. Fix was adding `id` to the select. **Rule:** prefer `select=*` for member-scoped activity tables; if an explicit column list is required, `id` is non-negotiable and the first column. When auditing a "client number doesn't match server" bug, check the hydrate select for a missing PK before anything else.
 
-#### §23.107 — CURRENT FRONT is a shared single block; never rewrite it from an in-context template (PM-573 — HARD RULE)
+#### §23.110 — CURRENT FRONT is a shared single block; never rewrite it from an in-context template (PM-573 — HARD RULE)
 
 The CURRENT FRONT block is overwritten by every session close. A session holding a stale in-context copy of the front, then regenerating the whole block to describe its own work, silently reverts other sessions' front edits. Happened repeatedly in one day: the PM-571/572 closes reverted both PM-568's cleared `session-reminder-cron` WARN and PM-569's deployment-flip line. **Rule:** when updating CURRENT FRONT, re-fetch `master.md` fresh immediately before the edit (§23.21/24/25 fresh-HEAD discipline applies to the front too) and edit its lines surgically / merge — never regenerate the whole block from memory or an earlier-in-session snapshot. Standing facts (deployment model, open WARNs) are OWNED by durable §-sections (§5/§23); the front only mirrors them.
+
+#### §23.111 — Any tracker writing to a watch-time/view table MUST also call `log-activity`, or it is invisible to every rollup (PM-575 — HARD RULE)
+
+The rollup pipeline (`rebuild_member_activity_daily_incremental` → `member_activity_daily` → `member_stats`) reads ONLY from `member_activity_log`. A client tracker that writes straight to a per-event table (`session_live_views`, `replay_video_views`, or any future equivalent) without also firing a `log-activity` call is silently absent from `member_activity_log` — and therefore from all rollups, `member_stats`, dashboards, Command Centre analytics, and achievements. Symptom: counts read 0 in every aggregate while the raw table has rows. `player-tracker.js` / `replay-tracker.js` POST `{type, activity_date}` to `log-activity` on first qualifying write (`isInsert=true`), JWT from `session.cachedJwt`; replay/session view types bypass log-activity caps so they POST direct to `/rest/v1/member_activity_log` where needed (member-self-insert RLS). Rule: every new view/watch-time table needs its tracker wired to the rollup on first write, same commit. (Originally mis-numbered §23.107 in the PM-575 changelog — canonical number is §23.111.)
+
+#### §23.112 — `www/` is NOT auto-synced from GitHub; clone fresh before every native bundle build (PM-557 — HARD RULE)
+
+Capacitor bundles whatever is in `www/` at build time. It is not kept in sync with the `vyve-site` repo. Before every iOS/Android bundle build: `rm -rf www && git clone --depth 1 https://VYVEHealth:<GITHUB_PAT_CLAUDE>@github.com/VYVEHealth/vyve-site.git www` (PAT from Supabase Vault, §23.27). Never assume `www/` is current — a stale `www/` ships an old web shell into the binary with no error. (Originally §23.95 in the PM-557 changelog.)
+
+#### §23.113 — Android CLI bundle builds require Java 21 (PM-557 — HARD RULE)
+
+`./gradlew bundleRelease` for the Android AAB requires `export JAVA_HOME=$(/usr/libexec/java_home -v 21)` first. Java 21 = `temurin@21` (brew). Java 17 and Java 26 both fail the build. (Originally mis-numbered §23.94 in the PM-557 changelog — collided with the `vyveGetJWT` rule; canonical number is §23.113.)
+
+#### §23.114 — Achievement toasts must not fire while `vyve_seen_home` is unset (PM-554 — HARD RULE)
+
+During the first-run home tour, achievement toasts must be suppressed until `localStorage.vyve_seen_home` is set, then retried ~3s later. `showNext()` is the single chokepoint to gate. A toast firing mid-tour collides with the spotlight overlay. (Originally §23.97 in the PM-554 changelog.)
+
+#### §23.115 — `firstrun.js` `lockBody()` must always carry a 10s auto-release timer (PM-554 — HARD RULE)
+
+Any body-lock in `firstrun.js` must arm a 10s auto-release timer at lock time so a page can never be permanently frozen if the tour logic stalls. Never call `lockBody()` without the safety timer. (Originally §23.98 in the PM-554 changelog.)
+
+#### §23.116 — Bump the JS query-string version in the HTML `<script src>` on every JS file update (PM-585 — HARD RULE)
+
+Editing a `.js` file is not enough — browsers (and the bundled web shell cache) serve the old file until the `?v=` query string on its `<script src>` tag in the consuming HTML changes. Bump it on every JS change, same commit. Companion to the vbb-marker discipline (§23.72). (Originally §23.101 in the PM-585 changelog.)
 
 ## 24. Key references, credentials & URLs
 
@@ -1682,7 +1728,7 @@ The CURRENT FRONT block is overwritten by every session close. A session holding
 
 | Reference | Value |
 |---|---|
-| GitHub PAT (Composio fallback) | Supabase Vault as `GITHUB_PAT_CLAUDE` (project `ixjfklpckgxrwjlfsaaz`, secret UUID `0c17013f-c79b-4950-8e2f-589ef81078cc`). Fine-grained, VYVEHealth org owner, all-repos, Contents + PRs + Workflows R/W. Fetch via Supabase MCP `execute_sql` — never ask Dean to paste. Expires **20 June 2026** (calendar rotation required). |
+| GitHub PAT (Composio fallback) | Supabase Vault as `GITHUB_PAT_CLAUDE` (project `ixjfklpckgxrwjlfsaaz`, secret UUID `0c17013f-c79b-4950-8e2f-589ef81078cc`). Fine-grained, VYVEHealth org owner, all-repos, Contents + PRs + Workflows R/W. Fetch via Supabase MCP `execute_sql` — never ask Dean to paste. **No expiry** (rotated 7 Jun 2026 PM-558, replacing the `vyve-cto-claude` token that had been expiring 20 June; that "rotate before 20 June" fire-drill is DONE — do not re-flag it). |
 | GitHub PAT (brain-scoped) | `GITHUB_PAT_BRAIN` — Contents R/W on `VYVEHealth/VYVEBrain` only. Expires **18 April 2027**. |
 | GitHub PAT (capacitor-scoped) | Fine-scoped, Contents R/W on `VYVEHealth/vyve-capacitor` only. Expires **7 May 2027**. Cached in macOS Keychain on Dean's Mac. |
 | Supabase Management PAT | Supabase Vault secret `MGMT_PAT` + GitHub Actions repo secret `MGMT_PAT` on `VYVEHealth/VYVEBrain` for `backup-edge-functions.yml`. **No expiry** (rotated 9 Jun 2026). Update both copies in same session if ever rotated. |
@@ -1709,44 +1755,51 @@ The CURRENT FRONT block is overwritten by every session close. A session holding
 - `persona_welcome_copy` — PM-372 hydration COPY_TABLE.
 - `how_to_resources` — PM-377 catalogue (pdf/video).
 
-### Active cron jobs (28 active; jobids 1-31 with gaps at 12/17/19)
+### Active cron jobs (live 12 Jun 2026: 41 jobs, **40 active** — jobid 27 inactive; gaps at 12/17/19; jobid 26 retired, replaced by 36)
 
-| ID | Name | Schedule |
-|---|---|---|
-| 1 | vyve-reengagement-daily | 0 8 * * * |
-| 2 | vyve-daily-report | 5 8 * * * |
-| 3 | weekly-report | 10 8 * * 1 |
-| 4 | monthly-report | 15 8 1 * * |
-| 5 | vyve-certificate-checker | 0 9 * * * |
-| 6 | habit-reminder-daily | 0 20 * * * |
-| 7 | streak-reminder-daily | 0 18 * * * |
-| 8 | warm-ping-every-5min | */5 * * * * |
-| 9 | vyve_recompute_member_stats | */15 * * * * |
-| 10 | vyve_recompute_company_summary | 0 2 * * * |
-| 11 | vyve_platform_metrics | 15 2 * * * |
-| 13 | vyve_rebuild_mad_incremental | */30 * * * * |
-| 14 | vyve_schema_snapshot | 0 3 * * 0 |
-| 15 | vyve-achievements-sweep-daily | 0 22 * * * |
-| 16 | email-watchdog | */30 * * * * |
-| 18 | process-scheduled-pushes | */5 * * * * |
-| 20 | vyve-seed-weekly-goals | 1 0 * * 1 |
-| 21 | vyve-gdpr-export-tick | */15 * * * * |
-| 22 | vyve-gdpr-erase-daily | 0 3 * * * |
-| 23 | vyve_charity_reconcile_daily | 30 2 * * * |
-| 24 | vyve_drain_home_state_dirty | */5 * * * * |
-| 25 | youtube-token-keepalive-daily | 0 3 * * * |
-| 26 | vyve-refresh-replay-videos-daily | 30 3 * * * |
-| 27 | session-publish-hourly | 5 * * * * |
-| 28 | vyve-broadcast-scheduler | */5 * * * * |
-| 35 | youtube-token-health-daily | 0 4 * * * |
-| 29 | vyve-alert-digest-morning | 0 8 * * * |
-| 30 | vyve-alert-digest-afternoon | 0 14 * * * |
-| 31 | vyve-alert-digest-evening | 0 20 * * * |
-| 32 | vyve-evaluate-plan-fit | 0 4 * * * |
-| 33 | vyve-recompute-step-baselines | 10 4 * * * |
-| 43 | cc-platform-hourly | 5 * * * * |
-| 44 | cc-revenue-hourly | 20 * * * * |
-| 45 | cc-ai-hourly | 35 * * * * |
+| ID | Name | Schedule | Active |
+|---|---|---|---|
+| 1 | vyve-reengagement-daily | 0 8 * * * | Y |
+| 2 | vyve-daily-report | 5 8 * * * | Y |
+| 3 | weekly-report | 10 8 * * 1 | Y |
+| 4 | monthly-report | 15 8 1 * * | Y |
+| 5 | vyve-certificate-checker | 0 9 * * * | Y |
+| 6 | habit-reminder-daily | 0 20 * * * | Y |
+| 7 | streak-reminder-daily | 0 18 * * * | Y |
+| 8 | warm-ping-every-5min | */5 * * * * | Y |
+| 9 | vyve_recompute_member_stats | */15 * * * * | Y |
+| 10 | vyve_recompute_company_summary | 0 2 * * * | Y |
+| 11 | vyve_platform_metrics | 15 2 * * * | Y |
+| 13 | vyve_rebuild_mad_incremental | */30 * * * * | Y |
+| 14 | vyve_schema_snapshot | 0 3 * * 0 | Y |
+| 15 | vyve-achievements-sweep-daily | 0 22 * * * | Y |
+| 16 | email-watchdog | */30 * * * * | Y |
+| 18 | process-scheduled-pushes | */5 * * * * | Y |
+| 20 | vyve-seed-weekly-goals | 1 0 * * 1 | Y |
+| 21 | vyve-gdpr-export-tick | */15 * * * * | Y |
+| 22 | vyve-gdpr-erase-daily | 0 3 * * * | Y |
+| 23 | vyve_charity_reconcile_daily | 30 2 * * * | Y |
+| 24 | vyve_drain_home_state_dirty | */5 * * * * | Y |
+| 25 | youtube-token-keepalive-daily | 0 3 * * * | Y |
+| 27 | session-publish-hourly | 5 * * * * | **N (disabled — confirm intentional; live sessions pipeline)** |
+| 28 | vyve-broadcast-scheduler | */5 * * * * | Y |
+| 29 | vyve-alert-digest-morning | 0 8 * * * | Y |
+| 30 | vyve-alert-digest-afternoon | 0 14 * * * | Y |
+| 31 | vyve-alert-digest-evening | 0 20 * * * | Y |
+| 32 | vyve-evaluate-plan-fit | 0 4 * * * | Y |
+| 33 | vyve-recompute-step-baselines | 10 4 * * * | Y |
+| 34 | vyve-expire-trials | 0 1 * * * | Y |
+| 35 | youtube-token-health-daily | 0 4 * * * | Y |
+| 36 | vyve-refresh-replay-videos-hourly | 45 * * * * | Y |
+| 37 | session-reminder-cron | */5 * * * * | Y |
+| 38 | cc-app-health-hourly | 0 * * * * | Y |
+| 39 | cc-usage-hourly | 30 * * * * | Y |
+| 40 | cc-retention-hourly | 15 * * * * | Y |
+| 41 | cc-activity-hourly | 45 * * * * | Y |
+| 42 | cc-wellbeing-hourly | 55 * * * * | Y |
+| 43 | cc-platform-hourly | 5 * * * * | Y |
+| 44 | cc-revenue-hourly | 20 * * * * | Y |
+| 45 | cc-ai-hourly | 35 * * * * | Y |
 
 ### Make scenarios (Lewis-side)
 
