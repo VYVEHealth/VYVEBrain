@@ -959,3 +959,18 @@ Captured here so the at-a-glance state of the recent past is one short list, not
 - DONE: 4 Jun–2 Jul schedule (112 sessions) shared with Alan + Lewis.
 - OPEN: first unattended air 4 Jun 07:00 — Lewis to eyeball the live:true flip.
 - OPEN (carried): rotate service_role key; deactivate 40 stale empty-notes rows; calendar regeneration before 2 Jul; content calls; move runner to a real 24/7 box.
+
+
+## BACKLOG — PM-608 — Proactive health alerting (issues must reach Dean before they become issues) (2026-06-12)
+**Trigger:** a workouts bug (members onboarding with NO workout_plan_cache row generated) went undetected ~2 weeks because nothing watched for it; Dean found it by accident. Root cause of the blind spot: alerting watches emails (email-watchdog) + feeds a dashboard (cc-app-health) but NOTHING verifies onboarding actually worked end-to-end. onboarding v97 alerts only fire on *synchronous* throws; the background `waitUntil` plan-gen can fail silently with a 200 already returned.
+**Full build spec lives in a handoff prompt** (see this session). Two phases:
+- **Phase 1 — onboarding integrity monitor** (new `onboarding-health` cron EF, ~30 min): flag any member with onboarding_complete=true >15min ago but missing any of: active workout_plan_cache row (for workouts/movement stream), member_habits, auth user / signed-in (last_sign_in_at), current-week weekly_goals, welcome email sent, or flagged writeMember_core_fallback. Dedupe via a `health_alerts` table; immediate Brevo alert per new case; daily "all clear / N open" heartbeat into alert-digest.
+- **Phase 2 — app usage health monitor** (daily into alert-digest): DAM drop vs 7-day avg; zero-activity-of-a-type platform-wide >24–48h; onboarding throughput → 0 for >24h (Stripe→onboarding broken); background-job health (plans generated vs onboardings started — catches waitUntil dying); push/email send anomalies. Reuse is_dean/is_test/staff filters.
+**DO FIRST:** read-only backfill — count members ALREADY broken by the workouts bug (no plan / no habits / never signed in) and remediate that backlog, not just stop future cases.
+**Existing machinery to extend, not rebuild:** alert-digest EF (crons 29/30/31), platform-alert EF, email-watchdog (cron 16), cc-app-health (cron 38).
+
+## BACKLOG — PM-607 follow-ups (onboarding resilience) (2026-06-12)
+- Consider making members.weight_unit / height_unit NULLABLE (belt-and-braces) so a missing unit can never hard-fail regardless of code. v97 already coerces to 'kg'/'cm' in code (§23.117).
+- Generalise the writeMember core-fallback principle (§23.118): audit other member-facing writes for all-or-nothing inserts that could lock a member out on one bad optional field.
+- Welcome-email coach-voice rewrite into onboarding EF — AFTER Lewis approves the two mockups (welcome-email-v2-mock.html, coach-voices-comparison.html). HAVEN copy pre-written + Phil clinical sign-off, not AI-generated.
+- Shaun Baker (shaunbaker122qa@gmail.com): password set to Mario123! via set-member-password — he should sign in directly with email + that password, NOT tap reset links.

@@ -1056,6 +1056,11 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 ---
 
 ## 19. Current status
+
+### PM-608 — Onboarding password flow + welcome-email live sessions + onboarding resilience (2026-06-12)
+
+Onboarding lock-out fix. Password now collected + complexity-gated in the questionnaire (PM-605, mirroring live Supabase rules: 8+/upper/lower/number/symbol; leaked-password protection turned OFF) and confirmed on Supabase BEFORE results, removing the fragile recovery-link critical path. login.html gained a "Set up your account" link (PM-602); set-password.html maps breach errors to guidance (PM-604). New `set-member-password` EF (verify_jwt:false) + SECURITY DEFINER RPC `get_auth_user_id_by_email` for manual password sets. Onboarding EF v96 (version 112): welcome email + AI session rec sourced from live `calendar_occurrences` (concrete name/host/"tomorrow at 8:30am"), not static service_catalogue. Onboarding EF v97 (version 113, LIVE): writeMember coerces weight_unit/height_unit to 'kg'/'cm' defaults instead of explicit null (the bug that hard-failed signups missing those answers), and falls back to a minimal core payload + team alert on any insert failure so a member is never locked out. 12 stuck members rescued (Shaun Baker → `Mario123!`). Welcome-email coach-voice rewrite mocked up, pending Lewis copy + Phil HAVEN sign-off. set-member-password / get_auth_user_id_by_email added to the EF/RPC inventory (§7).
+
 ### PM-594 — AI Usage page, correlation, HAVEN flag (2026-06-10)
 
 cc-ai EF v1 + cc_ai table + cron 45. AI Usage page at `/#/ai-usage`. HAVEN compliance alert live (9 interactions, 3 real non-test members, clinical gate not passed). cc-wellbeing EF v4 + correlation_json. cc-activity EF v5 fixes watch column names (total_watch_minutes=5.9). 7 CC Insights pages now live.
@@ -1696,6 +1701,14 @@ Any body-lock in `firstrun.js` must arm a 10s auto-release timer at lock time so
 #### §23.116 — Bump the JS query-string version in the HTML `<script src>` on every JS file update (PM-585 — HARD RULE)
 
 Editing a `.js` file is not enough — browsers (and the bundled web shell cache) serve the old file until the `?v=` query string on its `<script src>` tag in the consuming HTML changes. Bump it on every JS change, same commit. Companion to the vbb-marker discipline (§23.72). (Originally §23.101 in the PM-585 changelog.)
+
+#### §23.117 — Never send explicit `null` for a NOT-NULL-with-default column; coerce to the default (PM-607 — HARD RULE)
+
+`members.weight_unit`/`height_unit` are NOT NULL but carry DB defaults ('kg'/'cm'). A Postgres column default only applies when the column is **omitted** from the INSERT — sending an explicit `null` overrides the default and triggers a NOT-NULL violation that fails the whole row. onboarding v95/v96 sent `weight_unit: d.weightUnit || null`, so any onboarding payload missing the unit hard-failed at writeMember (locking the paid member out). v97 fix: coerce to the default in code (`d.weightUnit || 'kg'`), never `|| null`. Audit query for the wider trap: NOT-NULL columns without a default — `SELECT column_name FROM information_schema.columns WHERE table_name='members' AND is_nullable='NO' AND column_default IS NULL` (today: only `email`, which is correct).
+
+#### §23.118 — Onboarding member-write must be resilient: a missing optional answer never locks a member out (PM-607 — HARD RULE)
+
+A paid member who completed the questionnaire must always get an account. The full `writeMember` insert is all-or-nothing, so any single malformed/missing optional field would otherwise sink the whole signup. v97 pattern: on strict-insert failure, retry once with a minimal guaranteed-valid `core` payload (email, first/last name, persona, persona_reason, welcome recs, onboarding_complete, subscription_status, weight_unit/height_unit defaults, exercise_stream, life_context, cert counts) and fire a `writeMember_core_fallback` team alert for later backfill. Only a genuinely broken record (no email) is allowed to fail. Principle generalises: optional questionnaire fields coerce to safe defaults, never to explicit null on a NOT-NULL column.
 
 ## 24. Key references, credentials & URLs
 

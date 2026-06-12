@@ -1,3 +1,31 @@
+## PM-608 — Onboarding/auth password-flow overhaul + welcome-email live-session sourcing + onboarding resilience (2026-06-12)
+
+Long session covering the onboarding lock-out problem, the welcome email, and making onboarding robust against missing answers. Composio GitHub down → Vault PAT path used throughout. Brain commit is PM-608 (highest shipped PM this session = 607).
+
+### Root problem: members locked out after onboarding
+Onboarding EF (then v95) created the auth user with NO password (email_confirm only + magic link), password set later via a fragile recovery-email link. 23 of 61 auth users had `last_sign_in_at IS NULL` (~38% stuck). Failure modes: email providers pre-consuming single-use recovery tokens ("link already used"), silent fire-and-forget password failures, Supabase leaked-password breach rejections, two-password confusion, no failure visibility, recovery links opening in Safari not the app.
+
+### Shipped — password setup flow
+- **PM-602** (vyve-site a09956df): login.html — "First time here? Set up your account" link + vyveSetup() (resetPasswordForEmail). Markers 457.
+- **PM-603** (Test-Site-Finalv3 dae05015): password+confirm fields in questionnaire §10. Superseded by PM-605.
+- **PM-604** (vyve-site c578467): set-password.html maps Supabase leaked-password/breach error to actionable guidance. Markers 458, cache vyve-cache-v2026-06-12-pm604-pwbreach-msg.
+- **PM-605** (Test-Site-Finalv3 6733650): full password-complexity gate in questionnaire — live pw-reqs checklist (8+/upper/lower/number/symbol) mirroring Supabase config EXACTLY; submit gated; BOTH submitQuestionnaire + retrySubmit now `await confirmPasswordSet(email,password)` (1 retry) before showResults — fire-and-forget removed; PASSWORD_SET_FAILED error screen.
+- **set-member-password EF** (deployed, verify_jwt:false): {email,password} → resolves auth user via new SECURITY DEFINER RPC `public.get_auth_user_id_by_email(text)` (search_path='', service_role only) → admin PUT password. Returns {success:true}.
+- **[DECISION] Supabase leaked-password protection turned OFF** (dashboard). Confirmed live auth config: password_min_length=8; required chars = lower+upper+digit+symbol; breach check OFF. So the form's complexity rule exactly matches what Supabase will accept.
+
+### Shipped — onboarding EF v96 → v97 (live version 113)
+- **v96 (PM-606, version 112):** welcome email + AI session rec now sourced from `calendar_occurrences` (live schedule: active=true, cancelled_at IS NULL, starts_at>now, order asc, limit 12) NOT static service_catalogue. Added fmtSessionWhen() (Europe/London "today/tomorrow/Weekday at Xpm") + occurrenceDurationMin(). `ls` (AI session list) + pickSessionRec(persona,stream,upcoming) repointed to upcoming. service_catalogue refs removed. Verified end-to-end: welcome_rec_2 = 'Join "Steps to Improve your Life with Jamie" tomorrow at 8:30am in Mindfulness & Mindset' — real session, host, concrete time.
+- **v97 (PM-607, version 113):** onboarding resilience. (1) writeMember coerces `weight_unit: d.weightUnit || 'kg'`, `height_unit: d.heightUnit || 'cm'` (was `|| null` — explicit null OVERRODE the DB default on these NOT-NULL-with-default columns, hard-failing the whole member write). (2) On strict insert failure, retry with a minimal guaranteed-valid `core` payload (email, name, persona, recs, onboarding_complete, subscription_status, units, exercise_stream, life_context, cert counts) so a paid member is never locked out by one bad/missing optional field; fires `writeMember_core_fallback` team alert. Only a genuinely broken record (no email) fails. Verified: a payload OMITTING weightUnit/heightUnit entirely now completes (onboarding_complete:true, units default to kg/cm) — the exact case that hard-failed v96.
+
+### Member rescues
+12 stuck members password-set via temp one-shot EFs (all deleted after use): Dan Zadeh, Jack Lambert, Pippa Shanks, Katrina Melia, David McCormack, Lisa Fox, Ana Luna, Melanie Eaton, Hazel Smith, Ema Devereaux, Angie Jones-Moore, + Shaun Baker (shaunbaker122qa@gmail.com → password set to `Mario123!` via set-member-password; tell Shaun: email + Mario123!, sign in directly, don't tap reset links).
+
+### Schema finding (logged for safety)
+`members` has exactly ONE NOT-NULL-without-default column: `email` (correct). `weight_unit`/`height_unit` are NOT NULL but DEFAULT 'kg'/'cm' — so code must OMIT or default them, never send explicit null. v97 fixes the code side; making them nullable is a belt-and-braces backlog option.
+
+### Pending (not built)
+Welcome-email coach-voice rewrite (per-persona NOVA/RIVER/SPARK/SAGE AI-voiced + HAVEN pre-written/clinically-reviewed) — two mockups built (welcome-email-v2-mock.html, coach-voices-comparison.html), awaiting Lewis copy sign-off before building into the EF.
+
 ## PM-603 — Full brain reconciliation vs live (§23 holes filled, inventories/counts to live, stale items closed) (2026-06-12)
 
 Dean flagged recurring wrong answers from sessions. Root cause: sessions faithfully updated the CURRENT FRONT, changelog, and (mostly) §23/§19 ship-narratives, but the durable inventory/count tables (§6/§7/§24) and the §20–22 status board rotted, and several §23 hard rules existed ONLY in the changelog. Full read of master + changelog, cross-checked against live Supabase (`execute_sql` + `list_edge_functions`) and GitHub.
