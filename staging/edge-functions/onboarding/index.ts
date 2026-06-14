@@ -1,4 +1,4 @@
-// onboarding v97 - PM-607: welcome email from calendar_occurrences (concrete date/time) + resilient writeMember (unit defaults + core fallback). Carries v95/v96.
+// onboarding v97 - PM-607: welcome email from calendar_occurrences (concrete date/time) + resilient writeMember (unit defaults + core fallback). Carries v95/v96. PM-610: success response also returns persona_reason + programme_overview + rec_1/2/3 so welcome.html result screen renders (was DB/email-only).
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -268,7 +268,7 @@ serve(async (req) => {
     console.log('DONE v97:', email, persona, 'stream:', stream);
     if (stream === 'workouts') { EdgeRuntime.waitUntil((async ()=>{ try { const wp = await generateWorkoutPlanFlat(data, exerciseLibrary); await writeWorkoutPlan(email, wp.plan, wp.programme_name, wp.plan_type, { split_type: wp.split_type, rationale: wp.programme_rationale, shape: wp.shape }); console.log('BG workout plan done for', email); } catch (bgErr) { console.error('BG workout plan error:', bgErr); await sendErrorAlert('onboarding-bg', 'workout_plan_generation', email, String(bgErr)); } })()); }
     else if (stream === 'movement') { EdgeRuntime.waitUntil((async ()=>{ try { const mv = generateMovementPlan(data); await writeWorkoutPlan(email, mv.plan, mv.programme_name, mv.plan_type, { split_type: mv.split_type, rationale: mv.programme_rationale, shape: mv.shape, surface: 'movement' }); console.log('BG movement plan done for', email); } catch (bgErr) { console.error('BG movement plan error:', bgErr); await sendErrorAlert('onboarding-bg', 'movement_plan_generation', email, String(bgErr)); } })()); }
-    return new Response(JSON.stringify({ success: true, persona, programme: finalProgrammeName, stream, status: stream === 'workouts' ? 'generating' : stream === 'movement' ? 'movement_written' : 'not_applicable' }), { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ success: true, persona, persona_reason: personaReason, programme: finalProgrammeName, programme_overview: { programme_name: ov.programme_name, split_type: ov.split_type, sessions_per_week: ov.sessions_per_week, rationale: ov.rationale }, rec_1: r1, rec_2: r2, rec_3: r3, stream, status: stream === 'workouts' ? 'generating' : stream === 'movement' ? 'movement_written' : 'not_applicable' }), { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('Onboarding error at phase', phase, ':', err);
     try { await sendErrorAlert('onboarding', phase, String(data?.email || 'unknown'), String(err)); } catch (_) {}
