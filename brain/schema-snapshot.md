@@ -2,13 +2,13 @@
 
 > Auto-generated from live Supabase project `ixjfklpckgxrwjlfsaaz`.
 > DO NOT EDIT — overwritten weekly by the `schema-snapshot-refresh` Edge Function.
-> Last refresh: 2026-06-07T03:00:57.841Z
+> Last refresh: 2026-06-14T03:01:00.832Z
 
-**Totals:** 122 tables (122 with RLS) · 1502 columns · 42 FKs · 236 triggers · 95 public functions · 146 RLS policies · 350 indexes · 32 cron jobs
+**Totals:** 134 tables (134 with RLS) · 1597 columns · 42 FKs · 238 triggers · 102 public functions · 167 RLS policies · 369 indexes · 42 cron jobs
 
 ---
 
-## Tables (122)
+## Tables (134)
 
 ### `achievement_metrics` · RLS
 
@@ -222,7 +222,7 @@
 
 **RLS policies:**
 - `member_own_decisions` (SELECT, roles: public) — (( SELECT auth.email() AS email) = member_email)
-- `service_insert_decisions` (INSERT, roles: public) — — / CHECK: true
+- `service_insert_decisions_v2` (INSERT, roles: service_role) — — / CHECK: true
 
 **Indexes:**
 - `ai_decisions_email_idx`
@@ -468,6 +468,66 @@
 - `idx_cardio_focus_slug`
 - `idx_cardio_logged_at`
 - `idx_cardio_member_email`
+
+### `cc_activity` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | integer | NO | 1 | ✓ |  |
+| `refreshed_at` | timestamp with time zone | NO | now() |  |  |
+| `headline_json` | jsonb | YES |  |  |  |
+| `adoption_json` | jsonb | YES |  |  |  |
+| `depth_json` | jsonb | YES |  |  |  |
+| `watch_json` | jsonb | YES |  |  |  |
+| `pillar_json` | jsonb | YES |  |  |  |
+| `heatmap_json` | jsonb | YES |  |  |  |
+
+**RLS policies:**
+- `admin_read_cc_activity` (SELECT, roles: public) — is_admin()
+
+**Indexes:**
+- `cc_activity_pkey`
+
+### `cc_ai` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | bigint | NO |  | ✓ |  |
+| `headline_json` | jsonb | YES |  |  |  |
+| `usage_json` | jsonb | YES |  |  |  |
+| `haven_json` | jsonb | YES |  |  |  |
+| `trend_json` | jsonb | YES |  |  |  |
+| `refreshed_at` | timestamp with time zone | YES |  |  |  |
+
+**RLS policies:**
+- `admin read cc_ai` (SELECT, roles: public) — ( SELECT is_admin() AS is_admin)
+
+**Indexes:**
+- `cc_ai_pkey`
+
+### `cc_app_health` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | integer | NO | 1 | ✓ |  |
+| `refreshed_at` | timestamp with time zone | NO | now() |  |  |
+| `usage_json` | jsonb | YES |  |  |  |
+| `perf_json` | jsonb | YES |  |  |  |
+| `headline_json` | jsonb | YES |  |  |  |
+| `cron_json` | jsonb | YES |  |  |  |
+| `pipeline_json` | jsonb | YES |  |  |  |
+| `error_trend_json` | jsonb | YES |  |  |  |
+| `ef_errors_json` | jsonb | YES |  |  |  |
+
+**Check constraints:**
+- `cc_app_health_id_check`: CHECK ((id = 1))
+
+**RLS policies:**
+- `admin_read_cc_app_health` (SELECT, roles: public) — is_admin()
+- `service_role_write_cc_app_health` (ALL, roles: public) — (auth.role() = 'service_role'::text)
+
+**Indexes:**
+- `cc_app_health_pkey`
 
 ### `cc_calendar_events` · RLS
 
@@ -828,6 +888,24 @@
 **Indexes:**
 - `cc_partners_pkey`
 
+### `cc_platform` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | bigint | NO | 1 | ✓ |  |
+| `headline_json` | jsonb | YES |  |  |  |
+| `pages_json` | jsonb | YES |  |  |  |
+| `errors_json` | jsonb | YES |  |  |  |
+| `perf_json` | jsonb | YES |  |  |  |
+| `dead_json` | jsonb | YES |  |  |  |
+| `refreshed_at` | timestamp with time zone | YES |  |  |  |
+
+**RLS policies:**
+- `admin read cc_platform` (SELECT, roles: public) — ( SELECT is_admin() AS is_admin)
+
+**Indexes:**
+- `cc_platform_pkey`
+
 ### `cc_posts` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -864,6 +942,25 @@
 - `idx_cc_posts_scheduled`
 - `idx_cc_posts_status`
 
+### `cc_retention` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | integer | NO | 1 | ✓ |  |
+| `refreshed_at` | timestamp with time zone | YES |  |  |  |
+| `funnel_json` | jsonb | YES | '{}'::jsonb |  |  |
+| `cohorts_json` | jsonb | YES | '[]'::jsonb |  |  |
+| `dormancy_json` | jsonb | YES | '{}'::jsonb |  |  |
+| `atrisk_json` | jsonb | YES | '[]'::jsonb |  |  |
+| `reengage_json` | jsonb | YES |  |  |  |
+
+**RLS policies:**
+- `admin_read_cc_retention` (SELECT, roles: public) — is_admin()
+
+**Indexes:**
+- `cc_retention_pkey`
+- `cc_retention_single`
+
 ### `cc_revenue` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -885,6 +982,23 @@
 
 **Indexes:**
 - `cc_revenue_pkey`
+
+### `cc_revenue_cache` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | bigint | NO |  | ✓ |  |
+| `headline_json` | jsonb | YES |  |  |  |
+| `breakdown_json` | jsonb | YES |  |  |  |
+| `pipeline_json` | jsonb | YES |  |  |  |
+| `trend_json` | jsonb | YES |  |  |  |
+| `refreshed_at` | timestamp with time zone | YES |  |  |  |
+
+**RLS policies:**
+- `admin read cc_revenue_cache` (SELECT, roles: public) — ( SELECT is_admin() AS is_admin)
+
+**Indexes:**
+- `cc_revenue_cache_pkey`
 
 ### `cc_sessions` · RLS
 
@@ -958,6 +1072,44 @@
 - `idx_cc_tasks_assignee`
 - `idx_cc_tasks_stage`
 
+### `cc_usage` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | integer | NO | 1 | ✓ |  |
+| `refreshed_at` | timestamp with time zone | YES |  |  |  |
+| `headline_json` | jsonb | YES | '{}'::jsonb |  |  |
+| `overview_json` | jsonb | YES | '{}'::jsonb |  |  |
+| `members_json` | jsonb | YES | '[]'::jsonb |  |  |
+| `company_json` | jsonb | YES | '[]'::jsonb |  |  |
+
+**RLS policies:**
+- `admin_read_cc_usage` (SELECT, roles: public) — is_admin()
+
+**Indexes:**
+- `cc_usage_pkey`
+- `cc_usage_single_row`
+
+### `cc_wellbeing` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | integer | NO | 1 | ✓ |  |
+| `refreshed_at` | timestamp with time zone | NO | now() |  |  |
+| `headline_json` | jsonb | YES |  |  |  |
+| `trend_json` | jsonb | YES |  |  |  |
+| `members_json` | jsonb | YES |  |  |  |
+| `distribution_json` | jsonb | YES |  |  |  |
+| `baseline_json` | jsonb | YES |  |  |  |
+| `participation_json` | jsonb | YES |  |  |  |
+| `correlation_json` | jsonb | YES |  |  |  |
+
+**RLS policies:**
+- `admin_read_cc_wellbeing` (SELECT, roles: public) — is_admin()
+
+**Indexes:**
+- `cc_wellbeing_pkey`
+
 ### `certificates` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -983,6 +1135,7 @@
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
+- `admin_read_certificates` (SELECT, roles: public) — (is_admin() OR (auth.email() = member_email))
 - `certificates_own_data` (ALL, roles: public) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
 
 **Indexes:**
@@ -1075,7 +1228,8 @@
 | `company_slug` | text | YES |  |  |  |
 | `activities_30d` | integer | NO | 0 |  |  |
 
-**RLS policies:** _(none — service-role only)_
+**RLS policies:**
+- `admin_read_company_summary` (SELECT, roles: public) — is_admin()
 
 **Indexes:**
 - `company_summary_pkey`
@@ -1541,6 +1695,27 @@
 - `habit_themes_one_active`
 - `habit_themes_pkey`
 
+### `health_alerts` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | bigint | NO |  | ✓ |  |
+| `member_email` | text | YES |  |  |  |
+| `check_name` | text | NO |  |  |  |
+| `severity` | text | NO | 'immediate'::text |  |  |
+| `detail` | jsonb | YES |  |  |  |
+| `first_seen` | timestamp with time zone | NO | now() |  |  |
+| `last_seen` | timestamp with time zone | NO | now() |  |  |
+| `alerted_at` | timestamp with time zone | YES |  |  |  |
+| `resolved_at` | timestamp with time zone | YES |  |  |  |
+
+**RLS policies:** _(none — service-role only)_
+
+**Indexes:**
+- `health_alerts_open_idx`
+- `health_alerts_open_uniq`
+- `health_alerts_pkey`
+
 ### `how_to_resources` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -1695,7 +1870,9 @@
 **Triggers:**
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
-**RLS policies:** _(none — service-role only)_
+**RLS policies:**
+- `admin_read_member_activity_daily` (SELECT, roles: public) — is_admin()
+- `member_read_own_activity_daily` (SELECT, roles: public) — (auth.email() = member_email)
 
 **Indexes:**
 - `idx_mad_date`
@@ -1716,7 +1893,10 @@
 | `logged_at` | timestamp with time zone | YES |  |  |  |
 | `metadata` | jsonb | YES |  |  |  |
 
-**RLS policies:** _(none — service-role only)_
+**RLS policies:**
+- `admin_read_member_activity_log` (SELECT, roles: public) — is_admin()
+- `member_insert_own_activity_log` (INSERT, roles: public) — — / CHECK: (auth.email() = member_email)
+- `member_read_own_activity_log` (SELECT, roles: public) — (auth.email() = member_email)
 
 **Indexes:**
 - `idx_mal_activity_date`
@@ -2210,7 +2390,9 @@
 **Triggers:**
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
-**RLS policies:** _(none — service-role only)_
+**RLS policies:**
+- `admin_read_member_stats` (SELECT, roles: public) — is_admin()
+- `member_read_own_stats` (SELECT, roles: public) — (auth.email() = member_email)
 
 **Indexes:**
 - `idx_member_stats_at_risk`
@@ -2345,6 +2527,11 @@
 | `signup_campaign` | text | YES |  |  |  |
 | `signup_campaign_code` | text | YES |  |  |  |
 | `device_platform` | text | YES |  |  |  |
+| `tour_completed_at` | timestamp with time zone | YES |  |  |  |
+| `privacy_version` | text | YES |  |  |  |
+| `health_consent_version` | text | YES |  |  |  |
+| `is_test` | boolean | NO | false |  |  |
+| `welcome_email_sent_at` | timestamp with time zone | YES |  |  |  |
 
 **Check constraints:**
 - `members_account_type_chk`: CHECK ((account_type = ANY (ARRAY['trial'::text, 'paid'::text, 'comp'::text, 'enterprise'::text])))
@@ -2831,7 +3018,8 @@
 | `checkins_count` | integer | NO | 0 |  |  |
 | `unresolved_alerts` | integer | NO | 0 |  |  |
 
-**RLS policies:** _(none — service-role only)_
+**RLS policies:**
+- `admin_read_platform_metrics_daily` (SELECT, roles: public) — is_admin()
 
 **Indexes:**
 - `idx_pmd_date`
@@ -3314,6 +3502,32 @@
 - `session_live_views_occurrence`
 - `session_live_views_pkey`
 
+### `session_reminders` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  | ✓ |
+| `occurrence_id` | text | NO |  |  | ✓ |
+| `session_title` | text | NO |  |  |  |
+| `starts_at` | timestamp with time zone | NO |  |  |  |
+| `remind_at` | timestamp with time zone | NO |  |  |  |
+| `reminder_minutes` | integer | NO |  |  |  |
+| `sent` | boolean | NO | false |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `session_reminders_reminder_minutes_check`: CHECK ((reminder_minutes = ANY (ARRAY[10, 30, 60])))
+
+**RLS policies:**
+- `member own rows` (ALL, roles: public) — (auth.email() = member_email) / CHECK: (auth.email() = member_email)
+
+**Indexes:**
+- `session_reminders_member_email_occurrence_id_key`
+- `session_reminders_member_idx`
+- `session_reminders_pkey`
+- `session_reminders_remind_at_idx`
+
 ### `session_views` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -3391,6 +3605,21 @@
 - `idx_shared_workouts_shared_by`
 - `shared_workouts_pkey`
 
+### `stripe_events` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | text | NO |  | ✓ |  |
+| `type` | text | NO |  |  |  |
+| `member_email` | text | YES |  |  |  |
+| `action` | text | YES |  |  |  |
+| `received_at` | timestamp with time zone | NO | now() |  |  |
+
+**RLS policies:** _(none — service-role only)_
+
+**Indexes:**
+- `stripe_events_pkey`
+
 ### `taglines` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -3417,6 +3646,26 @@
 - `taglines_hub_active_position_idx`
 - `taglines_hub_position_unique`
 - `taglines_pkey`
+
+### `tour_copy` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | integer | NO | nextval('tour_copy_id_seq'::regclass) | ✓ |  |
+| `tour_key` | text | NO |  |  |  |
+| `page` | text | NO |  |  |  |
+| `step_order` | integer | NO |  |  |  |
+| `title` | text | NO |  |  |  |
+| `body` | text | NO |  |  |  |
+| `cta_next` | text | YES |  |  |  |
+| `active` | boolean | NO | true |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**RLS policies:**
+- `tour_copy_public_read` (SELECT, roles: public) — true
+
+**Indexes:**
+- `tour_copy_pkey`
 
 ### `trial_campaigns` · RLS
 
@@ -3707,6 +3956,7 @@
 - `member_email` → `members.email` (`workout_plan_cache_member_email_fkey`)
 
 **Triggers:**
+- `trg_normalise_workout_plan_shape` — BEFORE INSERT/UPDATE
 - `workout_plan_cache_canonical_normalise_trg` — BEFORE INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 
@@ -3804,7 +4054,7 @@
 
 ---
 
-## Public Functions (95)
+## Public Functions (102)
 
 - `_vyve_daily_streak(p_dates date[], p_today date)` — func
 - `_vyve_daily_streak_best(p_dates date[])` — func
@@ -3825,6 +4075,8 @@
 - `charity_count_workouts()` — func
 - `charity_total_reconcile()` — func
 - `charity_total_reconcile_and_heal()` — func
+- `compute_cc_activity()` — func
+- `compute_cc_wellbeing()` — func
 - `compute_engagement_components(p_last_activity_at timestamp with time zone, p_active_days_30d integer, p_distinct_types_7d integer, p_latest_wellbeing integer)` — func
 - `compute_engagement_components_v2(p_member_email text)` — func
 - `compute_engagement_score(p_last_activity_at timestamp with time zone, p_active_days_30d integer, p_distinct_types_7d integer, p_latest_wellbeing integer)` — func
@@ -3839,10 +4091,12 @@
 - `gdpr_erasure_pick_due(limit_n integer)` — func
 - `gdpr_erasure_purge(p_email text)` — func
 - `gdpr_export_pick_due(limit_n integer)` — func
+- `get_auth_user_id_by_email(p_email text)` — func
 - `get_capped_activity_count(p_email text, p_activity_type text)` — func
 - `get_certificate_buckets()` — func
 - `get_certificate_buckets_for(p_email text)` — func
 - `get_charity_total()` — func
+- `get_cron_health_snapshot()` — func
 - `get_leaderboard(p_email text, p_scope text, p_range text)` — func
 - `get_youtube_oauth_secrets()` — func
 - `grant_trial_on_signup()` — func
@@ -3857,6 +4111,7 @@
 - `next_certificate_number()` — func
 - `normalise_exercise_names_in_jsonb(p_doc jsonb, p_member_email text)` — func
 - `normalise_exercise_names_jsonb_trigger()` — func
+- `normalise_workout_plan_shape()` — func
 - `podcast_episodes_set_updated_at()` — func
 - `queue_health_write_back()` — func
 - `read_vault_secret(secret_name text)` — func
@@ -3884,6 +4139,7 @@
 - `set_updated_at_mp()` — func
 - `set_updated_at_persona_welcome_copy()` — func
 - `set_updated_at_podcast_platforms()` — func
+- `sync_onboarding_health()` — func
 - `taglines_set_updated_at()` — func
 - `tg_mark_home_state_dirty_del()` — func
 - `tg_mark_home_state_dirty_ins()` — func
@@ -3897,6 +4153,7 @@
 - `update_cc_updated_at()` — func
 - `update_cert_sessions_count()` — func
 - `update_push_native_updated_at()` — func
+- `verify_cc_cron(p_token text)` — func
 - `vyve_lc_email()` — func
 - `vyve_refresh_daily(p_email text, p_date date)` — func
 - `vyve_sync_activity_log()` — func
@@ -3904,15 +4161,25 @@
 
 ---
 
-## Cron Jobs (32)
+## Cron Jobs (42)
 
 | Job | Schedule | Active | Command preview |
 |---|---|---|---|
+| `cc-activity-hourly` | `45 * * * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
+| `cc-ai-hourly` | `35 * * * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
+| `cc-app-health-hourly` | `0 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `cc-platform-hourly` | `5 * * * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
+| `cc-retention-hourly` | `15 * * * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
+| `cc-revenue-hourly` | `20 * * * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
+| `cc-usage-hourly` | `30 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `cc-wellbeing-hourly` | `55 * * * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
 | `email-watchdog` | `*/30 * * * *` | ✓ | `SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions` |
 | `habit-reminder-daily` | `0 20 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `monthly-report` | `15 8 1 * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
+| `onboarding-health` | `10,40 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `process-scheduled-pushes` | `*/5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `session-publish-hourly` | `5 * * * *` | ✗ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `session-reminder-cron` | `*/5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `streak-reminder-daily` | `0 18 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve_charity_reconcile_daily` | `30 2 * * *` | ✓ | ` SELECT public.charity_total_reconcile_and_heal(); ` |
 | `vyve_drain_home_state_dirty` | `*/5 * * * *` | ✓ | ` SELECT public.drain_member_home_state_dirty(); ` |
