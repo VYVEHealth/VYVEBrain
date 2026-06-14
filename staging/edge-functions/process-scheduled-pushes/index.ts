@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+
 // process-scheduled-pushes v2 — cron worker that fires due rows from scheduled_pushes.
 //
 // Cron: */5 * * * * (every 5 min). At 2h delay, members will see push at 2h0–4min.
@@ -23,26 +24,41 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 //   for each row:
 //     POST to send-push (LEGACY_SERVICE_ROLE_JWT)
 //     mark fired_at = now() (or last_error if send-push failed)
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const LEGACY_SERVICE_ROLE_JWT = Deno.env.get('LEGACY_SERVICE_ROLE_JWT') ?? '';
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
 };
+
 const BATCH_LIMIT = 200;
-function db(path, opts = {}) {
+
+function db(path: string, opts: RequestInit = {}) {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...opts,
     headers: {
       'apikey': SUPABASE_KEY,
       'Authorization': `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json',
-      ...opts.headers || {}
+      ...(opts.headers || {})
     }
   });
 }
-async function callSendPush(row) {
+
+interface ScheduledPush {
+  id: number;
+  member_email: string;
+  fire_at: string;
+  type: string;
+  title: string;
+  body: string;
+  data: Record<string, unknown>;
+}
+
+async function callSendPush(row: ScheduledPush): Promise<{ ok: boolean; result?: unknown; error?: string }> {
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
       method: 'POST',
@@ -51,9 +67,7 @@ async function callSendPush(row) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        member_emails: [
-          row.member_email
-        ],
+        member_emails: [row.member_email],
         type: row.type,
         title: row.title,
         body: row.body,
@@ -66,80 +80,65 @@ async function callSendPush(row) {
     });
     if (!res.ok) {
       const txt = await res.text();
-      return {
-        ok: false,
-        error: `send-push ${res.status}: ${txt.slice(0, 300)}`
-      };
+      return { ok: false, error: `send-push ${res.status}: ${txt.slice(0, 300)}` };
     }
     const j = await res.json();
-    return {
-      ok: true,
-      result: j
-    };
+    return { ok: true, result: j };
   } catch (e) {
-    return {
-      ok: false,
-      error: String(e)
-    };
+    return { ok: false, error: String(e) };
   }
 }
-serve(async (req)=>{
-  if (req.method === 'OPTIONS') return new Response('ok', {
-    headers: CORS
-  });
+
+serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+
   const startedAt = new Date().toISOString();
   let dueCount = 0, fired = 0, failed = 0;
-  const failures = [];
+  const failures: Array<{ id: number; error: string }> = [];
+
   try {
     const nowIso = new Date().toISOString();
-    const dueRes = await db(`scheduled_pushes?fire_at=lte.${encodeURIComponent(nowIso)}&fired_at=is.null&cancelled_at=is.null&select=id,member_email,fire_at,type,title,body,data&order=fire_at.asc&limit=${BATCH_LIMIT}`);
+    const dueRes = await db(
+      `scheduled_pushes?fire_at=lte.${encodeURIComponent(nowIso)}&fired_at=is.null&cancelled_at=is.null&select=id,member_email,fire_at,type,title,body,data&order=fire_at.asc&limit=${BATCH_LIMIT}`
+    );
     if (!dueRes.ok) {
       const txt = await dueRes.text();
-      return new Response(JSON.stringify({
-        error: 'db read failed',
-        detail: txt.slice(0, 500)
-      }), {
+      return new Response(JSON.stringify({ error: 'db read failed', detail: txt.slice(0, 500) }), {
         status: 500,
-        headers: {
-          ...CORS,
-          'Content-Type': 'application/json'
-        }
+        headers: { ...CORS, 'Content-Type': 'application/json' }
       });
     }
-    const rows = await dueRes.json();
+    const rows: ScheduledPush[] = await dueRes.json();
     dueCount = rows.length;
+
     // Sequential to keep per-row marking simple and avoid hammering send-push.
     // 200 rows / cycle * 5 min cycle = max 40/min sustained, well within capacity.
-    for (const row of rows){
+    for (const row of rows) {
       const result = await callSendPush(row);
-      const updateBody = result.ok ? {
-        fired_at: new Date().toISOString(),
-        last_error: null
-      } : {
-        last_error: result.error || 'unknown'
-      };
+      const updateBody = result.ok
+        ? { fired_at: new Date().toISOString(), last_error: null }
+        : { last_error: result.error || 'unknown' };
+
       const updRes = await db(`scheduled_pushes?id=eq.${row.id}`, {
         method: 'PATCH',
         body: JSON.stringify(updateBody),
-        headers: {
-          'Prefer': 'return=minimal'
-        }
+        headers: { 'Prefer': 'return=minimal' }
       });
       if (!updRes.ok) {
         const txt = await updRes.text();
         console.warn('[process-scheduled-pushes] mark failed:', row.id, updRes.status, txt);
       }
+
       if (result.ok) {
         fired++;
       } else {
         failed++;
-        failures.push({
-          id: row.id,
-          error: result.error || 'unknown'
-        });
+        failures.push({ id: row.id, error: result.error || 'unknown' });
       }
     }
+
     console.log(`[process-scheduled-pushes v2] ${startedAt} due=${dueCount} fired=${fired} failed=${failed}`);
+
     return new Response(JSON.stringify({
       ok: true,
       version: 'v2',
@@ -149,24 +148,13 @@ serve(async (req)=>{
       failed,
       failures: failures.slice(0, 20)
     }), {
-      headers: {
-        ...CORS,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...CORS, 'Content-Type': 'application/json' }
     });
   } catch (err) {
     console.error('[process-scheduled-pushes v2] error:', err);
-    return new Response(JSON.stringify({
-      error: String(err),
-      due: dueCount,
-      fired,
-      failed
-    }), {
+    return new Response(JSON.stringify({ error: String(err), due: dueCount, fired, failed }), {
       status: 500,
-      headers: {
-        ...CORS,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...CORS, 'Content-Type': 'application/json' }
     });
   }
 });

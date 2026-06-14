@@ -1,5 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY');
+
+const BREVO_API_KEY = Deno.env.get('BREVO_API_KEY')!;
+
 const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#F4FAFA;font-family:'Helvetica Neue',Arial,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#F4FAFA;padding:40px 20px;"><tr><td align="center">
@@ -97,41 +99,21 @@ Build Queue: weekly check-in, re-engagement, certificates, settings marked done.
 <tr><td style="background:#F4FAFA;padding:20px 32px;border-top:1px solid #C8E4E4;"><p style="margin:0;font-size:12px;color:#7A9A9A;">VYVE Health CIC &nbsp;&middot;&nbsp; team@vyvehealth.co.uk &nbsp;&middot;&nbsp; ICO Reg. 00013608608</p></td></tr>
 </table></td></tr></table>
 </body></html>`;
-serve(async ()=>{
+
+serve(async () => {
   const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
-    headers: {
-      'api-key': BREVO_API_KEY,
-      'Content-Type': 'application/json'
-    },
+    headers: { 'api-key': BREVO_API_KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      sender: {
-        name: 'VYVE Health',
-        email: 'team@vyvehealth.co.uk'
-      },
-      to: [
-        {
-          email: 'team@vyvehealth.co.uk',
-          name: 'Dean & Lewis'
-        }
-      ],
+      sender: { name: 'VYVE Health', email: 'team@vyvehealth.co.uk' },
+      to: [{ email: 'team@vyvehealth.co.uk', name: 'Dean & Lewis' }],
       subject: 'VYVE Full Session Recap — 8 April 2026 (corrected)',
       htmlContent: html,
-      tags: [
-        'session-recap'
-      ]
-    })
+      tags: ['session-recap'],
+    }),
   });
   const data = await res.json();
-  return new Response(JSON.stringify(res.ok ? {
-    ok: true,
-    messageId: data.messageId
-  } : {
-    ok: false,
-    error: data
-  }), {
-    headers: {
-      'Content-Type': 'application/json'
-    }
+  return new Response(JSON.stringify(res.ok ? { ok: true, messageId: data.messageId } : { ok: false, error: data }), {
+    headers: { 'Content-Type': 'application/json' }
   });
 });

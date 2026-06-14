@@ -1,16 +1,7 @@
-// Edge Function: wellbeing-checkin v30 — enriched prompt + structured response for submitCheckinNew (PM-516)
-//
-// CHANGES vs v29:
-//   - Handles BOTH submission surfaces:
-//       * submitCheckin (legacy quiet/active flow): body has {score, answer, flow, member, historyContext}
-//       * submitCheckinNew (active deepened flow):  body has {mood, dimension_energy, dimension_sleep,
-//         dimension_stress, dimension_body, drivers[], improvement_focus, free_text, check_in_type}
-//   - New path fetches daily_mood_7d from daily_mood_checkins table and returns it in response.
-//   - New path uses enriched system prompt: dimensions, drivers, improvement_focus, baseline context,
-//     4-week mood trend. Produces structured output: DEBRIEF / HABIT / CONTENT sections.
-//   - max_tokens raised to 800 on new path (was 1200 on old path — reduce to 800, enough for quality).
-//   - Legacy path unchanged (v29 behaviour preserved exactly).
-//   - wellbeing_checkins write stores dimension columns + drivers + improvement_focus if present.
+// Edge Function: wellbeing-checkin v35
+// v35: premium weekly response. New path adds WHATS_WORKING and THIS_WEEK
+//      sections to AI output. max_tokens 800→1200. Persona label returned
+//      in response for display. Legacy path unchanged.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
@@ -56,6 +47,12 @@ function ukToday(): string {
   return new Date(now.getTime() + 3600000).toISOString().slice(0, 10);
 }
 
+function sevenDaysAgo(): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - 7);
+  return d.toISOString().slice(0, 10);
+}
+
 function getISOWeek(d: Date): { iso_week: number; iso_year: number } {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
@@ -84,28 +81,25 @@ async function getAuthUser(req: Request): Promise<string | null> {
   return user.email?.toLowerCase() || null;
 }
 
+async function q(table: string, params: string): Promise<Record<string, unknown>[]> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+  });
+  if (!res.ok) {
+    console.warn(`[wellbeing-checkin] query failed on ${table}: ${res.status}`);
+    return [];
+  }
+  return res.json();
+}
+
 async function writeAiInteraction(email: string, persona: string, prompt_summary: string, recommendation: string, decision_log: Record<string, unknown>) {
   try {
     await fetch(`${SUPABASE_URL}/rest/v1/ai_interactions`, {
       method: 'POST',
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify({
-        member_email: email,
-        triggered_by: 'weekly_checkin',
-        persona,
-        prompt_summary,
-        recommendation,
-        decision_log
-      })
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ member_email: email, triggered_by: 'weekly_checkin', persona, prompt_summary, recommendation, decision_log })
     });
-  } catch (e: unknown) {
-    console.warn('[wellbeing-checkin] ai_interactions write failed:', (e as Error).message);
-  }
+  } catch (e: unknown) { console.warn('[wellbeing-checkin] ai_interactions write failed:', (e as Error).message); }
 }
 
 async function writeNotification(email: string, type: string, title: string, body: string, route: string | null = null) {
@@ -121,20 +115,12 @@ async function writeNotification(email: string, type: string, title: string, bod
     if (route) payload.route = route;
     await fetch(`${SUPABASE_URL}/rest/v1/member_notifications`, {
       method: 'POST',
-      headers: {
-        'apikey': SUPABASE_KEY,
-        'Authorization': `Bearer ${SUPABASE_KEY}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
-      },
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
       body: JSON.stringify(payload)
     });
-  } catch (e: unknown) {
-    console.warn('writeNotification error:', e);
-  }
+  } catch (e: unknown) { console.warn('writeNotification error:', e); }
 }
 
-// ── PERSONA PROMPTS ────────────────────────────────────────────────────────────
 const PERSONA_PROMPTS: Record<string, string> = {
   NOVA:  'You are NOVA, a high-performance coach. Driven, data-led, precision-focused. You speak in terms of metrics and measurable progress. You celebrate wins with specificity and frame gaps as targets to close, not failures.',
   RIVER: 'You are RIVER, a mindful wellness guide. Calm, empathetic, holistic. You speak with genuine warmth. You acknowledge the emotional weight of a tough week without dramatising it, and celebrate good weeks as moments of flow.',
@@ -143,7 +129,371 @@ const PERSONA_PROMPTS: Record<string, string> = {
   HAVEN: 'You are HAVEN, a gentle mental wellbeing companion. Non-judgmental, trauma-informed, deeply human. You never pressure or prescribe. If someone appears in genuine distress, gently signpost professional help — never try to coach through a crisis.'
 };
 
-// ── LEGACY PATH (v29 behaviour, unchanged) ────────────────────────────────────
+const PERSONA_DISPLAY: Record<string, string> = {
+  NOVA: 'NOVA', RIVER: 'RIVER', SPARK: 'SPARK', SAGE: 'SAGE', HAVEN: 'HAVEN'
+};
+
+function countByKind(rows: Record<string, unknown>[], kindField: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const r of rows) {
+    const k = (r[kindField] as string) || 'other';
+    out[k] = (out[k] || 0) + 1;
+  }
+  return out;
+}
+
+function fmtCounts(map: Record<string, number>): string {
+  return Object.entries(map).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`).join(', ');
+}
+
+async function handleNewCheckin(
+  email: string, body: Record<string, unknown>, CORS: Record<string, string>
+): Promise<Response> {
+  const {
+    mood, dimension_energy, dimension_sleep, dimension_stress, dimension_body,
+    drivers, improvement_focus, free_text
+  } = body as {
+    mood: number;
+    dimension_energy: number | null; dimension_sleep: number | null;
+    dimension_stress: number | null; dimension_body: number | null;
+    drivers: string[] | null; improvement_focus: string | null;
+    free_text: string | null;
+  };
+
+  if (!mood || mood < 1 || mood > 10) {
+    return new Response(JSON.stringify({ error: 'Invalid mood score' }), {
+      status: 400, headers: { ...CORS, 'Content-Type': 'application/json' }
+    });
+  }
+
+  const enc = encodeURIComponent(email);
+  const weekAgo = sevenDaysAgo();
+  const today = ukToday();
+
+  const [
+    memberRows,
+    homeStateRows,
+    recentCheckins,
+    habits,
+    workouts,
+    cardio,
+    movement,
+    mind,
+    dailyMoods,
+  ] = await Promise.all([
+    q('members',
+      `email=eq.${enc}&select=persona,first_name,specific_goal,success_vision,past_barriers,experience_level,training_days_per_week,training_location,injuries,sleep_issues,life_context,sensitive_context,training_goals,barriers&limit=1`),
+    q('member_home_state',
+      `member_email=eq.${enc}&select=habits_this_week,workouts_this_week,cardio_this_week,sessions_this_week,checkins_this_week,last_habit_at,last_workout_at,last_cardio_at,last_session_at&limit=1`),
+    q('wellbeing_checkins',
+      `member_email=eq.${enc}&select=score_wellbeing,logged_at,dimension_energy,dimension_sleep,dimension_stress,dimension_body,drivers,improvement_focus&order=logged_at.desc&limit=4`),
+    q('daily_habits',
+      `member_email=eq.${enc}&activity_date=gte.${weekAgo}&activity_date=lte.${today}&select=activity_date`),
+    q('workouts',
+      `member_email=eq.${enc}&activity_date=gte.${weekAgo}&activity_date=lte.${today}&select=activity_date,workout_name`),
+    q('cardio',
+      `member_email=eq.${enc}&activity_date=gte.${weekAgo}&activity_date=lte.${today}&select=activity_date,cardio_type`),
+    q('movement_activities',
+      `member_email=eq.${enc}&activity_date=gte.${weekAgo}&activity_date=lte.${today}&select=activity_date,kind`),
+    q('mind_activities',
+      `member_email=eq.${enc}&activity_date=gte.${weekAgo}&activity_date=lte.${today}&select=activity_date,kind`),
+    q('daily_mood_checkins',
+      `member_email=eq.${enc}&mood_date=gte.${weekAgo}&select=mood_date,mood_value&order=mood_date.asc`),
+  ]);
+
+  const member = memberRows[0] ?? {};
+  const homeState = homeStateRows[0] ?? {};
+
+  const persona: string = ((member.persona as string)?.toUpperCase()) || 'RIVER';
+  const firstName: string = (member.first_name as string) || 'there';
+  const personaLine = PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.RIVER;
+  const memberGoal = (member.specific_goal as string) || (member.success_vision as string) || null;
+
+  const prevScores: number[] = (recentCheckins as Array<{score_wellbeing: number}>)
+    .map(r => r.score_wellbeing).filter(Boolean);
+  const previousScore: number | null = prevScores[0] ?? null;
+
+  let trendLine = 'No previous check-in data.';
+  if (prevScores.length >= 2) {
+    const dir = prevScores[0] > prevScores[prevScores.length - 1] ? 'declining' : prevScores[0] < prevScores[prevScores.length - 1] ? 'improving' : 'stable';
+    trendLine = `Last ${prevScores.length} weekly scores: ${prevScores.join(', ')}. Trend: ${dir}.`;
+  } else if (prevScores.length === 1) {
+    trendLine = `Last week: ${prevScores[0]}/10.`;
+  }
+
+  let scoreLine = `Mood score this week: ${mood}/10.`;
+  if (previousScore !== null) {
+    const diff = mood - previousScore;
+    if (diff > 0) scoreLine += ` Up ${diff} from last week (${previousScore}/10).`;
+    else if (diff < 0) scoreLine += ` Down ${Math.abs(diff)} from last week (${previousScore}/10).`;
+    else scoreLine += ` Same as last week (${previousScore}/10).`;
+  }
+
+  const dimLines: string[] = [];
+  if (dimension_energy != null) dimLines.push(`Energy: ${dimension_energy}/10`);
+  if (dimension_sleep  != null) dimLines.push(`Sleep: ${dimension_sleep}/10`);
+  if (dimension_stress != null) dimLines.push(`Stress: ${dimension_stress}/10`);
+  if (dimension_body   != null) dimLines.push(`Body/physical: ${dimension_body}/10`);
+  const dimensionsBlock = dimLines.length > 0
+    ? `Dimension breakdown: ${dimLines.join(', ')}.`
+    : 'No dimension breakdown provided.';
+
+  const habitDays = new Set(habits.map((h: Record<string, unknown>) => h.activity_date as string)).size;
+  const workoutFmt = workouts.length > 0
+    ? `${workouts.length} workout${workouts.length !== 1 ? 's' : ''} (${[...new Set(workouts.map((w: Record<string, unknown>) => w.workout_name as string).filter(Boolean))].slice(0,3).join(', ') || 'logged'})`
+    : null;
+  const cardioByKind = countByKind(cardio as Record<string, unknown>[], 'cardio_type');
+  const cardioFmt = cardio.length > 0 ? `${cardio.length} cardio session${cardio.length !== 1 ? 's' : ''} (${fmtCounts(cardioByKind) || 'logged'})` : null;
+  const movementByKind = countByKind(movement as Record<string, unknown>[], 'kind');
+  const movementFmt = movement.length > 0 ? `${movement.length} movement session${movement.length !== 1 ? 's' : ''} (${fmtCounts(movementByKind) || 'logged'})` : null;
+  const mindByKind = countByKind(mind as Record<string, unknown>[], 'kind');
+  const mindFmt = mind.length > 0 ? `${mind.length} mind session${mind.length !== 1 ? 's' : ''} (${fmtCounts(mindByKind) || 'logged'})` : null;
+
+  const hsSessions = (homeState.sessions_this_week as number) ?? 0;
+
+  const activityLines: string[] = [];
+  if (habitDays > 0) activityLines.push(`Habits: ${habitDays} day${habitDays !== 1 ? 's' : ''} logged`);
+  else activityLines.push('Habits: none this week');
+  if (workoutFmt) activityLines.push(`Body — workouts: ${workoutFmt}`);
+  if (cardioFmt)  activityLines.push(`Body — cardio: ${cardioFmt}`);
+  if (movementFmt) activityLines.push(`Body — movement: ${movementFmt}`);
+  if (!workoutFmt && !cardioFmt && !movementFmt) activityLines.push('Body: no activity logged this week');
+  if (mindFmt) activityLines.push(`Mind: ${mindFmt}`);
+  else activityLines.push('Mind: no activity logged this week');
+  if (hsSessions > 0) activityLines.push(`Sessions watched: ${hsSessions}`);
+  const activityBlock = activityLines.join('\n');
+
+  const gaps: string[] = [];
+  if (habitDays === 0) gaps.push('daily habits');
+  if (workouts.length === 0 && cardio.length === 0 && movement.length === 0) gaps.push('physical activity');
+  if (mind.length === 0) gaps.push('mind activities');
+  if (hsSessions === 0) gaps.push('live or replay sessions');
+  const gapLine = gaps.length > 0 ? `Gaps this week (not logged): ${gaps.join(', ')}.` : 'No major gaps — all pillars touched.';
+
+  const lastCheckin = recentCheckins[0] as Record<string, unknown> | undefined;
+  const prevFocusLine = lastCheckin?.improvement_focus
+    ? `Last week they wanted to improve: ${lastCheckin.improvement_focus}.`
+    : '';
+
+  const todayDate = new Date();
+  const daily_mood_7d: (number | null)[] = [];
+  const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const todayDow = todayDate.getUTCDay();
+  const moodEntries: string[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(todayDate);
+    d.setUTCDate(d.getUTCDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const match = (dailyMoods as Array<{mood_date: string; mood_value: number}>)
+      .find(m => m.mood_date === dateStr);
+    const val = match ? match.mood_value : null;
+    daily_mood_7d.push(val);
+    if (val !== null) {
+      const dayIdx = (todayDow - 6 + (6 - i) + 7) % 7;
+      moodEntries.push(`${DAY_LABELS[dayIdx]}:${val}`);
+    }
+  }
+  const dailyMoodPromptLine = moodEntries.length > 0
+    ? `Daily mood logged this week (${moodEntries.length} day${moodEntries.length !== 1 ? 's' : ''}): ${moodEntries.join(', ')}.`
+    : '';
+
+  const profileParts: string[] = [];
+  if (memberGoal) profileParts.push(`Goal: ${memberGoal}`);
+  if (member.experience_level) profileParts.push(`Experience: ${member.experience_level as string}`);
+  if (member.training_days_per_week) profileParts.push(`Training days/week target: ${member.training_days_per_week as string}`);
+  if (member.past_barriers) profileParts.push(`Past barriers: ${member.past_barriers as string}`);
+  if (member.injuries) profileParts.push(`Injuries: ${member.injuries as string}`);
+  if (member.sleep_issues) profileParts.push(`Sleep issues: ${member.sleep_issues as string}`);
+  if (member.sensitive_context) profileParts.push('Sensitive context: yes — lead with extra care');
+  const profileBlock = profileParts.length > 0 ? profileParts.join('\n') : 'Profile not available';
+
+  const driversLine = drivers && drivers.length > 0
+    ? `What shaped the week (member-selected): ${drivers.join(', ')}.`
+    : 'No specific drivers selected.';
+  const focusLine = improvement_focus
+    ? `Member wants to focus on: ${improvement_focus}.`
+    : '';
+
+  const systemPrompt = `${personaLine}
+
+You are writing a private weekly wellbeing reflection for a VYVE Health member named ${firstName}. Only they will see this. Be specific, warm, and genuinely useful — write like someone who has actually looked at their week, not a wellness template.
+
+=== MEMBER PROFILE ===
+${profileBlock}
+
+=== THIS WEEK'S ACTIVITY (actual logged data) ===
+${activityBlock}
+${gapLine}
+
+=== CHECK-IN DATA ===
+${scoreLine}
+${dimensionsBlock}
+${driversLine}
+${focusLine ? focusLine : ''}
+${dailyMoodPromptLine ? dailyMoodPromptLine : ''}
+${prevFocusLine ? prevFocusLine : ''}
+Weekly trend: ${trendLine}
+
+TONE BY SCORE:
+- 1–3: Lead with warmth and acknowledgement. Don't minimise. One gentle action is enough.
+- 4–5: Honest — a mixed week. Find the real bright spots. Keep recommendations achievable.
+- 6–7: Positive but not effusive. Build on what worked. One stretch nudge is fine.
+- 8–10: Genuine celebration. Name specifically what's strong. Push one meaningful challenge.
+
+RULES:
+- Never use: "holistic", "wellness journey", "self-care", "empower", "synergy", "touch base"
+- No markdown bold, no asterisks, no bullet symbols except "-"
+- Never say you are an AI
+- Speak directly as "you", not "the member"
+- If stress is high (dimension_stress low on scale) and mood is low (1–4/10), acknowledge the combination — don't gloss it
+- Use the actual activity data — reference what they logged. If they did 3 workouts, say so. If habits were missed all week, acknowledge it.
+- HABIT suggestion must relate to a real gap or their stated focus — not a generic suggestion
+- CONTENT suggestion must be a real VYVE session type (Yoga & Stretch, Mindfulness & Breathwork, Workouts, Weekly Check-In, Group Therapy, Education & Experts, The VYVE Podcast, Movement). Match it to their current state.
+- THIS WEEK actions must be specific to their actual data — name the activity type, day count, or dimension score. Not "try to move more" — say "aim for 3 strength sessions" or "log habits 5 out of 7 days".
+
+OUTPUT FORMAT — respond with exactly these five labelled sections, nothing else:
+
+DEBRIEF: [3–4 sentences. Score movement, what drove it, what they actually did this week. Reference specific logged activities. Personal and direct.]
+
+WHATS_WORKING: [1–2 sentences. What they should feel genuinely good about this week. Be specific — name the actual activity or dimension that's strong. No filler.]
+
+THIS_WEEK:
+- [Action 1: specific, measurable, tied to their goal or a real gap]
+- [Action 2: specific, measurable, different pillar from Action 1]
+- [Action 3: specific, measurable — can be the focus area they selected]
+
+HABIT: [One habit suggestion tied to their stated focus or biggest gap. Format: habit name | one sentence on why it fits this specific week.]
+
+CONTENT: [One VYVE session type that fits their current state. Format: session name | one sentence on why now, tied to their actual week.]`;
+
+  const userMessage = free_text
+    ? `Mood score: ${mood}/10. In my own words: "${free_text}"`
+    : `Mood score: ${mood}/10.`;
+
+  const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1200, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] })
+  });
+  if (!aiRes.ok) {
+    const errText = await aiRes.text();
+    console.error('[wellbeing-checkin] Anthropic new-path error:', aiRes.status, errText.slice(0, 500));
+    throw new Error(`Anthropic error ${aiRes.status}: ${errText.slice(0, 200)}`);
+  }
+  const aiData = await aiRes.json();
+  const rawText: string = aiData.content?.[0]?.text ?? '';
+
+  // Parse all 5 sections
+  const debriefMatch      = rawText.match(/DEBRIEF:\s*([\s\S]*?)(?=\nWHATS_WORKING:|$)/i);
+  const whatsWorkingMatch = rawText.match(/WHATS_WORKING:\s*([\s\S]*?)(?=\nTHIS_WEEK:|$)/i);
+  const thisWeekMatch     = rawText.match(/THIS_WEEK:\s*([\s\S]*?)(?=\nHABIT:|$)/i);
+  const habitMatch        = rawText.match(/HABIT:\s*([\s\S]*?)(?=\nCONTENT:|$)/i);
+  const contentMatch      = rawText.match(/CONTENT:\s*([\s\S]*?)$/i);
+
+  const debrief_text    = debriefMatch?.[1]?.trim() ?? rawText.trim();
+  const whats_working   = whatsWorkingMatch?.[1]?.trim() ?? '';
+
+  // Parse THIS_WEEK bullet lines
+  const thisWeekRaw = thisWeekMatch?.[1]?.trim() ?? '';
+  const this_week_actions: string[] = thisWeekRaw
+    .split('\n')
+    .map((l: string) => l.trim())
+    .filter((l: string) => l.startsWith('-'))
+    .map((l: string) => l.slice(1).trim())
+    .filter(Boolean);
+
+  let habit_name = '', habit_reason = '';
+  if (habitMatch?.[1]) {
+    const parts = habitMatch[1].trim().split('|');
+    habit_name   = parts[0]?.trim() ?? '';
+    habit_reason = parts[1]?.trim() ?? '';
+  }
+
+  let content_name = '', content_reason = '';
+  if (contentMatch?.[1]) {
+    const parts = contentMatch[1].trim().split('|');
+    content_name   = parts[0]?.trim() ?? '';
+    content_reason = parts[1]?.trim() ?? '';
+  }
+
+  const activity_date = ukToday();
+  const { iso_week, iso_year } = getISOWeek(todayDate);
+  const day_of_week = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][todayDate.getUTCDay()];
+  const time_of_day = getTimeOfDay();
+  const nowISO = todayDate.toISOString();
+
+  try {
+    const wsRes = await fetch(`${SUPABASE_URL}/rest/v1/weekly_scores`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ member_email: email, iso_week, iso_year, activity_date, wellbeing_score: mood, logged_at: nowISO })
+    });
+    if (!wsRes.ok) console.warn(`weekly_scores write returned ${wsRes.status}`);
+  } catch (e: unknown) { console.warn('weekly_scores write failed:', e); }
+
+  try {
+    const wcRes = await fetch(`${SUPABASE_URL}/rest/v1/wellbeing_checkins?on_conflict=member_email,iso_week,iso_year`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({
+        member_email: email, activity_date, day_of_week, time_of_day,
+        iso_week, iso_year, score_wellbeing: mood, flow_type: 'active',
+        ai_recommendation: rawText, ai_persona: persona, logged_at: nowISO,
+        check_in_type: 'weekly',
+        dimension_energy:  dimension_energy ?? null,
+        dimension_sleep:   dimension_sleep  ?? null,
+        dimension_stress:  dimension_stress ?? null,
+        dimension_body:    dimension_body   ?? null,
+        drivers:           drivers && drivers.length > 0 ? drivers : null,
+        improvement_focus: improvement_focus || null,
+      })
+    });
+    if (!wcRes.ok) {
+      const errBody = await wcRes.text();
+      console.warn(`wellbeing_checkins write returned ${wcRes.status}: ${errBody}`);
+      return new Response(JSON.stringify({ success: false, error: 'wellbeing_checkins_write_failed', detail: `HTTP ${wcRes.status}` }), {
+        status: 200, headers: { ...CORS, 'Content-Type': 'application/json' }
+      });
+    }
+  } catch (e: unknown) {
+    return new Response(JSON.stringify({ success: false, error: 'wellbeing_checkins_write_failed', detail: (e as Error).message }), {
+      status: 200, headers: { ...CORS, 'Content-Type': 'application/json' }
+    });
+  }
+
+  EdgeRuntime.waitUntil(writeAiInteraction(email, persona,
+    `Weekly check-in v35 (mood=${mood}, habits=${habitDays}d, workouts=${workouts.length}, cardio=${cardio.length}, movement=${movement.length}, mind=${mind.length}, drivers=${drivers?.join(',') || 'none'}, focus=${improvement_focus || 'none'})`,
+    rawText,
+    { model: 'claude-sonnet-4-20250514', max_tokens: 1200, mood, dimensions: {dimension_energy, dimension_sleep, dimension_stress, dimension_body}, drivers, improvement_focus, previous_score: previousScore, iso_week, iso_year, path: 'new_v35',
+      activity_counts: { habitDays, workouts: workouts.length, cardio: cardio.length, movement: movement.length, mind: mind.length, sessions: hsSessions } }
+  ));
+
+  const notifTitle = mood >= 7 ? 'Great check-in!' : mood >= 5 ? 'Check-in complete' : 'Check-in received';
+  const notifBody = mood >= 7
+    ? `Score ${mood}/10 — a strong week. Your ${persona} reflection is ready.`
+    : mood >= 5
+      ? `Score ${mood}/10. Your ${persona} reflection is ready.`
+      : `Score ${mood}/10 noted. Your ${persona} reflection is ready.`;
+  EdgeRuntime.waitUntil(writeNotification(email, 'checkin_complete', notifTitle, notifBody, '/wellbeing-checkin.html'));
+
+  return new Response(JSON.stringify({
+    success: true,
+    debrief_text,
+    whats_working,
+    this_week_actions,
+    habit_name,
+    habit_reason,
+    content_name,
+    content_reason,
+    daily_mood_7d,
+    persona,
+    persona_display: PERSONA_DISPLAY[persona] || persona,
+    full: rawText,
+  }), {
+    headers: { ...CORS, 'Content-Type': 'application/json' }
+  });
+}
+
 async function handleLegacyCheckin(
   req: Request, email: string, body: Record<string, unknown>,
   CORS: Record<string, string>
@@ -206,7 +556,11 @@ async function handleLegacyCheckin(
     headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 800, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] })
   });
-  if (!aiRes.ok) throw new Error(`Anthropic error: ${await aiRes.text()}`);
+  if (!aiRes.ok) {
+    const errText = await aiRes.text();
+    console.error('[wellbeing-checkin] Anthropic legacy error:', aiRes.status, errText.slice(0, 500));
+    throw new Error(`Anthropic error ${aiRes.status}: ${errText.slice(0, 200)}`);
+  }
   const aiData = await aiRes.json();
   const text = aiData.content?.[0]?.text ?? '';
   const paragraphs = text.split(/\n\n+/);
@@ -233,7 +587,7 @@ async function handleLegacyCheckin(
   } catch (e: unknown) { console.warn('weekly_scores write failed:', e); }
 
   try {
-    const wcRes = await fetch(`${SUPABASE_URL}/rest/v1/wellbeing_checkins`, {
+    const wcRes = await fetch(`${SUPABASE_URL}/rest/v1/wellbeing_checkins?on_conflict=member_email,iso_week,iso_year`, {
       method: 'POST',
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ member_email: email, activity_date, day_of_week, time_of_day, iso_week, iso_year, score_wellbeing: score, flow_type: flow === 'quiet' ? 'quiet' : 'active', ai_recommendation: text, ai_persona: persona, logged_at: nowISO })
@@ -276,265 +630,12 @@ async function handleLegacyCheckin(
   });
 }
 
-// ── NEW PATH: enriched signal + structured output ─────────────────────────────
-async function handleNewCheckin(
-  email: string, body: Record<string, unknown>, CORS: Record<string, string>
-): Promise<Response> {
-  const {
-    mood, dimension_energy, dimension_sleep, dimension_stress, dimension_body,
-    drivers, improvement_focus, free_text, iso_week: bodyIsoWeek, iso_year: bodyIsoYear
-  } = body as {
-    mood: number;
-    dimension_energy: number | null; dimension_sleep: number | null;
-    dimension_stress: number | null; dimension_body: number | null;
-    drivers: string[] | null; improvement_focus: string | null;
-    free_text: string | null;
-    iso_week: number; iso_year: number;
-  };
-
-  if (!mood || mood < 1 || mood > 10) {
-    return new Response(JSON.stringify({ error: 'Invalid mood score' }), {
-      status: 400, headers: { ...CORS, 'Content-Type': 'application/json' }
-    });
-  }
-
-  // Parallel DB fetches — all non-critical, each catches independently
-  const [memberRow, recentCheckins, dailyMoods] = await Promise.all([
-    // Member profile: persona, first name
-    fetch(`${SUPABASE_URL}/rest/v1/members?email=eq.${encodeURIComponent(email)}&select=persona,first_name,goals`, {
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-    }).then(r => r.json()).catch(() => []),
-
-    // Last 4 weekly check-ins for trend
-    fetch(`${SUPABASE_URL}/rest/v1/wellbeing_checkins?member_email=eq.${encodeURIComponent(email)}&select=score_wellbeing,logged_at,dimension_energy,dimension_sleep,dimension_stress,dimension_body&order=logged_at.desc&limit=4`, {
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-    }).then(r => r.json()).catch(() => []),
-
-    // Daily mood last 7 days
-    fetch(`${SUPABASE_URL}/rest/v1/daily_mood_checkins?member_email=eq.${encodeURIComponent(email)}&mood_date=gte.${sevenDaysAgo()}&select=mood_date,mood_score&order=mood_date.asc`, {
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
-    }).then(r => r.json()).catch(() => []),
-  ]);
-
-  const persona: string = (memberRow?.[0]?.persona?.toUpperCase()) || 'RIVER';
-  const firstName: string = memberRow?.[0]?.first_name || 'there';
-  const personaLine = PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.RIVER;
-
-  // Build 4-week mood trend string
-  const prevScores: number[] = (recentCheckins as Array<{score_wellbeing: number; logged_at: string}>)
-    .map(r => r.score_wellbeing).filter(Boolean);
-  const previousScore: number | null = prevScores[0] ?? null;
-
-  let trendLine = 'No previous check-in data.';
-  if (prevScores.length >= 2) {
-    const trendDesc = prevScores[0] > prevScores[prevScores.length - 1] ? 'declining over recent weeks'
-      : prevScores[0] < prevScores[prevScores.length - 1] ? 'improving over recent weeks'
-      : 'stable over recent weeks';
-    trendLine = `Last ${prevScores.length} weekly scores: ${prevScores.join(', ')}. Trend: ${trendDesc}.`;
-  } else if (prevScores.length === 1) {
-    trendLine = `Last week: ${prevScores[0]}/10.`;
-  }
-
-  // Score movement
-  let scoreLine = `Mood score this week: ${mood}/10.`;
-  if (previousScore !== null) {
-    const diff = mood - previousScore;
-    if (diff > 0) scoreLine += ` Up ${diff} from last week (${previousScore}/10).`;
-    else if (diff < 0) scoreLine += ` Down ${Math.abs(diff)} from last week (${previousScore}/10).`;
-    else scoreLine += ` Same as last week (${previousScore}/10).`;
-  }
-
-  // Dimensions block — only mention scored dimensions
-  const dimLines: string[] = [];
-  if (dimension_energy != null) dimLines.push(`Energy: ${dimension_energy}/10`);
-  if (dimension_sleep  != null) dimLines.push(`Sleep: ${dimension_sleep}/10`);
-  if (dimension_stress != null) dimLines.push(`Stress: ${dimension_stress}/10`);
-  if (dimension_body   != null) dimLines.push(`Body/physical: ${dimension_body}/10`);
-  const dimensionsBlock = dimLines.length > 0
-    ? `Dimension breakdown: ${dimLines.join(', ')}.`
-    : 'No dimension breakdown provided.';
-
-  // Drivers
-  const driversLine = drivers && drivers.length > 0
-    ? `What shaped the week (member-selected): ${drivers.join(', ')}.`
-    : 'No specific drivers selected.';
-
-  // Improvement focus
-  const focusLine = improvement_focus
-    ? `Member wants to focus on improving: ${improvement_focus}.`
-    : '';
-
-  // Build daily_mood_7d array for response (chart)
-  const today = new Date();
-  const daily_mood_7d: (number | null)[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(today);
-    d.setUTCDate(d.getUTCDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
-    const match = (dailyMoods as Array<{mood_date: string; mood_score: number}>)
-      .find(m => m.mood_date === dateStr);
-    daily_mood_7d.push(match ? match.mood_score : null);
-  }
-
-  // ── SYSTEM PROMPT ──────────────────────────────────────────────────────────
-  const systemPrompt = `${personaLine}
-
-You are writing a private weekly wellbeing reflection for a VYVE Health member named ${firstName}. Only they will see this. Be warm, specific, and genuinely useful — this should read like a message from someone who actually knows them, not a wellness template.
-
-MEMBER DATA THIS WEEK:
-- ${scoreLine}
-- ${dimensionsBlock}
-- ${driversLine}
-${focusLine ? `- ${focusLine}` : ''}
-- Weekly trend: ${trendLine}
-
-TONE BY SCORE:
-- 1–3: Lead with warmth and acknowledgement. Don't minimise what they're feeling. One gentle, low-effort action is enough.
-- 4–5: Honest — it's been a mixed week. Find the real bright spots. Keep recommendations achievable.
-- 6–7: Positive but not effusive. Build on what worked. One stretch nudge is fine.
-- 8–10: Genuine celebration. Name specifically what's strong. Push one meaningful challenge.
-
-RULES:
-- Never use: "holistic", "wellness journey", "self-care", "empower", "synergy", "touch base"
-- No markdown bold, no asterisks, no bullet symbols except "-"
-- Never say you are an AI
-- Speak directly as "you", not "the member"
-- If stress is high (7+/10) and mood is low (1–4/10), acknowledge this combination directly — don't gloss it
-- Use the dimension scores and drivers to be specific. If sleep was 3/10, say something about sleep. If "work pressure" was selected, acknowledge it.
-- Keep it tight — a strong debrief is 3–4 sentences, not a paragraph for every point
-
-OUTPUT FORMAT — respond with exactly these four labelled sections, nothing else:
-
-DEBRIEF: [2–4 sentences. This is the main reflection — score movement, what drove it, what it means. Reference their specific dimensions and drivers if available.]
-
-HABIT: [Exactly one habit suggestion relevant to their focus or lowest dimension. Format: habit name | one sentence on why it fits them this week.]
-
-CONTENT: [Exactly one VYVE session or content type that fits their current state. Format: session name | one sentence on why now.]`;
-
-  const userMessage = free_text
-    ? `Mood score: ${mood}/10. In my own words: "${free_text}"`
-    : `Mood score: ${mood}/10.`;
-
-  const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 800,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }]
-    })
-  });
-  if (!aiRes.ok) throw new Error(`Anthropic error: ${await aiRes.text()}`);
-  const aiData = await aiRes.json();
-  const rawText: string = aiData.content?.[0]?.text ?? '';
-
-  // Parse structured output
-  const debriefMatch = rawText.match(/DEBRIEF:\s*([\s\S]*?)(?=\nHABIT:|$)/i);
-  const habitMatch   = rawText.match(/HABIT:\s*([\s\S]*?)(?=\nCONTENT:|$)/i);
-  const contentMatch = rawText.match(/CONTENT:\s*([\s\S]*?)$/i);
-
-  const debrief_text = debriefMatch?.[1]?.trim() ?? rawText.trim();
-
-  let habit_name = '', habit_reason = '';
-  if (habitMatch?.[1]) {
-    const parts = habitMatch[1].trim().split('|');
-    habit_name   = parts[0]?.trim() ?? '';
-    habit_reason = parts[1]?.trim() ?? '';
-  }
-
-  let content_name = '', content_reason = '';
-  if (contentMatch?.[1]) {
-    const parts = contentMatch[1].trim().split('|');
-    content_name   = parts[0]?.trim() ?? '';
-    content_reason = parts[1]?.trim() ?? '';
-  }
-
-  // DB writes
-  const activity_date = ukToday();
-  const { iso_week, iso_year } = getISOWeek(today);
-  const day_of_week = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][today.getUTCDay()];
-  const time_of_day = getTimeOfDay();
-  const nowISO = today.toISOString();
-
-  // weekly_scores — best-effort
-  try {
-    const wsRes = await fetch(`${SUPABASE_URL}/rest/v1/weekly_scores`, {
-      method: 'POST',
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ member_email: email, iso_week, iso_year, activity_date, wellbeing_score: mood, logged_at: nowISO })
-    });
-    if (!wsRes.ok) console.warn(`weekly_scores write returned ${wsRes.status}`);
-  } catch (e: unknown) { console.warn('weekly_scores write failed:', e); }
-
-  // wellbeing_checkins — critical
-  try {
-    const wcRes = await fetch(`${SUPABASE_URL}/rest/v1/wellbeing_checkins`, {
-      method: 'POST',
-      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({
-        member_email: email, activity_date, day_of_week, time_of_day,
-        iso_week, iso_year, score_wellbeing: mood, flow_type: 'active',
-        ai_recommendation: rawText, ai_persona: persona, logged_at: nowISO,
-        check_in_type: 'weekly',
-        dimension_energy:  dimension_energy ?? null,
-        dimension_sleep:   dimension_sleep  ?? null,
-        dimension_stress:  dimension_stress ?? null,
-        dimension_body:    dimension_body   ?? null,
-        drivers:           drivers && drivers.length > 0 ? drivers : null,
-        improvement_focus: improvement_focus || null,
-      })
-    });
-    if (!wcRes.ok) {
-      const errBody = await wcRes.text();
-      console.warn(`wellbeing_checkins write returned ${wcRes.status}: ${errBody}`);
-      return new Response(JSON.stringify({ success: false, error: 'wellbeing_checkins_write_failed', detail: `HTTP ${wcRes.status}` }), {
-        status: 200, headers: { ...CORS, 'Content-Type': 'application/json' }
-      });
-    }
-  } catch (e: unknown) {
-    return new Response(JSON.stringify({ success: false, error: 'wellbeing_checkins_write_failed', detail: (e as Error).message }), {
-      status: 200, headers: { ...CORS, 'Content-Type': 'application/json' }
-    });
-  }
-
-  EdgeRuntime.waitUntil(writeAiInteraction(email, persona,
-    `Weekly check-in new path (mood=${mood}, dims=${dimLines.join('/')}, drivers=${drivers?.join(',') || 'none'}, focus=${improvement_focus || 'none'})`,
-    rawText,
-    { model: 'claude-sonnet-4-20250514', max_tokens: 800, mood, dimensions: {dimension_energy, dimension_sleep, dimension_stress, dimension_body}, drivers, improvement_focus, previous_score: previousScore, iso_week, iso_year, path: 'new' }
-  ));
-
-  const notifTitle = mood >= 7 ? 'Great check-in!' : mood >= 5 ? 'Check-in complete' : 'Check-in received';
-  const notifBody = mood >= 7
-    ? `Score ${mood}/10 — a strong week. Your ${persona} reflection is ready.`
-    : mood >= 5
-      ? `Score ${mood}/10. Your ${persona} reflection is ready.`
-      : `Score ${mood}/10 noted. Your ${persona} reflection is ready.`;
-  EdgeRuntime.waitUntil(writeNotification(email, 'checkin_complete', notifTitle, notifBody, '/wellbeing-checkin.html'));
-
-  return new Response(JSON.stringify({
-    success: true,
-    debrief_text,
-    habit_name,
-    habit_reason,
-    content_name,
-    content_reason,
-    daily_mood_7d,
-    persona,
-    full: rawText,
-  }), {
-    headers: { ...CORS, 'Content-Type': 'application/json' }
-  });
-}
-
-// ── HELPERS ───────────────────────────────────────────────────────────────────
-function sevenDaysAgo(): string {
+function sevenDaysAgoFn(): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - 7);
   return d.toISOString().slice(0, 10);
 }
 
-// ── MAIN HANDLER ──────────────────────────────────────────────────────────────
 serve(async (req: Request) => {
   const CORS = getCORSHeaders(req);
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -554,7 +655,6 @@ serve(async (req: Request) => {
 
     const body = await req.json() as Record<string, unknown>;
 
-    // Route: new path sends 'mood', legacy path sends 'score'
     if ('mood' in body) {
       return await handleNewCheckin(email, body, CORS);
     } else {
@@ -562,7 +662,7 @@ serve(async (req: Request) => {
     }
 
   } catch (err: unknown) {
-    console.error('wellbeing-checkin error:', err);
+    console.error('[wellbeing-checkin] outer catch:', String(err));
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500, headers: { ...CORS, 'Content-Type': 'application/json' }
     });

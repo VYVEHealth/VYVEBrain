@@ -16,39 +16,49 @@
 //
 // CHANGES from v14 (still applies):
 //   - verify_jwt: false at platform; internal JWT validation via supabase.auth.getUser().
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const ALLOWED_ORIGINS = new Set([
   "https://online.vyvehealth.co.uk",
-  "https://www.vyvehealth.co.uk"
+  "https://www.vyvehealth.co.uk",
 ]);
 const DEFAULT_ORIGIN = "https://online.vyvehealth.co.uk";
 const MAX_BODY_BYTES = 102400;
-function getCorsHeaders(req) {
+
+function getCorsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("origin") ?? "";
   const allowedOrigin = ALLOWED_ORIGINS.has(origin) ? origin : DEFAULT_ORIGIN;
   return {
     "Access-Control-Allow-Origin": allowedOrigin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "authorization, apikey, content-type"
+    "Access-Control-Allow-Headers": "authorization, apikey, content-type",
   };
 }
-function payloadTooLarge(req) {
+
+function payloadTooLarge(req: Request): boolean {
   const cl = req.headers.get('content-length');
   if (!cl) return false;
   const n = Number(cl);
   return Number.isFinite(n) && n > MAX_BODY_BYTES;
 }
-async function writeAiInteraction(email, prompt_summary, recommendation, decision_log) {
+
+async function writeAiInteraction(
+  email: string,
+  prompt_summary: string,
+  recommendation: string,
+  decision_log: Record<string, unknown>,
+): Promise<void> {
   try {
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     await fetch(`${SUPABASE_URL}/rest/v1/ai_interactions`, {
       method: 'POST',
       headers: {
         apikey: SUPABASE_KEY,
         Authorization: `Bearer ${SUPABASE_KEY}`,
         'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
+        'Prefer': 'return=minimal',
       },
       body: JSON.stringify({
         member_email: email,
@@ -56,110 +66,85 @@ async function writeAiInteraction(email, prompt_summary, recommendation, decisio
         persona: null,
         prompt_summary,
         recommendation,
-        decision_log
-      })
+        decision_log,
+      }),
     });
-  } catch (e) {
-    console.warn('[anthropic-proxy] ai_interactions write failed:', e.message);
-  }
+  } catch (e) { console.warn('[anthropic-proxy] ai_interactions write failed:', (e as Error).message); }
 }
-Deno.serve(async (req)=>{
+
+Deno.serve(async (req: Request) => {
   const cors = getCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: cors
-    });
+    return new Response(null, { headers: cors });
   }
+
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({
-      error: "Method not allowed"
-    }), {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
-      headers: {
-        ...cors,
-        "Content-Type": "application/json"
-      }
+      headers: { ...cors, "Content-Type": "application/json" },
     });
   }
+
   if (payloadTooLarge(req)) {
-    return new Response(JSON.stringify({
-      error: "Payload too large (>100KB)"
-    }), {
+    return new Response(JSON.stringify({ error: "Payload too large (>100KB)" }), {
       status: 413,
-      headers: {
-        ...cors,
-        "Content-Type": "application/json"
-      }
+      headers: { ...cors, "Content-Type": "application/json" },
     });
   }
+
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
   if (!token) {
-    return new Response(JSON.stringify({
-      error: "Missing authorization token"
-    }), {
+    return new Response(JSON.stringify({ error: "Missing authorization token" }), {
       status: 401,
-      headers: {
-        ...cors,
-        "Content-Type": "application/json"
-      }
+      headers: { ...cors, "Content-Type": "application/json" },
     });
   }
-  const supabase = createClient(Deno.env.get("SUPABASE_URL"), Deno.env.get("SUPABASE_ANON_KEY"), {
-    global: {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    }
-  });
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_ANON_KEY")!,
+    { global: { headers: { Authorization: `Bearer ${token}` } } }
+  );
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
-    return new Response(JSON.stringify({
-      error: "Invalid or expired token"
-    }), {
+    return new Response(JSON.stringify({ error: "Invalid or expired token" }), {
       status: 401,
-      headers: {
-        ...cors,
-        "Content-Type": "application/json"
-      }
+      headers: { ...cors, "Content-Type": "application/json" },
     });
   }
+
   const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
   if (!anthropicKey) {
-    return new Response(JSON.stringify({
-      error: "Anthropic API key not configured"
-    }), {
+    return new Response(JSON.stringify({ error: "Anthropic API key not configured" }), {
       status: 500,
-      headers: {
-        ...cors,
-        "Content-Type": "application/json"
-      }
+      headers: { ...cors, "Content-Type": "application/json" },
     });
   }
-  let body;
+
+  let body: any;
   try {
     body = await req.json();
-  } catch  {
-    return new Response(JSON.stringify({
-      error: "Invalid JSON body"
-    }), {
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
       status: 400,
-      headers: {
-        ...cors,
-        "Content-Type": "application/json"
-      }
+      headers: { ...cors, "Content-Type": "application/json" },
     });
   }
+
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "x-api-key": anthropicKey,
-      "anthropic-version": "2023-06-01"
+      "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
   });
+
   const data = await response.json();
+
   if (response.ok && user.email) {
     try {
       const model = String(body?.model ?? 'unknown');
@@ -168,22 +153,25 @@ Deno.serve(async (req)=>{
       const messages = Array.isArray(body?.messages) ? body.messages : [];
       const lastUser = messages.length > 0 ? String(messages[messages.length - 1]?.content ?? '').slice(0, 200) : '';
       const respText = String(data?.content?.[0]?.text ?? '').slice(0, 500);
-      EdgeRuntime.waitUntil(writeAiInteraction(user.email.toLowerCase(), `${model} (${max_tokens} max_tokens)${sys ? ' | system: ' + sys : ''}`, respText, {
-        model,
-        max_tokens,
-        response_status: response.status,
-        last_user_excerpt: lastUser,
-        usage: data?.usage ?? null
-      }));
-    } catch (e) {
-      console.warn('[anthropic-proxy] audit log path failed:', e.message);
-    }
+      EdgeRuntime.waitUntil(
+        writeAiInteraction(
+          user.email.toLowerCase(),
+          `${model} (${max_tokens} max_tokens)${sys ? ' | system: ' + sys : ''}`,
+          respText,
+          {
+            model,
+            max_tokens,
+            response_status: response.status,
+            last_user_excerpt: lastUser,
+            usage: data?.usage ?? null,
+          },
+        )
+      );
+    } catch (e) { console.warn('[anthropic-proxy] audit log path failed:', (e as Error).message); }
   }
+
   return new Response(JSON.stringify(data), {
     status: response.status,
-    headers: {
-      ...cors,
-      "Content-Type": "application/json"
-    }
+    headers: { ...cors, "Content-Type": "application/json" },
   });
 });

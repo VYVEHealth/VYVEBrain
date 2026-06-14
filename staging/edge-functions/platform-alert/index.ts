@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // platform-alert v10 — PM-404 (26 May 2026)
 //
@@ -18,22 +19,28 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 // 90-150s holders draining the connection pool. v10 is single-write, no awaited
 // fan-out, breaker caps anything pathological.
 // ─────────────────────────────────────────────────────────────────────────────
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
 const ALLOWED_ORIGINS = new Set([
   'https://online.vyvehealth.co.uk',
-  'https://www.vyvehealth.co.uk'
+  'https://www.vyvehealth.co.uk',
 ]);
-function getCORSHeaders(req) {
+
+function getCORSHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get('Origin') ?? '';
-  const allowOrigin = ALLOWED_ORIGINS.has(origin) ? origin : origin === 'null' || origin === '' ? '*' : 'https://online.vyvehealth.co.uk';
+  const allowOrigin = ALLOWED_ORIGINS.has(origin) ? origin
+    : (origin === 'null' || origin === '') ? '*'
+    : 'https://online.vyvehealth.co.uk';
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Credentials': allowOrigin !== '*' ? 'true' : 'false'
+    'Access-Control-Allow-Credentials': allowOrigin !== '*' ? 'true' : 'false',
   };
 }
+
 // ─── Write-path endpoint slugs (brain PM-403.b decision 2) ───────────────
 // network_error_* on these slugs stays critical; elsewhere downgrades to info.
 const WRITE_PATH_SLUGS = new Set([
@@ -50,8 +57,9 @@ const WRITE_PATH_SLUGS = new Set([
   'member_habits',
   'wellbeing_checkins',
   'monthly_checkins',
-  'members'
+  'members',
 ]);
+
 // ─── Endpoint normalisation ────────────────────────────────────
 // Strip protocol + host + query, keep the path, return just the last path
 // segment for fingerprinting. So:
@@ -59,7 +67,7 @@ const WRITE_PATH_SLUGS = new Set([
 //   https://...supabase.co/functions/v1/log-activity              → 'log-activity'
 //   /habits.html                                                  → 'habits.html'
 //   (anything else)                                               → the raw input lowercased, trimmed
-function normaliseEndpoint(raw) {
+function normaliseEndpoint(raw: unknown): string {
   if (typeof raw !== 'string') return 'unknown';
   let s = raw.trim();
   if (!s) return 'unknown';
@@ -69,8 +77,8 @@ function normaliseEndpoint(raw) {
       const u = new URL(s);
       s = u.pathname;
     }
-  } catch  {
-  // fall through with raw s
+  } catch {
+    // fall through with raw s
   }
   // Strip query string
   const qi = s.indexOf('?');
@@ -82,11 +90,13 @@ function normaliseEndpoint(raw) {
   const tail = parts.length ? parts[parts.length - 1] : s;
   return tail.toLowerCase();
 }
+
 // ─── Severity recalibration (brain PM-403.b decision 2) ──────────────────
 // type pattern → severity decision rule. Returns the final severity to store.
-function decideSeverity(type, normEndpoint) {
+function decideSeverity(type: string, normEndpoint: string): 'critical' | 'high' | 'info' {
   const t = type.toLowerCase();
   const isWritePath = WRITE_PATH_SLUGS.has(normEndpoint);
+
   // network_error_* — write-path critical, elsewhere info (the noise downgrade)
   if (t.startsWith('network_error_') || t === 'network_error') {
     return isWritePath ? 'critical' : 'info';
@@ -110,40 +120,35 @@ function decideSeverity(type, normEndpoint) {
   // Default for anything else — info (don't surface unknown types loudly)
   return 'info';
 }
+
 // ─── Circuit breaker ────────────────────────────────────────────
 // Module-scoped sliding-window counter. Cold-start reset to zero is intentional
 // — a fresh isolate isn't being stormed yet. Brain PM-403.b decision 3.
-const BREAKER_WINDOW_MS = 60_000; // 60s sliding window
-const BREAKER_THRESHOLD = 20; // > 20 in window → trip
+const BREAKER_WINDOW_MS = 60_000;       // 60s sliding window
+const BREAKER_THRESHOLD = 20;           // > 20 in window → trip
 const BREAKER_COOLDOWN_MS = 5 * 60_000; // 5 min 429
-const invocationTimestamps = [];
+const invocationTimestamps: number[] = [];
 let breakerTrippedUntil = 0;
-function checkBreaker(now) {
+
+function checkBreaker(now: number): { tripped: boolean; reason?: string } {
   // Honour active trip
   if (now < breakerTrippedUntil) {
-    return {
-      tripped: true,
-      reason: 'cooldown'
-    };
+    return { tripped: true, reason: 'cooldown' };
   }
   // Prune window
   const cutoff = now - BREAKER_WINDOW_MS;
-  while(invocationTimestamps.length && invocationTimestamps[0] < cutoff){
+  while (invocationTimestamps.length && invocationTimestamps[0] < cutoff) {
     invocationTimestamps.shift();
   }
   // Count this invocation
   invocationTimestamps.push(now);
   if (invocationTimestamps.length > BREAKER_THRESHOLD) {
     breakerTrippedUntil = now + BREAKER_COOLDOWN_MS;
-    return {
-      tripped: true,
-      reason: 'threshold'
-    };
+    return { tripped: true, reason: 'threshold' };
   }
-  return {
-    tripped: false
-  };
+  return { tripped: false };
 }
+
 // ─── Skeleton timeout hourly counter ─────────────────────────────────
 // SELECT-then-UPSERT path. Looks for an existing row with same fingerprint
 // within the last hour; if found, increments details.count and updates created_at.
@@ -151,39 +156,43 @@ function checkBreaker(now) {
 //
 // Trade-off banked: this is two round-trips, but skeleton_timeout repeats are
 // the rarest path AND every other write goes through the single-INSERT happy path.
-async function tryIncrementSkeletonHourly(fingerprint, details) {
+async function tryIncrementSkeletonHourly(
+  fingerprint: string,
+  details: Record<string, unknown>
+): Promise<boolean> {
   // Look for existing skeleton_timeout row with this fingerprint in last hour
-  const lookupUrl = `${SUPABASE_URL}/rest/v1/platform_alerts` + `?fingerprint=eq.${encodeURIComponent(fingerprint)}` + `&type=like.skeleton_timeout_*` + `&created_at=gte.${encodeURIComponent(new Date(Date.now() - 60 * 60_000).toISOString())}` + `&select=id,details` + `&order=created_at.desc` + `&limit=1`;
+  const lookupUrl = `${SUPABASE_URL}/rest/v1/platform_alerts`
+    + `?fingerprint=eq.${encodeURIComponent(fingerprint)}`
+    + `&type=like.skeleton_timeout_*`
+    + `&created_at=gte.${encodeURIComponent(new Date(Date.now() - 60 * 60_000).toISOString())}`
+    + `&select=id,details`
+    + `&order=created_at.desc`
+    + `&limit=1`;
   const lookupRes = await fetch(lookupUrl, {
     headers: {
       'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`
-    }
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+    },
   });
   if (!lookupRes.ok) return false;
   const existing = await lookupRes.json();
   if (!Array.isArray(existing) || existing.length === 0) return false;
+
   const row = existing[0];
-  let prevDetails = {};
+  let prevDetails: Record<string, unknown> = {};
   if (typeof row.details === 'string') {
     try {
       prevDetails = JSON.parse(row.details);
       if (typeof prevDetails !== 'object' || prevDetails === null) prevDetails = {};
-    } catch  {
-      prevDetails = {
-        _prev: row.details
-      };
+    } catch {
+      prevDetails = { _prev: row.details };
     }
   } else if (typeof row.details === 'object' && row.details !== null) {
     prevDetails = row.details;
   }
   const prevCount = typeof prevDetails.count === 'number' ? prevDetails.count : 1;
-  const merged = {
-    ...prevDetails,
-    ...details,
-    count: prevCount + 1,
-    last_at: new Date().toISOString()
-  };
+  const merged = { ...prevDetails, ...details, count: prevCount + 1, last_at: new Date().toISOString() };
+
   const patchUrl = `${SUPABASE_URL}/rest/v1/platform_alerts?id=eq.${encodeURIComponent(row.id)}`;
   const patchRes = await fetch(patchUrl, {
     method: 'PATCH',
@@ -191,68 +200,64 @@ async function tryIncrementSkeletonHourly(fingerprint, details) {
       'apikey': SUPABASE_KEY,
       'Authorization': `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json',
-      'Prefer': 'return=minimal'
+      'Prefer': 'return=minimal',
     },
-    body: JSON.stringify({
-      details: JSON.stringify(merged)
-    })
+    body: JSON.stringify({ details: JSON.stringify(merged) }),
   });
   return patchRes.ok;
 }
+
 // ─── Direct INSERT path ─────────────────────────────────────────
-async function insertAlert(row) {
+async function insertAlert(row: Record<string, unknown>): Promise<boolean> {
   const insRes = await fetch(`${SUPABASE_URL}/rest/v1/platform_alerts`, {
     method: 'POST',
     headers: {
       'apikey': SUPABASE_KEY,
       'Authorization': `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json',
-      'Prefer': 'return=minimal'
+      'Prefer': 'return=minimal',
     },
-    body: JSON.stringify(row)
+    body: JSON.stringify(row),
   });
   return insRes.ok;
 }
+
 // ─── Main handler ──────────────────────────────────────────────
-serve(async (req)=>{
+serve(async (req) => {
   const CORS = getCORSHeaders(req);
-  if (req.method === 'OPTIONS') return new Response('ok', {
-    headers: CORS
-  });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+
   // Breaker first — single shared mutable state check
   const now = Date.now();
   const breaker = checkBreaker(now);
   if (breaker.tripped) {
-    return new Response(JSON.stringify({
-      ok: false,
-      error: 'rate_limited',
-      reason: breaker.reason
-    }), {
-      status: 429,
-      headers: {
-        ...CORS,
-        'Content-Type': 'application/json'
-      }
-    });
+    return new Response(
+      JSON.stringify({ ok: false, error: 'rate_limited', reason: breaker.reason }),
+      { status: 429, headers: { ...CORS, 'Content-Type': 'application/json' } },
+    );
   }
+
   // Parse payload (defensive — never throw out of this handler)
-  let payload = {};
+  let payload: Record<string, unknown> = {};
   try {
     if (req.method === 'POST') payload = await req.json();
-  } catch  {
-  // Fall through with empty payload; we'll record what we can
+  } catch {
+    // Fall through with empty payload; we'll record what we can
   }
   const type = String(payload.type ?? 'unknown').slice(0, 200);
-  const memberEmail = typeof payload.member_email === 'string' ? payload.member_email.toLowerCase().trim().slice(0, 320) : null;
-  const rawEndpoint = payload.endpoint ?? payload.url ?? payload.page ?? '';
+  const memberEmail = typeof payload.member_email === 'string'
+    ? payload.member_email.toLowerCase().trim().slice(0, 320)
+    : null;
+  const rawEndpoint = (payload.endpoint ?? payload.url ?? payload.page ?? '') as unknown;
   const normEndpoint = normaliseEndpoint(rawEndpoint);
   const fingerprint = `${type}::${normEndpoint}::${memberEmail ?? 'anon'}`;
   const severity = decideSeverity(type, normEndpoint);
+
   // Build the row. `details` is a text column in the live schema; we serialise
   // the incoming details (or the whole payload) to JSON text.
-  const detailsSrc = typeof payload.details === 'object' && payload.details !== null ? payload.details : {
-    raw: payload
-  };
+  const detailsSrc = (typeof payload.details === 'object' && payload.details !== null)
+    ? payload.details
+    : { raw: payload };
   const row = {
     severity,
     type,
@@ -261,18 +266,20 @@ serve(async (req)=>{
     details: JSON.stringify(detailsSrc),
     page: typeof payload.page === 'string' ? payload.page.slice(0, 500) : null,
     user_agent: req.headers.get('User-Agent')?.slice(0, 500) ?? null,
-    fingerprint
+    fingerprint,
   };
+
   // Skeleton timeout path: try to increment an existing row's counter first.
   // Falls through to INSERT on miss.
   let wrote = false;
   if (type.startsWith('skeleton_timeout')) {
     try {
-      wrote = await tryIncrementSkeletonHourly(fingerprint, detailsSrc);
-    } catch  {
+      wrote = await tryIncrementSkeletonHourly(fingerprint, detailsSrc as Record<string, unknown>);
+    } catch {
       wrote = false;
     }
   }
+
   if (!wrote) {
     try {
       wrote = await insertAlert(row);
@@ -282,16 +289,9 @@ serve(async (req)=>{
       console.warn('[platform-alert v10] insert failed', String(err));
     }
   }
-  return new Response(JSON.stringify({
-    ok: true,
-    severity,
-    fingerprint,
-    recorded: wrote
-  }), {
-    status: 200,
-    headers: {
-      ...CORS,
-      'Content-Type': 'application/json'
-    }
-  });
+
+  return new Response(
+    JSON.stringify({ ok: true, severity, fingerprint, recorded: wrote }),
+    { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } },
+  );
 });

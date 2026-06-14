@@ -7,18 +7,29 @@
 //
 // Auth: dual-auth (sb_secret_* OR LEGACY_SERVICE_ROLE_JWT) per §23 rule.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const LEGACY_SERVICE_ROLE_JWT = Deno.env.get('LEGACY_SERVICE_ROLE_JWT') ?? '';
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
-function buildAchievementRoute(slug, tierIndex) {
+
+interface Earn {
+  metric_slug: string;
+  tier_index: number;
+  title: string;
+  body: string | null;
+}
+
+function buildAchievementRoute(slug: string, tierIndex: number): string {
   return `/engagement.html#achievements&slug=${encodeURIComponent(slug)}&tier=${tierIndex}`;
 }
-async function sendPushOne(email, earn) {
+
+async function sendPushOne(email: string, earn: Earn) {
   const type = `achievement_earned_${earn.metric_slug}_${earn.tier_index}`;
   const title = String(earn.title || '').trim() || 'Achievement unlocked';
   const body = String(earn.body || '').trim() || `You earned ${title}.`;
@@ -36,9 +47,7 @@ async function sendPushOne(email, earn) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        member_emails: [
-          email
-        ],
+        member_emails: [email],
         type,
         title,
         body,
@@ -49,99 +58,64 @@ async function sendPushOne(email, earn) {
     });
     if (!res.ok) {
       const txt = await res.text();
-      return {
-        ok: false,
-        status: res.status,
-        error: txt
-      };
+      return { ok: false, status: res.status, error: txt };
     }
     const j = await res.json();
-    return {
-      ok: true,
-      send_push: j
-    };
+    return { ok: true, send_push: j };
   } catch (e) {
-    return {
-      ok: false,
-      status: 0,
-      error: String(e)
-    };
+    return { ok: false, status: 0, error: String(e) };
   }
 }
-serve(async (req)=>{
-  if (req.method === 'OPTIONS') return new Response('ok', {
-    headers: CORS
-  });
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+
   const authHeader = req.headers.get('Authorization') ?? '';
   const matchesNew = SUPABASE_KEY && authHeader === `Bearer ${SUPABASE_KEY}`;
   const matchesLegacy = LEGACY_SERVICE_ROLE_JWT && authHeader === `Bearer ${LEGACY_SERVICE_ROLE_JWT}`;
   if (!matchesNew && !matchesLegacy) {
-    return new Response(JSON.stringify({
-      error: 'service role required'
-    }), {
+    return new Response(JSON.stringify({ error: 'service role required' }), {
       status: 403,
-      headers: {
-        ...CORS,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...CORS, 'Content-Type': 'application/json' }
     });
   }
+
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({
-      error: 'method not allowed'
-    }), {
+    return new Response(JSON.stringify({ error: 'method not allowed' }), {
       status: 405,
-      headers: {
-        ...CORS,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...CORS, 'Content-Type': 'application/json' }
     });
   }
-  let input;
-  try {
-    input = await req.json();
-  } catch  {
-    return new Response(JSON.stringify({
-      error: 'invalid json'
-    }), {
+
+  let input: any;
+  try { input = await req.json(); } catch {
+    return new Response(JSON.stringify({ error: 'invalid json' }), {
       status: 400,
-      headers: {
-        ...CORS,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...CORS, 'Content-Type': 'application/json' }
     });
   }
+
   const memberEmail = String(input?.member_email || '').toLowerCase().trim();
-  const earns = Array.isArray(input?.earns) ? input.earns : [];
+  const earns: any[] = Array.isArray(input?.earns) ? input.earns : [];
+
   if (!memberEmail) {
-    return new Response(JSON.stringify({
-      error: 'member_email required'
-    }), {
+    return new Response(JSON.stringify({ error: 'member_email required' }), {
       status: 400,
-      headers: {
-        ...CORS,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...CORS, 'Content-Type': 'application/json' }
     });
   }
   if (earns.length === 0) {
     return new Response(JSON.stringify({
-      ok: true,
-      processed: 0,
-      sent: 0,
-      failed: 0,
-      details: []
+      ok: true, processed: 0, sent: 0, failed: 0, details: []
     }), {
-      headers: {
-        ...CORS,
-        'Content-Type': 'application/json'
-      }
+      headers: { ...CORS, 'Content-Type': 'application/json' }
     });
   }
-  const details = [];
+
+  const details: any[] = [];
   let sent = 0, failed = 0;
-  for (const raw of earns){
-    const e = {
+  for (const raw of earns) {
+    const e: Earn = {
       metric_slug: String(raw?.metric_slug || ''),
       tier_index: Number(raw?.tier_index ?? 0),
       title: String(raw?.title || ''),
@@ -160,23 +134,12 @@ serve(async (req)=>{
     const r = await sendPushOne(memberEmail, e);
     if (r.ok) sent++;
     else failed++;
-    details.push({
-      metric_slug: e.metric_slug,
-      tier_index: e.tier_index,
-      ok: r.ok,
-      ...r
-    });
+    details.push({ metric_slug: e.metric_slug, tier_index: e.tier_index, ok: r.ok, ...r });
   }
+
   return new Response(JSON.stringify({
-    ok: true,
-    processed: earns.length,
-    sent,
-    failed,
-    details
+    ok: true, processed: earns.length, sent, failed, details
   }), {
-    headers: {
-      ...CORS,
-      'Content-Type': 'application/json'
-    }
+    headers: { ...CORS, 'Content-Type': 'application/json' }
   });
 });

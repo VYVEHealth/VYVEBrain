@@ -7,15 +7,21 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getMemberGrid } from "./_shared/achievements.ts";
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
 const ALLOWED_ORIGINS = new Set([
   'https://online.vyvehealth.co.uk',
   'https://www.vyvehealth.co.uk'
 ]);
 function getCORSHeaders(req) {
   const origin = req.headers.get('Origin') ?? '';
-  const allowOrigin = ALLOWED_ORIGINS.has(origin) ? origin : origin === 'null' || origin === '' ? '*' : 'https://online.vyvehealth.co.uk';
+  const allowOrigin = ALLOWED_ORIGINS.has(origin)
+    ? origin
+    : origin === 'null' || origin === ''
+      ? '*'
+      : 'https://online.vyvehealth.co.uk';
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -23,6 +29,7 @@ function getCORSHeaders(req) {
     'Access-Control-Allow-Credentials': allowOrigin !== '*' ? 'true' : 'false'
   };
 }
+
 async function getAuthUser(req) {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) return null;
@@ -37,16 +44,15 @@ async function getAuthUser(req) {
   const user = await res.json();
   return user.email?.toLowerCase() || null;
 }
-serve(async (req)=>{
+
+serve(async (req) => {
   const corsHeaders = getCORSHeaders(req);
-  if (req.method === "OPTIONS") return new Response("ok", {
-    headers: corsHeaders
-  });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-    auth: {
-      persistSession: false
-    }
+    auth: { persistSession: false }
   });
+
   try {
     const member_email = await getAuthUser(req);
     if (!member_email) {
@@ -55,13 +61,12 @@ serve(async (req)=>{
         error: "Authentication required."
       }), {
         status: 401,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json"
-        }
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
+
     const grid = await getMemberGrid(supabase, member_email);
+
     return new Response(JSON.stringify({
       success: true,
       member_email,
@@ -81,10 +86,7 @@ serve(async (req)=>{
       error: err.message
     }), {
       status: 500,
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json"
-      }
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
 });
