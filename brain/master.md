@@ -466,7 +466,7 @@ Charity + certificate counters stay independently capped at 2/day via `get_chari
 | Function | Status | Purpose |
 |---|---|---|
 | `cc-app-health` | LIVE | App Health dashboard cache (errors-first, ranked by members-hit-now; usage; dead pages; load times). Cron jobid 38 hourly `:00`. Writes `cc_app_health`. |
-| `cc-usage` | LIVE | Usage Analytics (Overview + Members tabs, 360 modal, never-active outreach). Cron jobid 39 hourly `:30`. Writes `cc_usage`. Admin send-actions (never-active re-engagement) JWT-gated. |
+| `cc-usage` | LIVE | Usage Analytics (Overview + Members tabs, 360 modal, never-active outreach). Cron jobid 39 hourly `:30`. Writes `cc_usage`. Admin send-actions (never-active re-engagement) JWT-gated. **v11 (PM-612/613):** members_json carries lifecycle (active/installed/consented/signed_in/never) + `consent_done`/`installed`/`installed_via`; install-proof = PostHog `capacitor://`-ever (365d) OR native push / HealthKit, fail-safe to push/HK. Status simplified to 3 tiers (PM-614). |
 | `cc-retention` | LIVE | Retention & Activation (funnel, dormancy, cohorts, at-risk, Day-N curve, re-engagement effectiveness). Cron jobid 40 hourly `:15`. Writes `cc_retention`. |
 | `cc-wellbeing` | LIVE | Wellbeing analytics (score trend, member table, distribution, 8-dim baseline, wellbeing×activity correlation). Cron jobid 42 hourly `:55`. Writes `cc_wellbeing`. |
 | `cc-platform` | LIVE | Platform & UX (PostHog HogQL page views + `ef_error`; `perf_telemetry` percentiles). `is_dean` filter to drop dev traffic. Cron jobid 43 hourly `:05`. Writes `cc_platform`. |
@@ -891,7 +891,7 @@ Make is retired on Lewis's side too — no analytics collectors, no social publi
 
 ### Cron jobs
 
-See §24 for the live pg_cron job table (41 jobs, 40 active as of 12 Jun 2026).
+See §24 for the live pg_cron job table (42 jobs, 41 active as of 15 Jun 2026).
 
 ---
 
@@ -1768,7 +1768,7 @@ A paid member who completed the questionnaire must always get an account. The fu
 - `persona_welcome_copy` — PM-372 hydration COPY_TABLE.
 - `how_to_resources` — PM-377 catalogue (pdf/video).
 
-### Active cron jobs (live 12 Jun 2026: 41 jobs, **40 active** — jobid 27 inactive; gaps at 12/17/19; jobid 26 retired, replaced by 36)
+### Active cron jobs (live 15 Jun 2026: 42 jobs, **41 active** — jobid 27 inactive; gaps at 12/17/19; jobid 26 retired→36; jobid 47 added PM-615 vyve-foundation-running-plans */5)
 
 | ID | Name | Schedule | Active |
 |---|---|---|---|
@@ -1813,6 +1813,7 @@ A paid member who completed the questionnaire must always get an account. The fu
 | 43 | cc-platform-hourly | 5 * * * * | Y |
 | 44 | cc-revenue-hourly | 20 * * * * | Y |
 | 45 | cc-ai-hourly | 35 * * * * | Y |
+| 47 | vyve-foundation-running-plans | */5 * * * * | Y |
 
 ### Make scenarios (Lewis-side)
 
