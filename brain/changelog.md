@@ -1,3 +1,19 @@
+## PM-617 — Consent-version stamping gap closed: server-side trigger + backfill (2026-06-15)
+
+Follow-on after the PM-616 close. The consent-version-null flag (observed on Azusa's row) fixed properly. Composio still down → Vault PAT path.
+
+Gap: PM-603 added `members.privacy_version`/`health_consent_version` + backfilled existing consenters `'pre-versioning'`, but never wired the write path. consent-gate.html stamps `terms_version='v1.0'` (constant at L287) yet omits the privacy/health version fields — so every gate consent after 12 Jun landed NULL (9 rows incl. Azusa, Paul Skipper, Kieran Day). Onboarding doesn't touch consent; the gate (vyve-site/consent-gate.html) is the sole write path.
+
+Constraint: native members run bundled builds, so a consent-gate.html edit can't reach the installed base (§23.106) — they're exactly who hits the gate. So the fix is server-side.
+
+Fix: `BEFORE INSERT/UPDATE` trigger `trg_default_consent_versions` on `members` (`public.default_consent_versions()`, search_path pinned, REVOKE PUBLIC; migration `add_default_consent_versions_trigger`). Fill-null-only: `privacy_version='v1.0'` when `privacy_accepted_at` is set; `health_consent_version='v1.0'` when `health_data_consent` true. Never overwrites existing/history (`'pre-versioning'` untouched). Covers every client + build, zero lag.
+
+Backfill: UPDATE the 9 v1.0-gate rows (`terms_version='v1.0'` AND `privacy_version` NULL). The trigger filled `health_consent_version` on the same UPDATE for the 5 health-consenters; left NULL for the 4 who declined. `'v1.0'` is the existing in-use convention (mirrors `terms_version`), not a new value — no Lewis decision needed.
+
+Verified: consented-but-unversioned residual = 0; health-consented-unversioned residual = 0; `privacy_version` dist v1.0:9 / pre-versioning:27 / null:16 (the 16 nulls are genuinely never-consented). Trigger present.
+
+Rider (not blocking): consent-gate.html should also write `privacy_version`/`health_consent_version` explicitly at source on the next vyve-site build (gate stamps `terms_version` but omits these). New §23.119 hard rule codified.
+
 ## PM-616 — CC Usage lifecycle + PostHog install analytics, and cardio foundation running-plan reconciler (2026-06-15)
 
 Composio GitHub down again → Vault PAT + Git Data API path throughout (§23.27). Brain commit is PM-616; session work spans PM-612→615.
