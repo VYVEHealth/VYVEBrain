@@ -1,7 +1,7 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT (updated 2026-06-12, PM-603)
+## CURRENT FRONT (updated 2026-06-15, PM-618)
 
 **PM-603: full brain reconciliation vs live Supabase + GitHub. §23 holes filled — §23.105 back-filled, §23.111–116 promoted from changelog (tracker→log-activity, www-clone, Java-21, toast-gate, lockBody-timer, JS-cachebust), duplicate §23.107 → §23.110. §6/§7/§24 inventories + counts brought to live: 133 tables, 47 members (NO enterprise), 41 cron jobs (40 active), CC Insights EF/cache/cron suite documented.**
 **Stale "open" items CLOSED: GITHUB_PAT_CLAUDE rotation is DONE (PM-558 — no expiry, stop re-flagging "expires 20 June"). GDPR cron static-PSK removed (no-op artefact).**
@@ -1713,6 +1713,10 @@ A paid member who completed the questionnaire must always get an account. The fu
 #### §23.119 — Consent-version columns are stamped server-side by a trigger; bump the `'v1.0'` constant when a policy version changes (PM-617 — HARD RULE)
 
 `members.privacy_version`/`health_consent_version` must never be NULL once consent is recorded — enterprise/Sage consent-audit needs to know which policy era a member agreed to. PM-603 added the columns + backfilled existing consenters `'pre-versioning'` but never wired the write path, so post-12-Jun gate consents landed NULL (consent-gate.html stamps `terms_version='v1.0'` but omitted privacy/health). Because native members run **bundled** builds, a client gate fix can't reach the installed base (§23.106) — so the authoritative stamp is a `BEFORE INSERT/UPDATE` trigger `trg_default_consent_versions` on `members` (`public.default_consent_versions()`): fill-null-only (never overwrites history), `privacy_version='v1.0'` when `privacy_accepted_at` set, `health_consent_version='v1.0'` when `health_data_consent` true. **The `'v1.0'` literal in that function AND the gate's `TERMS_VERSION` must be bumped together when a policy version changes** — the trigger fills nulls, so a stale constant would silently stamp the wrong era. consent-gate.html should also write the two version fields explicitly at source (rider for next vyve-site build; trigger covers correctness until then).
+
+#### §23.120 — A same-page optimistic write must re-trigger EVERY sibling renderer that derives from the written table, not just the primary surface's own renderer (PM-618 — HARD RULE)
+
+Bus `subscribe('<table>')` channels are CROSS-PAGE by construction (§23.42). A same-page tap that publishes on a *semantic* channel (`habit:logged`, `body:logged`, `mind:logged`) does NOT fire the `<table>` subscribe channel, and `VYVEBus.recordWrite` / `recordCanonical` are dedupe-ledger calls, NOT publish. So any sibling renderer on the same page wired only to the table-subscribe channel goes stale until the next boot re-runs its loader. PM-618: home (`index.html`) `togglePill` flipped the habit row inline (`renderHabitList()`) and patched the home-state aggregate (`optimisticPatch` → score ring), but the pillar rings (`loadPillarCounts` → `renderPills`) recompute only off `subscribe('daily_habits')` (built for habits.html→home), which a same-page tap never fired — rings stayed stale until reload. Fix: call the sibling loader inline after the local write settles. **Audit when adding any same-page optimistic write:** enumerate every renderer that reads the written table on that page — row list, pillar rings, score ring, count strips, streak bar — and confirm each is retriggered inline (or via an in-page idempotent subscriber per §23.42), independent of the cross-page bus. Second occurrence of the PM-609 class (row flipped, sibling renderer didn't) → promoted to hard rule.
 
 ## 24. Key references, credentials & URLs
 

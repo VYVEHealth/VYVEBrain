@@ -1,3 +1,22 @@
+## PM-618 — fix home habit tap not repainting progress rings until reload (2026-06-15)
+
+Dean: "click a habit, progress doesn't update until I leave the page and come back" — on Home (index.html), tested on his server.url dev-loop iPhone (so PM-609 was already in his shell — not the freeze). Composio GitHub down again → Vault PAT + Git Data API path throughout (§23.27). PM claimed 618 after cross-repo scan (PM-610/611 were taken by VYVEBrain onboarding commits; max-across-both was 617).
+
+### Root cause
+PM-609 fixed the habit *row* flipping instantly (early `renderHabitList()` on the fast Dexie path). But the progress *rings/counters* (`#pills-row`) recompute only via `loadPillarCounts()` → `renderPills()`, which reads Dexie via `allFor(email)`. That recount was wired ONLY to the cross-page `VYVEBus.subscribe('daily_habits', …)` channel (index.html L2846, built for the habits.html→home case). A same-page home tap goes through `togglePill`, which publishes on the **`habit:logged`** channel and calls `VYVEBus.recordWrite('daily_habits', …)` (the dedupe ledger, NOT publish/subscribe) — so the `daily_habits` subscribe never fired from a home tap. The row flipped (inline `renderHabitList()`), `optimisticPatch` updated the home-state aggregate for the score ring, but the pillar rings never recounted until the next boot re-ran `loadPillarCounts()`.
+
+### Fix
+`togglePill` now calls `loadPillarCounts()` (fire-and-forget, try/guarded) immediately after the Dexie write settles — after the `upsert` await in the tick branch and after the `delete` await in the untick branch. `loadPillarCounts` has no in-flight guard and reads Dexie, so re-call is safe; rings recompute within a frame of the local write. Dean confirmed fixed on device.
+
+### Commit
+vyve-site `7cae8af6` — index.html (2× `loadPillarCounts()` + vbb 460) + settings.html (settings-vbb-marker 460) + sw.js (CACHE_NAME `vyve-cache-v2026-06-15-pm618-habit-rings-recount`). Atomic via Git Data API (blobs→tree→commit→ref); §23.30 md5-perfect verify on all 3 = MATCH.
+
+### Delivery
+On main → reaches Dean (server.url) + Android members; NOT iOS 1.7 members until OTA/1.8 (§23.106). Same constraint as PM-609 / PM-601 / PM-575.
+
+### §23 rule
+- **§23.120 (NEW):** A same-page optimistic write must explicitly re-trigger every *sibling* renderer that derives from the written table, not just the primary surface's own renderer. Bus `subscribe(<table>)` channels are CROSS-PAGE (§23.42); a same-page tap that publishes on a *semantic* channel (`habit:logged`, `body:logged`) does NOT fire the `<table>` subscribe channel, and `recordWrite`/`recordCanonical` are dedupe-ledger calls, not publish. So a sibling renderer wired only to the table-subscribe channel goes stale until next boot. Audit when adding any same-page optimistic write: list every renderer that reads the written table (row list, pillar rings, score ring, counters, streak strip) and confirm each is retriggered inline (or via an in-page idempotent subscriber per §23.42), independent of the cross-page bus. Second occurrence of the PM-609 class (row flipped, sibling renderer didn't).
+
 ## PM-617 — Consent-version stamping gap closed: server-side trigger + backfill (2026-06-15)
 
 Follow-on after the PM-616 close. The consent-version-null flag (observed on Azusa's row) fixed properly. Composio still down → Vault PAT path.
