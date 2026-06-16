@@ -13,6 +13,7 @@
 **WARN: posthog-test EF still active-but-retired — delete via dashboard.**
 **WARN: cron jobid 27 `session-publish-hourly` is DISABLED — confirm intentional (live-sessions pipeline).**
 **iOS 1.8 + Android 1.0.7 IN REVIEW (submitted 11 Jun 2026, PM-602). OTA wiring live in both binaries — §23.106 pending first canary push verification (TOP native priority, pre-Sage gate).**
+**PM-631: Partner onboarding JOURNEY now built (closes PM-630's open item). Self-serve 8-step wizard `Test-Site-Finalv3/partner-onboarding.html` (commit 898f0c61) wired to new `partner-onboarding` EF (verify_jwt; start/save/upload-url/submit) + private buckets `partner-docs`/`partner-content`. Magic-link OTP identity; writes onto PM-630 models, no duplication. NOT yet live OTP→submit tested — needs real inbox + live origin.**
 <!--CURRENT_FRONT_END-->
 
 
@@ -356,6 +357,18 @@ This is now a first-class pattern with 9+ catalogues built on it. Edit via Supab
 | `gdpr_export_requests` | Article 15 data-export queue. Walked by `gdpr-export-execute` via `gdpr_export_pick_due()` with `FOR UPDATE SKIP LOCKED`. 1-per-30-days rate limit member-self. |
 | `gdpr_erasure_requests` | Article 17 right-to-be-forgotten queue. 7-day cancellation window via `due_at`. Walked by `gdpr-erase-execute`. |
 
+### Partner Space (PM-630 admin backend + PM-631 self-serve onboarding)
+
+| Table | Purpose |
+|---|---|
+| `partner_partners` | Partner lifecycle/public entity. `status` applied→vetting→interview→contract→onboarding→live→suspended→declined; `pillar` body/mind/connect; `revenue_share_pct` default 30; `slug`,`role_title`,`bio`,`why`,`feel`,`avatar_url`,`verified`,`rating`. **PM-631 added `contact_email`** (partial-unique on `lower()`, NULL allowed) — magic-link OTP identity key for the self-serve wizard; admin Invite path leaves it NULL. |
+| `partner_applications` | Review artefact, 1:1 via `partner_id`. `credentials` jsonb + `reference_contacts` jsonb. **PM-631 uses `credentials` as the self-serve draft store AND final intake bag** (contact, practice, agreement+e-sign, document refs as private-bucket object paths, launch, welcomePost). No `status` column — status lives on `partner_partners`. |
+| `partner_onboarding_progress` | 8 gate booleans in `steps` jsonb + `pct_complete` + `safeguarding_passed`/`gdpr_passed`. **PM-631 added `assessment_score`, `assessment_passed_at`.** `trg_assert_partner_golive` blocks `status→live` until both passes AND pct=100; `trg_sync_partner_onboarding_pct` syncs pct. |
+| `partner_content_items` | Partner videos/sessions. `moderation_status` draft/in_review/flagged/published (§23.122). FK → `calendar_occurrences`/`replay_videos` (rides existing live/replay infra). |
+| `partner_programs`, `partner_community_posts`, `partner_memberships`, `partner_payouts` | Programs (lessons jsonb), community feed, member↔partner joins+engagement segment, payout runs (`run_partner_payouts`). |
+
+**Storage (PM-631):** `partner-docs` (PRIVATE, 15MB, image+pdf — ID/DBS/quals) and `partner-content` (PRIVATE, 500MB, video — starter content). Sensitive docs private-only via EF-issued signed upload URLs; never public, never on `partner_partners`. Profile photo → `avatar_url`.
+
 ### Activity caps (BEFORE INSERT triggers)
 
 | Activity | Cap | Notes |
@@ -460,6 +473,7 @@ Charity + certificate counters stay independently capped at 2/day via `get_chari
 | `off-proxy` | LIVE | Open Food Facts proxy for `log-food.html`. |
 | `broadcast-announcement` | LIVE | Broadcast announcement helper. |
 | `connect-feed-preview` | LIVE | (Listed above.) |
+| `partner-onboarding` | LIVE | **PM-631.** Self-serve partner application backend. `verify_jwt:true`; magic-link OTP identity; actions `start`/`save`/`upload-url`/`submit`. Writes `partner_partners` (status applied), `partner_applications.credentials`, `partner_onboarding_progress` gates+assessment, `partner_content_items` at `in_review`; notifies team via `send-email`. Service-role writes; ownership = `contact_email`==JWT email. |
 
 ### Command Centre Insights + trial conversion (PM-559→594)
 
@@ -1056,6 +1070,10 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 ---
 
 ## 19. Current status
+
+### PM-631 — Partner onboarding JOURNEY built: self-serve wizard + `partner-onboarding` EF (2026-06-16)
+
+Closes the item PM-630 flagged. Rebuilt the provided 8-step prototype as production `Test-Site-Finalv3/partner-onboarding.html` (commit `898f0c61`), wired to a new `partner-onboarding` Edge Function — layered onto PM-630's admin backend, no model duplication. Magic-link OTP identity (`contact_email`==JWT email); server-side save/resume with localStorage fallback (runs offline in preview). Real signed-URL uploads to private `partner-docs`/`partner-content`. Submit writes the partner (status `applied`→admin pipeline), application credentials, gates+assessment, starter videos at `moderation_status='in_review'`, then notifies the team. Migration `partner_onboarding_intake_additive`: `partner_partners.contact_email` + `partner_onboarding_progress.assessment_score`/`assessment_passed_at`. **Decisions:** bank/payout capture dropped (Stripe Connect at go-live); agreement copy + assessment questions placeholder pending Lewis/Phil (HAVEN-style gate). **Verified:** write-replay constraint-valid, EF ACTIVE, wizard md5-matched. **NOT yet live-tested end-to-end** — OTP→submit needs a real inbox + live origin; Dean to run first-use check. Next: member-facing in-app Partner Space (no demo file yet); "Become a partner" CTA → `/partner-onboarding.html`; admin Invite to optionally set `contact_email` + dedupe.
 
 ### PM-630 — Partner Space: admin backend live on vyve-command-centre (2026-06-16)
 
@@ -1721,6 +1739,10 @@ A paid member who completed the questionnaire must always get an account. The fu
 #### §23.120 — A same-page optimistic write must re-trigger EVERY sibling renderer that derives from the written table, not just the primary surface's own renderer (PM-618 — HARD RULE)
 
 Bus `subscribe('<table>')` channels are CROSS-PAGE by construction (§23.42). A same-page tap that publishes on a *semantic* channel (`habit:logged`, `body:logged`, `mind:logged`) does NOT fire the `<table>` subscribe channel, and `VYVEBus.recordWrite` / `recordCanonical` are dedupe-ledger calls, NOT publish. So any sibling renderer on the same page wired only to the table-subscribe channel goes stale until the next boot re-runs its loader. PM-618: home (`index.html`) `togglePill` flipped the habit row inline (`renderHabitList()`) and patched the home-state aggregate (`optimisticPatch` → score ring), but the pillar rings (`loadPillarCounts` → `renderPills`) recompute only off `subscribe('daily_habits')` (built for habits.html→home), which a same-page tap never fired — rings stayed stale until reload. Fix: call the sibling loader inline after the local write settles. **Audit when adding any same-page optimistic write:** enumerate every renderer that reads the written table on that page — row list, pillar rings, score ring, count strips, streak bar — and confirm each is retriggered inline (or via an in-page idempotent subscriber per §23.42), independent of the cross-page bus. Second occurrence of the PM-609 class (row flipped, sibling renderer didn't) → promoted to hard rule.
+
+#### §23.122 — `partner_content_items.moderation_status` defaults to `'draft'` but the admin moderation queue counts only `'in_review'` (PM-631 — HARD RULE)
+
+The table default is `'draft'`; the Partner Space admin moderation queue (`vyve-command-centre/partners.html`) counts/shows ONLY `moderation_status='in_review'`. Anything written at the default is invisible to moderation — never reviewed, never published. Any writer into `partner_content_items` intending content for review MUST set `'in_review'` explicitly; the `partner-onboarding` EF does. Lifecycle: draft → in_review → published/flagged. (Sibling to PM-630's §23.121 modal-stacking rule — see changelog.)
 
 ## 24. Key references, credentials & URLs
 

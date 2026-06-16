@@ -1,3 +1,41 @@
+## PM-631 — Partner onboarding JOURNEY built: self-serve wizard + partner-onboarding EF + private buckets (2026-06-16)
+
+Built the partner self-serve onboarding journey PM-630 flagged as "NOT YET BUILT (next session)". Composio GitHub still down → Vault PAT + Git Data API throughout (§23.27). Brain HEAD moved PM-618→630 mid-session (parallel admin-backend session) — re-fetched fresh before editing per §23.26, avoided clobber. PM claim: max-across-repos 630 → this brain commit PM-631. (Test-Site wizard commit was labelled PM-619, claimed before the namespace re-check — non-monotonic but unique across repos, harmless.)
+
+### Built
+Rebuilt the provided prototype (`VYVE-Partner-Onboarding-Journey.html`) 1:1 — same tokens/icons/rail/8 steps/validation/file chips/watch-gate/retakeable assessment/live phone preview/submission summary — as production `Test-Site-Finalv3/partner-onboarding.html` (commit `898f0c61`, md5-verified). Mock layer replaced with the real backend; layered onto PM-630 models, NO duplication.
+
+### partner-onboarding EF (v1, verify_jwt:true)
+Action-routed `start | save | upload-url | submit`. Identity = magic-link OTP; ownership `partner_partners.contact_email == JWT email`. Service-role writes.
+- `start`: create-or-resume. Inserts `partner_partners` (status `applied`, pillar mapped physical→body/mental→mind/social→connect, interim `role_title`=specialism, generated slug, `contact_email`), `partner_applications` (credentials seed), `partner_onboarding_progress` (pct 12). Resume returns stored credentials+progress.
+- `save`: debounced merge of `credentials` (formFields+pillar+references), `steps` gates, `pct_complete`, assessment (passes/score/`assessment_passed_at`).
+- `upload-url`: `createSignedUploadUrl` into `partner-docs` (doc) / `partner-content` (content); path `{partner_id}/{slot}/{uuid}-{file}`.
+- `submit`: finalises `partner_partners` (role_title/bio/why/feel/avatar_url), writes final `credentials` (agreement+e-sign+signedAt, doc object-paths, launch, welcomePost) + `reference_contacts`, inserts `partner_content_items` per starter video at `in_review`, flips 8 gates + pct 100, notifies team via `send-email` (service-key bearer, non-fatal). Leaves `status='applied'` — admin advances pipeline; `trg_assert_partner_golive` still enforces go-live gate.
+
+### Migration `partner_onboarding_intake_additive`
+- `partner_partners.contact_email` + partial-unique on `lower()` WHERE NOT NULL — OTP identity/resume/dedupe key. Admin Invite path (PM-622) leaves NULL, no conflict.
+- `partner_onboarding_progress.assessment_score numeric` + `assessment_passed_at timestamptz` — PM-630 had pass/fail booleans only; business rule needs score+timestamp.
+
+### Storage
+`partner-docs` (private,15MB,image+pdf), `partner-content` (private,500MB,video). Sensitive docs private-only via signed upload URLs.
+
+### Decisions
+- Bank/payout capture DROPPED from wizard (Stripe Connect at go-live; `partner_payouts` = runs not bank details; raw sort code/acct pre-approval = needless GDPR/PCI liability; prototype had them optional → no loss).
+- Agreement copy + safeguarding/GDPR assessment questions placeholder behind visible "draft pending VYVE sign-off" — Lewis owns agreement, Phil owns safeguarding (HAVEN-style gate).
+- Wizard localStorage offline fallback (testable in preview); OTP soft-gates after step 1 (Skip allowed), hard-gates at submit.
+
+### Verified / not
+Start+submit write-replay constraint-valid (status→pipeline, content→moderation queue, assessment persisted); sentinel cleaned. EF ACTIVE v1. Wizard md5-matched on Test-Site. **NOT yet exercised live end-to-end** — OTP→submit needs real inbox + live origin (sandbox egress blocks supabase.co). Dean to run first-use OTP→submit→pipeline check.
+
+### §23.122 (NEW — HARD)
+`partner_content_items.moderation_status` defaults `'draft'` but admin queue counts only `'in_review'`; default-written content is invisible to moderation. Writers intending review MUST set `in_review`. EF does.
+
+### Commits
+Test-Site-Finalv3 `898f0c61` (PM-619 label) — partner-onboarding.html. Supabase: migration `partner_onboarding_intake_additive`; EF `partner-onboarding` v1; buckets `partner-docs`,`partner-content`. VYVEBrain PM-631 (this).
+
+### Next
+Member-facing in-app Partner Space surface (no demo file); "Become a partner" CTA → `/partner-onboarding.html`; admin Invite to optionally capture `contact_email` + dedupe vs self-serve; programs sub-tab + curriculum persistence (from PM-630).
+
 ## PM-630 — Partner Space: admin backend built + live on vyve-command-centre (2026-06-16)
 
 Long session. Partner Space admin console built from scratch as a standalone page (`partners.html`) on `admin.vyvehealth.co.uk`, matching Lewis's demo design system exactly (dark `#0d1117`, mint `#5ec4b0`, left sidebar, blur topbar). All wired to live Supabase data. Composio GitHub down → Vault PAT path throughout.
