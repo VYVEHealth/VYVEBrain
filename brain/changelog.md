@@ -1,3 +1,17 @@
+## PM-642 — Team App Phase 3: 3-source calendar union read + role gating (2026-06-16)
+
+CC commit `5cbcda4`. Single file: `pages/calendar.html`.
+
+**Source swap:** `cc_sessions` replaced with `calendar_occurrences` as the live-session feed. Query selects `id,name,session_title,starts_at,ends_at,category,type,location_online,location_venue,live_url,cancelled_at,active` filtered by `active=true` and `cancelled_at IS NULL`. `parseSessionStart()` updated to use `starts_at` (full timestamptz) instead of `session_date+'T10:00:00'`. Session title resolved as `session_title || name || 'Session'`. `live_url` mapped to `meet` for the Meet icon in all views. End time uses `ends_at` properly.
+
+**Session date filter fixed:** was comparing `s.session_date === key` (string match); now compares `new Date(s.starts_at).toISOString().slice(0,10) === key`.
+
+**Role gating:** `state.isAdmin` added; set in `boot()` from `window.VYVE_USER.role`. "New event" button hidden by default, shown for admins. Delete button in modal gated to `state.isAdmin` (previously gated to `owner_email === state.me` — team members had no delete anyway via RLS, but now also hidden client-side).
+
+**Legend:** "Team event" → "Meeting" for clarity.
+
+**3-source union is now complete:** `cc_calendar_events` (team meetings, RW for admins) + `calendar_occurrences` (live sessions, RO) union-at-read, colour-coded (teal=meeting, gold=session, coral=private).
+
 ## PM-641 — Team App Phase 2: auth role gating + task attachments (2026-06-16)
 
 CC commit `50bf8f5`. No portal (vyve-site) changes.
