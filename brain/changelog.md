@@ -1,3 +1,19 @@
+## PM-641 — Team App Phase 2: auth role gating + task attachments (2026-06-16)
+
+CC commit `50bf8f5`. No portal (vyve-site) changes.
+
+**`lib/auth.js`** — `checkAdmin()` replaced: now calls `is_admin_or_team()` (broader gate) then `is_admin()` to determine specific role; returns `{ allowed, role }` instead of a boolean. `showApp()` accepts `role` arg, broadcasts it on `vyve:user` CustomEvent detail and sets `window.VYVE_USER = { email, role }` for synchronous access by page scripts.
+
+**`pages/tasks.html`** — role-scoped controls wired:
+- `state.isAdmin` flag added; set in `boot()` from `window.VYVE_USER.role`.
+- "New task" button hidden by default (`style="display:none"`), shown in `boot()` if `isAdmin`.
+- Delete button in editor modal gated: `isEdit && state.isAdmin` (team members see no delete).
+- **Attachment section** added to editor modal (edit mode only): lists `cc_task_attachments` rows for the task; download via signed URL from `cc-task-docs-url` EF; delete (admin only) via same EF + row removal; upload via signed PUT to `cc-task-docs` bucket then `cc_task_attachments` INSERT.
+
+**`cc-task-docs-url` EF v1** — ACTIVE. verify_jwt: true. Three actions: `upload` (returns signed PUT URL + storage_path), `download` (returns signed GET URL, content-disposition:attachment), `delete` (admin only — removes Storage object + attachment row). Storage path pattern: `<task_id>/<8-char-rand>/<file_name>`.
+
+**`cc-task-docs` Storage bucket** — private, no public access. Storage RLS: upload/download → `is_admin_or_team()`, delete → `is_admin()`.
+
 ## PM-640 — Team App Phase 1 — Foundation (2026-06-16)
 
 Backend-only. No UI shipped.
