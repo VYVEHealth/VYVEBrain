@@ -1,3 +1,55 @@
+## PM-630 — Partner Space: admin backend built + live on vyve-command-centre (2026-06-16)
+
+Long session. Partner Space admin console built from scratch as a standalone page (`partners.html`) on `admin.vyvehealth.co.uk`, matching Lewis's demo design system exactly (dark `#0d1117`, mint `#5ec4b0`, left sidebar, blur topbar). All wired to live Supabase data. Composio GitHub down → Vault PAT path throughout.
+
+### Schema shipped (PM-618 base, all via Supabase MCP migrations)
+8 new tables: `partner_partners`, `partner_applications`, `partner_content_items`, `partner_programs`, `partner_community_posts`, `partner_memberships`, `partner_onboarding_progress`, `partner_payouts`. All RLS-enabled. Go-live gate trigger (`trg_assert_partner_golive`) blocks `status→live` until `safeguarding_passed AND gdpr_passed AND pct_complete=100`. Engagement segment refresh fn (`refresh_partner_engagement_segments`). Onboarding pct sync trigger (`trg_sync_partner_onboarding_pct`). Payout ledger fn (`run_partner_payouts`). Mock seed data inserted then wiped clean (all tables at 0 rows).
+
+### Admin UI shipped
+`partners.html` (PM-620, standalone, self-contained, ~90KB):
+- 7 views: Overview (KPIs, pipeline attention, top partners, activity feed), Pipeline & Approvals (kanban Applied→Vetting→Interview→Contract→Onboarding, click-to-review panel, Advance/Decline writes to DB), Partners (directory table with filters, detail drill-in with 5 sub-tabs: Overview/Content/Members/Revenue/Settings), Content & Moderation (queue/flagged/library/programs with Approve/Return), Onboarding (curriculum reference + in-progress tracker), Analytics & Engagement (pillar split, engagement leaderboard), Revenue & Payouts (ledger + Run payouts + Mark paid)
+- Invite partner modal (PM-622→628): full form writing to `partner_partners` + `partner_applications`, lands in pipeline kanban immediately. Modal uses `document.body.appendChild` pattern to escape flex stacking context (§23.121).
+- Add applicant (pipeline page) wired to same invite modal
+- Request more info: logs note to `partner_applications.notes`
+- Edit curriculum: editable 8-step modal
+- Device preview panel: renders member view of any live partner
+
+### Sidebar integration (PM-621)
+`vyve-command-centre` sidebar has "Partner Space" section with single "Partner Management" link → `/partners.html`. Old 7 hash-route pages (partner-overview, partner-pipeline etc) still exist in repo but are unlinked — delete on CC overhaul.
+
+### Key architecture decisions
+- Palette: command-centre existing tokens, NOT the prototype's third dark theme
+- Pillars stored as `body/mind/connect` (VYVE canonical), not `physical/mental/social`
+- Live sessions and videos ride `calendar_occurrences`/`replay_videos` via FK — no parallel infra
+- Revenue attribution: engagement-weighted split (sessions attended). Lewis must confirm before Revenue view ships real numbers to partners
+- Go-live: same duty-of-care bar as HAVEN (§23.84). Phil/Lewis own human sign-off
+- Modal stacking context fix: `document.body.appendChild(overlay)` before showing; z-index:99999. All new modals use this pattern (§23.121)
+
+### Still missing from Lewis's original brief
+- Member-facing Partner Space (in-app): `VYVE-Partner-Space-Demo.html` not provided — member browse/join/feed/library surface not built
+- Partner onboarding journey: `VYVE-Partner-Onboarding-Journey.html` provided at session end — 8-step self-serve flow for incoming partners — NOT YET BUILT (next session)
+- Impersonate/manage-as-partner capability
+- Programs sub-tab (shows "coming soon")
+- Curriculum edits don't persist to DB yet
+
+### §23 rules
+- **§23.121 (NEW):** Any modal using `position:fixed` that is a descendant of a `display:flex` or `display:grid` container MUST be appended to `document.body` at open time (`document.body.appendChild(el)`) before setting display. CSS stacking contexts created by flex/grid trap fixed children regardless of z-index. This is a browser spec behaviour, not a bug.
+
+### Commits (vyve-command-centre)
+PM-618 `77e480a6` — 7 partner pages + sidebar section
+PM-619 `90e3ab68` — Partners top-nav tab (later removed)
+PM-620 `6aeda22b` — standalone partners.html
+PM-621 `b9b1ef8c` — sidebar cleanup (single link to /partners.html)
+PM-622 `9854d433` — invite partner modal
+PM-623 `62004c45` — overlay z-index fix attempt
+PM-624 `0b6e7326` — overlay outside #app attempt
+PM-625 `df08102b` — addEventListener fix
+PM-626 `16d1c3df` — topbar z-index fix
+PM-627 `ae2b7356` — cssText nuclear fix
+PM-628 `6117c69a` — body.appendChild fix (working solution)
+PM-629 `b7b8644c` — all stub buttons wired
+PM-630 `bb2cd243` — syntax error fix (literal newline in string)
+
 ## PM-618 — fix home habit tap not repainting progress rings until reload (2026-06-15)
 
 Dean: "click a habit, progress doesn't update until I leave the page and come back" — on Home (index.html), tested on his server.url dev-loop iPhone (so PM-609 was already in his shell — not the freeze). Composio GitHub down again → Vault PAT + Git Data API path throughout (§23.27). PM claimed 618 after cross-repo scan (PM-610/611 were taken by VYVEBrain onboarding commits; max-across-both was 617).

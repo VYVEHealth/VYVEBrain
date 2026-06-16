@@ -1,3 +1,13 @@
+
+## Partner Space — next session
+
+- **PF-NEXT-1: Partner onboarding journey** — build `VYVE-Partner-Onboarding-Journey.html` as standalone page. 8-step self-serve flow (About you, Verification/DBS, References, Agreement, Video modules, Safeguarding assessment, GDPR assessment, Profile setup). Writes to `partner_partners` + `partner_applications` + `partner_onboarding_progress`. Demo file in hand.
+- **PF-NEXT-2: Member-facing Partner Space** — blocked on `VYVE-Partner-Space-Demo.html` from Lewis. Member browse partners, join space, community feed, live sessions, on-demand library.
+- **PF-NEXT-3: Curriculum persistence** — edit curriculum modal saves to DB (currently display-only).
+- **PF-NEXT-4: Programs sub-tab** — partner detail programs tab shows "coming soon".
+- **PF-NEXT-5: Revenue attribution sign-off** — Lewis to confirm engagement-weighted split before Revenue view ships real numbers.
+- **PF-NEXT-6: Command Centre overhaul** — move main CC nav from top tabs to left sidebar; align design with partners.html system.
+
 ## SHIPPED PM-559 — App Health Dashboard v1
 ### Live at admin.vyvehealth.co.uk/#/app-health (2026-06-08)
 
