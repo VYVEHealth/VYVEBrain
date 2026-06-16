@@ -1,3 +1,36 @@
+## PM-633 — Partner referral attribution + Stripe webhook v10 (2026-06-16)
+
+Completed the partner revenue loop. stripe-webhook EF v10 live.
+
+### Schema changes (PM-632 migration)
+- `partner_partners.stripe_coupon_code` renamed to `stripe_promo_code`
+- `partner_partners.human_promo_code` added (display only)
+- `partner_partners.revenue_share_pct` default updated to 50%
+- `partner_memberships` gained: `referred` bool, `account_type` (b2c/b2c), `subscription_value` numeric, `stripe_customer_id`, `stripe_subscription_id`, `attribution_date`
+- `run_partner_payouts(period)` function rebuilt: counts referred=true, account_type=b2c, subscription_status=active members only. gross = sum(subscription_value), payout = gross × revenue_share_pct. Monthly cadence.
+- `compute_partner_monthly_payout(partner_id, period)` helper fn added.
+
+### stripe-webhook EF v10 (PM-633)
+Added `handlePartnerReferral` to `customer.subscription.created` handler:
+- Reads `discount.coupon.id` off the subscription object
+- Looks up `partner_partners.stripe_promo_code` for a match
+- Only attributes to `status='live'` partners
+- Creates `partner_memberships` row: referred=true, account_type=b2c, subscription_value=20
+- Attribution errors never fail the webhook — raised as platform_alerts instead
+- B2B members excluded from partner revenue share entirely
+
+### Coupon code convention (§23.122 — new hard rule)
+Partner codes are Stripe Coupons with a MANUALLY SET readable coupon ID (e.g. MAYA, OLU50). NOT promotion codes — no promotion code objects needed. The coupon ID IS the partner code. Stored in `partner_partners.stripe_promo_code`. This is the permanent standard going forward.
+
+### Revenue model locked
+- B2C only: £20/month × 50% = £10/member/month to partner
+- B2B excluded
+- Monthly payouts, referred active members only
+- Attribution permanent (referred flag set at first subscription.created, not recalculated)
+
+### §23 rule
+- **§23.122 (NEW):** VYVE partner referral codes are Stripe Coupons with manually-set readable IDs (e.g. MAYA, OLU50). Never use Stripe Promotion Code objects for partner attribution — one object only. Coupon ID stored in `partner_partners.stripe_promo_code`. stripe-webhook reads `discount.coupon.id` on `customer.subscription.created`.
+
 ## PM-631 — Partner onboarding JOURNEY built: self-serve wizard + partner-onboarding EF + private buckets (2026-06-16)
 
 Built the partner self-serve onboarding journey PM-630 flagged as "NOT YET BUILT (next session)". Composio GitHub still down → Vault PAT + Git Data API throughout (§23.27). Brain HEAD moved PM-618→630 mid-session (parallel admin-backend session) — re-fetched fresh before editing per §23.26, avoided clobber. PM claim: max-across-repos 630 → this brain commit PM-631. (Test-Site wizard commit was labelled PM-619, claimed before the namespace re-check — non-monotonic but unique across repos, harmless.)

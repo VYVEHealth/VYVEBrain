@@ -5,7 +5,7 @@
 - **PF-NEXT-2: Member-facing Partner Space** — blocked on `VYVE-Partner-Space-Demo.html` from Lewis. Member browse partners, join space, community feed, live sessions, on-demand library.
 - **PF-NEXT-3: Curriculum persistence** — edit curriculum modal saves to DB (currently display-only).
 - **PF-NEXT-4: Programs sub-tab** — partner detail programs tab shows "coming soon".
-- **PF-NEXT-5: Revenue attribution sign-off** — Lewis to confirm engagement-weighted split before Revenue view ships real numbers.
+- **PF-NEXT-5: Revenue attribution** — DONE. 50% B2C referred members only, monthly, via Stripe coupon ID matching. stripe-webhook EF v10 live.
 - **PF-NEXT-6: Command Centre overhaul** — move main CC nav from top tabs to left sidebar; align design with partners.html system.
 
 ## SHIPPED PM-559 — App Health Dashboard v1
