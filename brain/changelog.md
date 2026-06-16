@@ -1,3 +1,20 @@
+## PM-643 — Team App Phase 4: session scheduler (2026-06-16)
+
+CC commit `ebfc4c8`. Single file: `pages/sessions.html` (full rewrite). DB: `calendar_occurrences` admin write RLS added.
+
+**`calendar_occurrences` write RLS** — 3 new policies: INSERT/UPDATE/DELETE → `is_admin()`. SELECT unchanged (open to all authenticated).
+
+**`pages/sessions.html` rebuilt** — replaces the old localStorage/VYVE_MAKE stub entirely. Now drives `calendar_occurrences` directly via Supabase client.
+
+- **3-tab list** — Upcoming (starts_at ≥ now, active, not cancelled), Past (starts_at < now, not cancelled, limit 100), Cancelled (cancelled_at IS NOT NULL). Live KPI strip.
+- **Admin controls** — "Schedule session" button (hidden for team), Edit button per row, Cancel button per row (sets `cancelled_at`, keeps row). Hard delete behind a secondary confirm with explicit "test data only" warning.
+- **Scheduler modal** — Fields: title (→ both `name` + `session_title`), category, type, starts_at, ends_at, host_name, host_role, location_online, location_venue, live_url, session_description, notes, source_catalogue_id.
+- **Catalogue pre-fill** — dropdown of `service_catalogue` live_session rows auto-fills category, type, host, and calculates end time from `duration_minutes` when start is set.
+- **Double confirm gate** — on new sessions: (1) modal-level banner warning "member-facing publish"; (2) JS `confirm()` showing title + formatted datetime before INSERT fires. Edit saves without second confirm (already live, editing is expected).
+- **Team members** — read-only list; no Schedule/Edit/Cancel buttons.
+
+**Gotcha:** `sessions.html` was previously a localStorage stub (VYVE_MAKE pattern) with no Supabase connection. Not relevant to member portal — safe to replace wholesale.
+
 ## PM-642 — Team App Phase 3: 3-source calendar union read + role gating (2026-06-16)
 
 CC commit `5cbcda4`. Single file: `pages/calendar.html`.

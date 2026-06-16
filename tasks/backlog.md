@@ -9,7 +9,7 @@ IA + spec done as artefacts (`CC-information-architecture.md`, `CC-team-app-spec
 1. ~~**Foundation** — `admin_users` roles (admin/team), `is_team()` SECURITY DEFINER capability, RLS on `cc_tasks` / `cc_calendar_events` / new `cc_task_attachments`.~~ **SHIPPED PM-640 (2026-06-16)**
 2. ~~**Tasks** — shared-list UI + per-assignee completion (`completed_at`/`stage=done`) + `cc_task_attachments` table + private `cc-task-docs` bucket + signed upload/download EF (partner-docs/partner-file-url pattern).~~ **SHIPPED PM-641 (2026-06-16)**
 3. ~~**Calendar** — unified 3-source read view (`cc_calendar_events` + `calendar_occurrences`, union-at-read, colour by `source`) + meeting create/edit.~~ **SHIPPED PM-642 (2026-06-16)**
-4. **Scheduler** — `calendar_occurrences` write form, capability-gated (admin + `lives`), confirm-step (member-facing publish).
+4. ~~**Scheduler** — `calendar_occurrences` write form, capability-gated (admin + `lives`), confirm-step (member-facing publish).~~ **SHIPPED PM-643 (2026-06-16)**
 5. **Wrap** — deferred until content signed off. 2nd Capacitor binary off `vyve-capacitor`, own bundle id, points at role-gated CC, TestFlight internal (~6 emails).
 
 Open (non-blocking): app name/bundle id, team route/subdomain (only matters at wrap), scheduler capability holders, gcal 2-way sync (lean internal-only v1), meet_url auto-gen vs paste (lean paste v1).
