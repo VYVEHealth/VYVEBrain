@@ -1,3 +1,19 @@
+## PM-644/645/646 — CC shell layout: persistent left sidebar + topnav fix + dark mode (2026-06-17)
+
+Three CC commits: `73b6f18` (PM-644), `07732e3` (PM-645), `83786d9` (PM-646).
+
+**PM-644 — Persistent left sidebar** (`assets/shell.css`): `#app.ready` → `display:flex`. Sidebar `transform:translateX(0)` always on desktop (no `.open` needed). `topnav-tabs` hidden permanently. `main.main` flex:1. Mobile ≤900px: sidebar reverts to slide-in drawer.
+
+**PM-645 — Topnav fix** (`assets/shell.css`): Topnav was only spanning the sidebar width because it was a flex sibling of `aside` + `main`. Added `margin-left:280px` as interim fix (superseded by PM-646). `topnav-tools` `margin-left:auto` pushes search+avatar to far right.
+
+**PM-646 — Correct layout + dark mode** (`index.html`, `assets/shell.css`, `assets/tokens.css`, `pages/settings.html`):
+- `index.html`: wrapped `<header.topnav>` + `<main>` in `<div class="app-body">` (flex column). Added theme boot script in `<head>` (reads `vyve-cc-theme` from localStorage, sets `data-theme` before first paint, avoids FOUC). Added `window.VYVE_THEME` helper (`get()`/`set(mode)`).
+- `shell.css`: `.app-body { display:flex; flex-direction:column; flex:1 }`. Topnav margin-left removed (now correctly inside app-body). `main.main` margin-left removed.
+- `tokens.css`: `@media (prefers-color-scheme: dark)` block added — applies dark tokens when `html` has no explicit `data-theme` attribute. System preference respected by default.
+- `settings.html`: "Appearance" card added at top with Light / System / Dark segmented toggle. Wired to `VYVE_THEME.set()`. Persists to localStorage.
+
+**Gotcha:** `#app` flex children must be sidebar | app-body-column — topnav as a direct flex sibling of sidebar caused the header to only span sidebar width.
+
 ## PM-643 — Team App Phase 4: session scheduler (2026-06-16)
 
 CC commit `ebfc4c8`. Single file: `pages/sessions.html` (full rewrite). DB: `calendar_occurrences` admin write RLS added.
