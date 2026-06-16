@@ -14,6 +14,7 @@
 **WARN: cron jobid 27 `session-publish-hourly` is DISABLED — confirm intentional (live-sessions pipeline).**
 **iOS 1.8 + Android 1.0.7 IN REVIEW (submitted 11 Jun 2026, PM-602). OTA wiring live in both binaries — §23.106 pending first canary push verification (TOP native priority, pre-Sage gate).**
 **PM-631: Partner onboarding JOURNEY now built (closes PM-630's open item). Self-serve 8-step wizard `Test-Site-Finalv3/partner-onboarding.html` (commit 898f0c61) wired to new `partner-onboarding` EF (verify_jwt; start/save/upload-url/submit) + private buckets `partner-docs`/`partner-content`. Public no-login flow (EF verify_jwt:false; draft keyed by unguessable `partner_id`; **PM-632 removed the OTP/magic-link step entirely** — no email verification). Writes onto PM-630 models, no duplication.**
+**PM-637: partner onboarding polished — verification trimmed to qualifications+references (Photo ID & DBS removed, PM-634), free step navigation (completeness gated only at Submit), e-sign date auto-stamped, profile photo preview fixed. New `partner-file-url` EF (admin-gated signed download) + Download button in CC content queue (PM-636) so admins pull partner videos to their Mac to run live sessions.**
 <!--CURRENT_FRONT_END-->
 
 
@@ -367,7 +368,7 @@ This is now a first-class pattern with 9+ catalogues built on it. Edit via Supab
 | `partner_content_items` | Partner videos/sessions. `moderation_status` draft/in_review/flagged/published (§23.122). FK → `calendar_occurrences`/`replay_videos` (rides existing live/replay infra). |
 | `partner_programs`, `partner_community_posts`, `partner_memberships`, `partner_payouts` | Programs (lessons jsonb), community feed, member↔partner joins+engagement segment, payout runs (`run_partner_payouts`). |
 
-**Storage (PM-631):** `partner-docs` (PRIVATE, 15MB, image+pdf — ID/DBS/quals) and `partner-content` (PRIVATE, 500MB, video — starter content). Sensitive docs private-only via EF-issued signed upload URLs; never public, never on `partner_partners`. Profile photo → `avatar_url`.
+**Storage (PM-631):** `partner-docs` (PRIVATE, 15MB, image+pdf — qualifications + profile photo; Photo ID & DBS removed PM-634) and `partner-content` (PRIVATE, 500MB, video — starter content). Sensitive docs private-only via EF-issued signed upload URLs; never public, never on `partner_partners`. Profile photo → `avatar_url`.
 
 ### Activity caps (BEFORE INSERT triggers)
 
@@ -474,6 +475,7 @@ Charity + certificate counters stay independently capped at 2/day via `get_chari
 | `broadcast-announcement` | LIVE | Broadcast announcement helper. |
 | `connect-feed-preview` | LIVE | (Listed above.) |
 | `partner-onboarding` | LIVE | **PM-631.** Self-serve partner application backend. **public** (`verify_jwt:false`, same posture as member onboarding); draft keyed by unguessable `partner_id` (no login); actions `start`/`save`/`upload-url`/`submit`. Writes `partner_partners` (status applied), `partner_applications.credentials`, `partner_onboarding_progress` gates+assessment, `partner_content_items` at `in_review`; notifies team via `send-email`. Service-role writes; PM-632: no auth, draft is a capability token. |
+| `partner-file-url` | LIVE | **PM-636.** Admin-gated (`verify_jwt:true`, caller in `admin_users` + `active`) signed-DOWNLOAD url (5-min, content-disposition attachment) for `partner-content`/`partner-docs` objects. Powers the Download button in CC `partners.html` content queue — admins pull partner videos to their Mac to run live sessions. |
 
 ### Command Centre Insights + trial conversion (PM-559→594)
 
@@ -1070,6 +1072,10 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 ---
 
 ## 19. Current status
+
+### PM-637 — Partner onboarding polish + admin file retrieval (2026-06-16)
+
+PM-634: removed Photo ID + DBS from verification (now qualifications + references only); non-linear navigation — jump to any step, "Continue" never blocks, completeness enforced once at Submit (`isStepComplete`), rail shows per-section completion + %-of-8-done. PM-635: e-sign date auto-stamps today (read-only, no picker); profile photo renders as `<img>` in the phone preview (was a CSS background that didn't show). PM-636: new `partner-file-url` EF (admin-gated signed download) + Download button on CC content items → admins pull partner videos to their Mac to run live sessions; no transcode/streaming pipeline (not needed for this flow). Commits: Test-Site `280b88f5`/`f8007951`, CC `2ca57a41`.
 
 ### PM-631 — Partner onboarding JOURNEY built: self-serve wizard + `partner-onboarding` EF (2026-06-16)
 

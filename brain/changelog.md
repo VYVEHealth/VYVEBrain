@@ -1,3 +1,15 @@
+## PM-637 — Partner onboarding polish (PM-634/635) + admin file retrieval (PM-636) (2026-06-16)
+
+Continued same session after PM-632. Composio GitHub down → Vault PAT + Git Data API throughout.
+
+**PM-634 (Test-Site `280b88f5`) — verification trim + free navigation.** Removed Photo ID and DBS/background-check uploads from step 2; verification now collects professional qualifications (required), governing body/membership (optional), two references (required). Overview flow + "what we collect" checklist + submission record/summary updated; `documents` payload now `{qualifications, profilePhoto}`. Navigation made non-linear: rail jumps to ANY step, "Continue" no longer hard-blocks, rail shows a green check per *complete* section and the % bar reflects completed-count (new `isStepComplete(i)`). Completeness enforced once, at Submit — `submitJourney` checks all 8 steps, jumps to the first incomplete, flags its fields, toasts which sections remain.
+
+**PM-635 (Test-Site `f8007951`) — two live-test fixes.** E-sign date auto-stamps today + read-only (no picker). Profile photo renders as an `<img>` in the phone preview (was a CSS `background-image` that didn't display; matched the upload chip which used `<img>` reliably).
+
+**PM-636 (CC `2ca57a41`) — admin file retrieval.** New EF `partner-file-url` (verify_jwt:true; admin-gated: caller's email in `admin_users` with `active`) returns a 5-min signed DOWNLOAD url (content-disposition attachment) for `partner-content`/`partner-docs`. Download button added to `partners.html` content items (queue + library); `downloadPartnerFile()` calls the EF with the item's `media_url`, saves to the admin's machine. Workflow: partner uploads starter video → private `partner-content` → admin downloads from Content & Moderation to run the live session off their Mac. No transcode/streaming pipeline (still not needed for this flow).
+
+Verified: wizard JS syntax clean, all pushes md5-matched, both EFs ACTIVE. Live no-auth flow + uploads + downloads not yet browser-tested from this sandbox (can't reach supabase.co); Dean testing on live origin.
+
 ## PM-633 — Partner referral attribution + Stripe webhook v10 (2026-06-16)
 
 Completed the partner revenue loop. stripe-webhook EF v10 live.
