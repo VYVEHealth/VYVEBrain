@@ -1,3 +1,24 @@
+## PM-640 — Team App Phase 1 — Foundation (2026-06-16)
+
+Backend-only. No UI shipped.
+
+**`admin_users` role constraint** — extended existing `admin_users_role_check` to include `'team'` (full set now: admin / viewer / coach_full / coach_exercise / coach_mental / team).
+
+**New SECURITY DEFINER RPCs:**
+- `is_team()` — true if caller is in `admin_users` with `active=true AND role='team'`
+- `is_admin_or_team()` — true if caller is in `admin_users` with `active=true AND role IN ('admin','team')`. Used as the permissive read gate across Tasks + Calendar + Attachments.
+
+**RLS surgery on `cc_tasks`** — dropped old `cc_team_only` ALL policy; replaced with 4 per-cmd policies: SELECT → `is_admin_or_team()`; INSERT → `is_admin()`; UPDATE → `is_admin() OR (is_team() AND assignee = auth.email())`; DELETE → `is_admin()`.
+
+**RLS surgery on `cc_calendar_events`** — same DROP; replaced with 4 policies: SELECT → `is_admin_or_team()`; INSERT/UPDATE/DELETE → `is_admin()`. Team members read-only on calendar; write surface comes in Phase 4 (scheduler).
+
+**New table `cc_task_attachments`** — `id UUID PK`, `task_id UUID FK cc_tasks ON DELETE CASCADE`, `uploaded_by TEXT`, `file_name TEXT`, `storage_path TEXT`, `file_size BIGINT`, `mime_type TEXT`, `created_at TIMESTAMPTZ`. RLS: SELECT/INSERT → `is_admin_or_team()`; DELETE → `is_admin() OR (is_team() AND uploaded_by = auth.email())`. Storage bucket + signed-URL EF deferred to Phase 2.
+
+**`admin_users` roster** — 5 team members added (role='team'): Calum Denham, Cole Patterson, Heidi Khoshtaghaza-Hay, Phil Hurwood, Ryan Hewitt.
+
+**Gotcha banked:** existing `admin_users_role_check` constraint predated 'team' role (had admin/viewer/coach_full/coach_exercise/coach_mental only) — required drop+recreate, not ADD CONSTRAINT.
+
+
 ## PM-639 — Command Centre IA reorg (4 domains) + Team App spec (2026-06-16)
 
 Talk-first IA session — **no code shipped**, decisions locked for build (Sonnet to continue). Artefacts: `CC-information-architecture.md` + `CC-team-app-spec.md`.

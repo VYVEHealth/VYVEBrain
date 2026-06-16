@@ -6,7 +6,7 @@ IA + spec done as artefacts (`CC-information-architecture.md`, `CC-team-app-spec
 **Phase A — CC nav reorg (4 domains):** restructure `assets/sidebar-config.js` to Run the Business / Analytics / Members / Partners; retire the duplicate `VYVE_NAV_TOP` layer. Cross-domain moves: App Health Delivery→Analytics, Broadcast Delivery→Members, Active Users Org→Members. KILL old Commercial Partners skeleton, Performance, Brand, the 7 orphan `pages/partner-*.html` (grep-confirm first), root `Dashboard.html` (verify first). Reconcile Partner Space onto the `partners.html` monolith.
 
 **Team App build phases:**
-1. **Foundation** — `admin_users` roles (admin/team), `is_team()` SECURITY DEFINER capability, RLS on `cc_tasks` / `cc_calendar_events` / new `cc_task_attachments`.
+1. ~~**Foundation** — `admin_users` roles (admin/team), `is_team()` SECURITY DEFINER capability, RLS on `cc_tasks` / `cc_calendar_events` / new `cc_task_attachments`.~~ **SHIPPED PM-640 (2026-06-16)**
 2. **Tasks** — shared-list UI + per-assignee completion (`completed_at`/`stage=done`) + `cc_task_attachments` table + private `cc-task-docs` bucket + signed upload/download EF (partner-docs/partner-file-url pattern).
 3. **Calendar** — unified 3-source read view (`cc_calendar_events` + `calendar_occurrences`, union-at-read, colour by `source`) + meeting create/edit.
 4. **Scheduler** — `calendar_occurrences` write form, capability-gated (admin + `lives`), confirm-step (member-facing publish).
