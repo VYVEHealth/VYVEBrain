@@ -1,3 +1,9 @@
+## PM-647 — Topnav prominence (2026-06-17)
+
+CC commit `bf76bd4`. `assets/shell.css` only.
+
+Topnav height 64→72px, padding 28→32px. Wordmark font-size 20→24px. Search padding and font-size bumped (fs-sm→fs-base). Bell icon buttons 34→40px hit area. User avatar circle 32→38px.
+
 ## PM-644/645/646 — CC shell layout: persistent left sidebar + topnav fix + dark mode (2026-06-17)
 
 Three CC commits: `73b6f18` (PM-644), `07732e3` (PM-645), `83786d9` (PM-646).
