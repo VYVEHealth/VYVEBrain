@@ -1,7 +1,7 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT (updated 2026-06-15, PM-618)
+## CURRENT FRONT (updated 2026-06-16, PM-639)
 
 **PM-603: full brain reconciliation vs live Supabase + GitHub. §23 holes filled — §23.105 back-filled, §23.111–116 promoted from changelog (tracker→log-activity, www-clone, Java-21, toast-gate, lockBody-timer, JS-cachebust), duplicate §23.107 → §23.110. §6/§7/§24 inventories + counts brought to live: 133 tables, 47 members (NO enterprise), 41 cron jobs (40 active), CC Insights EF/cache/cron suite documented.**
 **Stale "open" items CLOSED: GITHUB_PAT_CLAUDE rotation is DONE (PM-558 — no expiry, stop re-flagging "expires 20 June"). GDPR cron static-PSK removed (no-op artefact).**
@@ -15,6 +15,7 @@
 **iOS 1.8 + Android 1.0.7 IN REVIEW (submitted 11 Jun 2026, PM-602). OTA wiring live in both binaries — §23.106 pending first canary push verification (TOP native priority, pre-Sage gate).**
 **PM-631: Partner onboarding JOURNEY now built (closes PM-630's open item). Self-serve 8-step wizard `Test-Site-Finalv3/partner-onboarding.html` (commit 898f0c61) wired to new `partner-onboarding` EF (verify_jwt; start/save/upload-url/submit) + private buckets `partner-docs`/`partner-content`. Public no-login flow (EF verify_jwt:false; draft keyed by unguessable `partner_id`; **PM-632 removed the OTP/magic-link step entirely** — no email verification). Writes onto PM-630 models, no duplication.**
 **PM-637: partner onboarding polished — verification trimmed to qualifications+references (Photo ID & DBS removed, PM-634), free step navigation (completeness gated only at Submit), e-sign date auto-stamped, profile photo preview fixed. New `partner-file-url` EF (admin-gated signed download) + Download button in CC content queue (PM-636) so admins pull partner videos to their Mac to run live sessions.**
+**PM-639 (IA/spec only, no code): Command Centre 4-domain nav locked — Run the Business / Analytics / Members / Partners. App Health→Analytics, Broadcast+Active Users→Members, `pages/partner-*` orphans→KILL (keep `partners.html` monolith). Team App spec locked: role-scoped CC slice (extend `admin_users.role` admin/team + `is_team()`), tasks+calendar+meetings+scheduler, web-first wrap-on-signoff. Foundations ~80% exist (admin_users/cc_calendar_events/cc_tasks); missing = `cc_task_attachments`+bucket+signed-URL EF, team RLS, `calendar_occurrences` scheduler write (capability-gated, member-facing). Build phases in backlog. Sonnet to build.**
 <!--CURRENT_FRONT_END-->
 
 
@@ -934,6 +935,25 @@ Achievements `unseen / inflight / recent / earned_count / hk_connected` payload 
 `admin.vyvehealth.co.uk` — live with Shell 1 (member viewer) + Shell 2 (pencil-click edits) + Shell 3 Sub-scope A (programme / habits / weekly-goals panels with shared reason modal). Sub-scope B (bulk ops + multi-select) queued. Lewis-facing broadcast UI at `/#/broadcast` (PM-402).
 
 All admin writes audited to `admin_audit_log`.
+
+### Command Centre IA — 4-domain model (PM-639, locked, not yet built)
+
+Replaces the two competing nav layers (`VYVE_NAV` 8-section sidebar + `VYVE_NAV_TOP` 7-tab top nav). Top level = four domains:
+
+- **Run the Business** — Daily (Brief/Inbox/Activity Feed/Intel/Dashboard) · Commercial (Finance/Sales Pipeline/Clients/Investors/Invoicing) · Marketing (Content/Social Blueprint/Podcast + ext Metricool/Riverside) · Delivery (Calendar/Sessions/Tasks/Compliance) · Knowledge (Strategy/Documents/Knowledge Base + ext Drive) · Org (Action Plans/Team/Settings/Trash).
+- **Analytics** — App Health + Usage + Retention + Activity Depth + Wellbeing + Platform & UX + Revenue + AI Usage (App Health moved out of Delivery; all 8 cron-backed).
+- **Members** — admin-console Shell 1/2/3 + Broadcast + Active Users (all operate on real member accounts).
+- **Partners** — the `partners.html` monolith (canonical). The 7 `pages/partner-*.html` are orphans (unreferenced in router/sidebar/index) → KILL after full-repo grep.
+
+Triage KILLs: old Commercial Partners skeleton (superseded), Performance (Metricool covers it), Brand (a doc not a page), 7 orphan partner-* pages, root `Dashboard.html` (verify-then-kill). Full per-page triage in `CC-information-architecture.md`.
+
+### Team App (PM-639, spec locked, web-first build pending)
+
+A **role-scoped slice of the CC**, lived-in on web first, Capacitor-wrapped to TestFlight only once content is signed off. Team members log in as `admin_users` with role `team` and see only Tasks / Calendar / Docs / Scheduler — never analytics, partners, member-admin, or the member service.
+
+Foundations already exist: `admin_users.role` = roster (extend admin/team — not a new table); `cc_calendar_events` (attendees/meet_url/source/gcal_event_id/color) = meetings; `cc_tasks` (assignee/stage/completed_at/created_by) = assignable + completable. Missing build surface: `cc_task_attachments` + private `cc-task-docs` bucket + signed-URL EF (partner-docs pattern); team self-serve RLS via new `is_team()` capability; live-session scheduler write into `calendar_occurrences`.
+
+**Calendar = 3 sources, union-at-read** (no sync, colour-coded by `source`): `cc_calendar_events` (team meetings RW) + `calendar_occurrences` (live events RO) + scheduler writes into `calendar_occurrences`. **The scheduler publishes member-facing session rows** — capability-gated (admin + `lives`) + confirm-step; a bad `calendar_occurrences` row shows on every member's session list. Full spec in `CC-team-app-spec.md`.
 
 ---
 

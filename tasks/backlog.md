@@ -1,4 +1,20 @@
 
+## Command Centre IA + Team App build (PM-639 — Sonnet to build, spec locked)
+
+IA + spec done as artefacts (`CC-information-architecture.md`, `CC-team-app-spec.md`); §13 in master carries the summary. No code shipped yet.
+
+**Phase A — CC nav reorg (4 domains):** restructure `assets/sidebar-config.js` to Run the Business / Analytics / Members / Partners; retire the duplicate `VYVE_NAV_TOP` layer. Cross-domain moves: App Health Delivery→Analytics, Broadcast Delivery→Members, Active Users Org→Members. KILL old Commercial Partners skeleton, Performance, Brand, the 7 orphan `pages/partner-*.html` (grep-confirm first), root `Dashboard.html` (verify first). Reconcile Partner Space onto the `partners.html` monolith.
+
+**Team App build phases:**
+1. **Foundation** — `admin_users` roles (admin/team), `is_team()` SECURITY DEFINER capability, RLS on `cc_tasks` / `cc_calendar_events` / new `cc_task_attachments`.
+2. **Tasks** — shared-list UI + per-assignee completion (`completed_at`/`stage=done`) + `cc_task_attachments` table + private `cc-task-docs` bucket + signed upload/download EF (partner-docs/partner-file-url pattern).
+3. **Calendar** — unified 3-source read view (`cc_calendar_events` + `calendar_occurrences`, union-at-read, colour by `source`) + meeting create/edit.
+4. **Scheduler** — `calendar_occurrences` write form, capability-gated (admin + `lives`), confirm-step (member-facing publish).
+5. **Wrap** — deferred until content signed off. 2nd Capacitor binary off `vyve-capacitor`, own bundle id, points at role-gated CC, TestFlight internal (~6 emails).
+
+Open (non-blocking): app name/bundle id, team route/subdomain (only matters at wrap), scheduler capability holders, gcal 2-way sync (lean internal-only v1), meet_url auto-gen vs paste (lean paste v1).
+
+
 ## Partner Space — next session
 
 - **PF-NEXT-1: Partner onboarding journey** — build `VYVE-Partner-Onboarding-Journey.html` as standalone page. 8-step self-serve flow (About you, Verification/DBS, References, Agreement, Video modules, Safeguarding assessment, GDPR assessment, Profile setup). Writes to `partner_partners` + `partner_applications` + `partner_onboarding_progress`. Demo file in hand.

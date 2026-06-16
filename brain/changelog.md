@@ -1,3 +1,21 @@
+## PM-639 — Command Centre IA reorg (4 domains) + Team App spec (2026-06-16)
+
+Talk-first IA session — **no code shipped**, decisions locked for build (Sonnet to continue). Artefacts: `CC-information-architecture.md` + `CC-team-app-spec.md`.
+
+**4-domain nav model** replaces the two competing layers today (the 8-section `assets/sidebar-config.js` `VYVE_NAV` sidebar + the separate 7-tab `VYVE_NAV_TOP`, which collapsed all 8 Insights pages into one tab and never surfaced Partner Space). New top level:
+- **Run the Business** — Daily / Commercial / Marketing / Delivery / Knowledge / Org as sidebar sub-groups.
+- **Analytics** — the 8 cron-backed Insights pages **+ App Health pulled out of Delivery**.
+- **Members** — admin-console Shell 1/2/3 + Broadcast + Active Users.
+- **Partners** — the reconciled `partners.html` monolith. The 7 `pages/partner-*.html` are **orphans** (not referenced in router/sidebar/index) → KILL after a full-repo grep.
+
+Four cross-domain moves: App Health Delivery→Analytics; Broadcast Delivery→Members; Active Users Org→Members (it reads real portal member data); old Partners skeleton Commercial→killed (superseded). Triage KILLs: old Partners skeleton, Performance (Metricool covers it), Brand (it's a doc), 7 orphan partner-* pages, root `Dashboard.html` (verify-then-kill). BUILD/LATER verdicts on the ~14 stub/skeleton pages live in the IA artefact + §13.
+
+**Team App spec.** A role-scoped slice of the CC, web-first, Capacitor-wrapped to TestFlight **only once content is signed off**. Foundations ~80% already exist: `admin_users` (email/role/active) = roster; `cc_calendar_events` (attendees/meet_url/source/gcal_event_id/color) = meetings; `cc_tasks` (assignee/stage/completed_at/created_by) = assignable+completable. Genuinely missing: (1) `cc_task_attachments` table + private `cc-task-docs` bucket + signed-URL EF (partner-docs pattern); (2) team self-serve RLS via a new `is_team()` capability; (3) live-session scheduler write surface into `calendar_occurrences`.
+
+v1 = everything (tasks + calendar + meetings + scheduler). **Calendar = 3 sources, union-at-read (no sync):** `cc_calendar_events` (team meetings RW) + `calendar_occurrences` (live events RO) + scheduler writes into `calendar_occurrences`, colour-coded by `source`. **Scheduler is capability-gated (admin + `lives`) + confirm-step** — it publishes member-facing session rows; a bad row lands on every member's session list. Decisive calls: roster = extend `admin_users.role` (admin/team), not a new table; packaging = 2nd Capacitor binary off `vyve-capacitor` pointing at the role-gated CC; calendar = union-at-read.
+
+Build phases (Sonnet): **1** foundation (admin_users roles + `is_team()` + RLS on cc_tasks/cc_calendar_events/cc_task_attachments) → **2** tasks (shared-list UI + completion + attachments table/bucket + signed-URL EF) → **3** calendar (3-source view + meeting CRUD) → **4** scheduler (calendar_occurrences write + gate + confirm) → **5** wrap (deferred to content sign-off). Open, non-blocking: app name/bundle id, team route/subdomain (only matters at wrap), scheduler capability holders, gcal 2-way sync (lean internal-only v1), meet_url auto vs paste (lean paste v1).
+
 ## PM-637 — Partner onboarding polish (PM-634/635) + admin file retrieval (PM-636) (2026-06-16)
 
 Continued same session after PM-632. Composio GitHub down → Vault PAT + Git Data API throughout.
