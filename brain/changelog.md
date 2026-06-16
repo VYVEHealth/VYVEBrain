@@ -31,6 +31,17 @@ Partner codes are Stripe Coupons with a MANUALLY SET readable coupon ID (e.g. MA
 ### §23 rule
 - **§23.122 (NEW):** VYVE partner referral codes are Stripe Coupons with manually-set readable IDs (e.g. MAYA, OLU50). Never use Stripe Promotion Code objects for partner attribution — one object only. Coupon ID stored in `partner_partners.stripe_promo_code`. stripe-webhook reads `discount.coupon.id` on `customer.subscription.created`.
 
+## PM-632 — Partner onboarding: drop login/OTP, make it a public no-auth flow (2026-06-16)
+
+Same-session correction to PM-631. The OTP/magic-link step was unnecessary over-engineering — a partner application needs no login (the member onboarding EF is public too). Dean received a magic-link email (Supabase's default OTP template) and rightly questioned why verification existed at all. Removed entirely.
+
+- `partner-onboarding` EF → **v2, `verify_jwt:false` (public)**, same posture as member onboarding. Draft is a capability token: the `partner_id` UUID (unguessable) is returned at `start` and held in localStorage; `save`/`upload-url`/`submit` look up by id — no email, no JWT, no `getUser`. `start` accepts `resume_id` to resume a draft. `uploadToSignedUrl` still works without a session.
+- Wizard `partner-onboarding.html` (Test-Site `08cf0612`): OTP overlay + `signInWithOtp`/`verifyOtp`/`beginAuth`/`skipAuth`/`closeAuth` all stripped; `ensureDraft()` creates the draft on step-1 Continue with zero friction; supabase-js retained for storage uploads only.
+- Migration `partner_drop_contact_email_unique`: dropped the partial-unique index on `contact_email` — it was only an auth key, and a revisit (cleared localStorage) or duplicate email must not fail the insert. `contact_email` stays as plain contact data.
+- **No email verification anywhere now.** If anti-spam is wanted later, add a post-submit confirm — never gate the flow.
+
+Supersedes the PM-631 auth description (that entry's OTP details are historical). Test-Site `08cf0612` (PM-632). EF v2 ACTIVE.
+
 ## PM-631 — Partner onboarding JOURNEY built: self-serve wizard + partner-onboarding EF + private buckets (2026-06-16)
 
 Built the partner self-serve onboarding journey PM-630 flagged as "NOT YET BUILT (next session)". Composio GitHub still down → Vault PAT + Git Data API throughout (§23.27). Brain HEAD moved PM-618→630 mid-session (parallel admin-backend session) — re-fetched fresh before editing per §23.26, avoided clobber. PM claim: max-across-repos 630 → this brain commit PM-631. (Test-Site wizard commit was labelled PM-619, claimed before the namespace re-check — non-monotonic but unique across repos, harmless.)
