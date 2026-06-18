@@ -1,3 +1,19 @@
+## PM-648 — VYVE Money: financial wellbeing feature (2026-06-18)
+
+vyve-site commit `e420236e`. 6 files: `money.html` (new, 1462 lines), `money-calc.js` (new, pure calc module), `sw.js` (cache bump + precache), `index.html` (vbb 461), `settings.html` (vbb 461), `mind.html` (Money tile added).
+
+**Feature.** VYVE Money is a five-view financial wellbeing tool inside the Mind pillar. Views: Hub (score ring + 4 KPIs + priority ladder + insights + learn nudge), Track (income + 50/30/20 split + expenses + savings pots + debts + net worth), Assess (8-question Likert check-in → 0-100 score + 4 dimension sub-scores + focus tips + recommended course), Plan (goal planner + emergency fund target + 20yr projection @ 2%/5% + avalanche/snowball debt payoff simulator), Learn (5-step starter path + 10 courses with knowledge checks + jargon buster).
+
+**Persistence.** All financial figures stay in localStorage keyed per member email (`vyve_money_<email>`). Nothing sensitive leaves the device. Two server writes only: `mind_activities` row with `kind='money_checkin'` on assessment completion and `kind='money_course'` on course completion — no figures, just event + date. These earn Mind-pillar engagement credit and feed the charity mechanic.
+
+**Calc module.** `money-calc.js` exposes `VYVEMoney` global: `calc()` (derived figures: needs/wants/essential/efMonths/savRate/dti/leftover/netWorth), `band()` (4 score bands), `scoreAssessment()`, `dimScores()`, `focusTips()`, `recommendCourse()`, `ladder()` (5 rungs), `insights()` (prioritised engine, max 5), `payoff()` (month-by-month avalanche/snowball), `projection()` (240-month compound), `goalMonths()`. All lifted verbatim from prototype, matching its behaviour exactly.
+
+**Theme.** Full dual dark/light token parity via `theme.css`. No inline `:root` (§23.6). Portal palette (#0D2B2B / #1B7878 / #4DAAAA / #C9A84C), not the prototype's CC palette.
+
+**Privacy.** Employer badge (`"your figures are never shared with your employer"`) conditional on `account_type === 'enterprise'` — hidden for individual members. Phil-gated mood/crisis copy: structural card absent; financial signposting (MoneyHelper, StepChange) ships freely.
+
+**Nav.** nav.js wired (back → Mind). Mind tile added to `mind.html` tool-grid. sw.js precache + cache bump `vyve-cache-v2026-06-18-pm648-money-a`. vbb 460→461 in index.html + settings.html.
+
 ## PM-647 — Topnav prominence (2026-06-17)
 
 CC commit `bf76bd4`. `assets/shell.css` only.
