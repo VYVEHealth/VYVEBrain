@@ -1,3 +1,25 @@
+## PM-651 — VYVE Mental Fitness: mental-fitness.html shipped (2026-06-18)
+
+vyve-site commit `598a4a5978e7`. Six files: `mental-fitness.html` (new), `db.js` SCHEMA_V25, `sw.js` cache bump + precache, `mind.html` tile, `index.html` + `settings.html` vbb 464.
+
+**mental-fitness.html** — single-page three-tab feature (Today / Train / Track) under the Mind hub. Three-tab strip at top mirrors engagement-v2 pattern; global app nav at bottom unchanged. No mockup chrome — full portal standard: `nav.js` back-button header, `theme.js` dual dark/light tokens, `db.js`/`sync.js`/`bus.js`/`haptics.js`/`analytics.js`/`achievements-evaluator.js` all loaded.
+
+**Today tab:** streak stat (consecutive days with a practice or mood), this-week average mood, count of active trackers. Daily plan checklist (mood check-in + complete an exercise + any committed recovery actions; each tappable to launch the action). Early-warning card when triggered (PLACEHOLDER thresholds — Phil sign-off required before promoting to final values). Recommended exercise card (mood/burnout-adaptive, rotates daily otherwise).
+
+**Train tab:** nine exercises in three categories (Calm down / Think clearer / Feel better) as tool-row cards → multi-step guided overlay (dot-progress strip, forward/back, field types: text/textarea/range/chips, breath animation on breathwork screens). Finish step writes to `mind_fitness_log` via Dexie + REST + `log-activity` EF for engagement/charity rollup. Recent practice log below.
+
+**Track tab:** Mood section (SVG line chart last 14 scores, insight text, "Log today's mood" overlay with 5-face picker + emotion/driver chips + note). Going-without trackers (days free, money saved, health/time milestones, slip reset preserves longest streak; add-tracker overlay with 9 preset types). Burnout check (9-question quiz across E/C/F dimensions; score formula `(E+C+(12-F))/36×100`; four zones PLACEHOLDER — Phil sign-off required; trend line on re-checks; recovery suggestions with "+ Add" wiring to daily plan). Always-visible crisis signposting block.
+
+**db.js SCHEMA_V25:** six new member-scoped Dexie stores — `mind_fitness_log`, `mind_moods`, `mind_trackers`, `mind_burnout_checks`, `mind_recovery_actions`, `mind_recovery_log`. All keyed on `id`, indexed on `member_email` + date/type fields + `client_id` partial-unique per §23.10.
+
+**Supabase:** six tables live (migration `mental_fitness_tables`). All RLS-enabled (`(SELECT auth.email())=member_email` per §23.67), `vyve_lc_email` trigger on each, `tg_mark_home_state_dirty_ins/upd/del` on `mind_fitness_log` for engagement pipeline. Excluded from employer rollups by omission. Added to GDPR pipeline (backlog — erasure path to be wired in next session).
+
+**Clinical gates (pending Phil sign-off):** burnout zone thresholds (30/50/70), early-warning trigger values (avg≤2.2, trending-down+latest≤2, burnout≥70), all zone/crisis copy. Signposting structure is present and mandatory from this commit; exact wording is Phil-gated.
+
+**Practices count toward charity/engagement** via `mind:logged` bus event + `log-activity` EF call on exercise completion. Mood check-ins and burnout checks do NOT trigger log-activity (deliberate — logging a low mood must not earn a charity month).
+
+**mind.html:** Mental Fitness tile added below Money tile (same `.tool-card` pattern, PM-651 comment).
+
 ## PM-650 — money.html: auth fix + enterprise-only track disclaimer (2026-06-18)
 
 vyve-site commit `fe07a16c`. `money.html` only. Two fixes: (1) Auth replaced broken `vyveInitAuth` polling loop with canonical `window.VYVE_AUTH_READY` promise pattern (same as breathwork/journal) — `_email` now set correctly on every open so localStorage key `vyve_money_<email>` persists across sessions. (2) Track tab disclaimer ("your financial data is never shared with your employer") now `display:none` by default, shown only when `account_type === 'enterprise'` via `maybeShowPrivacyBadge()` — same gate as the Hub privacy badge. Individual members see neither. vbb 463.

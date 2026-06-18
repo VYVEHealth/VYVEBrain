@@ -1,24 +1,18 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT (updated 2026-06-18, PM-650)
+## CURRENT FRONT (updated 2026-06-18, PM-651)
 
-**PM-648/649/650 (SHIPPED): VYVE Money financial wellbeing feature live — `money.html` + `money-calc.js`. Five views: Hub/Track/Assess/Plan/Learn. Local-only persistence (localStorage keyed per member email). Two server writes: `mind_activities` `money_checkin` + `money_course`. Full dual-theme. Employer privacy badge + Track disclaimer both gated on `account_type='enterprise'`. Mind tile on `mind.html`. Auth uses `VYVE_AUTH_READY` promise. nav.js wired, safe-area fixed, calc timing fixed. sw precache updated. vbb 463.**
-**PM-603: full brain reconciliation vs live Supabase + GitHub. §23 holes filled — §23.105 back-filled, §23.111–116 promoted from changelog (tracker→log-activity, www-clone, Java-21, toast-gate, lockBody-timer, JS-cachebust), duplicate §23.107 → §23.110. §6/§7/§24 inventories + counts brought to live: 133 tables, 47 members (NO enterprise), 41 cron jobs (40 active), CC Insights EF/cache/cron suite documented.**
-**Stale "open" items CLOSED: GITHUB_PAT_CLAUDE rotation is DONE (PM-558 — no expiry, stop re-flagging "expires 20 June"). GDPR cron static-PSK removed (no-op artefact).**
+**PM-603: full brain reconciliation vs live Supabase + GitHub. §23 holes filled. §6/§7/§24 inventories + counts brought to live: 133 tables, 47 members (NO enterprise), 41 cron jobs.**
 **CRITICAL: HAVEN live in production for 3 real members (Calum Denham, Conor Warren, Kieran Day) + Phil — 9 interactions, clinical gate NOT passed. Pre-Sage blocker; Dean to brief Lewis + chase Phil sign-off.**
 **8 CC Insights pages live: App Health, Usage, Retention, Activity Depth, Wellbeing, Platform & UX, Revenue, AI Usage.**
-**Data fix: 2 fake `enterprise` rows (Callum Budzinski, Kelly Bestford) relabelled comp+is_test — were inflating Revenue MRR by £20. Real MRR = £20 (Paige only).**
 
 **WARN: log-perf only wired on ~5 pages from May 2026 testing — needs broader portal wiring.**
 **WARN: posthog-test EF still active-but-retired — delete via dashboard.**
 **WARN: cron jobid 27 `session-publish-hourly` is DISABLED — confirm intentional (live-sessions pipeline).**
 **iOS 1.8 + Android 1.0.7 IN REVIEW (submitted 11 Jun 2026, PM-602). OTA wiring live in both binaries — §23.106 pending first canary push verification (TOP native priority, pre-Sage gate).**
-**PM-631: Partner onboarding JOURNEY now built (closes PM-630's open item). Self-serve 8-step wizard `Test-Site-Finalv3/partner-onboarding.html` (commit 898f0c61) wired to new `partner-onboarding` EF (verify_jwt; start/save/upload-url/submit) + private buckets `partner-docs`/`partner-content`. Public no-login flow (EF verify_jwt:false; draft keyed by unguessable `partner_id`; **PM-632 removed the OTP/magic-link step entirely** — no email verification). Writes onto PM-630 models, no duplication.**
-**PM-637: partner onboarding polished — verification trimmed to qualifications+references (Photo ID & DBS removed, PM-634), free step navigation (completeness gated only at Submit), e-sign date auto-stamped, profile photo preview fixed. New `partner-file-url` EF (admin-gated signed download) + Download button in CC content queue (PM-636) so admins pull partner videos to their Mac to run live sessions.**
-**PM-639 (IA/spec only, no code): Command Centre 4-domain nav locked — Run the Business / Analytics / Members / Partners. App Health→Analytics, Broadcast+Active Users→Members, `pages/partner-*` orphans→KILL (keep `partners.html` monolith). Team App spec locked: role-scoped CC slice (extend `admin_users.role` admin/team + `is_team()`), tasks+calendar+meetings+scheduler, web-first wrap-on-signoff. Foundations ~80% exist (admin_users/cc_calendar_events/cc_tasks); missing = `cc_task_attachments`+bucket+signed-URL EF, team RLS, `calendar_occurrences` scheduler write (capability-gated, member-facing). Build phases in backlog. Sonnet to build.**
-**PM-640 (Team App Phase 1 — SHIPPED): `is_team()` + `is_admin_or_team()` SECURITY DEFINER RPCs live. `admin_users_role_check` extended to include `team`. RLS on `cc_tasks` (4 per-cmd policies; team can UPDATE own assigned tasks) + `cc_calendar_events` (team read-only) replaced. `cc_task_attachments` table + RLS live. 5 team members added to `admin_users` (Calum, Cole, Heidi, Phil Hurwood, Ryan).**
-**PM-641 (Team App Phase 2 — SHIPPED): `lib/auth.js` → `is_admin_or_team()` + role detection; `window.VYVE_USER` set. `pages/tasks.html`: New Task + Delete admin-gated; attachment section (upload/download/delete via `cc-task-docs-url` EF v1 + `cc_task_attachments`). `cc-task-docs` private bucket + Storage RLS live.**
+**PM-648 (2026-06-18): VYVE Money financial wellbeing feature live — money.html + money-calc.js + SCHEMA_V24 (health_snapshot). Mind hub tile added.**
+**PM-651 (2026-06-18): VYVE Mental Fitness live — mental-fitness.html (Today/Train/Track three-tab), db.js SCHEMA_V25 (6 new tables: mind_fitness_log/mind_moods/mind_trackers/mind_burnout_checks/mind_recovery_actions/mind_recovery_log), mind.html tile, vbb 464. CLINICAL GATE OPEN: burnout zone thresholds + early-warning values + all zone/crisis copy are PLACEHOLDERS pending Phil sign-off. GDPR erasure path for new tables still needs wiring (backlog). Practices count toward engagement/charity; mood check-ins and burnout checks do not.**
 <!--CURRENT_FRONT_END-->
 
 
