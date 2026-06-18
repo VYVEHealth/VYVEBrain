@@ -1,9 +1,9 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT (updated 2026-06-18, PM-648)
+## CURRENT FRONT (updated 2026-06-18, PM-650)
 
-**PM-648 (SHIPPED): VYVE Money financial wellbeing feature live. `money.html` + `money-calc.js` new. Five views: Hub/Track/Assess/Plan/Learn. Local-only persistence (localStorage keyed per member email). Two server writes: `mind_activities` `money_checkin` + `money_course`. Full dual-theme. Employer privacy badge gated on `account_type='enterprise'`. Mind tile added to `mind.html`. sw precache updated. vbb 461.**
+**PM-648/649/650 (SHIPPED): VYVE Money financial wellbeing feature live — `money.html` + `money-calc.js`. Five views: Hub/Track/Assess/Plan/Learn. Local-only persistence (localStorage keyed per member email). Two server writes: `mind_activities` `money_checkin` + `money_course`. Full dual-theme. Employer privacy badge + Track disclaimer both gated on `account_type='enterprise'`. Mind tile on `mind.html`. Auth uses `VYVE_AUTH_READY` promise. nav.js wired, safe-area fixed, calc timing fixed. sw precache updated. vbb 463.**
 **PM-603: full brain reconciliation vs live Supabase + GitHub. §23 holes filled — §23.105 back-filled, §23.111–116 promoted from changelog (tracker→log-activity, www-clone, Java-21, toast-gate, lockBody-timer, JS-cachebust), duplicate §23.107 → §23.110. §6/§7/§24 inventories + counts brought to live: 133 tables, 47 members (NO enterprise), 41 cron jobs (40 active), CC Insights EF/cache/cron suite documented.**
 **Stale "open" items CLOSED: GITHUB_PAT_CLAUDE rotation is DONE (PM-558 — no expiry, stop re-flagging "expires 20 June"). GDPR cron static-PSK removed (no-op artefact).**
 **CRITICAL: HAVEN live in production for 3 real members (Calum Denham, Conor Warren, Kieran Day) + Phil — 9 interactions, clinical gate NOT passed. Pre-Sage blocker; Dean to brief Lewis + chase Phil sign-off.**
@@ -1100,9 +1100,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ## 19. Current status
 
-### PM-648 — VYVE Money financial wellbeing feature (2026-06-18)
+### PM-648/649/650 — VYVE Money financial wellbeing feature (2026-06-18)
 
-vyve-site commit `e420236e`. New files: `money.html` (five-view financial wellbeing tool inside the Mind pillar) + `money-calc.js` (pure calc module, `VYVEMoney` global). Views: Hub (score ring, 4 KPIs, priority ladder, insights engine, learn nudge) / Track (income + 50/30/20 + expenses + pots + debts + net worth) / Assess (8-Q Likert → 0-100 score + dimensions + tips) / Plan (goal planner + EF target + 20yr compound projection + avalanche/snowball payoff) / Learn (starter path + 10 courses with knowledge checks + jargon buster). Persistence: all figures local-only in `localStorage` keyed `vyve_money_<email>`. Server writes: `mind_activities` `money_checkin` + `money_course` only — no financial data leaves device. Employer privacy badge conditional on `account_type='enterprise'`. Mind tile added to `mind.html`. sw.js precache + cache bump `vyve-cache-v2026-06-18-pm648-money-a`. vbb 460→461.
+vyve-site commits `e420236e` (PM-648 initial ship) + `d3d9c09f` (PM-649 nav/safe-area/calc fixes) + `fe07a16c` (PM-650 auth + enterprise disclaimer). New files: `money.html` (five-view financial wellbeing tool inside the Mind pillar) + `money-calc.js` (pure calc module, `VYVEMoney` global). Views: Hub (score ring, 4 KPIs, priority ladder, insights engine, learn nudge) / Track (income + 50/30/20 + expenses + pots + debts + net worth) / Assess (8-Q Likert → 0-100 score + dimensions + tips) / Plan (goal planner + EF target + 20yr compound projection + avalanche/snowball payoff) / Learn (starter path + 10 courses with knowledge checks + jargon buster). Persistence: all figures local-only in `localStorage` keyed `vyve_money_<email>`. Server writes: `mind_activities` `money_checkin` + `money_course` only — no financial data leaves device. Employer privacy badge conditional on `account_type='enterprise'`. Mind tile added to `mind.html`. sw.js precache + cache bump `vyve-cache-v2026-06-18-pm648-money-a`. vbb 460→461.
 
 ### PM-637 — Partner onboarding polish + admin file retrieval (2026-06-16)
 

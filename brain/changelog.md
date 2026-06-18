@@ -1,3 +1,11 @@
+## PM-650 — money.html: auth fix + enterprise-only track disclaimer (2026-06-18)
+
+vyve-site commit `fe07a16c`. `money.html` only. Two fixes: (1) Auth replaced broken `vyveInitAuth` polling loop with canonical `window.VYVE_AUTH_READY` promise pattern (same as breathwork/journal) — `_email` now set correctly on every open so localStorage key `vyve_money_<email>` persists across sessions. (2) Track tab disclaimer ("your financial data is never shared with your employer") now `display:none` by default, shown only when `account_type === 'enterprise'` via `maybeShowPrivacyBadge()` — same gate as the Hub privacy badge. Individual members see neither. vbb 463.
+
+## PM-649 — money.html: nav + safe-area + calc timing fixes (2026-06-18)
+
+vyve-site commit `d3d9c09f`. 5 files. Three bugs fixed post-first-device-test: (1) Nav: added `nav.js` script tag, added `'money': 'Financial Wellbeing'` to `subPageLabels`, added `money` to mind path detection in `getActiveTab()`. `.wrap` padding-top now `calc(env(safe-area-inset-top,0px) + 76px)` to clear the sticky mobile header. (2) Reader back/next buttons: moved safe-area inset onto `.reader-top` `padding-top: calc(env(safe-area-inset-top,0px) + 14px)` so buttons sit below status bar. (3) Track calc: `money-calc.js` changed from `defer` to sync load; `renderTrack()` retries after 50ms if `VYVEMoney` not yet ready instead of bailing silently. Removed custom page-header block (nav.js provides header). vbb 462.
+
 ## PM-648 — VYVE Money: financial wellbeing feature (2026-06-18)
 
 vyve-site commit `e420236e`. 6 files: `money.html` (new, 1462 lines), `money-calc.js` (new, pure calc module), `sw.js` (cache bump + precache), `index.html` (vbb 461), `settings.html` (vbb 461), `mind.html` (Money tile added).
