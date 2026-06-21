@@ -13,6 +13,8 @@
 **iOS 1.8 + Android 1.0.7 IN REVIEW (submitted 11 Jun 2026, PM-602). OTA wiring live in both binaries — §23.106 pending first canary push verification (TOP native priority, pre-Sage gate).**
 **PM-648 (2026-06-18): VYVE Money financial wellbeing feature live — money.html + money-calc.js + SCHEMA_V24 (health_snapshot). Mind hub tile added.**
 **PM-651 (2026-06-18): VYVE Mental Fitness live — mental-fitness.html (Today/Train/Track three-tab), db.js SCHEMA_V25 (6 new tables: mind_fitness_log/mind_moods/mind_trackers/mind_burnout_checks/mind_recovery_actions/mind_recovery_log), mind.html tile, vbb 464. CLINICAL GATE OPEN: burnout zone thresholds + early-warning values + all zone/crisis copy are PLACEHOLDERS pending Phil sign-off. GDPR erasure path for new tables still needs wiring (backlog). Practices count toward engagement/charity; mood check-ins and burnout checks do not.**
+**PM-656 (2026-06-21): Full executable Partner Agreement embedded in `Test-Site-Finalv3/partner-onboarding.html` step 3 (verbatim from Lewis's copy) + DocuSign-style live name/date merge + signed-copy print-to-PDF download. Rev share aligned to 50% across the page + submit payload; `partner_partners.revenue_share_pct` DB default STILL 30 (flip pending Dean, PF-NEXT-7). New gotcha §23.123 (marketing pages carry no portal theme tokens).**
+**WARN: vyve-site shipped PM-652–655 with NO brain entries (brain was at 651 when PM-656 closed). Next session: scan those 4 commits and reconcile master/changelog/backlog before claiming new PMs.**
 <!--CURRENT_FRONT_END-->
 
 
@@ -1778,6 +1780,10 @@ Bus `subscribe('<table>')` channels are CROSS-PAGE by construction (§23.42). A 
 #### §23.122 — `partner_content_items.moderation_status` defaults to `'draft'` but the admin moderation queue counts only `'in_review'` (PM-631 — HARD RULE)
 
 The table default is `'draft'`; the Partner Space admin moderation queue (`vyve-command-centre/partners.html`) counts/shows ONLY `moderation_status='in_review'`. Anything written at the default is invisible to moderation — never reviewed, never published. Any writer into `partner_content_items` intending content for review MUST set `'in_review'` explicitly; the `partner-onboarding` EF does. Lifecycle: draft → in_review → published/flagged. (Sibling to PM-630's §23.121 modal-stacking rule — see changelog.)
+
+#### §23.123 — Marketing-site pages don't share the portal's theme tokens; `var(--card2/--gold/…)` silently falls back to light defaults (PM-656 — HARD RULE)
+
+`Test-Site-Finalv3` pages (e.g. `partner-onboarding.html`) define their OWN palette — `--dark:#0d1117`, `--card:#131f2b`, `--surface:#1a2b3a`, `--surface2`, `--mint:#5ec4b0`, `--teal`, `--white:#f0f4f4`, `--muted`/`--muted-light`, `--line` — and do NOT load the portal's `theme.css`/`theme.js`. There is no `--card2` and no `--gold` here. Any injected CSS that references a portal/undefined token (`var(--card2,#fafafa)`, `var(--gold,#c9a84c)`) falls through to its light fallback and renders a white slab on the dark page. Always style marketing-site components with the page's own tokens; never assume portal tokens exist. (Surfaced when the embedded Partner Agreement first rendered as a white box.)
 
 ## 24. Key references, credentials & URLs
 

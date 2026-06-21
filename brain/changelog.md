@@ -1,3 +1,17 @@
+## PM-656 — Partner Agreement embedded in onboarding: executable contract + DocuSign-style e-sign + signed-copy download (2026-06-21)
+
+`Test-Site-Finalv3/partner-onboarding.html` (commits `e6bc95af` -> `f402b123` -> `e1ecd34b`; the site commit MESSAGES carry literal "PM-XXX" placeholders — canonical PM is **656**). Step 3 ("Partner agreement & commercials") previously showed 5 placeholder clauses; now renders Lewis's full executable **VYVE Partner Agreement verbatim** — all 10 clause-1.1 definitions, clauses 2–20 with every sub-clause (6.3(a)–(d), 17.2(a)–(d) as lettered lists), Schedules 1 & 2, and a two-column signature block. Bracketed drafting values resolved to operative numbers (24mo non-solicit / 30d payment & cure / 60d termination / "exclusive of VAT"); entity rendered "VYVE Health CIC (company no. 16449796)".
+
+**DocuSign-style merge.** Party (2) legal name + the "This Agreement is dated …" line auto-fill from Step-1 `contactName` (fallback `businessName`) + today's date on step open; the partner signature block fills live (cursive name + today's date) as they type the e-sign field. VYVE side reads "To be countersigned by VYVE on acceptance". Merge logic: `fillContract()` over `#contractPane [data-mf]` (keys `pname`/`date`/`sig`), called on step show (`step===2`) and on `signName` input.
+
+**Revenue share aligned to 50%** everywhere to match the signed contract — clause 8 body, Schedule 2, the acknowledgement checkbox, the hero stat ("Standard revenue share"), and the submit payload (`revenueSharePct:50`, was 30; `partnerLegalName` now captured). **NOTE:** `partner_partners.revenue_share_pct` DB **default is still 30** — flip-to-50 decision pending Dean (backlog PF-NEXT-7).
+
+**Signed-copy download.** New "Download signed copy" button under the e-sign fields, disabled until `checks.agree && signName` (`refreshDownloadState()`; wired into `fillContract` + `toggleCheck` for the `agree` box). `downloadSignedAgreement()` clones the fully-merged `#contractPane`, opens a new window with a clean white A4 print stylesheet (light theme, mint accents, signature cards, footer "Signed electronically via vyvehealth.co.uk on <date>") and triggers `window.print()` → save as PDF. Browser print-to-PDF, zero deps; swap to a client-side PDF lib only if a silent `.pdf` download is wanted (backlog PF-NEXT-10).
+
+**Styling fix.** The agreement pane first shipped as a white box — injected CSS referenced `var(--card2)`/`var(--gold)`, which are UNDEFINED on the marketing site, so they fell back to light defaults. Re-skinned to the page's own dark palette (`--dark/--card/--surface/--mint/--white`): `.doc-wrap` card with a header band, mint section heads, lettered sub-clauses, mint "auto-filled" merge pills, signature cards. New gotcha → **§23.123**.
+
+Lewis-gated: this is Lewis's approved copy, embedded live per Dean's direction; Lewis copy/legal sign-off on the live origin still outstanding (backlog PF-NEXT-9). No EF/DB change — static marketing file only.
+
 ## PM-651 — VYVE Mental Fitness: mental-fitness.html shipped (2026-06-18)
 
 vyve-site commit `598a4a5978e7`. Six files: `mental-fitness.html` (new), `db.js` SCHEMA_V25, `sw.js` cache bump + precache, `mind.html` tile, `index.html` + `settings.html` vbb 464.

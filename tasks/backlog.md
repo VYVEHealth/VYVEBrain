@@ -23,6 +23,10 @@ Open (non-blocking): app name/bundle id, team route/subdomain (only matters at w
 - **PF-NEXT-4: Programs sub-tab** — partner detail programs tab shows "coming soon".
 - **PF-NEXT-5: Revenue attribution** — DONE. 50% B2C referred members only, monthly, via Stripe coupon ID matching. stripe-webhook EF v10 live.
 - **PF-NEXT-6: Command Centre overhaul** — move main CC nav from top tabs to left sidebar; align design with partners.html system.
+- **PF-NEXT-7: `partner_partners.revenue_share_pct` DB default 30 → 50** — DECISION PENDING DEAN. Contract (PM-656), `stripe-webhook` EF (50%), and the onboarding page UI + submit payload are all 50%; only the table default still seeds 30, so admin-Invite partner rows start at the wrong %. Flip the column default to 50 (or set explicitly on every insert).
+- **PF-NEXT-8: Bracketed agreement values** — PM-656 resolved Lewis's draft brackets to operative numbers (24mo non-solicit / 30d payment & cure / 60d termination / "exclusive of VAT"). Confirm with Lewis these are final vs still-open; mirror brackets literally if he wants them shown.
+- **PF-NEXT-9: Lewis review of embedded agreement on live origin** — full contract is live in `partner-onboarding.html` per Dean's direction; Lewis copy/legal sign-off still outstanding.
+- **PF-NEXT-10 (optional): silent PDF download** — signed-copy download is browser print-to-PDF (one OS dialog). Swap to html2pdf/jsPDF CDN if a no-dialog `.pdf` download is wanted.
 
 ## SHIPPED PM-559 — App Health Dashboard v1
 ### Live at admin.vyvehealth.co.uk/#/app-health (2026-06-08)
