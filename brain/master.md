@@ -1,8 +1,9 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
-## CURRENT FRONT (updated 2026-06-18, PM-651)
+## CURRENT FRONT (updated 2026-06-18, PM-657)
 
+**PM-648–657 (SHIPPED): VYVE Money financial wellbeing feature live and working. Five views: Hub/Track/Assess/Plan/Learn. Local-only persistence. Two server writes: `mind_activities` `money_checkin`/`money_course`. Full dual-theme. Bug-fix run PM-649–657 resolved: nav wiring, safe-area, calc timing, auth pattern, localStorage key migration, top gap, `updateSplit()` (no re-render on keystroke), one-time privacy notice, IIFE scope bug (`window.state`/`window.save`). Confirmed working on device PM-657.**
 **PM-603: full brain reconciliation vs live Supabase + GitHub. §23 holes filled. §6/§7/§24 inventories + counts brought to live: 133 tables, 47 members (NO enterprise), 41 cron jobs.**
 **CRITICAL: HAVEN live in production for 3 real members (Calum Denham, Conor Warren, Kieran Day) + Phil — 9 interactions, clinical gate NOT passed. Pre-Sage blocker; Dean to brief Lewis + chase Phil sign-off.**
 **8 CC Insights pages live: App Health, Usage, Retention, Activity Depth, Wellbeing, Platform & UX, Revenue, AI Usage.**
@@ -1098,7 +1099,7 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). Domain routes via Cloudflare. The
 
 ### PM-648/649/650 — VYVE Money financial wellbeing feature (2026-06-18)
 
-vyve-site commits `e420236e` (PM-648 initial ship) + `d3d9c09f` (PM-649 nav/safe-area/calc fixes) + `fe07a16c` (PM-650 auth + enterprise disclaimer). New files: `money.html` (five-view financial wellbeing tool inside the Mind pillar) + `money-calc.js` (pure calc module, `VYVEMoney` global). Views: Hub (score ring, 4 KPIs, priority ladder, insights engine, learn nudge) / Track (income + 50/30/20 + expenses + pots + debts + net worth) / Assess (8-Q Likert → 0-100 score + dimensions + tips) / Plan (goal planner + EF target + 20yr compound projection + avalanche/snowball payoff) / Learn (starter path + 10 courses with knowledge checks + jargon buster). Persistence: all figures local-only in `localStorage` keyed `vyve_money_<email>`. Server writes: `mind_activities` `money_checkin` + `money_course` only — no financial data leaves device. Employer privacy badge conditional on `account_type='enterprise'`. Mind tile added to `mind.html`. sw.js precache + cache bump `vyve-cache-v2026-06-18-pm648-money-a`. vbb 460→461.
+vyve-site commits `e420236e` (PM-648 initial ship) + bug-fix run PM-649–657: nav wiring, safe-area, calc timing, auth pattern, localStorage key migration, gap fix, `updateSplit()`, one-time privacy notice, IIFE scope fix (`window.state`/`window.save`). Feature confirmed working on device at PM-657. New files: `money.html` (five-view financial wellbeing tool inside the Mind pillar) + `money-calc.js` (pure calc module, `VYVEMoney` global). Views: Hub (score ring, 4 KPIs, priority ladder, insights engine, learn nudge) / Track (income + 50/30/20 + expenses + pots + debts + net worth) / Assess (8-Q Likert → 0-100 score + dimensions + tips) / Plan (goal planner + EF target + 20yr compound projection + avalanche/snowball payoff) / Learn (starter path + 10 courses with knowledge checks + jargon buster). Persistence: all figures local-only in `localStorage` keyed `vyve_money_<email>`. Server writes: `mind_activities` `money_checkin` + `money_course` only — no financial data leaves device. Employer privacy badge conditional on `account_type='enterprise'`. Mind tile added to `mind.html`. sw.js precache + cache bump `vyve-cache-v2026-06-18-pm648-money-a`. vbb 460→461.
 
 ### PM-637 — Partner onboarding polish + admin file retrieval (2026-06-16)
 
@@ -1780,6 +1781,10 @@ Bus `subscribe('<table>')` channels are CROSS-PAGE by construction (§23.42). A 
 #### §23.122 — `partner_content_items.moderation_status` defaults to `'draft'` but the admin moderation queue counts only `'in_review'` (PM-631 — HARD RULE)
 
 The table default is `'draft'`; the Partner Space admin moderation queue (`vyve-command-centre/partners.html`) counts/shows ONLY `moderation_status='in_review'`. Anything written at the default is invisible to moderation — never reviewed, never published. Any writer into `partner_content_items` intending content for review MUST set `'in_review'` explicitly; the `partner-onboarding` EF does. Lifecycle: draft → in_review → published/flagged. (Sibling to PM-630's §23.121 modal-stacking rule — see changelog.)
+
+#### §23.124 — Inline HTML oninput/onclick handlers run in global scope, not the IIFE (PM-657 — HARD RULE)
+
+Portal JS lives inside an IIFE `(function(){ ... })()`. Inline `oninput`/`onclick` attributes in dynamically-built HTML strings execute in **global scope** — they cannot see IIFE-scoped variables. Any identifier referenced in an inline handler must be explicitly assigned to `window` (e.g. `window.state = state`, `window.save = save`). Symptom: silent `ReferenceError` on every keystroke, no console output in Capacitor. Always audit inline handler strings against the `window.*` exposure block before shipping.
 
 #### §23.123 — Marketing-site pages don't share the portal's theme tokens; `var(--card2/--gold/…)` silently falls back to light defaults (PM-656 — HARD RULE)
 

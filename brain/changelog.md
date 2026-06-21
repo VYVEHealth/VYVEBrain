@@ -1,3 +1,22 @@
+## PM-657 — VYVE Money: full bug-fix run PM-653–657 (2026-06-18)
+
+vyve-site commits `4c1c0f2c` (PM-653) · `5efff1e7` (PM-654) · `4f4ec78e` (PM-657). All fixes to `money.html` post-ship.
+
+**PM-653 — gap + track calc + privacy notice.**
+- Wrap padding-top corrected (was double-counting safe-area inset on top of sticky header height).
+- `updateSplit()` introduced: updates split bars, KPIs, net worth in-place without re-rendering expense/debt lists — stops focus destruction on keystroke.
+- All expense/savings/income `oninput` handlers now call `updateSplit()` instead of `renderTrack()`.
+- One-time privacy notice added (all users): "Your data stays on your phone — VYVE never sees it." Dismissed permanently via `localStorage('vyve_money_privacy_seen')`. Never shown again after first dismiss.
+
+**PM-654 — gap (final) + localStorage key migration.**
+- Wrap padding-top set to flat `16px` (sticky header is in-flow above `<main>`, needs no clearance).
+- Fixed localStorage key mismatch: data saves to `vyve_money_anon` before auth resolves, then `onAuthReady` sets `_email` and `load()` read `vyve_money_email@...` (empty) — state reset to defaults, wiping typed values. Now: on auth, if email-keyed store is empty and anon store has data, migrates automatically and removes anon key. Also: state loaded immediately on page open (anon key) so data is visible before auth resolves.
+
+**PM-657 — IIFE scope bug (expense inputs not updating split).**
+Root cause: `money.html` JS runs inside an IIFE. Inline `oninput` HTML attributes execute in global scope and could not see `state` or `save()` — silently throwing `ReferenceError` on every keystroke. Needs/wants bars never updated. Fix: `window.state = state` and `window.save = save` added alongside existing window exposures. Two lines, root cause resolved. Savings & debt bar worked because `setVal()`/`setPot()` were already on `window`.
+
+**§23 gotcha added:** Inline HTML `oninput`/`onclick` attributes run in global scope, not inside the IIFE that defines the page's JS. Any variable or function referenced in an inline handler must be explicitly exposed on `window`. This applies to `state`, `save`, and any other IIFE-scoped identifier. Always check `window.x = x` alongside `window.go`, `window.toggleType` etc.
+
 ## PM-656 — Partner Agreement embedded in onboarding: executable contract + DocuSign-style e-sign + signed-copy download (2026-06-21)
 
 `Test-Site-Finalv3/partner-onboarding.html` (commits `e6bc95af` -> `f402b123` -> `e1ecd34b`; the site commit MESSAGES carry literal "PM-XXX" placeholders — canonical PM is **656**). Step 3 ("Partner agreement & commercials") previously showed 5 placeholder clauses; now renders Lewis's full executable **VYVE Partner Agreement verbatim** — all 10 clause-1.1 definitions, clauses 2–20 with every sub-clause (6.3(a)–(d), 17.2(a)–(d) as lettered lists), Schedules 1 & 2, and a two-column signature block. Bracketed drafting values resolved to operative numbers (24mo non-solicit / 30d payment & cure / 60d termination / "exclusive of VAT"); entity rendered "VYVE Health CIC (company no. 16449796)".
