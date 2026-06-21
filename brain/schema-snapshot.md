@@ -2,13 +2,13 @@
 
 > Auto-generated from live Supabase project `ixjfklpckgxrwjlfsaaz`.
 > DO NOT EDIT — overwritten weekly by the `schema-snapshot-refresh` Edge Function.
-> Last refresh: 2026-06-14T03:01:00.832Z
+> Last refresh: 2026-06-21T03:01:27.465Z
 
-**Totals:** 134 tables (134 with RLS) · 1597 columns · 42 FKs · 238 triggers · 102 public functions · 167 RLS policies · 369 indexes · 42 cron jobs
+**Totals:** 149 tables (149 with RLS) · 1753 columns · 53 FKs · 258 triggers · 112 public functions · 199 RLS policies · 398 indexes · 43 cron jobs
 
 ---
 
-## Tables (134)
+## Tables (149)
 
 ### `achievement_metrics` · RLS
 
@@ -156,7 +156,7 @@
 | `notes` | text | YES |  |  |  |
 
 **Check constraints:**
-- `admin_users_role_check`: CHECK ((role = ANY (ARRAY['admin'::text, 'viewer'::text, 'coach_full'::text, 'coach_exercise'::text, 'coach_mental'::text])))
+- `admin_users_role_check`: CHECK ((role = ANY (ARRAY['admin'::text, 'viewer'::text, 'coach_full'::text, 'coach_exercise'::text, 'coach_mental'::text, 'team'::text])))
 
 **RLS policies:** _(none — service-role only)_
 
@@ -413,6 +413,9 @@
 - `calendar_occurrences_updated_at` — BEFORE UPDATE
 
 **RLS policies:**
+- `calendar_occurrences_admin_delete` (DELETE, roles: public) — is_admin()
+- `calendar_occurrences_admin_insert` (INSERT, roles: public) — — / CHECK: is_admin()
+- `calendar_occurrences_admin_update` (UPDATE, roles: public) — is_admin()
 - `calendar_occurrences_read_authenticated` (SELECT, roles: authenticated) — true
 
 **Indexes:**
@@ -554,7 +557,10 @@
 - `cc_calendar_events_visibility_check`: CHECK ((visibility = ANY (ARRAY['private'::text, 'team'::text, 'shared'::text])))
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (EXISTS ( SELECT 1 FROM admin_users WHERE ((admin_users.email = (auth.jwt() ->> 'email'::text)) AND (admin_users.active = true))))
+- `cc_calendar_delete` (DELETE, roles: public) — is_admin()
+- `cc_calendar_insert` (INSERT, roles: public) — — / CHECK: is_admin()
+- `cc_calendar_select` (SELECT, roles: public) — is_admin_or_team()
+- `cc_calendar_update` (UPDATE, roles: public) — is_admin()
 
 **Indexes:**
 - `cc_calendar_events_pkey`
@@ -1039,6 +1045,30 @@
 **Indexes:**
 - `cc_swot_pkey`
 
+### `cc_task_attachments` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `task_id` | uuid | NO |  |  |  |
+| `uploaded_by` | text | NO |  |  |  |
+| `file_name` | text | NO |  |  |  |
+| `storage_path` | text | NO |  |  |  |
+| `file_size` | bigint | YES |  |  |  |
+| `mime_type` | text | YES |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Foreign keys:**
+- `task_id` → `cc_tasks.id` (`cc_task_attachments_task_id_fkey`)
+
+**RLS policies:**
+- `cc_task_attachments_delete` (DELETE, roles: public) — (is_admin() OR (is_team() AND (uploaded_by = auth.email())))
+- `cc_task_attachments_insert` (INSERT, roles: public) — — / CHECK: is_admin_or_team()
+- `cc_task_attachments_select` (SELECT, roles: public) — is_admin_or_team()
+
+**Indexes:**
+- `cc_task_attachments_pkey`
+
 ### `cc_tasks` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -1065,7 +1095,10 @@
 - `cc_tasks_updated_at` — BEFORE UPDATE
 
 **RLS policies:**
-- `cc_team_only` (ALL, roles: public) — (EXISTS ( SELECT 1 FROM admin_users WHERE ((admin_users.email = (auth.jwt() ->> 'email'::text)) AND (admin_users.active = true))))
+- `cc_tasks_delete` (DELETE, roles: public) — is_admin()
+- `cc_tasks_insert` (INSERT, roles: public) — — / CHECK: is_admin()
+- `cc_tasks_select` (SELECT, roles: public) — is_admin_or_team()
+- `cc_tasks_update` (UPDATE, roles: public) — (is_admin() OR (is_team() AND (assignee = auth.email())))
 
 **Indexes:**
 - `cc_tasks_pkey`
@@ -2532,6 +2565,7 @@
 | `health_consent_version` | text | YES |  |  |  |
 | `is_test` | boolean | NO | false |  |  |
 | `welcome_email_sent_at` | timestamp with time zone | YES |  |  |  |
+| `goal_summary` | text | YES |  |  |  |
 
 **Check constraints:**
 - `members_account_type_chk`: CHECK ((account_type = ANY (ARRAY['trial'::text, 'paid'::text, 'comp'::text, 'enterprise'::text])))
@@ -2555,6 +2589,7 @@
 
 **Triggers:**
 - `aab_grant_trial_on_signup` — BEFORE INSERT
+- `trg_default_consent_versions` — BEFORE INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zzz_mark_home_state_dirty_del` — AFTER DELETE
 - `zzz_mark_home_state_dirty_ins` — AFTER INSERT
@@ -2612,6 +2647,167 @@
 - `mind_activities_member_last_updated_idx`
 - `mind_activities_member_ref_client_uniq`
 - `mind_activities_pkey`
+
+### `mind_burnout_checks` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `check_date` | date | NO |  |  |  |
+| `score_total` | integer | NO |  |  |  |
+| `score_e` | integer | NO |  |  |  |
+| `score_c` | integer | NO |  |  |  |
+| `score_f` | integer | NO |  |  |  |
+| `answers` | jsonb | NO |  |  |  |
+| `logged_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `mind_burnout_checks_score_c_check`: CHECK (((score_c >= 0) AND (score_c <= 12)))
+- `mind_burnout_checks_score_e_check`: CHECK (((score_e >= 0) AND (score_e <= 12)))
+- `mind_burnout_checks_score_f_check`: CHECK (((score_f >= 0) AND (score_f <= 12)))
+- `mind_burnout_checks_score_total_check`: CHECK (((score_total >= 0) AND (score_total <= 100)))
+
+**Triggers:**
+- `zz_lc_email_mind_burnout_checks` — BEFORE INSERT/UPDATE
+
+**RLS policies:**
+- `member own` (ALL, roles: public) — (( SELECT auth.email() AS email) = member_email) / CHECK: (( SELECT auth.email() AS email) = member_email)
+
+**Indexes:**
+- `mind_burnout_checks_email_date_idx`
+- `mind_burnout_checks_pkey`
+
+### `mind_fitness_log` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `activity_date` | date | NO |  |  |  |
+| `logged_at` | timestamp with time zone | NO | now() |  |  |
+| `tool_id` | text | NO |  |  |  |
+| `tool_name` | text | NO |  |  |  |
+| `summary` | text | YES |  |  |  |
+| `data` | jsonb | YES |  |  |  |
+| `duration_seconds` | integer | YES |  |  |  |
+| `client_id` | uuid | YES |  |  |  |
+| `focus_slug` | text | YES |  |  |  |
+
+**Check constraints:**
+- `mind_fitness_log_tool_id_check`: CHECK ((tool_id = ANY (ARRAY['box_breathing'::text, 'grounding'::text, 'urge_surfing'::text, 'reframe'::text, 'thinking_trap'::text, 'worry_sort'::text, 'gratitude'::text, 'self_compassion'::text, 'one_small_action'::text])))
+
+**Triggers:**
+- `mark_home_state_dirty_mfl_del` — AFTER DELETE
+- `mark_home_state_dirty_mfl_ins` — AFTER INSERT
+- `mark_home_state_dirty_mfl_upd` — AFTER UPDATE
+- `zz_lc_email_mind_fitness_log` — BEFORE INSERT/UPDATE
+
+**RLS policies:**
+- `member own` (ALL, roles: public) — (( SELECT auth.email() AS email) = member_email) / CHECK: (( SELECT auth.email() AS email) = member_email)
+
+**Indexes:**
+- `mind_fitness_log_client_id_uidx`
+- `mind_fitness_log_pkey`
+
+### `mind_moods` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  | ✓ |
+| `mood_date` | date | NO |  |  | ✓ |
+| `score` | integer | NO |  |  |  |
+| `emotions` | text[] | YES |  |  |  |
+| `drivers` | text[] | YES |  |  |  |
+| `note` | text | YES |  |  |  |
+| `logged_at` | timestamp with time zone | NO | now() |  |  |
+| `client_id` | uuid | YES |  |  |  |
+
+**Check constraints:**
+- `mind_moods_score_check`: CHECK (((score >= 1) AND (score <= 5)))
+
+**Triggers:**
+- `zz_lc_email_mind_moods` — BEFORE INSERT/UPDATE
+
+**RLS policies:**
+- `member own` (ALL, roles: public) — (( SELECT auth.email() AS email) = member_email) / CHECK: (( SELECT auth.email() AS email) = member_email)
+
+**Indexes:**
+- `mind_moods_member_date_uidx`
+- `mind_moods_pkey`
+
+### `mind_recovery_actions` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `action_text` | text | NO |  |  |  |
+| `added_at` | timestamp with time zone | NO | now() |  |  |
+| `active` | boolean | NO | true |  |  |
+
+**Triggers:**
+- `zz_lc_email_mind_recovery_actions` — BEFORE INSERT/UPDATE
+
+**RLS policies:**
+- `member own` (ALL, roles: public) — (( SELECT auth.email() AS email) = member_email) / CHECK: (( SELECT auth.email() AS email) = member_email)
+
+**Indexes:**
+- `mind_recovery_actions_pkey`
+
+### `mind_recovery_log` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  | ✓ |
+| `action_id` | uuid | NO |  |  | ✓ |
+| `log_date` | date | NO |  |  | ✓ |
+| `client_id` | uuid | YES |  |  |  |
+
+**Foreign keys:**
+- `action_id` → `mind_recovery_actions.id` (`mind_recovery_log_action_id_fkey`)
+
+**Triggers:**
+- `zz_lc_email_mind_recovery_log` — BEFORE INSERT/UPDATE
+
+**RLS policies:**
+- `member own` (ALL, roles: public) — (( SELECT auth.email() AS email) = member_email) / CHECK: (( SELECT auth.email() AS email) = member_email)
+
+**Indexes:**
+- `mind_recovery_log_client_id_uidx`
+- `mind_recovery_log_member_action_date_uidx`
+- `mind_recovery_log_pkey`
+
+### `mind_trackers` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `tracker_type` | text | NO |  |  |  |
+| `name` | text | NO |  |  |  |
+| `start_date` | date | NO |  |  |  |
+| `weekly_cost_gbp` | numeric | NO | 0 |  |  |
+| `reasons` | text | YES |  |  |  |
+| `longest_streak_days` | integer | NO | 0 |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `active` | boolean | NO | true |  |  |
+| `client_id` | uuid | YES |  |  |  |
+
+**Check constraints:**
+- `mind_trackers_type_check`: CHECK ((tracker_type = ANY (ARRAY['alcohol'::text, 'smoking'::text, 'vaping'::text, 'gambling'::text, 'drugs'::text, 'takeaways'::text, 'sugar'::text, 'scrolling'::text, 'custom'::text])))
+
+**Triggers:**
+- `zz_lc_email_mind_trackers` — BEFORE INSERT/UPDATE
+
+**RLS policies:**
+- `member own` (ALL, roles: public) — (( SELECT auth.email() AS email) = member_email) / CHECK: (( SELECT auth.email() AS email) = member_email)
+
+**Indexes:**
+- `mind_trackers_client_id_uidx`
+- `mind_trackers_pkey`
 
 ### `mind_videos` · RLS
 
@@ -2851,6 +3047,260 @@
 - `idx_nutrition_my_foods_email`
 - `nutrition_my_foods_member_email_food_name_brand_key`
 - `nutrition_my_foods_pkey`
+
+### `partner_applications` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `partner_id` | uuid | NO |  |  | ✓ |
+| `fit_score` | text | YES |  |  |  |
+| `credentials` | jsonb | YES |  |  |  |
+| `reference_contacts` | jsonb | YES |  |  |  |
+| `audience_reach` | integer | YES |  |  |  |
+| `proposed_content` | text | YES |  |  |  |
+| `notes` | text | YES |  |  |  |
+| `applied_at` | timestamp with time zone | NO | now() |  |  |
+| `status_changed_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `partner_applications_fit_score_check`: CHECK ((fit_score = ANY (ARRAY['high'::text, 'med'::text, 'low'::text])))
+
+**Foreign keys:**
+- `partner_id` → `partner_partners.id` (`partner_applications_partner_id_fkey`)
+
+**RLS policies:**
+- `admin_all_partner_applications` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
+
+**Indexes:**
+- `partner_applications_partner_id_key`
+- `partner_applications_pkey`
+
+### `partner_community_posts` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `partner_id` | uuid | NO |  |  |  |
+| `author_email` | text | NO |  |  |  |
+| `author_kind` | text | NO |  |  |  |
+| `body` | text | NO |  |  |  |
+| `pinned` | boolean | NO | false |  |  |
+| `flagged` | boolean | NO | false |  |  |
+| `awaiting_reply` | boolean | NO | false |  |  |
+| `like_count` | integer | NO | 0 |  |  |
+| `reply_count` | integer | NO | 0 |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `partner_community_posts_author_kind_check`: CHECK ((author_kind = ANY (ARRAY['member'::text, 'partner'::text])))
+
+**Foreign keys:**
+- `partner_id` → `partner_partners.id` (`partner_community_posts_partner_id_fkey`)
+
+**RLS policies:**
+- `admin_all_partner_community_posts` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
+- `member_insert_partner_community_posts` (INSERT, roles: authenticated) — — / CHECK: ((author_email = ( SELECT auth.email() AS email)) AND (author_kind = 'member'::text))
+- `member_read_partner_community_posts` (SELECT, roles: authenticated) — (flagged = false)
+
+**Indexes:**
+- `partner_community_posts_pkey`
+
+### `partner_content_items` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `partner_id` | uuid | NO |  |  |  |
+| `type` | text | NO |  |  |  |
+| `title` | text | NO |  |  |  |
+| `description` | text | YES |  |  |  |
+| `media_url` | text | YES |  |  |  |
+| `thumbnail_url` | text | YES |  |  |  |
+| `duration_sec` | integer | YES |  |  |  |
+| `moderation_status` | text | NO | 'draft'::text |  |  |
+| `pillar` | text | NO |  |  |  |
+| `play_count` | integer | NO | 0 |  |  |
+| `attendance_count` | integer | NO | 0 |  |  |
+| `calendar_occurrence_id` | uuid | YES |  |  |  |
+| `replay_video_id` | text | YES |  |  |  |
+| `reviewed_by` | text | YES |  |  |  |
+| `reviewed_at` | timestamp with time zone | YES |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `partner_content_items_moderation_status_check`: CHECK ((moderation_status = ANY (ARRAY['draft'::text, 'in_review'::text, 'published'::text, 'flagged'::text, 'returned'::text])))
+- `partner_content_items_pillar_check`: CHECK ((pillar = ANY (ARRAY['body'::text, 'mind'::text, 'connect'::text])))
+- `partner_content_items_type_check`: CHECK ((type = ANY (ARRAY['video'::text, 'live_session'::text, 'program'::text, 'post'::text])))
+
+**Foreign keys:**
+- `calendar_occurrence_id` → `calendar_occurrences.id` (`partner_content_items_calendar_occurrence_id_fkey`)
+- `partner_id` → `partner_partners.id` (`partner_content_items_partner_id_fkey`)
+- `replay_video_id` → `replay_videos.youtube_video_id` (`partner_content_items_replay_video_id_fkey`)
+
+**RLS policies:**
+- `admin_all_partner_content_items` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
+- `member_read_published_partner_content` (SELECT, roles: authenticated) — (moderation_status = 'published'::text)
+
+**Indexes:**
+- `partner_content_items_pkey`
+
+### `partner_memberships` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `member_email` | text | NO |  |  | ✓ |
+| `partner_id` | uuid | NO |  |  | ✓ |
+| `joined_at` | timestamp with time zone | NO | now() |  |  |
+| `sessions_attended` | integer | NO | 0 |  |  |
+| `engagement_segment` | text | NO | 'regular'::text |  |  |
+| `referred` | boolean | NO | false |  |  |
+| `stripe_customer_id` | text | YES |  |  |  |
+| `stripe_subscription_id` | text | YES |  |  |  |
+| `account_type` | text | YES | 'b2c'::text |  |  |
+| `subscription_value` | numeric | YES | 20 |  |  |
+| `attribution_date` | timestamp with time zone | YES |  |  |  |
+
+**Check constraints:**
+- `partner_memberships_account_type_check`: CHECK ((account_type = ANY (ARRAY['b2c'::text, 'b2b'::text])))
+- `partner_memberships_engagement_segment_check`: CHECK ((engagement_segment = ANY (ARRAY['highly_engaged'::text, 'regular'::text, 'at_risk'::text])))
+
+**Foreign keys:**
+- `partner_id` → `partner_partners.id` (`partner_memberships_partner_id_fkey`)
+
+**RLS policies:**
+- `admin_all_partner_memberships` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
+- `member_own_partner_memberships` (ALL, roles: authenticated) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
+
+**Indexes:**
+- `partner_memberships_member_email_partner_id_key`
+- `partner_memberships_pkey`
+
+### `partner_onboarding_progress` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `partner_id` | uuid | NO |  |  | ✓ |
+| `steps` | jsonb | NO | '{"gdpr_passed": false, "admin_approved": false, "videos_wat |  |  |
+| `pct_complete` | numeric | NO | 0 |  |  |
+| `safeguarding_passed` | boolean | NO | false |  |  |
+| `gdpr_passed` | boolean | NO | false |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+| `assessment_score` | numeric | YES |  |  |  |
+| `assessment_passed_at` | timestamp with time zone | YES |  |  |  |
+
+**Foreign keys:**
+- `partner_id` → `partner_partners.id` (`partner_onboarding_progress_partner_id_fkey`)
+
+**Triggers:**
+- `trg_sync_partner_onboarding_pct` — BEFORE INSERT/UPDATE
+
+**RLS policies:**
+- `admin_all_partner_onboarding_progress` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
+
+**Indexes:**
+- `partner_onboarding_progress_partner_id_key`
+- `partner_onboarding_progress_pkey`
+
+### `partner_partners` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `slug` | text | NO |  |  | ✓ |
+| `name` | text | NO |  |  |  |
+| `role_title` | text | NO |  |  |  |
+| `pillar` | text | NO |  |  |  |
+| `status` | text | NO | 'applied'::text |  |  |
+| `bio` | text | YES |  |  |  |
+| `why` | text | YES |  |  |  |
+| `feel` | text | YES |  |  |  |
+| `avatar_url` | text | YES |  |  |  |
+| `verified` | boolean | NO | false |  |  |
+| `revenue_share_pct` | numeric | NO | 50 |  |  |
+| `rating` | numeric | NO | 0 |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `contact_email` | text | YES |  |  |  |
+| `referral_code` | text | YES |  |  | ✓ |
+| `stripe_promo_code` | text | YES |  |  | ✓ |
+| `human_promo_code` | text | YES |  |  | ✓ |
+
+**Check constraints:**
+- `partner_partners_pillar_check`: CHECK ((pillar = ANY (ARRAY['body'::text, 'mind'::text, 'connect'::text])))
+- `partner_partners_status_check`: CHECK ((status = ANY (ARRAY['applied'::text, 'vetting'::text, 'interview'::text, 'contract'::text, 'onboarding'::text, 'live'::text, 'suspended'::text, 'declined'::text])))
+
+**Triggers:**
+- `trg_assert_partner_golive` — BEFORE UPDATE
+
+**RLS policies:**
+- `admin_all_partner_partners` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
+- `member_read_live_partner_partners` (SELECT, roles: authenticated) — (status = 'live'::text)
+
+**Indexes:**
+- `partner_partners_human_promo_code_key`
+- `partner_partners_pkey`
+- `partner_partners_referral_code_key`
+- `partner_partners_slug_key`
+- `partner_partners_stripe_coupon_code_key`
+
+### `partner_payouts` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `partner_id` | uuid | NO |  |  | ✓ |
+| `period` | text | NO |  |  | ✓ |
+| `attributed_subscriptions` | integer | NO | 0 |  |  |
+| `gross` | numeric | NO | 0 |  |  |
+| `share_pct` | numeric | NO | 30 |  |  |
+| `payout_amount` | numeric | NO | 0 |  |  |
+| `status` | text | NO | 'pending'::text |  |  |
+| `paid_at` | timestamp with time zone | YES |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `partner_payouts_status_check`: CHECK ((status = ANY (ARRAY['pending'::text, 'paid'::text])))
+
+**Foreign keys:**
+- `partner_id` → `partner_partners.id` (`partner_payouts_partner_id_fkey`)
+
+**RLS policies:**
+- `admin_all_partner_payouts` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
+
+**Indexes:**
+- `partner_payouts_partner_id_period_key`
+- `partner_payouts_pkey`
+
+### `partner_programs` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `partner_id` | uuid | NO |  |  |  |
+| `title` | text | NO |  |  |  |
+| `pillar` | text | NO |  |  |  |
+| `length_days` | integer | YES |  |  |  |
+| `lessons` | jsonb | YES |  |  |  |
+| `enrolled_count` | integer | NO | 0 |  |  |
+| `completion_pct` | numeric | NO | 0 |  |  |
+| `status` | text | NO | 'draft'::text |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `partner_programs_pillar_check`: CHECK ((pillar = ANY (ARRAY['body'::text, 'mind'::text, 'connect'::text])))
+- `partner_programs_status_check`: CHECK ((status = ANY (ARRAY['draft'::text, 'in_review'::text, 'published'::text, 'returned'::text])))
+
+**Foreign keys:**
+- `partner_id` → `partner_partners.id` (`partner_programs_partner_id_fkey`)
+
+**RLS policies:**
+- `admin_all_partner_programs` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
+- `member_read_published_partner_programs` (SELECT, roles: authenticated) — (status = 'published'::text)
+
+**Indexes:**
+- `partner_programs_pkey`
 
 ### `perf_telemetry` · RLS
 
@@ -4054,12 +4504,13 @@
 
 ---
 
-## Public Functions (102)
+## Public Functions (112)
 
 - `_vyve_daily_streak(p_dates date[], p_today date)` — func
 - `_vyve_daily_streak_best(p_dates date[])` — func
 - `apply_trial_campaign(p_email text, p_code text)` — func
 - `assert_member_not_expired()` — func
+- `assert_partner_golive()` — func
 - `backfill_platform_metrics(p_days integer)` — func
 - `bump_charity_total(p_delta integer)` — func
 - `bump_member_activity(p_email text, p_type text, p_date date, p_at timestamp with time zone)` — func
@@ -4080,8 +4531,12 @@
 - `compute_engagement_components(p_last_activity_at timestamp with time zone, p_active_days_30d integer, p_distinct_types_7d integer, p_latest_wellbeing integer)` — func
 - `compute_engagement_components_v2(p_member_email text)` — func
 - `compute_engagement_score(p_last_activity_at timestamp with time zone, p_active_days_30d integer, p_distinct_types_7d integer, p_latest_wellbeing integer)` — func
+- `compute_partner_monthly_payout(p_partner_id uuid, p_period text)` — func
+- `compute_partner_onboarding_pct(p_steps jsonb)` — func
 - `convert_member_to_paid(p_member_id uuid, p_stripe_customer text)` — func
+- `default_consent_versions()` — func
 - `drain_member_home_state_dirty(p_max_age_seconds integer)` — func
+- `ensure_foundation_running_plans()` — func
 - `evaluate_plan_fit()` — func
 - `exercise_logs_canonical_normalise()` — func
 - `exercise_name_canonical_normalise_generic()` — func
@@ -4105,6 +4560,8 @@
 - `increment_habit_counter()` — func
 - `increment_workout_counter()` — func
 - `is_admin()` — func
+- `is_admin_or_team()` — func
+- `is_team()` — func
 - `mark_member_lapsed(p_member_id uuid)` — func
 - `member_age(birth_date date)` — func
 - `member_home_state_get_fresh(p_email text)` — func
@@ -4125,9 +4582,11 @@
 - `refresh_member_home_state(p_email text)` — func
 - `refresh_member_home_state_if_dirty(p_email text)` — func
 - `refresh_member_home_state_v1_internal(p_email text)` — func
+- `refresh_partner_engagement_segments()` — func
 - `replay_videos_set_updated_at()` — func
 - `resolve_broadcast_audience(criteria jsonb)` — func
 - `resolve_trial_campaign(p_code text)` — func
+- `run_partner_payouts(p_period text)` — func
 - `session_categories_set_updated_at()` — func
 - `set_activity_time_fields()` — func
 - `set_broadcast_schedules_updated_at()` — func
@@ -4140,6 +4599,7 @@
 - `set_updated_at_persona_welcome_copy()` — func
 - `set_updated_at_podcast_platforms()` — func
 - `sync_onboarding_health()` — func
+- `sync_partner_onboarding_pct()` — func
 - `taglines_set_updated_at()` — func
 - `tg_mark_home_state_dirty_del()` — func
 - `tg_mark_home_state_dirty_ins()` — func
@@ -4161,7 +4621,7 @@
 
 ---
 
-## Cron Jobs (42)
+## Cron Jobs (43)
 
 | Job | Schedule | Active | Command preview |
 |---|---|---|---|
@@ -4197,6 +4657,7 @@
 | `vyve-daily-report` | `5 8 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-evaluate-plan-fit` | `0 4 * * *` | ✓ | `SELECT public.evaluate_plan_fit();` |
 | `vyve-expire-trials` | `0 1 * * *` | ✓ | `SELECT public.expire_lapsed_trials();` |
+| `vyve-foundation-running-plans` | `*/5 * * * *` | ✓ | `SELECT public.ensure_foundation_running_plans();` |
 | `vyve-gdpr-erase-daily` | `0 3 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-gdpr-export-tick` | `*/15 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-recompute-step-baselines` | `10 4 * * *` | ✓ | `SELECT public.recompute_step_baselines();` |
