@@ -1019,3 +1019,11 @@ Captured here so the at-a-glance state of the recent past is one short list, not
 - Generalise the writeMember core-fallback principle (§23.118): audit other member-facing writes for all-or-nothing inserts that could lock a member out on one bad optional field.
 - Welcome-email coach-voice rewrite into onboarding EF — AFTER Lewis approves the two mockups (welcome-email-v2-mock.html, coach-voices-comparison.html). HAVEN copy pre-written + Phil clinical sign-off, not AI-generated.
 - Shaun Baker (shaunbaker122qa@gmail.com): password set to Mario123! via set-member-password — he should sign in directly with email + that password, NOT tap reset links.
+
+
+## Partner onboarding — modules deferral (PM-659, 2026-06-22)
+
+- **HELD migration awaiting Phil + Lewis sign-off:** `HELD_partner_modules_deferred.sql` (pasted in PM-659 chat) makes `compute_partner_onboarding_pct` + `assert_partner_golive` deferral-aware so a `modules_deferred` partner can reach 100% and go LIVE without the Safeguarding/GDPR assessment. Compliance posture decision (partner delivers live member sessions pre-safeguarding) — Phil (clinical) + Lewis (commercial/legal) must approve. Until applied, go-live BLOCKS deferred partners (correct; 0 live today). Apply trigger = first real deferred partner reaching go-live, OR the Video-modules/Education steps returning.
+- **When modules return — re-enable + back-date:** add `3,4` back into `ACTIVE` in `partner-onboarding.html` (indirection handles the rest); client stops sending `modulesDeferred`; then `UPDATE partner_onboarding_progress SET steps=(steps-'modules_deferred')||'{"videos_watched":false,"safeguarding_passed":false,"gdpr_passed":false}' WHERE steps->>'modules_deferred'='true';` (gate reverts to full 8-step; they must complete for real).
+- **Legacy partner rows:** 3 `partner_partners` rows (0 live) onboarded under the OLD faked-gate EF (v3 and earlier) show `safeguarding_passed/gdpr_passed=true` despite the gate never being honestly enforced; NOT `modules_deferred`-marked. If any are real partners (vs test rows), decide whether to re-flag / require real assessment. Verify identity before acting.
+- **EF honesty note:** `partner-onboarding` EF before v4 hardcoded all go-live gates true at submit. v4 fixed this. Any analysis of partner onboarding completeness pre-PM-659 should treat those gate booleans as unreliable.
