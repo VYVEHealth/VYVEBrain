@@ -28,18 +28,32 @@ IA + spec done as artefacts (`CC-information-architecture.md`, `CC-team-app-spec
 Open (non-blocking): app name/bundle id, team route/subdomain (only matters at wrap), scheduler capability holders, gcal 2-way sync (lean internal-only v1), meet_url auto-gen vs paste (lean paste v1).
 
 
-## Partner Space — next session
+## Partner Space — build spec LOCKED (PM-660, 2026-06-22) → Sonnet builds
 
-- **PF-NEXT-1: Partner onboarding journey** — build `VYVE-Partner-Onboarding-Journey.html` as standalone page. 8-step self-serve flow (About you, Verification/DBS, References, Agreement, Video modules, Safeguarding assessment, GDPR assessment, Profile setup). Writes to `partner_partners` + `partner_applications` + `partner_onboarding_progress`. Demo file in hand.
-- **PF-NEXT-2: Member-facing Partner Space** — blocked on `VYVE-Partner-Space-Demo.html` from Lewis. Member browse partners, join space, community feed, live sessions, on-demand library.
-- **PF-NEXT-3: Curriculum persistence** — edit curriculum modal saves to DB (currently display-only).
-- **PF-NEXT-4: Programs sub-tab** — partner detail programs tab shows "coming soon".
-- **PF-NEXT-5: Revenue attribution** — DONE. 50% B2C referred members only, monthly, via Stripe coupon ID matching. stripe-webhook EF v10 live.
-- **PF-NEXT-6: Command Centre overhaul** — move main CC nav from top tabs to left sidebar; align design with partners.html system.
-- **PF-NEXT-7: `partner_partners.revenue_share_pct` DB default 30 → 50** — DECISION PENDING DEAN. Contract (PM-656), `stripe-webhook` EF (50%), and the onboarding page UI + submit payload are all 50%; only the table default still seeds 30, so admin-Invite partner rows start at the wrong %. Flip the column default to 50 (or set explicitly on every insert).
-- **PF-NEXT-8: Bracketed agreement values** — PM-656 resolved Lewis's draft brackets to operative numbers (24mo non-solicit / 30d payment & cure / 60d termination / "exclusive of VAT"). Confirm with Lewis these are final vs still-open; mirror brackets literally if he wants them shown.
-- **PF-NEXT-9: Lewis review of embedded agreement on live origin** — full contract is live in `partner-onboarding.html` per Dean's direction; Lewis copy/legal sign-off still outstanding.
-- **PF-NEXT-10 (optional): silent PDF download** — signed-copy download is browser print-to-PDF (one OS dialog). Swap to html2pdf/jsPDF CDN if a no-dialog `.pdf` download is wanted.
+**Full spec: `playbooks/partner-space-build.md`.** End-to-end map done this session. Decisions LOCKED: two-gate model (A=approved→web login+build space; B=Phil safeguarding/GDPR→member-visible); partner mgmt WEB-ONLY (`is_partner()` CC-slice, extend `admin_users.role`); community join FREE (payment is the VYVE membership; partner earns via existing 50% referral; no Stripe at join); simulated-live not genuinely-live.
+
+**NEXT-UP (one schema, three deliverables — `partner_memberships` is the hinge):**
+- **PF-NEXT-11: Partner web backend** (`is_partner()` CC-slice) — Account/Profile, My Content (upload+moderation status), My Community (feed posts to `partner_community_posts`, see/message subscribers, "we're live" trigger), My Sessions, My Earnings (read-only). Login provisioned at Gate A. Heavy back-office stays web.
+- **PF-NEXT-12: Member-facing Partner Space (in-app)** — discover partner, JOIN free (`partner_memberships` row), view feed + sessions + library. Read-and-join only. Visible only after Gate B. Community-scoped sessions live here filtered by `partner_id`, NOT global `sessions.html`.
+- **PF-NEXT-13: Community subscription + notifications** — free join; subscribers = new `partner_subscribers(partner_id)` audience shape over the EXISTING push spine (`send-push`/APNs/scheduled). Partner triggers notes/messages/"live 30-min-before" from web backend. Hard part already built.
+- **PF-NEXT-14: Audience scoping** — `calendar_occurrences` add `visibility` (`public`|`community`) + `partner_id`. Member session reads filter: `public` OR (`community` AND member in `partner_memberships` for that `partner_id`). Also the guardrail against the Team-App-scheduler global-list footgun.
+
+**Gate mechanics:** A = admin advances `partner_partners.status`→`onboarding` → provision `is_partner()` login + send creds. B = `trg_assert_partner_golive` + PM-659 HELD migration (deferred-aware) — needs safeguarding+gdpr (Phil) AND pct=100; members see partner only at `live`.
+
+**PARKED (mapped PM-660, NOT next — videos may not even go live yet):**
+- **PF-PARK-1: QC/ingest airing pipeline.** Exception-only, minimum Dean work. Watcher launchd agent in `~/vyve-live` (TCC-safe §23.89, py3.9-safe §23.88): download master → transcribe → rubric transcript → ffmpeg-probe → frame-sample → write `calendar_occurrence`. **Transcript-first + mechanical QC, NOT "AI watches the video"** (burned Dean before): transcript-vs-rubric = load-bearing safeguarding check (§23.84); ffmpeg = resolution/bitrate/silence/black-frame; optional vision-on-stills only. Clean→auto-schedule; flagged→hold+notify+10s tap. Download permanent until runner fetches from Storage. Inherits runner SPOF.
+- **PF-PARK-2: YouTube channel/key model.** ONE channel today, 9 reusable keys (concurrency lanes) + 8 category playlists (replay split by playlist). 15 partners = slot allocation not key/channel scarcity (reuse 9 keys, ceiling 9 concurrent, add keys free, no-double-book check). Leaning separate "VYVE Partners" channel for isolation; costs 2nd OAuth + channel-aware runner — build runner channel-aware from start if doing it.
+- **PF-PARK-3: Google OAuth verification = HARD DEPENDENCY for partner streaming.** Token only papered over by `youtube-token-keepalive`; consent screen still "Testing" (~7-day expiry, PM-658 outage vector). Push consent screen through verification. 2nd channel doubles the chore until done.
+
+**Carried/superseded from prior PF-NEXT list:**
+- PF-NEXT-1 (onboarding journey) — SHIPPED PM-631/634/635; modules hidden PM-659.
+- PF-NEXT-2 (member-facing space) — now PF-NEXT-12 above; no longer blocked on a Lewis demo file (spec'd from scratch).
+- PF-NEXT-3 (curriculum persistence) / PF-NEXT-4 (programs sub-tab) — still open, fold into PF-NEXT-11 backend.
+- PF-NEXT-5 (revenue attribution) — DONE PM-633.
+- PF-NEXT-6 (CC overhaul) — tracked under PM-639 CC IA.
+- PF-NEXT-7 (`revenue_share_pct` default 30→50) — DECISION STILL PENDING DEAN.
+- PF-NEXT-8/9 (agreement brackets + Lewis live-origin review) — still open, Lewis.
+- PF-NEXT-10 (silent PDF download) — optional.
 
 ## SHIPPED PM-559 — App Health Dashboard v1
 ### Live at admin.vyvehealth.co.uk/#/app-health (2026-06-08)
