@@ -1,6 +1,7 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
+**PM-662 (2026-06-22): partner-profile.html shipped (467 lines) + partner-space.html auth fixed. Partner Space member-facing surface complete: Connect tile->partner-space->partner-profile->live shells/replays. vbb 472. Gate B still holds. Next: first real partner through Gate A->Gate B.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
 ## CURRENT FRONT (updated 2026-06-18, PM-657)
 

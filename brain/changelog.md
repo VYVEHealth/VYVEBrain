@@ -1,3 +1,17 @@
+## PM-662 — Partner Space: partner-profile.html + partner-space.html auth fix + vbb 472 (2026-06-22)
+
+**vyve-site commit 5e40e88b (PM-662), 5 files, all md5-verified:**
+
+**partner-space.html (rewrite — auth bug fix):** Was using wrong auth pattern (VYVE_AUTH_READY promise + vyveSupabase.from() — supabase-js .from() is not the portal pattern). Rewritten: window.vyveCurrentUser + vyveAuthReady event + window.vyveSupabase.auth.getSession() for JWT + raw fetch(SUPA_URL+'/rest/v1/') per connect-feed.html canonical shape. Three pills: Discover (status=live, Gate B), Joined (partner_memberships), Sessions (calendar_occurrences visibility=community filtered to joined partners). Join writes partner_memberships (409 = already joined, treated as success). Cards link to /partner-profile.html?id=.
+
+**partner-profile.html (new, 467 lines):** ?id=<partner_id> + optional ?tab=sessions|library. Gate B: status=eq.live filter, non-live returns 'Community not found'. Three lazy tabs: Community (partner_community_posts, flagged=false), Sessions (calendar_occurrences with partner_id+visibility), Library (published partner_content_items, replay_video_id links to /replays.html?v=). Join/leave, member count, pillar gradient hero, avatar/initials fallback.
+
+**index.html + settings.html:** vbb 471->472.
+**sw.js:** cache vyve-cache-v2026-06-22-pm661-partner-profile-b, partner-profile.html precached.
+
+**Member-facing Partner Space complete:** connect.html tile -> partner-space.html -> partner-profile.html -> live shells/replays.
+**Gate B still holds:** no live partners yet, both pages show honest empty state.
+
 ## PM-661 — Partner Space: full build (schema + RLS + EF + CC partner portal + Connect tile + in-app discover page) (2026-06-22)
 
 **Schema (migration partner_space_schema):**
