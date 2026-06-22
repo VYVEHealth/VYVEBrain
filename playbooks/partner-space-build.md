@@ -103,5 +103,20 @@ When partner videos start arriving, this is how we order them for safe content. 
 - **Token is NOT fully fixed.** `youtube-token-health` (daily 4am) only *warns*; `youtube-token-keepalive` (daily) is quietly re-exercising the token (why Dean hasn't manually refreshed). Underlying issue live: consent screen still in Google **"Testing" mode** (~7-day refresh-token expiry), implicated in the PM-658 4-day outage.
 - **Fix = push consent screen through Google verification** — removes Testing-mode expiry entirely. Promote from someday to hard dependency the moment partner streaming is on the table: a stopped token then takes down partner commitments to their communities, not just our own schedule. A second partner channel DOUBLES the rotation chore until verified — so verification is a dependency of the two-channel decision too.
 
+
+## Workstream 4 — Claude-driven audited admin actions (PM-660 addendum)
+
+Dean wants to run the pipeline from chat: ask "has anyone applied?", get an answer, say "approve them," and have Claude execute — with permission. Split by risk:
+
+**Read half — ALREADY LIVE, zero build.** Everything is in Supabase; Claude queries `partner_*` (and `members`) directly via the Supabase MCP. "Has anyone applied to be a partner / member?" is answerable now. Proven PM-660: 3 partner rows (all Dean test runs, `declined`), 52 members. Agree a small status vocabulary so answers are consistent (applied=`status='applied'`, pipeline=vetting→contract, live=cleared Gate B).
+
+**Write half — needs a thin AUDITED action surface, graduated by risk. Build this; do NOT let Claude run raw ad-hoc SQL writes against partner/member tables.**
+- **Low-risk / reversible (Claude does on say-so):** advance pipeline stage applied→vetting→interview→contract, log note, request-more-info. Nothing member-facing. Writes `admin_audit_log`.
+- **Gate A — provision login (explicit confirm):** Claude states the effect (creates `is_partner()` auth user + sends credentials) before running. Audited.
+- **Gate B — go live to members (HARD RULE, high risk):** Claude MUST confirm safeguarding_passed AND gdpr_passed are actually recorded (Phil) before advancing `status→live`, and refuse + report if not — a casual in-chat "approve" must never flip a partner live without the duty-of-care gate (§23.84). The `trg_assert_partner_golive` trigger is the DB backstop; Claude is the conversational guard in front of it.
+- Every write action lands in `admin_audit_log` (who approved what, when) — the audit trail is the guardrail, not Claude's judgement alone.
+
+**Generalise:** same pattern applies to members (approve / comp / flag is_test / expire) and much of the admin console. Frame as "a small audited admin-action toolset Claude drives," partners as first consumer — not partner-only. Implementation options for Sonnet: (a) an MCP/EF action layer Claude calls, or (b) Claude drives existing admin EFs (`admin-member-edit` etc. already audit to `admin_audit_log`) — prefer reusing the audited EF pattern over new raw-write paths.
+
 ---
 *Spec authored PM-660 (2026-06-22). Build in Sonnet. Gate A/B gating + free-join money model + web-only partner mgmt + simulated-live are LOCKED. Channel model + QC pipeline are PARKED backlog with leanings recorded.*

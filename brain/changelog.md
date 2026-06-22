@@ -1,3 +1,9 @@
+## PM-660 addendum — Claude-driven audited admin actions (Workstream 4) (2026-06-22)
+
+Dean: Claude should be able to interact with the whole partner/member system from chat — read state ("has anyone applied?"), report, and on permission execute approvals. Folded into the spec as Workstream 4.
+- **Read half is ALREADY LIVE** (Supabase MCP over `partner_*` + `members`) — proven this session: 3 partner rows (all Dean test runs, status `declined`, none `applied`/`live`), 52 members (up from 47). No build.
+- **Write half = thin AUDITED action surface, graduated by risk** (do NOT let Claude run raw ad-hoc writes): low-risk stage advances on say-so; Gate A provision-login on explicit confirm; **Gate B go-live is a HARD-RULE confirm — Claude verifies safeguarding+gdpr recorded (Phil) before flipping `status→live`, refuses otherwise (§23.84), never on a casual "approve."** All writes → `admin_audit_log`. Prefer reusing existing audited admin EFs (`admin-member-edit` pattern) over new raw-write paths. Generalises to members + the admin console; partners first consumer.
+
 ## PM-660 — Partner Space: full end-to-end map + build spec for Sonnet (talk-first, no code) (2026-06-22)
 
 Mapped the entire partner situation with Dean end-to-end. No code shipped (Opus/Orbis wrong vehicle for building — Sonnet builds). Authored `playbooks/partner-space-build.md` as the handoff spec.

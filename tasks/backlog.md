@@ -38,6 +38,8 @@ Open (non-blocking): app name/bundle id, team route/subdomain (only matters at w
 - **PF-NEXT-13: Community subscription + notifications** — free join; subscribers = new `partner_subscribers(partner_id)` audience shape over the EXISTING push spine (`send-push`/APNs/scheduled). Partner triggers notes/messages/"live 30-min-before" from web backend. Hard part already built.
 - **PF-NEXT-14: Audience scoping** — `calendar_occurrences` add `visibility` (`public`|`community`) + `partner_id`. Member session reads filter: `public` OR (`community` AND member in `partner_memberships` for that `partner_id`). Also the guardrail against the Team-App-scheduler global-list footgun.
 
+- **PF-NEXT-15: Claude-driven audited admin actions (Workstream 4).** Read half ALREADY LIVE (Supabase MCP). Write half = thin audited action surface graduated by risk: low-risk stage advances (say-so) / Gate A provision-login (confirm) / Gate B go-live (HARD confirm — verify Phil safeguarding+gdpr first, §23.84, never casual). All → `admin_audit_log`; reuse audited EF pattern (`admin-member-edit`) not raw writes. Generalises to members + admin console; partners first consumer. Full detail: playbook Workstream 4.
+
 **Gate mechanics:** A = admin advances `partner_partners.status`→`onboarding` → provision `is_partner()` login + send creds. B = `trg_assert_partner_golive` + PM-659 HELD migration (deferred-aware) — needs safeguarding+gdpr (Phil) AND pct=100; members see partner only at `live`.
 
 **PARKED (mapped PM-660, NOT next — videos may not even go live yet):**
