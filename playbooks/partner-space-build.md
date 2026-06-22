@@ -36,6 +36,23 @@
 
 ## NEXT-UP build detail
 
+### LINKAGE CONTRACT — backend and front end are the SAME schema, two views (do not build disconnected)
+
+The partner web backend and the member-facing Partner Space are NOT two systems with a sync between them. They read/write the SAME `partner_*` tables through RLS-scoped views — partner writes on web, member reads in app. There is no backend→frontend push pipeline to build. Build the schema once; both surfaces are views over it. Explicit link points:
+
+| Link | Partner writes (web backend) | Member reads (in-app) |
+|---|---|---|
+| Profile | `partner_partners` (name/bio/pillar/avatar/role) | discovery card |
+| Community feed | `partner_community_posts` | community feed |
+| Sessions | `calendar_occurrences` (+ `partner_id` + `visibility`) | Partner Space sessions (scoped) |
+| Membership (bidirectional) | reads subscriber count/list from `partner_memberships` | member JOIN writes the `partner_memberships` row |
+| Content / replays | `partner_content_items` → `replay_videos` (tagged `partner_id`) | partner library |
+| Notifications | triggers fan-out to `partner_memberships` audience | receives push/notes |
+
+`partner_memberships` is the hinge — member join (front end) and partner audience (backend) are the same rows read two directions.
+
+**Linkage is GATED, not instant** — do not render partner content to members ungated: (a) a partner is invisible to members until Gate B (Phil go-live, `status='live'`); (b) content is invisible until moderation flips `partner_content_items.moderation_status`→published (§23.122); (c) sessions obey `visibility`/`partner_id` scoping. So the wiring exists from the start but visibility is gated by design.
+
 ### Schema — `partner_memberships` is the hinge
 Already exists (member↔partner join + engagement segment). It is the pivot for both surfaces:
 - Member subscribes (front end) → free `partner_memberships` row.
