@@ -1,3 +1,21 @@
+## PM-664 — Partner Space: community push notifications (2026-06-22)
+
+**Workstream 3 complete.**
+
+**Migration `partner_subscribers_audience`:** Extended `public.resolve_broadcast_audience(criteria jsonb)` with a seventh audience shape `partner_subscribers`. Usage: `{"type":"partner_subscribers","partner_id":"<uuid>"}`. Resolves to `partner_memberships.member_email` WHERE `pm.subscription_status='active'` AND `members.subscription_status='active'` (cross-checked so lapsed members don't get pushes they can't act on). REVOKE/GRANT preserved. All six existing shapes unchanged.
+
+**`partner-portal.html` (CC, commit `c7470e1b`):** New "Notify community" card in the Community tab above the post compose card. Two-step: Preview Audience (calls `admin-broadcast-push` in `preview` mode, shows recipient count) then Send Push (confirm dialog, fires `send` mode). Audience: `{type:partner_subscribers, partner_id}`. Route: `/partner-profile.html?id=<partner_id>`. Push type: `partner_community`. Writes to `admin_broadcast_log` via the existing EF audit trail.
+
+**End-to-end partner push path:** partner types title+message in their portal → preview (see how many subscribers) → confirm send → `admin-broadcast-push` EF → `resolve_broadcast_audience` resolves subscribers → `send-push` EF fans out to APNs/in-app → tap routes member to `/partner-profile.html?id=` (Community tab). Fully audited to `admin_broadcast_log`.
+
+**Partner Space Workstreams 1-3 now complete:**
+- WS1: Partner web backend (`is_partner()`, Gate A provision, `partner-portal.html` 5-tab CC slice)
+- WS2: Member-facing in-app space (`partner-space.html` discover + `partner-profile.html` profile)
+- WS3: Community notifications (`partner_subscribers` audience shape, notify panel in portal)
+- WS4 (Claudedriven audited actions): read half live (Supabase MCP), write half in partners.html for pipeline advances + Gate A provision. Full audited action EF layer is next natural extension.
+
+Gate B still holds — no live partners yet.
+
 ## PM-663 — Gate B approvers: Dean + Lewis only (Phil not in partner approval chain) (2026-06-22)
 
 Dean: "Phil won't approve partners. Me and Lewis will."
