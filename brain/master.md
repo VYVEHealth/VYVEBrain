@@ -1,6 +1,7 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
+**PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
 ## CURRENT FRONT (updated 2026-06-18, PM-657)
 
 **PM-648–657 (SHIPPED): VYVE Money financial wellbeing feature live and working. Five views: Hub/Track/Assess/Plan/Learn. Local-only persistence. Two server writes: `mind_activities` `money_checkin`/`money_course`. Full dual-theme. Bug-fix run PM-649–657 resolved: nav wiring, safe-area, calc timing, auth pattern, localStorage key migration, top gap, `updateSplit()` (no re-render on keystroke), one-time privacy notice, IIFE scope bug (`window.state`/`window.save`). Confirmed working on device PM-657.**

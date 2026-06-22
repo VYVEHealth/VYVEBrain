@@ -1,3 +1,38 @@
+## PM-661 — Partner Space: full build (schema + RLS + EF + CC partner portal + Connect tile + in-app discover page) (2026-06-22)
+
+**Schema (migration partner_space_schema):**
+- `admin_users.role` CHECK extended: added `partner` (was admin/viewer/coach_full/coach_exercise/coach_mental/team)
+- `calendar_occurrences`: added `visibility TEXT NOT NULL DEFAULT 'public' CHECK IN (public,community)` + `partner_id UUID REFERENCES partner_partners(id) ON DELETE SET NULL` + index on `partner_id`
+- `is_partner()` SECURITY DEFINER RPC (authenticated + service_role callable; §23.104 REVOKE)
+- `partner_memberships`: added `subscription_status TEXT DEFAULT 'active'`, `community_joined_at TIMESTAMPTZ`, UNIQUE `(member_email, partner_id)`
+
+**Schema (migration partner_role_rls_policies):**
+- `get_my_partner_id()` SECURITY DEFINER helper — resolves partner row from calling user's email + admin_users check
+- Partner-scoped RLS on `partner_partners` (SELECT/UPDATE own row), `partner_content_items` (INSERT/SELECT/UPDATE own, UPDATE gated to draft/in_review only), `partner_community_posts` (CRUD own posts, author_kind='partner' enforced), `partner_memberships` (SELECT own subscribers), `partner_payouts` (SELECT own), `partner_onboarding_progress` (SELECT own)
+
+**EF partner-provision v1 (JWT required, admin-gated):**
+- `provision`: creates/reuses Supabase Auth user, upserts `admin_users` row `role=partner`, emails credentials via send-email EF, writes `admin_audit_log`
+- `deprovision`: deactivates `admin_users` row, bans Auth user (reversible 10yr ban)
+
+**vyve-command-centre commit 2a0a11fd (PM-661):**
+- `partner-portal.html` (new, standalone, 879 lines): partner-facing CC-slice. 5 tabs: Profile (edit role_title/pillar/bio/why/avatar_url), Content (upload video to partner-content via signed URL → `partner_content_items` at `in_review` per §23.122), Community (post/delete feed, subscriber stats), Sessions (reads `calendar_occurrences` filtered by `partner_id`), Earnings (referred member count, est MRR, payout history, promo code). Magic-link auth, `is_partner()` gate on boot.
+- `partners.html`: Gate A confirm dialog + `partner-provision EF` call on advance to `onboarding`; Gate B explicit Phil sign-off confirm language on advance to `live`
+
+**vyve-site commit 58046d6c (PM-661), 5 files, all md5-verified:**
+- `connect.html`: Community destination tile (coral gradient, peer of Calendar/Podcast), links to `/partner-space.html`. CSS `.community-tile` class added.
+- `partner-space.html` (new, 416 lines): in-app Partner Space discover page. Three pill views: Discover (live partners grid — Gate B enforced, only `status=live`), Joined (filtered), Sessions (community `calendar_occurrences` filtered to joined partners). Join writes `partner_memberships` row (free, no Stripe). Nav back → Connect.
+- `index.html` + `settings.html`: vbb 470→471
+- `sw.js`: cache `vyve-cache-v2026-06-22-pm661-partner-space-a`, `partner-space.html` added to precache
+
+**Entry path: Connect hub → Community tile → `/partner-space.html`** (eventually moves to Home — decision parked per Dean).
+
+**Gate B still holds:** `partner-space.html` filters partners by `status='live'` — no live partners yet (all 3 rows are Dean test runs, `declined`). Page will show empty state until first partner is approved and Phil signs off.
+
+**Next on Partner Space:**
+- `partner-profile.html` — individual partner profile (Community/Sessions/Library tabs, Join button) per the mockup
+- Wire `partner-space.html` supabase auth pattern (depends on how auth.js exposes `vyveSupabase` — verify on device)
+- Workstream 4 (Claudedriven audited actions) — first use case is partner pipeline advances already in partners.html; read half already works via Supabase MCP
+
 ## PM-660 addendum — Claude-driven audited admin actions (Workstream 4) (2026-06-22)
 
 Dean: Claude should be able to interact with the whole partner/member system from chat — read state ("has anyone applied?"), report, and on permission execute approvals. Folded into the spec as Workstream 4.
