@@ -1,3 +1,20 @@
+## PM-665 — Partner Space: Dexie-first community feed (2026-06-22)
+
+Dean: feed should paint instantly on open, no waiting for page to load. Dexie-first, same pattern as the rest of the app.
+
+**db.js SCHEMA_V26 (vyve-site commit 124332ed):** Two new Dexie stores:
+- `partner_community_posts`: `'id, partner_id, [partner_id+created_at], created_at'` — `makeTable` with `memberKey:'partner_id'` so `allFor(partnerId)` returns all cached posts for a given partner.
+- `partner_memberships_local`: `'id, member_email, partner_id, [member_email+partner_id]'` — standard `makeTable` for the member's joined partners. Compound index for O(1) joined-check without full table scan.
+`db.version(26).stores(SCHEMA_V26)` — clean upgrade, no re-keying (§23.83).
+
+**sync.js:** `partner_memberships_local` added to MEMBER_TABLES sync loop. Runs on every login — so by the time a member taps into any partner profile their joined-status is already in Dexie. `partner_community_posts` is NOT in the sync loop (can't resolve partner IDs synchronously at sync time) — cached by `partner-profile.html` on first open instead.
+
+**partner-profile.html:** `loadFeed` split into `renderFeedPosts` (pure render, takes any posts array) + `loadFeed` (Dexie-first, REST background). Flow: (1) read `partner_community_posts.allFor(partnerId)` from Dexie, sort desc, paint immediately — zero network, zero skeleton on return visits; (2) fetch REST in background; (3) `bulkUpsert` results into Dexie; (4) re-render only if first-post-id or count changed (avoids flicker on no-change). Post divs tagged `data-post-id` for the change-detection check. First-ever open to a partner still hits the network (Dexie cold), subsequent opens are instant.
+
+**index.html + settings.html:** vbb 472→473. **sw.js:** cache `vyve-cache-v2026-06-22-pm665-dexie-partner-posts-c`.
+
+**New §23 rule candidate:** partner_community_posts uses `memberKey:'partner_id'` in makeTable — so `allFor(partnerId)` returns all posts for a partner, not all posts for a member. This is intentional but non-obvious. Any future Dexie store where the scoping key is not `member_email` must document the `memberKey` override explicitly in the SCHEMA comment and the `makeTable` call.
+
 ## PM-664 — Partner Space: community push notifications (2026-06-22)
 
 **Workstream 3 complete.**
