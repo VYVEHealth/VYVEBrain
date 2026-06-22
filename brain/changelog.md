@@ -1,16 +1,10 @@
-## PM-662 — Partner Space: partner-profile.html + partner-space.html auth fix + vbb 472 (2026-06-22)
+## PM-663 — Gate B approvers: Dean + Lewis only (Phil not in partner approval chain) (2026-06-22)
 
-**vyve-site commit 5e40e88b (PM-662), 5 files, all md5-verified:**
+Dean: "Phil won't approve partners. Me and Lewis will."
 
-**partner-space.html (rewrite — auth bug fix):** Was using wrong auth pattern (VYVE_AUTH_READY promise + vyveSupabase.from() — supabase-js .from() is not the portal pattern). Rewritten: window.vyveCurrentUser + vyveAuthReady event + window.vyveSupabase.auth.getSession() for JWT + raw fetch(SUPA_URL+'/rest/v1/') per connect-feed.html canonical shape. Three pills: Discover (status=live, Gate B), Joined (partner_memberships), Sessions (calendar_occurrences visibility=community filtered to joined partners). Join writes partner_memberships (409 = already joined, treated as success). Cards link to /partner-profile.html?id=.
+`vyve-command-centre/partners.html` (commit `0556ba2d`): Gate B go-live confirm dialog updated — "Confirm Phil has signed off on safeguarding and GDPR" removed, replaced with "Confirm Dean and Lewis have both approved this partner".
 
-**partner-profile.html (new, 467 lines):** ?id=<partner_id> + optional ?tab=sessions|library. Gate B: status=eq.live filter, non-live returns 'Community not found'. Three lazy tabs: Community (partner_community_posts, flagged=false), Sessions (calendar_occurrences with partner_id+visibility), Library (published partner_content_items, replay_video_id links to /replays.html?v=). Join/leave, member count, pillar gradient hero, avatar/initials fallback.
-
-**index.html + settings.html:** vbb 471->472.
-**sw.js:** cache vyve-cache-v2026-06-22-pm661-partner-profile-b, partner-profile.html precached.
-
-**Member-facing Partner Space complete:** connect.html tile -> partner-space.html -> partner-profile.html -> live shells/replays.
-**Gate B still holds:** no live partners yet, both pages show honest empty state.
+Brain: §23.84 scope clarification added — the rule covers member-facing VIDEO content (suicide/self-harm/addiction crisis/acute MH), NOT partner go-live decisions. Partner Gate B is Dean + Lewis. If a specific partner video touches acute MH territory, §23.84 applies to that video (Phil gates it); the partner community going live is a separate call and Phil doesn't block it. PM-660 and PM-659 CURRENT_FRONT lines corrected to remove "Phil" from gate B description.
 
 ## PM-661 — Partner Space: full build (schema + RLS + EF + CC partner portal + Connect tile + in-app discover page) (2026-06-22)
 
