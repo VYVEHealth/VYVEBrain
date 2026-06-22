@@ -179,9 +179,11 @@ def get_occurrence(occ_id):
 def get_upcoming(date_filter=None):
     now = datetime.now(timezone.utc)
     hi = now.timestamp() + 24 * 3600
+    lo_iso = datetime.fromtimestamp(now.timestamp() - 300, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     q = ("calendar_occurrences?select=id,category,starts_at,ends_at,session_title,"
          "session_description,name,description,notes,image_url,youtube_broadcast_id"
          "&type=eq.live_session&active=eq.true&cancelled_at=is.null"
+         "&starts_at=gte." + lo_iso +
          "&order=starts_at.asc&limit=100")
     st, rows = supa("GET", q)
     if st != 200:
@@ -433,7 +435,16 @@ def daemon(date_filter=None):
     while True:
         try:
             token = refresh_access_token()
-            for occ in get_upcoming(date_filter):
+            ups = get_upcoming(date_filter)
+            try:
+                supa("POST", "runner_heartbeat",
+                     data={"id": "runner",
+                           "beat_at": datetime.now(timezone.utc).isoformat(),
+                           "detail": {"upcoming": len(ups)}},
+                     prefer="resolution=merge-duplicates")
+            except Exception as _hb:
+                log("heartbeat write failed:", repr(_hb))
+            for occ in ups:
                 with lock:
                     if occ["id"] in handled:
                         continue

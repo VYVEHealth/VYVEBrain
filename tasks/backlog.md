@@ -1,3 +1,16 @@
+## NEW IDEAS + structural risk (captured PM-658, 2026-06-22)
+
+**Feature ideas (Dean brain-dump — unspecced, talk-first before build):**
+- **Challenges** — subscribable, saveable, time-boxed challenges. "75 Hard" is trademarked → build a VYVE-branded variant (multi-task daily checklist, reset-on-miss model). Step-count challenges need native HealthKit / Health Connect step data (native dependency). Lewis copy gate on naming + framing.
+- **Content library expansion** — more videos / education / support content; partly exists already, needs an audit of what's there vs. the gap before scoping.
+- **Global app-wide search** — single search across sessions, content, exercises, etc.
+- **Fasting feature (nutrition)** — 16:8 / 24 / 36 / 48h fasting tracker. Extended-fast (36/48h) guidance needs a health disclaimer + Phil clinical gate before shipping to members.
+
+**Structural risk — live-session runner single point of failure (from PM-658):**
+- `vyve-live-runner.py` runs as a launchd agent on Dean's personal Mac — sleep-prone, no redundancy. Move to an always-on box (cheap VPS / always-on Pi / cloud worker) so live sessions don't depend on one laptop being awake.
+- Google OAuth app is in "Testing" mode → refresh token expires ~every 7 days, a recurring silent-death vector. Complete consent-screen verification (or publish the app) for a non-expiring refresh token.
+- Detection is now handled (broadcast-watchdog EF, cron 50, alerts email+push). These two items are the remaining *structural* fixes.
+
 
 ## Command Centre IA + Team App build (PM-639 — Sonnet to build, spec locked)
 

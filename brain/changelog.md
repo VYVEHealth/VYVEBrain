@@ -1,3 +1,28 @@
+## PM-658 — Live-session outage (4 days): runner forward-window blindness + server-side broadcast watchdog + missed-session reschedule (2026-06-22)
+
+Live sessions silently stopped airing for ~4 days (last broadcast minted 18 Jun 18:30 UTC, null thereafter). No error anywhere — a silent blinding, not a crash.
+
+**Root cause.** `vyve-live-runner.py` `get_upcoming()` queried `calendar_occurrences` with `order=starts_at.asc&limit=100` and only an UPPER time bound (`hi = now + 24h`, applied client-side) — no lower bound. Once active `live_session` occurrences exceeded ~100 (reached ~18 Jun at 4/day from the 22 May oldest), the 100-row ascending window pinned to the OLDEST (all past) occurrences, so the current/next sessions fell outside the window. The runner stopped both creating broadcasts and airing them. New hard rule §23.125.
+
+**Red herrings ruled out (in order):** schedule intact — 163 active `live_session` occurrences, 111 past / 52 future, through 18 Aug (not a scheduling gap); YouTube OAuth token proven healthy via a live refresh grant (200); `session-publish` EF proven healthy (returned ok:true); cron 27 `session-publish-hourly` disabled since 4 Jun — intentional, the runner owns creation (`ensure_broadcast` CAS reuses existing id else mints).
+
+**Runner fix (committed here to `scripts/vyve-live-runner/vyve-live-runner.py`; Mac copy patched live).**
+- Forward window: `get_upcoming()` now adds `lo_iso = now − 300s` as `&starts_at=gte.<lo_iso>`, so the ascending+limit window tracks the present instead of the epoch.
+- Heartbeat: the daemon loop now upserts `runner_heartbeat` (`id='runner'`, `beat_at`, `detail={upcoming:N}`) every cycle before processing, arming the watchdog's daemon-down detection.
+First time the runner is under version control — the brain copy is now the source of truth (Mac was the only copy and had drifted into the bug).
+
+**Server-side watchdog (the Mac being down can't take alerting down too).**
+- `broadcast-watchdog` EF v1 (`verify_jwt:false`). For every session that should be airing now (started ≥ GRACE_MIN=4 ago, `ends_at ≥ now`), verifies the YouTube broadcast is actually `live` via `liveBroadcasts.list?part=status`; missing id or non-live = failure. Also flags a stale `runner_heartbeat` (> 6 min). Dedupes via `broadcast_watch_alerts` (one open alert per key, auto-resolves when healthy). Alerts: email `team@vyvehealth.co.uk` (send-email EF) + native push to `deanonbrown@hotmail.com` (push-send-native EF). Modes: `{}` normal, `{"check":"dryrun"}`, `{"check":"selftest"}`. NOTE: deployed v1 header comment still reads `(PM-XXX)` — cosmetic; sweep to PM-658 on next functional redeploy.
+- Migration `broadcast_watchdog_tables`: `public.runner_heartbeat` + `public.broadcast_watch_alerts` (unique partial index on open `alert_key`). RLS on, no policies (service-role bypass).
+- pg_cron 50 `broadcast-watchdog-5min` (`*/5 * * * *`).
+- pg_cron 27 `session-publish-hourly` re-enabled (`5 * * * *`) as belt-and-braces — CAS-safe alongside the runner.
+
+**Reschedule.** The 11 missed sessions across 19–21 Jun moved into a 22–27 Jun evening catch-up block (19:30 + 20:45 UTC), durations preserved (`ends_at = new_start + original duration`), `youtube_broadcast_id` cleared so the runner re-mints.
+
+**Verified.** Runner heartbeat landed post-reload (`detail.upcoming=6`, fresh within seconds) — confirms both patches live and the forward window seeing current sessions again. Watchdog: normal run clean (due:0), selftest delivered BOTH email (success) and push (sent:1, 200). Next scheduled session is the live end-to-end proof; watchdog pushes Dean only if it fails.
+
+**Structural risk logged to backlog:** runner still on Dean's sleep-prone Mac with a Google OAuth app in "Testing" mode (~7-day refresh-token expiry). Move to an always-on box + complete consent-screen verification.
+
 ## PM-657 — VYVE Money: full bug-fix run PM-653–657 (2026-06-18)
 
 vyve-site commits `4c1c0f2c` (PM-653) · `5efff1e7` (PM-654) · `4f4ec78e` (PM-657). All fixes to `money.html` post-ship.
