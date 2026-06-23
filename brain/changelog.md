@@ -1,3 +1,8 @@
+## PM-666 (2026-06-23): Model string hotfix — onboarding + wellbeing-checkin EFs
+
+`claude-sonnet-4-20250514` deprecated by Anthropic, causing Anthropic 404 on every new onboarding (batch1_parallel phase). Fix: `onboarding` EF bumped v97→v98 (Supabase version 116), `wellbeing-checkin` EF bumped v35→v36 (Supabase version 66) — both patched to `claude-sonnet-4-5`. Gokce Erdogan (gkcerdogan@outlook.com) manually re-onboarded via pg_net after fix confirmed — member row, auth user, 5 habits, movement plan all created successfully. Note: `anthropic-proxy` passes through client-supplied model string (no hardcode); running-plan.html client-side model reference is a portal web shell issue (lower priority, not causing errors). `re-engagement-scheduler` uses Haiku not Sonnet — unaffected.
+
+
 ## PM-665 — Partner Space: Dexie-first community feed (2026-06-22)
 
 Dean: feed should paint instantly on open, no waiting for page to load. Dexie-first, same pattern as the rest of the app.
