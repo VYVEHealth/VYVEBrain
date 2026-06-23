@@ -1,3 +1,11 @@
+## PM-668 (2026-06-23): Dexie v27 catalogue recovery — calendar + replays blank
+
+**Root cause:** PM-665 committed db.js with SCHEMA_V26 declared before SCHEMA_V25. At evaluation time, SCHEMA_V25 was `undefined`, so `Object.assign({}, SCHEMA_V25, ...)` yielded a partial object missing the six Mental Fitness tables from V25 AND (critically) the inherited catalogue stores from earlier versions. Any device that opened the app after PM-665 (22 Jun evening) got Dexie upgraded to a corrupt v26 — catalogue stores (`calendar_occurrences`, `replay_playlists`, `replay_videos`, `service_catalogue`, `personas`) were either missing or schema-broken. PM-667 fixed the declaration order but Dexie skips the upgrade for devices already at v26, leaving the corruption frozen.
+
+**Fix (PM-668, commit b01fc7bb):** Added `db.version(27).stores(SCHEMA_V26).upgrade(tx => clear the 5 catalogue tables)`. Any affected device upgrades to v27, the clear() runs, and sync.js refills all catalogue tables on next foreground open (5-min stale window). No member-scoped data touched. Self-heals for all affected members automatically on next app open. vbb 475.
+
+**New §23 rule:** §23.124 — Never chain `.version(N).stores(...).version(N+1).stores(...)` — always use separate `db.version(N).stores(...)` calls. The chained form is valid Dexie syntax but obscures evaluation-order bugs when schema vars depend on each other. Separate calls make the dependency chain obvious.
+
 ## PM-666 (2026-06-23): Model string hotfix — onboarding + wellbeing-checkin EFs
 
 `claude-sonnet-4-20250514` deprecated by Anthropic, causing Anthropic 404 on every new onboarding (batch1_parallel phase). Fix: `onboarding` EF bumped v97→v98 (Supabase version 116), `wellbeing-checkin` EF bumped v35→v36 (Supabase version 66) — both patched to `claude-sonnet-4-5`. Gokce Erdogan (gkcerdogan@outlook.com) manually re-onboarded via pg_net after fix confirmed — member row, auth user, 5 habits, movement plan all created successfully. Note: `anthropic-proxy` passes through client-supplied model string (no hardcode); running-plan.html client-side model reference is a portal web shell issue (lower priority, not causing errors). `re-engagement-scheduler` uses Haiku not Sonnet — unaffected.
