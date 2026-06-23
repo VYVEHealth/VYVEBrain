@@ -1,3 +1,13 @@
+## PM-669 (2026-06-23): broadcast-watchdog v2 — treat 'complete' as healthy
+
+**Problem:** Two watchdog alerts fired today. Yoga Flexibility (19:30 UTC) was a genuine failure — ffmpeg rc=224, broken pipe at 88s due to Mac network dropout. Nutrition Basics (17:00 UTC) was a false positive — rc=0 clean finish, video simply shorter than its 30-min slot; broadcast went `complete` at 17:12, watchdog checked at 17:16 with `ends_at=17:30` still in the future and called it a failure.
+
+**Fix:** `broadcast-watchdog` v2 deployed. Added `&& lc !== 'complete'` to the not_live check. `complete` = video finished before slot end = success. Only `created`, `ready`, `none`, or missing broadcast id now trigger an alert. Verified via dryrun: `{due:0, would_alert:[], would_resolve:0}`.
+
+**Genuine failure pattern (Yoga Flexibility):** `ffmpeg rc=224 / Broken pipe` at 88.75s + immediate `daemon loop error: TimeoutError` — Mac internet dropout. Runner and OAuth healthy. Structural fix (VPS migration) remains backlog.
+
+Also noted: `daemon loop error: URLError(gaierror(8))` at 02:31 UTC — overnight DNS blip, self-recovered, no session impact.
+
 ## PM-668 (2026-06-23): Dexie v27 catalogue recovery — calendar + replays blank
 
 **Root cause:** PM-665 committed db.js with SCHEMA_V26 declared before SCHEMA_V25. At evaluation time, SCHEMA_V25 was `undefined`, so `Object.assign({}, SCHEMA_V25, ...)` yielded a partial object missing the six Mental Fitness tables from V25 AND (critically) the inherited catalogue stores from earlier versions. Any device that opened the app after PM-665 (22 Jun evening) got Dexie upgraded to a corrupt v26 — catalogue stores (`calendar_occurrences`, `replay_playlists`, `replay_videos`, `service_catalogue`, `personas`) were either missing or schema-broken. PM-667 fixed the declaration order but Dexie skips the upgrade for devices already at v26, leaving the corruption frozen.

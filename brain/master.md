@@ -1,6 +1,7 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
+**PM-669 (2026-06-23): broadcast-watchdog v2 — complete status treated as healthy (false positive fix). Yoga Flexibility rc=224 broken pipe = genuine Mac network dropout. Nutrition Basics rc=0 short video = false positive. One-line fix: `lc !== "complete"` added to not_live check. Dryrun clean.**
 **PM-668 (2026-06-23): Dexie v27 catalogue recovery. PM-665 declared SCHEMA_V26 before SCHEMA_V25 — any device opened during that window had corrupt v26 IndexedDB (calendar_occurrences/replay_playlists/replay_videos wiped). PM-667 fixed declaration order but Dexie skipped re-upgrade. PM-668 adds db.version(27) with upgrade() that clears 5 catalogue tables; sync.js refills on next foreground open. No member data touched. vbb 475. §23.126 added: never chain .version(N).version(N+1) — use separate calls.**
 **PM-666 (2026-06-23): Anthropic model string hotfix. `claude-sonnet-4-20250514` → `claude-sonnet-4-5` in `onboarding` v98 (Supabase v116) and `wellbeing-checkin` v36 (Supabase v66). Both EFs 404ing on every AI call. Gokce Erdogan (gkcerdogan@outlook.com) re-onboarded successfully post-fix.**
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
