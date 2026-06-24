@@ -1,3 +1,22 @@
+## PM-675–676 — Partner payment links + branded /join/ redirect + partner onboarding playbook (2026-06-22)
+
+**PM-675 — Partner payment links (CC):**
+- `partner_partners` table: added `payment_link_url TEXT` and `payment_link_id TEXT` columns
+- Men Together CIC partner row inserted: slug=`men-together-cic`, coupon=`mentogethercic`, payment_link_url=`https://buy.stripe.com/14A9AU5WM0AifIhcQJ93y02` (created via Composio Stripe, £10 off forever pre-applied to `price_1TCmukLyCqq49zQI5uTJpO0Q`), status=`onboarding`
+- `partners.html` Settings panel: payment link URL field added (shown first, above coupon ID field). `savePaymentLink()` function saves to `payment_link_url`
+- `partner-portal.html` Earnings tab: shows payment link (not bare coupon code) with Copy link button. Messaging: '£10 off forever pre-applied'. Falls back to `stripe_promo_code` if no link set
+
+**PM-676 — Branded /join/ redirect + partner onboarding playbook:**
+- `Test-Site-Finalv3/join.html`: dynamic partner redirect page. Path: `www.vyvehealth.co.uk/join/[slug]`. Reads slug from URL path, queries `partner_partners` (status=live, anon key) for `payment_link_url`, shows VYVE-branded loading screen for 900ms, then redirects to Stripe payment link. Error state if slug not found. Falls back to general checkout on network error. Requires `status='live'` — shows error during onboarding stage. noindex/nofollow meta.
+- `VYVEBrain/playbooks/partner-onboarding.md`: complete Claude-executable playbook. 8 steps: Stripe coupon (STRIPE_CREATE_COUPON via Composio), payment link (STRIPE_CREATE_PAYMENT_LINK), DB row (Supabase MCP), branded URL (auto-resolved by join.html), Gate A (portal provision), partner profile setup, Gate B (go live), hand-off to partner. Includes tool slugs, SQL template, time estimate, reconciliation note.
+
+**Men Together CIC partner URLs:**
+- Branded: `https://www.vyvehealth.co.uk/join/men-together-cic`
+- Stripe: `https://buy.stripe.com/14A9AU5WM0AifIhcQJ93y02`
+- Coupon: `mentogethercic` (£10 off forever)
+
+**How to onboard any future partner:** Tell Claude the name, slug, pillar, contact email, and discount. Claude reads `playbooks/partner-onboarding.md` and executes Steps 1–4 (Stripe coupon + link + DB row) autonomously in ~3 minutes via Composio + Supabase MCP. Steps 5–8 require Dean/Lewis approval gates.
+
 ## PM-674 — Partner earnings: Stripe attribution reconciliation (2026-06-22)
 
 Dean: webhook failures would mean partners miss earnings and feel ripped off. Two things built to make this impossible to miss.
