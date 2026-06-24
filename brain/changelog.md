@@ -1,3 +1,25 @@
+## PM-666–PM-672 — Partner Portal: sessions scheduling, scheduled push queue, theme, earnings (2026-06-22)
+
+**PM-666 partner_scheduled_pushes migration:** One-shot push queue table. `id, partner_id, title, body, send_at, sent_at, cancelled_at, recipient_count, error`. Index on `send_at WHERE sent_at IS NULL AND cancelled_at IS NULL`. RLS: admin ALL, partner own rows (INSERT: `send_at > now()+5min`; UPDATE: only if `sent_at IS NULL`). Also added `trg_partner_session_min_notice` BEFORE INSERT/UPDATE trigger on `calendar_occurrences` — raises exception if `partner_id IS NOT NULL AND starts_at < now()+48h`.
+
+**PM-666 partner-push-dispatcher EF v1 (cron every 15 min):** Fetches pending `partner_scheduled_pushes` rows (`send_at<=now, sent_at IS NULL, cancelled_at IS NULL`). For each: `resolve_broadcast_audience({type:partner_subscribers, partner_id})` → `send-push` EF with `LEGACY_SERVICE_ROLE_JWT`. Marks `sent_at + recipient_count` on success, `error` on failure. Authenticated via `CC_CRON_SECRET` header. Cron job #51 wired in Supabase pg_cron.
+
+**PM-670 partner-portal.html: Supabase CDN init fix** — removed `lib/supabase.js` dependency (doesn't exist in CC), replaced with CDN `supabase-js@2.39.3` + self-contained `_getSB()` client.
+
+**PM-671 partner-portal.html: password gate** — magic link auth replaced with `vyve2026` password gate (sessionStorage). Auto-loads Emma Clarke (`DEMO_PARTNER_ID`). All DB calls converted from `sb().from()` to raw `fetch(SUPA_URL+'/rest/v1/...')` with anon key (no session required for demo).
+
+**PM-672 partner-portal.html: full feature build (commit 2bbd063b):**
+- **Light/dark theme**: dual CSS token blocks (:root/dark + light), toggle button in topbar (moon/sun), persisted in localStorage `vyve-partner-theme`. Same pattern as member portal.
+- **Sessions tab rebuilt**: schedule form (title, date+time, duration 30/45/60/90 min, YouTube URL). 48hr minimum enforced client-side (min attribute) and server-side (DB trigger). Writes to `calendar_occurrences` with `visibility='community'` and `partner_id`. Upcoming sessions list below with `fmtDT()` formatter and live URL link.
+- **Community tab notify panel**: send-now replaced with scheduled push. Date+time picker. Preview Audience calls `resolve_broadcast_audience` RPC directly (anon key, no admin JWT). Schedule Push writes to `partner_scheduled_pushes`. Scheduled queue rendered below panel with pending/sent/cancelled states + Cancel button (sets `cancelled_at`). Queue reloads on schedule, cancel, and post actions.
+- **Earnings tab wired**: MRR calculated as `referred_count * 20 * (revenue_share_pct/100)`. Shows per-member rate when no referrals yet. Payout history from `partner_payouts`.
+
+**Push flow end-to-end:** Partner schedules push in portal → `partner_scheduled_pushes` row → `partner-push-dispatcher` cron (15min) → `resolve_broadcast_audience(partner_subscribers)` → `send-push` EF → APNs to subscribed members → tap routes to `/partner-profile.html?id=`.
+
+**Session constraint:** `trg_partner_session_min_notice` on `calendar_occurrences` — 48hr rule is belt-and-braces (client enforces via min date attribute, DB raises exception as backstop).
+
+**Demo state:** password `vyve2026`, auto-loads Emma Clarke. URL: `https://admin.vyvehealth.co.uk/partner-portal.html`
+
 ## PM-669 (2026-06-23): broadcast-watchdog v2 — treat 'complete' as healthy
 
 **Problem:** Two watchdog alerts fired today. Yoga Flexibility (19:30 UTC) was a genuine failure — ffmpeg rc=224, broken pipe at 88s due to Mac network dropout. Nutrition Basics (17:00 UTC) was a false positive — rc=0 clean finish, video simply shorter than its 30-min slot; broadcast went `complete` at 17:12, watchdog checked at 17:16 with `ends_at=17:30` still in the future and called it a failure.
