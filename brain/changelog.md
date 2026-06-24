@@ -1,3 +1,23 @@
+## PM-674 — Partner earnings: Stripe attribution reconciliation (2026-06-22)
+
+Dean: webhook failures would mean partners miss earnings and feel ripped off. Two things built to make this impossible to miss.
+
+**EF stripe-reconcile v1 (cron #52, nightly 02:00 UTC):**
+Calls Stripe API directly (`STRIPE_SECRET_KEY` EF env var) to list all active subscriptions. Filters client-side to those with `discount.coupon.id` matching a known `partner_partners.stripe_promo_code`. For each match, checks `partner_memberships` for a `referred=true` row. If missing: inserts the attribution row + writes a `high` severity `platform_alerts` row (type: `stripe_attribution_recovered`) so it surfaces in the daily report. If Stripe API itself fails (bad key, network): writes `critical` alert immediately. If everything is clean: writes `info` alert confirming it ran. Authenticated via `CC_CRON_SECRET`. Paginates up to 500 subs per partner (5 pages of 100).
+
+**Failure modes covered:**
+- Webhook EF timeout/crash → reconciler catches it next morning
+- Webhook signature misconfigured → `critical` alert on first reconcile run (Stripe subs exist, no rows)
+- `STRIPE_SECRET_KEY` missing → `critical` alert immediately on first cron run
+- Member signed up before partner row existed → caught once partner row + promo code assigned
+- Everything fine → `info` alert in daily report confirming clean run
+
+**CC partners.html (PM-674, commit 32d5b7e7):** New Stripe referral code field in the partner Settings panel (`renderPartnerSettings`). Input auto-uppercases. `savePromoCode()` writes to `partner_partners.stripe_promo_code`. Shows green tick if code assigned, amber warning if not. This is the step that must happen before ANY attribution or reconciliation can work.
+
+**Earnings model clarification (Dean):** Partner earnings = members who used the referral code at Stripe checkout ONLY. Community joiners (app Join button, `referred=false`) are NOT part of earnings. Attribution source: `stripe-webhook` v10 `handlePartnerReferral` writes `partner_memberships` with `referred=true` when `discount.coupon.id` matches `partner_partners.stripe_promo_code`. Reconciler is the safety net, not the primary path.
+
+**Action required before any of this is live:** For each real partner, create a Stripe coupon in the dashboard (0% discount, readable ID e.g. EMMA50), then assign it in `partners.html` Settings tab. Partner shares the code. Webhook + reconciler then handle everything automatically.
+
 ## PM-666–PM-672 — Partner Portal: sessions scheduling, scheduled push queue, theme, earnings (2026-06-22)
 
 **PM-666 partner_scheduled_pushes migration:** One-shot push queue table. `id, partner_id, title, body, send_at, sent_at, cancelled_at, recipient_count, error`. Index on `send_at WHERE sent_at IS NULL AND cancelled_at IS NULL`. RLS: admin ALL, partner own rows (INSERT: `send_at > now()+5min`; UPDATE: only if `sent_at IS NULL`). Also added `trg_partner_session_min_notice` BEFORE INSERT/UPDATE trigger on `calendar_occurrences` — raises exception if `partner_id IS NOT NULL AND starts_at < now()+48h`.
