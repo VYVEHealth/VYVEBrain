@@ -1,183 +1,102 @@
 # Partner Onboarding Playbook
 ## How to onboard a new VYVE partner end-to-end
 
-This playbook covers everything from first contact to the partner being live in the app
-with a branded referral link. Claude executes all technical steps. Dean/Lewis handle
-approval gates.
+From first contact to a partner being live in the app with a branded referral link.
+Claude executes all technical steps; Dean/Lewis handle the approval gates.
+
+> **PM-682 update.** Stripe Payment Links CANNOT pre-apply a coupon (§23.127). Partners no
+> longer get a payment-link object. The branded `/join/[slug]` link mints a discounted Stripe
+> **Checkout Session** live, via the `partner-join-redirect` EF. So onboarding a partner
+> technically = **a Stripe coupon + a DB row.** That's it.
 
 ---
 
 ## What you need before starting
-
-- Partner name (display name, e.g. "Men Together CIC")
-- Partner slug (URL-safe, lowercase, e.g. "men-together-cic")
-- Partner pillar: `mind`, `body`, or `connect`
-- Partner contact email
-- Discount amount to offer (default: £10 off forever)
-- Revenue share % (default: 50%)
-- Short bio (optional — partner can fill in themselves via their portal)
+- Partner name (display, e.g. "Men Together CIC")
+- Partner slug (URL-safe, lowercase, hyphenated, e.g. "men-together-cic")
+- Pillar: `mind`, `body`, or `connect`
+- Contact email
+- Discount (default £10 off forever)
+- Revenue share % (default 50%)
+- Short bio (optional — partner can fill via their portal)
 
 ---
 
-## Step 1 — Create the Stripe coupon
-
-**Claude does this via Composio Stripe.**
-
-Coupon spec:
-- Name: `[Partner Name] — VYVE Referral`
-- ID (human-readable): based on partner slug, uppercase, max 20 chars  
-  e.g. `men-together-cic` → `MENTOGETHERCIC`
-- Discount: £10 off, forever (amount_off: 1000, currency: gbp, duration: forever)
-- Redemptions: unlimited
+## Step 1 — Create the Stripe coupon (Claude, via Composio Stripe)
+The coupon IS the partner's referral code AND the thing the /join link auto-applies.
 
 ```
 Tool: STRIPE_CREATE_COUPON
-Arguments:
-  id: "[SLUG_UPPERCASE_NO_HYPHENS]"
-  name: "[Partner Name] — VYVE Referral"
-  currency: "gbp"
-  amount_off: 1000
-  duration: "forever"
+  id:         "<slug, hyphens removed, lowercase>"   # men-together-cic -> mentogethercic
+  name:       "<Partner Name>"                        # shown on the checkout discount tag
+  currency:   "gbp"
+  amount_off: 1000          # £10 in pence
+  duration:   "forever"
 ```
+- Coupon IDs are case-sensitive — keep lowercase, no spaces/hyphens.
+- `amount_off` is pence. £10 off the £20 price = 50%. (Or `percent_off: 50` — `netMonthlyValue` handles either, §23.128.)
+- Save the coupon id → it becomes the DB row's `stripe_promo_code`.
 
-Save the coupon ID returned.
-
----
-
-## Step 2 — Create the Stripe payment link
-
-**Claude does this via Composio Stripe.**
-
-Uses the existing VYVE £20/month price: `price_1TCmukLyCqq49zQI5uTJpO0Q`
-
-```
-Tool: STRIPE_CREATE_PAYMENT_LINK
-Arguments:
-  line_items: [{ price: "price_1TCmukLyCqq49zQI5uTJpO0Q", quantity: 1 }]
-  discounts: [{ coupon: "[COUPON_ID_FROM_STEP_1]" }]
-  after_completion:
-    type: "redirect"
-    redirect:
-      url: "https://www.vyvehealth.co.uk/onboarding_v8.html"
-  metadata:
-    partner_slug: "[slug]"
-    partner_coupon: "[COUPON_ID]"
-```
-
-Save the payment link URL and ID returned.
-
----
-
-## Step 3 — Create the partner row in Supabase
-
-**Claude does this via Supabase MCP.**
-
+## Step 2 — Create the partner row (Claude, via Supabase MCP)
 ```sql
 INSERT INTO public.partner_partners (
   slug, name, role_title, pillar, status,
-  bio, stripe_promo_code, payment_link_url, payment_link_id,
-  revenue_share_pct, contact_email
+  bio, stripe_promo_code, revenue_share_pct, contact_email
 ) VALUES (
-  '[slug]',
-  '[Partner Name]',
-  '[Display role/title]',
-  '[pillar]',
-  'onboarding',
-  '[bio if provided, else null]',
-  '[COUPON_ID]',
-  '[payment_link_url]',
-  '[payment_link_id]',
-  [revenue_share_pct],
-  '[contact_email]'
+  '<slug>', '<Partner Name>', '<Display role/title>', '<pillar>', 'onboarding',
+  '<bio or null>', '<coupon id>', <revenue_share_pct>, '<contact_email>'
 );
 ```
+Do NOT set `payment_link_url` / `payment_link_id` — vestigial (§23.127). The /join EF reads
+`stripe_promo_code` and builds the discounted checkout itself.
+
+## Step 3 — The branded referral URL (no build step)
+`https://www.vyvehealth.co.uk/join/<slug>`   e.g. `.../join/men-together-cic`
+
+How it works (for debugging):
+- `Test-Site-Finalv3/404.html` (GitHub Pages catch-all) reads `/join/<slug>` and redirects to the
+  `partner-join-redirect` EF (§23.129 — NOT join.html, NOT Cloudflare).
+- The EF looks up the partner (`status='live'`), mints a Stripe Checkout Session for the £20/mo price
+  with the coupon auto-applied, and 303s the member to `checkout.stripe.com`.
+- Member sees £10/month, types nothing. After paying they land on the real onboarding questionnaire
+  `welcome.html?partner=<slug>` (§23.130 — NOT onboarding_v8.html, which is dead).
+- Partner must be `status='live'` for the link to work; pre-live it falls back to general checkout.
+
+## Step 4 — Provision portal access (Gate A)
+In `partners.html`, advance Applied → Onboarding → triggers `partner-provision` EF: creates a Supabase
+Auth user + `admin_users` row (`role='partner'`) + emails credentials. Partner then logs into
+`admin.vyvehealth.co.uk/partner-portal.html`.
+
+## Step 5 — Partner sets up their profile
+Profile (name/bio/avatar) + Content (uploads "Welcome to VYVE" video → `in_review`).
+Claude/Dean approves the video in the Content Moderation queue in `partners.html`.
+
+## Step 6 — Go live (Gate B)
+In `partners.html`, advance Onboarding → Live (Dean + Lewis confirm; safeguarding/GDPR bar per §23.84).
+`status` → live: partner appears in `partner-space.html` and the /join link goes live.
+
+## Step 7 — Hand off to partner
+1. Portal login: `https://admin.vyvehealth.co.uk/partner-portal.html`
+2. Branded referral link: `https://www.vyvehealth.co.uk/join/<slug>` — £10 off forever pre-applied,
+   no code for members to type.
 
 ---
 
-## Step 4 — The branded referral URL
-
-No build step needed. The `/join/` redirect page on the marketing site
-already handles any slug dynamically.
-
-The partner's branded URL is:
-```
-https://www.vyvehealth.co.uk/join/[slug]
-```
-
-e.g. `https://www.vyvehealth.co.uk/join/men-together-cic`
-
-When a member visits this URL:
-1. The page shows a brief VYVE-branded loading screen
-2. Supabase is queried for the partner's `payment_link_url` by slug
-3. Member is redirected to the Stripe payment link (£10 off pre-applied)
-4. Member completes checkout → webhook fires → attribution written to `partner_memberships`
-
-**Note:** The partner must be `status='live'` for the redirect to work.
-During onboarding they'll get a 404-style error page. Advance to live at Gate B.
-
----
-
-## Step 5 — Provision portal access (Gate A)
-
-In `partners.html`, advance the partner from `Applied` → `Onboarding`.
-This triggers the Gate A confirm dialog and calls `partner-provision` EF which:
-- Creates a Supabase Auth user for the partner's contact email
-- Creates an `admin_users` row with `role='partner'`
-- Emails credentials to the contact email
-
-The partner can then log into `admin.vyvehealth.co.uk/partner-portal.html`.
-
----
-
-## Step 6 — Partner sets up their profile
-
-Partner logs in and completes:
-- Profile tab: display name, bio, avatar
-- Content tab: uploads "Welcome to VYVE" video (goes to `in_review` queue)
-
-Claude (or Dean) approves the video in the Content Moderation queue in `partners.html`.
-
----
-
-## Step 7 — Go live (Gate B)
-
-In `partners.html`, advance from `Onboarding` → `Live`.
-- Dean and Lewis both confirm (confirm dialog in the UI)
-- `partner_partners.status` flips to `live`
-- Partner immediately appears in `partner-space.html` for all members
-- Branded referral URL (`/join/[slug]`) now works
-
----
-
-## Step 8 — Hand off to partner
-
-Send the partner:
-1. Their portal login: `https://admin.vyvehealth.co.uk/partner-portal.html`
-2. Their branded referral URL: `https://www.vyvehealth.co.uk/join/[slug]`
-3. A note that the link has £10 off forever pre-applied — no code needed for members
-
----
-
-## Summary — what Claude creates per partner
-
-| Item | Tool | Where stored |
-|------|------|--------------|
-| Stripe coupon | Composio Stripe `STRIPE_CREATE_COUPON` | Stripe + `partner_partners.stripe_promo_code` |
-| Stripe payment link | Composio Stripe `STRIPE_CREATE_PAYMENT_LINK` | Stripe + `partner_partners.payment_link_url` |
+## What Claude creates per partner
+| Item | Tool | Stored |
+|------|------|--------|
+| Stripe coupon | Composio `STRIPE_CREATE_COUPON` | Stripe + `partner_partners.stripe_promo_code` |
 | Partner DB row | Supabase MCP `execute_sql` | `partner_partners` |
-| Portal login | `partner-provision` EF (triggered from `partners.html`) | `auth.users` + `admin_users` |
-| Branded URL | Auto-resolved by `join.html` | No extra step |
+| Portal login | `partner-provision` EF (from `partners.html`) | `auth.users` + `admin_users` |
+| Branded URL | none — `/join/<slug>` is dynamic (404.html → `partner-join-redirect`) | — |
 
-## Time estimate
+No payment-link object. Steps 1–2 (coupon + DB row) ~2 min with Claude. Steps 4–6 depend on the
+partner uploading content + the go-live gate.
 
-Steps 1–4 (Stripe + DB): ~3 minutes with Claude
-Steps 5–7 (setup + go-live): depends on partner uploading content, typically 1–2 days
-
----
-
-## Reconciliation
-
-`stripe-reconcile` EF runs nightly at 02:00 UTC. If the webhook ever fails to
-attribute a signup to this partner, it will be caught and recovered automatically.
-Any recovery fires a `high` severity `platform_alerts` entry visible in the daily report.
-
+## Earnings & attribution
+- Member checks out via /join → coupon on the subscription → `stripe-webhook` v11 writes a
+  `partner_memberships` row `referred=true` with `subscription_value` = NET paid (§23.128).
+- Payout = 50% of what the member actually pays (£5 on a £10 net), monthly via `run_partner_payouts`.
+- `stripe-reconcile` (cron #52, every 15 min) backstops any webhook miss AND lands the community
+  membership within ~15 min of payment (the member record may not exist at `subscription.created` time).
+- B2B members excluded from partner revenue share.

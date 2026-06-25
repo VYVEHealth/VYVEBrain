@@ -1,3 +1,32 @@
+## PM-682 — Partner referral link: discount fix, branded /join via 404.html, earnings = net paid, ~15-min community join (2026-06-25)
+
+Long session off a continuation handoff. Goal: make the partner referral link actually work. Multiple stale-brain landmines corrected.
+
+**The £20 bug — partner discount now actually applies (the headline):**
+- ROOT CAUSE: Stripe Payment Links CANNOT pre-apply a coupon (no `discounts` field on the `payment_link` object; only `allow_promotion_codes` for the customer to TYPE a code). PM-675's `payment_link_url` (`buy.stripe.com/14A9AU5WM0AifIhcQJ93y02`, `plink_1Tlycv`) was a bare £20 link — every Men Together signup would have been charged full price with zero attribution. Coupon `mentogethercic` (amount_off 1000, forever, valid) was attached to nothing.
+- FIX: `partner-join-redirect` v4 mints a Stripe **Checkout Session** (mode=subscription, `price_1TCmukLyCqq49zQI5uTJpO0Q`, `discounts[0][coupon]=<partner.stripe_promo_code>`) and 303s to it. Coupon auto-applied, member types nothing. Subscription carries `discount.coupon.id` → stripe-webhook attribution. VERIFIED LIVE (Dean screenshot): £20 − Men Together CIC £10 = **£10 due**, on checkout.stripe.com.
+- Per-partner Stripe payment-link objects NO LONGER NEEDED. Onboarding a partner = coupon + DB row; the EF builds the discounted checkout live from `stripe_promo_code`. (§23.127)
+
+**Branded /join/[slug] works with NO Cloudflare:**
+- Mechanism is `Test-Site-Finalv3/404.html` (GitHub Pages catch-all): reads `/join/<slug>` from the path and `window.location.replace`s to `partner-join-redirect`. `join.html` never executes for the subpath (Pages can't path-route a file). PM-676's "join.html dynamic redirect live + MATCH verified" was WRONG.
+- No confirmed Cloudflare in front of the domain (Dean: "I don't think we have Cloudflare"). Earlier 404-cache symptom = GitHub/Fastly edge during iteration, not Cloudflare. No Worker / Redirect Rule / subdomain. master line 1105 corrected. (§23.129)
+
+**Earnings = 50% of what the member ACTUALLY pays (£5), not 50% of £20 list (£10):**
+- `partner_memberships.subscription_value` DEFAULT `20` DROPPED (silent £20 default overpaid the whole discount; null→£0 is the safe-fail direction).
+- `stripe-webhook` v11 + `stripe-reconcile` v2/v3: `subscription_value = netMonthlyValue(sub)` = `(price.unit_amount − coupon.amount_off)` or `× (1−percent_off)`, /100. Men Together: £10 stored → £5 payout, £5 to VYVE. Helper unit-tested across amount_off / percent_off / `discounts[]` array form / over-discount clamp / missing-price fallback.
+- `run_partner_payouts` UNCHANGED — always `Σ(subscription_value) × pct`, just fed the wrong number. (§23.128)
+- CC `partner-portal.html` (commit 35198f0): MRR now `Σ(actual subscription_value) × share` (was hardcoded `20 × share`); `gross_amount`→`gross` select fix (payout history was silently 400ing → always empty); blurb corrected from "50% of the £20/month".
+
+**Post-payment redirect fixed — `onboarding_v8.html` is DEAD:**
+- `onboarding_v8.html` 404s on the live site (served the 404.html). Real onboarding questionnaire is `welcome.html` (428KB, multi-section, reads `?c=` campaign param). master line 163 already flagged it superseded; the Stripe success_urls were the stale part. `partner-join-redirect` v4 success_url → `welcome.html?partner=<slug>&cs={CHECKOUT_SESSION_ID}`. (§23.130)
+
+**Community auto-join — SAFE path chosen (no onboarding/webhook surgery):**
+- A partner-referred member's `partner_memberships` row (= community membership) is written by the coupon→webhook path. Gap was timing: `subscription.created` fires before the member record exists (created at welcome.html submit), so it was matched only by the nightly reconciler.
+- FIX: `stripe-reconcile` cron #52 nightly → **every 15 min** (`*/15 * * * *`). Referred members join the community within ~15 min of paying. Per-run 'clean' info alert dropped (would be ~96/day; liveness via `cron.job_run_details`). REJECTED the alternative (welcome.html?partner → onboarding EF writes row + webhook merge-on-conflict) — too much regression risk on the signup + earnings paths (incl. the webhook's `engagement_segment` stomp on a merge) for a marginal instant-vs-15min gain. Reconcile v3 invocation verified: 200, Men Together checked, 0 recovered, 0 errors.
+- `?partner=<slug>` now rides the welcome.html success_url but is INERT — there for a future instant-join (onboarding EF could write the row from the `cs` session id, leaving the webhook untouched).
+
+**EFs deployed:** stripe-webhook v11, stripe-reconcile v3, partner-join-redirect v4 (all verify_jwt=false). **Migration:** `partner_subscription_value_drop_default`. **Cron:** #52 → `*/15`. **CC commit:** 35198f0. **Playbook:** `partner-onboarding.md` rewritten (no payment-link step).
+
 ## PM-675–676 — Partner payment links + branded /join/ redirect + partner onboarding playbook (2026-06-22)
 
 **PM-675 — Partner payment links (CC):**
