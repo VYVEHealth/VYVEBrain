@@ -1,3 +1,39 @@
+## PM-683 — Partner referral system: tier links, trial attribution, payout rewire, and partner-portal video upload working (2026-06-25)
+
+Long session (continuation + one compaction). Built the referral system out from PM-682's single-partner link into a full tiered/trial/payout/portal stack, then spent the back half getting partner video upload actually working end-to-end. All on `ixjfklpckgxrwjlfsaaz`, all production.
+
+**Tier links £20 / £15 / £10 — per-partner coupons KILLED:**
+- Identity now rides on the subscription, not the coupon. `partner-join-redirect` v5 stamps `subscription_data[metadata][partner_slug]` + tier on the Checkout Session; the coupon only carries the discount. Two SHARED coupons created live: `VYVE_TIER15` (£5 off forever), `VYVE_TIER10` (£10 off forever); £20 tier = no coupon. Per-partner coupons are dead — onboarding a partner no longer needs a coupon object. (§23.134)
+- `404.html` (Test-Site-Finalv3) extended: `/join/<slug>/20|15|10` forwards the tier; `/trial/<slug>` → `welcome.html?c=<slug>`.
+- VERIFIED LIVE via a verify-tier EF: £20→2000/0, £15→2000−500=1500, £10→1000, `partner_slug` stamped on each `cs_live` session.
+
+**Attribution model (3-tier fallback):**
+- `stripe-webhook` v13 `handlePartnerReferral`: (1) `subscription.metadata.partner_slug`, (2) legacy coupon-id → `partner_partners.stripe_promo_code`, (3) `members.signup_campaign_code` (trial conversions). `netMonthlyValue()` = actual net paid.
+- `stripe-reconcile` v5: single global active-sub scan, same 3-tier match. PRIMARY attribution path because the member row is created at welcome.html AFTER `subscription.created`, so the webhook usually skips and the reconciler (every 15 min, cron #52) catches it. Verified clean: 7 partners, 0 errors.
+
+**Partner provisioning:** 4 live partner rows added (50% share, trial_days 14): `antonia`, `april`, `david`, `ivan` (+ existing men-together-cic, Emma Clarke, Calum Denham = 7). Correction mid-session: these are INDEPENDENT partners, not Men Together staff — role_title set to generic 'VYVE Partner', pillar 'connect'; real role_title/pillar still TBD (backlog). 15 join links + 5 trial links handed to Lewis.
+
+**Free-trial attribution (£20→£10 conversion locked):**
+- Partner trial reuses the existing free-trial machinery. `/trial/<slug>` → `welcome.html?c=<slug>` (free, no card) → onboarding EF creates member (trial_ends_at NULL) → welcome.html fires `apply-trial` → `apply_trial_campaign(email, code)` stamps the trial. At £10 conversion the webhook/reconcile read `members.signup_campaign_code` to credit the partner.
+- `partner_partners.trial_days` column added (default 14). `apply_trial_campaign` rewritten to fall back to a live partner slug when the code isn't in `trial_campaigns`. BUG caught + fixed: the PL/pgSQL variable `code` shadowed the `trial_campaigns.code` column → renamed `v_code`. Verified: men-together-cic→14d, generic 14day→14d, unknown→rejected.
+
+**Admin payouts rewired (both surfaces):**
+- `runPayouts()` in BOTH `partners.html` (live SPA) and `pages/partner-revenue.html` used a stale model: `totalMRR = (active members) × £20` split by a dead `sessions_attended` column, ignoring real `partner_memberships.subscription_value`. Rewired both → gross = `Σ(subscription_value WHERE referred) per partner`, payout = gross × share. Matches partner-facing earnings. £0 across all 7 now (no conversions yet = correct).
+
+**Partner-portal video upload — made to actually work (the back-half saga):**
+- Symptom: upload "did nothing". Root causes, all fixed:
+  1. The portal called `partner-file-url` for the upload URL — WRONG function (it's an admin-gated DOWNLOAD helper). Built NEW EF `partner-content-upload` (sign + commit). (§23.133)
+  2. `partner-portal.html` is a SHARED-PASSWORD demo (`vyve2026`) that SPOOFS `state.session = {user:{email}}` with NO real JWT. So the upload EF can't verify a user token — it gates on an `x-portal-key: vyve2026` header instead (verify_jwt:false). (§23.133)
+  3. `is_partner()` only allowed `role='partner'` (zero exist) → broadened to `role IN ('partner','admin','owner')` so the team can enter the portal. No RLS uses is_partner — safe.
+  4. **The big one:** ALL anon reads on `partner_partners` were throwing "permission denied for function get_my_partner_id" — a `public` RLS policy calls `get_my_partner_id()` but `anon` lacked EXECUTE, so the whole SELECT errored, leaving the portal empty and `partnerId` unset (which silently disabled upload). Granted EXECUTE to anon+authenticated. (§23.132)
+  5. Bucket `partner-content` was 500MB; raised to 2GB — but that did nothing because the PROJECT GLOBAL storage upload limit is 50MB and overrides per-bucket. Proven directly: 50MB PUT → 200, 100MB PUT → 400 `{"statusCode":"413","Payload too large"}`. Real fix is the Dashboard global storage limit (Dean action — not SQL-changeable via our tools). (§23.131)
+- Portal wired: upload `sign` → PUT to signed URL → `commit` (EF writes `partner_content_items` row at `moderation_status='in_review'`, service role, RLS-clean). Client-side 2GB size guard + clear over-size message added. CC commits: dab224b, 50dd777, 0a311f6.
+- DISCOVERED the real partner→login linkage that earlier notes said didn't exist: `partner_partners.contact_email = auth.email()` (via `get_my_partner_id`, SECURITY DEFINER). Real partner logins live in `admin_users` (role='partner'); currently ZERO exist. This is the basis for replacing the demo `DEMO_PARTNER_ID` pin with real per-partner routing.
+
+**EFs deployed:** partner-join-redirect v5, stripe-webhook v13, stripe-reconcile v5, partner-content-upload v2, `apply_trial_campaign` (SQL fn). **Migrations:** `partner_trial_days`, `is_partner_allow_admins_for_portal`, `grant_execute_get_my_partner_id_to_anon`. **Throwaway EFs to sweep (next dead-EF pass):** setup-tier-coupons, verify-tier, test-storage-sign, test-upload-put. **EF source comments still carry PM-PLACEHOLDER** (not swept — would mean redeploying prod EFs for a comment; PM-683 recorded here instead). **Playbook added:** `playbooks/referral-system.md`.
+
+**Compliance flag for Lewis (no emojis):** auto-converting trials need UK pre-charge disclosure + a reminder ~3 days before the £10 flip. Lewis owns the copy.
+
 ## PM-682 — Partner referral link: discount fix, branded /join via 404.html, earnings = net paid, ~15-min community join (2026-06-25)
 
 Long session off a continuation handoff. Goal: make the partner referral link actually work. Multiple stale-brain landmines corrected.
