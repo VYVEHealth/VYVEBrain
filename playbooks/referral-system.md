@@ -83,20 +83,22 @@ See `playbooks/partner-onboarding.md` for the step-by-step. Short version now th
 | `stripe-webhook` | v13 | attribution on subscription events (3-tier fallback) |
 | `stripe-reconcile` | v5 | global active-sub scan, primary attribution path (cron #52, */15) |
 | `apply-trial` / `apply_trial_campaign` | — | stamps partner trial (trial_days, slug fallback) |
-| `partner-content-upload` | v2 | partner-portal video upload (sign + commit, x-portal-key gate) |
+| `partner-content-upload` | v5 | partner-portal upload + SCHEDULING: sign / sign-thumb / commit (publish_at ≥48h, thumbnail_url) / list / update(in_review only). x-portal-key gate (§23.139) |
 | `partner-file-url` | v1 | admin-only DOWNLOAD helper — NOT for upload (do not confuse) |
 
 ## Key tables
 
-`partner_partners` (slug, role_title, pillar, status, revenue_share_pct, trial_days, stripe_promo_code [legacy], contact_email [= login linkage], bio/why/avatar_url), `partner_memberships` (referred, subscription_value, member_email, engagement_segment), `partner_content_items` (type, title, media_url, pillar, moderation_status), `partner_payouts`, `partner_applications`, `partner_community_posts`, `partner_scheduled_pushes`, `partner_onboarding_progress`, `partner_programs`. Partner logins (when built): `admin_users` role='partner'.
+`partner_partners` (slug, role_title, pillar, status, revenue_share_pct, trial_days, stripe_promo_code [legacy], contact_email [= login linkage], bio/why/avatar_url), `partner_memberships` (referred, subscription_value, member_email, engagement_segment), `partner_content_items` (type, title, media_url, pillar, moderation_status [draft/in_review/approved/flagged/returned], `publish_at` [nullable; NULL=approved-but-unscheduled=not live], `thumbnail_url`), `partner_payouts`, `partner_applications`, `partner_community_posts`, `partner_scheduled_pushes`, `partner_onboarding_progress`, `partner_programs`. Partner logins (when built): `admin_users` role='partner'.
 
 ## Live gaps / next decisions
 
 - Real per-partner portal auth: replace shared password + `DEMO_PARTNER_ID` with real logins (auth user + `admin_users` role='partner' + `partner_partners.contact_email` match per §23.132), flip `partner-content-upload` back to JWT. Decide which partners get logins first. Login provisioning is account creation = Dean/Lewis's call.
-- Raise the Dashboard global storage upload limit for real partner video (§23.131); move to resumable/TUS for reliability.
+- **HEADLINE NEXT (PM-684): partner-portal login + account creation in partner onboarding.** Replace shared password + `DEMO_PARTNER_ID` with a real auth user + `admin_users` role='partner' matched on `partner_partners.contact_email` (§23.132/133); flip `partner-content-upload` to JWT. Fold account creation into the onboarding journey so a partner leaves onboarding with working credentials.
+- Raise the Dashboard global storage upload limit for real partner video (§23.131); move to resumable/TUS for reliability (rides the JWT build above).
+- Content scheduling SHIPPED (PM-684): approved≠live, partner go-live ≥48h, edits lock at approval, poster-frame thumbnails (PUBLIC `partner-thumbnails`). See §23.139.
 - Real role_title/pillar for antonia/april/david/ivan; per-partner trial lengths (Lewis: 7/14/30 → `update partner_partners set trial_days=N where slug=…`).
 - Payout churn filter; real "Attendances by week" data (currently a hardcoded mock in partners.html); an engagement-segment scorer (currently hardcoded 'regular').
 - Lewis (compliance): UK pre-charge trial disclosure + ~3-day reminder before the £10 flip.
 
 ## Cross-referenced hard rules
-§23.122 (in_review not draft) · §23.127 (Payment Links can't pre-apply coupons) · §23.128 (subscription_value = net paid) · §23.129 (/join served by 404.html) · §23.130 (welcome.html not onboarding_v8) · §23.131 (global storage limit) · §23.132 (get_my_partner_id anon grant) · §23.133 (portal demo session spoof / x-portal-key) · §23.134 (metadata.partner_slug attribution, coupons dead).
+§23.122 (in_review not draft) · §23.127 (Payment Links can't pre-apply coupons) · §23.128 (subscription_value = net paid) · §23.129 (/join served by 404.html) · §23.130 (welcome.html not onboarding_v8) · §23.131 (global storage limit) · §23.132 (get_my_partner_id anon grant) · §23.133 (portal demo session spoof / x-portal-key) · §23.134 (metadata.partner_slug attribution, coupons dead) · §23.135 (portal loaders chain off loadPartnerData) · §23.136 (service_role via Management API for Storage) · §23.137 (partner-file-url strips bucket prefix) · §23.138 (Fastly per-edge cache → novel ?query) · §23.139 (approved≠live, publish_at nullable, 48h, edits lock at approval, partner-thumbnails).

@@ -1,3 +1,34 @@
+## PM-684 — Partner content scheduling: approved ≠ live, partner-set go-live (48h min), editable-in-review, video thumbnails (2026-06-26)
+
+Continuation of the partner-portal work. Turned "approve = instantly live" into a real publish lifecycle the partner controls, fixed two upload bugs surfaced along the way, and added best-effort video thumbnails. All on `ixjfklpckgxrwjlfsaaz`, all production. Demo partner = Emma Clarke (`4867d2c2-53bd-4139-8289-19df0132d71e`).
+
+**Storage ceiling (carried from PM-683, confirmed):** the 413s on big uploads were the project-GLOBAL storage upload limit (§23.131), not the bucket `file_size_limit`. Raised global to 2GB; a spend-cap banner clamps the true ceiling below 2GB but well above the ~250MB real files. Verified by real PUTs (60/100/250MB → 200). Test objects deleted via Storage REST using a service_role key fetched from the Management API (§23.136).
+
+**Upload list was phantom-empty (THE bug behind a long cache chase):** `boot()` and the password-unlock handler called `loadPartnerData(); loadContent(); …` WITHOUT awaiting. `loadContent` early-returns `if(!state.partnerId)return;`, and `partnerId` is only set by the async `loadPartnerData` — so it raced and silently rendered an empty list that looked exactly like a cache/RLS miss. Fixed both call sites to chain off `loadPartnerData().then(...)`. (§23.135)
+
+**`partner-content-upload` reads its own list via the EF (service role), not anon REST:** the demo portal's anon key can't satisfy `partner_own_content_select` (RLS USING `get_my_partner_id()` is NULL for anon — §23.132 class), so "Your Content" was 0 rows. EF gained a `list` action; portal reads through it.
+
+**`partner-file-url` bucket-prefix bug:** `media_url` is stored as `<bucket>/<key>` (e.g. `partner-content/<id>/<file>`); the admin passed it straight as `path` → `createSignedUrl('partner-content/partner-content/…')` → 404→500 on Download. v2 strips a leading known-bucket prefix. (§23.137)
+
+**Scheduling model — approved is NOT live:**
+- `publish_at timestamptz` on `partner_content_items`, NULLABLE. NULL = approved-but-unscheduled = NOT live. Live = `moderation_status='approved' AND publish_at IS NOT NULL AND publish_at <= now()`, evaluated live (no cron) by both member RLS `member_read_live_partner_content` and the portal chips.
+- `moderation_status` `published` → renamed `approved` (CHECK still transitionally allows `published`; nothing writes it — one-line cleanup later). Lifecycle: draft → in_review → approved → (scheduled→live by clock). §23.122 updated.
+- Legacy rows had been backfilled `publish_at = created_at` (a time nobody chose), making old approved items spuriously "Live". Cleared all legacy `publish_at` to NULL → they read "Approved", not Live.
+- **48h minimum lead** on go-live, enforced in the picker (`min`), client validation, AND the EF (`commit` + `update` reject `< now()+48h`). (§23.139)
+- **Edits lock at approval:** partner can change title/description/go-live ONLY while `in_review`; the EF `update` action 409s otherwise (`…WHERE moderation_status='in_review'`), so a stale page can't bypass it. Chips relabelled: in_review now reads "Pending approval" (never auto-live).
+
+**Thumbnails (best-effort, no server pipeline):** at upload the browser captures a poster frame (`<video>`→seek→canvas→320px JPEG), uploads it to a new PUBLIC bucket `partner-thumbnails` via a `sign-thumb` EF action, and stores the public URL in `thumbnail_url`. Portal + admin moderation rows render it; falls back to the film icon if a codec won't decode in-browser. Public bucket is fine — poster frames are low-sensitivity and public read avoids per-thumb signing.
+
+**`partner-content-upload` v5** (verify_jwt:false, `x-portal-key` gate): actions `sign` / `sign-thumb` / `commit` (publish_at required & ≥48h, optional thumbnail_url) / `list` / `update` (alias `reschedule`; title/description/publish_at, in_review only, 48h). EF-verified: sign-thumb 200+public_url; commit & update both 400 on a 24h time.
+
+**Migrations:** `partner_content_publish_at_and_approved_status`, `partner_content_publish_at_nullable_unscheduled`, `partner_content_thumbnails` (+ public `partner-thumbnails` bucket).
+
+**Fastly note:** admin.vyvehealth.co.uk sits behind Fastly with per-edge-node caching; an empty-cache hard reload doesn't help — bust with a novel `?z=N` query key. (§23.138)
+
+**Commits (vyve-command-centre):** scheduling `b41b9ecb`, approved-unscheduled `7239237`, refinements `302387b8` (partner-portal.html) + `4d4f1051` (partners.html).
+
+**Next (Dean's call, NOT built):** wire partner-portal login to real per-partner auth and fold account creation INTO partner onboarding — replace shared password + `DEMO_PARTNER_ID` with an auth user + `admin_users` role='partner' matched on `partner_partners.contact_email`, flip the EF back to JWT. TUS/resumable uploads belong with that JWT build. See backlog.
+
 ## PM-683 — Partner referral system: tier links, trial attribution, payout rewire, and partner-portal video upload working (2026-06-25)
 
 Long session (continuation + one compaction). Built the referral system out from PM-682's single-partner link into a full tiered/trial/payout/portal stack, then spent the back half getting partner video upload actually working end-to-end. All on `ixjfklpckgxrwjlfsaaz`, all production.
