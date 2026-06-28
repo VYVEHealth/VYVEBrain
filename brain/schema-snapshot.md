@@ -2,13 +2,13 @@
 
 > Auto-generated from live Supabase project `ixjfklpckgxrwjlfsaaz`.
 > DO NOT EDIT — overwritten weekly by the `schema-snapshot-refresh` Edge Function.
-> Last refresh: 2026-06-21T03:01:27.465Z
+> Last refresh: 2026-06-28T03:01:40.432Z
 
-**Totals:** 149 tables (149 with RLS) · 1753 columns · 53 FKs · 258 triggers · 112 public functions · 199 RLS policies · 398 indexes · 43 cron jobs
+**Totals:** 153 tables (153 with RLS) · 1798 columns · 55 FKs · 260 triggers · 121 public functions · 217 RLS policies · 408 indexes · 46 cron jobs
 
 ---
 
-## Tables (149)
+## Tables (153)
 
 ### `achievement_metrics` · RLS
 
@@ -156,7 +156,7 @@
 | `notes` | text | YES |  |  |  |
 
 **Check constraints:**
-- `admin_users_role_check`: CHECK ((role = ANY (ARRAY['admin'::text, 'viewer'::text, 'coach_full'::text, 'coach_exercise'::text, 'coach_mental'::text, 'team'::text])))
+- `admin_users_role_check`: CHECK ((role = ANY (ARRAY['admin'::text, 'viewer'::text, 'coach_full'::text, 'coach_exercise'::text, 'coach_mental'::text, 'team'::text, 'partner'::text])))
 
 **RLS policies:** _(none — service-role only)_
 
@@ -373,6 +373,24 @@
 - `broadcast_schedules_slug_key`
 - `idx_broadcast_schedules_is_active`
 
+### `broadcast_watch_alerts` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `alert_key` | text | NO |  |  |  |
+| `kind` | text | NO |  |  |  |
+| `detail` | jsonb | NO | '{}'::jsonb |  |  |
+| `fired_at` | timestamp with time zone | NO | now() |  |  |
+| `resolved_at` | timestamp with time zone | YES |  |  |  |
+| `notified` | boolean | NO | false |  |  |
+
+**RLS policies:** _(none — service-role only)_
+
+**Indexes:**
+- `broadcast_watch_alerts_open_key`
+- `broadcast_watch_alerts_pkey`
+
 ### `calendar_occurrences` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -402,15 +420,20 @@
 | `host_name` | text | YES |  |  |  |
 | `host_role` | text | YES |  |  |  |
 | `host_photo_url` | text | YES |  |  |  |
+| `visibility` | text | NO | 'public'::text |  |  |
+| `partner_id` | uuid | YES |  |  |  |
 
 **Check constraints:**
 - `calendar_occurrences_type_check`: CHECK ((type = ANY (ARRAY['live_session'::text, 'event'::text])))
+- `calendar_occurrences_visibility_check`: CHECK ((visibility = ANY (ARRAY['public'::text, 'community'::text])))
 
 **Foreign keys:**
+- `partner_id` → `partner_partners.id` (`calendar_occurrences_partner_id_fkey`)
 - `source_catalogue_id` → `service_catalogue.id` (`calendar_occurrences_source_catalogue_id_fkey`)
 
 **Triggers:**
 - `calendar_occurrences_updated_at` — BEFORE UPDATE
+- `partner_session_min_notice` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
 - `calendar_occurrences_admin_delete` (DELETE, roles: public) — is_admin()
@@ -423,6 +446,7 @@
 - `calendar_occurrences_starts_at_idx`
 - `calendar_occurrences_type_starts_idx`
 - `idx_calendar_occurrences_live_lookup`
+- `idx_calendar_occurrences_partner_id`
 
 ### `cardio` · RLS
 
@@ -1244,6 +1268,30 @@
 - `checkin_reactions_checkin_idx`
 - `checkin_reactions_member_email_client_id_key`
 - `checkin_reactions_pkey`
+
+### `comms_send_log` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | bigint | NO |  | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `msg_id` | text | YES |  |  |  |
+| `channel` | text | NO |  |  |  |
+| `msg_type` | text | NO |  |  |  |
+| `register` | text | YES |  |  |  |
+| `meta` | jsonb | NO | '{}'::jsonb |  |  |
+| `sent_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `comms_send_log_channel_check`: CHECK ((channel = ANY (ARRAY['push'::text, 'email'::text, 'inapp'::text, 'sms'::text])))
+
+**RLS policies:**
+- `comms_send_log_select_own` (SELECT, roles: public) — (( SELECT auth.email() AS email) = member_email)
+
+**Indexes:**
+- `comms_send_log_pkey`
+- `idx_comms_send_log_email_sent`
+- `idx_comms_send_log_email_type_sent`
 
 ### `company_summary` · RLS
 
@@ -2566,6 +2614,14 @@
 | `is_test` | boolean | NO | false |  |  |
 | `welcome_email_sent_at` | timestamp with time zone | YES |  |  |  |
 | `goal_summary` | text | YES |  |  |  |
+| `timezone` | text | NO | 'Europe/London'::text |  |  |
+| `comms_calm_mode` | boolean | NO | false |  |  |
+| `comms_calm_mode_until` | timestamp with time zone | YES |  |  |  |
+| `member_state` | smallint | YES |  |  |  |
+| `member_state_at` | timestamp with time zone | YES |  |  |  |
+| `member_state_reason` | text | YES |  |  |  |
+| `primary_goal` | text | YES |  |  |  |
+| `primary_goal_set_at` | timestamp with time zone | YES |  |  |  |
 
 **Check constraints:**
 - `members_account_type_chk`: CHECK ((account_type = ANY (ARRAY['trial'::text, 'paid'::text, 'comp'::text, 'enterprise'::text])))
@@ -2584,6 +2640,7 @@
 - `members_display_name_preference_check`: CHECK ((display_name_preference = ANY (ARRAY['anonymous'::text, 'initials'::text, 'first_name'::text, 'full_name'::text])))
 - `members_exercise_stream_check`: CHECK (((exercise_stream)::text = ANY ((ARRAY['workouts'::character varying, 'movement'::character varying, 'cardio'::character varying])::text[])))
 - `members_persona_check`: CHECK ((persona = ANY (ARRAY['NOVA'::text, 'RIVER'::text, 'SPARK'::text, 'SAGE'::text, 'HAVEN'::text])))
+- `members_primary_goal_check`: CHECK ((primary_goal = ANY (ARRAY['move_more'::text, 'build_strength'::text, 'eat_better'::text, 'sleep_better'::text, 'reduce_stress'::text, 'build_connection'::text])))
 - `members_session_duration_preference_check`: CHECK ((session_duration_preference = ANY (ARRAY[20, 30, 45, 60])))
 - `members_theme_preference_check`: CHECK ((theme_preference = ANY (ARRAY['light'::text, 'dark'::text, 'system'::text])))
 
@@ -3102,6 +3159,10 @@
 - `admin_all_partner_community_posts` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
 - `member_insert_partner_community_posts` (INSERT, roles: authenticated) — — / CHECK: ((author_email = ( SELECT auth.email() AS email)) AND (author_kind = 'member'::text))
 - `member_read_partner_community_posts` (SELECT, roles: authenticated) — (flagged = false)
+- `partner_own_posts_delete` (DELETE, roles: public) — ((partner_id = ( SELECT get_my_partner_id() AS get_my_partner_id)) AND (author_email = ( SELECT auth.email() AS email)))
+- `partner_own_posts_insert` (INSERT, roles: public) — — / CHECK: ((partner_id = ( SELECT get_my_partner_id() AS get_my_partner_id)) AND (author_kind = 'partner'::tex
+- `partner_own_posts_select` (SELECT, roles: public) — (partner_id = ( SELECT get_my_partner_id() AS get_my_partner_id))
+- `partner_own_posts_update` (UPDATE, roles: public) — ((partner_id = ( SELECT get_my_partner_id() AS get_my_partner_id)) AND (author_email = ( SELECT auth.email() AS email))) / CHECK: ((partner_id = ( SELECT get_my_partner_id() AS get_my_partner_id)) AND (author_email = ( SELECT auth
 
 **Indexes:**
 - `partner_community_posts_pkey`
@@ -3127,9 +3188,10 @@
 | `reviewed_by` | text | YES |  |  |  |
 | `reviewed_at` | timestamp with time zone | YES |  |  |  |
 | `created_at` | timestamp with time zone | NO | now() |  |  |
+| `publish_at` | timestamp with time zone | YES |  |  |  |
 
 **Check constraints:**
-- `partner_content_items_moderation_status_check`: CHECK ((moderation_status = ANY (ARRAY['draft'::text, 'in_review'::text, 'published'::text, 'flagged'::text, 'returned'::text])))
+- `partner_content_items_moderation_status_check`: CHECK ((moderation_status = ANY (ARRAY['draft'::text, 'in_review'::text, 'approved'::text, 'published'::text, 'flagged'::text, 'returned'::text])))
 - `partner_content_items_pillar_check`: CHECK ((pillar = ANY (ARRAY['body'::text, 'mind'::text, 'connect'::text])))
 - `partner_content_items_type_check`: CHECK ((type = ANY (ARRAY['video'::text, 'live_session'::text, 'program'::text, 'post'::text])))
 
@@ -3140,7 +3202,10 @@
 
 **RLS policies:**
 - `admin_all_partner_content_items` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
-- `member_read_published_partner_content` (SELECT, roles: authenticated) — (moderation_status = 'published'::text)
+- `member_read_live_partner_content` (SELECT, roles: authenticated) — ((moderation_status = 'approved'::text) AND (publish_at IS NOT NULL) AND (publish_at <= now()))
+- `partner_own_content_insert` (INSERT, roles: public) — — / CHECK: (partner_id = ( SELECT get_my_partner_id() AS get_my_partner_id))
+- `partner_own_content_select` (SELECT, roles: public) — (partner_id = ( SELECT get_my_partner_id() AS get_my_partner_id))
+- `partner_own_content_update` (UPDATE, roles: public) — ((partner_id = ( SELECT get_my_partner_id() AS get_my_partner_id)) AND (moderation_status = ANY (ARRAY['draft'::text, 'in_review'::text]))) / CHECK: ((partner_id = ( SELECT get_my_partner_id() AS get_my_partner_id)) AND (moderation_status = ANY (ARR
 
 **Indexes:**
 - `partner_content_items_pkey`
@@ -3159,12 +3224,15 @@
 | `stripe_customer_id` | text | YES |  |  |  |
 | `stripe_subscription_id` | text | YES |  |  |  |
 | `account_type` | text | YES | 'b2c'::text |  |  |
-| `subscription_value` | numeric | YES | 20 |  |  |
+| `subscription_value` | numeric | YES |  |  |  |
 | `attribution_date` | timestamp with time zone | YES |  |  |  |
+| `subscription_status` | text | NO | 'active'::text |  |  |
+| `community_joined_at` | timestamp with time zone | YES | now() |  |  |
 
 **Check constraints:**
 - `partner_memberships_account_type_check`: CHECK ((account_type = ANY (ARRAY['b2c'::text, 'b2b'::text])))
 - `partner_memberships_engagement_segment_check`: CHECK ((engagement_segment = ANY (ARRAY['highly_engaged'::text, 'regular'::text, 'at_risk'::text])))
+- `partner_memberships_subscription_status_check`: CHECK ((subscription_status = ANY (ARRAY['active'::text, 'cancelled'::text])))
 
 **Foreign keys:**
 - `partner_id` → `partner_partners.id` (`partner_memberships_partner_id_fkey`)
@@ -3172,9 +3240,11 @@
 **RLS policies:**
 - `admin_all_partner_memberships` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
 - `member_own_partner_memberships` (ALL, roles: authenticated) — (member_email = ( SELECT auth.email() AS email)) / CHECK: (member_email = ( SELECT auth.email() AS email))
+- `partner_own_memberships_select` (SELECT, roles: public) — (partner_id = ( SELECT get_my_partner_id() AS get_my_partner_id))
 
 **Indexes:**
 - `partner_memberships_member_email_partner_id_key`
+- `partner_memberships_member_partner_unique`
 - `partner_memberships_pkey`
 
 ### `partner_onboarding_progress` · RLS
@@ -3199,6 +3269,7 @@
 
 **RLS policies:**
 - `admin_all_partner_onboarding_progress` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
+- `partner_own_onboarding_progress_select` (SELECT, roles: public) — (partner_id = ( SELECT get_my_partner_id() AS get_my_partner_id))
 
 **Indexes:**
 - `partner_onboarding_progress_partner_id_key`
@@ -3226,6 +3297,9 @@
 | `referral_code` | text | YES |  |  | ✓ |
 | `stripe_promo_code` | text | YES |  |  | ✓ |
 | `human_promo_code` | text | YES |  |  | ✓ |
+| `payment_link_url` | text | YES |  |  |  |
+| `payment_link_id` | text | YES |  |  |  |
+| `trial_days` | integer | NO | 14 |  |  |
 
 **Check constraints:**
 - `partner_partners_pillar_check`: CHECK ((pillar = ANY (ARRAY['body'::text, 'mind'::text, 'connect'::text])))
@@ -3237,6 +3311,9 @@
 **RLS policies:**
 - `admin_all_partner_partners` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
 - `member_read_live_partner_partners` (SELECT, roles: authenticated) — (status = 'live'::text)
+- `partner_own_partner_partners_select` (SELECT, roles: public) — (id = ( SELECT get_my_partner_id() AS get_my_partner_id))
+- `partner_own_partner_partners_update` (UPDATE, roles: public) — (id = ( SELECT get_my_partner_id() AS get_my_partner_id)) / CHECK: (id = ( SELECT get_my_partner_id() AS get_my_partner_id))
+- `partner_partners_public_live_read` (SELECT, roles: anon) — (status = 'live'::text)
 
 **Indexes:**
 - `partner_partners_human_promo_code_key`
@@ -3268,6 +3345,7 @@
 
 **RLS policies:**
 - `admin_all_partner_payouts` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
+- `partner_own_payouts_select` (SELECT, roles: public) — (partner_id = ( SELECT get_my_partner_id() AS get_my_partner_id))
 
 **Indexes:**
 - `partner_payouts_partner_id_period_key`
@@ -3301,6 +3379,34 @@
 
 **Indexes:**
 - `partner_programs_pkey`
+
+### `partner_scheduled_pushes` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `partner_id` | uuid | NO |  |  |  |
+| `title` | text | NO |  |  |  |
+| `body` | text | NO |  |  |  |
+| `send_at` | timestamp with time zone | NO |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `sent_at` | timestamp with time zone | YES |  |  |  |
+| `cancelled_at` | timestamp with time zone | YES |  |  |  |
+| `recipient_count` | integer | YES |  |  |  |
+| `error` | text | YES |  |  |  |
+
+**Foreign keys:**
+- `partner_id` → `partner_partners.id` (`partner_scheduled_pushes_partner_id_fkey`)
+
+**RLS policies:**
+- `partner_scheduled_pushes_admin` (ALL, roles: public) — is_admin_or_team() / CHECK: is_admin_or_team()
+- `partner_scheduled_pushes_partner_cancel` (UPDATE, roles: public) — ((partner_id = get_my_partner_id()) AND (sent_at IS NULL)) / CHECK: (partner_id = get_my_partner_id())
+- `partner_scheduled_pushes_partner_insert` (INSERT, roles: public) — — / CHECK: ((partner_id = get_my_partner_id()) AND (send_at > (now() + '00:05:00'::interval)))
+- `partner_scheduled_pushes_partner_select` (SELECT, roles: public) — (partner_id = get_my_partner_id())
+
+**Indexes:**
+- `idx_partner_scheduled_pushes_pending`
+- `partner_scheduled_pushes_pkey`
 
 ### `perf_telemetry` · RLS
 
@@ -3785,6 +3891,20 @@
 - `replay_views_dedupe`
 - `replay_views_member_email_activity_date_category_session_nu_key`
 - `replay_views_pkey`
+
+### `runner_heartbeat` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | text | NO |  | ✓ |  |
+| `beat_at` | timestamp with time zone | NO | now() |  |  |
+| `detail` | jsonb | NO | '{}'::jsonb |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**RLS policies:** _(none — service-role only)_
+
+**Indexes:**
+- `runner_heartbeat_pkey`
 
 ### `running_plan_cache` · RLS
 
@@ -4504,7 +4624,7 @@
 
 ---
 
-## Public Functions (112)
+## Public Functions (121)
 
 - `_vyve_daily_streak(p_dates date[], p_today date)` — func
 - `_vyve_daily_streak_best(p_dates date[])` — func
@@ -4526,6 +4646,8 @@
 - `charity_count_workouts()` — func
 - `charity_total_reconcile()` — func
 - `charity_total_reconcile_and_heal()` — func
+- `comms_can_send(p_email text, p_channel text, p_msg_type text, p_msg_id text, p_now timestamp with time zone)` — func
+- `comms_log_send(p_email text, p_channel text, p_msg_type text, p_msg_id text, p_register text, p_meta jsonb)` — func
 - `compute_cc_activity()` — func
 - `compute_cc_wellbeing()` — func
 - `compute_engagement_components(p_last_activity_at timestamp with time zone, p_active_days_30d integer, p_distinct_types_7d integer, p_latest_wellbeing integer)` — func
@@ -4553,7 +4675,10 @@
 - `get_charity_total()` — func
 - `get_cron_health_snapshot()` — func
 - `get_leaderboard(p_email text, p_scope text, p_range text)` — func
+- `get_my_partner_id()` — func
 - `get_youtube_oauth_secrets()` — func
+- `goal_label(p_goal text)` — func
+- `goal_to_pillar(p_goal text)` — func
 - `grant_trial_on_signup()` — func
 - `increment_cardio_counter()` — func
 - `increment_checkin_counter()` — func
@@ -4561,6 +4686,7 @@
 - `increment_workout_counter()` — func
 - `is_admin()` — func
 - `is_admin_or_team()` — func
+- `is_partner()` — func
 - `is_team()` — func
 - `mark_member_lapsed(p_member_id uuid)` — func
 - `member_age(birth_date date)` — func
@@ -4582,6 +4708,7 @@
 - `refresh_member_home_state(p_email text)` — func
 - `refresh_member_home_state_if_dirty(p_email text)` — func
 - `refresh_member_home_state_v1_internal(p_email text)` — func
+- `refresh_member_states(p_email text)` — func
 - `refresh_partner_engagement_segments()` — func
 - `replay_videos_set_updated_at()` — func
 - `resolve_broadcast_audience(criteria jsonb)` — func
@@ -4592,6 +4719,7 @@
 - `set_broadcast_schedules_updated_at()` — func
 - `set_checkin_iso_week()` — func
 - `set_daily_mood_updated_at()` — func
+- `set_member_primary_goal(p_email text, p_goal text)` — func
 - `set_updated_at()` — func
 - `set_updated_at_checkin_questions()` — func
 - `set_updated_at_how_to_resources()` — func
@@ -4610,6 +4738,7 @@
 - `tg_mrp_touch_updated_at()` — func
 - `tg_refresh_home_state_from_members()` — func
 - `tg_refresh_member_home_state()` — func
+- `trg_partner_session_min_notice()` — func
 - `update_cc_updated_at()` — func
 - `update_cert_sessions_count()` — func
 - `update_push_native_updated_at()` — func
@@ -4621,10 +4750,11 @@
 
 ---
 
-## Cron Jobs (43)
+## Cron Jobs (46)
 
 | Job | Schedule | Active | Command preview |
 |---|---|---|---|
+| `broadcast-watchdog-5min` | `*/5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `cc-activity-hourly` | `45 * * * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
 | `cc-ai-hourly` | `35 * * * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
 | `cc-app-health-hourly` | `0 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
@@ -4633,14 +4763,16 @@
 | `cc-revenue-hourly` | `20 * * * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
 | `cc-usage-hourly` | `30 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `cc-wellbeing-hourly` | `55 * * * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
+| `comms-dispatcher-hourly` | `0 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `email-watchdog` | `*/30 * * * *` | ✓ | `SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions` |
-| `habit-reminder-daily` | `0 20 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `monthly-report` | `15 8 1 * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
 | `onboarding-health` | `10,40 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `partner-push-dispatcher` | `*/15 * * * *` | ✓ | ` SELECT net.http_post( url := (SELECT decrypted_secret FROM vault.decrypted_secr` |
 | `process-scheduled-pushes` | `*/5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
-| `session-publish-hourly` | `5 * * * *` | ✗ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `refresh-member-states` | `0 2 * * *` | ✓ | `SELECT public.refresh_member_states();` |
+| `session-publish-hourly` | `5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `session-reminder-cron` | `*/5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
-| `streak-reminder-daily` | `0 18 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `stripe-reconcile-nightly` | `*/15 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve_charity_reconcile_daily` | `30 2 * * *` | ✓ | ` SELECT public.charity_total_reconcile_and_heal(); ` |
 | `vyve_drain_home_state_dirty` | `*/5 * * * *` | ✓ | ` SELECT public.drain_member_home_state_dirty(); ` |
 | `vyve_platform_metrics` | `15 2 * * *` | ✓ | `SELECT public.recompute_platform_metrics();` |
