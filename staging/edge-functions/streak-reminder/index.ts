@@ -1,17 +1,17 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// streak-reminder v13 — find members with active streaks ≥7 who haven't moved today.
+// streak-reminder v14 — find members with active streaks ≥7 who haven't moved today.
 //
-// REFACTORED FROM v12: VAPID + member_notifications + sub lookup all delegated
-// to the unified send-push EF. Business logic (streak calculation + targeting)
-// preserved verbatim.
+// v14: FIRST CONSUMER of the comms send-gate. Each eligible member is checked
+// with comms_can_send('push','streak','STK-SAVE') BEFORE the push fires
+// (consent → calm-mode → quiet-hours → global frequency caps). On a real send we
+// record it via comms_log_send so it counts against the shared frequency budget.
+// Fail-closed: any gate error skips the send (restraint over noise).
+// Business logic (streak calc + targeting) unchanged from v13.
 //
 // Cron: daily 18:00 UTC (= 19:00 BST = 7pm UK) via streak-reminder-daily.
-//
-// PM-404 (26 May 2026): verify_jwt flipped true → false to match the cron auth
-// pattern used by achievements-sweep / seed-weekly-goals / process-scheduled-pushes.
-// Source code unchanged; gateway config only.
+// verify_jwt:false (cron auth pattern, PM-404).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -33,6 +33,38 @@ function db(path, opts = {}) {
       ...opts.headers || {}
     }
   });
+}
+
+// ── comms send-gate helpers ──────────────────────────────────────────────────
+async function commsGate(email, channel, msgType, msgId) {
+  try {
+    const res = await db('rpc/comms_can_send', {
+      method: 'POST',
+      body: JSON.stringify({ p_email: email, p_channel: channel, p_msg_type: msgType, p_msg_id: msgId })
+    });
+    if (!res.ok) {
+      console.warn('[streak-reminder] gate http', res.status, await res.text());
+      return { allow: false, reason: 'gate_http_error' };
+    }
+    return await res.json();
+  } catch (e) {
+    console.warn('[streak-reminder] gate exception', String(e));
+    return { allow: false, reason: 'gate_exception' };
+  }
+}
+
+async function commsLogSend(email, channel, msgType, msgId, register, meta) {
+  try {
+    await db('rpc/comms_log_send', {
+      method: 'POST',
+      body: JSON.stringify({
+        p_email: email, p_channel: channel, p_msg_type: msgType,
+        p_msg_id: msgId, p_register: register, p_meta: meta || {}
+      })
+    });
+  } catch (e) {
+    console.warn('[streak-reminder] log_send error', String(e));
+  }
 }
 
 async function getActivityDates(email) {
@@ -98,8 +130,9 @@ serve(async (req) => {
         .forEach((r) => activeToday.add(r.member_email));
     }));
 
-    let candidates = 0, eligible = 0, pushed = 0, deduped = 0, web_sent = 0, native_sent = 0;
+    let candidates = 0, eligible = 0, pushed = 0, deduped = 0, gated = 0, web_sent = 0, native_sent = 0;
     const failures = [];
+    const gatedReasons = {};
 
     for (const member of members) {
       candidates++;
@@ -107,6 +140,14 @@ serve(async (req) => {
       const streak = calculateStreak(await getActivityDates(member.email), today);
       if (streak < 7) continue;
       eligible++;
+
+      // ── send-gate: consent / calm-mode / quiet-hours / frequency budget ──
+      const gate = await commsGate(member.email, 'push', 'streak', 'STK-SAVE');
+      if (!gate.allow) {
+        gated++;
+        gatedReasons[gate.reason] = (gatedReasons[gate.reason] || 0) + 1;
+        continue;
+      }
 
       const firstName = member.first_name || 'there';
       const streakMsg = streak >= 30
@@ -130,10 +171,11 @@ serve(async (req) => {
         pushed++;
         web_sent += result.web_sent || 0;
         native_sent += result.native_sent || 0;
+        await commsLogSend(member.email, 'push', 'streak', 'STK-SAVE', 'warm', { streak });
       }
     }
 
-    console.log(`[streak-reminder v13] ${today}: candidates=${candidates} eligible=${eligible} pushed=${pushed} deduped=${deduped} web=${web_sent} native=${native_sent} failures=${failures.length}`);
+    console.log(`[streak-reminder v14] ${today}: candidates=${candidates} eligible=${eligible} pushed=${pushed} deduped=${deduped} gated=${gated} reasons=${JSON.stringify(gatedReasons)} web=${web_sent} native=${native_sent} failures=${failures.length}`);
 
     return new Response(JSON.stringify({
       success: true,
@@ -142,6 +184,8 @@ serve(async (req) => {
       eligible,
       pushed,
       deduped,
+      gated,
+      gatedReasons,
       web_sent,
       native_sent,
       failures
@@ -149,7 +193,7 @@ serve(async (req) => {
       headers: { ...CORS, 'Content-Type': 'application/json' }
     });
   } catch (err) {
-    console.error('[streak-reminder v13] error:', err);
+    console.error('[streak-reminder v14] error:', err);
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
       headers: { ...CORS, 'Content-Type': 'application/json' }

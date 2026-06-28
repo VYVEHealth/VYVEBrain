@@ -1,7 +1,5 @@
-// Edge Function: wellbeing-checkin v35
-// v35: premium weekly response. New path adds WHATS_WORKING and THIS_WEEK
-//      sections to AI output. max_tokens 800→1200. Persona label returned
-//      in response for display. Legacy path unchanged.
+// Edge Function: wellbeing-checkin v36
+// v36: PM-666 model string updated claude-sonnet-4-20250514 -> claude-sonnet-4-5. Carries v35.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
@@ -314,57 +312,7 @@ async function handleNewCheckin(
     ? `Member wants to focus on: ${improvement_focus}.`
     : '';
 
-  const systemPrompt = `${personaLine}
-
-You are writing a private weekly wellbeing reflection for a VYVE Health member named ${firstName}. Only they will see this. Be specific, warm, and genuinely useful — write like someone who has actually looked at their week, not a wellness template.
-
-=== MEMBER PROFILE ===
-${profileBlock}
-
-=== THIS WEEK'S ACTIVITY (actual logged data) ===
-${activityBlock}
-${gapLine}
-
-=== CHECK-IN DATA ===
-${scoreLine}
-${dimensionsBlock}
-${driversLine}
-${focusLine ? focusLine : ''}
-${dailyMoodPromptLine ? dailyMoodPromptLine : ''}
-${prevFocusLine ? prevFocusLine : ''}
-Weekly trend: ${trendLine}
-
-TONE BY SCORE:
-- 1–3: Lead with warmth and acknowledgement. Don't minimise. One gentle action is enough.
-- 4–5: Honest — a mixed week. Find the real bright spots. Keep recommendations achievable.
-- 6–7: Positive but not effusive. Build on what worked. One stretch nudge is fine.
-- 8–10: Genuine celebration. Name specifically what's strong. Push one meaningful challenge.
-
-RULES:
-- Never use: "holistic", "wellness journey", "self-care", "empower", "synergy", "touch base"
-- No markdown bold, no asterisks, no bullet symbols except "-"
-- Never say you are an AI
-- Speak directly as "you", not "the member"
-- If stress is high (dimension_stress low on scale) and mood is low (1–4/10), acknowledge the combination — don't gloss it
-- Use the actual activity data — reference what they logged. If they did 3 workouts, say so. If habits were missed all week, acknowledge it.
-- HABIT suggestion must relate to a real gap or their stated focus — not a generic suggestion
-- CONTENT suggestion must be a real VYVE session type (Yoga & Stretch, Mindfulness & Breathwork, Workouts, Weekly Check-In, Group Therapy, Education & Experts, The VYVE Podcast, Movement). Match it to their current state.
-- THIS WEEK actions must be specific to their actual data — name the activity type, day count, or dimension score. Not "try to move more" — say "aim for 3 strength sessions" or "log habits 5 out of 7 days".
-
-OUTPUT FORMAT — respond with exactly these five labelled sections, nothing else:
-
-DEBRIEF: [3–4 sentences. Score movement, what drove it, what they actually did this week. Reference specific logged activities. Personal and direct.]
-
-WHATS_WORKING: [1–2 sentences. What they should feel genuinely good about this week. Be specific — name the actual activity or dimension that's strong. No filler.]
-
-THIS_WEEK:
-- [Action 1: specific, measurable, tied to their goal or a real gap]
-- [Action 2: specific, measurable, different pillar from Action 1]
-- [Action 3: specific, measurable — can be the focus area they selected]
-
-HABIT: [One habit suggestion tied to their stated focus or biggest gap. Format: habit name | one sentence on why it fits this specific week.]
-
-CONTENT: [One VYVE session type that fits their current state. Format: session name | one sentence on why now, tied to their actual week.]`;
+  const systemPrompt = `${personaLine}\n\nYou are writing a private weekly wellbeing reflection for a VYVE Health member named ${firstName}. Only they will see this. Be specific, warm, and genuinely useful — write like someone who has actually looked at their week, not a wellness template.\n\n=== MEMBER PROFILE ===\n${profileBlock}\n\n=== THIS WEEK'S ACTIVITY (actual logged data) ===\n${activityBlock}\n${gapLine}\n\n=== CHECK-IN DATA ===\n${scoreLine}\n${dimensionsBlock}\n${driversLine}\n${focusLine ? focusLine : ''}\n${dailyMoodPromptLine ? dailyMoodPromptLine : ''}\n${prevFocusLine ? prevFocusLine : ''}\nWeekly trend: ${trendLine}\n\nTONE BY SCORE:\n- 1–3: Lead with warmth and acknowledgement. Don't minimise. One gentle action is enough.\n- 4–5: Honest — a mixed week. Find the real bright spots. Keep recommendations achievable.\n- 6–7: Positive but not effusive. Build on what worked. One stretch nudge is fine.\n- 8–10: Genuine celebration. Name specifically what's strong. Push one meaningful challenge.\n\nRULES:\n- Never use: "holistic", "wellness journey", "self-care", "empower", "synergy", "touch base"\n- No markdown bold, no asterisks, no bullet symbols except "-"\n- Never say you are an AI\n- Speak directly as "you", not "the member"\n- If stress is high (dimension_stress low on scale) and mood is low (1–4/10), acknowledge the combination — don't gloss it\n- Use the actual activity data — reference what they logged. If they did 3 workouts, say so. If habits were missed all week, acknowledge it.\n- HABIT suggestion must relate to a real gap or their stated focus — not a generic suggestion\n- CONTENT suggestion must be a real VYVE session type (Yoga & Stretch, Mindfulness & Breathwork, Workouts, Weekly Check-In, Group Therapy, Education & Experts, The VYVE Podcast, Movement). Match it to their current state.\n- THIS WEEK actions must be specific to their actual data — name the activity type, day count, or dimension score. Not "try to move more" — say "aim for 3 strength sessions" or "log habits 5 out of 7 days".\n\nOUTPUT FORMAT — respond with exactly these five labelled sections, nothing else:\n\nDEBRIEF: [3–4 sentences. Score movement, what drove it, what they actually did this week. Reference specific logged activities. Personal and direct.]\n\nWHATS_WORKING: [1–2 sentences. What they should feel genuinely good about this week. Be specific — name the actual activity or dimension that's strong. No filler.]\n\nTHIS_WEEK:\n- [Action 1: specific, measurable, tied to their goal or a real gap]\n- [Action 2: specific, measurable, different pillar from Action 1]\n- [Action 3: specific, measurable — can be the focus area they selected]\n\nHABIT: [One habit suggestion tied to their stated focus or biggest gap. Format: habit name | one sentence on why it fits this specific week.]\n\nCONTENT: [One VYVE session type that fits their current state. Format: session name | one sentence on why now, tied to their actual week.]`;
 
   const userMessage = free_text
     ? `Mood score: ${mood}/10. In my own words: "${free_text}"`
@@ -373,7 +321,7 @@ CONTENT: [One VYVE session type that fits their current state. Format: session n
   const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1200, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] })
+    body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 1200, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] })
   });
   if (!aiRes.ok) {
     const errText = await aiRes.text();
@@ -383,7 +331,6 @@ CONTENT: [One VYVE session type that fits their current state. Format: session n
   const aiData = await aiRes.json();
   const rawText: string = aiData.content?.[0]?.text ?? '';
 
-  // Parse all 5 sections
   const debriefMatch      = rawText.match(/DEBRIEF:\s*([\s\S]*?)(?=\nWHATS_WORKING:|$)/i);
   const whatsWorkingMatch = rawText.match(/WHATS_WORKING:\s*([\s\S]*?)(?=\nTHIS_WEEK:|$)/i);
   const thisWeekMatch     = rawText.match(/THIS_WEEK:\s*([\s\S]*?)(?=\nHABIT:|$)/i);
@@ -393,7 +340,6 @@ CONTENT: [One VYVE session type that fits their current state. Format: session n
   const debrief_text    = debriefMatch?.[1]?.trim() ?? rawText.trim();
   const whats_working   = whatsWorkingMatch?.[1]?.trim() ?? '';
 
-  // Parse THIS_WEEK bullet lines
   const thisWeekRaw = thisWeekMatch?.[1]?.trim() ?? '';
   const this_week_actions: string[] = thisWeekRaw
     .split('\n')
@@ -462,9 +408,9 @@ CONTENT: [One VYVE session type that fits their current state. Format: session n
   }
 
   EdgeRuntime.waitUntil(writeAiInteraction(email, persona,
-    `Weekly check-in v35 (mood=${mood}, habits=${habitDays}d, workouts=${workouts.length}, cardio=${cardio.length}, movement=${movement.length}, mind=${mind.length}, drivers=${drivers?.join(',') || 'none'}, focus=${improvement_focus || 'none'})`,
+    `Weekly check-in v36 (mood=${mood}, habits=${habitDays}d, workouts=${workouts.length}, cardio=${cardio.length}, movement=${movement.length}, mind=${mind.length}, drivers=${drivers?.join(',') || 'none'}, focus=${improvement_focus || 'none'})`,
     rawText,
-    { model: 'claude-sonnet-4-20250514', max_tokens: 1200, mood, dimensions: {dimension_energy, dimension_sleep, dimension_stress, dimension_body}, drivers, improvement_focus, previous_score: previousScore, iso_week, iso_year, path: 'new_v35',
+    { model: 'claude-sonnet-4-5', max_tokens: 1200, mood, dimensions: {dimension_energy, dimension_sleep, dimension_stress, dimension_body}, drivers, improvement_focus, previous_score: previousScore, iso_week, iso_year, path: 'new_v36',
       activity_counts: { habitDays, workouts: workouts.length, cardio: cardio.length, movement: movement.length, mind: mind.length, sessions: hsSessions } }
   ));
 
@@ -554,7 +500,7 @@ async function handleLegacyCheckin(
   const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 800, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] })
+    body: JSON.stringify({ model: 'claude-sonnet-4-5', max_tokens: 800, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] })
   });
   if (!aiRes.ok) {
     const errText = await aiRes.text();
@@ -607,7 +553,7 @@ async function handleLegacyCheckin(
   }
 
   EdgeRuntime.waitUntil(writeAiInteraction(email, persona, `Weekly check-in legacy (score=${score}, flow=${flow === 'quiet' ? 'quiet' : 'active'}${isDeferred ? ', deferred' : ''})`, text, {
-    model: 'claude-sonnet-4-20250514', max_tokens: 800, score_wellbeing: score, flow_type: flow === 'quiet' ? 'quiet' : 'active', previous_score: previousScore, deferred: isDeferred, iso_week, iso_year, path: 'legacy'
+    model: 'claude-sonnet-4-5', max_tokens: 800, score_wellbeing: score, flow_type: flow === 'quiet' ? 'quiet' : 'active', previous_score: previousScore, deferred: isDeferred, iso_week, iso_year, path: 'legacy'
   }));
 
   let notifTitle: string;
@@ -628,12 +574,6 @@ async function handleLegacyCheckin(
   return new Response(JSON.stringify({ success: true, ack, recs: recsField, persona, full: text, deferred: isDeferred }), {
     headers: { ...CORS, 'Content-Type': 'application/json' }
   });
-}
-
-function sevenDaysAgoFn(): string {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - 7);
-  return d.toISOString().slice(0, 10);
 }
 
 serve(async (req: Request) => {
