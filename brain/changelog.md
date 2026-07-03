@@ -1,3 +1,9 @@
+## PM-687 — July calendar uplifted to 6/day: +60 rows (12:00 Mind, 17:30 Movement daily), 188 future sessions total (2026-07-03)
+
+Same session as PM-686, Dean asked for 6/day instead of 4. Added two daily slots across 4 Jul – 2 Aug from the same June pool: **12:00 Mindfulness & Mindset** and **17:30 Yoga, Pilates & Stretch** — 60 rows, rotation offsets (Mind +11, Movement +28). Post-insert same-day-title dedupe found 4 clashes; swapped via least-recently-scheduled pick (note: a single-statement LATERAL LRU pick snapshots and can select the same title for multiple rows — 28/29 Jul needed a second distinct-pick pass).
+
+**Final shape:** 188 future rows, 0 same-day duplicate titles. Daily: 07:00 Mv · 08:30 Mi · 12:00 Mi · 13:00 Mv · 17:30 Mv · 19:30 alternating (Mv Tue/Thu/Fri/Sun, Mi Mon/Wed/Sat); Tuesdays 7/day with the 18:00 Education slot. Repeat cadence: Mind ~weekly (21-title pool at ~2.4/day), Movement ~fortnightly (55 titles at ~3.6/day). **This is the density ceiling on the current 76-master library** — going past 6/day means new recordings (Workout-category content still parked on Calum's inputs pack; Suicide and Men stays gated §23.84). Runner heartbeat healthy throughout.
+
 ## PM-686 — July live-session calendar regenerated: 121 rows, 4 Jul – 2 Aug, runner confirmed picking up (2026-07-03)
 
 The 30-day calendar (PM-451, 4 Jun – 2 Jul) ran dry yesterday; from 3 Jul the only future `live_session` rows were the 7 weekly Tue 18:00 Education & Experts slots (through 18 Aug). Runner heartbeat was healthy but starved (`upcoming: 0`). Regenerated the month in one SQL insert — no new content, no new copy, so no Lewis gate: the pool is the 76 proven June rows (55 Movement + 21 Mind), `DISTINCT ON (category, session_title)` taking the latest June row per title, carrying `notes` (runner filename), `session_description`, host, thumbnails, and duration verbatim.
