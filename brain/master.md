@@ -1,6 +1,7 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
+**PM-686 (2026-07-03): July live-session calendar regenerated — 121 rows (4 Jul–2 Aug + tonight 20:00), June content pool re-slotted (55 Movement + 21 Mind, notes/hosts/thumbs verbatim), template Movement 07:00/13:00 daily +19:30 Tue/Thu/Fri/Sun, Mind 08:30 daily +19:30 Mon/Wed/Sat, Tue 18:00 Education untouched. Runner heartbeat upcoming 0→4 on next loop, no restart. Cron-27 stale WARNs corrected (it is ACTIVE).**
 **PM-685 (2026-07-03): CC IA reorg SHIPPED (PM-639 Phase A). 4-domain nav live in vyve-command-centre (`038799c`): Run the Business / Analytics / Members / Partners; 7-tab hub layer retired; 11 dead pages killed (root Dashboard.html, partners skeleton, performance, brand, 7 orphan partner-*); router href-tab support; `#/performance` links repointed. Layer 2 next: seed-data.js mock audit + kill partners.html hardcoded mocks + sweep 4 unreachable hub pages. Fastly-test with fresh `?z=N`.**
 **PM-682 (2026-06-25): Partner referral link FIXED end-to-end. (1) Stripe Payment Links CANNOT pre-apply a coupon (§23.127) — `partner-join-redirect` v4 mints a discounted Checkout Session (`discounts[0][coupon]`); per-partner payment-link objects are DEAD, `payment_link_url` vestigial; onboarding a partner = Stripe coupon + DB row only. (2) Branded `/join/[slug]` works via `Test-Site-Finalv3/404.html` catch-all, NO Cloudflare (§23.129; PM-676's join.html claim was wrong — join.html never runs for the subpath). (3) Earnings = 50% of NET paid (£5), not £20 list (£10): `subscription_value` = net-of-coupon in stripe-webhook v11 + stripe-reconcile v2/v3; column DEFAULT 20 dropped; CC portal MRR + `gross_amount`→`gross` fix (commit 35198f0). (4) `onboarding_v8.html` is DEAD (404) — real questionnaire is `welcome.html`; success_url → `welcome.html?partner=<slug>` (§23.130). (5) Community auto-join: stripe-reconcile cron #52 → every 15 min (`*/15`), so referred members join the community within minutes of paying — rejected the onboarding-EF + webhook-merge alternative as too much risk on signup/earnings paths. Verified live: £10 checkout (Dean screenshot) + reconciler clean run. Coupon code string left as `mentogethercic` (member never types it).**
 **PM-675–676 (2026-06-22): Partner referral links fully productionised. Stripe payment links (coupon pre-applied) stored on partner row. Branded URL: www.vyvehealth.co.uk/join/[slug] (join.html dynamic redirect, live + MATCH verified). Men Together CIC: slug=men-together-cic, coupon=mentogethercic, £10 off forever, status=onboarding. Partner onboarding playbook at playbooks/partner-onboarding.md — Claude can create Stripe coupon + link + DB row + branded URL in ~3 min per new partner.**
@@ -21,7 +22,6 @@
 
 **WARN: log-perf only wired on ~5 pages from May 2026 testing — needs broader portal wiring.**
 **WARN: posthog-test EF still active-but-retired — delete via dashboard.**
-**WARN: cron jobid 27 `session-publish-hourly` is DISABLED — confirm intentional (live-sessions pipeline).**
 **iOS 1.8 + Android 1.0.7 IN REVIEW (submitted 11 Jun 2026, PM-602). OTA wiring live in both binaries — §23.106 pending first canary push verification (TOP native priority, pre-Sage gate).**
 **PM-648 (2026-06-18): VYVE Money financial wellbeing feature live — money.html + money-calc.js + SCHEMA_V24 (health_snapshot). Mind hub tile added.**
 **PM-651 (2026-06-18): VYVE Mental Fitness live — mental-fitness.html (Today/Train/Track three-tab), db.js SCHEMA_V25 (6 new tables: mind_fitness_log/mind_moods/mind_trackers/mind_burnout_checks/mind_recovery_actions/mind_recovery_log), mind.html tile, vbb 464. CLINICAL GATE OPEN: burnout zone thresholds + early-warning values + all zone/crisis copy are PLACEHOLDERS pending Phil sign-off. GDPR erasure path for new tables still needs wiring (backlog). Practices count toward engagement/charity; mood check-ins and burnout checks do not.**
@@ -1942,7 +1942,7 @@ The CC host sits behind Fastly (~10-min TTL, per-edge-node). An empty-cache hard
 | 23 | vyve_charity_reconcile_daily | 30 2 * * * | Y |
 | 24 | vyve_drain_home_state_dirty | */5 * * * * | Y |
 | 25 | youtube-token-keepalive-daily | 0 3 * * * | Y |
-| 27 | session-publish-hourly | 5 * * * * | **N (disabled — confirm intentional; live sessions pipeline)** |
+| 27 | session-publish-hourly | 5 * * * * | Y (re-enabled PM-658 belt-and-braces; verified active PM-686) |
 | 28 | vyve-broadcast-scheduler | */5 * * * * | Y |
 | 29 | vyve-alert-digest-morning | 0 8 * * * | Y |
 | 30 | vyve-alert-digest-afternoon | 0 14 * * * | Y |

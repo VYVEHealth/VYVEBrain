@@ -1,3 +1,15 @@
+## PM-686 — July live-session calendar regenerated: 121 rows, 4 Jul – 2 Aug, runner confirmed picking up (2026-07-03)
+
+The 30-day calendar (PM-451, 4 Jun – 2 Jul) ran dry yesterday; from 3 Jul the only future `live_session` rows were the 7 weekly Tue 18:00 Education & Experts slots (through 18 Aug). Runner heartbeat was healthy but starved (`upcoming: 0`). Regenerated the month in one SQL insert — no new content, no new copy, so no Lewis gate: the pool is the 76 proven June rows (55 Movement + 21 Mind), `DISTINCT ON (category, session_title)` taking the latest June row per title, carrying `notes` (runner filename), `session_description`, host, thumbnails, and duration verbatim.
+
+**Template (Europe/London, mirrors June's core pattern minus the PM-658 catch-up-block noise):** Movement (Yoga, Pilates & Stretch) daily 07:00 + 13:00, plus 19:30 Tue/Thu/Fri/Sun. Mind (Mindfulness & Mindset) daily 08:30, plus 19:30 Mon/Wed/Sat. Existing Tue 18:00 Education rows untouched. Rotation = alphabetical pool cycled by slot index modulo pool size (series like Healthy Hips 1→3 air in order as a side effect). One extra Movement row tonight Fri 3 Jul 20:00 so launch day isn't empty. Total inserted: 121 (Movement 78 incl. tonight, Mind 43). `visibility='public'`, `partner_id` NULL (48h partner trigger not in play).
+
+**Verified live:** per-day lineup 4/day + Tue 5/day correct; runner heartbeat flipped `upcoming: 0 → 4` on the next loop (~18:08 UTC) with no restart — forward window (§23.125 fix) seeing the new rows. First canary is tonight's 20:00 broadcast (runner mints via `ensure_broadcast`; watchdog cron 50 covers it).
+
+**Stale-WARN correction:** master's front WARN and the §cron table said cron 27 `session-publish-hourly` is DISABLED — live `cron.job` shows `active=true` (re-enabled PM-658 as belt-and-braces). Both corrected this entry.
+
+**Backlog:** "calendar regeneration before 2 Jul" carried item closed (a day late — schedule gap was today only, and today got a session). Still carried: the ~40 stale empty-notes rows deactivation, service_role rotation, runner off Dean's Mac.
+
 ## PM-685 — CC IA reorg shipped (PM-639 Phase A): 4-domain nav, hub layer retired, 11 dead pages killed (2026-07-03)
 
 Built the locked PM-639 Phase A IA in `vyve-command-centre`. Single atomic commit `038799c`, md5-verified pinned to SHA. Admin-only — zero member blast radius.
