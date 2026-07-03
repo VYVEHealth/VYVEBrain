@@ -949,16 +949,16 @@ Achievements `unseen / inflight / recent / earned_count / hk_connected` payload 
 
 All admin writes audited to `admin_audit_log`.
 
-### Command Centre IA — 4-domain model (PM-639, locked, not yet built)
+### Command Centre IA — 4-domain model (PM-639 spec, BUILT PM-685, 2026-07-03)
 
-Replaces the two competing nav layers (`VYVE_NAV` 8-section sidebar + `VYVE_NAV_TOP` 7-tab top nav). Top level = four domains:
+Live in `vyve-command-centre` (`038799c`). Replaced the two competing nav layers (`VYVE_NAV` 8-section sidebar + `VYVE_NAV_TOP` 7-tab top nav). Top level = four domains:
 
 - **Run the Business** — Daily (Brief/Inbox/Activity Feed/Intel/Dashboard) · Commercial (Finance/Sales Pipeline/Clients/Investors/Invoicing) · Marketing (Content/Social Blueprint/Podcast + ext Metricool/Riverside) · Delivery (Calendar/Sessions/Tasks/Compliance) · Knowledge (Strategy/Documents/Knowledge Base + ext Drive) · Org (Action Plans/Team/Settings/Trash).
 - **Analytics** — App Health + Usage + Retention + Activity Depth + Wellbeing + Platform & UX + Revenue + AI Usage (App Health moved out of Delivery; all 8 cron-backed).
 - **Members** — admin-console Shell 1/2/3 + Broadcast + Active Users (all operate on real member accounts).
-- **Partners** — the `partners.html` monolith (canonical). The 7 `pages/partner-*.html` are orphans (unreferenced in router/sidebar/index) → KILL after full-repo grep.
+- **Partners** — the `partners.html` monolith (canonical) + `partner-portal.html`, both sidebar hrefs; Partners top tab links the monolith directly (router href-tab support added PM-685).
 
-Triage KILLs: old Commercial Partners skeleton (superseded), Performance (Metricool covers it), Brand (a doc not a page), 7 orphan partner-* pages, root `Dashboard.html` (verify-then-kill). Full per-page triage in `CC-information-architecture.md`.
+KILLED PM-685 (all grep-confirmed orphans): old Commercial Partners skeleton (`pages/partners.html`), Performance, Brand, the 7 `pages/partner-*.html`, root `Dashboard.html`. Still present but unreachable (Layer 2 sweep): the 4 old hub pages (`pages/commercial|marketing|delivery|org.html`). CC v2 layering: L2 = real data (seed-data.js audit + kill partners.html mocks) → L3 = per-partner portal auth → L4 = Claude-driven audited actions (PF-NEXT-15) → L5 = Team App wrap. Full per-page triage in `CC-information-architecture.md`.
 
 ### Team App (PM-639, spec locked, web-first build pending)
 

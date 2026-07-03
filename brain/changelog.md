@@ -1,3 +1,19 @@
+## PM-685 — CC IA reorg shipped (PM-639 Phase A): 4-domain nav, hub layer retired, 11 dead pages killed (2026-07-03)
+
+Built the locked PM-639 Phase A IA in `vyve-command-centre`. Single atomic commit `038799c`, md5-verified pinned to SHA. Admin-only — zero member blast radius.
+
+**4-domain nav live:** `VYVE_NAV_TOP` is now Run the Business (→ #/brief) / Analytics (→ #/usage) / Members (→ #/active-users) / Partners (href → `/partners.html`). Old 7-tab hub layer retired; `VYVE_ROUTE_TO_TOP` remapped (Daily/Commercial/Marketing/Delivery/Knowledge/Org → brief, Analytics → usage, Members → active-users). Sidebar restructured to match: new **Analytics** section (all 8 Insights pages, App Health moved out of Delivery), new **Members** section (Member Admin href → `admin-console.html`, Broadcast moved from Delivery, Active Users moved from Org), new **Partners** section (`partners.html` monolith + `partner-portal.html`). Commercial dropped the old partners skeleton; Marketing dropped Performance + Brand.
+
+**Kills (all grep-confirmed zero inbound references):** root `Dashboard.html` (only ref was a CSS comment in admin-console.html), `pages/partners.html` (Commercial skeleton), `pages/performance.html`, `pages/brand.html`, all 7 orphan `pages/partner-*.html`. Note: `pages/partner-revenue.html` had received the PM-683 payout rewire but was unreachable — the monolith carries identical logic, killed with the rest.
+
+**Collateral patches:** `lib/router.js` renderTopNav supports href tabs (Partners links the monolith directly; href tabs bypass ACL filter and never highlight active — acceptable). `lib/quick-search.js` guards slug-less top tabs. 4 dangling `#/performance` KPI links in `pages/brief.html` + `pages/dashboard.html` repointed to `#/social-blueprint`.
+
+**Deliberately left for Layer 2:** the 4 now-unreachable hub pages (`pages/commercial|marketing|delivery|org.html`) — harmless dead files, sweep after Dean confirms no bookmarks; `assets/seed-data.js` (166K mock data, loaded by `index.html` shell) — the Layer 2 headline is a full mock audit: what still reads seed data, plus the known hardcoded Attendances-by-week + engagement-segment scorer in `partners.html`.
+
+**CC v2 layering agreed with Dean:** L1 IA reorg (this, DONE) → L2 real data everywhere (seed-data quarantine + kill mocks) → L3 auth (per-partner portal logins folded into onboarding, PM-684 headline) → L4 Claude-driven audited actions (PF-NEXT-15) → L5 Team App wrap (deferred, content sign-off).
+
+**Test note:** admin.vyvehealth.co.uk behind Fastly — verify with a fresh `?z=N` key (§23.138).
+
 ## PM-684 — Partner content scheduling: approved ≠ live, partner-set go-live (48h min), editable-in-review, video thumbnails (2026-06-26)
 
 Continuation of the partner-portal work. Turned "approve = instantly live" into a real publish lifecycle the partner controls, fixed two upload bugs surfaced along the way, and added best-effort video thumbnails. All on `ixjfklpckgxrwjlfsaaz`, all production. Demo partner = Emma Clarke (`4867d2c2-53bd-4139-8289-19df0132d71e`).

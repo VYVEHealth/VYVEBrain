@@ -12,11 +12,11 @@
 - Detection is now handled (broadcast-watchdog EF, cron 50, alerts email+push). These two items are the remaining *structural* fixes.
 
 
-## Command Centre IA + Team App build (PM-639 — Sonnet to build, spec locked)
+## Command Centre IA + Team App build (PM-639 spec — Phase A SHIPPED PM-685)
 
-IA + spec done as artefacts (`CC-information-architecture.md`, `CC-team-app-spec.md`); §13 in master carries the summary. No code shipped yet.
+IA + spec done as artefacts (`CC-information-architecture.md`, `CC-team-app-spec.md`); §13 in master carries the summary.
 
-**Phase A — CC nav reorg (4 domains):** restructure `assets/sidebar-config.js` to Run the Business / Analytics / Members / Partners; retire the duplicate `VYVE_NAV_TOP` layer. Cross-domain moves: App Health Delivery→Analytics, Broadcast Delivery→Members, Active Users Org→Members. KILL old Commercial Partners skeleton, Performance, Brand, the 7 orphan `pages/partner-*.html` (grep-confirm first), root `Dashboard.html` (verify first). Reconcile Partner Space onto the `partners.html` monolith.
+~~**Phase A — CC nav reorg (4 domains):** restructure~~ **SHIPPED PM-685 (2026-07-03)** — 4-domain nav live, 11 dead pages killed, `#/performance` links repointed. Remaining from Phase A scope: sweep the 4 unreachable old hub pages (`pages/commercial|marketing|delivery|org.html`) in the CC Layer 2 pass (seed-data.js audit + kill the partners.html mocks). Original scope for reference: restructure `assets/sidebar-config.js` to Run the Business / Analytics / Members / Partners; retire the duplicate `VYVE_NAV_TOP` layer. Cross-domain moves: App Health Delivery→Analytics, Broadcast Delivery→Members, Active Users Org→Members. KILL old Commercial Partners skeleton, Performance, Brand, the 7 orphan `pages/partner-*.html` (grep-confirm first), root `Dashboard.html` (verify first). Reconcile Partner Space onto the `partners.html` monolith.
 
 **Team App build phases:**
 1. ~~**Foundation** — `admin_users` roles (admin/team), `is_team()` SECURITY DEFINER capability, RLS on `cc_tasks` / `cc_calendar_events` / new `cc_task_attachments`.~~ **SHIPPED PM-640 (2026-06-16)**
