@@ -1,3 +1,31 @@
+## PM-689 — Audit pass #1 (open EF bodies read): 2 unauthenticated account-takeover primitives KILLED; stripe-webhook + admin cluster cleared; 68-slug EF delete partition built (2026-07-03)
+
+Continuation of the PM-688 enterprise DD audit. PM-688's HIGH/MEDIUM tail was inferred from verify_jwt flags + slug names, not read bodies. This pass read the open (verify_jwt:false) non-cron functions end-to-end. The inference badly under-rated two functions and over-rated the admin cluster.
+
+**CRITICAL — found + KILLED this session (production change, verified by real invocation):**
+- `set-member-password` — was verify_jwt:false with ZERO auth (no JWT, no key, only advisory CORS). Took arbitrary {email,password} and reset ANY member's password via service-role Auth admin API (email_confirm:true). Full account-takeover primitive, public internet. → overwritten with 410 stub + verify_jwt:true. Curl with no-JWT and anon-only both return 403 pre-body. **Dashboard-delete the slug when convenient.**
+- `create-test-user` — was verify_jwt:false, ZERO auth. Created arbitrary auth user + member row via service role, hardcoded password '1234'. Unauthenticated account-creation primitive. → same 410+JWT kill, verified 403.
+
+Both were dead debug/utility functions nothing live calls. Neutralised same-session rather than waiting (bleed-stop > discuss-first, per judgement).
+
+**HIGH — static-key PII/debug functions (on delete list, not emergency — gated, fixed-target):**
+- `inspect-members-schema` — static querystring key `vyve-26apr2026-hk-test`, service role, dumps member email/name rows + insert/delete probe on members. Querystring keys get logged.
+- `create-test-member` — same static key, seeds known account test@test.com / vyve2026, returns creds in response.
+- Shared hardcoded key `vyve-26apr2026-hk-test` reused across ≥2 debug fns → §23 note.
+- `debug-show-file` — no gate, but hardcoded to one fixed cert path (own account). Leaks 1 file's first 500 chars. LOW; delete.
+
+**PASS / cleared (resolves PM-688 opens):**
+- `stripe-webhook` — proper HMAC-SHA256 sig verify, 300s replay tolerance, timing-safe compare, refuses w/o secret (503), stripe_events insert-first idempotency via 23505 short-circuit. Resolves PM-688 §2.3.
+- **Admin-write cluster (`admin-member-edit`, `admin-member-programme` read in full; 4 more share copy-identical verifyAuth):** verify_jwt:false is the DOCUMENTED ES256 gateway fix, NOT missing auth. Each does in-code JWT verify (anon.auth.getUser) → admin_users allowlist → active check → role gating → field/enum/UUID validation → admin_audit_log write. This is the BEST-built part of the estate. PM-688's "admin cluster open = HIGH" was wrong in the alarming direction.
+
+**MEDIUM — new:** `admin-member-edit` v6 made `reason` OPTIONAL even on SCARY fields (persona, subscription_status, health_data_consent); code comment defers mandatory-reason to "if enterprise DPA requires it." It does — one-line revert per sensitive field before enterprise.
+
+**Artefacts:** full keep/delete partition of all 163 deployed EFs saved to `reports/ef-delete-list-2026-07-03.txt` (68 delete candidates; ~5 need admin-console-reference check before the sweep — internal-dashboard EF, cc-data, edit-habit, add-exercise-stream, admin-test-push-oneshot). Deletion is its own CLI session (deploy_edge_function can only overwrite, not delete).
+
+**Coverage:** every EF that can mutate member data is now read or pattern-confirmed. This is a complete SECURITY pass. Remaining audit passes are correctness/governance: #2 money/identity tail (stripe-reconcile, apply-trial, partner-provision, send-password-reset — not yet read), #3 GDPR executors read end-to-end (gap already found via SQL, executors not yet body-read), #4 clinical/crisis-scan coverage trace.
+
+**Next-session queue:** (1) CLI delete sweep from the 68-list after the ~5 checks; (2) fix PM-688 §1.1 erasure gap (catalog-driven purge + re-run 2 subjects); (3) close partner-content-upload (PM-688 §2.1); (4) HAVEN interim routing decision for Lewis.
+
 ## PM-688 — Enterprise due-diligence technical audit (read-only): GDPR erasure gap, partner-EF access-control, HAVEN exposure quantified (2026-07-03)
 
 Ran a full read-only technical audit framed as a corporate buyer's InfoSec/DPO/procurement review (Sage-class), ahead of enterprise sales. No writes except this entry + the report. Report at `reports/12-enterprise-dd-audit-2026-07-03.md`. Supersedes the security/GDPR/enterprise-readiness slices of the April `reports/01,05,09` against live state (35→133 tables, 15→165 EFs since).

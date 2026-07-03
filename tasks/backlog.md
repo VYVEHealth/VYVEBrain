@@ -1,3 +1,5 @@
+> **[PM-689 · 2026-07-03 · SECURITY]** Two unauthenticated account-takeover EFs killed this session (`set-member-password`, `create-test-user`) — now 410+JWT, verified 403. **TODO: dashboard-delete both slugs.** EF delete sweep pending: 68-slug list at `reports/ef-delete-list-2026-07-03.txt`, needs CLI + ~5 admin-ref checks first. Also queued from audit: erasure-gap fix (PM-688 §1.1), close partner-content-upload (PM-688 §2.1), HAVEN interim routing (Lewis), admin-member-edit mandatory-reason on SCARY fields before enterprise DPA.
+
 ## NEW IDEAS + structural risk (captured PM-658, 2026-06-22)
 
 **Feature ideas (Dean brain-dump — unspecced, talk-first before build):**
