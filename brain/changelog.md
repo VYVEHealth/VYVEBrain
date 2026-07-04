@@ -1,3 +1,7 @@
+## PM-697 — Finding H DRAFTED: sub-processor register v1 at reports/sub-processor-register-2026-07-04.md (2026-07-04)
+
+14 processors enumerated with data categories, special-category flags, hosting regions, transfer mechanisms, DPA status. Core: Supabase (EU/Ireland, all member+health data), Anthropic (US, the one special-category flow leaving the EU — IDTA/SCCs, no-training commercial terms), Stripe, Brevo (EU), PostHog EU (masked+10%% per PM-695), APNs/FCM, Capawesome (EU). Email hosting (team@ on consumer-grade tenant) flagged honestly as the weak link — receives crisis-alert content; ties to finding U. Includes questionnaire-truthful statements + 5 open actions for Lewis (file Supabase/Brevo/PostHog/Capawesome DPAs, confirm Anthropic terms, YouTube-embed privacy-policy line). LEWIS OWNS EXECUTION — register is DPA-schedule-ready.
+
 ## PM-696 — CRITICAL signup fix: production signup dead since PM-689; onboarding v99 sets password at auth-user creation; welcome.html gates on password_set; set-member-password DELETED. Findings C + F CLOSED (66 dead EFs swept, 163→96) (2026-07-04)
 
 **Discovery.** PM-689 stubbed `set-member-password` to 410+JWT — but `Test-Site-Finalv3/welcome.html` hard-gated its success screen on calling it. Every signup after the stub dead-ended at PASSWORD_SET_FAILED with a Try-again that could never succeed. Zero members harmed: the only signup since (reece-calvert@hotmail.com, 18:30 3 Jul) landed ~30 min before the stub, has a password, signed in at 18:31.
