@@ -2,13 +2,13 @@
 
 > Auto-generated from live Supabase project `ixjfklpckgxrwjlfsaaz`.
 > DO NOT EDIT — overwritten weekly by the `schema-snapshot-refresh` Edge Function.
-> Last refresh: 2026-06-28T03:01:40.432Z
+> Last refresh: 2026-07-05T03:01:40.650Z
 
-**Totals:** 153 tables (153 with RLS) · 1798 columns · 55 FKs · 260 triggers · 121 public functions · 217 RLS policies · 408 indexes · 46 cron jobs
+**Totals:** 154 tables (154 with RLS) · 1802 columns · 55 FKs · 264 triggers · 125 public functions · 217 RLS policies · 409 indexes · 46 cron jobs
 
 ---
 
-## Tables (153)
+## Tables (154)
 
 ### `achievement_metrics` · RLS
 
@@ -1339,6 +1339,7 @@
 
 **Triggers:**
 - `connect_checkins_updated_at` — BEFORE UPDATE
+- `zz_crisis_scan_connect` — AFTER INSERT/UPDATE
 - `zzz_mark_home_state_dirty_del` — AFTER DELETE
 - `zzz_mark_home_state_dirty_ins` — AFTER INSERT
 - `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
@@ -1722,6 +1723,23 @@
 - `gdpr_export_requests_by_member`
 - `gdpr_export_requests_pending`
 - `gdpr_export_requests_pkey`
+
+### `gdpr_table_policy` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `table_name` | text | NO |  | ✓ |  |
+| `policy` | text | NO |  |  |  |
+| `reason` | text | NO |  |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `gdpr_table_policy_policy_check`: CHECK ((policy = ANY (ARRAY['purge'::text, 'retain'::text])))
+
+**RLS policies:** _(none — service-role only)_
+
+**Indexes:**
+- `gdpr_table_policy_pkey`
 
 ### `habit_library` · RLS
 
@@ -2690,6 +2708,7 @@
 
 **Triggers:**
 - `mind_activities_set_time_fields` — BEFORE INSERT
+- `zz_crisis_scan_journal` — AFTER INSERT/UPDATE
 - `zzz_mark_home_state_dirty_del` — AFTER DELETE
 - `zzz_mark_home_state_dirty_ins` — AFTER INSERT
 - `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
@@ -4624,7 +4643,7 @@
 
 ---
 
-## Public Functions (121)
+## Public Functions (125)
 
 - `_vyve_daily_streak(p_dates date[], p_today date)` — func
 - `_vyve_daily_streak_best(p_dates date[])` — func
@@ -4638,6 +4657,7 @@
 - `cap_cardio()` — func
 - `cap_daily_habits()` — func
 - `cap_workouts()` — func
+- `capawesome_token()` — func
 - `charity_count_cardio()` — func
 - `charity_count_daily_habits()` — func
 - `charity_count_replay_views()` — func
@@ -4663,11 +4683,12 @@
 - `exercise_logs_canonical_normalise()` — func
 - `exercise_name_canonical_normalise_generic()` — func
 - `expire_lapsed_trials()` — func
-- `gdpr_erase_purge_subject(subject_email text)` — func
+- `gdpr_cron_key()` — func
 - `gdpr_erasure_lc_email()` — func
 - `gdpr_erasure_pick_due(limit_n integer)` — func
 - `gdpr_erasure_purge(p_email text)` — func
 - `gdpr_export_pick_due(limit_n integer)` — func
+- `gdpr_member_scoped_tables()` — func
 - `get_auth_user_id_by_email(p_email text)` — func
 - `get_capped_activity_count(p_email text, p_activity_type text)` — func
 - `get_certificate_buckets()` — func
@@ -4695,6 +4716,7 @@
 - `normalise_exercise_names_in_jsonb(p_doc jsonb, p_member_email text)` — func
 - `normalise_exercise_names_jsonb_trigger()` — func
 - `normalise_workout_plan_shape()` — func
+- `notify_crisis_scan()` — func
 - `podcast_episodes_set_updated_at()` — func
 - `queue_health_write_back()` — func
 - `read_vault_secret(secret_name text)` — func
@@ -4743,6 +4765,7 @@
 - `update_cert_sessions_count()` — func
 - `update_push_native_updated_at()` — func
 - `verify_cc_cron(p_token text)` — func
+- `vyve_internal_key()` — func
 - `vyve_lc_email()` — func
 - `vyve_refresh_daily(p_email text, p_date date)` — func
 - `vyve_sync_activity_log()` — func
