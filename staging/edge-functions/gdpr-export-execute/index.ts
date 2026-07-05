@@ -1,21 +1,24 @@
-// VYVE Health — gdpr-export-execute v1 (Security commit 3, 07 May 2026 PM-3).
+// VYVE Health — gdpr-export-execute v4 (4 July 2026).
 //
-// Cron-driven executor for GDPR Article 15 export requests. Runs every 15 min.
-// Picks up to 5 due rows from gdpr_export_requests via gdpr_export_pick_due()
-// (FOR UPDATE SKIP LOCKED, attempt_count < 3, re-queues rows older than 10 min),
-// builds per-subject JSON, uploads to gdpr-exports bucket, signs URL (7d),
-// sends Brevo email, writes admin_audit_log receipt.
+// v4: gate additionally accepts an x-vyve-cron-key header matching the
+// GDPR_CRON_KEY vault secret (fetched via the service-role-only RPC
+// gdpr_cron_key(), cached per isolate). The pg_cron tick sends this header
+// with the value read from vault in the cron command itself — both sides
+// share one secret with no dashboard round-trip. Bearer CRON_SECRET and
+// Bearer SERVICE_KEY remain accepted.
 //
-// Failure modes:
-//   - Build/upload/sign/Brevo errors → mark failed_at if attempt_count reached
-//     cap (3), otherwise leave for retry on next tick (10-min re-queue window).
-//   - Cron crash mid-cohort → next tick re-picks (idempotent: Storage upload
-//     overwrites, Brevo send produces a new message_id).
-//   - Concurrent cron ticks → FOR UPDATE SKIP LOCKED in pick_due prevents
-//     double-pickup.
+// v3: gate accepts Bearer CRON_SECRET OR Bearer SUPABASE_SERVICE_ROLE_KEY;
+// always enforced. (Discovered: crons sent no auth header while CRON_SECRET
+// was set — every tick 401'd; pipeline silently dead.)
 //
-// verify_jwt: false at platform; secret-bearer check inside.
-// See brain/gdpr_export_schema.md (signed off 07 May 2026 PM-3).
+// v2: table coverage is CATALOG-DRIVEN via gdpr_member_scoped_tables() — same
+// source of truth as gdpr_erasure_purge. Retain-policy tables still included
+// (Article 15 covers retained data). Enumeration failure = export failure;
+// never a silent partial export.
+//
+// v1 core unchanged: every 15 min, pick ≤5 due rows via gdpr_export_pick_due()
+// (FOR UPDATE SKIP LOCKED, attempt_count < 3, 10-min re-queue), build JSON,
+// upload to gdpr-exports, sign URL (7d), Brevo email, admin_audit_log receipt.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -28,37 +31,28 @@ const SIGNED_URL_TTL_SECONDS = 7 * 86400;  // 7 days
 const TICK_LIMIT = 5;
 const MAX_ATTEMPTS = 3;
 
-// Member-scoped tables that filter on member_email = subject. Each is exported as an array.
-const MEMBER_SCOPED_TABLES = [
-  "daily_habits", "workouts", "cardio", "session_views", "replay_views",
-  "wellbeing_checkins", "weekly_scores", "weekly_goals", "monthly_checkins",
-  "nutrition_logs", "nutrition_my_foods", "weight_logs",
-  "exercise_logs", "exercise_notes", "exercise_swaps", "custom_workouts",
-  "workout_plan_cache",
-  "certificates", "member_achievements",
-  "member_health_connections", "member_health_daily", "member_health_samples",
-  "member_health_write_ledger",
-  "member_activity_daily", "member_activity_log",
-  "member_running_plans", "member_habits",
-  "persona_switches",
-  "engagement_emails", "member_notifications", "scheduled_pushes",
-  "push_subscriptions", "push_subscriptions_native",
-  "session_chat", "platform_alerts", "qa_submissions",
-  "ai_interactions", "ai_decisions",
-  "employer_members", "activity_dedupe",
-];
+type ScopedTable = { table_name: string; subject_column: string; policy: string; registered: boolean };
 
-// Single-row tables: members (filtered on email), member_home_state + member_stats (member_email).
-const SINGLE_ROW_TABLES: Array<{ table: string; col: string }> = [
-  { table: "members", col: "email" },
-  { table: "member_home_state", col: "member_email" },
-  { table: "member_stats", col: "member_email" },
-];
+let cachedCronKey: string | null = null;
 
-// Different-column tables: shared_workouts uses shared_by (member as creator).
-const SHARED_BY_TABLES = [
-  { table: "shared_workouts", col: "shared_by" },
-];
+async function isAuthorized(req: Request, svc: any): Promise<boolean> {
+  const auth = req.headers.get("Authorization") ?? "";
+  if (CRON_SECRET && auth === `Bearer ${CRON_SECRET}`) return true;
+  if (SERVICE_KEY && auth === `Bearer ${SERVICE_KEY}`) return true;
+  const hdr = req.headers.get("x-vyve-cron-key") ?? "";
+  if (hdr) {
+    if (cachedCronKey === null) {
+      try {
+        const { data } = await svc.rpc("gdpr_cron_key");
+        cachedCronKey = typeof data === "string" ? data : "";
+      } catch (_e) {
+        cachedCronKey = "";
+      }
+    }
+    if (cachedCronKey && hdr === cachedCronKey) return true;
+  }
+  return false;
+}
 
 // auth.users sanitisation whitelist - everything else dropped (tokens, hashes, etc).
 const AUTH_USER_WHITELIST = [
@@ -71,9 +65,13 @@ const README_TEXT = `This file is your VYVE Health data export under Article 15 
 
 WHAT'S INCLUDED
 This export contains every record VYVE Health CIC holds against your email
-address across our platform tables. Each top-level key corresponds to one
-database table; the value is either a single object (for one-row-per-member
-tables like your profile) or an array of rows.
+address across our platform tables. The table list is generated automatically
+from our live database catalogue at the moment of export, so newly added
+features are always covered. Each top-level key corresponds to one database
+table; the value is either a single object (your profile) or an array of rows.
+A small number of tables are retained after account erasure for a documented
+legal basis (e.g. financial transaction records) — those are still included
+here in full, and are listed in _meta.retained_on_erasure.
 
 UNDERSTANDING DERIVED DATA
 Some sections (member_home_state, member_stats, member_activity_daily) are
@@ -149,12 +147,23 @@ function sanitiseAuthUser(u: any): Record<string, unknown> | null {
 }
 
 async function buildExport(supabaseSvc: any, subject: string): Promise<{ json: Record<string, unknown>; tablesIncluded: number }> {
+  // Catalog-driven enumeration — the same source of truth gdpr_erasure_purge uses.
+  // If this fails, the whole export fails (retry path). NEVER fall back to a hand list.
+  const { data: scoped, error: enumErr } = await supabaseSvc.rpc("gdpr_member_scoped_tables");
+  if (enumErr || !Array.isArray(scoped) || scoped.length === 0) {
+    throw new Error(`gdpr_member_scoped_tables enumeration failed: ${enumErr?.message || "empty result"}`);
+  }
+  const scopedTables = scoped as ScopedTable[];
+  const retainedTables = scopedTables.filter((t) => t.policy === "retain").map((t) => t.table_name);
+
   const out: Record<string, unknown> = {
     _meta: {
-      schema_version: "1.0",
+      schema_version: "2.0",
+      enumeration: "catalog-driven (gdpr_member_scoped_tables)",
       generated_at: new Date().toISOString(),
       subject_email: subject,
       tables_included: 0,
+      retained_on_erasure: retainedTables,
       tables_excluded: [
         { table: "running_plan_cache", reason: "shared_parametric_cache_no_subject_attribution" },
       ],
@@ -167,49 +176,39 @@ async function buildExport(supabaseSvc: any, subject: string): Promise<{ json: R
 
   let tableCount = 0;
 
-  for (const { table, col } of SINGLE_ROW_TABLES) {
-    const { data, error } = await supabaseSvc.from(table).select("*").eq(col, subject).maybeSingle();
+  // Parent row: members, single object on email.
+  {
+    const { data, error } = await supabaseSvc.from("members").select("*").eq("email", subject).maybeSingle();
     if (error) {
-      console.warn(`[buildExport] ${table} error:`, error.message);
-      out[table] = null;
-      out._meta = { ...(out._meta as object), [`error_${table}`]: error.message };
+      console.warn("[buildExport] members error:", error.message);
+      out.members = null;
+      out._meta = { ...(out._meta as object), error_members: error.message };
     } else {
-      out[table] = data;
+      out.members = data;
     }
     tableCount += 1;
   }
 
-  const batches: string[][] = [];
-  for (let i = 0; i < MEMBER_SCOPED_TABLES.length; i += 8) {
-    batches.push(MEMBER_SCOPED_TABLES.slice(i, i + 8));
+  // Every enumerated member-scoped table, batched 8 at a time, filtered on its own subject column.
+  const batches: ScopedTable[][] = [];
+  for (let i = 0; i < scopedTables.length; i += 8) {
+    batches.push(scopedTables.slice(i, i + 8));
   }
   for (const batch of batches) {
     const results = await Promise.all(
-      batch.map((t) => supabaseSvc.from(t).select("*").eq("member_email", subject))
+      batch.map((t) => supabaseSvc.from(t.table_name).select("*").eq(t.subject_column, subject))
     );
     batch.forEach((t, i) => {
       const r = results[i];
       if (r.error) {
-        console.warn(`[buildExport] ${t} error:`, r.error.message);
-        out[t] = [];
-        out._meta = { ...(out._meta as object), [`error_${t}`]: r.error.message };
+        console.warn(`[buildExport] ${t.table_name} error:`, r.error.message);
+        out[t.table_name] = [];
+        out._meta = { ...(out._meta as object), [`error_${t.table_name}`]: r.error.message };
       } else {
-        out[t] = r.data || [];
+        out[t.table_name] = r.data || [];
       }
       tableCount += 1;
     });
-  }
-
-  for (const { table, col } of SHARED_BY_TABLES) {
-    const { data, error } = await supabaseSvc.from(table).select("*").eq(col, subject);
-    if (error) {
-      console.warn(`[buildExport] ${table} error:`, error.message);
-      out[table] = [];
-      out._meta = { ...(out._meta as object), [`error_${table}`]: error.message };
-    } else {
-      out[table] = data || [];
-    }
-    tableCount += 1;
   }
 
   try {
@@ -312,14 +311,12 @@ async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "de
 }
 
 Deno.serve(async (req: Request) => {
-  if (CRON_SECRET) {
-    const auth = req.headers.get("Authorization") ?? "";
-    const expected = `Bearer ${CRON_SECRET}`;
-    if (auth !== expected) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401, headers: { "Content-Type": "application/json" },
-      });
-    }
+  const supabaseSvc = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+  if (!(await isAuthorized(req, supabaseSvc))) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401, headers: { "Content-Type": "application/json" },
+    });
   }
 
   if (req.method !== "POST") {
@@ -327,8 +324,6 @@ Deno.serve(async (req: Request) => {
       status: 405, headers: { "Content-Type": "application/json" },
     });
   }
-
-  const supabaseSvc = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
   const { data: due, error: pickErr } = await supabaseSvc.rpc("gdpr_export_pick_due", { limit_n: TICK_LIMIT });
   if (pickErr) {

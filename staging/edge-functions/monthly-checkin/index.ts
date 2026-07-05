@@ -1,4 +1,9 @@
-// monthly-checkin v20
+// monthly-checkin v21
+// v21 (finding B, 4 Jul 2026): crisis-scan wired in. All member free-text (the 8
+//               per-dimension notes + goal_progress_note) is scanned server-side via
+//               the crisis-scan EF, fire-and-forget through EdgeRuntime.waitUntil —
+//               a scan failure can never delay or break the member's check-in, and
+//               nothing member-facing changes.
 // v20 (PM-382): three-mode state machine. Submit window opens on the 1st of
 //               the next calendar month (was: opens on 25th of current month).
 //               Page is always live and useful — recap visible across all
@@ -53,6 +58,20 @@ const PERSONA_VOICES: Record<string, string> = {
   SAGE:  'You are SAGE — a knowledge-first mentor. Evidence-based, thoughtful. Explain the why behind every observation and recommendation.',
   HAVEN: 'You are HAVEN — a gentle wellbeing companion. Non-judgmental, trauma-informed. Always lead with warmth. Never push hard targets.',
 };
+
+// v21: fire-and-forget safeguarding scan. Never throws to the caller.
+async function scanForCrisis(email: string, source: string, fields: Record<string, string>) {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/crisis-scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_KEY}` },
+      body: JSON.stringify({ member_email: email, member_name: '(name unknown)', trigger_source: source, fields }),
+    });
+    if (!r.ok) console.warn(`[monthly-checkin] crisis-scan ${r.status}`);
+  } catch (e: unknown) {
+    console.warn('[monthly-checkin] crisis-scan call failed (non-blocking):', String(e));
+  }
+}
 
 async function q(table: string, params: string) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
@@ -289,6 +308,20 @@ serve(async (req) => {
     if (!scores) return new Response(JSON.stringify({ error: 'Missing scores' }), {
       status: 400, headers: { ...CORS, 'Content-Type': 'application/json' }
     });
+
+    // v21: safeguarding scan on all member free-text, fire-and-forget.
+    try {
+      const scanFields: Record<string, string> = {};
+      if (notes && typeof notes === 'object') {
+        for (const [k, v] of Object.entries(notes as Record<string, unknown>)) {
+          if (typeof v === 'string' && v.trim()) scanFields[`note_${k}`] = v;
+        }
+      }
+      if (typeof goal_progress_note === 'string' && goal_progress_note.trim()) scanFields.goal_progress_note = goal_progress_note;
+      if (Object.keys(scanFields).length > 0) {
+        EdgeRuntime.waitUntil(scanForCrisis(email, 'monthly_checkin', scanFields));
+      }
+    } catch (_e) { /* never block the check-in */ }
 
     const memberCheckRows = await q('members', `email=eq.${enc}&select=created_at&limit=1`);
     const newMemberCheck = isNewMember(memberCheckRows[0]?.created_at || null);

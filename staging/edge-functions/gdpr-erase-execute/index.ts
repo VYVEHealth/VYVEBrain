@@ -1,28 +1,44 @@
-// VYVE Health — gdpr-erase-execute v1 (Security commit 4, 07 May 2026 PM-4).
+// VYVE Health — gdpr-erase-execute v4.1 (4 July 2026).
 //
+// v4.1: all alertPlatform 'warning' severities → 'high'. platform_alerts has a
+// severity CHECK allowing only critical/high/info — the 'warning' rows were
+// silently rejected (found while wiring crisis-scan, which hit the same CHECK).
+// No functional change beyond the alerts actually persisting now.
+//
+// v4: after the DB purge, the subject's export artefacts in the gdpr-exports
+// storage bucket are removed (an export file IS a complete copy of their data;
+// leaving it post-erasure is an Article 17 residual). Best-effort with a
+// platform_alerts high-severity alert on failure — the DB purge is not re-runnable once
+// the members row is gone, so storage failure must not fail the request.
+//
+// v3: gate additionally accepts an x-vyve-cron-key header matching the
+// GDPR_CRON_KEY vault secret (fetched via service-role-only RPC gdpr_cron_key(),
+// cached per isolate). The pg_cron tick sends this header with the value read
+// from vault in the cron command itself. Bearer CRON_SECRET and Bearer
+// SERVICE_KEY remain accepted.
+//
+// v2 (same date): gate hardened + purge treats verified_clean=false as hard
+// failure. Underlying gdpr_erasure_purge() rewritten: catalog-driven
+// enumeration (gdpr_member_scoped_tables), two-pass delete, zero-residual
+// verification, retain-policy accounting. Same RPC name + signature.
+// (Discovered: cron sent no auth header while CRON_SECRET was set — every
+// daily tick 401'd; erasure pipeline silently dead.)
+//
+// v1 (Security commit 4, 07 May 2026 PM-4):
 // Cron-driven executor for GDPR Article 17 right of erasure. Picks up to 5 due
 // rows from gdpr_erasure_requests via gdpr_erasure_pick_due() (FOR UPDATE SKIP
 // LOCKED, scheduled_for <= now(), not cancelled/executed/failed, attempt < 3,
 // re-queues rows older than 10 min). For each row:
 //   1. Best-effort purge from third parties (Stripe customer, Brevo contact,
 //      PostHog person). Failures log to platform_alerts but do NOT abort.
-//   2. Atomic DB purge via gdpr_erasure_purge(p_email) RPC. This deletes all
-//      rows for the subject across the canonical 45-table list in one tx,
-//      with explicit deletes for FK NO-ACTION children and members deleted last.
-//      The RPC returns a JSONB summary recorded in execution_summary.
-//   3. auth.users delete via admin API (post-tx — admin API isn't transactional
-//      with the SQL session).
+//   2. Atomic DB purge via gdpr_erasure_purge(p_email) RPC.
+//   3. auth.users delete via admin API (post-tx).
 //   4. Mark executed_at, send Brevo confirmation, audit log.
 //
-// On any error: do NOT mark executed_at. Increment attempt_count via pick_due
-// (already done at pickup time). Log failure_reason. After 3 attempts, mark
-// failed_at — operations team must investigate manually.
+// On any error: do NOT mark executed_at. attempt_count increments at pickup.
+// After 3 attempts, mark failed_at — operations team investigates manually.
 //
-// CRITICAL: this EF cannot be JWT-gated because the cron has no JWT; instead
-// CRON_SECRET bearer token guards inbound requests, mirroring gdpr-export-execute.
-//
-// verify_jwt: false at platform; secret-bearer check inside.
-// See brain/gdpr_erasure_flow.md (signed off 07 May 2026 PM-3).
+// verify_jwt: false at platform; bearer / cron-key check inside.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -37,7 +53,28 @@ const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
 const TICK_LIMIT = 5;
 const MAX_ATTEMPTS = 3;
 
-// ─── Brevo email (executed confirmation) ─────────────────────────────────
+let cachedCronKey: string | null = null;
+
+async function isAuthorized(req: Request, svc: any): Promise<boolean> {
+  const auth = req.headers.get("Authorization") ?? "";
+  if (CRON_SECRET && auth === `Bearer ${CRON_SECRET}`) return true;
+  if (SERVICE_KEY && auth === `Bearer ${SERVICE_KEY}`) return true;
+  const hdr = req.headers.get("x-vyve-cron-key") ?? "";
+  if (hdr) {
+    if (cachedCronKey === null) {
+      try {
+        const { data } = await svc.rpc("gdpr_cron_key");
+        cachedCronKey = typeof data === "string" ? data : "";
+      } catch (_e) {
+        cachedCronKey = "";
+      }
+    }
+    if (cachedCronKey && hdr === cachedCronKey) return true;
+  }
+  return false;
+}
+
+// ─── Brevo email (executed confirmation) ─────────────────
 
 const wrap = (body: string) => `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#F4FAFA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#F4FAFA;padding:32px 16px;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#FFFFFF;border-radius:12px;overflow:hidden;box-shadow:0 2px 16px rgba(13,43,43,0.08);"><tr><td style="background:#0D2B2B;padding:24px 32px;"><img src="https://online.vyvehealth.co.uk/logo.png" alt="VYVE Health" style="height:36px;display:block;" /></td></tr><tr><td style="padding:32px;">${body}</td></tr><tr><td style="background:#F4FAFA;padding:20px 32px;border-top:1px solid #C8E4E4;"><p style="margin:0;font-size:12px;color:#7A9A9A;">VYVE Health CIC &nbsp;&middot;&nbsp; team@vyvehealth.co.uk<br>ICO Registration No. 00013608608</p></td></tr></table></td></tr></table></body></html>`;
 const h2 = (t: string) => `<h2 style="margin:0 0 20px;font-size:22px;font-family:Georgia,serif;color:#0D2B2B;font-weight:400;">${t}</h2>`;
@@ -72,7 +109,7 @@ async function sendBrevoExecuted(toEmail: string, toName: string): Promise<strin
   return d.messageId || null;
 }
 
-// ─── Third-party purges (best-effort) ─────────────────────────────────────
+// ─── Third-party purges (best-effort) ──────────────────
 
 async function alertPlatform(supabaseSvc: any, severity: string, type: string, memberEmail: string, details: string) {
   try {
@@ -88,7 +125,7 @@ async function alertPlatform(supabaseSvc: any, severity: string, type: string, m
 async function purgeStripe(supabaseSvc: any, memberEmail: string, stripeCustomerId: string | null): Promise<{ ok: boolean; detail: string }> {
   if (!stripeCustomerId) return { ok: true, detail: "no_stripe_customer_id_on_member" };
   if (!STRIPE_KEY) {
-    await alertPlatform(supabaseSvc, "warning", "gdpr_erase_stripe_skipped", memberEmail, "STRIPE_SECRET_KEY not set; Stripe purge skipped");
+    await alertPlatform(supabaseSvc, "high", "gdpr_erase_stripe_skipped", memberEmail, "STRIPE_SECRET_KEY not set; Stripe purge skipped");
     return { ok: true, detail: "stripe_key_not_set_skipped" };
   }
   try {
@@ -99,19 +136,19 @@ async function purgeStripe(supabaseSvc: any, memberEmail: string, stripeCustomer
     if (r.status === 404) return { ok: true, detail: "stripe_customer_already_absent_404" };
     if (!r.ok) {
       const body = await r.text().catch(() => "");
-      await alertPlatform(supabaseSvc, "warning", "gdpr_erase_stripe_failed", memberEmail, `Stripe DELETE ${r.status}: ${body.slice(0, 300)}`);
+      await alertPlatform(supabaseSvc, "high", "gdpr_erase_stripe_failed", memberEmail, `Stripe DELETE ${r.status}: ${body.slice(0, 300)}`);
       return { ok: false, detail: `stripe_delete_${r.status}` };
     }
     return { ok: true, detail: "stripe_customer_deleted" };
   } catch (e) {
-    await alertPlatform(supabaseSvc, "warning", "gdpr_erase_stripe_failed", memberEmail, `Stripe call threw: ${(e as Error).message}`);
+    await alertPlatform(supabaseSvc, "high", "gdpr_erase_stripe_failed", memberEmail, `Stripe call threw: ${(e as Error).message}`);
     return { ok: false, detail: `stripe_threw_${(e as Error).message.slice(0, 100)}` };
   }
 }
 
 async function purgeBrevoContact(supabaseSvc: any, memberEmail: string): Promise<{ ok: boolean; detail: string }> {
   if (!BREVO_KEY) {
-    await alertPlatform(supabaseSvc, "warning", "gdpr_erase_brevo_skipped", memberEmail, "BREVO_API_KEY not set; Brevo contact purge skipped");
+    await alertPlatform(supabaseSvc, "high", "gdpr_erase_brevo_skipped", memberEmail, "BREVO_API_KEY not set; Brevo contact purge skipped");
     return { ok: true, detail: "brevo_key_not_set_skipped" };
   }
   try {
@@ -122,21 +159,19 @@ async function purgeBrevoContact(supabaseSvc: any, memberEmail: string): Promise
     if (r.status === 204) return { ok: true, detail: "brevo_contact_deleted" };
     if (r.status === 404) return { ok: true, detail: "brevo_contact_already_absent_404" };
     const body = await r.text().catch(() => "");
-    await alertPlatform(supabaseSvc, "warning", "gdpr_erase_brevo_failed", memberEmail, `Brevo DELETE ${r.status}: ${body.slice(0, 300)}`);
+    await alertPlatform(supabaseSvc, "high", "gdpr_erase_brevo_failed", memberEmail, `Brevo DELETE ${r.status}: ${body.slice(0, 300)}`);
     return { ok: false, detail: `brevo_delete_${r.status}` };
   } catch (e) {
-    await alertPlatform(supabaseSvc, "warning", "gdpr_erase_brevo_failed", memberEmail, `Brevo call threw: ${(e as Error).message}`);
+    await alertPlatform(supabaseSvc, "high", "gdpr_erase_brevo_failed", memberEmail, `Brevo call threw: ${(e as Error).message}`);
     return { ok: false, detail: `brevo_threw_${(e as Error).message.slice(0, 100)}` };
   }
 }
 
 async function purgePostHog(supabaseSvc: any, memberEmail: string): Promise<{ ok: boolean; detail: string }> {
   if (!POSTHOG_KEY || !POSTHOG_PROJECT_ID) {
-    // PostHog identity wiring is in backlog (see master.md). Until live, skipping is correct.
     return { ok: true, detail: "posthog_not_configured_skipped" };
   }
   try {
-    // PostHog GDPR delete: POST to /api/projects/{id}/persons/delete with distinct_id
     const r = await fetch(`https://eu.posthog.com/api/projects/${POSTHOG_PROJECT_ID}/persons/?distinct_id=${encodeURIComponent(memberEmail)}&delete_events=true`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${POSTHOG_KEY}`, Accept: "application/json" },
@@ -144,15 +179,35 @@ async function purgePostHog(supabaseSvc: any, memberEmail: string): Promise<{ ok
     if (r.status === 204 || r.status === 200) return { ok: true, detail: "posthog_person_deleted" };
     if (r.status === 404) return { ok: true, detail: "posthog_person_absent_404" };
     const body = await r.text().catch(() => "");
-    await alertPlatform(supabaseSvc, "warning", "gdpr_erase_posthog_failed", memberEmail, `PostHog DELETE ${r.status}: ${body.slice(0, 300)}`);
+    await alertPlatform(supabaseSvc, "high", "gdpr_erase_posthog_failed", memberEmail, `PostHog DELETE ${r.status}: ${body.slice(0, 300)}`);
     return { ok: false, detail: `posthog_delete_${r.status}` };
   } catch (e) {
-    await alertPlatform(supabaseSvc, "warning", "gdpr_erase_posthog_failed", memberEmail, `PostHog call threw: ${(e as Error).message}`);
+    await alertPlatform(supabaseSvc, "high", "gdpr_erase_posthog_failed", memberEmail, `PostHog call threw: ${(e as Error).message}`);
     return { ok: false, detail: `posthog_threw_${(e as Error).message.slice(0, 100)}` };
   }
 }
 
-// ─── Audit ────────────────────────────────────────────────────────────────
+// ─── Storage purge: subject's export artefacts (v4) ───────────────
+
+async function purgeExportArtefacts(supabaseSvc: any, memberEmail: string): Promise<{ ok: boolean; removed: number; detail: string }> {
+  try {
+    const { data: files, error: listErr } = await supabaseSvc.storage
+      .from("gdpr-exports")
+      .list(memberEmail, { limit: 100 });
+    if (listErr) throw new Error(`list: ${listErr.message}`);
+    if (!files || files.length === 0) return { ok: true, removed: 0, detail: "no_export_files" };
+    const paths = files.map((f: any) => `${memberEmail}/${f.name}`);
+    const { error: rmErr } = await supabaseSvc.storage.from("gdpr-exports").remove(paths);
+    if (rmErr) throw new Error(`remove: ${rmErr.message}`);
+    return { ok: true, removed: paths.length, detail: "removed" };
+  } catch (e) {
+    const msg = (e as Error).message;
+    await alertPlatform(supabaseSvc, "high", "gdpr_erase_storage_purge_failed", memberEmail, `gdpr-exports artefact purge failed (manual cleanup needed): ${msg.slice(0, 300)}`);
+    return { ok: false, removed: 0, detail: msg.slice(0, 200) };
+  }
+}
+
+// ─── Audit ────────────────────────────────────────────────────────────────────────────
 
 async function writeAudit(supabaseSvc: any, subject: string, requester: string, kind: string, action: string, metadata: Record<string, unknown>) {
   try {
@@ -169,7 +224,7 @@ async function writeAudit(supabaseSvc: any, subject: string, requester: string, 
   }
 }
 
-// ─── Per-row processing ─────────────────────────────────────────────────
+// ─── Per-row processing ──────────────────────────────────
 
 async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "executed" | "failed"; detail?: string; summary?: any }> {
   const { id, member_email, requested_by, request_kind, attempt_count } = req;
@@ -196,6 +251,16 @@ async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "ex
     const { data: purgeResult, error: purgeErr } = await supabaseSvc.rpc("gdpr_erasure_purge", { p_email: member_email });
     if (purgeErr) throw new Error(`gdpr_erasure_purge rpc: ${purgeErr.message}`);
 
+    // 2b. The rewritten purge verifies zero residuals itself; treat a dirty
+    // verification as a hard failure so the request is NOT marked executed.
+    if (purgeResult && purgeResult.verified_clean === false) {
+      throw new Error(`gdpr_erasure_purge left residuals: ${JSON.stringify(purgeResult.residuals_after_verify).slice(0, 300)}`);
+    }
+
+    // 2c. Purge the subject's export artefacts from gdpr-exports storage
+    // (best-effort with alert — DB purge is not re-runnable once members is gone).
+    const storageRes = await purgeExportArtefacts(supabaseSvc, member_email);
+
     // 3. auth.users delete (post-tx)
     let authDeleted = false;
     let authDeleteDetail = "";
@@ -206,7 +271,7 @@ async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "ex
         const { error: delErr } = await supabaseSvc.auth.admin.deleteUser(u.id);
         if (delErr) {
           authDeleteDetail = `delete_failed: ${delErr.message}`;
-          await alertPlatform(supabaseSvc, "warning", "gdpr_erase_auth_user_failed", member_email, `auth.admin.deleteUser failed for ${u.id}: ${delErr.message}`);
+          await alertPlatform(supabaseSvc, "high", "gdpr_erase_auth_user_failed", member_email, `auth.admin.deleteUser failed for ${u.id}: ${delErr.message}`);
         } else {
           authDeleted = true;
           authDeleteDetail = `deleted_user_id_${u.id}`;
@@ -216,7 +281,7 @@ async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "ex
       }
     } catch (e) {
       authDeleteDetail = `threw: ${(e as Error).message}`;
-      await alertPlatform(supabaseSvc, "warning", "gdpr_erase_auth_user_failed", member_email, `auth user purge threw: ${(e as Error).message}`);
+      await alertPlatform(supabaseSvc, "high", "gdpr_erase_auth_user_failed", member_email, `auth user purge threw: ${(e as Error).message}`);
     }
 
     // Build the full execution summary
@@ -225,6 +290,7 @@ async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "ex
       stripe: stripeRes,
       brevo_contact: brevoRes,
       posthog: posthogRes,
+      export_artefacts: storageRes,
       auth_user_deleted: authDeleted,
       auth_user_detail: authDeleteDetail,
       duration_ms: Date.now() - startedAt,
@@ -242,9 +308,6 @@ async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "ex
     try {
       await sendBrevoExecuted(member_email, firstName);
     } catch (e) {
-      // Already deleted from Brevo contact list one step ago — sending a transactional
-      // email may still work (transactional doesn't require contact list membership).
-      // If it fails, log but don't fail the whole erasure.
       await alertPlatform(supabaseSvc, "info", "gdpr_erase_executed_email_failed", member_email, `Executed email failed (record is final): ${(e as Error).message}`);
     }
 
@@ -280,16 +343,15 @@ async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "ex
   }
 }
 
-// ─── HTTP entry ───────────────────────────────────────────────────────────
+// ─── HTTP entry ───────────────────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
-  if (CRON_SECRET) {
-    const auth = req.headers.get("Authorization") ?? "";
-    if (auth !== `Bearer ${CRON_SECRET}`) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401, headers: { "Content-Type": "application/json" },
-      });
-    }
+  const supabaseSvc = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+
+  if (!(await isAuthorized(req, supabaseSvc))) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401, headers: { "Content-Type": "application/json" },
+    });
   }
 
   if (req.method !== "POST") {
@@ -297,8 +359,6 @@ Deno.serve(async (req: Request) => {
       status: 405, headers: { "Content-Type": "application/json" },
     });
   }
-
-  const supabaseSvc = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
   const { data: due, error: pickErr } = await supabaseSvc.rpc("gdpr_erasure_pick_due", { limit_n: TICK_LIMIT });
   if (pickErr) {

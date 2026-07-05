@@ -1,4 +1,10 @@
-// Edge Function: wellbeing-checkin v36
+// Edge Function: wellbeing-checkin v37
+// v37 (finding B, 4 Jul 2026): crisis-scan wired in. Both paths (new 'mood' flow
+//      free_text + legacy 'answer') are scanned server-side via the crisis-scan EF,
+//      fire-and-forget through EdgeRuntime.waitUntil — a scan failure or outage can
+//      never delay or break the member's check-in, and NOTHING member-facing changes
+//      (crisis response copy/routing is gated on Phil + Lewis). Covers HAVEN persona
+//      turns since those happen inside this EF.
 // v36: PM-666 model string updated claude-sonnet-4-20250514 -> claude-sonnet-4-5. Carries v35.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
@@ -29,6 +35,20 @@ function payloadTooLarge(req: Request) {
   if (!cl) return false;
   const n = Number(cl);
   return Number.isFinite(n) && n > MAX_BODY_BYTES;
+}
+
+// v37: fire-and-forget safeguarding scan. Never throws to the caller.
+async function scanForCrisis(email: string, name: string, source: string, fields: Record<string, string>) {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/crisis-scan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${SUPABASE_KEY}` },
+      body: JSON.stringify({ member_email: email, member_name: name || '(name unknown)', trigger_source: source, fields }),
+    });
+    if (!r.ok) console.warn(`[wellbeing-checkin] crisis-scan ${r.status}`);
+  } catch (e: unknown) {
+    console.warn('[wellbeing-checkin] crisis-scan call failed (non-blocking):', String(e));
+  }
 }
 
 function ukToday(): string {
@@ -392,6 +412,7 @@ async function handleNewCheckin(
         dimension_body:    dimension_body   ?? null,
         drivers:           drivers && drivers.length > 0 ? drivers : null,
         improvement_focus: improvement_focus || null,
+        free_text:         free_text || null,
       })
     });
     if (!wcRes.ok) {
@@ -408,9 +429,9 @@ async function handleNewCheckin(
   }
 
   EdgeRuntime.waitUntil(writeAiInteraction(email, persona,
-    `Weekly check-in v36 (mood=${mood}, habits=${habitDays}d, workouts=${workouts.length}, cardio=${cardio.length}, movement=${movement.length}, mind=${mind.length}, drivers=${drivers?.join(',') || 'none'}, focus=${improvement_focus || 'none'})`,
+    `Weekly check-in v37 (mood=${mood}, habits=${habitDays}d, workouts=${workouts.length}, cardio=${cardio.length}, movement=${movement.length}, mind=${mind.length}, drivers=${drivers?.join(',') || 'none'}, focus=${improvement_focus || 'none'})`,
     rawText,
-    { model: 'claude-sonnet-4-5', max_tokens: 1200, mood, dimensions: {dimension_energy, dimension_sleep, dimension_stress, dimension_body}, drivers, improvement_focus, previous_score: previousScore, iso_week, iso_year, path: 'new_v36',
+    { model: 'claude-sonnet-4-5', max_tokens: 1200, mood, dimensions: {dimension_energy, dimension_sleep, dimension_stress, dimension_body}, drivers, improvement_focus, previous_score: previousScore, iso_week, iso_year, path: 'new_v37',
       activity_counts: { habitDays, workouts: workouts.length, cardio: cardio.length, movement: movement.length, mind: mind.length, sessions: hsSessions } }
   ));
 
@@ -536,7 +557,7 @@ async function handleLegacyCheckin(
     const wcRes = await fetch(`${SUPABASE_URL}/rest/v1/wellbeing_checkins?on_conflict=member_email,iso_week,iso_year`, {
       method: 'POST',
       headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify({ member_email: email, activity_date, day_of_week, time_of_day, iso_week, iso_year, score_wellbeing: score, flow_type: flow === 'quiet' ? 'quiet' : 'active', ai_recommendation: text, ai_persona: persona, logged_at: nowISO })
+      body: JSON.stringify({ member_email: email, activity_date, day_of_week, time_of_day, iso_week, iso_year, score_wellbeing: score, flow_type: flow === 'quiet' ? 'quiet' : 'active', ai_recommendation: text, ai_persona: persona, logged_at: nowISO, free_text: answer || null })
     });
     if (!wcRes.ok) {
       const errBody = await wcRes.text();
@@ -595,6 +616,17 @@ serve(async (req: Request) => {
 
     const body = await req.json() as Record<string, unknown>;
 
+    // v37: safeguarding scan on any member free-text, both paths, fire-and-forget.
+    try {
+      const scanFields: Record<string, string> = {};
+      if (typeof body.free_text === 'string' && body.free_text.trim()) scanFields.free_text = body.free_text;
+      if (typeof body.answer === 'string' && (body.answer as string).trim()) scanFields.answer = body.answer as string;
+      if (Object.keys(scanFields).length > 0) {
+        const nameGuess = String((body.member as Record<string, unknown> | undefined)?.firstName ?? '');
+        EdgeRuntime.waitUntil(scanForCrisis(email, nameGuess, 'weekly_checkin', scanFields));
+      }
+    } catch (_e) { /* never block the check-in */ }
+
     if ('mood' in body) {
       return await handleNewCheckin(email, body, CORS);
     } else {
@@ -604,7 +636,7 @@ serve(async (req: Request) => {
   } catch (err: unknown) {
     console.error('[wellbeing-checkin] outer catch:', String(err));
     return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500, headers: { ...CORS, 'Content-Type': 'application/json' }
+      status: 500, headers: { ...CORS, 'Content-Type': 'application/json' },
     });
   }
 });

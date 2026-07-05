@@ -1,11 +1,11 @@
 {
-  "snapshot_at": "2026-06-28T03:18:55Z",
+  "snapshot_at": "2026-07-05T03:14:24Z",
   "supabase_project": "ixjfklpckgxrwjlfsaaz",
   "brain_repo": "VYVEHealth/VYVEBrain",
   "brain_branch": "main",
   "ef_count_attempted": 62,
-  "ef_count_succeeded": 62,
-  "ef_count_failed": 0,
+  "ef_count_succeeded": 55,
+  "ef_count_failed": 7,
   "keep_list": [
     "achievement-earned-push",
     "achievements-mark-seen",
@@ -74,7 +74,7 @@
     {
       "slug": "achievement-earned-push",
       "ok": true,
-      "platform_version": 11,
+      "platform_version": 12,
       "verify_jwt": true,
       "status": "ACTIVE",
       "ezbr_sha256": "43538d15cd924475fdfab515183af4f90186df70ff388f4088fb7775a5514b80",
@@ -90,7 +90,7 @@
     {
       "slug": "achievements-mark-seen",
       "ok": true,
-      "platform_version": 13,
+      "platform_version": 14,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "42875c3280738b8385a2c9e871dbe1470ea9c011d3ca77ca6ce364a3ec29f69c",
@@ -106,7 +106,7 @@
     {
       "slug": "achievements-sweep",
       "ok": true,
-      "platform_version": 14,
+      "platform_version": 15,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "81f0f3f8903186c08a22d4f9eb576d52dc670185f785e605cc5ea7bbc1660b38",
@@ -122,7 +122,7 @@
     {
       "slug": "admin-dashboard",
       "ok": true,
-      "platform_version": 21,
+      "platform_version": 22,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "2600195126e653ce78168de1cf847f7afc1ef939603b5513b139d136c7e8c2f3",
@@ -138,7 +138,7 @@
     {
       "slug": "admin-member-edit",
       "ok": true,
-      "platform_version": 18,
+      "platform_version": 19,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "a62a74dfed705750a837cbcb4aa3edeeebd3e1045cbcd608b8b95275ecd02008",
@@ -154,7 +154,7 @@
     {
       "slug": "admin-member-habits",
       "ok": true,
-      "platform_version": 15,
+      "platform_version": 16,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "eccafaf72a183ec447eca508375e4813a7a720fc108e443aaeb738168abf059e",
@@ -170,7 +170,7 @@
     {
       "slug": "admin-member-programme",
       "ok": true,
-      "platform_version": 15,
+      "platform_version": 16,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "0d2b03ddac71c58ef23c61b84780593f1c9a5ef75aba31ecb115de6ae010c967",
@@ -186,7 +186,7 @@
     {
       "slug": "admin-member-weekly-goals",
       "ok": true,
-      "platform_version": 15,
+      "platform_version": 16,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "ee6f1994a8e5c8f072a0c447ee4fa3d674e6dac6a5572f5306503a47eee87eed",
@@ -202,7 +202,7 @@
     {
       "slug": "admin-programme-library",
       "ok": true,
-      "platform_version": 13,
+      "platform_version": 14,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "ecb54da956b3eebccf84842008056417b10b08c6f0074284119925da9815bf8a",
@@ -218,7 +218,7 @@
     {
       "slug": "anthropic-proxy",
       "ok": true,
-      "platform_version": 30,
+      "platform_version": 31,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "207d9b03de5c5b3a201e6acef6e131f92588774cf32747b3a5a4ebc01a8a2480",
@@ -233,24 +233,13 @@
     },
     {
       "slug": "cc-data",
-      "ok": true,
-      "platform_version": 16,
-      "verify_jwt": false,
-      "status": "ACTIVE",
-      "ezbr_sha256": "bbbf031fdfa5a854ac4d61c3fbc856ff89e559a943b451df66799e1f1488def0",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b9223998-91b9-43df-a68a-17776b1981f6_2/source/index.ts",
-      "files": [
-        {
-          "name": "index.ts",
-          "sha256": "9d41bdbafd363701eb3b153b69e9930ab0c8d5661c5f4fdbf17f3eab6a7f4ffc",
-          "bytes": 8513
-        }
-      ]
+      "ok": false,
+      "error": "Downloading Function: cc-data\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "certificate-checker",
       "ok": true,
-      "platform_version": 37,
+      "platform_version": 38,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "2b8d117d43fe008837a06068cd300e5fd95fb3d67ee9a4980699fd382ebb6054",
@@ -266,7 +255,7 @@
     {
       "slug": "certificate-serve",
       "ok": true,
-      "platform_version": 38,
+      "platform_version": 39,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "873af1fef6d751e9dce877617e1cca498b910fe81c04daceae1f79f3691fd235",
@@ -281,24 +270,13 @@
     },
     {
       "slug": "check-cron",
-      "ok": true,
-      "platform_version": 32,
-      "verify_jwt": false,
-      "status": "ACTIVE",
-      "ezbr_sha256": "28618b1c617b8740586f008f3c7060d91c96a15d0b32d39380c86efdb01c8ec0",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_30ad63d1-a32e-4c7a-b6d7-f4ed4771c683_13/source/index.ts",
-      "files": [
-        {
-          "name": "index.ts",
-          "sha256": "c4b53956f233b291bd0b4f98c89d4b673c74accdc303b7d69b5ffd1ff17a4d08",
-          "bytes": 596
-        }
-      ]
+      "ok": false,
+      "error": "Downloading Function: check-cron\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "daily-report",
       "ok": true,
-      "platform_version": 37,
+      "platform_version": 38,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "2e6ef3e8b73ca9fada707c7bb6f16386c3d4574b6a5a2cfb6174005204393f2b",
@@ -313,24 +291,13 @@
     },
     {
       "slug": "edit-habit",
-      "ok": true,
-      "platform_version": 13,
-      "verify_jwt": false,
-      "status": "ACTIVE",
-      "ezbr_sha256": "f73ba548d105ee036552833ad821c5017d4c9be547e55d1587a1cce9234229ac",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_eb44cd4c-786a-447f-a71b-048cb007d70d_1/source/index.ts",
-      "files": [
-        {
-          "name": "index.ts",
-          "sha256": "e2e08f9a03448bd012ca00cd941e1332164dd7feaa7b02582ebca8972b6114d5",
-          "bytes": 6115
-        }
-      ]
+      "ok": false,
+      "error": "Downloading Function: edit-habit\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "email-watchdog",
       "ok": true,
-      "platform_version": 10,
+      "platform_version": 11,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "c600d5c90d0dfdec0c38620971cfae21c992af66ac90c66e2d4083bd369cbfbe",
@@ -346,7 +313,7 @@
     {
       "slug": "employer-dashboard",
       "ok": true,
-      "platform_version": 43,
+      "platform_version": 44,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "e18da006b95c168b5d5468dae797622543b62af30b2a41bf3bf373f270a0ecc7",
@@ -362,7 +329,7 @@
     {
       "slug": "gdpr-erase-cancel",
       "ok": true,
-      "platform_version": 11,
+      "platform_version": 12,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "1e2287258cd7f196eb0373163d41c94bd217ae80870ee68c1aac20d609eb5cb7",
@@ -378,23 +345,23 @@
     {
       "slug": "gdpr-erase-execute",
       "ok": true,
-      "platform_version": 11,
+      "platform_version": 16,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "8032ff0466bf97040f4e1b294fa6274692aa0f4e093d9d49fa80f61aa4035fda",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_80d0bed3-3618-40b2-9a07-1ccfaf036d7e_2/source/index.ts",
+      "ezbr_sha256": "a35dda452453b0d31848bb794b99d3e667fc95e9bcd2aeae8d857992e70f8114",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_80d0bed3-3618-40b2-9a07-1ccfaf036d7e_15/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "2f7edd43b2d205a6c30da260a0574a3abd480d1160456a63d1e50394bdce64ed",
-          "bytes": 17169
+          "sha256": "eb4ea73347bacd9a328519a394e6ad747fae819a6396a927ece82bfe9815e4d7",
+          "bytes": 19945
         }
       ]
     },
     {
       "slug": "gdpr-erase-request",
       "ok": true,
-      "platform_version": 10,
+      "platform_version": 11,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "c91e456d2b7b08c56652b68b862f3b589df529e71d63081e33d20dd7c02bff33",
@@ -410,7 +377,7 @@
     {
       "slug": "gdpr-erase-status",
       "ok": true,
-      "platform_version": 9,
+      "platform_version": 10,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "ac579a5bc02c8ea735749c503d122f2618fcaaefeeabfbc62599dde9d79f8eef",
@@ -426,23 +393,23 @@
     {
       "slug": "gdpr-export-execute",
       "ok": true,
-      "platform_version": 10,
+      "platform_version": 14,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "a4e85eeca0f40d4819f74c8511a91649924f0e847f73fc478cfecd1a1b63ab3a",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b21dab2b-bf27-4c26-88fa-d2261fe4f7ae_1/source/index.ts",
+      "ezbr_sha256": "9a6adf87bc7c35e04fefa644a141b46d22e791336776d20090533f63462915c6",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b21dab2b-bf27-4c26-88fa-d2261fe4f7ae_13/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "125a75b13c33b2a8f7991cb87765da5e5fe40f5263f30db90d1fa6c1f1495608",
-          "bytes": 16261
+          "sha256": "539c2708f453ea10c84d74cffc2cee3f7e4b9ad82fb38d1698eac9f3c237fd57",
+          "bytes": 16469
         }
       ]
     },
     {
       "slug": "gdpr-export-request",
       "ok": true,
-      "platform_version": 10,
+      "platform_version": 11,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "ba06d0533f7fe206d7a4ff0db171990062ee15188385125d3a02ec8531eaaa0f",
@@ -458,7 +425,7 @@
     {
       "slug": "generate-workout-plan",
       "ok": true,
-      "platform_version": 23,
+      "platform_version": 24,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "4fabc05d8ae53a51ec4ae4827baa06e36d5423af13d548f67695ebf0b6d3e963",
@@ -474,7 +441,7 @@
     {
       "slug": "get-activity-feed",
       "ok": true,
-      "platform_version": 13,
+      "platform_version": 14,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "8bb6c7fc7849cdcf2fcf0912734041dc9126a9285989d7b63354ac2ee6449ac7",
@@ -490,7 +457,7 @@
     {
       "slug": "get-health-data",
       "ok": true,
-      "platform_version": 15,
+      "platform_version": 16,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "51c1c5a7371724542b134cb647658bbf84316bde60ae98d8f48f294cdcb5f8c1",
@@ -506,7 +473,7 @@
     {
       "slug": "github-proxy",
       "ok": true,
-      "platform_version": 33,
+      "platform_version": 34,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "e0b2b0f5f52e64abbd5d452b37342f027af05515b523b59201da59e8e87afa5d",
@@ -522,7 +489,7 @@
     {
       "slug": "github-proxy-marketing",
       "ok": true,
-      "platform_version": 23,
+      "platform_version": 24,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "790a783897fb1cafdda0a8f6011fa388bcacfc0e22342eb419661927f899c120",
@@ -538,7 +505,7 @@
     {
       "slug": "habit-reminder",
       "ok": true,
-      "platform_version": 24,
+      "platform_version": 25,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "07e83c3d45278dec90b1216e6d7e20d9e801974ca76947165427d450bfd6f160",
@@ -553,24 +520,13 @@
     },
     {
       "slug": "internal-dashboard",
-      "ok": true,
-      "platform_version": 23,
-      "verify_jwt": false,
-      "status": "ACTIVE",
-      "ezbr_sha256": "26628d9ae37dab923ab95d7d9fd0e3f114689cc0562fd6d28f789d9dd486f779",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_4b8edc47-b50b-4b50-b3f9-50f7e4bb370e_1/source/index.ts",
-      "files": [
-        {
-          "name": "index.ts",
-          "sha256": "bc004ab8abcb3b00e412769727ddc223c2ac7c0469d41afb84fd8cbbebd83879",
-          "bytes": 2719
-        }
-      ]
+      "ok": false,
+      "error": "Downloading Function: internal-dashboard\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "leaderboard",
       "ok": true,
-      "platform_version": 24,
+      "platform_version": 25,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "ee55c3fe3a1e060f0eabb20e895ddab619229a769306287a4d0234a6d0d181c2",
@@ -586,7 +542,7 @@
     {
       "slug": "log-activity",
       "ok": true,
-      "platform_version": 42,
+      "platform_version": 43,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "6bba5fd67022bb0d51d98a6a2cc3bd92e7cfedf12bc0c2e119c9faea230eb716",
@@ -607,7 +563,7 @@
     {
       "slug": "member-achievements",
       "ok": true,
-      "platform_version": 11,
+      "platform_version": 12,
       "verify_jwt": true,
       "status": "ACTIVE",
       "ezbr_sha256": "0fc262ad2f9e947ec4067dbcb32431192ae0f8a5e14037bc527f0fe8534b31a1",
@@ -628,7 +584,7 @@
     {
       "slug": "member-dashboard",
       "ok": true,
-      "platform_version": 84,
+      "platform_version": 85,
       "verify_jwt": true,
       "status": "ACTIVE",
       "ezbr_sha256": "045f2fa2bc8233d56f4807acdb42ac839f074d5d0d3bed4b9b6154f5098eb49a",
@@ -654,23 +610,23 @@
     {
       "slug": "monthly-checkin",
       "ok": true,
-      "platform_version": 32,
+      "platform_version": 34,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "836b8a8fa0c7c725a5cc1ba2dca0f9f4140ebd6462791a43dd55d9936277323f",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_f5dbef36-2165-407f-9191-f7442ce0ca57_26/source/index.ts",
+      "ezbr_sha256": "7f96461ddc16738fb0c6697d9e8a10c6679e16d376b3159c00a666a40e210f67",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_f5dbef36-2165-407f-9191-f7442ce0ca57_33/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "ff6843c1c0b77ec1ccd77cfc55e8ddcac46b71a5a0081c53ddf60ed1bd8c7a26",
-          "bytes": 32572
+          "sha256": "fdee6e5166706b8a234f44648c219004ca0c1b527f8e7308876207e285b6bd89",
+          "bytes": 34326
         }
       ]
     },
     {
       "slug": "monthly-report",
       "ok": true,
-      "platform_version": 29,
+      "platform_version": 30,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "c0e0e81c72ffd0f0b262be09991f0d4b2e0e2902b03848ea593fccc5758588b7",
@@ -686,7 +642,7 @@
     {
       "slug": "notifications",
       "ok": true,
-      "platform_version": 22,
+      "platform_version": 23,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "784552fa19978a5f155266984f1471852a72578f02ecb0f528cd62b9597aa06f",
@@ -702,7 +658,7 @@
     {
       "slug": "off-proxy",
       "ok": true,
-      "platform_version": 30,
+      "platform_version": 31,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "25f1d9fb58421468867a5cd09d99feb8d8355d72bef3441cf364f228e658e17a",
@@ -718,39 +674,28 @@
     {
       "slug": "onboarding",
       "ok": true,
-      "platform_version": 116,
+      "platform_version": 118,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "0d25f043a48602420203ec26dce7eb0f999280f2759a591f02e94fda88de2ca9",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b22c6618-2a62-4c8d-a81f-aa4bd723db1f_116/source/index.ts",
+      "ezbr_sha256": "ed6e7dd85b862316b592a4b67200a6e749dfba6345c9055bf27cab6e5f14e7d0",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b22c6618-2a62-4c8d-a81f-aa4bd723db1f_117/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "4423c7911f404f4ac75557a1697b176fde67f96d5dfbaa134c9c5659739b5d1c",
-          "bytes": 62654
+          "sha256": "f15dbc71c2f7ff59c948fec10c8f280780209721b467e398ab39dd0aeb49dd85",
+          "bytes": 64066
         }
       ]
     },
     {
       "slug": "ops-brief",
-      "ok": true,
-      "platform_version": 23,
-      "verify_jwt": false,
-      "status": "ACTIVE",
-      "ezbr_sha256": "c5bac6edd9b91bd09b9b1472ff185a25b6df2976f70ea15fd0fca017bd8648ee",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_39cf2752-1d8a-4211-a675-93e76bf272c1_1/source/index.ts",
-      "files": [
-        {
-          "name": "index.ts",
-          "sha256": "993ed5428d32cbc99c9d26db5e08225ac564eb4145bfa0856ec6d59fd67bde2d",
-          "bytes": 5525
-        }
-      ]
+      "ok": false,
+      "error": "Downloading Function: ops-brief\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "platform-alert",
       "ok": true,
-      "platform_version": 17,
+      "platform_version": 18,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "6bf675fae0026a48236f30f2147bcf0d25292641c17f1814b59cbfdc24495389",
@@ -766,7 +711,7 @@
     {
       "slug": "process-scheduled-pushes",
       "ok": true,
-      "platform_version": 11,
+      "platform_version": 12,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "e8b920b094fa17cccfd04e0624ad7a2a26cfdf563eb97f93717c4134893101d5",
@@ -782,7 +727,7 @@
     {
       "slug": "push-send-native",
       "ok": true,
-      "platform_version": 16,
+      "platform_version": 17,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "ea01949ff6dab7f56e914234b258557291a80656a35a4b70e935028d82687e93",
@@ -798,7 +743,7 @@
     {
       "slug": "re-engagement-scheduler",
       "ok": true,
-      "platform_version": 38,
+      "platform_version": 39,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "0b58be0df98781fff4448ea4e7a71bdabdaca4e3a4092c9f81ad99c9722ca81c",
@@ -813,24 +758,13 @@
     },
     {
       "slug": "re-engagement-test-sender",
-      "ok": true,
-      "platform_version": 29,
-      "verify_jwt": false,
-      "status": "ACTIVE",
-      "ezbr_sha256": "dd8cf5add273d6187f1f83876021db4c9f4e32f634c6bbac0b80520d4d1342f1",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_80e459af-7b97-4090-a4ee-77d206feeca3_2/source/index.ts",
-      "files": [
-        {
-          "name": "index.ts",
-          "sha256": "9926c88e8ed0c52fa2a5e0ded865d264f75993219626d5e6f293a95ebd35f5a4",
-          "bytes": 18808
-        }
-      ]
+      "ok": false,
+      "error": "Downloading Function: re-engagement-test-sender\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "register-push-token",
       "ok": true,
-      "platform_version": 13,
+      "platform_version": 14,
       "verify_jwt": true,
       "status": "ACTIVE",
       "ezbr_sha256": "83555212fec3de2e93829d94eb60939a56fd5f61052b761c2415a20adaca6560",
@@ -846,7 +780,7 @@
     {
       "slug": "schedule-push",
       "ok": true,
-      "platform_version": 10,
+      "platform_version": 11,
       "verify_jwt": true,
       "status": "ACTIVE",
       "ezbr_sha256": "b95d86953e59bf87dc23f398f713f0028aa3408c128ecb0ca563f06d6ad28557",
@@ -862,7 +796,7 @@
     {
       "slug": "schema-snapshot-refresh",
       "ok": true,
-      "platform_version": 16,
+      "platform_version": 17,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "79bb34ddcb5f7b73718660e0b72947afe09761aad6b7d63c6aed6f33090705bd",
@@ -878,7 +812,7 @@
     {
       "slug": "seed-weekly-goals",
       "ok": true,
-      "platform_version": 10,
+      "platform_version": 11,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "ec99afe29f0a2d032b91a0f3abc3d6c5612f8d299c3f259a7deed745ba5d4634",
@@ -894,7 +828,7 @@
     {
       "slug": "send-email",
       "ok": true,
-      "platform_version": 34,
+      "platform_version": 35,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "bd6c9a0e9a12412335acbb66e579d9076e0d57d26de509129a2aa7652962d482",
@@ -910,7 +844,7 @@
     {
       "slug": "send-journey-recap",
       "ok": true,
-      "platform_version": 25,
+      "platform_version": 26,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "e895c117a2a2bcf1116815982098214c076242c8714d0dfe00ac2ee77c0cef23",
@@ -926,7 +860,7 @@
     {
       "slug": "send-push",
       "ok": true,
-      "platform_version": 22,
+      "platform_version": 23,
       "verify_jwt": true,
       "status": "ACTIVE",
       "ezbr_sha256": "fc50b40a26b523ecefda733016cff62b16d4fa4592778904ccc046de4a5b551a",
@@ -942,7 +876,7 @@
     {
       "slug": "send-session-recap",
       "ok": true,
-      "platform_version": 25,
+      "platform_version": 26,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "646efe4cc7b238fddc27778db42730af2debf5a3f48a4ce2006e2e15b1478752",
@@ -958,7 +892,7 @@
     {
       "slug": "share-workout",
       "ok": true,
-      "platform_version": 23,
+      "platform_version": 24,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "8253f25290cff3506670901160d36f0a6f1df1ab8088e09218c347fef31671d6",
@@ -973,24 +907,13 @@
     },
     {
       "slug": "storage-cleanup",
-      "ok": true,
-      "platform_version": 23,
-      "verify_jwt": false,
-      "status": "ACTIVE",
-      "ezbr_sha256": "10ae66f651260acd8cab7694b768d0049bf5c0976edc3b6f8243dfae4724b9b1",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b986ed69-23e5-4568-bf38-2ecf2a114bd3_1/source/index.ts",
-      "files": [
-        {
-          "name": "index.ts",
-          "sha256": "5389818374ae41abd0a695ce7a3e059a5958e58431588a5548d00591b39c7b07",
-          "bytes": 16465
-        }
-      ]
+      "ok": false,
+      "error": "Downloading Function: storage-cleanup\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "streak-reminder",
       "ok": true,
-      "platform_version": 25,
+      "platform_version": 26,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "9bf22a19bf68f6c6fd7490ec561c209e5a14b7f79ec994409c9520ced47bd3f5",
@@ -1006,7 +929,7 @@
     {
       "slug": "sync-health-data",
       "ok": true,
-      "platform_version": 22,
+      "platform_version": 23,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "655be75a60de9e897f691869ba873815cb813b166a3e94cc81f672a0fb025147",
@@ -1027,7 +950,7 @@
     {
       "slug": "warm-ping",
       "ok": true,
-      "platform_version": 16,
+      "platform_version": 17,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "eeb9680682d426a0f2ac33a72967163b6ea4aaa01d790b3b19fb102d95257f7e",
@@ -1043,7 +966,7 @@
     {
       "slug": "weekly-report",
       "ok": true,
-      "platform_version": 30,
+      "platform_version": 31,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "da144a2cc636a036b199ea8ce1126b14ad0df6aadd729fd860dfc6f4049c0483",
@@ -1059,23 +982,23 @@
     {
       "slug": "wellbeing-checkin",
       "ok": true,
-      "platform_version": 66,
+      "platform_version": 68,
       "verify_jwt": true,
       "status": "ACTIVE",
-      "ezbr_sha256": "a0e6105757a03c5090500e670265c7ccfe55a833a478391e7701649d20a2d0ae",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_7fcc8d02-03b1-4905-a701-ce85eb048cea_66/source/index.ts",
+      "ezbr_sha256": "6809dbe58fbe764c4e572aadc04aac69f08fed93a10e22df43f64d4566e8e765",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_7fcc8d02-03b1-4905-a701-ce85eb048cea_67/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "359f2eadff75db710a7199df147883220a15f279ac769f3c00d7ed0185fdc7c5",
-          "bytes": 35542
+          "sha256": "9c20f50e3c853a70f352107025472109e379a8d2df92bde2934be02b740324df",
+          "bytes": 37485
         }
       ]
     },
     {
       "slug": "workout-library",
       "ok": true,
-      "platform_version": 20,
+      "platform_version": 21,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "944e440b759849f8658d42ae16437b40521f5935233f052fc1d0b9535e2d3504",

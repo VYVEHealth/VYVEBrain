@@ -1,4 +1,9 @@
-// onboarding v98 - PM-666: model string updated claude-sonnet-4-20250514 -> claude-sonnet-4-5 (404 fix). Carries v97.
+// onboarding v99 - PM-696: password set server-side at auth-user creation (welcome.html's chosen password
+// arrives in the payload). Replaces the separate set-member-password EF, which was an unauthenticated
+// account-takeover surface killed in PM-689 -- welcome.html gated its success screen on it, breaking every
+// signup after 3 Jul. createAuthUser now returns { pwl, passwordSet }; on the already-exists path (re-onboards)
+// the password is applied via admin PUT; magic link now via /admin/generate_link (works by email, no userId
+// dependency). Response carries password_set for the client gate. Carries v98 (PM-666 model-string fix).
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -156,7 +161,7 @@ const PERSONA_PROMPTS = { NOVA: 'You are NOVA, a high-performance coach. Driven,
 const PERSONA_DESCRIPTIONS = 'NOVA: high performance, calm (high stress score), strong wellbeing/energy. RIVER: struggling (low stress=actually stressed, low wellbeing/energy). SPARK: default. SAGE: analytical, evidence-driven. HAVEN: bereavement, mental health. STRESS: 1=very stressed, 10=very calm.';
 function computeAge(dob) { if (!dob) return null; const b = new Date(dob), t = new Date(); let a = t.getFullYear() - b.getFullYear(); const m = t.getMonth() - b.getMonth(); if (m < 0 || m === 0 && t.getDate() < b.getDate()) a--; return a > 0 && a < 120 ? a : null; }
 function isQuickPath(d) { return (d.trainingGoals || []).length === 0 && !String(d.trainingLocation || '').trim() && !String(d.gymExperience || '').trim(); }
-function buildDecisionLog(d, persona, pt, pr, pm, prr, stream) { const s = d.scores || {}, lc = d.lifeContext || []; return { onboarding_version: 'v98', recorded_at: new Date().toISOString(), inputs: { exercise_stream: stream, location: d.trainingLocation, experience: d.gymExperience, train_days: d.trainDays, goals: d.trainingGoals, life_context: lc, sensitive_context: lc.some((c)=>SENSITIVE_CONTEXT.includes(c)), wellbeing: s.wellbeing, stress: s.stress, energy: s.energy, age_at_onboarding: computeAge(d.dob) }, plan_decision: { plan_type: pt, split_type: SPLITS[pt], method: 'deterministic', reason: pr, generated: stream === 'workouts' || stream === 'movement' }, persona_decision: { persona, method: pm, reason: prr } }; }
+function buildDecisionLog(d, persona, pt, pr, pm, prr, stream) { const s = d.scores || {}, lc = d.lifeContext || []; return { onboarding_version: 'v99', recorded_at: new Date().toISOString(), inputs: { exercise_stream: stream, location: d.trainingLocation, experience: d.gymExperience, train_days: d.trainDays, goals: d.trainingGoals, life_context: lc, sensitive_context: lc.some((c)=>SENSITIVE_CONTEXT.includes(c)), wellbeing: s.wellbeing, stress: s.stress, energy: s.energy, age_at_onboarding: computeAge(d.dob) }, plan_decision: { plan_type: pt, split_type: SPLITS[pt], method: 'deterministic', reason: pr, generated: stream === 'workouts' || stream === 'movement' }, persona_decision: { persona, method: pm, reason: prr } }; }
 async function callAnthropic(sys, usr, mt = 1000) { const b = { model: 'claude-sonnet-4-5', max_tokens: mt, messages: [{ role: 'user', content: usr }] }; if (sys) b.system = sys; const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify(b) }); if (!r.ok) { const t = await r.text(); throw new Error('Anthropic ' + r.status + ': ' + t.slice(0, 200)); } const j = await r.json(); return j.content?.[0]?.text ?? ''; }
 async function selectPersona(d) {
   const s = d.scores || {}, lc = d.lifeContext || [], w = parseInt(s.wellbeing) || 5, st = parseInt(s.stress) || 5, en = parseInt(s.energy) || 5, tg = (d.trainingGoals || []).map((g)=>g.toLowerCase()), gl = tg.join(' ');
@@ -258,14 +263,31 @@ async function writeMember(d, persona, pr, r1, r2, r3, stream, goalSummary) {
   }
 }
 async function writeHabits(email, ids) { const em = email.toLowerCase().trim(), now = new Date().toISOString(); const rows = ids.map((id)=>({ member_email: em, habit_id: id, assigned_at: now, assigned_by: 'onboarding', active: true })); if (!rows.length) { console.warn('writeHabits: no ids to write'); return; } const r = await fetch(SUPABASE_URL + '/rest/v1/member_habits', { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Prefer': 'return=minimal' }, body: JSON.stringify(rows) }); if (!r.ok) { const t = await r.text(); throw new Error('writeHabits: ' + t); } console.log('writeHabits: wrote', rows.length, 'habits for', em); }
-async function createAuthUser(e, fn, ln) {
-  const r = await fetch(SUPABASE_URL + '/auth/v1/admin/users', { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }, body: JSON.stringify({ email: e.toLowerCase().trim(), email_confirm: true, user_metadata: { first_name: fn, last_name: ln || '' } }) });
+async function createAuthUser(e, fn, ln, pw) {
+  const email = e.toLowerCase().trim();
+  const H = { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY };
+  const createBody = { email, email_confirm: true, user_metadata: { first_name: fn, last_name: ln || '' } };
+  if (pw) createBody.password = pw;
+  const r = await fetch(SUPABASE_URL + '/auth/v1/admin/users', { method: 'POST', headers: H, body: JSON.stringify(createBody) });
   const j = await r.json();
-  if (!r.ok && !String(j.msg || j.message || '').toLowerCase().includes('already')) throw new Error('createAuthUser: ' + JSON.stringify(j));
-  const userId = j.id || j.user?.id; if (!userId) return null;
-  const magic = await fetch(SUPABASE_URL + '/auth/v1/admin/users/' + userId + '/links', { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }, body: JSON.stringify({ type: 'magiclink', email: e.toLowerCase().trim(), redirect_to: 'https://online.vyvehealth.co.uk/set-password.html' }) });
-  if (!magic.ok) { console.warn('magic link failed for', e); return null; }
-  const mj = await magic.json(); return mj.properties?.action_link || mj.action_link || null;
+  const already = !r.ok && String(j.msg || j.message || '').toLowerCase().includes('already');
+  if (!r.ok && !already) throw new Error('createAuthUser: ' + JSON.stringify(j));
+  let userId = j.id || j.user?.id || null;
+  let passwordSet = r.ok && !!pw;
+  // Magic link via generate_link -- works by email, and on the already-exists path also yields the user id.
+  let pwl = null;
+  try {
+    const magic = await fetch(SUPABASE_URL + '/auth/v1/admin/generate_link', { method: 'POST', headers: H, body: JSON.stringify({ type: 'magiclink', email, redirect_to: 'https://online.vyvehealth.co.uk/set-password.html' }) });
+    if (magic.ok) { const mj = await magic.json(); pwl = mj.properties?.action_link || mj.action_link || null; if (!userId) userId = mj.user?.id || mj.id || null; }
+    else console.warn('magic link failed for', email, await magic.text());
+  } catch (mlErr) { console.warn('magic link error for', email, mlErr); }
+  // Re-onboard path: apply the chosen password to the existing auth user.
+  if (already && pw && userId) {
+    const upd = await fetch(SUPABASE_URL + '/auth/v1/admin/users/' + userId, { method: 'PUT', headers: H, body: JSON.stringify({ password: pw }) });
+    passwordSet = upd.ok;
+    if (!upd.ok) console.error('createAuthUser: password update failed for existing user', email, await upd.text());
+  }
+  return { pwl, passwordSet };
 }
 async function writeAiInteraction(email, persona, r1, r2, r3, dl) { const rows = [r1, r2, r3].filter(Boolean).map((rec, i)=>({ member_email: email.toLowerCase().trim(), persona, prompt_type: 'onboarding_rec_' + (i + 1), response_text: rec, model: 'claude-sonnet-4-5', tokens_used: 0, metadata: dl })); if (!rows.length) return; const r = await fetch(SUPABASE_URL + '/rest/v1/ai_interactions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Prefer': 'return=minimal' }, body: JSON.stringify(rows) }); if (!r.ok) console.warn('writeAiInteraction failed:', await r.text()); }
 async function writeWeeklyGoals(email, stream) { const em = email.toLowerCase().trim(), now = new Date(), day = now.getUTCDay(), diff = day === 0 ? -6 : 1 - day; const weekStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + diff)), ws = weekStart.toISOString().slice(0, 10); const goals = stream === 'workouts' ? [{ goal_text: 'Log 3 daily habits', goal_type: 'habits', target_count: 3 }, { goal_text: 'Complete 2 workouts', goal_type: 'workouts', target_count: 2 }, { goal_text: 'Complete a cardio session', goal_type: 'cardio', target_count: 1 }, { goal_text: 'Watch a live session', goal_type: 'sessions', target_count: 1 }, { goal_text: 'Complete your weekly check-in', goal_type: 'checkin', target_count: 1 }] : stream === 'movement' ? [{ goal_text: 'Log 3 daily habits', goal_type: 'habits', target_count: 3 }, { goal_text: 'Complete 3 movement sessions', goal_type: 'movement', target_count: 3 }, { goal_text: 'Watch a live session', goal_type: 'sessions', target_count: 1 }, { goal_text: 'Complete your weekly check-in', goal_type: 'checkin', target_count: 1 }, { goal_text: 'Log your wellbeing score', goal_type: 'wellbeing', target_count: 1 }] : [{ goal_text: 'Log 3 daily habits', goal_type: 'habits', target_count: 3 }, { goal_text: 'Complete 2 cardio sessions', goal_type: 'cardio', target_count: 2 }, { goal_text: 'Watch a live session', goal_type: 'sessions', target_count: 1 }, { goal_text: 'Complete your weekly check-in', goal_type: 'checkin', target_count: 1 }, { goal_text: 'Generate your running plan', goal_type: 'running_plan', target_count: 1 }]; const rows = goals.map((g)=>({ member_email: em, week_start: ws, ...g, completed: false, source: 'onboarding' })); const r = await fetch(SUPABASE_URL + '/rest/v1/weekly_goals', { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Prefer': 'resolution=ignore-duplicates,return=minimal' }, body: JSON.stringify(rows) }); if (!r.ok) console.warn('writeWeeklyGoals failed:', await r.text()); }
@@ -296,7 +318,8 @@ serve(async (req) => {
     const r1 = rl[0] || `${ov.programme_name} is ready.`, r2 = rl[1] || 'Join a live session.', r3 = rl[2] || 'Complete your check-in.';
     const dl = buildDecisionLog(data, persona, planType, planReason, pm, personaReason, stream);
     phase = 'auth_and_member_write';
-    const [pwl] = await Promise.all([createAuthUser(email, fn, ln), writeMember(data, persona, personaReason, r1, r2, r3, stream, goalSummary)]);
+    const [authRes] = await Promise.all([createAuthUser(email, fn, ln, String(data.password || '')), writeMember(data, persona, personaReason, r1, r2, r3, stream, goalSummary)]);
+    const pwl = authRes ? authRes.pwl : null, passwordSet = !!(authRes && authRes.passwordSet);
     phase = 'reset_existing_data';
     await resetMemberData(email);
     phase = 'secondary_writes';
@@ -305,10 +328,10 @@ serve(async (req) => {
     phase = 'welcome_email';
     const hlfArr = Array.isArray(hlf) ? hlf : [], hlfMap = Object.fromEntries(hlfArr.map((h)=>[h.id, h])), habitsFull = hids.map((id)=>hlfMap[id]).filter(Boolean), sessionRec = pickSessionRec(persona, stream, upcoming), planTypeDesc = PLAN_TYPE_DESCRIPTIONS[planType] || ov.rationale || '';
     await sendWelcomeEmail(email, fn, persona, personaReason, habitsFull, [r1, r2, r3], finalProgrammeName, planTypeDesc, sessionRec, pwl, stream, goalSummary);
-    console.log('DONE v98:', email, persona, 'stream:', stream);
+    console.log('DONE v99:', email, persona, 'stream:', stream);
     if (stream === 'workouts') { EdgeRuntime.waitUntil((async ()=>{ try { const wp = await generateWorkoutPlanFlat(data, exerciseLibrary); await writeWorkoutPlan(email, wp.plan, finalProgrammeName, wp.plan_type, { split_type: wp.split_type, rationale: wp.programme_rationale, shape: wp.shape }); console.log('BG workout plan done for', email); } catch (bgErr) { console.error('BG workout plan error:', bgErr); await sendErrorAlert('onboarding-bg', 'workout_plan_generation', email, String(bgErr)); } })()); }
     else if (stream === 'movement') { EdgeRuntime.waitUntil((async ()=>{ try { const mv = generateMovementPlan(data); await writeWorkoutPlan(email, mv.plan, finalProgrammeName, mv.plan_type, { split_type: mv.split_type, rationale: mv.programme_rationale, shape: mv.shape, surface: 'movement' }); console.log('BG movement plan done for', email); } catch (bgErr) { console.error('BG movement plan error:', bgErr); await sendErrorAlert('onboarding-bg', 'movement_plan_generation', email, String(bgErr)); } })()); }
-    return new Response(JSON.stringify({ success: true, persona, persona_reason: personaReason, goal_summary: goalSummary, programme: finalProgrammeName, programme_overview: { programme_name: finalProgrammeName, split_type: ov.split_type, sessions_per_week: ov.sessions_per_week, rationale: ov.rationale }, rec_1: r1, rec_2: r2, rec_3: r3, stream, status: stream === 'workouts' ? 'generating' : stream === 'movement' ? 'movement_written' : 'not_applicable' }), { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ success: true, password_set: passwordSet, persona, persona_reason: personaReason, goal_summary: goalSummary, programme: finalProgrammeName, programme_overview: { programme_name: finalProgrammeName, split_type: ov.split_type, sessions_per_week: ov.sessions_per_week, rationale: ov.rationale }, rec_1: r1, rec_2: r2, rec_3: r3, stream, status: stream === 'workouts' ? 'generating' : stream === 'movement' ? 'movement_written' : 'not_applicable' }), { status: 200, headers: { ...CORS, 'Content-Type': 'application/json' } });
   } catch (err) {
     console.error('Onboarding error at phase', phase, ':', err);
     try { await sendErrorAlert('onboarding', phase, String(data?.email || 'unknown'), String(err)); } catch (_) {}
