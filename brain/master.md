@@ -1,6 +1,7 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
+**PM-707–718 (2026-07-07): CHALLENGES FEATURE SHIPPED end-to-end in one session (Lewis ask). challenges.html live in More (mobile sheet + desktop dropdown), 60-challenge catalogue (55 active) in `challenge_library`, `challenge_enrolments` member-RLS, Dexie V28, `challenges-evaluator.js` nav.js-injected on every page (bus-lens architecture — challenges observe existing logging, zero new tracking), home-screen "Your challenge" card under Today's habits, 23 branded SVG art tiles `/challenge-art/`, VYVE 75 flagship in TRUE 75-Hard shape (6 catalogue-driven daily tasks: auto/manual/photo types, native camera capture → private `challenge-photos` bucket, 3.5L water-target override derived from enrolment, deep links to completion surfaces). vbb 480→491. HARD PRE-LAUNCH BLOCKER: challenge-photos bucket NOT in GDPR erasure pipeline. LEWIS GATES: 60-challenge naming/copy pass, diet/no-alcohol framing, privacy-policy progress-photo line. NEXT-UP PROPOSED: Mind-hub QUIT TRACKER (addiction/sobriety — Lewis's core ask; anti-challenge psychology: total days never reset, compassionate slip handling, craving tools, crisis-scan wiring; Phil clinical gate BEFORE ship, spec to be written). THREE PM RACES tonight vs the Hetzner session (714, 716, 717 — the last collides both ways and is disambiguated in the changelog, not swept). §23.24 held for 714/716.**
 **PM-706 (2026-07-07): iOS 1.9 RELEASED by Apple (~13:00 BST). live-update.js FIRST-RUN FAST PATH shipped (vyve-site `cb739c23`, vbb 479): built-in bundle → immediate sync + in-session `reload()` behind "Updating VYVE…" overlay (800ms grace / 60s cap); steady-state path unchanged. Signed Update 479 live on production (deployment `75b78778`, artifact `44bfe9fa`, 100%), server-half verified per PM-698 — retires broken-index 477 (pre-PM-705) from the channel. Caveat: first install still does ONE legacy double-restart (binary's live-update.js runs first); next binary kills it. Gotcha: Capawesome updatedAt/updatedBy bump on DEVICE check-ins. LEWIS: live store description still carries stale PWA copy (§23.1). Backlog: next binary ships CURRENT www.**
 **PM-704 (2026-07-05): Android 1.0.8 (54) SUBMITTED to Play — both store resubmissions in review; cohort self-heals via signed OTA on approval. Dual-app comparison exposed the immortal-Dexie property: iOS containers survive every same-bundle-ID install + sync.js additive-pull = server deletes never propagate; Dean's store app renders phantom pre-June rows, dev shell is server-true. Fix (Dean's device): delete+reinstall store app. Backlog: Settings 'resync my data' + reconcile-on-hydrate. Members unaffected today; divergence paths are GDPR rectification and unflushed PF-4 writes.**
 **PM-703 (2026-07-05): dev/ship mode switchers live on Dean's Mac (`mode-dev.sh`/`mode-ship.sh`, uncommitted). Dev shell rebuilt as coexisting "VYVE Dev" app — `.dev` bundle ID, inverted icon, server.url, NO LiveUpdate block (never OTA-syncs). Ship config canonicalised as `capacitor.config.ship.json`; mode-ship prints the embedded LiveUpdate block as the pre-archive check (verified tonight). §23: native builds are mode-switched, never hand-edited. Dev shell gets no native push (APNs topic = ship bundle ID) — store install is the push surface.**
@@ -363,6 +364,15 @@ This is now a first-class pattern with 9+ catalogues built on it. Edit via Supab
 | `weekly_challenge_participation` | Member participation. |
 | `checkin_reactions` | Reactions on Connect check-ins. |
 
+### Challenges (PM-709→718, 7 Jul 2026)
+
+| Table | Purpose |
+|---|---|
+| `challenge_library` | Catalogue: 60 challenges (55 active). slug PK, pillar (body/mind/connect/habits/engagement), difficulty, goal_type (count/streak/daily), goal_target, duration_days, metric (bus event / any:logged / vyve75), metric_filter jsonb (kind/mode/stream/before_hour/min_km/rule), hard_mode_available, is_flagship, image_url (→ /challenge-art/*.svg), `daily_tasks` jsonb (daily type: [{key,label,short,type:auto\|manual\|photo,auto?,target_litres?}]). Studio-edited; 5-min CATALOGUE_FRESH window. |
+| `challenge_enrolments` | Member-scoped RLS. id = client UUID, status active/completed/expired/abandoned, hard_mode, started_at/ends_at (self-timed from join), progress_count, streak_current/best, reset_count, `day_state` jsonb (daily bitmaps, photos{date→storage path}, weeks, pillars, counts). Optimistic Dexie writes + fire-and-forget REST PATCH (last-write-wins — small-window sync limitation, PM-704 family). |
+
+Storage: **`challenge-photos` private bucket** — progress photos, member-scoped RLS (first path segment = auth.email()), client-compressed 1280px JPEG. **NOT yet in the GDPR erasure pipeline — hard pre-launch blocker.**
+
 ### Podcast catalogue
 
 | Table | Purpose |
@@ -613,6 +623,7 @@ All portal pages live at `online.vyvehealth.co.uk` and are bundled inside the iO
 | Mind | `meditation.html`, `sleep.html`, `breathwork.html`, `visualisation.html`, `affirmations.html`, `journal.html`, `mind-library.html`, `mind-insights.html` |
 | Nutrition | `nutrition.html`, `nutrition-setup.html`, `log-food.html` (locked Coming Soon per PM-374) |
 | Habits | `habits.html` |
+| Challenges | `challenges.html` (More menu, PM-709) — catalogue + enrolment sheet + daily-type day view (checklist, camera capture, 75-dot grid). Supporting: `challenges-evaluator.js` (nav.js-injected on EVERY page — bus-lens progress engine, single writer of enrolment day_state via stampDaily/tickManual/attachPhoto), `challenges-home.js` (home card), `/challenge-art/` 23 SVG tiles. New bus events: `water:target_hit`, `app:opened`, `challenge:joined/progressed/completed`. |
 | Check-ins | `wellbeing-checkin.html` (weekly), `monthly-checkin.html`, `connect-checkin.html`, `connect-feed.html`, `connect-challenge.html`, `connect-calendar.html` |
 | Health (HK) | `apple-health.html` (inspector — parked), `hk-diagnostic.html` |
 | Other | `activity.html` (personal feed — built, unlinked), `engagement.html` (v1 score), `engagement-v2.html` (v2 score behind `?score=v2` flag) |
@@ -1128,6 +1139,10 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). **DNS/proxy: Cloudflare presence 
 ---
 
 ## 19. Current status
+
+### PM-707→718 — Challenges feature shipped end-to-end (2026-07-07)
+
+Full build in one session: mockup → schema (`challenge_library`/`challenge_enrolments`, Dexie V28, sync registry) → challenges.html in More → evaluator (bus-lens, nav-injected) → home card → 23 SVG art tiles → VYVE 75 true 75-Hard shape (6 daily tasks auto/manual/photo, camera → private bucket, 3.5L water override, deep links). 60 challenges seeded (55 active). vbb 480→491. Open: GDPR bucket erasure (blocker), Lewis copy pass, 5 dormant challenges, quit-tracker spec (Phil gate).
 
 ### PM-658 — Live-session outage fixed: runner forward-window + server-side broadcast watchdog (2026-06-22)
 
@@ -1875,6 +1890,15 @@ The CC host sits behind Fastly (~10-min TTL, per-edge-node). An empty-cache hard
 #### §23.139 — Partner content: approved ≠ live; live needs a partner-chosen `publish_at` that has passed; 48h min; edits lock at approval (PM-684 — HARD RULE)
 `partner_content_items.publish_at` is NULLABLE. NULL = approved-but-unscheduled = NOT live. Live = `moderation_status='approved' AND publish_at IS NOT NULL AND publish_at <= now()` (member RLS `member_read_live_partner_content` + portal chips agree). NEVER backfill `publish_at = created_at` — a time nobody chose makes old items spuriously Live. Go-live must be ≥48h ahead, enforced in the picker `min`, client validation, AND the EF (`commit`+`update`). The partner may edit title/description/go-live ONLY while `in_review`; the EF `update` action is `…WHERE moderation_status='in_review'` and 409s once approved/returned, so a stale page can't bypass the lock. New PUBLIC bucket `partner-thumbnails` holds poster frames (`thumbnail_url`); capture is best-effort client-side, falls back to a film icon.
 
+
+#### §23.140 — nav.js "More" is TWO independent surfaces (PM-710)
+The `moreItems` array feeds ONLY the desktop `.nav-more-panel` dropdown. The mobile bottom sheet (`vyve-more-menu`, the surface members and Dean actually use) is a SEPARATE hardcoded HTML template ~100 lines below in nav.js. Any More-menu change must edit BOTH in the same commit. PM-710 burned a device round-trip on a stale-JS theory because only the desktop list had been updated.
+
+#### §23.141 — Buttons do not inherit text colour; page resets must cover them (PM-717)
+The standard portal page reset covers `a{color:inherit}` but the UA stylesheet gives `<button>` its own colour (iOS renders default blue). Any page using `<button>` for list rows/cards needs `button{color:inherit}` in its reset or labels ship blue on device while looking fine in dev.
+
+#### §23.142 — `--surface` is translucent in dark theme; overlays need `--more-bg` (PM-717)
+Bottom sheets, modals, and any overlay stacked above page content must NOT use `var(--surface)` as their background — it has alpha in dark mode and the page bleeds through. Use `var(--more-bg)` (the opaque nav More-sheet token) or an explicit opaque layer, and keep the light-mode `--surface-card` override.
 
 ## 24. Key references, credentials & URLs
 
