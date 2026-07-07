@@ -1,3 +1,15 @@
+## PM-721 — Community join FIXED: engagement_segment='new' violated the partner_memberships CHECK — no member had EVER successfully joined a community (2026-07-08)
+
+**Dean's report post-PM-720:** "I'm not able to join any communities." Diagnosis: 7 live partners exist, RLS is correct (member INSERT policy `member_email = auth.email()` present), schema fine — but BOTH member-facing join handlers (`partner-space.html` `_psJoin` + `partner-profile.html` join) POST `engagement_segment:'new'`, and the table CHECK allows only `highly_engaged / regular / at_risk`. Postgres 23514 → PostgREST **400** (not the handled 409) → silent `btn.textContent='Join'` reset. `partner_memberships` was completely EMPTY — zero rows ever — so the member join path has been dead since PM-661 shipped it. Root cause proven via SQL probe (check_violation confirmed, rolled back). Server rails unaffected: `stripe-reconcile` v5 writes `'regular'` (valid); the empty table also means no currently-active referred Stripe subs, which is truthful.
+
+**Fix (vyve-site `e7b3ff6f`, vbb 492→493, sw `pm721-join-fix-a`):** `engagement_segment` removed from both POSTs — the column DEFAULT `'regular'` applies. Both silent-failure else branches now `console.error('community join failed', status, body)` — the silent reset is what turned a one-line bug into a live report (PM-289 optimistic-write lesson, read-side variant). md5-perfect × 5 at the commit SHA.
+
+**New hard rule §23.143** (second occurrence of the class — first was platform_alerts.severity rejecting 'warning', PM-692): before any client or EF writes a literal value to a text column, read `pg_get_constraintdef` for that table's CHECKs. PostgREST surfaces CHECK violations as plain 400s that optimistic UIs swallow.
+
+**Sweep note:** pre-existing unswept `PM-XXX` placeholders in partner-space.html / partner-profile.html (PM-661/665-era headers) were relabelled PM-721 by the commit-time sweep — attribution noise only.
+
+**Verify on device:** partner-space → Discover → Join on any community; then Connect hub should flip from the Join card to the Your communities carousel (PM-720) on next open.
+
 ## PM-720 — Connect hub workover (Lewis ask): Your communities carousel at top; Recent check-ins off the hub; Community destination tile retired (2026-07-08)
 
 **Lewis's brief via Dean:** community is the focus of the Connect area. Subscribed communities show in a carousel at the top; unsubscribed members see a "Join a community" prompt; recent check-ins leave the hub and live only inside the check-in flow.
