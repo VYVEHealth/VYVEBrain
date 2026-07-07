@@ -620,7 +620,7 @@ Decision deferred until trial engagement data tells us which mind content member
 
 ## Connect hub
 
-**PM-197 Profile identity campaign — remaining work after PM-242 partial ship.** Read-side identity rendering on connect-feed.html + connect.html Recent Check-Ins is LIVE. `profile.js` helper exists. `connect-feed-preview` EF v2 enforces anonymous-coupling server-side. Three avatar states render: initials text / uploaded photo / V-mark for anonymous (uses `/logo-mark.png`). `vyve_identity_<email>` cross-member localStorage directory operational.
+**PM-197 Profile identity campaign — remaining work after PM-242 partial ship.** Read-side identity rendering on connect-feed.html is LIVE (connect.html Recent Check-Ins surface removed PM-720 — hub identity read-side no longer applicable). `profile.js` helper exists. `connect-feed-preview` EF v2 enforces anonymous-coupling server-side. Three avatar states render: initials text / uploaded photo / V-mark for anonymous (uses `/logo-mark.png`). `vyve_identity_<email>` cross-member localStorage directory operational.
 
 Still pending:
 - Leaderboard avatars — blocked on additive `email` column return from `get_leaderboard()` Postgres RPC. Next-session full-repo audit before careful RPC change.

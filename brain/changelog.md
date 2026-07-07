@@ -1,3 +1,20 @@
+## PM-720 — Connect hub workover (Lewis ask): Your communities carousel at top; Recent check-ins off the hub; Community destination tile retired (2026-07-08)
+
+**Lewis's brief via Dean:** community is the focus of the Connect area. Subscribed communities show in a carousel at the top; unsubscribed members see a "Join a community" prompt; recent check-ins leave the hub and live only inside the check-in flow.
+
+**Ship (vyve-site `8678d7a5`, vbb 491→492, CACHE_NAME `vyve-cache-v2026-07-08-pm720-connect-communities-a`):**
+
+1. **Your communities carousel** — new top-of-hub section above Today's check-in. §23.46 honest paint: header + `scroll-row` carousel + Join card all boot `display:none`; `loadCommunities()` decides. Data: Dexie-first `partner_memberships_local` (synced on login, PM-665) filtered `subscription_status='active'`; **REST membership fallback ONLY when Dexie returns zero rows** so a fresh device never falsely shows Join to a subscribed member. Display rows fetched once per page load from `partner_partners?status=eq.live` — **Gate B respected by construction**; a joined-but-suspended partner silently drops out (empty result → Join card). Cards mirror partner-space identity (avatar_url with initials fallback, `role_title||slug` name, pillar dot body-teal/mind-gold/connect-green) and route to `partner-profile.html?id=`. Trailing dashed "+ Discover" card → partner-space.html. `__commLoaded` guard = one fetch per page load; repaints via paintAll are no-ops after first.
+2. **Join a community card (empty state)** — the coral `community-tile` reused at the top with new copy ("Join a community / Free expert-led communities inside VYVE / Explore →") → partner-space.html. CSS comment updated; class kept so no style churn.
+3. **Recent check-ins section REMOVED from the hub** — markup gone; `renderRecentCheckins()` given a one-line early return on missing `#recent-list`. All downstream callers (bus subscribers, PM-401 surgical path, reaction handlers — all already null-guarded) left intact. **The `connect-feed-preview` EF fetch + `_kv` pre-warm is deliberately KEPT** — connect-checkin.html posted-state reads that cache (PM-201). Feed entry paths: new "See the community feed ›" link under the check-in card CTA + connect-checkin.html post-submit CTA (pre-existing).
+4. **Bottom Community destination tile retired** — superseded by the carousel/Join card at top.
+
+**Copy note (Lewis):** "Your communities" / "Join a community" / "Free expert-led communities inside VYVE" / "+ Discover" shipped as written per Dean's call — tweakable in a follow-up, not gating.
+
+**Verification:** all 3 inline script blocks node --check clean; ID diff exactly the intended delta (−recent-checkins-wrap/recent-empty/recent-list/community-tile, +communities-hdr/communities-row/community-join-card); 4-file atomic commit (connect.html, index.html, settings.html, sw.js) md5-perfect at `8678d7a5`. Live on-device paint of the subscribed carousel pending Dean's next app open (force-quit + reopen, Connect tab).
+
+**PM-claim note:** PM-720 claimed after fresh cross-repo recompute (VYVEBrain at PM-719, vyve-site at PM-718, capacitor at PM-707).
+
 ## PM-718 — VYVE 75 water integration: 3.5L catalogue-driven target + deep links (2026-07-07)
 
 `challenge_library.daily_tasks` water task now carries `target_litres: 3.5`. nutrition.html derives a raised water target from any ACTIVE daily-type enrolment carrying one (Dexie read post-auth + 4s late pass) — no duplicated state, auto-restores on abandon/complete/expire, works cross-device via enrolment sync. `water:target_hit` therefore fires at the raised bar. Deep links: home-card water pill (`data-hcclink`, capture-phase handler because the parent card is an `<a>`) and every un-ticked auto row in the day view ("Go" chip) navigate to their completion surface — water → `/nutrition.html#water` (smooth-scroll to the water card), body → exercise.html, mind/habits/checkin likewise. vyve-site `42014875`, vbb 491.
