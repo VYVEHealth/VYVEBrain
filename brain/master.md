@@ -166,6 +166,7 @@ Pre-call briefs via Sales Intelligence skill (8-step deep dive, ROI calculator, 
 | Analytics | PostHog (`phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl`, EU instance `eu.i.posthog.com`). Identity + event taxonomy live since PM-408 (26 May 2026) via `analytics.js` bridge subscribing to 29 VYVEBus events at `envelope.origin === 'local'` (no cross-tab/cross-device double-counting), with `is_dean` flag for filtering dev traffic out of dashboards and `host_kind` splitting `capacitor://` bundled native from `https://` web fallback. `window.vyveEFFetch(fnName, url, opts)` wraps fetch and captures `ef_error` on non-2xx/network. Session recording configured 100% in `posthog.init`. |
 | CRM | HubSpot — `app-eu1.hubspot.com`. Hub ID 148106724. Timezone Europe/London. Currency GBP. |
 | Streaming | Riverside (7 studios, permanent links) + YouTube (**ONE channel — `UCuptZFgSk0ZmNnE2IbYBdtg` "VYVE"** — with **9 reusable RTMP stream keys + 8 category playlists** all on that one channel; each stream key paired to a dedicated Riverside studio). Castr (scheduled pre-recorded). Architecture for scaling to 12-15 live sessions/day: reusable-stream pattern. `session-publish` EF (v5) PRE-CREATES broadcasts only (autostart/monitor/autostop OFF — **autostart is DEAD on this channel**); the pusher (`vyve-live-runner.py`) drives `ready->live` and `live->complete` explicitly around the ffmpeg push. |
+| Live-runner host | **Hetzner Cloud CX23 `vyve-live-runner` — 159.69.95.90** (Nuremberg, Ubuntu 26.04, €5.99/mo, Dean's account, project "VYVE Health"). Runs `vyve-live-runner.py` as systemd daemon (PM-714; replaced Dean's Mac launchd). Masters at `/srv/vyve/masters/media`, config at `/opt/vyve`. SSH via vault `VYVE_RUNNER_SSH_KEY`. Ops: `playbooks/live-runner-ops.md`. |
 | Podcast | *The VYVE Podcast* (rebranded from *The Everyman Podcast*). Page live at `vyvehealth.co.uk/vyve-podcast.html`. |
 
 ### Retired technologies — never suggest
@@ -1882,6 +1883,7 @@ The CC host sits behind Fastly (~10-min TTL, per-edge-node). An empty-cache hard
 | Reference | Value |
 |---|---|
 | Supabase project ID | `ixjfklpckgxrwjlfsaaz` (West EU / Ireland, Pro) |
+| Live-runner VPS | Hetzner CX23 `vyve-live-runner` — `159.69.95.90` · SSH root, key in vault `VYVE_RUNNER_SSH_KEY` · systemd `vyve-live-runner` · playbook `playbooks/live-runner-ops.md` |
 | PostHog key | `phc_8gekeZglc1HBDu3d9kMuqOuRWn6HIChhnaiQi6uvonl` |
 | Stripe payment link | `buy.stripe.com/00wfZicla1Em0NnaIB93y00` → `welcome.html` |
 | Stripe coupons | `VYVE15`, `VYVE10` (still active in Stripe; copy + values need refresh — Lewis call) |
