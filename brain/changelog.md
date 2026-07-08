@@ -1,3 +1,12 @@
+## PM-737 — Podcast page gets its header back; Playfair removed from the exercise library (Lewis); OTA Update 503 live (2026-07-08)
+
+**Dean's report:** no header/back button on the podcast section; Lewis dislikes the serif display font on the exercise library.
+
+1. **podcast.html** carried `class="hub-page"` — the PM-218/219 class that suppresses the sticky back-button header, reserved for top-level tab hubs. Podcast is a Connect DESTINATION, and its hero is an in-page card (no bleed dependency) — class removed, standard header + back button now inject. **Audit note: check other destination pages for stray `hub-page`** (legit set per PM-218: index, exercise, mind, connect).
+2. **exercise.html:** both Playfair usages swapped to `--font-body` — `.page-title` (weight-display→bold; DM Sans has no 800) and `.body-hero-headline`. Scope deliberately exercise.html only per Lewis's ask; Playfair remains the brand heading font elsewhere.
+
+**Ship:** vyve-site `fa461af8`, vbb 502→503, sw `pm737-podcast-header-exercise-font-a`, md5 × 5. **OTA Update 503 live** — signed, production 100%, artifact `2f85fd4e`, probe-verified (checksum `18d365e8…` byte-matched; bundle content pre-verified: Update 503 marker, zero `font-head` in exercise.html, PM-737 body comment in podcast.html). Supersedes 502.
+
 ## PM-736 — Lewis copy: Connect community tile → "Browse All Communities"; OTA Update 502 live (2026-07-08)
 
 Lewis via Dean: the Connect tile reading "Community" now reads **"Browse All Communities"** (title + aria-label; sub-line unchanged). vyve-site `33fd0e7d`, vbb 501→502, sw `pm736-community-tile-copy-a`, md5 × 4. PM-734/735 were claimed by parallel sessions — recompute held.
