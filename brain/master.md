@@ -1,6 +1,7 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
+**PM-731 (2026-07-08): Calum cover fixed — asset was the problem (calum.jpg top-cropped); full banner copied first-party to session-thumbnails/calum-banner.jpg via one-shot EF copy-cover-asset (now a 410 tombstone — DEAN: delete from dashboard). Gateway rejects legacy anon key on verify_jwt EFs (UNAUTHORIZED_LEGACY_JWT); pg_net is the SQL→EF invocation path. No site change (vbb stays 501).**
 **PM-730 (2026-07-08): community cover FINAL — bleed removed (title sat under the translucent header); banner renders flush below the back-button header at natural intrinsic size, hero follows the image. Design rule: text-bearing artwork never under chrome, never ratio-fit. vyve-site `74252809`, vbb 501.**
 **PM-728 (2026-07-08): community cover intrinsic-ratio hero — real <img> at natural size drives hero height (session-thumbnails assets aren't 16:9; PM-727's ratio guess cropped). Full banner always visible; gradient min-height fallback. vyve-site `70081493`, vbb 500.**
 **PM-727 (2026-07-08): community cover fit — hero banners bottom-anchored at natural 16:9 (100% auto), gradient underlay fills the bleed strip; no more title crop. Pattern: never `cover`-paint text-bearing artwork into arbitrary-ratio boxes. vyve-site `313fac9f`, vbb 499.**

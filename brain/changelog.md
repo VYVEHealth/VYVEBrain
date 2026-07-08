@@ -1,3 +1,13 @@
+## PM-731 — Calum's cover fixed: the asset itself was cropped; full banner copied first-party as calum-banner.jpg (2026-07-08)
+
+Dean's device pass post-PM-730: Alex + Nicola covers now render perfectly (layout is correct) — Calum's was still missing its title row. Root cause was the ASSET, not the page: `session-thumbnails/calum.jpg` is a top-cropped rendition (starts mid-"WEEKLY"). The complete artwork exists as the YouTube live thumbnail of today's Midweek Reset replay (`WgqfDGukw94/maxresdefault_live.jpg` — the Just Dropped card proved it loads and is complete).
+
+**Because `_live` YT thumb URLs can go stale after stream processing, the image was copied first-party:** one-shot EF `copy-cover-asset` (service-role storage upload, i.ytimg-only source allowlist) deployed → invoked via pg_net → `session-thumbnails/calum-banner.jpg` (101,708 bytes, verified in storage.objects) → EF **neutered to a 410 tombstone** (MCP can't delete functions — **Dean: delete `copy-cover-asset` from the dashboard**, audit dead-function discipline). `cover_url` updated. No site code change — PM-728's intrinsic-ratio hero just loads the new asset.
+
+**Invocation notes for the brain:** functions gateway rejected the legacy anon key on a verify_jwt function (`UNAUTHORIZED_LEGACY_JWT`) — one-shot EFs invoked from pg_net need verify_jwt:false for the invocation window, then tombstone. pg_net is installed and is the working path for calling EFs from SQL (async: poll `net._http_response`).
+
+**Also for Lewis's list:** calum.jpg (the session-card asset) is itself top-cropped — worth replacing with the full source banner from the content pipeline at some point; session cards crop with object-fit anyway so it's cosmetic there.
+
 ## PM-730 — Community cover final: no bleed, banner flush below the header, fits exactly (2026-07-08)
 
 Dean's call after the PM-728 pass: the under-header bleed itself was the remaining problem — with the hero pulled to the top of the page, the banner's title row ("WEEKLY") sat beneath the translucent back-button header bar. His direction: forget the bleed, the cover just needs to fit perfectly in the space below the header regardless of how much room it takes.
