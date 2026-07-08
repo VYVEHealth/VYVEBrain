@@ -1,3 +1,16 @@
+## PM-726 — Community hero bleed v2 (main-margin), live-session cover photos, avatars back to initials; Connect carousel verified intact (2026-07-08)
+
+**Dean's second device pass (screenshots 11:33):**
+
+1. **Gap still above the cover** — PM-725's negative margin on `.profile-hero` (main's first child) did not take on device. Moved the negative top margin to **`main` itself** (`margin-top:calc(-56px - env(safe-area-inset-top))`) — an adjacent-sibling margin against the sticky header that can't be defeated by first-child margin behaviour. Hero keeps the compensated height. **Pattern rule: for inner-page hero bleeds, put the pull on `main`, not the hero.**
+2. **Covers were flat gradients, not photos** — PM-724's YouTube maxres picks 404'd for all three covers (the avatar picks loaded, the cover picks didn't — maxresdefault only exists for some videos). Dean's actual preference stated: **the live-session cover photo** at the top of each community. Set `cover_url` to the session-thumbnails bucket host photos — `alex.jpg` / `nicola.jpg` / `calum.jpg` — the same assets live session cards use (PM-456 image_url convention). These are Supabase public storage, guaranteed to resolve.
+3. **"Rather than in the profile picture":** Alex + Nicola `avatar_url` cleared → clean pillar-tinted initials. The session artwork looked wrong cropped into the circle. Calum keeps his existing avatar.
+4. **Connect carousel:** Dean believed it was removed. Verified on live main — markup (lines ~880), renderCommunities, and PM-724 tile placement (Calendar → Podcast → Community) all intact; logic exactly matches Dean's stated model (unjoined = Join card top; joined = carousel top + bottom hub tile). No code change. If it's genuinely absent on his device after force-quit, need a Connect-tab screenshot to diagnose.
+
+**Ship:** vyve-site `535c556d`, vbb 497→498, sw `pm726-hero-bleed-b`, md5 × 4.
+
+**Lesson (candidate §23 rule if it recurs):** don't set cover/thumbnail assets to YouTube maxresdefault URLs without a resolution fallback — maxres does not exist for every video and fails silently as a CSS background. Prefer first-party storage assets (session-thumbnails bucket).
+
 ## PM-725 — Community profile cover bleeds to the top of the page (2026-07-08)
 
 Dean's follow-up on PM-724: individual community pages still had a gap above the cover. `.profile-hero` now pulls up under the sticky `.mobile-page-header` with `margin-top:calc(-56px - env(safe-area-inset-top))` and grows its height by the same amount — the theme.css hub-hero bleed pattern, applied to an inner page that keeps its back-button header. The translucent blurred header floats over the photo (iOS large-title feel); avatar and meta positions unchanged; the existing hero overlay keeps the back button legible.
