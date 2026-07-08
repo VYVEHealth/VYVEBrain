@@ -1,3 +1,15 @@
+## PM-733 — OTA Update 501 LIVE on production: tonight's full community build pushed to the member fleet (2026-07-08)
+
+Dean: "How can we push these OTA updates" → pushed per the PM-698/706 procedure from the Composio sandbox.
+
+**Ship:** vyve-site main `74252809` (PM-730 tree, Update 501, 237 files / 11MB) signed with vault `CAPAWESOME_LU_PRIVATE_KEY` and uploaded via `@capawesome/cli` 4.15.0 `apps:liveupdates:upload` — **deployment `6bfc3a74`, artifact `39691911`, channel production, 100% rollout.** Custom props `pm=PM-733` / `vbb=501` / `vyve_site_sha=74252809…`. Members receive PM-720→730 in one hop: communities carousel + Join card on Connect, join fix, instructor communities with posts, name-first display surfaces, Sessions/Library tabs with covers, replay ?v= deep link, feed link, gap fixes.
+
+**Server-half verification (PM-698 protocol):** `apps:devices:probe` against a real iOS 1.9 device (`2285837f…`, last seen today) AND a real Android 1.0.8 device (`e7813628…`) — both told they'd receive artifact `39691911` with checksum `556946c5…`; artifact downloaded exactly as a device would — **sha256 byte-matches the probe checksum**; contents verified (`Update 501` in index.html, pm730 CACHE_NAME in sw.js, communities carousel in connect.html, cover img in partner-profile.html, deep link in replays.html). Signature present in both probes. Remaining unknown is only the routine on-device apply (double-restart / first-run fast path per PM-706).
+
+**CLI notes:** bare `npx capawesome` resolves a deprecated 0.0.3 squatter package — always `npx -y @capawesome/cli@<ver>`. No `apps:devices:list` command — device telemetry via the raw REST GET (still live per PM-699 gotcha (a)). Secrets staged then wiped from the sandbox.
+
+**Fleet note:** one iOS 1.8 device (`793eb1ee…`, seen 2026-07-07) still on the broken-config binary — cannot OTA by design; heals when it updates to 1.9 from the store.
+
 ## PM-732 — Replay→community attribution is now automatic: insert trigger + calendar-keyed backfill (2026-07-08)
 
 Dean: Calum's Library was missing videos. Cause: today's "Midweek Reset" replay was created AFTER the PM-723 one-shot backfill — one-shot backfills go stale on every new replay.
