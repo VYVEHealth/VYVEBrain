@@ -1,3 +1,15 @@
+## PM-738 — Font target corrected: Playfair removed from the WORKOUT library (workouts.html + workouts-library.js); exercise.html reverted; OTA Update 504 live (2026-07-08)
+
+Dean clarified: Lewis's complaint was the **workout library**, not exercise.html — PM-737's font swap hit the wrong page (I inferred "exercise library" = exercise.html per the body-naming rule; the correction landed one message later).
+
+- **exercise.html:** PM-737 swap REVERTED — Playfair back on page-title + hero headline, brand standard.
+- **workouts.html:** all 12 `font-head` usages → `font-body`, 4 `weight-display` → `weight-bold` (DM Sans has no 800).
+- **workouts-library.js:** 3 inline-style `font-head` usages in injected programme-card/modal markup → `font-body`. (Lesson: font sweeps must include the page's companion JS injectors — workouts has 7.)
+
+**Ship:** vyve-site `5c5ccc40`, vbb 503→504, sw `pm738-workout-library-font-a`, md5 × 6. **OTA Update 504 live** (artifact `1509105e`, signed, production 100%, supersedes 503; bundle pre-verified: Update 504 marker, zero font-head in workouts.html, exercise.html back to 2).
+
+**Open check:** other workouts-*.js injectors (session, programme, builder, notes-prs, exercise-menu, config) not swept — if Lewis still sees serif anywhere inside the workout flow (e.g. mid-session screens), those are the spots; one sed per file.
+
 ## PM-737 — Podcast page gets its header back; Playfair removed from the exercise library (Lewis); OTA Update 503 live (2026-07-08)
 
 **Dean's report:** no header/back button on the podcast section; Lewis dislikes the serif display font on the exercise library.
