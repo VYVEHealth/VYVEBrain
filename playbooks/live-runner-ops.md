@@ -12,6 +12,7 @@
 | Cost | €5.99/mo (server + IPv4), hourly-billed |
 | Access | `ssh root@159.69.95.90` — key auth ONLY. Claude: derive key from vault `VYVE_RUNNER_SSH_KEY` (base64 → PEM, chmod 600) and ssh from the Composio sandbox. Dean: his Mac key (`~/.ssh/id_ed25519`, `deanbrown@MacBook-Pro.local`) is authorized. |
 | Daemon | systemd `vyve-live-runner` (enabled, Restart=always, survives reboot) |
+| needrestart | **Excluded from auto-restart**: `/etc/needrestart/conf.d/vyve.conf` → `$nrconf{override_rc}{qr(^vyve-live-runner)} = 0;` (PM-729 — unattended-upgrades otherwise bounces the unit and kills mid-air pushes) |
 
 ## Layout
 
@@ -60,10 +61,11 @@ journalctl -u vyve-live-runner -f         # follow logs
 
 Runner script source of truth: `VYVEBrain/scripts/vyve-live-runner/` — edit there, then curl the raw file onto the box (PAT) and restart. Never hand-edit only the box copy.
 
-Box dies entirely → emergency fallback is the Mac: `rsync` is already two-way-capable (Mac copy is current minus post-migration uploads), launchd plist still at `~/Library/LaunchAgents/com.vyve.live-runner.plist` — `launchctl load` it, and STOP the box daemon first if it's half-alive (two runners = double-push to the same RTMP key). Rebuild-from-scratch is ~20 min: create server with vault pubkey, apt ffmpeg, pull /opt/vyve files from VYVEBrain, write env, rsync masters from Mac, systemd enable.
+Box dies entirely → emergency fallback is the Mac: `rsync` is already two-way-capable (Mac copy is current minus post-migration uploads), launchd plist still at `~/Library/LaunchAgents/com.vyve.live-runner.plist` — `launchctl load` it, and STOP the box daemon first if it's half-alive (two runners = double-push to the same RTMP key). Rebuild-from-scratch is ~20 min: create server with vault pubkey, apt ffmpeg, pull /opt/vyve files from VYVEBrain, write env, rsync masters from Mac, systemd enable, **re-create the needrestart exclusion file (see box table — without it the daily security upgrade will eventually kill a live push)**.
 
 ## Standing notes
 
 - `session-publish` cron 27 (hourly) still pre-creates broadcasts as belt-and-braces — CAS-safe to co-run with the runner. Optional: disable after a clean week of box-owned airs.
+- Short/broken replay diagnosis: `journalctl -u vyve-live-runner --since <day>` on the box — every air logs occurrence header, ffmpeg start, LIVE, ffmpeg rc + runtime, COMPLETE. A replay much shorter than its master = the push was killed (compare ffmpeg start->finish timestamps against ffprobe of the master). Stub cleanup: delete the video via YouTube API (vault RPC `read_vault_secret` for OAuth), re-insert the occurrence with an OVERLAPS slot guard.
 - Hetzner egress: ~15–20GB/mo of pushes vs 20TB included — viewers cost nothing (YouTube CDN serves them).
 - August calendar regen (before 2 Aug) must carry the Calum rotation: Midweek Reset Weds 12:00 (resume reset 2,3,1…), Weekly Review Fris 19:30 (resume review 2,3,1…).

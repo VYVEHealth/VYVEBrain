@@ -1,3 +1,14 @@
+## PM-729 — First box day verified clean; 1:15 "Sleep, Stress & Recovery" stub diagnosed (Mac's parting shot, pre-cutover), deleted + re-aired; needrestart hardened (2026-07-08)
+
+**Box day one — all airs exact-duration:** Flexibility Routine 1 (06:00Z, 21:36), Guided Journaling (07:30Z, 5:00), Steps to Improve your Life (11:00Z, 4:28), **Midweek Reset 1 (12:00Z, 20:04 — first fresh-content air through the new pipe, Calum card on the broadcast)**. Migration 100% closed.
+
+**The 1:15 stub (Dean spotted in Replays):** "Sleep, Stress & Recovery" was **7 Jul 17:00Z — aired by the MAC ~5.5h before cutover**, and the Mac was still sleep-flapping that evening (corroborated by the 19:00Z runner_down alert, resolved 19:15Z). It napped ~75s into the push; ffmpeg died; broadcast ended; 1:15 corpse replay `xIr-m1xqnhw`. NOT a box failure — the exact failure mode the migration kills. Actioned: stub deleted via YouTube API `videos.delete` (204) using vault OAuth (RPC is **`read_vault_secret`** — note exact name); re-air inserted 9 Jul 17:00Z (12:42, clean broadcast id). Insert used an OVERLAPS guard after a too-wide first guard blocked on the 16:30 session.
+
+**Two box hardening findings from the journal:**
+1. **needrestart/unattended-upgrades WILL kill mid-air pushes** — 8 Jul 06:36 the daily security run upgraded python3.14 and needrestart bounced `vyve-live-runner` (harmless: between airs, 15 min after the 06:00 air ended — pure luck). Fixed permanently: `/etc/needrestart/conf.d/vyve.conf` with `$nrconf{override_rc}{qr(^vyve-live-runner)} = 0;` — security upgrades still apply, the unit is never auto-bounced; the daemon picks up new libs at its next natural restart. **Rebuild-critical: replicate this file on any box rebuild.**
+2. **thumbnails.set 429 rateLimitExceeded** (10:45Z, Steps session) — YouTube API thumbnail-upload quota. Non-fatal by design (runner logs + proceeds; broadcast keeps its session-publish-era thumbnail). Known-benign; revisit only if it recurs daily at scale (quota bump or thumbnail-once-at-creation).
+
+Minor: journal shows a transient double "daemon up" (PIDs 15829/16099) during the 06:36-06:37 needrestart+daemon-reexec shuffle; `ps` confirms exactly one runner since. Watch, don't chase.
 ## PM-728 — Community cover: intrinsic-ratio <img> hero, banner never crops (2026-07-08)
 
 PM-727's bottom-anchored paint still clipped the banner top on device — the session-thumbnails assets are NOT 16:9, and any fixed-ratio guess crops somewhere. Restructured: `.profile-hero` now contains a real `<img class="profile-cover-img">` at `width:100%;height:auto` and the hero is `height:auto` — the hero's height comes from the image's own intrinsic dimensions, so the full banner is always visible whatever the asset ratio. Gradient `min-height` block remains the coverless fallback; `onerror` hides the img (gradient shows). Bleed unchanged (main negative margin). Overlay + avatar untouched (absolute within hero).
