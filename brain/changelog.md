@@ -1,3 +1,15 @@
+## PM-732 — Replay→community attribution is now automatic: insert trigger + calendar-keyed backfill (2026-07-08)
+
+Dean: Calum's Library was missing videos. Cause: today's "Midweek Reset" replay was created AFTER the PM-723 one-shot backfill — one-shot backfills go stale on every new replay.
+
+**Fix (DB only, no site change):**
+1. Backfill re-run, now keyed on the calendar's own `partner_id` links (generalises to any partner, not the 3-host mapping): Midweek Reset attributed → Calum's library = 4 (Midweek Reset, Movement & Exercise, Nutrition Basics, The VYVE Approach).
+2. **`replay_partner_attribution` BEFORE INSERT trigger on `replay_videos`:** a new replay whose title matches a partner-linked `calendar_occurrences` row (latest occurrence wins) inherits that `partner_id`. Thursday's "Sleep, Stress & Recovery", the Weekly Review, and all future Alex/Nicola replays self-file. Written per §23.143 discipline (checked constraints first; none on the column).
+
+**Open with Dean:** unattributed mindfulness titles with no Calum-hosted calendar session ("The Power of Habits", "Steps to Improve your Life", "Goals & the Power of Them", "Taking Accountability for your Life") — could be Lewis mindset content or Calum's; awaiting Dean's word before attributing. Note: mindfulness playlist has repeated titles across dates (recurring sessions) — duplicates are expected rows, not data errors.
+
+**Pattern for the brain:** any "backfill X by matching Y" ship must include the forward mechanism (trigger or ingestion-path change) in the same session — a one-shot backfill is stale by the next content drop.
+
 ## PM-731 — Calum's cover fixed: the asset itself was cropped; full banner copied first-party as calum-banner.jpg (2026-07-08)
 
 Dean's device pass post-PM-730: Alex + Nicola covers now render perfectly (layout is correct) — Calum's was still missing its title row. Root cause was the ASSET, not the page: `session-thumbnails/calum.jpg` is a top-cropped rendition (starts mid-"WEEKLY"). The complete artwork exists as the YouTube live thumbnail of today's Midweek Reset replay (`WgqfDGukw94/maxresdefault_live.jpg` — the Just Dropped card proved it loads and is complete).
