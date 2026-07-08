@@ -26,6 +26,17 @@
 
 > **[PM-689 · 2026-07-03 · SECURITY]** Two unauthenticated account-takeover EFs killed this session (`set-member-password`, `create-test-user`) — now 410+JWT, verified 403. **TODO: dashboard-delete both slugs.** EF delete sweep pending: 68-slug list at `reports/ef-delete-list-2026-07-03.txt`, needs CLI + ~5 admin-ref checks first. Also queued from audit: erasure-gap fix (PM-688 §1.1), close partner-content-upload (PM-688 §2.1), HAVEN interim routing (Lewis), admin-member-edit mandatory-reason on SCARY fields before enterprise DPA.
 
+## NEXT — Employer Portal productionisation (PM-740 demo = the spec, 2026-07-08)
+The Sage demo (employer-portal.html) is now the agreed shape of the employer product. Lewis has socialised these promises with a live prospect — treat as committed scope, sequence post-Sage-feedback:
+- **Wellbeing Index** (employer barometer, was already "scoped not started") — company-level composite: engagement + anonymised avg check-in + pillar balance + momentum. Needs real formula + EF support. Wellbeing NEVER below company level (PM-738 discipline).
+- **employer-dashboard EF extensions:** per-team aggregates (activity/engagement ONLY, min-cohort threshold ≥8 → "Other"), company-level wellbeing avg series, benchmark payload (VYVE community avg is computable today; UK/EU/Global = curated published figures).
+- **Employer challenge launch** — templates → real Challenges feature (exists, PM-707–719); needs employer-scoped challenge creation + opt-in join flow + team-aggregate leaderboards (HealthKit data stays member-private; only opted-in team aggregates surface).
+- **Expert/workshop booking** — real booking flow (enquiry → team@ is fine as v1; expert roster is Lewis commercial work: real names, prices, contracts).
+- **Board pack** — server-side or print-route quarterly report; monthly snapshot email (Brevo).
+- **Ask VYVE** — v1 = form → send-email EF; chat answers later (Anthropic EF, aggregate-context only).
+- **Per-employer auth-gated portal URL** (e.g. /sage) — was already planned for first enterprise trial; the demo is its front-end.
+- **VYVE Average / VYVE Best benchmarks** — once >3 employer accounts (Lewis's "eventually", teased in demo copy).
+
 ## NEW IDEAS + structural risk (captured PM-658, 2026-06-22)
 
 **Feature ideas (Dean brain-dump — unspecced, talk-first before build):**
