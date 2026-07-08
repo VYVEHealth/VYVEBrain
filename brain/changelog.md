@@ -1,3 +1,13 @@
+## PM-730 — Community cover final: no bleed, banner flush below the header, fits exactly (2026-07-08)
+
+Dean's call after the PM-728 pass: the under-header bleed itself was the remaining problem — with the hero pulled to the top of the page, the banner's title row ("WEEKLY") sat beneath the translucent back-button header bar. His direction: forget the bleed, the cover just needs to fit perfectly in the space below the header regardless of how much room it takes.
+
+Removed main's negative top margin (the PM-726 bleed); the hero now starts flush below the back-button header and the PM-728 intrinsic-ratio `<img>` renders the entire banner at natural size. Coverless min-height reduced to 160px (no bleed compensation).
+
+**Cover arc, final state (PM-724 → 730):** cover_url column → session-thumbnails host banners → intrinsic-ratio `<img>` drives hero height → NO bleed, flush below header. **Design rule going forward: text-bearing banner artwork never goes under chrome and never gets ratio-fit — natural size, below the header, container follows the image.**
+
+**Ship:** vyve-site `74252809`, vbb 500→501, sw `pm730-cover-below-header-a`, md5 × 4. (PM-729 claimed by a parallel session in another repo — cross-repo recompute worked as designed.)
+
 ## PM-729 — First box day verified clean; 1:15 "Sleep, Stress & Recovery" stub diagnosed (Mac's parting shot, pre-cutover), deleted + re-aired; needrestart hardened (2026-07-08)
 
 **Box day one — all airs exact-duration:** Flexibility Routine 1 (06:00Z, 21:36), Guided Journaling (07:30Z, 5:00), Steps to Improve your Life (11:00Z, 4:28), **Midweek Reset 1 (12:00Z, 20:04 — first fresh-content air through the new pipe, Calum card on the broadcast)**. Migration 100% closed.
