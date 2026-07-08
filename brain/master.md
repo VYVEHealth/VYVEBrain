@@ -1,6 +1,7 @@
 # VYVE Health — Brain Master
 
 <!--CURRENT_FRONT_START-->
+**PM-728 (2026-07-08): community cover intrinsic-ratio hero — real <img> at natural size drives hero height (session-thumbnails assets aren't 16:9; PM-727's ratio guess cropped). Full banner always visible; gradient min-height fallback. vyve-site `70081493`, vbb 500.**
 **PM-727 (2026-07-08): community cover fit — hero banners bottom-anchored at natural 16:9 (100% auto), gradient underlay fills the bleed strip; no more title crop. Pattern: never `cover`-paint text-bearing artwork into arbitrary-ratio boxes. vyve-site `313fac9f`, vbb 499.**
 **PM-726 (2026-07-08): community hero bleed v2 — negative margin on MAIN (not the hero; PM-725's first-child margin didn't take on device — pattern rule for inner-page hero bleeds), covers switched to session-thumbnails bucket host photos (PM-724's YT maxres picks 404'd — avoid maxresdefault without fallback), Alex/Nicola avatars → initials. Connect carousel verified intact, no change. vyve-site `535c556d`, vbb 498.**
 **PM-725 (2026-07-08): community profile hero bleed — cover sits at the very top under the translucent sticky header (negative-margin + height-compensation, theme.css hub-hero pattern on an inner page). vyve-site `7970cab2`, vbb 497.**

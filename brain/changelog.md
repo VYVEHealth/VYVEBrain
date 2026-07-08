@@ -1,3 +1,11 @@
+## PM-728 — Community cover: intrinsic-ratio <img> hero, banner never crops (2026-07-08)
+
+PM-727's bottom-anchored paint still clipped the banner top on device — the session-thumbnails assets are NOT 16:9, and any fixed-ratio guess crops somewhere. Restructured: `.profile-hero` now contains a real `<img class="profile-cover-img">` at `width:100%;height:auto` and the hero is `height:auto` — the hero's height comes from the image's own intrinsic dimensions, so the full banner is always visible whatever the asset ratio. Gradient `min-height` block remains the coverless fallback; `onerror` hides the img (gradient shows). Bleed unchanged (main negative margin). Overlay + avatar untouched (absolute within hero).
+
+**Ship:** vyve-site `70081493`, vbb 499→500, sw `pm728-cover-intrinsic-a`, md5 × 4.
+
+**Pattern (final form of the PM-727 lesson):** for artwork of unknown/varied dimensions, never size the container and fit the image — let a natural-ratio `<img>` size the container.
+
 ## PM-727 — Community cover banners fit properly: bottom-anchored 16:9 paint, no title crop (2026-07-08)
 
 PM-726's covers rendered but `center/cover` cropped the 16:9 branded banners (session titles cut off — Dean screenshots 13:45). Fix: hero background now paints `center bottom / 100% auto` — the full banner is visible at its natural ratio, bottom-anchored; the under-header bleed strip above it shows the pillar-gradient underlay, which blends with the banners' dark green backgrounds. Hero height = `min(56.25vw, 360px)` (the banner's 16:9 footprint, tablet-capped) + the 56px+safe-area bleed strip.
