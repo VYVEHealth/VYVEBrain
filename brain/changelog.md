@@ -1,3 +1,9 @@
+## PM-736 — Lewis copy: Connect community tile → "Browse All Communities"; OTA Update 502 live (2026-07-08)
+
+Lewis via Dean: the Connect tile reading "Community" now reads **"Browse All Communities"** (title + aria-label; sub-line unchanged). vyve-site `33fd0e7d`, vbb 501→502, sw `pm736-community-tile-copy-a`, md5 × 4. PM-734/735 were claimed by parallel sessions — recompute held.
+
+**OTA:** signed Update 502 uploaded (artifact `52436357`), production 100%, supersedes 501. Probe against a real iOS 1.9 fleet device confirms serving: checksum `5144ad4a…` byte-matched on download, "Browse All Communities" in connect.html, Update 502 marker, pm736 CACHE_NAME, signature present. Note: the Composio sandbox ROTATES between calls — re-stage secrets/bundle per push; secrets wiped after use.
+
 ## PM-735 — Marketing-site analytics live: PostHog EU on welcome.html + homepage, full signup-funnel visibility per campaign/partner link (2026-07-08)
 
 Trigger: Lewis texted Dean "are the onboarding emails working — I've sent VYVE to people tonight and haven't got any emails." Investigation: zero signups since 3 Jul (Reece), onboarding EF had zero real invocations in 24h, onboarding-health cron 200, all entry pages 200, no platform_alerts. Dean then ran a live signup himself (deanonbrown1@hotmail.com, 19:54Z, completed clean — flagged `is_test` so it stays out of member counts). Verdict: pipeline healthy; Lewis's contacts simply never completed (or likely never started) the questionnaire. The real gap exposed: the marketing site had ZERO analytics — "never opened the link" vs "opened and bailed at section N" vs "balked at the Stripe step" were indistinguishable.
