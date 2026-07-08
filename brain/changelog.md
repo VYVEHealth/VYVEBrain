@@ -1,3 +1,15 @@
+## PM-724 — Community polish from Dean's device pass: top-gap fixed, cover photos + portraits live, bottom Community tile restored for subscribed members (2026-07-08)
+
+**Dean's screenshots flagged three things:**
+
+1. **Big dead gap above "Community" on partner-space** — root cause: partner-space + partner-profile (PM-661-era) set `main{padding-top:calc(safe-area + 60px)}` to clear the page header, but `.mobile-page-header` is STICKY and occupies its own flow slot — the pad double-counted the chrome. Correct inner pages (connect-feed, replays) have no main top pad. Fixed on both pages. **Watch for this on any other PM-661-era page** (partner-portal member surfaces if/when built).
+2. **Covers + portraits** — `partner_partners.cover_url` added. Rendered: Discover card `.pc-hero` gets an `<img>` (object-fit cover, `onerror` remove → pillar-gradient fallback) and profile hero gets `url() center/cover` layered over the gradient (existing overlay keeps top-edge legibility). Assets set from the instructors' own branded session thumbnails (i.ytimg maxres): Alex avatar "15 Minute Flow Along with Alex" + cover "Full Body Movement Flow"; Nicola avatar "15 Mins of Yoga with Nicola" + cover "Yoga Relaxation"; Calum cover "The VYVE Approach to Health & Fitness". Thumb picks were deterministic (network sandbox can't render i.ytimg) — **Dean/Lewis eyeball on device; each swap is a one-line UPDATE**. Emma + Men Together fall back to gradient (no cover set).
+3. **Bottom Community destination tile restored for SUBSCRIBED members** — `#community-tile-bottom` after the Podcast tile, toggled inversely to the top Join card by renderCommunities(): unsubscribed = top Join card only; subscribed = carousel at top + full-size Community tile in the destination cluster.
+
+**Ship:** vyve-site `eb70932c`, vbb 495→496, sw `pm724-community-polish-a`, md5 × 6. Carousel avatars pick up Alex/Nicola photos automatically (avatar_url was already rendered).
+
+**Noted, not in scope:** pillar dot colours are inconsistent across surfaces — partner-space `.pc-dot` maps body→gold/mind→teal while the connect carousel `COMM_PILLAR_COL` maps body→teal/mind→gold (visible in Dean's screenshots: Alex gold band on Discover, teal circle in carousel). One mapping should win; cosmetic, needs a 5-minute pass + Dean's colour call.
+
 ## PM-723 — Community Sessions + Library tabs live: calendar/replay attribution backfilled, Library renders the replay catalogue, replays.html ?v= deep link; 48h-notice trigger narrowed (2026-07-08)
 
 **Dean's brief:** the Sessions and Library tabs on the new instructor communities were empty — show each person's upcoming scheduled sessions and their current replays.
