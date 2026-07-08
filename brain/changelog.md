@@ -1,3 +1,11 @@
+## PM-745 — Men Together cover composed from the crest ("work with what we have") (2026-07-08)
+
+No cover asset was supplied, so one was generated from the Lewis crest with PIL: 1600×900 — VYVE dark-green field (#0E2A26 register), soft radial teal lift, faint diagonal band texture echoing the session banners, crest cut to a disc and composited centre with a drop shadow. 72KB JPEG at `assets/partners/men-together-cover.jpg`; visually checked before ship. `cover_url` set — the PM-728 intrinsic-ratio hero renders it full-width 16:9, Discover card band picks it up too.
+
+**Asset state across live communities:** Alex/Nicola/Calum covers ✓ (session banners), Men Together avatar+cover ✓, Emma Clarke cover still gradient (only coverless surface — moot if Dean/Lewis decide she's a demo artefact, question still open from PM-722).
+
+**Ship:** vyve-site `1425897f`, vbb 507→508, sw `pm745-men-together-cover-a`, md5 × 4. Asset+data only — visible to everyone without OTA. **Pattern:** partner branding without a cover asset gets a composed crest-on-brand-field cover via PIL; the recipe is in this entry's commit.
+
 ## PM-744 — Men Together CIC logo live (Lewis-supplied asset) (2026-07-08)
 
 Lewis supplied the Men Together CIC crest. Optimised (1008×1225 source → centre-cropped 512px square, 208KB) and committed as a first-party asset: `assets/partners/men-together.png` (the /assets/partners/ convention now exists for partner-supplied branding — same domain-served pattern as /assets/hosts/). `avatar_url` set — renders automatically on the Discover card, Connect carousel, profile header and post-author rows (all avatar surfaces read avatar_url per PM-197/720/722). No cover supplied; coral pillar gradient remains the profile hero fallback.
