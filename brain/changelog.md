@@ -1,3 +1,15 @@
+## PM-739 — PLAYFAIR RETIRED APP-WIDE (Lewis brand decision); OTA Update 505 live (2026-07-08)
+
+Lewis escalated PM-738's workout-library ask to the whole app: the serif display font is gone.
+
+**Mechanism:** theme.css `--font-head` token flipped to the DM Sans stack — one line converts every `var(--font-head)` usage on every page. `--weight-display` 800→700 (DM Sans loads 300–700; 800 faux-bolds). Then all **31 hardcoded `font-family: Playfair` literals** swapped quote-preservingly (JS-string-embedded CSS in nav.js/hydration.js kept their quoting): nav.js ×4 (wordmark/logo), certificate.html ×5 (NOTE: certificates lose their formal serif — flag to Lewis, one revert if unwanted), workout-setup ×5, nutrition-setup ×5, trial-ended ×2, gdpr-erasure-cancel ×2, prompts.css ×2, firstrun.css/log-food/breathwork/engagement/hydration.js ×1 each, vyve-offline.js token-fallback ×1. **Zero `font-family` Playfair declarations remain in the tree** (verified on the committed tarball); remaining "Playfair" strings are comments + the Google Fonts `<link>` tags — an unused family downloads no font files, links left as a future-cleanup candidate (60+ files of churn for zero visual gain).
+
+**Ship:** vyve-site `d9775d64` (17-file atomic commit incl. vbb 504→505 + sw `pm739-playfair-retired-a`), md5 × 17. **OTA Update 505 live** — artifact `7047af98`, signed, production 100%, probe-verified serving, supersedes 504. exercise.html/index.html page titles now DM Sans via the token (the PM-738 revert becomes moot — the token governs).
+
+**Sandbox gotcha banked:** `base64 -d missing-file > out` creates an EMPTY out file — a truthy `ls` is not key validation; check `head -1` for the PEM header before signing.
+
+**For Lewis's eyes on next device pass:** wordmark in the top bar, certificates, trial-ended, and setup wizards all changed typeface — the four most visually Playfair-dependent surfaces.
+
 ## PM-739 — Partner funnel Session 1 (funnel integrity): `partner-onboarding` EF v6 + wizard submit/resume/upload hardening + PostHog (2026-07-08)
 
 First of four approved sessions from the partner funnel audit. Both halves live.
