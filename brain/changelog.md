@@ -1,3 +1,22 @@
+## PM-741 — Bundled replay playback FIXED (YouTube Error 153) + client-error telemetry standing intake; OTA Update 506 live (2026-07-08)
+
+**Dean's device report:** replays dead on the bundled app ("Error 153 — Video player configuration error"), fine on his server.url dev shell. **Root cause:** `videoEmbedUrl` passes `origin=window.location.origin` with `enablejsapi=1` (PM-292, unchanged since 24 May) — on bundled builds the origin is `capacitor://localhost`, which YouTube rejects. Timeline honesty (Dean pushed back on "broken for a long time", rightly): the code is 6 weeks old, so either bundled playback has been silently broken since the cohort's first PM-292-bearing bundle, or YouTube's progressive error-153 referer enforcement reached these embeds recently. Undeterminable from our side; the fix is identical.
+
+**Fix (vyve-site `70124da8`, vbb 505→506, sw `pm741-native-replay-fix-a`, md5 × 6):**
+- **NEW `yt-embed.html`** — same-domain wrapper: hosts the YT IFrame player under the valid https origin, relays `{vyveYT:1, type:'state'|'tick'|'error', state, t, d}` to the parent every state change + 2.5s. No auth, no member data; own CSP; video-id regex-validated.
+- **replay-tracker.js `initRemote`** — shim player answers `getPlayerState()/getCurrentTime()` from the last relayed snapshot, so the ENTIRE PM-292/297/577 machinery (accumulator, 30s threshold, JWT refresh, replay_video_views writes, member_activity_log rollup, visibility/appState flushes) runs unchanged. Shim's `destroy()` unhooks the message listener via the existing destroy() path.
+- **replays.html** — `Capacitor.isNativePlatform()` → wrapper iframe + `initRemote`; web path byte-identical behaviour. (No CSP on replays.html — none needed.)
+
+**Telemetry ("I need to be able to see this stuff"):**
+- Web-mode `YT.Player` now wires `onError`; both modes route through **`VYVEReplayTracker.reportError`** (self-contained JWT via vyveSupabase, anon fallback) + PostHog `player_error` capture when present.
+- **`client-error-report` EF v2 LIVE** (verify_jwt:false — gateway rejects legacy anon JWT per PM-731; input allowlisted to `yt_player_error`, values sanitised/sliced): writes `platform_alerts` severity **high** / type `client_error` / source `client-error-report`, details include code/member/video/page/**shell (bundled|web)**/origin/UA. **Gotcha earned: `platform_alerts.details` is TEXT, not jsonb** — v1's jsonb-`contains` dedupe silently never matched (proven by 3 duplicate test rows); v2 dedupes via LIKE fragments, 10-min window per member+type+code. **Both branches real-invocation-verified** (insert 200 `{ok:true}` → row present; repeat 200 `{ok:true,deduped:true}`); test rows deleted. This EF is the standing intake for future client-error classes — extend ALLOWED_TYPES, don't fork new EFs.
+
+**OTA Update 506 live** — artifact `3165b4e8`, signed, production 100%, probe-verified serving; supersedes 505.
+
+**Dean verify:** bundled device (or store test device post-sync) → Replays → play anything: video plays via the wrapper; Settings→Build reads 506. If a player error DOES occur anywhere, it now lands in platform_alerts (admin console) tagged with shell.
+
+**Known follow-up (backlogged, not tonight):** live-session pages (workouts-live, mindfulness-live, etc.) embed YouTube the same PM-304 way and are presumably equally 153-broken on bundled — same wrapper pattern applies; also extend client-error reporting there.
+
 ## PM-740 — Employer Portal demo built for Sage meeting: 5 iterations in one evening, live at employer-portal.html (2026-07-08)
 
 Lewis asked Dean to "improve the employer dashboard" for the Sage meeting (9 July); over four Messenger feedback rounds it became a full demo **employer portal** — the de facto spec for the real employer product. Live (unlinked) at **www.vyvehealth.co.uk/employer-portal.html**, `Test-Site-Finalv3/employer-portal.html`. Fully self-contained: demo data, no keys, no live fetches, survives refresh via localStorage (company name, bookings, launched challenges). Built on the June-8 `vyve-dashboard-live-preview.html` bones (projection toggle inherited). Live `vyve-dashboard-live.html` untouched.
