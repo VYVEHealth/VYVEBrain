@@ -1,3 +1,19 @@
+## PM-723 — Community Sessions + Library tabs live: calendar/replay attribution backfilled, Library renders the replay catalogue, replays.html ?v= deep link; 48h-notice trigger narrowed (2026-07-08)
+
+**Dean's brief:** the Sessions and Library tabs on the new instructor communities were empty — show each person's upcoming scheduled sessions and their current replays.
+
+**DB (live, verified):**
+- `calendar_occurrences.partner_id` backfilled by host_name → partner (Alex → alex-movement, Nicola → nicola-yoga, Calum + Calum Denham → calum-denham-performance). Upcoming now linked: **Alex 51, Nicola 48, Calum 14**. All are `visibility='public'`, so the partner-space community rail (filters visibility=community) is untouched.
+- `replay_videos.partner_id` (nullable FK, ON DELETE SET NULL) added; backfilled by exact title match against the hosts' calendar titles: **Alex 32, Nicola 30, Calum 4** of 99 replays. 33 unmatched (other hosts' mindfulness content + 1 stray) correctly left NULL. RLS: existing `replay_videos_select_authenticated` covers the new profile query.
+- **`trg_partner_session_min_notice` NARROWED (latent production bug):** the PM-684-era guard raised on ANY insert/update of a partner-linked row starting <48h out — it blocked this backfill and would equally have blocked cancelling tomorrow's partner session or editing any near-term row. Now raises only on `TG_OP='INSERT' OR NEW.starts_at IS DISTINCT FROM OLD.starts_at` — the actual "no short-notice scheduling" intent. Self-serve scheduling behaviour unchanged.
+
+**Site (vyve-site `96706dd0`, vbb 494→495, sw `pm723-profile-sessions-library-a`, md5 × 5):**
+- **Sessions tab needed zero code** — it already queried upcoming by partner_id; the backfill lit it up.
+- **Library tab** (partner-profile) now fetches the partner's `replay_videos` (thumb_url, title, duration, published_at desc, limit 60) in parallel with published `partner_content_items`, rendering replays first in the existing video-card style with real thumbnails (`.video-thumb img` CSS added). Replay cards link `/replays.html?v=<youtube_video_id>`.
+- **replays.html `?v=` deep link:** one-shot — fires on the first paint whose data contains the target, matching `youtube_video_id` OR `replay_videos.id` (the latter because pre-existing partner_content_items cards already linked `?v=<replay_video_id>` against a deep link that didn't exist until now). Opens via the existing `mountPlayer` so the PM-292 watch-time tracker attributes normally; consumed flag stops the visibilitychange/table-pulled repaints re-opening a player the member closed.
+
+**Verify on device:** any instructor community → Sessions tab lists upcoming with dates; Library tab shows the replay catalogue with thumbnails; tapping a replay lands on Catch-Up with that video playing.
+
 ## PM-722 — Instructor communities live: Alex + Nicola created, Calum broadened, seeded posts + likes; names now headline all community surfaces; placeholder partners hidden via community_visible (2026-07-08)
 
 **Dean's brief:** make the communities area real with the people already in the app — Alex (movement/stretch), Nicola (yoga — Dean said "Nicole", catalogue host is Nicola), Calum (resets, weekly review, nutrition, education). Names + descriptions + a few posts with reactions.
