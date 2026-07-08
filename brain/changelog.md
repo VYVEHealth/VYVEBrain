@@ -1,3 +1,11 @@
+## PM-725 — Community profile cover bleeds to the top of the page (2026-07-08)
+
+Dean's follow-up on PM-724: individual community pages still had a gap above the cover. `.profile-hero` now pulls up under the sticky `.mobile-page-header` with `margin-top:calc(-56px - env(safe-area-inset-top))` and grows its height by the same amount — the theme.css hub-hero bleed pattern, applied to an inner page that keeps its back-button header. The translucent blurred header floats over the photo (iOS large-title feel); avatar and meta positions unchanged; the existing hero overlay keeps the back button legible.
+
+**Ship:** vyve-site `7970cab2`, vbb 496→497, sw `pm725-hero-bleed-a`, md5 × 4.
+
+**Pattern note for future inner-page heroes:** sticky header pages get the bleed via negative margin + height compensation on the hero block itself — do NOT remove the header (that's the hub-page pattern) and do NOT re-add main padding.
+
 ## PM-724 — Community polish from Dean's device pass: top-gap fixed, cover photos + portraits live, bottom Community tile restored for subscribed members (2026-07-08)
 
 **Dean's screenshots flagged three things:**
