@@ -1,3 +1,27 @@
+## PM-739 — Partner funnel Session 1 (funnel integrity): `partner-onboarding` EF v6 + wizard submit/resume/upload hardening + PostHog (2026-07-08)
+
+First of four approved sessions from the partner funnel audit. Both halves live.
+
+**`partner-onboarding` EF v6** (platform version 6, sha256 `79049e2e…`, deployed + content-verified via `get_edge_function`). Over v4:
+- `start` with an unknown/stale `resume_id` → **404 `resume_not_found`** (no more silently minting a blank draft row).
+- **Resume-link email** ("Your VYVE partner application — pick up where you left off" → `partner-onboarding.html?resume=<id>`) the first time a valid email is known — sent at `start`, fallback at `save`.
+- **Submit confirmation email** ("We've received your VYVE partner application", "usually within a few days", no hard timeline).
+- Both one-shot via `credentials._system` flags (`resume_email_sent` / `submit_email_sent`), set **only after a successful send** so failures retry naturally. Delivery via `send-email` EF with service key, from team@vyvehealth.co.uk, tags `partner-application-resume` / `partner-application-received`.
+- **Known gap documented in the EF header:** unauthenticated `start` is unmetered until Session 3's rate limiting — bounded at 2 emails/draft, but `start` itself is open.
+- Live-verified from the real origin via Composio curl: stale resume 404s, unknown action 400s, SQL confirmed zero rows minted by the tests. Email copy Claude-drafted; Lewis pass **non-gating** per PM-722 precedent.
+
+**Wizard funnel-integrity rewrite** — `Test-Site-Finalv3/partner-onboarding.html`, commit `cb340d44acc121698c9ef11a2c0c6a5a87dafa8e`, md5-verified at the commit SHA:
+- `doSubmit` can no longer fake success — done screen + localStorage wipe **only on a confirmed 200**; otherwise a failure panel (page's own dark tokens, warning icon, "We couldn't submit your application", Try again / Download my application / mailto team@, "Nothing is lost — your answers are saved on this device"). Mockup approved by Dean pre-ship.
+- Old one-way `online=false` latch → `markOffline()` helper with 15-second retry; any successful `efCall` heals it.
+- File picks keep an in-memory `File` ref; `retryPendingUploads()` re-attempts at submit — failures leave them pending and **submit still proceeds** (content follows via the moderation queue). Honest upload toasts.
+- `?resume=<id>` URL support wired to the emailed links; expired links toast and start clean while keeping local answers.
+- **Latent bug fixed:** Supabase SDK loaded async so the server-side resume merge never ran on page load — `_loadSB` is now a promise and init awaits it.
+- **PostHog** mirroring the PM-735 welcome.html config exactly (EU host, memory persistence, session recording off), `flow: partner_onboarding` super-property; events `partner_onboarding_view`, `partner_step_view`, `partner_resume` (source url/local), `partner_submit_attempt`, `partner_submit_error`, `partner_submit_success`, `partner_submit_fail_shown`.
+
+**Lewis items:** email copy pass (non-gating); "Become a VYVE partner" CTA is **gating** — Dean's recommendation to Lewis is footer link + about.html placement, nothing committed without his sign-off on copy AND placement.
+
+**Approved remaining sessions:** 2 gate integrity, 3 abuse hardening, 4 completion plumbing — scoped in backlog PM-739 entry.
+
 ## PM-738 — Font target corrected: Playfair removed from the WORKOUT library (workouts.html + workouts-library.js); exercise.html reverted; OTA Update 504 live (2026-07-08)
 
 Dean clarified: Lewis's complaint was the **workout library**, not exercise.html — PM-737's font swap hit the wrong page (I inferred "exercise library" = exercise.html per the body-naming rule; the correction landed one message later).
