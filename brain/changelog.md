@@ -1,3 +1,21 @@
+## PM-722 — Instructor communities live: Alex + Nicola created, Calum broadened, seeded posts + likes; names now headline all community surfaces; placeholder partners hidden via community_visible (2026-07-08)
+
+**Dean's brief:** make the communities area real with the people already in the app — Alex (movement/stretch), Nicola (yoga — Dean said "Nicole", catalogue host is Nicola), Calum (resets, weekly review, nutrition, education). Names + descriptions + a few posts with reactions.
+
+**DB (live, verified):**
+- `partner_partners.community_visible` boolean NOT NULL DEFAULT true added. Set false for the four bare referral-placeholder partners (antonia, april, david, ivan — "VYVE Partner", no bio/avatar). They stay `status='live'` so **stripe-reconcile attribution is untouched** (it loads status=eq.live only); they just no longer render as junk cards in Discover.
+- **alex-movement** (Alex, "Movement & Mobility", body) and **nicola-yoga** (Nicola, "Yoga & Pilates", mind) created live with bios drafted from their actual session catalogues (Healthy Knees/Hips/Spine series, desk flows / yin, breathwork, NSDR, Pilates).
+- **calum-denham-performance** broadened: role_title → "Performance, Nutrition & Habits", bio extended to cover Midweek Reset, Weekly Review, nutrition/sleep/habits education.
+- **9 seeded partner posts** (3 each, author_kind='partner', author_email=team@, staggered over 4 days, one pinned welcome per community, like_count 2–7 = the "reactions" — post reactions are the denormalised `like_count`, no per-member reaction rows for partner posts). Calum's community already had 3 PM-661-era posts → now 6. Post copy is Claude-drafted in each instructor's voice — **Lewis copy pass welcome, non-gating** (PM-720 precedent).
+
+**Site (vyve-site `350227bc`, vbb 493→494, sw `pm722-instructor-communities-a`, md5 × 6):**
+- All three member surfaces previously displayed `role_title||slug` as the partner's name and never selected `name`. Now: **name headlines, role_title is the sub-line** — partner-space cards (pc-name/pc-role), partner-profile header + feed author, connect.html carousel (comm-name/comm-sub). Avatar-fallback initials also derive from name.
+- Discover (partner-space) and the connect carousel filter `community_visible=eq.true`. partner-profile deliberately unfiltered (reachable only by id via existing links; a referred member's profile link still works).
+
+**Live set now member-visible in Discover:** Alex, Nicola, Calum Denham, Emma Clarke, Men Together CIC. **Open question for Dean/Lewis:** Emma Clarke's contact_email is Dean's personal hotmail — demo-era artefact? Hide via community_visible=false if so (one UPDATE, no code).
+
+**Verify on device:** Discover shows 5 named communities with real bios; join Alex/Nicola → carousel shows names with specialism sub-lines; profiles show pinned welcome + posts with heart counts.
+
 ## PM-721 — Community join FIXED: engagement_segment='new' violated the partner_memberships CHECK — no member had EVER successfully joined a community (2026-07-08)
 
 **Dean's report post-PM-720:** "I'm not able to join any communities." Diagnosis: 7 live partners exist, RLS is correct (member INSERT policy `member_email = auth.email()` present), schema fine — but BOTH member-facing join handlers (`partner-space.html` `_psJoin` + `partner-profile.html` join) POST `engagement_segment:'new'`, and the table CHECK allows only `highly_engaged / regular / at_risk`. Postgres 23514 → PostgREST **400** (not the handled 409) → silent `btn.textContent='Join'` reset. `partner_memberships` was completely EMPTY — zero rows ever — so the member join path has been dead since PM-661 shipped it. Root cause proven via SQL probe (check_violation confirmed, rolled back). Server rails unaffected: `stripe-reconcile` v5 writes `'regular'` (valid); the empty table also means no currently-active referred Stripe subs, which is truthful.
