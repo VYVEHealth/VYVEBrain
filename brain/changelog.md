@@ -1,3 +1,9 @@
+## PM-744 — Men Together CIC logo live (Lewis-supplied asset) (2026-07-08)
+
+Lewis supplied the Men Together CIC crest. Optimised (1008×1225 source → centre-cropped 512px square, 208KB) and committed as a first-party asset: `assets/partners/men-together.png` (the /assets/partners/ convention now exists for partner-supplied branding — same domain-served pattern as /assets/hosts/). `avatar_url` set — renders automatically on the Discover card, Connect carousel, profile header and post-author rows (all avatar surfaces read avatar_url per PM-197/720/722). No cover supplied; coral pillar gradient remains the profile hero fallback.
+
+**Ship:** vyve-site `f49c45a1`, vbb 506→507, sw `pm744-men-together-logo-a`, md5 × 4. Asset+data change only — bundled members see the avatar via the DB/network immediately (no OTA needed; the vbb bump rides the next push). PM-742/743 claimed by parallel sessions.
+
 ## PM-743 — Partner funnel Session 2 (gate integrity): go-live gate on INSERT + audited override, pre-gate backfill, SERVER-SIDE assessment scoring (EF v7 + wizard) (2026-07-08)
 
 Second of the four approved partner-funnel sessions. Live state changed the brief: the "Men Together at pct 25" forensic target didn't exist — that row was Dean's declined test application (`dean-brown-29b059`). The real finding was worse: **9 partners were `live` with NO `partner_onboarding_progress` row at all**, created via the admin/playbook INSERT path — exactly the INSERT bypass in the old UPDATE-only trigger.
