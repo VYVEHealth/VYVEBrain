@@ -1,3 +1,15 @@
+## PM-735 — Marketing-site analytics live: PostHog EU on welcome.html + homepage, full signup-funnel visibility per campaign/partner link (2026-07-08)
+
+Trigger: Lewis texted Dean "are the onboarding emails working — I've sent VYVE to people tonight and haven't got any emails." Investigation: zero signups since 3 Jul (Reece), onboarding EF had zero real invocations in 24h, onboarding-health cron 200, all entry pages 200, no platform_alerts. Dean then ran a live signup himself (deanonbrown1@hotmail.com, 19:54Z, completed clean — flagged `is_test` so it stays out of member counts). Verdict: pipeline healthy; Lewis's contacts simply never completed (or likely never started) the questionnaire. The real gap exposed: the marketing site had ZERO analytics — "never opened the link" vs "opened and bailed at section N" vs "balked at the Stripe step" were indistinguishable.
+
+**Ship (Test-Site-Finalv3 `9e6a70ea`, md5-verified both files at commit SHA, live-verified on Fastly):**
+- PostHog JS on `welcome.html` + `index.html` — **EU host (project 138491), cookieless (`persistence:'memory'` — no consent banner needed), `disable_session_recording:true`** (the questionnaire is health data; the sub-processor register's "10% sampled, masked" statement stays true by never recording marketing pages), autocapture on (pageviews + homepage Stripe-CTA clicks), **no identify/no PII** — fully anonymous events.
+- Custom funnel events on welcome: `welcome_section_view` {section} (hooked in `goTo()` — exact drop-off section), `welcome_submit` (submit + retry, {retry:n}), `welcome_error` {message ≤120ch}, `welcome_success` (top of `showResults`).
+- **Attribution:** `?c=` (trial campaign: 7/14/30-day links, `/trial/[slug]` route) and `?partner=` (PM-682 join flow) registered as super-properties on every event, sessionStorage-persisted per-tab so they survive the multi-section form — one funnel in PostHog, breakable down per link. Answers Lewis's question permanently: opens → per-section progress → submit → success, per campaign.
+
+**Gotchas:** PM-734 was claimed mid-session by a parallel session (employer-portal demo on the SAME marketing repo — first PM race on Test-Site-Finalv3); §23.24 fresh-HEAD recompute held. Also self-caught a §23.30-adjacent trap: comparing python `len(str)` (chars) against `wc -c` (bytes) on a multibyte file looks like data loss — verify with byte counts only.
+
+**Follow-ups:** backlog P3 duplicate-posthog.init on portal index.html unchanged (separate surface). Lewis: PostHog EU DPA confirmation (finding G carry-over) now also covers marketing-site collection.
 ## PM-733 — OTA Update 501 LIVE on production: tonight's full community build pushed to the member fleet (2026-07-08)
 
 Dean: "How can we push these OTA updates" → pushed per the PM-698/706 procedure from the Composio sandbox.
