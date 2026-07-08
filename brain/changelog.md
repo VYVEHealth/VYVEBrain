@@ -1,3 +1,11 @@
+## PM-727 — Community cover banners fit properly: bottom-anchored 16:9 paint, no title crop (2026-07-08)
+
+PM-726's covers rendered but `center/cover` cropped the 16:9 branded banners (session titles cut off — Dean screenshots 13:45). Fix: hero background now paints `center bottom / 100% auto` — the full banner is visible at its natural ratio, bottom-anchored; the under-header bleed strip above it shows the pillar-gradient underlay, which blends with the banners' dark green backgrounds. Hero height = `min(56.25vw, 360px)` (the banner's 16:9 footprint, tablet-capped) + the 56px+safe-area bleed strip.
+
+**Ship:** vyve-site `313fac9f`, vbb 498→499, sw `pm727-cover-fit-a`, md5 × 4.
+
+**Pattern:** branded artwork with baked-in text must never be painted `cover` into an arbitrary-ratio box — anchor at natural ratio and let an underlay fill the remainder.
+
 ## PM-726 — Community hero bleed v2 (main-margin), live-session cover photos, avatars back to initials; Connect carousel verified intact (2026-07-08)
 
 **Dean's second device pass (screenshots 11:33):**
