@@ -63,6 +63,20 @@ The Sage demo (employer-portal.html) is now the agreed shape of the employer pro
 - Detection is now handled (broadcast-watchdog EF, cron 50, alerts email+push). These two items are the remaining *structural* fixes.
 
 
+## CC OVERHAUL CAMPAIGN (PM-752 opened 2026-07-12 — ACTIVE, supersedes PM-639 Layer 2)
+
+**Spec: `playbooks/cc-overhaul.md`** (Phase 0 audit + disposition tables + phase plan). Locked: VYVE-brand dual light/dark design system on every CC surface (partner-portal/admin-console lineage); 5-domain IA (Run the Business / Members / Partners / Employers / Analytics); curated Run-the-Business rebuild on the empty cc_* tables; kill list PENDING LEWIS CONFIRM (nothing deleted before his nod).
+
+- [ ] **Phase 1** — design system + shell mockup, both themes (Dean gate, then Lewis look)
+- [ ] **Phase 2** — shell ship + 8 Analytics pages re-skinned; auth.js fail-closed; single supabase-js; dead-lib load trim
+- [ ] **Phase 3** — Run the Business rebuild on cc_* (Brief/CRM/Finance+Invoicing/Investors+Grants/Content/Podcast) + Lewis kill-list execution + seed-data retirement for migrated pages
+- [ ] **Phase 4** — Members: admin-console strangler onto the shell, broadcast + active-users re-skin, Playfair sweep (PM-739 completion)
+- [ ] **Phase 5** — Partners: partners.html re-skin + kill/realise the two mocks (attendances-by-week, engagement scorer)
+- [ ] **Phase 6** — Employers domain: provisioning UI (employer-provision EF, PM-750), employer list, benchmark-figures editor
+- [ ] **Phase 7** — partner-portal.html adopts the system LAST (external users)
+- [ ] Lewis: confirm kill list (spec §disposition) + look at Phase 1 mockup
+- Folded in from PM-639 Layer 2: seed-data.js audit (DONE — it's a 13-May Make snapshot, retires Phase 3), partners.html mock kill (Phase 5), 4 unreachable hub pages sweep (Phase 3 kill list).
+
 ## Command Centre IA + Team App build (PM-639 spec — Phase A SHIPPED PM-685)
 
 IA + spec done as artefacts (`CC-information-architecture.md`, `CC-team-app-spec.md`); §13 in master carries the summary.
