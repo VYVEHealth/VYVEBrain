@@ -1,3 +1,19 @@
+## PM-761 — Phase 6 Employers SHIPPED: provisioning UI live in the CC (2026-07-12)
+
+The mid-flight handoff from earlier today closed clean — all six agreed steps executed in order, zero plan deviations.
+
+**employer-provision EF v2** (deployed, verify_jwt false as v1): adds the `list` action for the CC — employer_admins is service-role-only RLS (no policies), so the accounts surface reads through the EF. `list` returns all employer_admins rows (email/employer_name/created_at/created_by) plus a per-employer seats map counted from employer_members. The v1 structural catch was fixed as planned: the contact_email guard ran before the action check and would have 400'd list — restructured so list is handled first and the guard now applies only to provision/deprovision, unweakened. Everything else byte-preserved from the re-fetched live v1 source: internal auth matrix (admin JWT vs admin_users role=admin active; ops via Bearer SERVICE_KEY / x-vyve-cron-key vs gdpr_cron_key()), CORS locked to admin.vyvehealth.co.uk POST-only, provision never resets an existing auth user's password + 409 already_provisioned, deprovision bans 87600h only if not-member AND not-admin, audit shape admin_email/admin_role/member_email/action/table_name/new_value.
+
+**Live verification via pg_net (before the page was built):** list with real cron key → **200** with the true payload (VYVE Demo Co, deanonbrown@hotmail.com, 22 seats); bad key → **401 unauthorized**.
+
+**Migration `benchmark_write_policy_pm761`:** employer_benchmark_figures gains `benchmark_write_admin_or_team` (FOR ALL, is_admin_or_team(), USING + WITH CHECK) alongside the untouched authenticated-read policy. Table remains EMPTY by design — Lewis + Alan source curated figures; nothing seeded (§23.143 checked: only `scope` is CHECK-constrained, uk/eu/global; `metric` is free text so the editor suggests engagement_rate / activities_per_member via datalist without constraining).
+
+**pages/employers.html + nav** (vyve-command-centre `ec4638f2`, 2 files md5-verified): accounts table (employer / contact / seats / provisioned / by) via EF list; Provision modal → EF provision with 409 handled as a distinct message (already provisioned for X — deprovision to move); Deprovision with confirm + honest auth_disabled/preserved messaging; benchmark CRUD direct via supabase-js under the new policy, insert-time added_by provenance only (PM-757 discipline), empty state states the sourcing policy so nobody invents figures. External Employer Portal + Sales Demo links kept in both the page header and the nav; "employers" slug added to the Employers section. Script blocks node-syntax-checked; router confirmed generic (fetch pages/{slug}.html + script re-injection — no registration needed).
+
+**DEAN DEVICE CHECK:** admin CC → Employers → Employer Accounts — VYVE Demo Co row with 22 seats; add/edit/delete a test benchmark figure (exercises the new write policy); optionally provision + deprovision a junk email end-to-end (it will send a real credentials email — use a throwaway).
+
+**Closes** PM-750 new-item (1) (CC admin UI for employer provisioning). **NEXT: Phase 5** — partners.html re-skin onto tokens v2 (cosmetic) + Dean decision on its two mocked widgets (attendances-by-week, engagement scorer: realise or remove); **then Phase 7** partner-portal.html token adoption last (external partner users see it). Cumulative device checks PMs 752–761 still pending Dean's walk; Lewis gates unchanged.
+
 ## PM-761 IN FLIGHT — Phase 6 Employers: recon done, build handed to a fresh session (2026-07-12)
 
 Context-window handoff mid-PM. Recon complete, zero code shipped for this PM yet; handoff prompt delivered to Dean (vyve-handoff-cc-overhaul-pm761.md). Recording the recon here so the brain, not the chat, carries the state.
