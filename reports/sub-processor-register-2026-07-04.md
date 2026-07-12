@@ -53,3 +53,9 @@ This register lists every third party that processes personal data on VYVE's beh
 3. **Lewis:** add YouTube-embed disclosure to the privacy policy.
 4. **Dean + Lewis:** email tenant migration (finding U) — schedule pre-contract.
 5. **Both:** re-review this register whenever a new processor is added; adding one is a DPA notification event under most enterprise schedules (typically 30 days' notice).
+
+---
+**Filing log (PM-770, 12 Jul 2026):**
+- Brevo DPA (Annex 2 to General T&Cs, v150524): applies by acceptance, nothing to sign. FILED — reports/compliance + cc-documents. **OPERATING CONSTRAINT (DPA cl. 3.2(vi) + Sch.3.B): no special-category (health) data may ever be included in Customer Data sent through Brevo — email content must never carry wellbeing scores, check-in content or health information.** Sub-processor hosting: GCP Belgium / Scaleway + OVH France / Hetzner Germany.
+- Capawesome DPA (effective 2026-04-16, Genz IT Solutions GmbH): applies by ToS acceptance. Canonical capture FILED (retrieved 12 Jul 2026) — reports/compliance + cc-documents. Notable: 48h breach notification; no AI/ML training on customer data; SOC 2 Type II; US transfers via DPF + SCCs Module 3.
+- Remaining: PostHog (generate + sign at app.posthog.com/legal — countersigned flow), Anthropic (save DPA + commercial terms PDFs — incorporated by acceptance).
