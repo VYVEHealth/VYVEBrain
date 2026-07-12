@@ -1,3 +1,17 @@
+## PM-756 — Sales Pipeline rebuilt on cc_leads: first write-side Phase 3 page (2026-07-12)
+
+The first Run-the-Business rebuild with a write path. vyve-command-centre `ccc0fda2` (pages/crm.html full replacement + nav status), migration `cc_crm_rls_pm756`, both verified.
+
+**RLS finding (why these tables were always empty):** cc_leads/cc_clients carried a `cc_team_only` policy hardcoded to `auth.email() = 'team@vyvehealth.co.uk'` — an address nobody signs in with. Every write from a real admin session would have silently failed RLS. Dropped; replaced with `is_admin_or_team()` ALL policies (using + with_check), matching the cc_tasks pattern from PM-640. Write path decision: client-side supabase-js CRUD under RLS (cc_tasks precedent) — internal business data, not member PII, no EF needed.
+
+**pages/crm.html** replaces the localStorage/VYVE_MAKE-era page wholesale: stage-grouped board on tokens v2 (stages are DB CHECK-constrained — `prospect/qualified/proposal/negotiation/won/lost`; §23.143 discipline: constraint read after one bounce on invented stage names, page dropdown built FROM the constraint vocabulary), lead cards (company, gold value chip, contact, Next-action chip, notes clamp), add/edit/delete modal (body-appended per §23.121, save/delete honest error surfacing, created_by from session email), pipeline meta line (open count + valued total). Won/Lost sections render only when populated. Render smoke-tested via the DOM-stub harness (grouping, escaping, meta) pre-commit.
+
+**Real pipeline seeded** (5 rows, created_by claude-pm756, no invented numbers): Sage at `qualified` (HubSpot deal 495586118853, post-9-Jul-demo follow-up, HAVEN/Phil noted as pre-diligence gate) + BT / Barclays / Balfour Beatty / Public-sector at `prospect` with honest notes; values NULL until real.
+
+**Session gotcha banked (1st occurrence, promotes on 2nd):** unquoted bash heredocs eat backticked SHAs via command substitution — PM-755's changelog entry lost two commit refs that way (repaired `2c38b85b`). Rule: heredocs that write brain/commit content are ALWAYS quoted (`<< 'EOF'`).
+
+**NEXT (Phase 3):** Finance + Invoicing on cc_finance/cc_invoices, then Investors+Grants, Content, Podcast; lib-layer + seed-data retirement after; cc_clients stays empty until first won deal (won→client flow rides the Finance session).
+
 ## PM-755 — CC HOME LAUNCHPAD LIVE — cc-home EF v1 + pages/home.html, default route flipped (2026-07-12)
 
 Dean's ask mid-Phase-3: the CC landing page (Lewis's frozen seed-data Brief) replaced with a tile launchpad + live pulse. Mockup approved, built same session. This ABSORBS the planned Morning Brief rebuild — one page does both jobs; dashboard/inbox/activity jobs land here too.

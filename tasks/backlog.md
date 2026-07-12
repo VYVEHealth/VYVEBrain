@@ -69,7 +69,7 @@ The Sage demo (employer-portal.html) is now the agreed shape of the employer pro
 
 - [ ] **Phase 1** — design system + shell mockup, both themes (Dean gate, then Lewis look)
 - [x] ~~**Phase 2**~~ **SHIPPED PM-753 (2026-07-12, `06ac8085`)** — tokens v2 + shell + 8 Analytics re-skinned; auth fail-closed; single supabase-js; theme toggle; Employers nav live (portal links). Dead-lib load trim deferred to Phase 3 (Legacy pages still depend on the lib layer)
-- [~] **Phase 3 IN PROGRESS** — Home launchpad SHIPPED PM-755 (absorbs Brief + dashboard/inbox/activity jobs; cc-home EF v1). Remaining: CRM (cc_leads/cc_clients), Finance+Invoicing, Investors+Grants, Content, Podcast rebuilds; then lib-layer + seed-data retirement + legacy file hard-delete
+- [~] **Phase 3 IN PROGRESS** — Home launchpad SHIPPED PM-755 (absorbs Brief + dashboard/inbox/activity jobs; cc-home EF v1). CRM SHIPPED PM-756 (cc_leads live, RLS fixed, real pipeline seeded). Remaining: Finance+Invoicing (cc_finance/cc_invoices — include won-lead→cc_clients flow), Investors+Grants, Content, Podcast rebuilds; then lib-layer + seed-data retirement + legacy file hard-delete
 - [ ] **Phase 4** — Members: admin-console strangler onto the shell, broadcast + active-users re-skin, Playfair sweep (PM-739 completion)
 - [ ] **Phase 5** — Partners: partners.html re-skin + kill/realise the two mocks (attendances-by-week, engagement scorer)
 - [ ] **Phase 6** — Employers domain: provisioning UI (employer-provision EF, PM-750), employer list, benchmark-figures editor
