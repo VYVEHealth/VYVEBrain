@@ -1,3 +1,15 @@
+## PM-760 — Phase 4 (Members) step 1: admin-console re-skinned, Playfair retired from the CC (2026-07-12)
+
+**admin-console.html** (vyve-command-centre `99a61e67`, single file, md5-verified) — strangler step 1: values + fonts ONLY, zero markup/JS behaviour change on the live members-admin surface. Dark/light token values swept to the approved tokens-v2 family (per-theme gold added; sidebar brand-dark constants match the shell), font link Playfair+Inter → DM Sans+DM Mono, `--font-head` → DM Sans (headings 600→700 for equivalent presence). **Playfair is now ZERO across the entire CC repo — PM-739's brand retirement finally complete on this host.**
+
+**Theme coherence:** the console previously kept its own `vyve_admin_console_theme` key — flipping the theme in the shell didn't follow you into Member Admin. Unified to the shell's `vyve-cc-theme` (legacy key read once as migration). Gotcha caught pre-commit: the shell key can hold `'system'`, and this page has NO `:root` fallback theme block — an unresolved 'system' would boot with undefined tokens. Boot now resolves system via `prefers-color-scheme`. All script blocks node-syntax-checked.
+
+**broadcast.html + active-users.html audited — no changes needed:** broadcast's hardcoded grays are the intentional iPhone-notification preview mock (should look native, not themed); active-users' three hexes are `var()` fallbacks. Both already token-first. Phase 4's re-skin scope was smaller than the Phase 0 audit priced.
+
+**DEAN DEVICE CHECK:** admin.vyvehealth.co.uk/admin-console.html — new palette both themes, theme now follows the shell's toggle, member list/detail/edit all behave identically.
+
+**Phase 4 remaining (strangler steps 2+, own sessions):** extract admin-console views into shell pages incrementally (member list → detail → edit), retire the monolith's own sidebar/login in favour of the shell's. Not urgent — the surface is now visually coherent; extraction is refactor value, not user value. **NEXT phase by value: Phase 6 EMPLOYERS (provisioning UI off the employer-provision EF — Sage-relevant) ahead of Phase 5 Partners re-skin; Dean's call.**
+
 ## PM-759 — PHASE 3 CLOSED (soft-kill): dead lib layer unloaded, files kept — Dean policy codified (2026-07-12)
 
 **Course correction mid-session:** the Phase 3 close-out was drafted as a hard delete (19 page files + 10 libs); Dean stopped it — standing policy is SOFT-KILL: unreachable in the product, files ALWAYS stay in the repo for instant restore. Local deletions restored from the session tarball before anything was committed; policy written to persistent memory (replacing a stale iOS-1.1 entry) and now codified here. **§23 hard rule: never hard-delete vyve-command-centre (or any VYVE repo) files without a fresh explicit Dean instruction — soft-kill (delink nav / remove script loads) is always the retirement mechanism.** Companion to the PM-413-era vyve-site rule (memory #13).
