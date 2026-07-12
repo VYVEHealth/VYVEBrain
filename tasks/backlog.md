@@ -74,7 +74,7 @@ The Sage demo (employer-portal.html) is now the agreed shape of the employer pro
 - [ ] **Phase 5** — Partners: partners.html re-skin + kill/realise the two mocks (attendances-by-week, engagement scorer)
 - [ ] **Phase 6** — Employers domain: provisioning UI (employer-provision EF, PM-750), employer list, benchmark-figures editor
 - [ ] **Phase 7** — partner-portal.html adopts the system LAST (external users)
-- [ ] Lewis: confirm kill list (spec §disposition) + look at Phase 1 mockup
+- [x] ~~Lewis: confirm kill list~~ RESOLVED PM-754 — Dean soft-killed (nav delink, files kept). Lewis: look at the new skin; flag if any Legacy page held data he typed (his-browser localStorage only)
 - Folded in from PM-639 Layer 2: seed-data.js audit (DONE — it's a 13-May Make snapshot, retires Phase 3), partners.html mock kill (Phase 5), 4 unreachable hub pages sweep (Phase 3 kill list).
 
 ## Command Centre IA + Team App build (PM-639 spec — Phase A SHIPPED PM-685)

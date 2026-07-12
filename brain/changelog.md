@@ -1,3 +1,7 @@
+## PM-754 — Legacy pages soft-killed: nav delink, files kept (2026-07-12)
+
+Dean resolved the PM-752 kill-list gate himself: soft kill. The whole Legacy nav section (14 pages: dashboard, inbox, activity, trash, intel, competitors, intel-hub, clients, social-blueprint, strategy, knowledge, compliance, team, action-plans) removed from sidebar-config.js — vyve-command-centre `4ed97e9e9c60a124d9c699fb69e9fa7b32c1c35c`. Files stay in the repo and every page remains loadable via direct #/slug, so restore = re-add one nav item. Shared Documents (Drive) link kept, moved into Run the Business. Physical file deletion + lib-layer retirement (seed-data/store/entities/make/data/etc.) rides Phase 3 once the Brief/CRM rebuilds prove nothing is missed. Note for Lewis: anything he typed into these pages lives only in his browser's localStorage — untouched by this change; flag before any future hard delete.
+
 ## PM-753 — CC overhaul Phase 2 SHIPPED: design system v2 live across shell + Analytics (2026-07-12)
 
 Phase 2 of the PM-752 campaign, one session after the mockup approval. vyve-command-centre `06ac8085`, 13 files, md5-verified at the commit SHA.
