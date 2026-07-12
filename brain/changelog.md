@@ -1,3 +1,17 @@
+## PM-759 — PHASE 3 CLOSED (soft-kill): dead lib layer unloaded, files kept — Dean policy codified (2026-07-12)
+
+**Course correction mid-session:** the Phase 3 close-out was drafted as a hard delete (19 page files + 10 libs); Dean stopped it — standing policy is SOFT-KILL: unreachable in the product, files ALWAYS stay in the repo for instant restore. Local deletions restored from the session tarball before anything was committed; policy written to persistent memory (replacing a stale iOS-1.1 entry) and now codified here. **§23 hard rule: never hard-delete vyve-command-centre (or any VYVE repo) files without a fresh explicit Dean instruction — soft-kill (delink nav / remove script loads) is always the retirement mechanism.** Companion to the PM-413-era vyve-site rule (memory #13).
+
+**What shipped (vyve-command-centre `4fc3a1a5`, 3 files, ZERO deletions — repo blob count 85 with all legacy files spot-verified present at the commit tree):**
+- **index.html: 10 dead localStorage-era lib LOADS removed** — seed-data.js, store.js, entities.js, make.js, data.js, drafts.js, comments.js, notifications.js, views.js, views-ui.js. Every removal dependency-mapped first: each lib is either unreferenced by kept surfaces or referenced behind a guard (quick-search degrades without ENTITIES/WIDGETS record-search, pdf-export's DATA path is a specific export, index bell was the only NOTIFS consumer). KEPT as live dependencies: ui.js (tasks/calendar/documents/broadcast/sessions/settings + auth), acl.js (shell+router+settings), integrations.js (calendar+settings), widgets.js, targets.js + cc-adapter.js (settings panels — retire with the future settings rebuild), shortcuts, pdf-export, quick-search.
+- **Dangling shell refs fixed:** topnav logo #/brief → #/home; dead inbox bell REMOVED (its lib is unloaded and the route is delinked); shortcuts `g b` Brief → `g h` Home, `g i` Inbox retired; integrations Slack-message template links → Home.
+
+**Net state at Phase 3 close:** the running CC boots no dead-era code, every reachable page is live Supabase data, and every retired surface is one nav line / one script tag from restoration. Restore recipe: pages = re-add sidebar-config item; libs = re-add index.html script tag.
+
+**DEAN DEVICE CHECK:** ?z=759 — logo tap lands on Home, no console errors from missing libs on a walk through tasks/calendar/documents/settings + one analytics page.
+
+**NEXT: Phase 4 — Members.** admin-console.html strangler onto the shell/design system (131KB monolith — re-skin in place first, extract views incrementally), broadcast + active-users re-skin, Playfair sweep completes PM-739 in the CC.
+
 ## PM-758 — Investors & Grants / Content / Podcast rebuilt — RUN THE BUSINESS DOMAIN COMPLETE (2026-07-12)
 
 Third rebuild session of the day closes the Run-the-Business page set. vyve-command-centre `ad4ec4b8`, 4 files md5-verified. All three pages replace their localStorage/VYVE_MAKE-era predecessors wholesale, all on tokens v2, all CRUD via client supabase-js under the PM-757-swept is_admin_or_team() RLS, all dropdown vocabularies read FROM the DB CHECK constraints (§23.143 held, zero bounces this session).
