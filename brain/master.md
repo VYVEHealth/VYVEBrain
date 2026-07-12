@@ -97,6 +97,8 @@
 
 **PM-740 (2026-07-08): EMPLOYER PORTAL DEMO live at www.vyvehealth.co.uk/employer-portal.html (`Test-Site-Finalv3`, unlinked) for the 9 July Sage meeting — 5 iterations off Lewis feedback in one evening (commits 608c82a3/33385d24/4305dace/f06c91a1/d4b8aad5). Tabs: Overview (Wellbeing Index hero 72/100 + story + insights + team table + ROI) · Deep Dive (UK/EU/Global benchmarks + per-dept drill-down) · Book Experts (17 fictional profiles, booking modal) · Challenges (live leaderboard + launchable templates) · Events · Reports (board pack via print-to-PDF) · Ask VYVE (chat w/ canned answers). Fully self-contained demo data, no keys. PRIVACY-ALIGNED (Dean call): wellbeing company-level only, team views activity/engagement only, challenge data opt-in team aggregates. This demo = de facto spec for the real employer portal build (see backlog). Live vyve-dashboard-live.html untouched. Lewis pre-meeting: rename company via top-right click, set projection headcount, rehearse board-pack Save-as-PDF, verify ROI framing vs Stat Bank. NOTE: two PM collisions this session — 33385d24 msg says PM-735 (true 736), d4b8aad5 msg PM-739 = triple-739 collision, resynced at PM-740 close.**
 
+**PM-772–779 (2026-07-12 late): Anthropic ToS+DPA canonical captures filed (position note verbatim-backed; NOTE: UK contracting entity = Anthropic Ireland Ltd, register row 2 patch pending Dean). Alert backlog purged 2797→22 (bot/telemetry noise; auto-ageing cron 55 live; vyve-site vbb 512 session-gates client diagnostics — device check now vs Update 512). CC repair: desktop drawer/topnav fixed + home tiles de-nested (PM-776), cc_kv strangler makes ALL 16 localStorage-era pages server-backed (PM-777 — cross-device, fill-gaps seed, graduated-table mirrors into VYVE_DATA), ONE Supabase wrapper (PM-779 — lib/supabase.js stub was clobbering supabase-client.js, breaking calendar/tasks/documents/sessions/active-users/settings + cc-sync). DEAN VERIFY NEXT: calendar renders, CRM/Finance post-swap, competitors→cc_kv smoke, 512 device check. NEW SPEC in changelog: CC Calendar completion (session editing w/ runner cancelled_at pre-check, invite emails + ICS; Meet-link generation blocked on Google OAuth Testing mode).**
+
 <!--CURRENT_FRONT_END-->
 
 
@@ -1958,6 +1960,19 @@ Text columns constrained by CHECK enums reject unknown values as PostgREST 400s,
 
 #### §23.144 — PM recompute and the commit POST must be atomic — same tool batch, recompute LAST (PM-740; collisions on 735 and 739 in one evening)
 Fetching heads in one tool call and committing in the next is a race that loses whenever 2+ parallel sessions are landing — twice in the PM-740 session alone, minutes apart. §23.24's "re-fetch immediately before commit" means *immediately*: the `GET /commits per_page=5` sweep (all PM-namespace repos), the `PM=max+1` recompute, the message templating, and the `PUT`/`POST` must run inside ONE bash_tool invocation, recompute as the last step before the write. If the commit lands and a same-number message is then discovered on another repo, do NOT rewrite history — record the true number in the brain entry (message-says-X-true-Y) and carry on. Content correctness is unaffected; only the label drifts.
+
+#### §23.145 — Nested anchors are parser-split; children eject as layout siblings (PM-776 — HARD RULE)
+`<a>` may not contain `<a>`. The HTML parser closes the outer anchor at the first inner one and re-parents what follows as SIBLINGS — inside a grid/flex container those fragments become their own stretched items (the home-tile "sliver pills"). Card-with-links pattern: wrapper div > [main-link anchor, links row]. Verify suspect markup with an HTML5 parser (html5lib), not by eye.
+
+#### §23.146 — CC has ONE Supabase wrapper: lib/supabase-client.js (PM-779 — HARD RULE)
+`lib/supabase.js` (localStorage-era stub) is SOFT-KILLED — its load line is gone from index.html; never re-add it, it clobbers `window.VYVE_SUPABASE`. Canonical API: `client` is a GETTER (never call it), `getClient()/isStub()/url()` exist only as back-compat, auth storageKey `vyve-cc-supabase-auth`. New CC pages gate on isReady/onReady + getSession + getCurrentAdmin (calendar.html is the reference).
+
+#### §23.147 — CC page boots must never die silent (PM-778 — HARD RULE)
+Router-injected pages that gate on auth/client state must surface boot failures on the page (boot().catch → visible error card; no bare `return` on a missing dependency). The blank-calendar bug was invisible for an unknown period because boot exited silently; the PM-778 card named the root cause from Dean's phone in minutes.
+
+#### §23.148 — Diagnostic platform_alerts age out via cron 55; new types must join the list (PM-775)
+`autoresolve_stale_diagnostics()` resolves diagnostic-class alerts >14 days daily (03:45 UTC). Any NEW diagnostic alert type must be added to its type list or it accumulates forever (the 2797 pile-up). Crisis/GDPR/business alert types are deliberately excluded — never add them. Client runtime diagnostics (js_error/promise_rejection) only report with a session present (PM-773) — bots don't alert.
+
 
 ## 24. Key references, credentials & URLs
 
