@@ -1,3 +1,17 @@
+## PM-765 — Mobile M2 SHIPPED: shell-page sweep (2026-07-12)
+
+Second mobile session, straight off the PM-764 backlog item. vyve-command-centre `3a3af734`, 11 files md5-verified, CSS-only (zero JS touched; the only markup change is a class addition on five table containers).
+
+**Tables:** the audit found exactly five tables with no scroll container anywhere in their page — active-users, documents and tasks data-tables, plus both settings ACL tables. All five containers now carry the `.m-scroll` primitive from PM-764. Every other shell-page table already sits in an overflow-x:auto card (the PM-756+ CRUD pages shipped that way).
+
+**Modals:** all seven page-scoped modal families (ct/cr/em/fn/ig/iv/pd — content, crm, employers, finance, investor, invoicing, podcast) get a ≤640px bottom-sheet treatment: overlay bottom-aligned with zero padding, modal full-width, top corners rounded, 92vh max with internal scroll. usage.html's local `.modal` was already covered by PM-764's global components.css rule.
+
+**390px static walk of everything else:** every flagged `white-space:nowrap` is a small inline element (dates, ellipsis truncation, tab labels) — correct at phone width; broadcast's fixed-looking widths are all `max-width` and its 420px block is the intentional iPhone notification mock (PM-760 note stands). No further changes were needed — M1's finding that the shell was already most of the way there held across the page set.
+
+**MOBILE REMAINING: M3 only** — the three standalone monoliths, one session each (admin-console 131KB / partners / partner-portal with external-user discipline). Backlog item from PM-764 stands, M2 item closed.
+
+**DEAN DEVICE CHECK (phone):** on top of the PM-764 walk — open a lead in CRM and an invoice in Invoicing (bottom-sheet modals), swipe the Active Users and Tasks tables sideways, check Settings ACL table scrolls.
+
 ## PM-764 — Domain landing pages + M1 mobile layer (Dean direction mid-device-walk) (2026-07-12)
 
 Dean's walk produced two directions: home tiles should drill into a domain page of more tiles, and the whole CC needs to work on mobile. Mockup approved before build (domain tile grid, both themes, responsive columns, shared table treatment).

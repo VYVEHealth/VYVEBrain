@@ -1,5 +1,3 @@
-> **[PM-764 · 2026-07-12 · MOBILE M2]** Shell-page mobile sweep: adopt .m-scroll (components.css) on any table lacking a scrolling card, move page-scoped modal classes to the ≤640px near-full treatment, walk every RtB/Analytics page at 390px width. Sonnet-safe, one session.
-
 > **[PM-764 · 2026-07-12 · MOBILE M3]** Standalone monolith mobile passes, one session each: admin-console.html (131KB, 1 media query — biggest job), partners.html (3 queries, partial coverage), partner-portal.html (1 query — EXTERNAL users, PM-763 low-key discipline applies).
 
 > **[PM-762 · 2026-07-12]** Attendances-by-week REMOVED from partners.html analytics (was a hardcoded mock). Realise later as an EF aggregation over session_live_views once live sessions have volume — table currently 3 rows with member-scoped RLS, so a client-side chart is impossible and an EF is the only honest path. Sonnet-safe when picked up.
