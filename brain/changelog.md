@@ -1,3 +1,17 @@
+## PM-762 — Phase 5 Partners SHIPPED: re-skin onto tokens v2, both known mocks removed (2026-07-12)
+
+**partners.html** (vyve-command-centre `f4f3d586`, single file, md5-verified) — the off-brand mint design system retired, PM-753 precedent held: local token NAMES preserved across the 100KB+ of selectors and JS templates, VALUES remapped to the approved family in dual `html[data-theme]` blocks. Theme boot on the unified `vyve-cc-theme` key with 'system' resolved via prefers-color-scheme (this page has no :root fallback — PM-760 gotcha applied preventively), topbar 🌙/☀️ toggle added. DM Sans/DM Mono replace the system font stack. Sidebar brand-dark BOTH themes via new `--sb-*` constants (shell rule), contained selector edits only. Pillar colours swept to the canonical tokens.css trio (physical gold #D49B2C / mental teal #4DAAAA / social terracotta #D17F6E — the page's old mint/blue/amber trio is gone). All mint-era hexes and alpha tints tokenised; 11× hardcoded `#05201d` → `var(--on-accent)`. The phone-preview panel intentionally stays member-app dark in both themes (it mocks the real app, same reasoning as broadcast's notification preview in PM-760).
+
+**Both known mocks REMOVED — Dean delegated the call with "Go", decision reasoning recorded:**
+- **Attendances-by-week:** the chart was a hardcoded 12-element array. Realisation was priced first: `session_live_views` exists but has **3 rows total** and **member-scoped RLS** (select-own only — a CC admin session cannot read cross-member rows client-side), so making it real means a new policy or EF aggregation for a chart with nothing to show. Removed (card + JS + now-dead `.barchart` CSS in the same file); the pillar-split card keeps the analytics row. **Realise later as an EF aggregation once live sessions have volume.**
+- **Partner rating / "engagement scorer":** `partner_partners.rating` has no product feature behind it — the member app (partner-space + partner-profile) SELECTs the column but never renders it, and the only non-zero values (Calum 4.8, Emma 4.9) are invented seeds. Removed from all 5 render sites + 3 table headers (overview top-partners, roster, analytics leaderboard, detail hero, phone preview — the preview's "exactly what members see" claim is now actually true). **Column and data untouched** (display soft-kill; if a real rating feature ever ships, the render sites are one template line each).
+
+Zero other behaviour change; both inline script blocks node-syntax-checked pre-commit.
+
+**DEAN DEVICE CHECK:** admin.vyvehealth.co.uk/partners.html — new palette both themes (toggle in topbar; theme follows the shell's), walk Overview / Roster / Pipeline / Analytics / a partner detail / phone preview; confirm no rating columns and no attendance chart; login gate unchanged.
+
+**NEXT: Phase 7 — partner-portal.html token adoption, the campaign closer.** External partner users see it, so: no mid-week breaking-change risk appetite, values+fonts discipline, device check before Dean tells partners anything changed. After that the CC overhaul campaign is done pending the cumulative device walk (PMs 752–762) and the standing Lewis gates.
+
 ## PM-761 — Phase 6 Employers SHIPPED: provisioning UI live in the CC (2026-07-12)
 
 The mid-flight handoff from earlier today closed clean — all six agreed steps executed in order, zero plan deviations.
