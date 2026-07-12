@@ -1,3 +1,21 @@
+## PM-753 — CC overhaul Phase 2 SHIPPED: design system v2 live across shell + Analytics (2026-07-12)
+
+Phase 2 of the PM-752 campaign, one session after the mockup approval. vyve-command-centre `06ac8085`, 13 files, md5-verified at the commit SHA.
+
+**tokens.css → v2.** Every variable name preserved (zero breakage on un-migrated pages); values swept to the approved system: cream light theme retired for cool teal light (#F3F6F6 family), dark theme deepened to #081616/#0E2222 family with teal-tinted borders, sidebar tokens now brand-dark in BOTH themes (#0D2B2B light / #061212 dark — the constant that makes it read as one product), fonts flipped to DM Sans (--font-head serif Playfair token DEAD) + DM Mono (--font-mono). New v2 alias block centralises the Analytics-page vocabulary (--teal/--teal-lt/--gold/--gold-pale/--settled/--settled-pale/--ring) theme-aware, plus dark-theme semantic overrides (accent flips to teal-light on dark, success/warning/danger brightened).
+
+**Shell.** nav section labels → DM Mono; active-item marker → gold (was teal-light); topnav gains a one-tap theme toggle (drives the existing window.VYVE_THEME API — light/dark, localStorage-persisted, settings picker untouched); Playfair+Inter font link → DM Sans+DM Mono; duplicate supabase-js 2.39.3 load REMOVED (single 2.45.0).
+
+**Nav → 5-domain IA (PM-752):** Run the Business (brief/crm/finance/invoicing/investors/content/podcast/tasks/documents/calendar + Metricool/Riverside externals) / Members / Partners / **Employers (new — live employer-portal + sales-demo links until the Phase 6 provisioning UI)** / Analytics, then **Legacy (all 15 Lewis-era pages preserved and reachable pending his kill-list confirm — nothing lost)** + System (settings). 4 missing Analytics icons (activity/heart/monitor/cpu) added to VYVE_ICONS — they'd been silently absent since PM-685.
+
+**8 Analytics pages** (Lewis's dailies — re-skin only, zero behaviour change): local dual-token blocks swept to the same approved values (kept in-page for standalone-open safety; centralisation rides the proper page conversions in later phases), font links + font-family swept — **Playfair now fully gone from the analytics family and the shell** (settings.html and the monoliths remain for their phases).
+
+**auth.js FAIL-CLOSED.** strictMode() now defaults TRUE — the pre-schema "any signed-in user on RPC error" permissive fallback is retired (admin_users + is_admin/is_admin_or_team live since PM-402/640). Explicit opt-out only via VYVE_CONFIG.auth.strict===false. RPC error or throw now DENIES.
+
+**Verification:** node --check + loaded-module assertions on sidebar-config (sections/icon coverage), index.html invariants asserted (single supabase load, DM fonts, toggle wired), residual-Playfair + old-palette greps clean, all 13 files md5-perfect at `06ac8085`. **DEAN DEVICE CHECK: admin.vyvehealth.co.uk (Fastly cache — fresh `?z=N` per PM-685), flip the topnav ◐ toggle both ways, walk 2-3 Analytics pages + one Legacy page, confirm login still gates correctly (auth is now strict — if the team gets denied, the RPCs are misbehaving and VYVE_CONFIG.auth.strict=false is the temporary escape hatch).**
+
+**NEXT (Phase 3):** Run-the-Business rebuild on the empty cc_* tables + Lewis kill-list execution. Lewis gates now open: kill-list confirm + Phase 1/2 visual look.
+
 ## PM-752 — CC OVERHAUL CAMPAIGN OPENED — Phase 0 audit complete, spec at playbooks/cc-overhaul.md (2026-07-12)
 
 Dean's ask: overhaul the entire command centre into one coherent, brand-consistent surface where the whole business is run. Fable session. Phase 0 (audit + spec) executed and closed tonight; no code shipped.
