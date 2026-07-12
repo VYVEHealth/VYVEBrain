@@ -1,3 +1,13 @@
+## PM-767 — REGION CORRECTION: Supabase production is Frankfurt (eu-central-1), not Ireland (2026-07-12)
+
+Caught live during Dean's DPA filing pass: the Supabase dashboard showed the production project in eu-central-1, contradicting every VYVE document. Verified via the management API — project `ixjfklpckgxrwjlfsaaz` region is **eu-central-1 (Frankfurt)**. The brain, the Lewis KB, sub-processor register v1, and the privacy policy all said West EU/Ireland — all wrong, apparently since the project's creation.
+
+**Legal substance unchanged:** Frankfurt is EU, so "all member data processed in the EU / no transfer mechanism required" holds exactly as before. The exposure was factual-accuracy in diligence: a DPO cross-checking our privacy policy against the DPA/TIA project region would have caught the mismatch.
+
+**Fixed:** privacy-policy.html (Test-Site-Finalv3 `543114bc`) now states EU (Frankfurt, Germany); brain master §5/§6/§24 region refs swept to eu-central-1; `reports/sub-processor-register-2026-07-04.md` row 1 + questionnaire statement corrected with a verified-live note. **Dean: file the Supabase DPA + TIA stating Frankfurt** — org Documents page: supabase.com/dashboard/org/tlumjbagllyffcgdhaps/documents; sign as VYVE Health CIC and return to privacy@supabase.com to execute. **Lewis KB (his Claude project doc) still says Ireland — flag to him with the voice-pass note.**
+
+§23 note: region claims in compliance documents are verifiable facts — verify against `get_project` before filing, never trust cached prose (this was a 3-month-old drift nobody had checked).
+
 ## PM-766 — Privacy notice: post-native-app processors disclosed · CTA gate closed BY DESIGN · YouTube register item found stale (2026-07-12)
 
 Gate-clearing session with Dean working the Lewis list directly.
