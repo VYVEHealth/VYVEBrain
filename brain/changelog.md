@@ -1,3 +1,19 @@
+## PM-771 — PostHog allowlist BREACH FIXED same-hour · DPA PILE COMPLETE (2026-07-12)
+
+**The find:** while filing the PostHog DPA Dean had just executed (countersigned by PostHog's VP Operations, ref CEIKI-EW7QC-O8PB5-RRC7F; Annex I declares sensitive categories **N/A**), the analytics wrapper audit showed we were in breach from the moment of signature: `analytics.js` ALLOW_KEYS explicitly forwarded `score`, `feeling`, `energy`, `weight`, `weight_kg`, `food_kcal` to PostHog — member wellbeing scores, body weight and calorie intake, linked to authenticated identity, on wellbeing:/weight:/nutrition: events.
+
+**The fix (vyve-site `0a616ca4`, 4 files, blob-md5-verified):** the six health-value keys removed from ALLOW_KEYS with an in-code rule comment. Events still mirror — THAT a check-in/weigh-in happened remains the engagement signal; the health VALUES no longer leave the platform. vbb 510→511 both hosts + sw CACHE_NAME in lock-step. Same rule class as Brevo cl.3.2(vi): **no special-category values to any analytics or email processor, ever.**
+
+**New §23 hard rule (verification):** post-commit md5 verification via `/contents/?ref=` can return non-raw responses and false-MISMATCH — `/git/blobs/{sha}` from the commit tree is the authoritative §23.30 method (caught live this session: contents API false-flagged analytics.js + index.html; blobs confirmed md5-perfect).
+
+**Filings (reports/compliance `11bed740` + cc-documents via loader, SHA-verified):** PostHog DPA (executed) + Anthropic position note (DPA incorporated by Commercial Terms acceptance — Dean's .pages exports were thumbnails again; the note records the incorporation mechanism, canonical URLs, SCCs Module 2 + UK addendum, no-training, 7-day log auto-delete, 30-day deletion; optional upgrade: browser print-to-PDF of the two canonical pages).
+
+**DPA PILE COMPLETE.** All five supplier lines closed in one evening: Supabase (executed + TIA), Brevo (by acceptance + no-health-in-emails rule), PostHog (executed + countersigned + no-health-values-in-events rule ENFORCED IN CODE), Capawesome (by acceptance), Anthropic (by acceptance + position note). Six documents in CC → Documents → Compliance; the register carries the full filing log. **Lewis's gate list is now exactly two items: employer-portal copy pass + benchmark sourcing with Alan.**
+
+**REMEDIATION DECISION FOR DEAN (backlogged):** PostHog already HOLDS historical events carrying the six health properties (since analytics went live). Options: (a) request deletion of the affected events/properties from PostHog (cleanest for diligence), (b) let PostHog retention age them out (check the project's retention setting), (c) accept as a documented historical gap remediated at `0a616ca4`. Recommend (a) — a support request citing our DPA.
+
+**DEAN DEVICE CHECK:** settings → build shows Update 511 after cache turn; log a test wellbeing check-in and confirm in PostHog live events that the event arrives WITHOUT score/feeling/energy properties.
+
 ## PM-770 — Brevo + Capawesome DPAs FILED · Brevo no-health-data operating rule banked (2026-07-12)
 
 Two more supplier lines closed, both no-signature agreements filed as evidence (vendor PDF for Brevo; canonical web capture for Capawesome — Dean's .pages exports contained only first-page thumbnails, so the DPA was captured from https://capawesome.io/legal/data-processing-agreement/ into a dated compliance-capture PDF, the standard way to evidence click-wrap terms). Both committed to reports/compliance (`b09fb95b`) and mirrored to the cc-documents bucket via compliance-doc-loader — 200, SHA-256 exact both files, cc_documents rows live. The Compliance category in CC → Documents now holds four documents.

@@ -1,3 +1,5 @@
+> **[PM-771 · 2026-07-12 · DEAN DECISION]** PostHog holds HISTORICAL events with health properties (score/feeling/energy/weight/weight_kg/food_kcal) from before the `0a616ca4` allowlist fix. Options: (a) deletion request to PostHog support citing our DPA — RECOMMENDED, (b) let retention age out, (c) document as remediated gap. Also optional: print-to-PDF the two canonical Anthropic legal pages to upgrade the position-note filing to verbatim evidence.
+
 > **[PM-764 · 2026-07-12 · MOBILE M3]** Standalone monolith mobile passes, one session each: admin-console.html (131KB, 1 media query — biggest job), partners.html (3 queries, partial coverage), partner-portal.html (1 query — EXTERNAL users, PM-763 low-key discipline applies).
 
 > **[PM-762 · 2026-07-12]** Attendances-by-week REMOVED from partners.html analytics (was a hardcoded mock). Realise later as an EF aggregation over session_live_views once live sessions have volume — table currently 3 rows with member-scoped RLS, so a client-side chart is impossible and an EF is the only honest path. Sonnet-safe when picked up.
