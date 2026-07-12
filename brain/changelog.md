@@ -1,3 +1,19 @@
+## PM-758 — Investors & Grants / Content / Podcast rebuilt — RUN THE BUSINESS DOMAIN COMPLETE (2026-07-12)
+
+Third rebuild session of the day closes the Run-the-Business page set. vyve-command-centre `ad4ec4b8`, 4 files md5-verified. All three pages replace their localStorage/VYVE_MAKE-era predecessors wholesale, all on tokens v2, all CRUD via client supabase-js under the PM-757-swept is_admin_or_team() RLS, all dropdown vocabularies read FROM the DB CHECK constraints (§23.143 held, zero bounces this session).
+
+**investor.html** — two sections, one page (matches the single nav item). Investors: table on cc_investors (stage cold/intro/meeting/due-diligence/term-sheet/passed; type Angel/VC/Family Office/Grant Body/Corporate), empty state carries the Series A targets from §3 so the page teaches even when empty. Grants: table on cc_grants (identified/applying/submitted/awarded/rejected) — **3 real grants seeded** (Awards for All / National Lottery, The Fore with an honest confirm-the-window note since the flagged Jun/Jul window is now, WHISPA flagged as research-partnership-not-grant). No invented amounts.
+
+**content.html** — status-grouped planner on cc_posts (draft/needs_review/approved/posted; pillar Physical/Mental/Social/Business from CHECK). Meta line: awaiting-review + ready-to-publish counts. `published_at` auto-stamped the first time a post is saved as posted. Posting execution stays in Metricool (nav external link) — this is the plan/approve board that replaces the frozen 13-May seed queue.
+
+**podcast.html** — cc_episodes tracker (planned/recorded/published), episode-number auto-suggests max+1, empty state points at the 60+ back-catalogue on the public podcast page rather than pretending it should live here.
+
+**RUN THE BUSINESS: every page in the domain is now live-data.** Brief→Home (PM-755), CRM (PM-756), Finance+Invoicing (PM-757), Investors+Grants/Content/Podcast (this), Tasks/Documents/Calendar (PM-640-643, un-bricked PM-757). Nothing in the domain reads localStorage or seed-data anymore.
+
+**DEAN DEVICE CHECK:** ?z=758 — Investors & Grants shows the 3 seeded grants; add/edit/delete a test row on each of the three pages to exercise the write paths.
+
+**NEXT (Phase 3 close-out):** lib-layer retirement (seed-data.js, store.js, entities.js, make.js, data.js, drafts/comments/notifications/views/acl/targets/integrations/cc-adapter — index.html load trim) + legacy page hard-delete (14 delinked files + brief.html) + kill the 4 unreachable hub pages. That single session ends Phase 3; then Phase 4 Members (admin-console strangler + Playfair sweep).
+
 ## PM-757 — Finance + Invoicing rebuilt · cc_team_only DEAD-POLICY CLASS SWEEP (2026-07-12)
 
 **The class find, fixed as a class:** PM-756's dead-RLS discovery generalised — FIFTEEN cc_* tables still carried the `cc_team_only` policy hardcoded to `auth.email()='team@vyvehealth.co.uk'` (cc_decisions, cc_documents, cc_episodes, cc_finance, cc_grants, cc_intel, cc_investors, cc_invoices, cc_knowledge, cc_okrs, cc_partners, cc_posts, cc_revenue, cc_sessions, cc_swot). That includes **cc_documents — the "shipped" PM-641 Documents page could never return rows to a real admin.** The zero-adoption mystery on the whole cc_* business layer is now fully explained: the tables were RLS-bricked from day one. Migration `cc_team_only_class_sweep_pm757` replaces all 15 with `is_admin_or_team()` ALL policies in one DO loop. Every remaining Phase 3 rebuild is now unblocked at the RLS layer.
