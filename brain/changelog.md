@@ -1,3 +1,15 @@
+## PM-769 — Supabase DPA EXECUTED + filed everywhere · compliance-doc-loader EF shipped (2026-07-12)
+
+**The Supabase line of the compliance pile is CLOSED.** Dean signed the DPA in PandaDoc (ref XA72Y-VWCKB-P88FP-XT5FX, completed 20:00 UTC): Customer = VYVE Health CIC (25 Quantock Close, North Shields NE29 9QD), contact team@vyvehealth.co.uk, **special-category health data properly declared** (self-reported physical/mental health, check-in scores + free text, questionnaire answers, activity/nutrition logs — "None" would have been a false warranty), supervisory authority ICO, signed Dean Brown as Director & CTO. Executed electronically — no privacy@supabase.com send needed on the PandaDoc flow. TIA filed as-is (it is Supabase's declaration; their signature block, not ours — PM-768 note).
+
+**Filed in two homes, SHA-256 verified end-to-end at both:**
+- VYVEBrain `reports/compliance/` (commit `1d0327b3`) — the diligence home
+- `cc-documents` bucket under `compliance/` + registered in cc_documents (category Compliance) — visible to Dean & Lewis at CC → Documents
+
+**New utility EF `compliance-doc-loader` v1** (verify_jwt false, ops-only auth: SERVICE_KEY / x-vyve-cron-key vs gdpr_cron_key()): pulls files from the private VYVEBrain repo (GitHub token supplied per-call by the privileged caller, never stored), SHA-256-verifies against the expected digest, uploads to cc-documents, upserts the cc_documents row. Built because the Claude container's egress allowlist can't reach supabase.co directly — the DB-side pg_net → EF → GitHub loop is the standard bridge. **Reusable for the remaining supplier filings (Brevo, PostHog, Capawesome, Anthropic): commit PDF to reports/compliance/, one pg_net invoke.** Live-verified: 200, both files ok:true, byte counts + digests exact, storage.objects + cc_documents rows confirmed. Scratch chunk-table approach abandoned before use and dropped.
+
+**DPA pile remaining (Dean): Brevo → PostHog → Capawesome → Anthropic.** Entity note stands: signed as VYVE Health CIC; if the Ltd conversation ever lands, DPAs re-paper (changelog PM-768/entity discussion — CIC→Ltd is not a conversion, take advice).
+
 ## PM-768 — Sub-processor register: Supabase operational-transfer nuance banked with the TIA (2026-07-12)
 
 Dean pulled the Supabase TIA during his filing pass. Two facts recorded so the register survives a sharp DPO read:
