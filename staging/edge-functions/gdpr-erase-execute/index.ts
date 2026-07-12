@@ -1,4 +1,12 @@
-// VYVE Health — gdpr-erase-execute v4.1 (4 July 2026).
+// VYVE Health — gdpr-erase-execute v5 (8 July 2026, PM-744).
+//
+// v5: after the export-artefact purge, the subject's PARTNER APPLICATION DRAFTS
+// are swept via partner_draft_erase(p_email) RPC (applied/declined drafts only —
+// live/onboarding partners are contractual and deliberately excluded), plus their
+// partner-docs/<id>/ and partner-content/<id>/ storage prefixes. Best-effort with
+// a HIGH alert on failure: the member DB purge is not re-runnable once the members
+// row is gone (gdpr_erasure_purge raises on a missing row), so a partner-half
+// failure must not fail the request — alert + manual cleanup is the posture.
 //
 // v4.1: all alertPlatform 'warning' severities → 'high'. platform_alerts has a
 // severity CHECK allowing only critical/high/info — the 'warning' rows were
@@ -207,7 +215,43 @@ async function purgeExportArtefacts(supabaseSvc: any, memberEmail: string): Prom
   }
 }
 
-// ─── Audit ────────────────────────────────────────────────────────────────────────────
+// ─── Partner draft sweep (v5) ───────────────────────────────────
+
+async function purgePartnerDrafts(supabaseSvc: any, memberEmail: string): Promise<{ ok: boolean; partner_ids: string[]; storage_removed: number; detail: string }> {
+  try {
+    const { data, error } = await supabaseSvc.rpc("partner_draft_erase", { p_email: memberEmail });
+    if (error) throw new Error(`partner_draft_erase rpc: ${error.message}`);
+    const ids: string[] = Array.isArray(data?.partner_ids) ? data.partner_ids : [];
+    let removed = 0;
+    for (const pid of ids) {
+      for (const bucket of ["partner-docs", "partner-content"]) {
+        try {
+          const { data: top } = await supabaseSvc.storage.from(bucket).list(pid, { limit: 200 });
+          const paths: string[] = [];
+          for (const entry of top ?? []) {
+            if (entry.id) { paths.push(`${pid}/${entry.name}`); continue; }
+            const { data: inner } = await supabaseSvc.storage.from(bucket).list(`${pid}/${entry.name}`, { limit: 200 });
+            for (const f of inner ?? []) if (f.id) paths.push(`${pid}/${entry.name}/${f.name}`);
+          }
+          if (paths.length > 0) {
+            const { error: rmErr } = await supabaseSvc.storage.from(bucket).remove(paths);
+            if (rmErr) throw new Error(`remove ${bucket}: ${rmErr.message}`);
+            removed += paths.length;
+          }
+        } catch (se) {
+          await alertPlatform(supabaseSvc, "high", "gdpr_erase_partner_storage_failed", memberEmail, `partner draft storage sweep failed for ${bucket}/${pid} (manual cleanup needed): ${(se as Error).message.slice(0, 200)}`);
+        }
+      }
+    }
+    return { ok: true, partner_ids: ids, storage_removed: removed, detail: ids.length ? "swept" : "no_drafts" };
+  } catch (e) {
+    const msg = (e as Error).message;
+    await alertPlatform(supabaseSvc, "high", "gdpr_erase_partner_drafts_failed", memberEmail, `partner draft erase failed (manual cleanup needed — member purge already final): ${msg.slice(0, 300)}`);
+    return { ok: false, partner_ids: [], storage_removed: 0, detail: msg.slice(0, 200) };
+  }
+}
+
+// ─── Audit ────────────────────────────────────────────────────────────────────────
 
 async function writeAudit(supabaseSvc: any, subject: string, requester: string, kind: string, action: string, metadata: Record<string, unknown>) {
   try {
@@ -224,7 +268,7 @@ async function writeAudit(supabaseSvc: any, subject: string, requester: string, 
   }
 }
 
-// ─── Per-row processing ──────────────────────────────────
+// ─── Per-row processing ────────────────────────────────
 
 async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "executed" | "failed"; detail?: string; summary?: any }> {
   const { id, member_email, requested_by, request_kind, attempt_count } = req;
@@ -261,6 +305,9 @@ async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "ex
     // (best-effort with alert — DB purge is not re-runnable once members is gone).
     const storageRes = await purgeExportArtefacts(supabaseSvc, member_email);
 
+    // 2d. Sweep the subject's partner application DRAFTS (v5 — see header).
+    const partnerDraftRes = await purgePartnerDrafts(supabaseSvc, member_email);
+
     // 3. auth.users delete (post-tx)
     let authDeleted = false;
     let authDeleteDetail = "";
@@ -291,6 +338,7 @@ async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "ex
       brevo_contact: brevoRes,
       posthog: posthogRes,
       export_artefacts: storageRes,
+      partner_drafts: partnerDraftRes,
       auth_user_deleted: authDeleted,
       auth_user_detail: authDeleteDetail,
       duration_ms: Date.now() - startedAt,
@@ -343,7 +391,7 @@ async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "ex
   }
 }
 
-// ─── HTTP entry ───────────────────────────────────────────────────────────────────────────────
+// ─── HTTP entry ──────────────────────────────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
   const supabaseSvc = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });

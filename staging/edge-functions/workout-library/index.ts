@@ -112,22 +112,33 @@ Deno.serve(async (req: Request) => {
     // throws "no unique or exclusion constraint matching the ON CONFLICT specification".
     // Pause the member's current active plan ON THIS SURFACE ONLY (stays resumable);
     // other-surface active plans (e.g. a movement plan) are left untouched.
-    await admin
+    // v22: capture the paused row IDs so a failed insert can ROLL BACK the pause —
+    // a failed activate must never strand a member with zero active plans
+    // (PM: Phil Just-Steps incident, 2026-07-05).
+    const { data: pausedRows } = await admin
       .from('workout_plan_cache')
       .update({ is_active: false, paused_at: new Date().toISOString() })
       .eq('member_email', email)
       .eq('is_active', true)
-      .eq('programme_json->>surface', surface);
+      .eq('programme_json->>surface', surface)
+      .select('id');
 
     // Stamp surface INTO programme_json so the active-plan read path
     // (workouts-programme.js filters programme_json->>surface=eq.workouts) finds it,
     // and the partial unique (member_email, programme_json->>surface WHERE is_active) holds.
     const newProgrammeJson = { ...(programme.programme_json || {}), surface };
 
+    // v22: plan_duration_weeks is NOT NULL with no default. Open-ended programmes
+    // (Just Steps: duration_weeks = null) use sentinel 0 — same convention as the
+    // movement picker (movement-plans.html startPlan). Never pass null through
+    // (§23: explicit null overrides nothing and hard-fails the row).
+    const durationWeeks = programme.duration_weeks
+      ?? ((newProgrammeJson.weekly_targets || []).length || 0);
+
     const { error: insertErr } = await admin.from('workout_plan_cache').insert({
       member_email: email,
       programme_json: newProgrammeJson,
-      plan_duration_weeks: programme.duration_weeks,
+      plan_duration_weeks: durationWeeks,
       current_week: 1,
       current_session: 1,
       is_active: true,
@@ -138,6 +149,19 @@ Deno.serve(async (req: Request) => {
 
     if (insertErr) {
       console.error('activate error:', insertErr);
+      // v22 rollback: restore the plan(s) we just paused so the member is never
+      // left planless by a failed activate.
+      try {
+        const ids = (pausedRows || []).map((r: any) => r.id);
+        if (ids.length) {
+          await admin
+            .from('workout_plan_cache')
+            .update({ is_active: true, paused_at: null })
+            .in('id', ids);
+        }
+      } catch (rbErr) {
+        console.error('activate rollback failed:', rbErr);
+      }
       return new Response(JSON.stringify({ error: insertErr.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
