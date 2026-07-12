@@ -1,3 +1,17 @@
+## PM-764 — Domain landing pages + M1 mobile layer (Dean direction mid-device-walk) (2026-07-12)
+
+Dean's walk produced two directions: home tiles should drill into a domain page of more tiles, and the whole CC needs to work on mobile. Mockup approved before build (domain tile grid, both themes, responsive columns, shared table treatment).
+
+**Domain landings — config-driven, drift-proof (vyve-command-centre `a5c59d8f`, 7 files md5-verified):** ONE new `pages/domain.html` serves every `#/domain-{key}` route. It reads the key from the hash, looks it up in the new `window.VYVE_DOMAINS` registry (sidebar-config), and tiles the matching VYVE_NAV section's items — internal slugs route in-shell with their status pill, standalone/external items (admin-console, partners, the live employer portal) open directly with an Open/External pill. Because tiles render FROM the nav config, adding a nav item automatically adds its landing tile. Router: `resolvePage` recognises `domain-*` with a `file` override so all five domains share the one page file (page cache stays per-slug; scripts re-execute on inject and re-read the hash). Crumbs/ACL verified safe for the new slugs (ACL defaults unknown slugs to member policy; crumbs skip the null top entry). Nav items gained `desc` fields (inert to the sidebar renderer) for tile copy.
+
+**Home:** the five main tile hrefs repointed to the landings (RtB no longer jumps straight to Tasks, Employers tile is now in-shell). The quick-link chips are KEPT deliberately — they preserve Dean's one-tap paths to admin-console/partners so the interstitial costs power users nothing; Employers chip row gained "Accounts".
+
+**M1 mobile findings + ships:** the shell was already most of the way there — drawer at ≤900px, content padding + modal sizing at ≤480px, home collapses. Grid audit across all shell pages: every multi-col grid is auto-fit/auto-fill (responsive by construction) or a 2-col modal field pair (fine on phones) EXCEPT two fixed repeat(4,1fr) grids — `.pillar-grid` (activity-depth) and `.dormancy-grid` (retention) — which got collapse queries. `components.css` gained the documented M1 primitives for the coming sweeps: `.m-scroll` table wrap, tighter content padding + near-full-screen modals at ≤640px. The newer CRUD pages (invoicing/employers/etc.) already ship their tables inside overflow-x:auto cards.
+
+**MOBILE CAMPAIGN REMAINING:** **M2** — shell-page sweep (adopt .m-scroll where tables lack a scrolling card, page-scoped modal classes to the ≤640px treatment, walk each RtB/Analytics page at 390px). **M3** — the three standalone monoliths, one session each: admin-console.html (131KB, 1 media query), partners.html (3 queries, partial), partner-portal.html (1 query — external users, same low-key discipline as PM-763). Backlog items added.
+
+**DEAN DEVICE CHECK (phone-first — this one IS the mobile check):** Home → tap each of the five tiles → domain landing renders that section's tiles → tap through to a page and back; chips still one-tap; on the phone confirm tiles stack single-column, Activity Depth pillar grid + Retention dormancy grid stack, sidebar drawer opens/closes.
+
 ## PM-763 — Phase 7 Partner Portal SHIPPED: token adoption — CC OVERHAUL CAMPAIGN BUILD-COMPLETE (2026-07-12)
 
 **partner-portal.html** (vyve-command-centre `39c0e243`, single file, md5-verified) — the campaign closer, external-audience discipline held (minimal structural surface, zero feature behaviour change).

@@ -1,3 +1,7 @@
+> **[PM-764 · 2026-07-12 · MOBILE M2]** Shell-page mobile sweep: adopt .m-scroll (components.css) on any table lacking a scrolling card, move page-scoped modal classes to the ≤640px near-full treatment, walk every RtB/Analytics page at 390px width. Sonnet-safe, one session.
+
+> **[PM-764 · 2026-07-12 · MOBILE M3]** Standalone monolith mobile passes, one session each: admin-console.html (131KB, 1 media query — biggest job), partners.html (3 queries, partial coverage), partner-portal.html (1 query — EXTERNAL users, PM-763 low-key discipline applies).
+
 > **[PM-762 · 2026-07-12]** Attendances-by-week REMOVED from partners.html analytics (was a hardcoded mock). Realise later as an EF aggregation over session_live_views once live sessions have volume — table currently 3 rows with member-scoped RLS, so a client-side chart is impossible and an EF is the only honest path. Sonnet-safe when picked up.
 
 > **[PM-751 · 2026-07-12]** Live-mode device fixes shipped (`6d7e6508`): renderDeepDive demo-only guard, sign-in button reset, loadLive catch split (network vs display errors — display errors now console.error'd, never again mislabelled as connection failures). **NEW (optional, Sonnet-safe): seed VYVE Demo Co fixture — 12 wks of wellbeing check-ins across 10+ test members + recent activity spread — to visually verify the UNSUPPRESSED rendering path (never yet seen on a device) before a real client hits it.**
