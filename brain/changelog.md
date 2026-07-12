@@ -1,3 +1,17 @@
+## PM-761 IN FLIGHT — Phase 6 Employers: recon done, build handed to a fresh session (2026-07-12)
+
+Context-window handoff mid-PM. Recon complete, zero code shipped for this PM yet; handoff prompt delivered to Dean (vyve-handoff-cc-overhaul-pm761.md). Recording the recon here so the brain, not the chat, carries the state.
+
+**Recon findings:**
+- **employer_admins** (email PK, employer_name, created_at, created_by) has service-role-only RLS — NO policies. Client reads impossible; the CC accounts list must go through an EF. Plan: **employer-provision v2 adds a `list` action** returning employer_admins rows + per-employer seat counts from employer_members. All v1 behaviour preserved.
+- **employer-provision v1 structural catch:** the contact_email validation fires BEFORE the action check; `list` has no contact email — restructure so list bypasses that guard without weakening it for provision/deprovision. Re-fetch the live source via get_edge_function before extending (never blind-overwrite). v1 quirks to preserve: verify_jwt false + internal auth (admin JWT → admin_users role=admin active; ops via Bearer SERVICE_KEY or x-vyve-cron-key vs gdpr_cron_key()); CORS locked to admin.vyvehealth.co.uk POST-only; provision NEVER resets an existing auth user's password, 409 already_provisioned; deprovision bans auth 87600h only if not-member AND not-admin; audit shape admin_email/admin_role/member_email/action/table_name/new_value.
+- **employer_benchmark_figures** (id, scope, metric, value, source, published_year, added_by, created_at): only policy is benchmark_read_authenticated(SELECT true). CC editor needs a small migration adding an is_admin_or_team() write policy. Table ships EMPTY by design — Lewis + Alan source real figures; seed nothing.
+- Live state: only employer in employer_members is 'VYVE Demo Co' (22-member dev fixture); Dean's employer_admins row is deanonbrown@hotmail.com.
+
+**Agreed PM-761 build steps (in order):** (1) deploy employer-provision v2 (+list, all v1 behaviour kept); (2) benchmark write-policy migration; (3) pages/employers.html in the shell — accounts table with provision/deprovision via the EF, benchmark CRUD direct under the new policy, external portal + sales-demo links; (4) nav: "employers" slug into the Employers section, keeping the two external links; (5) live-verify list via pg_net (200 cron-key + 401 bad); (6) CC commit + md5 + brain close.
+
+**After PM-761:** Phase 5 partners.html re-skin (cosmetic; decide the two known mocked widgets: attendances-by-week, engagement scorer — realise or remove), then Phase 7 partner-portal.html token adoption last. Cumulative device checks from PMs 752–760 still pending Dean's walk; Lewis gates unchanged.
+
 ## PM-760 — Phase 4 (Members) step 1: admin-console re-skinned, Playfair retired from the CC (2026-07-12)
 
 **admin-console.html** (vyve-command-centre `99a61e67`, single file, md5-verified) — strangler step 1: values + fonts ONLY, zero markup/JS behaviour change on the live members-admin surface. Dark/light token values swept to the approved tokens-v2 family (per-theme gold added; sidebar brand-dark constants match the shell), font link Playfair+Inter → DM Sans+DM Mono, `--font-head` → DM Sans (headings 600→700 for equivalent presence). **Playfair is now ZERO across the entire CC repo — PM-739's brand retirement finally complete on this host.**
