@@ -2,13 +2,13 @@
 
 > Auto-generated from live Supabase project `ixjfklpckgxrwjlfsaaz`.
 > DO NOT EDIT — overwritten weekly by the `schema-snapshot-refresh` Edge Function.
-> Last refresh: 2026-07-05T03:01:40.650Z
+> Last refresh: 2026-07-12T03:01:38.858Z
 
-**Totals:** 154 tables (154 with RLS) · 1802 columns · 55 FKs · 264 triggers · 125 public functions · 217 RLS policies · 409 indexes · 46 cron jobs
+**Totals:** 157 tables (157 with RLS) · 1843 columns · 57 FKs · 270 triggers · 130 public functions · 221 RLS policies · 414 indexes · 47 cron jobs
 
 ---
 
-## Tables (154)
+## Tables (157)
 
 ### `achievement_metrics` · RLS
 
@@ -1201,6 +1201,78 @@
 - `idx_certificates_earned_at`
 - `idx_certificates_member_email`
 
+### `challenge_enrolments` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO |  | ✓ |  |
+| `member_email` | text | NO |  |  |  |
+| `challenge_slug` | text | NO |  |  |  |
+| `status` | text | NO | 'active'::text |  |  |
+| `hard_mode` | boolean | NO | false |  |  |
+| `started_at` | timestamp with time zone | NO | now() |  |  |
+| `ends_at` | timestamp with time zone | NO |  |  |  |
+| `progress_count` | integer | NO | 0 |  |  |
+| `streak_current` | integer | NO | 0 |  |  |
+| `streak_best` | integer | NO | 0 |  |  |
+| `reset_count` | integer | NO | 0 |  |  |
+| `day_state` | jsonb | NO | '{}'::jsonb |  |  |
+| `last_progress_at` | timestamp with time zone | YES |  |  |  |
+| `completed_at` | timestamp with time zone | YES |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `challenge_enrolments_status_check`: CHECK ((status = ANY (ARRAY['active'::text, 'completed'::text, 'expired'::text, 'abandoned'::text])))
+
+**Foreign keys:**
+- `challenge_slug` → `challenge_library.slug` (`challenge_enrolments_challenge_slug_fkey`)
+
+**RLS policies:**
+- `challenge_enrol_insert_own` (INSERT, roles: public) — — / CHECK: (auth.email() = member_email)
+- `challenge_enrol_select_own` (SELECT, roles: public) — (auth.email() = member_email)
+- `challenge_enrol_update_own` (UPDATE, roles: public) — (auth.email() = member_email) / CHECK: (auth.email() = member_email)
+
+**Indexes:**
+- `challenge_enrol_active_uniq`
+- `challenge_enrol_member_idx`
+- `challenge_enrolments_pkey`
+
+### `challenge_library` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `slug` | text | NO |  | ✓ |  |
+| `title` | text | NO |  |  |  |
+| `description_md` | text | YES |  |  |  |
+| `pillar` | text | NO |  |  |  |
+| `area` | text | YES |  |  |  |
+| `difficulty` | text | NO |  |  |  |
+| `goal_type` | text | NO |  |  |  |
+| `goal_target` | integer | NO |  |  |  |
+| `duration_days` | integer | NO |  |  |  |
+| `metric` | text | NO |  |  |  |
+| `metric_filter` | jsonb | YES |  |  |  |
+| `hard_mode_available` | boolean | NO | false |  |  |
+| `is_flagship` | boolean | NO | false |  |  |
+| `image_url` | text | YES |  |  |  |
+| `is_active` | boolean | NO | true |  |  |
+| `sort_order` | integer | NO | 100 |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+| `daily_tasks` | jsonb | YES |  |  |  |
+
+**Check constraints:**
+- `challenge_library_difficulty_check`: CHECK ((difficulty = ANY (ARRAY['easy'::text, 'medium'::text, 'hard'::text])))
+- `challenge_library_goal_type_check`: CHECK ((goal_type = ANY (ARRAY['count'::text, 'streak'::text, 'daily'::text])))
+- `challenge_library_pillar_check`: CHECK ((pillar = ANY (ARRAY['body'::text, 'mind'::text, 'connect'::text, 'habits'::text, 'engagement'::text])))
+
+**RLS policies:**
+- `challenge_library_public_read` (SELECT, roles: public) — true
+
+**Indexes:**
+- `challenge_library_pkey`
+
 ### `checkin_questions` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -1480,6 +1552,19 @@
 - `daily_mood_checkins_member_email_mood_date_key`
 - `daily_mood_checkins_pkey`
 - `idx_daily_mood_checkins_member_date`
+
+### `ef_rate_limits` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `key` | text | NO |  | ✓ |  |
+| `window_start` | timestamp with time zone | NO | now() |  |  |
+| `count` | integer | NO | 1 |  |  |
+
+**RLS policies:** _(none — service-role only)_
+
+**Indexes:**
+- `ef_rate_limits_pkey`
 
 ### `employer_members` · RLS
 
@@ -2704,7 +2789,7 @@
 | `last_updated_at` | timestamp with time zone | YES |  |  |  |
 
 **Check constraints:**
-- `mind_activities_kind_check`: CHECK ((kind = ANY (ARRAY['breathwork'::text, 'journal'::text, 'affirmation'::text, 'visualisation'::text, 'meditation'::text, 'sleep'::text])))
+- `mind_activities_kind_check`: CHECK ((kind = ANY (ARRAY['breathwork'::text, 'journal'::text, 'affirmation'::text, 'visualisation'::text, 'meditation'::text, 'sleep'::text, 'money_checkin'::text, 'money_course'::text, 'mental_fitness'::text])))
 
 **Triggers:**
 - `mind_activities_set_time_fields` — BEFORE INSERT
@@ -2774,10 +2859,11 @@
 - `mind_fitness_log_tool_id_check`: CHECK ((tool_id = ANY (ARRAY['box_breathing'::text, 'grounding'::text, 'urge_surfing'::text, 'reframe'::text, 'thinking_trap'::text, 'worry_sort'::text, 'gratitude'::text, 'self_compassion'::text, 'one_small_action'::text])))
 
 **Triggers:**
-- `mark_home_state_dirty_mfl_del` — AFTER DELETE
-- `mark_home_state_dirty_mfl_ins` — AFTER INSERT
-- `mark_home_state_dirty_mfl_upd` — AFTER UPDATE
+- `zz_crisis_scan_mf_practice` — AFTER INSERT/UPDATE
 - `zz_lc_email_mind_fitness_log` — BEFORE INSERT/UPDATE
+- `zzz_mark_home_state_dirty_del` — AFTER DELETE
+- `zzz_mark_home_state_dirty_ins` — AFTER INSERT
+- `zzz_mark_home_state_dirty_upd` — AFTER UPDATE
 
 **RLS policies:**
 - `member own` (ALL, roles: public) — (( SELECT auth.email() AS email) = member_email) / CHECK: (( SELECT auth.email() AS email) = member_email)
@@ -2804,6 +2890,7 @@
 - `mind_moods_score_check`: CHECK (((score >= 1) AND (score <= 5)))
 
 **Triggers:**
+- `zz_crisis_scan_mood_note` — AFTER INSERT/UPDATE
 - `zz_lc_email_mind_moods` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
@@ -3319,13 +3406,15 @@
 | `payment_link_url` | text | YES |  |  |  |
 | `payment_link_id` | text | YES |  |  |  |
 | `trial_days` | integer | NO | 14 |  |  |
+| `community_visible` | boolean | NO | true |  |  |
+| `cover_url` | text | YES |  |  |  |
 
 **Check constraints:**
 - `partner_partners_pillar_check`: CHECK ((pillar = ANY (ARRAY['body'::text, 'mind'::text, 'connect'::text])))
 - `partner_partners_status_check`: CHECK ((status = ANY (ARRAY['applied'::text, 'vetting'::text, 'interview'::text, 'contract'::text, 'onboarding'::text, 'live'::text, 'suspended'::text, 'declined'::text])))
 
 **Triggers:**
-- `trg_assert_partner_golive` — BEFORE UPDATE
+- `trg_assert_partner_golive` — BEFORE INSERT/UPDATE
 
 **RLS policies:**
 - `admin_all_partner_partners` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
@@ -3855,8 +3944,13 @@
 | `position_in_playlist` | integer | YES |  |  |  |
 | `created_at` | timestamp with time zone | NO | now() |  |  |
 | `updated_at` | timestamp with time zone | NO | now() |  |  |
+| `partner_id` | uuid | YES |  |  |  |
+
+**Foreign keys:**
+- `partner_id` → `partner_partners.id` (`replay_videos_partner_id_fkey`)
 
 **Triggers:**
+- `replay_partner_attribution` — BEFORE INSERT
 - `replay_videos_updated_at_trg` — BEFORE UPDATE
 
 **RLS policies:**
@@ -4643,7 +4737,7 @@
 
 ---
 
-## Public Functions (125)
+## Public Functions (130)
 
 - `_vyve_daily_streak(p_dates date[], p_today date)` — func
 - `_vyve_daily_streak_best(p_dates date[])` — func
@@ -4666,6 +4760,7 @@
 - `charity_count_workouts()` — func
 - `charity_total_reconcile()` — func
 - `charity_total_reconcile_and_heal()` — func
+- `check_rate_limit(p_key text, p_max integer, p_window_seconds integer)` — func
 - `comms_can_send(p_email text, p_channel text, p_msg_type text, p_msg_id text, p_now timestamp with time zone)` — func
 - `comms_log_send(p_email text, p_channel text, p_msg_type text, p_msg_id text, p_register text, p_meta jsonb)` — func
 - `compute_cc_activity()` — func
@@ -4717,7 +4812,10 @@
 - `normalise_exercise_names_jsonb_trigger()` — func
 - `normalise_workout_plan_shape()` — func
 - `notify_crisis_scan()` — func
+- `partner_draft_erase(p_email text)` — func
+- `partner_drafts_purgeable(p_days integer, p_limit integer)` — func
 - `podcast_episodes_set_updated_at()` — func
+- `prune_ef_rate_limits()` — func
 - `queue_health_write_back()` — func
 - `read_vault_secret(secret_name text)` — func
 - `rebuild_member_activity_daily()` — func
@@ -4761,6 +4859,7 @@
 - `tg_refresh_home_state_from_members()` — func
 - `tg_refresh_member_home_state()` — func
 - `trg_partner_session_min_notice()` — func
+- `trg_replay_partner_attribution()` — func
 - `update_cc_updated_at()` — func
 - `update_cert_sessions_count()` — func
 - `update_push_native_updated_at()` — func
@@ -4773,7 +4872,7 @@
 
 ---
 
-## Cron Jobs (46)
+## Cron Jobs (47)
 
 | Job | Schedule | Active | Command preview |
 |---|---|---|---|
@@ -4790,7 +4889,7 @@
 | `email-watchdog` | `*/30 * * * *` | ✓ | `SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/functions` |
 | `monthly-report` | `15 8 1 * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
 | `onboarding-health` | `10,40 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
-| `partner-push-dispatcher` | `*/15 * * * *` | ✓ | ` SELECT net.http_post( url := (SELECT decrypted_secret FROM vault.decrypted_secr` |
+| `partner-push-dispatcher` | `*/15 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `process-scheduled-pushes` | `*/5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `refresh-member-states` | `0 2 * * *` | ✓ | `SELECT public.refresh_member_states();` |
 | `session-publish-hourly` | `5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
@@ -4815,6 +4914,7 @@
 | `vyve-foundation-running-plans` | `*/5 * * * *` | ✓ | `SELECT public.ensure_foundation_running_plans();` |
 | `vyve-gdpr-erase-daily` | `0 3 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-gdpr-export-tick` | `*/15 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `vyve-partner-draft-purge-daily` | `30 3 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-recompute-step-baselines` | `10 4 * * *` | ✓ | `SELECT public.recompute_step_baselines();` |
 | `vyve-reengagement-daily` | `0 8 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve-refresh-replay-videos-hourly` | `45 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
