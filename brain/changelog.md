@@ -1,3 +1,12 @@
+## PM-768 — Sub-processor register: Supabase operational-transfer nuance banked with the TIA (2026-07-12)
+
+Dean pulled the Supabase TIA during his filing pass. Two facts recorded so the register survives a sharp DPO read:
+
+1. **The TIA is Supabase's declaration, not ours** — its signature block is for the Data Importer (Supabase). VYVE files it as-is; only the DPA gets signed by VYVE and returned to privacy@supabase.com.
+2. **Register row 1 tightened:** "None required (EU processing)" was true for member data at rest (Frankfurt) but incomplete — Supabase Inc is a US entity whose support access, service logs (BigQuery) and some infrastructure can touch US/Singapore. Transfer mechanism now reads: primary data EU; operational layer under DPA-incorporated SCCs (Module 2) + TIA on file. The questionnaire statement in §4 gained the matching sentence. This is exactly the "your DB is in Germany but your DB company is in Delaware" follow-up, pre-empted.
+
+Filing state per Dean: DPA download → sign as VYVE Health CIC → return to privacy@supabase.com (execution pending his send); TIA filed as downloaded.
+
 ## PM-767 — REGION CORRECTION: Supabase production is Frankfurt (eu-central-1), not Ireland (2026-07-12)
 
 Caught live during Dean's DPA filing pass: the Supabase dashboard showed the production project in eu-central-1, contradicting every VYVE document. Verified via the management API — project `ixjfklpckgxrwjlfsaaz` region is **eu-central-1 (Frankfurt)**. The brain, the Lewis KB, sub-processor register v1, and the privacy policy all said West EU/Ireland — all wrong, apparently since the project's creation.
