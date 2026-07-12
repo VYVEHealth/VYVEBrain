@@ -1,3 +1,17 @@
+## PM-766 — Privacy notice: post-native-app processors disclosed · CTA gate closed BY DESIGN · YouTube register item found stale (2026-07-12)
+
+Gate-clearing session with Dean working the Lewis list directly.
+
+**DECISION (Dean): the "Become a VYVE partner" public CTA is NOT wanted — closed by design.** Partner acquisition is deliberately direct-to-Lewis: prospects apply to him, VYVE sends info, Gate-A follows. The standing "Lewis CTA gate (blocking public partner discoverability)" item is retired — public discoverability is intentionally off. Master §22/open-items updated accordingly.
+
+**Privacy notice (Test-Site-Finalv3 `1919c79b`, md5-verified):** the sub-processor register's YouTube-embed disclosure ACTION was checked first and found ALREADY SATISFIED — privacy-policy.html discloses YouTube embeds in both §6 (third parties) and §9 (cookies). Stale register item; no edit needed. The REAL gaps were the post-native-app processors, now disclosed in §6: Apple/Google push delivery (push tokens + payload content, explicitly never health data — matches the payload policy in the register), Capawesome OTA update checks (device/app identifiers only, EU Germany), and the PostHog line extended with EU (Frankfurt) hosting + session-replay sampling with input/email masking (PM-695 facts). Wording lifted from the Lewis-owned register — factual disclosures, not brand copy — **Lewis to do a voice pass at his leisure, nothing gating.**
+
+**DPA filings reassigned Dean-ward:** Dean is taking the supplier DPA acceptance/filing pass himself (he holds the accounts) — checklist issued in-session: Supabase (dashboard → org → Legal Documents → accept + download), Brevo (account → Legal/DPA), PostHog EU (org settings → DPA), Capawesome (confirm terms on file), Anthropic (confirm commercial terms + DPA — the one an enterprise DPO asks about first). Filing home: one drive folder, copies named `<supplier>-dpa-<date>.pdf`. Register §5 owners updated from Lewis to Dean for items 1–2.
+
+**Lewis's remaining gates after this session: employer-portal copy pass + benchmark figure sourcing with Alan (editor live since PM-761). Everything else on his list is closed, stale, or moved to Dean.**
+
+**Also open from earlier today: PM-766-adjacent fixture question** — the "VYVE Demo Co" roster was found to be 20 REAL members (not test accounts; charity-counter/crisis-scan/cert triggers make seeding them corrupting). Dean has the synthetic-roster rebuild recommendation, decision pending. Separate flag raised: real member health activity currently aggregates into the sales-demo employer — purpose-limitation question for Lewis.
+
 ## PM-765 — Mobile M2 SHIPPED: shell-page sweep (2026-07-12)
 
 Second mobile session, straight off the PM-764 backlog item. vyve-command-centre `3a3af734`, 11 files md5-verified, CSS-only (zero JS touched; the only markup change is a class addition on five table containers).
