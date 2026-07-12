@@ -1,3 +1,11 @@
+## SESSION CLOSE — 12 Jul 2026 evening (PM-766 → PM-771): gates + compliance evening (2026-07-12)
+
+Single-evening arc, all banked: PM-766 (partner CTA closed by design + privacy notice post-native-app processors), PM-767 (Supabase region is FRANKFURT eu-central-1, corrected everywhere), PM-768 (register transfer-mechanism nuance from the TIA), PM-769 (Supabase DPA executed + filed, compliance-doc-loader EF shipped), PM-770 (Brevo + Capawesome filed, no-health-in-Brevo-emails rule), PM-771 (PostHog DPA executed + the analytics health-values breach found and fixed same-hour at vyve-site `0a616ca4`; Anthropic position note; **DPA PILE COMPLETE — 5/5**).
+
+Dean's .pages copy-paste exports were confirmed redundant (thumbnail-only format) — every filed document is either signed (Supabase, PostHog PandaDoc), the vendor original (Brevo), or a dated canonical capture (Capawesome, Anthropic). Nothing to redo.
+
+Carrying into next session, in priority order: (1) Dean device check — vbb shows Update 511, test check-in arrives in PostHog WITHOUT score/feeling/energy props; (2) Dean decision — purge historical PostHog health properties (recommend support request citing the DPA); (3) Dean decision — Demo Co fixture rebuild (roster = 20 REAL members, still parked from the CC session); (4) Gate-A emails (Men Together CIC, Alex, Nicola); (5) flag Lewis — his KB doc still says Ireland, privacy-policy voice pass optional; his gate list is now exactly two (portal copy pass, benchmarks with Alan); (6) Phil — HAVEN clinical sign-off still the hard pre-Sage-diligence item.
+
 ## PM-771 — PostHog allowlist BREACH FIXED same-hour · DPA PILE COMPLETE (2026-07-12)
 
 **The find:** while filing the PostHog DPA Dean had just executed (countersigned by PostHog's VP Operations, ref CEIKI-EW7QC-O8PB5-RRC7F; Annex I declares sensitive categories **N/A**), the analytics wrapper audit showed we were in breach from the moment of signature: `analytics.js` ALLOW_KEYS explicitly forwarded `score`, `feeling`, `energy`, `weight`, `weight_kg`, `food_kcal` to PostHog — member wellbeing scores, body weight and calorie intake, linked to authenticated identity, on wellbeing:/weight:/nutrition: events.
