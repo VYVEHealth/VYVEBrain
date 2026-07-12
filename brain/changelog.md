@@ -1,3 +1,19 @@
+## PM-757 — Finance + Invoicing rebuilt · cc_team_only DEAD-POLICY CLASS SWEEP (2026-07-12)
+
+**The class find, fixed as a class:** PM-756's dead-RLS discovery generalised — FIFTEEN cc_* tables still carried the `cc_team_only` policy hardcoded to `auth.email()='team@vyvehealth.co.uk'` (cc_decisions, cc_documents, cc_episodes, cc_finance, cc_grants, cc_intel, cc_investors, cc_invoices, cc_knowledge, cc_okrs, cc_partners, cc_posts, cc_revenue, cc_sessions, cc_swot). That includes **cc_documents — the "shipped" PM-641 Documents page could never return rows to a real admin.** The zero-adoption mystery on the whole cc_* business layer is now fully explained: the tables were RLS-bricked from day one. Migration `cc_team_only_class_sweep_pm757` replaces all 15 with `is_admin_or_team()` ALL policies in one DO loop. Every remaining Phase 3 rebuild is now unblocked at the RLS layer.
+
+**pages/finance.html** (vyve-command-centre `425b3f40`): cc_finance is a monthly snapshot ledger (mrr/burn/cash/target/recorded_date). Page: 4 KPIs — **live billed MRR from cc_revenue_cache.headline_json** (gold) alongside latest-snapshot burn/cash and derived runway (cash÷burn) — plus the **£6K full-time MRR target bar** (Dean's threshold, overridable per-snapshot via the target column), snapshot history table, record/edit modal. Live MRR means the page is truthful on day one with zero snapshots.
+
+**pages/invoicing.html**: cc_invoices CRUD — status vocabulary read FROM the DB CHECK (outstanding/paid/overdue/cancelled, §23.143 discipline), unpaid-total meta line, raise/edit/delete modal, Mark-paid one-tap row action.
+
+**crm.html won→client flow**: saving a lead into `won` (from any other stage) auto-inserts a cc_clients row at `onboarding` (its CHECK vocabulary), carrying company/contact/email/value + provenance note; failure surfaces honestly without blocking the lead save. Also fixed: `created_by` was only captured on inserts and would have been sent on UPDATEs once added — now captured once, stripped from update payloads (insert-time provenance only).
+
+All four files md5-verified at `425b3f40`; scripts syntax-checked via Function() harness pre-commit. Nav: finance + invoicing → live.
+
+**DEAN DEVICE CHECK:** ?z=757 — Finance shows live MRR £20 + the target bar at 0.3%; record a test snapshot (exercises cc_finance write under the new RLS); raise a test invoice + Mark paid; optionally drag a junk lead to won and confirm a client row appears (delete both after).
+
+**NEXT (Phase 3):** Investors & Grants (cc_investors/cc_grants), Content (cc_posts), Podcast (cc_episodes) — all now RLS-unblocked; then lib-layer + seed-data retirement + legacy hard-delete.
+
 ## PM-756 — Sales Pipeline rebuilt on cc_leads: first write-side Phase 3 page (2026-07-12)
 
 The first Run-the-Business rebuild with a write path. vyve-command-centre `ccc0fda2` (pages/crm.html full replacement + nav status), migration `cc_crm_rls_pm756`, both verified.
