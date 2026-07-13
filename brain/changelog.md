@@ -1,3 +1,7 @@
+## PM-780 — Post-close addendum: allowlist + user menu + PM-779 stragglers (2026-07-12 ~23:30)
+
+`deanonbrown2@gmail.com` ADDED to admin_users (role admin, active — Dean's explicit call over separate identities; not a members row, so no analytics contamination). CC `1a3eb254`: topnav avatar button was never wired — now opens a user menu (signed-in email + Sign out, click-outside/page-change close); lib/auth.js carried the LAST two stub-style `client()` calls missed by the PM-779 sweep (including the Access-restricted card's own Sign out button, which was broken) — patched. §23.146 sweep for `VYVE_SUPABASE.client()` now returns zero across the repo.
+
 ## SESSION CLOSE — 12 Jul 2026 late (PM-772 → PM-779): Anthropic captures filed + CC repair night (2026-07-12)
 
 Arc: PM-772 (Anthropic ToS+DPA canonical captures filed dual-home — position note now verbatim-backed), alert-backlog purge (2797→22 open, zero critical/high), PM-773 (vyve-site: bot-noise session gate, vbb 512), PM-774 (CC alert renderer), PM-775 (alert auto-ageing cron 55), PM-776 (CC desktop drawer fix + tile de-nest), PM-777 (cc_kv strangler — all 16 localStorage-era CC pages now server-backed), PM-778 (calendar defensive boot — caught the live error from Dean's phone), PM-779 (ONE Supabase wrapper — the stub clobber that had silently broken calendar/tasks/documents/sessions/active-users/settings AND cc-sync).
