@@ -1,3 +1,17 @@
+## PM-815 — 14 Jul 2026 late night: B4 POLISH SHIPPED — BOOKING SYSTEM COMPLETE (2026-07-14)
+
+The last open booking phase, straight after the PM-814 close (`30f1bf53`). Dean's go: "continue with b4".
+
+**CANCEL POLICY (DB-enforced):** migration `pm815_booking_cancel_policy` — `booking_services.cancel_notice_hours` (default 24) + BEFORE UPDATE trigger `trg_booking_cancel_policy`: a MEMBER cancelling their own CONFIRMED booking inside the notice window is REJECTED at the DB (`cancel_window_closed`). pending_payment cancels always allowed (nothing paid); partner/admin/cron paths bypass (auth.email() mismatch/NULL); employer rows bypass. **Assert-verified live** (simulated member JWT claims: inside-window blocked, outside-window allowed, test rows cleaned). Closes the PM-814 logged trade-off (member cancel was an ungated client PATCH). Partner sets the policy per service in the editor (shown on service cards); member sees it in the slot sheet ("Free cancellation until Xh before") and gets a clear message on rejection instead of a silent failure.
+
+**.ICS ATTACHMENTS:** `booking-paid-confirm` v2 + `confirm-booking` v2 — every confirmation email (member, employer, partner) now carries a calendar invite (VCALENDAR built in-EF, base64 via Brevo attachment; UID `bk-{id}@vyvehealth.co.uk`, link-or-location in DESCRIPTION/LOCATION). Dean's pending Emma Clarke employer confirm will carry it.
+
+**ATTENDANCE STATS:** partner portal diary gains a stats strip — Upcoming / Completed / No-shows / Attendance % (completed÷(completed+no_show)) — computed from the diary rows the partner already loads.
+
+Commits: CC `1ca7bf1b` (editor field + card meta + stats strip), vyve-site `1c4722f5` vbb 522 (sheet policy note + cancel rejection UX). NOT done in B4: `pm814-commit-runner` EF deletion (no MCP delete path — Dean dashboard task or next CLI session) and §11B page-docs (help/partner-profile/partner-space) — both stay on backlog. **Booking system: DESIGN → B1 → B3 → B2 → B4, all shipped in one session.** Gates to member promotion unchanged: Lewis copy pass (now ~14 email variants incl. .ics-carrying confirmations), Phil therapy category, launch-partner list. Dean's outstanding click: confirm the Emma Clarke request in CC→Partners→Bookings (exercises employer confirmation email + .ics + diary appearance in one go).
+
+---
+
 ## PM-814 close — 14 Jul 2026 night: BOOKING B2 SHIPPED + LIVE-WALK FIXES; B1+B2+B3 ALL DEVICE-EXERCISED (2026-07-14)
 
 Continuation of the PM-812/813 checkpoint (`1ef44c7f`). Dean drove a live device/browser walk of the whole booking build; every issue found was fixed in-session.
