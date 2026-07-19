@@ -1,3 +1,19 @@
+## PM-818 — 19 Jul 2026: PARTNER LIVE STREAMING DESIGNED — VYVE-NATIVE, NO YOUTUBE (Dean direction) — BACKLOGGED (2026-07-19)
+
+Short design chat off Dean's ask: how hard is "partner clicks Go Live in the partner area, stream lands straight in the app"? Answer: the member-facing 80% already exists — live pages, chat, `session_live_views` attribution, replay surfaces are the same plumbing the Hetzner runner feeds. The whole build is partner-side ingest + broadcast orchestration.
+
+**Dean DECISION — no YouTube.** The YouTube-reuse Phase 1 (portal creates broadcast via the session-publish machinery, partner pushes RTMP via OBS, zero new infra) was designed and offered, then explicitly rejected: Dean wants this managed ourselves, not through YouTube. Locked direction = **VYVE-native pipeline**: partner browser publishes camera via WebRTC (WHIP) → **MediaMTX** (free OSS) as a new systemd service on the existing Hetzner box (159.69.95.90, €5.99/mo) → HLS straight out to members → fully VYVE-branded **hls.js player** in the app (no third-party surface, members never leave VYVE). MediaMTX records each session to disk → small EF pipeline pushes mp4 to storage + writes the replay row → replays become ours too. Replay storage recommendation: **Cloudflare R2** (free egress; Supabase storage egress pricing punishes video; domain already on Cloudflare for later CDN caching if Sage-scale concurrency arrives).
+
+**Cost position (Dean's core question):** zero new recurring cost. MediaMTX + hls.js free OSS; one stream in / HLS out serves 100+ concurrent comfortably on the CX23's included 20TB; box upgrade (~€15/mo) or Cloudflare caching only if 500+ concurrent ever needed. LiveKit Cloud is strictly the fallback if the MediaMTX relay proves unreliable (per-minute cost — would come back to Dean first). Consistent with the PM-811 v1.1 video ladder: embedded/owned rooms, never build a Teams-alike from scratch.
+
+**The honest trade flagged to Dean: we become the broadcaster.** YouTube-carried streams made uptime Google's problem; VYVE-native, a dead box = partner in front of members with nothing — and the PM-658 four-day silent runner outage is the precedent. Monitoring (watchdog-pattern extension + player-side status probe + TLS on the box) must be built in from day one, not bolted on.
+
+**Flags recorded:** (1) MODERATION GAP — uploaded partner content is in_review-gated; live streaming bypasses moderation entirely. Minimum: Gate-B partners only + conduct clause in partner agreement + admin kill switch (one EF call ends the stream). Lewis must see this framing before any partner gets the button. (2) Watchdog/runner coexistence — cron 50 + runner must know about partner-originated streams (touches the outage-detection path, test properly). (3) Existing daily simulated-live stays on YouTube untouched; prove VYVE-native on partner streams first — whole-platform migration off YouTube is a later, separate decision.
+
+**Estimate ~5–6 sessions** (ingest + orchestration EFs + portal Go Live tab + branded player + recording→replay pipeline + TLS/monitoring). Dean: "Back log it" — no build started, no commits to product repos this session. Backlog item PM-818 filed. PM note: PM-817 was claimed by the parallel Work Styles ship (Test-Site `f362b778`) whose brain commit hadn't landed at write time — this session takes 818 per §23.24 cross-repo recompute.
+
+---
+
 ## PM-815 — 14 Jul 2026 late night: B4 POLISH SHIPPED — BOOKING SYSTEM COMPLETE (2026-07-14)
 
 The last open booking phase, straight after the PM-814 close (`30f1bf53`). Dean's go: "continue with b4".
