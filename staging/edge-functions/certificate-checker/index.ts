@@ -1,5 +1,8 @@
-// VYVE Health — Certificate Checker v24
-// PM-434: Re-pillared onto the five Journey-page buckets.
+// VYVE Health — Certificate Checker v25
+// 13 Jul 2026: member email CTA no longer links to the web portal (online.vyvehealth.co.uk/certificates.html).
+// Members view certificates in the app; the email now shows App Store / Google Play buttons.
+// certificate_url DB field unchanged — consumed by the in-app certificate viewer.
+// Carries v24 (PM-434): re-pillared onto the five Journey-page buckets.
 //   Tracks: habits · mind · body · connect · checkins
 //   Body = workouts+cardio+movement (2/day combined); Connect = connect_checkins+
 //   session_views+replays+live (2/day combined); Mind = mind_activities (2/day);
@@ -11,7 +14,8 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const BREVO_API_KEY = Deno.env.get("BREVO_API_KEY");
 const FROM_EMAIL = "team@vyvehealth.co.uk";
 const FROM_NAME = "VYVE Health";
-const LIBRARY_URL = "https://online.vyvehealth.co.uk/certificates.html";
+const IOS_STORE_URL = "https://apps.apple.com/gb/app/vyve-health/id6762100652";
+const ANDROID_STORE_URL = "https://play.google.com/store/apps/details?id=co.uk.vyvehealth.app";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
@@ -52,7 +56,8 @@ async function sendCertificateEmail(email, firstName, track, count, certNo) {
       <div style="color: #1A1A18; font-size: 18px; font-family: 'Georgia', serif; font-style: italic;">${cfg.persona}</div>
     </div>
     <p style="color: #7A7060; font-size: 14px; line-height: 1.6; margin-bottom: 28px; font-style: italic;">Your achievement has donated a free month of wellness to someone in need through our charity partner.</p>
-    <a href="${LIBRARY_URL}" style="display: inline-block; background: #1B7878; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600; margin-bottom: 20px;">View Your Certificates</a>
+    <p style="color: #4A4840; font-size: 15px; line-height: 1.6; margin-bottom: 16px;">Open the VYVE Health app and head to My Certificates to view it.</p>
+    <div style="margin-bottom: 20px;"><a href="${IOS_STORE_URL}" style="display: inline-block; background: #1B7878; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 4px;">Open on iPhone</a><a href="${ANDROID_STORE_URL}" style="display: inline-block; background: #1B7878; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 4px;">Open on Android</a></div>
     <div style="border-top: 1px solid #E0E0E0; padding-top: 20px; margin-top: 32px; color: #999; font-size: 12px;">VYVE Health CIC &middot; ICO No. 00013608608</div>
   </div>
 </div>`;
@@ -78,7 +83,7 @@ async function sendCertificateEmail(email, firstName, track, count, certNo) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  console.log("Certificate checker v24 (five-pillar) - processing...");
+  console.log("Certificate checker v25 (five-pillar, app-CTA email) - processing...");
   try {
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
@@ -142,7 +147,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const message = `Certificate checker v24 completed. ${newCertsCreated} new certificates created.`;
+    const message = `Certificate checker v25 completed. ${newCertsCreated} new certificates created.`;
     console.log(message);
     return new Response(JSON.stringify({ success: true, message, newCertificates: newCertsCreated }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } });

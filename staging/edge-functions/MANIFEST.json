@@ -1,5 +1,5 @@
 {
-  "snapshot_at": "2026-07-12T05:33:40Z",
+  "snapshot_at": "2026-07-19T05:27:39Z",
   "supabase_project": "ixjfklpckgxrwjlfsaaz",
   "brain_repo": "VYVEHealth/VYVEBrain",
   "brain_branch": "main",
@@ -239,16 +239,16 @@
     {
       "slug": "certificate-checker",
       "ok": true,
-      "platform_version": 38,
+      "platform_version": 39,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "2b8d117d43fe008837a06068cd300e5fd95fb3d67ee9a4980699fd382ebb6054",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_976798b3-3664-4521-b50e-0e16654c0493_32/source/index.ts",
+      "ezbr_sha256": "b3070202374af1349050a1fa76be22ed74bb4fc3d66eff6e7c78c29875b74d2a",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_976798b3-3664-4521-b50e-0e16654c0493_39/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "f62e7b5794a0ff3d87e944620b1f32b065ba729a48f7549d3df00090e9bbbb9b",
-          "bytes": 9138
+          "sha256": "ada7302d13721a731ea9f949656b9eea66d89454eb2d82bed33e216cbe85254f",
+          "bytes": 9970
         }
       ]
     },
@@ -345,16 +345,16 @@
     {
       "slug": "gdpr-erase-execute",
       "ok": true,
-      "platform_version": 17,
+      "platform_version": 18,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "4ee22fd89dd75dbc67f2433defc443bd75b8bb6f05d3de6451eddec753963a1c",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_80d0bed3-3618-40b2-9a07-1ccfaf036d7e_17/source/index.ts",
+      "ezbr_sha256": "7e3a0b457adf7d09032c70da75eb255281dc268240809d36c0d557b61bdeac28",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_80d0bed3-3618-40b2-9a07-1ccfaf036d7e_18/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "4632563b13227833549bf2dba8dc001a068bf262d45cc725a16081a9961c18e2",
-          "bytes": 22927
+          "sha256": "4771e666ba3b71cd747c9325978b96f5bb777f201607033239af89a23a4c8136",
+          "bytes": 25917
         }
       ]
     },
@@ -549,14 +549,14 @@
       "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_bd663a89-08f6-465b-9144-d8af2b3f8364_37/source/index.ts",
       "files": [
         {
-          "name": "_shared/achievements.ts",
-          "sha256": "31981cfba8c3176cec257260ce21c763418949322f540ff1060ed7a4475b22cd",
-          "bytes": 14797
-        },
-        {
           "name": "index.ts",
           "sha256": "c5fd043ff268a7ab12d8b51b325f295a4fca7d406ba82fffd0df8b95871b4f94",
           "bytes": 14445
+        },
+        {
+          "name": "_shared/achievements.ts",
+          "sha256": "31981cfba8c3176cec257260ce21c763418949322f540ff1060ed7a4475b22cd",
+          "bytes": 14797
         }
       ]
     },
@@ -570,14 +570,14 @@
       "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_7c6364b5-f8b8-492f-a429-da3c6cc1fdd5_2/source/index.ts",
       "files": [
         {
-          "name": "_shared/achievements.ts",
-          "sha256": "b69498b31d4fdf56b7b4e7ee19cd2989e603871b79fae450a9cb364904381b2d",
-          "bytes": 14640
-        },
-        {
           "name": "index.ts",
           "sha256": "0533081779051efb2b62c5ff1acceae609d7ef6f821e287ed394eb9fc24d5da8",
           "bytes": 3015
+        },
+        {
+          "name": "_shared/achievements.ts",
+          "sha256": "b69498b31d4fdf56b7b4e7ee19cd2989e603871b79fae450a9cb364904381b2d",
+          "bytes": 14640
         }
       ]
     },
@@ -591,6 +591,11 @@
       "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c950ab00-49f3-4c07-bd77-83b57c644069_79/source/index.ts",
       "files": [
         {
+          "name": "index.ts",
+          "sha256": "e3b0b6d75e68de164469dfa759c1ca1b4bf6f2440ecf8c28a7ce57c369c93f0a",
+          "bytes": 15914
+        },
+        {
           "name": "_shared/taxonomy.ts",
           "sha256": "47b08bdf63f43cc10f472fb070ba71ca2510703e0edca9417fdd04692a0b0047",
           "bytes": 3213
@@ -599,11 +604,6 @@
           "name": "_shared/achievements.ts",
           "sha256": "b4220534bff5e85bc89a267a7f2448579ca302250e18ff61fbac5c11b98fd676",
           "bytes": 1833
-        },
-        {
-          "name": "index.ts",
-          "sha256": "e3b0b6d75e68de164469dfa759c1ca1b4bf6f2440ecf8c28a7ce57c369c93f0a",
-          "bytes": 15914
         }
       ]
     },
@@ -743,16 +743,16 @@
     {
       "slug": "re-engagement-scheduler",
       "ok": true,
-      "platform_version": 39,
+      "platform_version": 41,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "0b58be0df98781fff4448ea4e7a71bdabdaca4e3a4092c9f81ad99c9722ca81c",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_129e7765-302d-439b-bb74-a5f7ac5b2c20_31/source/index.ts",
+      "ezbr_sha256": "c004e8917a8a1deebed3811d033139c6ec33fae1d2ac3ed0f4af1777f69c17c6",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_129e7765-302d-439b-bb74-a5f7ac5b2c20_41/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "70103c78b9e34999786707401ec40ce49cea67c75c20782ddc93c972bac877db",
-          "bytes": 23116
+          "sha256": "7307eda2d72cc44c6ecd853b4bf4c95008b9de7042c6bda8515b25678e441062",
+          "bytes": 23735
         }
       ]
     },
@@ -936,14 +936,14 @@
       "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_1b0d57b9-cbd2-4d6c-86e8-796bc9b42e4a_17/source/index.ts",
       "files": [
         {
-          "name": "_shared/taxonomy.ts",
-          "sha256": "5c3d851ce4373391d2a20b669f93ddfd08531aa5d84de0b5e3ef1bdbd4cb7169",
-          "bytes": 4549
-        },
-        {
           "name": "index.ts",
           "sha256": "9564a286a3c2dd4c7dd846b0441d51c336504b9c5e3b6fda18d49b46631daf38",
           "bytes": 19894
+        },
+        {
+          "name": "_shared/taxonomy.ts",
+          "sha256": "5c3d851ce4373391d2a20b669f93ddfd08531aa5d84de0b5e3ef1bdbd4cb7169",
+          "bytes": 4549
         }
       ]
     },

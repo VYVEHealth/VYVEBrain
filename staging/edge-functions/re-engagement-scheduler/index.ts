@@ -1,13 +1,18 @@
-// VYVE Health — Re-engagement Email Scheduler v11 — PM-16 perf (08 May 2026 PM-16).
+// VYVE Health — Re-engagement Email Scheduler v13 — Stream B CTA fix (13 Jul 2026).
 //
-// CHANGES vs v10:
-//   - Replace 4 .in() queries against daily_habits/workouts/session_views/wellbeing_checkins
-//     with a single .in() query against member_home_state for the new last_*_at columns
-//     (added in migration pm16_add_last_at_columns_to_member_home_state).
-//   - At current scale (~30 active members), the old shape pulled hundreds of rows from
-//     each activity table. At 100K members it would pull millions. New shape pulls one
-//     row per active member, regardless of activity count.
-//   - All other behaviour byte-identical to v10.
+// CHANGES vs v12:
+//   - hubBtn ("Open the VYVE Health app") and backBtn ("Log back in") previously linked to
+//     https://online.vyvehealth.co.uk/index.html — the web portal. Policy: no member-facing
+//     links to the web portal; the app is the only advertised surface. Both CTAs now render
+//     dual store buttons (App Store shows Open when the app is installed, so they work as
+//     app-openers for Stream B members too).
+//   - All other behaviour byte-identical to v12.
+//
+// CHANGES vs v11 (still applies):
+//   - Stream A appBtn now renders two store buttons instead of the web portal login.
+//
+// CHANGES vs v10 (still applies):
+//   - Single .in() query against member_home_state last_*_at columns (PM-16 perf shape).
 //
 // CHANGES vs v9 (still applies):
 //   - triggered_by value 're_engagement' satisfies the ai_interactions check constraint.
@@ -96,7 +101,7 @@ async function writeAiInteraction(
         decision_log,
       }),
     });
-  } catch (e) { console.warn('[scheduler v11] ai_interactions write failed:', (e as Error).message); }
+  } catch (e) { console.warn('[scheduler v13] ai_interactions write failed:', (e as Error).message); }
 }
 
 const wrap = (body: string) => `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#F4FAFA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#F4FAFA;padding:32px 16px;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#FFFFFF;border-radius:12px;overflow:hidden;box-shadow:0 2px 16px rgba(13,43,43,0.08);"><tr><td style="background:#0D2B2B;padding:24px 32px;"><img src="https://online.vyvehealth.co.uk/logo.png" alt="VYVE Health" style="height:36px;display:block;" /></td></tr><tr><td style="padding:32px;">${body}</td></tr><tr><td style="background:#F4FAFA;padding:20px 32px;border-top:1px solid #C8E4E4;"><p style="margin:0;font-size:12px;color:#7A9A9A;">VYVE Health CIC &nbsp;&middot;&nbsp; team@vyvehealth.co.uk<br>ICO Registration No. 00013608608</p></td></tr></table></td></tr></table></body></html>`;
@@ -104,9 +109,14 @@ const pp  = (t: string) => `<p style="margin:0 0 16px;font-size:15px;color:#3A5A
 const h2  = (t: string) => `<h2 style="margin:0 0 20px;font-size:22px;font-family:Georgia,serif;color:#0D2B2B;font-weight:400;">${t}</h2>`;
 const btn = (label: string, href: string) => `<div style="text-align:center;margin:28px 0;"><a href="${href}" style="background:#0D2B2B;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;">${label} &rarr;</a></div>`;
 
-const appBtn  = btn("Download the VYVE Health app", "https://online.vyvehealth.co.uk/index.html");
-const hubBtn  = btn("Open the VYVE Health app", "https://online.vyvehealth.co.uk/index.html");
-const backBtn = btn("Log back in", "https://online.vyvehealth.co.uk/index.html");
+// v12/v13: no member-facing links to the web portal — all CTAs go to the app stores.
+const IOS_STORE_URL = "https://apps.apple.com/gb/app/vyve-health/id6762100652";
+const ANDROID_STORE_URL = "https://play.google.com/store/apps/details?id=co.uk.vyvehealth.app";
+const storeBtn = (label: string, href: string) => `<a href="${href}" style="background:#0D2B2B;color:#fff;text-decoration:none;padding:14px 24px;border-radius:8px;font-size:15px;font-weight:600;display:inline-block;margin:6px;">${label} &rarr;</a>`;
+const storeRow = (iosLabel: string, androidLabel: string) => `<div style="text-align:center;margin:28px 0;">${storeBtn(iosLabel, IOS_STORE_URL)}${storeBtn(androidLabel, ANDROID_STORE_URL)}</div>`;
+const appBtn  = storeRow("Download for iPhone", "Download for Android");
+const hubBtn  = storeRow("Open on iPhone", "Open on Android");
+const backBtn = storeRow("Open on iPhone", "Open on Android");
 
 function memberContext(m: any, priority: any) {
   return [
@@ -192,7 +202,7 @@ async function buildA(m: any, key: string) {
   const staticBodies: Record<string, string> = {
     A_48h: `${h2(`Hi ${n} \u2014 welcome to VYVE.`)}
 ${pp("You\u2019re all set up on our side. Your workout plan is assigned, your programme is ready, and your AI coach is waiting.")}
-${pp("Now you just need the app. That\u2019s where your habits, workouts and cardio live. Download it, log in, and you\u2019re off.")}
+${pp("Now you just need the app. That\u2019s where your habits, workouts and cardio live. Download it, sign in with the email and password you created at signup, and you\u2019re off.")}
 ${appBtn}`,
     A_96h: `${h2(`Still here, ${n}.`)}
 ${pp("The VYVE Health app is where your programme actually lives \u2014 your habit tracker, your workout plans, your cardio log.")}
@@ -312,9 +322,6 @@ serve(async (req) => {
 
     const emails = (membersRaw || []).map((m) => m.email);
 
-    // PM-16: pull last_*_at columns from member_home_state in ONE query instead of
-    // four .in() queries against daily_habits/workouts/session_views/wellbeing_checkins.
-    // O(member_count) rows total, regardless of activity volume.
     const { data: homeStateRows } = emails.length
       ? await supabase.from("member_home_state")
           .select("member_email,last_habit_at,last_workout_at,last_session_at,last_checkin_at")
@@ -363,11 +370,11 @@ serve(async (req) => {
     const er = results.filter((r) => r.status === "error").length;
     const ai = results.filter((r) => r.ai_used).length;
     return new Response(JSON.stringify({
-      success: true, dry_run: DRY_RUN, version: 11,
+      success: true, dry_run: DRY_RUN, version: 13,
       processed: results.length, sent: sc, skipped: sk, excluded: ex, errors: er, ai_calls: ai, results
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (err) {
-    console.error("[scheduler v11] fatal:", (err as Error).message);
+    console.error("[scheduler v13] fatal:", (err as Error).message);
     return new Response(JSON.stringify({ success: false, error: (err as Error).message }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
@@ -427,10 +434,10 @@ async function processMember(m: any, supabase: any, now: Date, sentMap: any, sup
     if (isLast) await supabase.from("engagement_emails").upsert({
       member_email: m.email, stream, email_key: `${stream}_suppressed`, sent_at: now.toISOString(), suppressed: true
     }, { onConflict: "member_email,stream,email_key" });
-    console.log(`[scheduler v11] SENT ${m.email} | ${stream} | ${nextStep.key} | ai=${result.ai_used}`);
+    console.log(`[scheduler v13] SENT ${m.email} | ${stream} | ${nextStep.key} | ai=${result.ai_used}`);
     return { email: m.email, stream, email_key: nextStep.key, status: "sent", subject: result.subject, ai_used: result.ai_used };
   } catch (err) {
-    console.error(`[scheduler v11] ERROR ${m.email} | ${(err as Error).message}`);
+    console.error(`[scheduler v13] ERROR ${m.email} | ${(err as Error).message}`);
     return { email: m.email, stream, email_key: nextStep.key, status: "error", reason: (err as Error).message };
   }
 }

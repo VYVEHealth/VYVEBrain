@@ -1,4 +1,15 @@
-// VYVE Health — gdpr-erase-execute v5 (8 July 2026, PM-744).
+// VYVE Health — gdpr-erase-execute v6 (12 July 2026, PM-749).
+//
+// v6: member-keyed STORAGE BUCKETS swept on erasure. The table-catalog-driven
+// purge cannot reach storage, and three buckets key objects on the member's
+// email prefix: challenge-photos (progress photos — special-category-adjacent
+// body imagery, the PM-718 hard pre-launch blocker), certificates (PUBLIC
+// bucket, member-named HTML certs), member-avatars (PUBLIC bucket, the
+// member's own photo). New purgeMemberBuckets() sweeps all three by email
+// prefix (recursive two-level list, partner-sweep pattern) as step 2e.
+// Best-effort + HIGH alert per bucket — same posture as 2c/2d: the DB purge
+// is non-re-runnable, so storage failure must never fail the request.
+// Any FUTURE bucket keyed on member email MUST be added to MEMBER_BUCKETS.
 //
 // v5: after the export-artefact purge, the subject's PARTNER APPLICATION DRAFTS
 // are swept via partner_draft_erase(p_email) RPC (applied/declined drafts only —
@@ -251,6 +262,42 @@ async function purgePartnerDrafts(supabaseSvc: any, memberEmail: string): Promis
   }
 }
 
+// ─── Member-keyed bucket sweep (v6) ─────────────────────────────────────────
+
+const MEMBER_BUCKETS = ["challenge-photos", "certificates", "member-avatars"];
+
+async function purgeMemberBuckets(supabaseSvc: any, memberEmail: string): Promise<{ ok: boolean; removed: number; per_bucket: Record<string, number | string> }> {
+  let allOk = true;
+  let totalRemoved = 0;
+  const perBucket: Record<string, number | string> = {};
+  for (const bucket of MEMBER_BUCKETS) {
+    try {
+      const { data: top, error: listErr } = await supabaseSvc.storage.from(bucket).list(memberEmail, { limit: 200 });
+      if (listErr) throw new Error(`list: ${listErr.message}`);
+      const paths: string[] = [];
+      for (const entry of top ?? []) {
+        if (entry.id) { paths.push(`${memberEmail}/${entry.name}`); continue; }
+        // folder (e.g. challenge-photos/<email>/<challenge>/) — one level down
+        const { data: inner, error: innerErr } = await supabaseSvc.storage.from(bucket).list(`${memberEmail}/${entry.name}`, { limit: 200 });
+        if (innerErr) throw new Error(`list ${entry.name}: ${innerErr.message}`);
+        for (const f of inner ?? []) if (f.id) paths.push(`${memberEmail}/${entry.name}/${f.name}`);
+      }
+      if (paths.length > 0) {
+        const { error: rmErr } = await supabaseSvc.storage.from(bucket).remove(paths);
+        if (rmErr) throw new Error(`remove: ${rmErr.message}`);
+      }
+      perBucket[bucket] = paths.length;
+      totalRemoved += paths.length;
+    } catch (e) {
+      allOk = false;
+      const msg = (e as Error).message.slice(0, 200);
+      perBucket[bucket] = `failed: ${msg}`;
+      await alertPlatform(supabaseSvc, "high", "gdpr_erase_member_bucket_failed", memberEmail, `member bucket sweep failed for ${bucket}/${memberEmail} (manual cleanup needed): ${msg}`);
+    }
+  }
+  return { ok: allOk, removed: totalRemoved, per_bucket: perBucket };
+}
+
 // ─── Audit ────────────────────────────────────────────────────────────────────────
 
 async function writeAudit(supabaseSvc: any, subject: string, requester: string, kind: string, action: string, metadata: Record<string, unknown>) {
@@ -308,6 +355,10 @@ async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "ex
     // 2d. Sweep the subject's partner application DRAFTS (v5 — see header).
     const partnerDraftRes = await purgePartnerDrafts(supabaseSvc, member_email);
 
+    // 2e. Sweep member-keyed storage buckets: challenge-photos, certificates,
+    // member-avatars (v6 — see header).
+    const memberBucketRes = await purgeMemberBuckets(supabaseSvc, member_email);
+
     // 3. auth.users delete (post-tx)
     let authDeleted = false;
     let authDeleteDetail = "";
@@ -339,6 +390,7 @@ async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "ex
       posthog: posthogRes,
       export_artefacts: storageRes,
       partner_drafts: partnerDraftRes,
+      member_buckets: memberBucketRes,
       auth_user_deleted: authDeleted,
       auth_user_detail: authDeleteDetail,
       duration_ms: Date.now() - startedAt,
