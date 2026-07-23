@@ -1,3 +1,13 @@
+## PM-826 — 23 Jul 2026: ONBOARDING EF CORS ORIGIN PIN — v120 DEPLOYED (real root cause of the app submit failures; corrects PM-825) (2026-07-23)
+
+Dean retried on the PM-825 build at 22:03 BST: same soft error screen, members row still onboarding_complete=false, edge logs again OPTIONS 200 with NO POST. Full v119 source pulled via Supabase:get_edge_function revealed the actual blocker: `'Access-Control-Allow-Origin': 'https://www.vyvehealth.co.uk'` hard-pinned. **PM-825's Allow-Headers diagnosis was WRONG** — v119's allow-list DID include `authorization`; the origin pin was the killer all along. The app serves from `https://online.vyvehealth.co.uk` (Capacitor server.url), so every app-origin request to /onboarding died post-preflight regardless of request headers, for both the PM-820 and PM-825 request shapes. (PM-825's header strip stands as harmless web-parity cleanup.)
+
+**Fix: onboarding EF v120 deployed** via Supabase MCP `deploy_edge_function` (id b22c6618-2a62-4c8d-a81f-aa4bd723db1f, verify_jwt:false preserved, ezbr 2abcddd6…). Surgical vs v119: (1) Allow-Origin → `'*'` — safe: public EF, no credentials mode, `'*'` still satisfies the www web path; (2) v120 header comment; (3) decision-log/DONE version strings v99→v120. Deployed source re-read post-deploy and confirmed. No vbb bump needed — pure server-side.
+
+**§23 rule (banked):** When pointing a NEW client origin at an EXISTING EF, read its corsHeaders FIRST — check `Access-Control-Allow-Origin` **and** `Access-Control-Allow-Headers`. Preflight OPTIONS 200 ≠ preflight PASS: the browser's verdict lives in the response headers, and a mismatch fails as a silent client-side abort (no POST in edge logs) that masquerades as a network error. Sweep candidate: other legacy EFs the app may call that predate the app (onboarding was the outlier; member-dashboard etc. already proven from app origin).
+
+Recovery unchanged: draft cache intact → section 10 restore → one-tap resubmit.
+
 ## PM-825 — 23 Jul 2026: ONBOARDING SUBMIT KILLED BY CORS PREFLIGHT (Dean: error screen after section 10) (2026-07-23)
 
 Dean completed all 10 sections on vbb 527 and landed on welcome.html's soft error screen ("Thank you for your answers… you'll hear from us shortly"). Server truth: members row for the test account had onboarding_complete=false / persona NULL, and edge logs show an OPTIONS 200 on /onboarding at submit time with **no POST following** — the browser killed the request after preflight. Cause: PM-820 added `Authorization: Bearer <JWT>` to the submit, but the onboarding EF's Access-Control-Allow-Headers has never included `authorization` (the web path only ever sent Content-Type). Preflight 200 ≠ preflight PASS — the allow-list verdict is in the response headers, not the status.
