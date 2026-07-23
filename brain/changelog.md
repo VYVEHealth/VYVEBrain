@@ -1,3 +1,11 @@
+## PM-821 — 23 Jul 2026: DEVICE-ACCOUNT FLAG — free-week door hidden once any account has touched the device (2026-07-23)
+
+Dean follow-up on PM-820: stop casual trial-cycling (log out → create another free account). vyve-site `ec61a1fe`, vbb 524, 6 files, md5-perfect.
+
+**Mechanic:** localStorage `vyve_device_has_account` stamped at three points — signup success, sign-in success, and EVERY authenticated auth.js load (that third stamp silently backfills every existing member's device on next open; nobody has to log in fresh to earn it). Logged-out routing: **fresh device** (no flag) → login.html immediately bounces to signup.html (acquisition-forward default for App Store installs); **flagged device** → login.html with the "Start your free week" row HIDDEN — logging out never re-advertises the free-week door. Bounce-loop guard: signup's "Sign in" + 409 links carry `?stay=1`, which suppresses the fresh-device bounce. signup.html stays directly reachable by URL on purpose — this is friction, not enforcement; app-signup EF IP limits (5/hr) remain the hard layer, and uninstall/reinstall resetting the flag is ACCEPTED by design (Keychain persistence would need a native plugin/binary — declined).
+
+**Device check addendum:** after the PM-820 walk, log out — should land on login WITHOUT the free-week link. Clear the app's site data (or fresh simulator) to see the fresh-device signup-first landing.
+
 ## PM-820 — 23 Jul 2026: PM-819 SESSION 1 SHIPPED — APP-FIRST FUNNEL + APPLE DE-STEER LIVE (2026-07-23)
 
 The funnel now runs App Store → in-app signup → in-app questionnaire → 7 free days → conversion email → web Stripe. One vyve-site commit (`c76a34c9`, 12 files, vbb 523) + three backend pieces, all live-verified.
