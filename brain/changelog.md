@@ -1,3 +1,9 @@
+## PM-822 — 23 Jul 2026: TEST-ACCOUNT ERASURE + LOGIN DEV-RESET GESTURE (2026-07-23)
+
+Dean asked for deanonbrown2@gmail.com fully deleted for a clean signup re-test. **Erasure:** dynamic DO-block sweep over every public table carrying member_email (85 tables at run time, information_schema-driven so future tables are covered by construction) + members + auth.users; standalone verification SELECTs all zero (§23.155 discipline). cc_*/admin_users/employer_admins untouched by design — business-contact email columns, not member data.
+
+**PM-821 fallout fixed same session:** Dean's device is flagged, so post-logout the free-week door is hidden and the native app has no address bar — signup was UNREACHABLE for re-testing. vyve-site `323d9b79` vbb 525: **long-press the login logo (1.2s)** clears vyve_device_has_account + all PM-820 client onboarding state (draft/pending/persona/payload, vyve_onboarded_*, hubvid flags, sessionStorage) and reveals the signup row. Standard pattern per the standing rule (URL-param debug is a Claude problem — gestures/toggles instead). Harmless to members: worst case is reaching signup and hitting 409 → sign-in.
+
 ## PM-821 — 23 Jul 2026: DEVICE-ACCOUNT FLAG — free-week door hidden once any account has touched the device (2026-07-23)
 
 Dean follow-up on PM-820: stop casual trial-cycling (log out → create another free account). vyve-site `ec61a1fe`, vbb 524, 6 files, md5-perfect.
