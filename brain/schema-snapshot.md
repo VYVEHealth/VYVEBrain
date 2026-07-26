@@ -2,13 +2,13 @@
 
 > Auto-generated from live Supabase project `ixjfklpckgxrwjlfsaaz`.
 > DO NOT EDIT — overwritten weekly by the `schema-snapshot-refresh` Edge Function.
-> Last refresh: 2026-07-19T03:01:55.881Z
+> Last refresh: 2026-07-26T03:01:58.960Z
 
-**Totals:** 174 tables (174 with RLS) · 2003 columns · 68 FKs · 280 triggers · 141 public functions · 254 RLS policies · 453 indexes · 51 cron jobs
+**Totals:** 176 tables (176 with RLS) · 2023 columns · 68 FKs · 282 triggers · 143 public functions · 258 RLS policies · 458 indexes · 53 cron jobs
 
 ---
 
-## Tables (174)
+## Tables (176)
 
 ### `achievement_metrics` · RLS
 
@@ -260,6 +260,24 @@
 - `ai_interactions_pkey`
 - `idx_ai_interactions_created_at`
 - `idx_ai_interactions_member_email`
+
+### `app_videos` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `key` | text | NO |  | ✓ |  |
+| `url` | text | YES |  |  |  |
+| `title` | text | YES |  |  |  |
+| `duration_seconds` | integer | YES |  |  |  |
+| `active` | boolean | NO | true |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**RLS policies:**
+- `app_videos_admin_write` (ALL, roles: public) — is_admin_or_team() / CHECK: is_admin_or_team()
+- `app_videos_public_read` (SELECT, roles: public) — true
+
+**Indexes:**
+- `app_videos_pkey`
 
 ### `booking_availability` · RLS
 
@@ -1944,6 +1962,37 @@
 - `employer_metrics_weekly_pkey`
 - `emw_employer_week_idx`
 
+### `employers` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `name` | text | NO |  |  | ✓ |
+| `slug` | text | NO |  |  | ✓ |
+| `contact_name` | text | YES |  |  |  |
+| `contact_email` | text | YES |  |  |  |
+| `seat_cap` | integer | YES |  |  |  |
+| `price_per_seat_pence` | integer | NO | 1000 |  |  |
+| `billing_cycle` | text | NO | 'monthly'::text |  |  |
+| `status` | text | NO | 'trial'::text |  |  |
+| `invite_token` | text | NO |  |  | ✓ |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `employers_billing_cycle_check`: CHECK ((billing_cycle = ANY (ARRAY['monthly'::text, 'annual'::text])))
+- `employers_status_check`: CHECK ((status = ANY (ARRAY['trial'::text, 'active'::text, 'paused'::text, 'churned'::text])))
+
+**RLS policies:**
+- `employers_admin_all` (ALL, roles: public) — is_admin_or_team() / CHECK: is_admin_or_team()
+- `employers_own_read` (SELECT, roles: public) — (EXISTS ( SELECT 1 FROM employer_admins ea WHERE ((ea.employer_name = employers.name) AND (lower(ea.email) = lower(COALESCE(auth.email(), ''::text))))))
+
+**Indexes:**
+- `employers_invite_token_key`
+- `employers_name_key`
+- `employers_pkey`
+- `employers_slug_key`
+
 ### `engagement_emails` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -1960,7 +2009,7 @@
 | `created_at` | timestamp with time zone | NO | now() |  |  |
 
 **Check constraints:**
-- `engagement_emails_stream_check`: CHECK ((stream = ANY (ARRAY['A'::text, 'B'::text, 'C1'::text, 'C2'::text, 'C3'::text])))
+- `engagement_emails_stream_check`: CHECK ((stream = ANY (ARRAY['A'::text, 'B'::text, 'C1'::text, 'C2'::text, 'C3'::text, 'trial_end'::text, 'b2b_removed'::text])))
 
 **Foreign keys:**
 - `member_email` → `members.email` (`engagement_emails_member_email_fkey`)
@@ -3117,6 +3166,8 @@
 | `member_state_reason` | text | YES |  |  |  |
 | `primary_goal` | text | YES |  |  |  |
 | `primary_goal_set_at` | timestamp with time zone | YES |  |  |  |
+| `b2b_removal_effective_at` | timestamp with time zone | YES |  |  |  |
+| `b2b_removed_at` | timestamp with time zone | YES |  |  |  |
 
 **Check constraints:**
 - `members_account_type_chk`: CHECK ((account_type = ANY (ARRAY['trial'::text, 'paid'::text, 'comp'::text, 'enterprise'::text])))
@@ -3142,6 +3193,7 @@
 **Triggers:**
 - `aab_grant_trial_on_signup` — BEFORE INSERT
 - `trg_default_consent_versions` — BEFORE INSERT/UPDATE
+- `trg_trial_clock_start` — BEFORE INSERT/UPDATE
 - `zz_lc_email` — BEFORE INSERT/UPDATE
 - `zzz_mark_home_state_dirty_del` — AFTER DELETE
 - `zzz_mark_home_state_dirty_ins` — AFTER INSERT
@@ -5220,7 +5272,7 @@
 
 ---
 
-## Public Functions (141)
+## Public Functions (143)
 
 - `_vyve_daily_streak(p_dates date[], p_today date)` — func
 - `_vyve_daily_streak_best(p_dates date[])` — func
@@ -5228,6 +5280,7 @@
 - `assert_member_not_expired()` — func
 - `assert_partner_golive()` — func
 - `autoresolve_stale_diagnostics()` — func
+- `b2b_auth_state(p_emails text[])` — func
 - `backfill_platform_metrics(p_days integer)` — func
 - `booking_cancel_policy()` — func
 - `booking_service_clinical_flag()` — func
@@ -5337,6 +5390,7 @@
 - `set_updated_at_mp()` — func
 - `set_updated_at_persona_welcome_copy()` — func
 - `set_updated_at_podcast_platforms()` — func
+- `start_trial_clock()` — func
 - `sync_onboarding_health()` — func
 - `sync_partner_onboarding_pct()` — func
 - `taglines_set_updated_at()` — func
@@ -5366,10 +5420,11 @@
 
 ---
 
-## Cron Jobs (51)
+## Cron Jobs (53)
 
 | Job | Schedule | Active | Command preview |
 |---|---|---|---|
+| `b2b-removal-sweep-daily` | `30 1 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `broadcast-watchdog-5min` | `*/5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `cc-activity-hourly` | `45 * * * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
 | `cc-ai-hourly` | `35 * * * *` | ✓ | `SELECT net.http_post(url:='https://ixjfklpckgxrwjlfsaaz.supabase.co/functions/v1` |
@@ -5392,6 +5447,7 @@
 | `session-publish-hourly` | `5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `session-reminder-cron` | `*/5 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `stripe-reconcile-nightly` | `*/15 * * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
+| `trial-end-email-daily` | `10 1 * * *` | ✓ | ` SELECT net.http_post( url := 'https://ixjfklpckgxrwjlfsaaz.supabase.co/function` |
 | `vyve_charity_reconcile_daily` | `30 2 * * *` | ✓ | ` SELECT public.charity_total_reconcile_and_heal(); ` |
 | `vyve_drain_home_state_dirty` | `*/5 * * * *` | ✓ | ` SELECT public.drain_member_home_state_dirty(); ` |
 | `vyve_platform_metrics` | `15 2 * * *` | ✓ | `SELECT public.recompute_platform_metrics();` |
