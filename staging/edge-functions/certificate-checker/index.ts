@@ -20,27 +20,47 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
 };
-
 const TRACKS = {
-  habits:   { label: "daily habits",       title: "Daily Habits Achievement",   persona: "The Architect",
-              body: (m) => `for completing ${m} daily habits as part of the VYVE Health programme, building the kind of lasting consistency that defines a healthier way of living.` },
-  body:     { label: "body activities",     title: "Body Achievement",           persona: "The Warrior",
-              body: (m) => `for completing ${m} body activities — workouts, cardio and movement — as part of the VYVE Health programme, demonstrating outstanding dedication to your physical health.` },
-  mind:     { label: "mind sessions",       title: "Mind Achievement",           persona: "The Anchor",
-              body: (m) => `for completing ${m} mind sessions as part of the VYVE Health programme, demonstrating a genuine commitment to mental wellbeing and inner balance.` },
-  connect:  { label: "connect activities",  title: "Connect Achievement",        persona: "The Explorer",
-              body: (m) => `for completing ${m} connect activities as part of the VYVE Health programme, demonstrating a sustained commitment to community and shared wellbeing.` },
-  checkins: { label: "weekly check-ins",    title: "Elite Check-In Achievement", persona: "The Elite",
-              body: (m) => `for completing ${m} weekly check-ins as part of the VYVE Health programme, demonstrating an exceptional commitment to self-awareness and personal health.` }
+  habits: {
+    label: "daily habits",
+    title: "Daily Habits Achievement",
+    persona: "The Architect",
+    body: (m)=>`for completing ${m} daily habits as part of the VYVE Health programme, building the kind of lasting consistency that defines a healthier way of living.`
+  },
+  body: {
+    label: "body activities",
+    title: "Body Achievement",
+    persona: "The Warrior",
+    body: (m)=>`for completing ${m} body activities — workouts, cardio and movement — as part of the VYVE Health programme, demonstrating outstanding dedication to your physical health.`
+  },
+  mind: {
+    label: "mind sessions",
+    title: "Mind Achievement",
+    persona: "The Anchor",
+    body: (m)=>`for completing ${m} mind sessions as part of the VYVE Health programme, demonstrating a genuine commitment to mental wellbeing and inner balance.`
+  },
+  connect: {
+    label: "connect activities",
+    title: "Connect Achievement",
+    persona: "The Explorer",
+    body: (m)=>`for completing ${m} connect activities as part of the VYVE Health programme, demonstrating a sustained commitment to community and shared wellbeing.`
+  },
+  checkins: {
+    label: "weekly check-ins",
+    title: "Elite Check-In Achievement",
+    persona: "The Elite",
+    body: (m)=>`for completing ${m} weekly check-ins as part of the VYVE Health programme, demonstrating an exceptional commitment to self-awareness and personal health.`
+  }
 };
 const TRACK_KEYS = Object.keys(TRACKS);
-
 async function nextSeqNumber(supabase) {
   const { data, error } = await supabase.rpc('next_certificate_number');
-  if (error) { console.error('next_certificate_number failed:', error); return null; }
+  if (error) {
+    console.error('next_certificate_number failed:', error);
+    return null;
+  }
   return data;
 }
-
 async function sendCertificateEmail(email, firstName, track, count, certNo) {
   const cfg = TRACKS[track];
   if (!cfg) return;
@@ -62,16 +82,31 @@ async function sendCertificateEmail(email, firstName, track, count, certNo) {
   </div>
 </div>`;
   const payload = {
-    sender: { name: FROM_NAME, email: FROM_EMAIL },
-    to: [{ email, name: firstName }],
+    sender: {
+      name: FROM_NAME,
+      email: FROM_EMAIL
+    },
+    to: [
+      {
+        email,
+        name: firstName
+      }
+    ],
     subject: personalizedSubject,
     htmlContent: bodyHtml,
-    tags: ["certificate-earned", track]
+    tags: [
+      "certificate-earned",
+      track
+    ]
   };
   try {
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
-      headers: { "accept": "application/json", "api-key": BREVO_API_KEY, "content-type": "application/json" },
+      headers: {
+        "accept": "application/json",
+        "api-key": BREVO_API_KEY,
+        "content-type": "application/json"
+      },
       body: JSON.stringify(payload)
     });
     if (!response.ok) console.error(`Brevo email failed for ${email}: ${await response.text()}`);
@@ -80,65 +115,71 @@ async function sendCertificateEmail(email, firstName, track, count, certNo) {
     console.error(`Email send failed for ${email}:`, error);
   }
 }
-
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+Deno.serve(async (req)=>{
+  if (req.method === "OPTIONS") return new Response("ok", {
+    headers: corsHeaders
+  });
   console.log("Certificate checker v25 (five-pillar, app-CTA email) - processing...");
   try {
     const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
-
     const { data: buckets, error: bucketsErr } = await supabase.rpc('get_certificate_buckets');
     if (bucketsErr) throw bucketsErr;
     if (!buckets || buckets.length === 0) {
-      return new Response(JSON.stringify({ message: "No members found" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({
+        message: "No members found"
+      }), {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json"
+        }
+      });
     }
-
-    const { data: existing, error: existErr } = await supabase
-      .from('certificates').select('member_email, activity_type, milestone_count');
+    const { data: existing, error: existErr } = await supabase.from('certificates').select('member_email, activity_type, milestone_count');
     if (existErr) throw existErr;
-    const have = new Set((existing || []).map(c => `${c.member_email}:${c.activity_type}:${c.milestone_count}`));
-
+    const have = new Set((existing || []).map((c)=>`${c.member_email}:${c.activity_type}:${c.milestone_count}`));
     const { data: memberRows, error: memErr } = await supabase.from('members').select('email, first_name');
     if (memErr) throw memErr;
-    const firstNameOf = new Map((memberRows || []).map(m => [m.email, m.first_name || 'Member']));
-
+    const firstNameOf = new Map((memberRows || []).map((m)=>[
+        m.email,
+        m.first_name || 'Member'
+      ]));
     let newCertsCreated = 0;
     const noEmail = req.headers.get('x-no-email') === '1';
-
-    for (const row of buckets) {
+    for (const row of buckets){
       const email = row.member_email;
       const firstName = firstNameOf.get(email) || 'Member';
-      for (const track of TRACK_KEYS) {
+      for (const track of TRACK_KEYS){
         const count = Number(row[track]) || 0;
         if (count < 30) continue;
         const milestonesEarned = Math.floor(count / 30);
-        for (let milestone = 1; milestone <= milestonesEarned; milestone++) {
+        for(let milestone = 1; milestone <= milestonesEarned; milestone++){
           const ms = milestone * 30;
           const key = `${email}:${track}:${ms}`;
           if (have.has(key)) continue;
-
           const seq = await nextSeqNumber(supabase);
-          const { data: ins, error: insErr } = await supabase.from('certificates')
-            .upsert({
-              member_email: email,
-              activity_type: track,
-              milestone_count: ms,
-              earned_at: new Date().toISOString(),
-              global_cert_number: seq,
-              charity_moment_triggered: true,
-              certificate_url: '',
-              pillar: track
-            }, { onConflict: 'member_email,activity_type,milestone_count', ignoreDuplicates: true })
-            .select('id');
-          if (insErr) { console.error(`Insert failed ${key}:`, insErr); continue; }
+          const { data: ins, error: insErr } = await supabase.from('certificates').upsert({
+            member_email: email,
+            activity_type: track,
+            milestone_count: ms,
+            earned_at: new Date().toISOString(),
+            global_cert_number: seq,
+            charity_moment_triggered: true,
+            certificate_url: '',
+            pillar: track
+          }, {
+            onConflict: 'member_email,activity_type,milestone_count',
+            ignoreDuplicates: true
+          }).select('id');
+          if (insErr) {
+            console.error(`Insert failed ${key}:`, insErr);
+            continue;
+          }
           have.add(key);
           const certId = ins && ins[0] && ins[0].id;
           if (!certId) continue;
-
-          await supabase.from('certificates')
-            .update({ certificate_url: `https://online.vyvehealth.co.uk/certificate.html?id=${certId}` })
-            .eq('id', certId);
+          await supabase.from('certificates').update({
+            certificate_url: `https://online.vyvehealth.co.uk/certificate.html?id=${certId}`
+          }).eq('id', certId);
           newCertsCreated++;
           if (!noEmail) {
             await sendCertificateEmail(email, firstName, track, ms, String(seq ?? 0).padStart(4, '0'));
@@ -146,15 +187,29 @@ Deno.serve(async (req) => {
         }
       }
     }
-
     const message = `Certificate checker v25 completed. ${newCertsCreated} new certificates created.`;
     console.log(message);
-    return new Response(JSON.stringify({ success: true, message, newCertificates: newCertsCreated }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({
+      success: true,
+      message,
+      newCertificates: newCertsCreated
+    }), {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json"
+      }
+    });
   } catch (error) {
     console.error("Certificate checker error:", error);
-    return new Response(JSON.stringify({ error: "Internal server error",
-      message: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({
+      error: "Internal server error",
+      message: error instanceof Error ? error.message : "Unknown error"
+    }), {
+      status: 500,
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json"
+      }
+    });
   }
 });

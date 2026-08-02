@@ -58,23 +58,18 @@
 // After 3 attempts, mark failed_at — operations team investigates manually.
 //
 // verify_jwt: false at platform; bearer / cron-key check inside.
-
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const BREVO_KEY = Deno.env.get("BREVO_API_KEY") ?? "";
 const STRIPE_KEY = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
 const POSTHOG_KEY = Deno.env.get("POSTHOG_PERSONAL_API_KEY") ?? "";
 const POSTHOG_PROJECT_ID = Deno.env.get("POSTHOG_PROJECT_ID") ?? "";
 const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
-
 const TICK_LIMIT = 5;
 const MAX_ATTEMPTS = 3;
-
-let cachedCronKey: string | null = null;
-
-async function isAuthorized(req: Request, svc: any): Promise<boolean> {
+let cachedCronKey = null;
+async function isAuthorized(req, svc) {
   const auth = req.headers.get("Authorization") ?? "";
   if (CRON_SECRET && auth === `Bearer ${CRON_SECRET}`) return true;
   if (SERVICE_KEY && auth === `Bearer ${SERVICE_KEY}`) return true;
@@ -92,14 +87,11 @@ async function isAuthorized(req: Request, svc: any): Promise<boolean> {
   }
   return false;
 }
-
 // ─── Brevo email (executed confirmation) ─────────────────
-
-const wrap = (body: string) => `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#F4FAFA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#F4FAFA;padding:32px 16px;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#FFFFFF;border-radius:12px;overflow:hidden;box-shadow:0 2px 16px rgba(13,43,43,0.08);"><tr><td style="background:#0D2B2B;padding:24px 32px;"><img src="https://online.vyvehealth.co.uk/logo.png" alt="VYVE Health" style="height:36px;display:block;" /></td></tr><tr><td style="padding:32px;">${body}</td></tr><tr><td style="background:#F4FAFA;padding:20px 32px;border-top:1px solid #C8E4E4;"><p style="margin:0;font-size:12px;color:#7A9A9A;">VYVE Health CIC &nbsp;&middot;&nbsp; team@vyvehealth.co.uk<br>ICO Registration No. 00013608608</p></td></tr></table></td></tr></table></body></html>`;
-const h2 = (t: string) => `<h2 style="margin:0 0 20px;font-size:22px;font-family:Georgia,serif;color:#0D2B2B;font-weight:400;">${t}</h2>`;
-const pp = (t: string) => `<p style="margin:0 0 16px;font-size:15px;color:#3A5A5A;line-height:1.7;">${t}</p>`;
-
-function buildExecutedEmailHTML(firstName: string): string {
+const wrap = (body)=>`<!DOCTYPE html><html><body style="margin:0;padding:0;background:#F4FAFA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#F4FAFA;padding:32px 16px;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#FFFFFF;border-radius:12px;overflow:hidden;box-shadow:0 2px 16px rgba(13,43,43,0.08);"><tr><td style="background:#0D2B2B;padding:24px 32px;"><img src="https://online.vyvehealth.co.uk/logo.png" alt="VYVE Health" style="height:36px;display:block;" /></td></tr><tr><td style="padding:32px;">${body}</td></tr><tr><td style="background:#F4FAFA;padding:20px 32px;border-top:1px solid #C8E4E4;"><p style="margin:0;font-size:12px;color:#7A9A9A;">VYVE Health CIC &nbsp;&middot;&nbsp; team@vyvehealth.co.uk<br>ICO Registration No. 00013608608</p></td></tr></table></td></tr></table></body></html>`;
+const h2 = (t)=>`<h2 style="margin:0 0 20px;font-size:22px;font-family:Georgia,serif;color:#0D2B2B;font-weight:400;">${t}</h2>`;
+const pp = (t)=>`<p style="margin:0 0 16px;font-size:15px;color:#3A5A5A;line-height:1.7;">${t}</p>`;
+function buildExecutedEmailHTML(firstName) {
   const name = firstName || "there";
   return wrap(`
 ${h2(`Your VYVE Health account has been deleted, ${name}.`)}
@@ -109,140 +101,227 @@ ${pp("This receipt is the last email you will receive from VYVE Health under the
 ${pp("Wishing you well. — The VYVE Health team.")}
 `);
 }
-
-async function sendBrevoExecuted(toEmail: string, toName: string): Promise<string | null> {
+async function sendBrevoExecuted(toEmail, toName) {
   if (!BREVO_KEY) throw new Error("BREVO_API_KEY not set");
   const r = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
-    headers: { "api-key": BREVO_KEY, "Content-Type": "application/json", Accept: "application/json" },
+    headers: {
+      "api-key": BREVO_KEY,
+      "Content-Type": "application/json",
+      Accept: "application/json"
+    },
     body: JSON.stringify({
-      sender: { name: "VYVE Health", email: "team@vyvehealth.co.uk" },
-      to: [{ email: toEmail, name: toName }],
+      sender: {
+        name: "VYVE Health",
+        email: "team@vyvehealth.co.uk"
+      },
+      to: [
+        {
+          email: toEmail,
+          name: toName
+        }
+      ],
       subject: "VYVE Health: account deletion complete",
       htmlContent: buildExecutedEmailHTML(toName),
-      tags: ["gdpr_erase_executed"],
-    }),
+      tags: [
+        "gdpr_erase_executed"
+      ]
+    })
   });
-  const d = await r.json().catch(() => ({}));
+  const d = await r.json().catch(()=>({}));
   if (!r.ok) throw new Error(`Brevo ${r.status}: ${JSON.stringify(d).slice(0, 300)}`);
   return d.messageId || null;
 }
-
 // ─── Third-party purges (best-effort) ──────────────────
-
-async function alertPlatform(supabaseSvc: any, severity: string, type: string, memberEmail: string, details: string) {
+async function alertPlatform(supabaseSvc, severity, type, memberEmail, details) {
   try {
     await supabaseSvc.from("platform_alerts").insert({
-      severity, type, source: "gdpr-erase-execute",
-      member_email: memberEmail, details,
+      severity,
+      type,
+      source: "gdpr-erase-execute",
+      member_email: memberEmail,
+      details
     });
   } catch (e) {
-    console.error("[alertPlatform] insert failed:", (e as Error).message);
+    console.error("[alertPlatform] insert failed:", e.message);
   }
 }
-
-async function purgeStripe(supabaseSvc: any, memberEmail: string, stripeCustomerId: string | null): Promise<{ ok: boolean; detail: string }> {
-  if (!stripeCustomerId) return { ok: true, detail: "no_stripe_customer_id_on_member" };
+async function purgeStripe(supabaseSvc, memberEmail, stripeCustomerId) {
+  if (!stripeCustomerId) return {
+    ok: true,
+    detail: "no_stripe_customer_id_on_member"
+  };
   if (!STRIPE_KEY) {
     await alertPlatform(supabaseSvc, "high", "gdpr_erase_stripe_skipped", memberEmail, "STRIPE_SECRET_KEY not set; Stripe purge skipped");
-    return { ok: true, detail: "stripe_key_not_set_skipped" };
+    return {
+      ok: true,
+      detail: "stripe_key_not_set_skipped"
+    };
   }
   try {
     const r = await fetch(`https://api.stripe.com/v1/customers/${encodeURIComponent(stripeCustomerId)}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${STRIPE_KEY}` },
+      headers: {
+        Authorization: `Bearer ${STRIPE_KEY}`
+      }
     });
-    if (r.status === 404) return { ok: true, detail: "stripe_customer_already_absent_404" };
+    if (r.status === 404) return {
+      ok: true,
+      detail: "stripe_customer_already_absent_404"
+    };
     if (!r.ok) {
-      const body = await r.text().catch(() => "");
+      const body = await r.text().catch(()=>"");
       await alertPlatform(supabaseSvc, "high", "gdpr_erase_stripe_failed", memberEmail, `Stripe DELETE ${r.status}: ${body.slice(0, 300)}`);
-      return { ok: false, detail: `stripe_delete_${r.status}` };
+      return {
+        ok: false,
+        detail: `stripe_delete_${r.status}`
+      };
     }
-    return { ok: true, detail: "stripe_customer_deleted" };
+    return {
+      ok: true,
+      detail: "stripe_customer_deleted"
+    };
   } catch (e) {
-    await alertPlatform(supabaseSvc, "high", "gdpr_erase_stripe_failed", memberEmail, `Stripe call threw: ${(e as Error).message}`);
-    return { ok: false, detail: `stripe_threw_${(e as Error).message.slice(0, 100)}` };
+    await alertPlatform(supabaseSvc, "high", "gdpr_erase_stripe_failed", memberEmail, `Stripe call threw: ${e.message}`);
+    return {
+      ok: false,
+      detail: `stripe_threw_${e.message.slice(0, 100)}`
+    };
   }
 }
-
-async function purgeBrevoContact(supabaseSvc: any, memberEmail: string): Promise<{ ok: boolean; detail: string }> {
+async function purgeBrevoContact(supabaseSvc, memberEmail) {
   if (!BREVO_KEY) {
     await alertPlatform(supabaseSvc, "high", "gdpr_erase_brevo_skipped", memberEmail, "BREVO_API_KEY not set; Brevo contact purge skipped");
-    return { ok: true, detail: "brevo_key_not_set_skipped" };
+    return {
+      ok: true,
+      detail: "brevo_key_not_set_skipped"
+    };
   }
   try {
     const r = await fetch(`https://api.brevo.com/v3/contacts/${encodeURIComponent(memberEmail)}`, {
       method: "DELETE",
-      headers: { "api-key": BREVO_KEY, Accept: "application/json" },
+      headers: {
+        "api-key": BREVO_KEY,
+        Accept: "application/json"
+      }
     });
-    if (r.status === 204) return { ok: true, detail: "brevo_contact_deleted" };
-    if (r.status === 404) return { ok: true, detail: "brevo_contact_already_absent_404" };
-    const body = await r.text().catch(() => "");
+    if (r.status === 204) return {
+      ok: true,
+      detail: "brevo_contact_deleted"
+    };
+    if (r.status === 404) return {
+      ok: true,
+      detail: "brevo_contact_already_absent_404"
+    };
+    const body = await r.text().catch(()=>"");
     await alertPlatform(supabaseSvc, "high", "gdpr_erase_brevo_failed", memberEmail, `Brevo DELETE ${r.status}: ${body.slice(0, 300)}`);
-    return { ok: false, detail: `brevo_delete_${r.status}` };
+    return {
+      ok: false,
+      detail: `brevo_delete_${r.status}`
+    };
   } catch (e) {
-    await alertPlatform(supabaseSvc, "high", "gdpr_erase_brevo_failed", memberEmail, `Brevo call threw: ${(e as Error).message}`);
-    return { ok: false, detail: `brevo_threw_${(e as Error).message.slice(0, 100)}` };
+    await alertPlatform(supabaseSvc, "high", "gdpr_erase_brevo_failed", memberEmail, `Brevo call threw: ${e.message}`);
+    return {
+      ok: false,
+      detail: `brevo_threw_${e.message.slice(0, 100)}`
+    };
   }
 }
-
-async function purgePostHog(supabaseSvc: any, memberEmail: string): Promise<{ ok: boolean; detail: string }> {
+async function purgePostHog(supabaseSvc, memberEmail) {
   if (!POSTHOG_KEY || !POSTHOG_PROJECT_ID) {
-    return { ok: true, detail: "posthog_not_configured_skipped" };
+    return {
+      ok: true,
+      detail: "posthog_not_configured_skipped"
+    };
   }
   try {
     const r = await fetch(`https://eu.posthog.com/api/projects/${POSTHOG_PROJECT_ID}/persons/?distinct_id=${encodeURIComponent(memberEmail)}&delete_events=true`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${POSTHOG_KEY}`, Accept: "application/json" },
+      headers: {
+        Authorization: `Bearer ${POSTHOG_KEY}`,
+        Accept: "application/json"
+      }
     });
-    if (r.status === 204 || r.status === 200) return { ok: true, detail: "posthog_person_deleted" };
-    if (r.status === 404) return { ok: true, detail: "posthog_person_absent_404" };
-    const body = await r.text().catch(() => "");
+    if (r.status === 204 || r.status === 200) return {
+      ok: true,
+      detail: "posthog_person_deleted"
+    };
+    if (r.status === 404) return {
+      ok: true,
+      detail: "posthog_person_absent_404"
+    };
+    const body = await r.text().catch(()=>"");
     await alertPlatform(supabaseSvc, "high", "gdpr_erase_posthog_failed", memberEmail, `PostHog DELETE ${r.status}: ${body.slice(0, 300)}`);
-    return { ok: false, detail: `posthog_delete_${r.status}` };
+    return {
+      ok: false,
+      detail: `posthog_delete_${r.status}`
+    };
   } catch (e) {
-    await alertPlatform(supabaseSvc, "high", "gdpr_erase_posthog_failed", memberEmail, `PostHog call threw: ${(e as Error).message}`);
-    return { ok: false, detail: `posthog_threw_${(e as Error).message.slice(0, 100)}` };
+    await alertPlatform(supabaseSvc, "high", "gdpr_erase_posthog_failed", memberEmail, `PostHog call threw: ${e.message}`);
+    return {
+      ok: false,
+      detail: `posthog_threw_${e.message.slice(0, 100)}`
+    };
   }
 }
-
 // ─── Storage purge: subject's export artefacts (v4) ───────────────
-
-async function purgeExportArtefacts(supabaseSvc: any, memberEmail: string): Promise<{ ok: boolean; removed: number; detail: string }> {
+async function purgeExportArtefacts(supabaseSvc, memberEmail) {
   try {
-    const { data: files, error: listErr } = await supabaseSvc.storage
-      .from("gdpr-exports")
-      .list(memberEmail, { limit: 100 });
+    const { data: files, error: listErr } = await supabaseSvc.storage.from("gdpr-exports").list(memberEmail, {
+      limit: 100
+    });
     if (listErr) throw new Error(`list: ${listErr.message}`);
-    if (!files || files.length === 0) return { ok: true, removed: 0, detail: "no_export_files" };
-    const paths = files.map((f: any) => `${memberEmail}/${f.name}`);
+    if (!files || files.length === 0) return {
+      ok: true,
+      removed: 0,
+      detail: "no_export_files"
+    };
+    const paths = files.map((f)=>`${memberEmail}/${f.name}`);
     const { error: rmErr } = await supabaseSvc.storage.from("gdpr-exports").remove(paths);
     if (rmErr) throw new Error(`remove: ${rmErr.message}`);
-    return { ok: true, removed: paths.length, detail: "removed" };
+    return {
+      ok: true,
+      removed: paths.length,
+      detail: "removed"
+    };
   } catch (e) {
-    const msg = (e as Error).message;
+    const msg = e.message;
     await alertPlatform(supabaseSvc, "high", "gdpr_erase_storage_purge_failed", memberEmail, `gdpr-exports artefact purge failed (manual cleanup needed): ${msg.slice(0, 300)}`);
-    return { ok: false, removed: 0, detail: msg.slice(0, 200) };
+    return {
+      ok: false,
+      removed: 0,
+      detail: msg.slice(0, 200)
+    };
   }
 }
-
 // ─── Partner draft sweep (v5) ───────────────────────────────────
-
-async function purgePartnerDrafts(supabaseSvc: any, memberEmail: string): Promise<{ ok: boolean; partner_ids: string[]; storage_removed: number; detail: string }> {
+async function purgePartnerDrafts(supabaseSvc, memberEmail) {
   try {
-    const { data, error } = await supabaseSvc.rpc("partner_draft_erase", { p_email: memberEmail });
+    const { data, error } = await supabaseSvc.rpc("partner_draft_erase", {
+      p_email: memberEmail
+    });
     if (error) throw new Error(`partner_draft_erase rpc: ${error.message}`);
-    const ids: string[] = Array.isArray(data?.partner_ids) ? data.partner_ids : [];
+    const ids = Array.isArray(data?.partner_ids) ? data.partner_ids : [];
     let removed = 0;
-    for (const pid of ids) {
-      for (const bucket of ["partner-docs", "partner-content"]) {
+    for (const pid of ids){
+      for (const bucket of [
+        "partner-docs",
+        "partner-content"
+      ]){
         try {
-          const { data: top } = await supabaseSvc.storage.from(bucket).list(pid, { limit: 200 });
-          const paths: string[] = [];
-          for (const entry of top ?? []) {
-            if (entry.id) { paths.push(`${pid}/${entry.name}`); continue; }
-            const { data: inner } = await supabaseSvc.storage.from(bucket).list(`${pid}/${entry.name}`, { limit: 200 });
-            for (const f of inner ?? []) if (f.id) paths.push(`${pid}/${entry.name}/${f.name}`);
+          const { data: top } = await supabaseSvc.storage.from(bucket).list(pid, {
+            limit: 200
+          });
+          const paths = [];
+          for (const entry of top ?? []){
+            if (entry.id) {
+              paths.push(`${pid}/${entry.name}`);
+              continue;
+            }
+            const { data: inner } = await supabaseSvc.storage.from(bucket).list(`${pid}/${entry.name}`, {
+              limit: 200
+            });
+            for (const f of inner ?? [])if (f.id) paths.push(`${pid}/${entry.name}/${f.name}`);
           }
           if (paths.length > 0) {
             const { error: rmErr } = await supabaseSvc.storage.from(bucket).remove(paths);
@@ -250,37 +329,55 @@ async function purgePartnerDrafts(supabaseSvc: any, memberEmail: string): Promis
             removed += paths.length;
           }
         } catch (se) {
-          await alertPlatform(supabaseSvc, "high", "gdpr_erase_partner_storage_failed", memberEmail, `partner draft storage sweep failed for ${bucket}/${pid} (manual cleanup needed): ${(se as Error).message.slice(0, 200)}`);
+          await alertPlatform(supabaseSvc, "high", "gdpr_erase_partner_storage_failed", memberEmail, `partner draft storage sweep failed for ${bucket}/${pid} (manual cleanup needed): ${se.message.slice(0, 200)}`);
         }
       }
     }
-    return { ok: true, partner_ids: ids, storage_removed: removed, detail: ids.length ? "swept" : "no_drafts" };
+    return {
+      ok: true,
+      partner_ids: ids,
+      storage_removed: removed,
+      detail: ids.length ? "swept" : "no_drafts"
+    };
   } catch (e) {
-    const msg = (e as Error).message;
+    const msg = e.message;
     await alertPlatform(supabaseSvc, "high", "gdpr_erase_partner_drafts_failed", memberEmail, `partner draft erase failed (manual cleanup needed — member purge already final): ${msg.slice(0, 300)}`);
-    return { ok: false, partner_ids: [], storage_removed: 0, detail: msg.slice(0, 200) };
+    return {
+      ok: false,
+      partner_ids: [],
+      storage_removed: 0,
+      detail: msg.slice(0, 200)
+    };
   }
 }
-
 // ─── Member-keyed bucket sweep (v6) ─────────────────────────────────────────
-
-const MEMBER_BUCKETS = ["challenge-photos", "certificates", "member-avatars"];
-
-async function purgeMemberBuckets(supabaseSvc: any, memberEmail: string): Promise<{ ok: boolean; removed: number; per_bucket: Record<string, number | string> }> {
+const MEMBER_BUCKETS = [
+  "challenge-photos",
+  "certificates",
+  "member-avatars"
+];
+async function purgeMemberBuckets(supabaseSvc, memberEmail) {
   let allOk = true;
   let totalRemoved = 0;
-  const perBucket: Record<string, number | string> = {};
-  for (const bucket of MEMBER_BUCKETS) {
+  const perBucket = {};
+  for (const bucket of MEMBER_BUCKETS){
     try {
-      const { data: top, error: listErr } = await supabaseSvc.storage.from(bucket).list(memberEmail, { limit: 200 });
+      const { data: top, error: listErr } = await supabaseSvc.storage.from(bucket).list(memberEmail, {
+        limit: 200
+      });
       if (listErr) throw new Error(`list: ${listErr.message}`);
-      const paths: string[] = [];
-      for (const entry of top ?? []) {
-        if (entry.id) { paths.push(`${memberEmail}/${entry.name}`); continue; }
+      const paths = [];
+      for (const entry of top ?? []){
+        if (entry.id) {
+          paths.push(`${memberEmail}/${entry.name}`);
+          continue;
+        }
         // folder (e.g. challenge-photos/<email>/<challenge>/) — one level down
-        const { data: inner, error: innerErr } = await supabaseSvc.storage.from(bucket).list(`${memberEmail}/${entry.name}`, { limit: 200 });
+        const { data: inner, error: innerErr } = await supabaseSvc.storage.from(bucket).list(`${memberEmail}/${entry.name}`, {
+          limit: 200
+        });
         if (innerErr) throw new Error(`list ${entry.name}: ${innerErr.message}`);
-        for (const f of inner ?? []) if (f.id) paths.push(`${memberEmail}/${entry.name}/${f.name}`);
+        for (const f of inner ?? [])if (f.id) paths.push(`${memberEmail}/${entry.name}/${f.name}`);
       }
       if (paths.length > 0) {
         const { error: rmErr } = await supabaseSvc.storage.from(bucket).remove(paths);
@@ -290,17 +387,19 @@ async function purgeMemberBuckets(supabaseSvc: any, memberEmail: string): Promis
       totalRemoved += paths.length;
     } catch (e) {
       allOk = false;
-      const msg = (e as Error).message.slice(0, 200);
+      const msg = e.message.slice(0, 200);
       perBucket[bucket] = `failed: ${msg}`;
       await alertPlatform(supabaseSvc, "high", "gdpr_erase_member_bucket_failed", memberEmail, `member bucket sweep failed for ${bucket}/${memberEmail} (manual cleanup needed): ${msg}`);
     }
   }
-  return { ok: allOk, removed: totalRemoved, per_bucket: perBucket };
+  return {
+    ok: allOk,
+    removed: totalRemoved,
+    per_bucket: perBucket
+  };
 }
-
 // ─── Audit ────────────────────────────────────────────────────────────────────────
-
-async function writeAudit(supabaseSvc: any, subject: string, requester: string, kind: string, action: string, metadata: Record<string, unknown>) {
+async function writeAudit(supabaseSvc, subject, requester, kind, action, metadata) {
   try {
     await supabaseSvc.from("admin_audit_log").insert({
       admin_email: requester,
@@ -308,63 +407,54 @@ async function writeAudit(supabaseSvc: any, subject: string, requester: string, 
       member_email: subject,
       action,
       table_name: "gdpr_erasure_requests",
-      new_value: metadata,
+      new_value: metadata
     });
   } catch (e) {
-    console.error("[writeAudit] failed:", (e as Error).message);
+    console.error("[writeAudit] failed:", e.message);
   }
 }
-
 // ─── Per-row processing ────────────────────────────────
-
-async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "executed" | "failed"; detail?: string; summary?: any }> {
+async function processRequest(supabaseSvc, req) {
   const { id, member_email, requested_by, request_kind, attempt_count } = req;
   const startedAt = Date.now();
-
   try {
     // Capture firstName + stripe id BEFORE the purge wipes the row
-    const { data: memberRow } = await supabaseSvc
-      .from("members")
-      .select("first_name, stripe_customer_id")
-      .eq("email", member_email)
-      .maybeSingle();
+    const { data: memberRow } = await supabaseSvc.from("members").select("first_name, stripe_customer_id").eq("email", member_email).maybeSingle();
     const firstName = memberRow?.first_name || "";
     const stripeCustomerId = memberRow?.stripe_customer_id || null;
-
     // 1. Third-party purges (best-effort, non-aborting)
     const [stripeRes, brevoRes, posthogRes] = await Promise.all([
       purgeStripe(supabaseSvc, member_email, stripeCustomerId),
       purgeBrevoContact(supabaseSvc, member_email),
-      purgePostHog(supabaseSvc, member_email),
+      purgePostHog(supabaseSvc, member_email)
     ]);
-
     // 2. Atomic DB purge via RPC. This is the bit that MUST succeed.
-    const { data: purgeResult, error: purgeErr } = await supabaseSvc.rpc("gdpr_erasure_purge", { p_email: member_email });
+    const { data: purgeResult, error: purgeErr } = await supabaseSvc.rpc("gdpr_erasure_purge", {
+      p_email: member_email
+    });
     if (purgeErr) throw new Error(`gdpr_erasure_purge rpc: ${purgeErr.message}`);
-
     // 2b. The rewritten purge verifies zero residuals itself; treat a dirty
     // verification as a hard failure so the request is NOT marked executed.
     if (purgeResult && purgeResult.verified_clean === false) {
       throw new Error(`gdpr_erasure_purge left residuals: ${JSON.stringify(purgeResult.residuals_after_verify).slice(0, 300)}`);
     }
-
     // 2c. Purge the subject's export artefacts from gdpr-exports storage
     // (best-effort with alert — DB purge is not re-runnable once members is gone).
     const storageRes = await purgeExportArtefacts(supabaseSvc, member_email);
-
     // 2d. Sweep the subject's partner application DRAFTS (v5 — see header).
     const partnerDraftRes = await purgePartnerDrafts(supabaseSvc, member_email);
-
     // 2e. Sweep member-keyed storage buckets: challenge-photos, certificates,
     // member-avatars (v6 — see header).
     const memberBucketRes = await purgeMemberBuckets(supabaseSvc, member_email);
-
     // 3. auth.users delete (post-tx)
     let authDeleted = false;
     let authDeleteDetail = "";
     try {
-      const { data: usersData } = await supabaseSvc.auth.admin.listUsers({ page: 1, perPage: 1000 });
-      const u = usersData?.users?.find((x: any) => x.email?.toLowerCase() === member_email);
+      const { data: usersData } = await supabaseSvc.auth.admin.listUsers({
+        page: 1,
+        perPage: 1000
+      });
+      const u = usersData?.users?.find((x)=>x.email?.toLowerCase() === member_email);
       if (u?.id) {
         const { error: delErr } = await supabaseSvc.auth.admin.deleteUser(u.id);
         if (delErr) {
@@ -378,10 +468,9 @@ async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "ex
         authDeleteDetail = "no_auth_user_found";
       }
     } catch (e) {
-      authDeleteDetail = `threw: ${(e as Error).message}`;
-      await alertPlatform(supabaseSvc, "high", "gdpr_erase_auth_user_failed", member_email, `auth user purge threw: ${(e as Error).message}`);
+      authDeleteDetail = `threw: ${e.message}`;
+      await alertPlatform(supabaseSvc, "high", "gdpr_erase_auth_user_failed", member_email, `auth user purge threw: ${e.message}`);
     }
-
     // Build the full execution summary
     const fullSummary = {
       db_purge: purgeResult,
@@ -394,96 +483,120 @@ async function processRequest(supabaseSvc: any, req: any): Promise<{ status: "ex
       auth_user_deleted: authDeleted,
       auth_user_detail: authDeleteDetail,
       duration_ms: Date.now() - startedAt,
-      attempt_count,
+      attempt_count
     };
-
     // 4. Mark the request executed
     await supabaseSvc.from("gdpr_erasure_requests").update({
       executed_at: new Date().toISOString(),
       stripe_handled: stripeRes.ok,
-      execution_summary: fullSummary,
+      execution_summary: fullSummary
     }).eq("id", id);
-
     // 5. Send the executed confirmation email (best-effort; the record is already final)
     try {
       await sendBrevoExecuted(member_email, firstName);
     } catch (e) {
-      await alertPlatform(supabaseSvc, "info", "gdpr_erase_executed_email_failed", member_email, `Executed email failed (record is final): ${(e as Error).message}`);
+      await alertPlatform(supabaseSvc, "info", "gdpr_erase_executed_email_failed", member_email, `Executed email failed (record is final): ${e.message}`);
     }
-
     await writeAudit(supabaseSvc, member_email, requested_by, request_kind, "gdpr_erase_executed", {
       request_id: id,
-      ...fullSummary,
+      ...fullSummary
     });
-
-    return { status: "executed", summary: fullSummary };
+    return {
+      status: "executed",
+      summary: fullSummary
+    };
   } catch (e) {
-    const msg = (e as Error).message || String(e);
+    const msg = e.message || String(e);
     console.error(`[processRequest] ${member_email} attempt ${attempt_count}/${MAX_ATTEMPTS}:`, msg);
-
     const isFinalAttempt = attempt_count >= MAX_ATTEMPTS;
-    const updates: Record<string, unknown> = { failure_reason: msg.slice(0, 500) };
+    const updates = {
+      failure_reason: msg.slice(0, 500)
+    };
     if (isFinalAttempt) updates.failed_at = new Date().toISOString();
     await supabaseSvc.from("gdpr_erasure_requests").update(updates).eq("id", id);
-
     if (isFinalAttempt) {
       await alertPlatform(supabaseSvc, "critical", "gdpr_erase_terminal_failure", member_email, `Erasure ${id} hit ${MAX_ATTEMPTS}-attempt cap. Last error: ${msg.slice(0, 300)}`);
     }
-
     await writeAudit(supabaseSvc, member_email, requested_by, request_kind, "gdpr_erase_failed", {
       request_id: id,
       attempt: attempt_count,
       max_attempts: MAX_ATTEMPTS,
       final_attempt: isFinalAttempt,
       reason: msg,
-      duration_ms: Date.now() - startedAt,
+      duration_ms: Date.now() - startedAt
     });
-
-    return { status: "failed", detail: msg };
+    return {
+      status: "failed",
+      detail: msg
+    };
   }
 }
-
 // ─── HTTP entry ──────────────────────────────────────────────────────────────────────────────────────────
-
-Deno.serve(async (req: Request) => {
-  const supabaseSvc = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-
-  if (!(await isAuthorized(req, supabaseSvc))) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
-      status: 401, headers: { "Content-Type": "application/json" },
+Deno.serve(async (req)=>{
+  const supabaseSvc = createClient(SUPABASE_URL, SERVICE_KEY, {
+    auth: {
+      persistSession: false
+    }
+  });
+  if (!await isAuthorized(req, supabaseSvc)) {
+    return new Response(JSON.stringify({
+      error: "unauthorized"
+    }), {
+      status: 401,
+      headers: {
+        "Content-Type": "application/json"
+      }
     });
   }
-
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405, headers: { "Content-Type": "application/json" },
+    return new Response(JSON.stringify({
+      error: "Method not allowed"
+    }), {
+      status: 405,
+      headers: {
+        "Content-Type": "application/json"
+      }
     });
   }
-
-  const { data: due, error: pickErr } = await supabaseSvc.rpc("gdpr_erasure_pick_due", { limit_n: TICK_LIMIT });
+  const { data: due, error: pickErr } = await supabaseSvc.rpc("gdpr_erasure_pick_due", {
+    limit_n: TICK_LIMIT
+  });
   if (pickErr) {
     console.error("[gdpr-erase-execute] pick_due error:", pickErr);
-    return new Response(JSON.stringify({ error: "pick_due failed", detail: pickErr.message }), {
-      status: 500, headers: { "Content-Type": "application/json" },
+    return new Response(JSON.stringify({
+      error: "pick_due failed",
+      detail: pickErr.message
+    }), {
+      status: 500,
+      headers: {
+        "Content-Type": "application/json"
+      }
     });
   }
-
-  const dueRows = (due ?? []) as any[];
+  const dueRows = due ?? [];
   console.log(`[gdpr-erase-execute] picked ${dueRows.length} due rows`);
-
-  const results: any[] = [];
-  for (const row of dueRows) {
+  const results = [];
+  for (const row of dueRows){
     const r = await processRequest(supabaseSvc, row);
-    results.push({ id: row.id, member_email: row.member_email, status: r.status, ...(r.detail ? { detail: r.detail } : {}) });
+    results.push({
+      id: row.id,
+      member_email: row.member_email,
+      status: r.status,
+      ...r.detail ? {
+        detail: r.detail
+      } : {}
+    });
   }
-
   return new Response(JSON.stringify({
     success: true,
     picked: dueRows.length,
-    executed: results.filter((r) => r.status === "executed").length,
-    failed: results.filter((r) => r.status === "failed").length,
-    results,
+    executed: results.filter((r)=>r.status === "executed").length,
+    failed: results.filter((r)=>r.status === "failed").length,
+    results
   }), {
-    status: 200, headers: { "Content-Type": "application/json" },
+    status: 200,
+    headers: {
+      "Content-Type": "application/json"
+    }
   });
 });
