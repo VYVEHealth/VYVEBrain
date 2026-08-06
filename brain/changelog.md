@@ -1,3 +1,21 @@
+## PM-841 — 6 Aug 2026: CC MIGRATED TO CLOUDFLARE PAGES — deploy pipeline permanently off GitHub's build queue; ?z= ritual DEAD for the CC (2026-08-06)
+
+The PM-837–840 deploy blockade (GitHub's acknowledged Pages/Actions incident, still unresolved at cutover time) converted the backlogged Cloudflare Pages idea into a live migration, Dean driving both dashboards with Claude directing.
+
+**What shipped:** Cloudflare Pages project `vyve-command-centre` (Team@vyvehealth.co.uk Cloudflare account, ID 707d305ed92ca29dc70177373c7b00c8) connected to GitHub `VYVEHealth/vyve-command-centre` main — framework None, no build command, output `/`. First deploy served all four wedged ships instantly at vyve-command-centre.pages.dev; Dean verified the PM-840 row-click there BEFORE DNS moved. Cutover: GoDaddy DNS `admin` CNAME edited `vyvehealth.github.io` → `vyve-command-centre.pages.dev`; propagation authoritative-verified + world-resolver-verified (1.1.1.1/8.8.8.8/9.9.9.9) from the sandbox via dnspython. Cloudflare showed a transient "Verification is in undefined status" that self-resolved to **Active / SSL enabled** within ~3 min. Dean confirmed the full loop on the real domain: admin.vyvehealth.co.uk → row click opens partner detail. **Migration complete, £0 cost (free tier: unlimited static requests/bandwidth, 500 builds/mo).**
+
+**DNS truth correction (master patched):** vyvehealth.co.uk DNS is managed at **GoDaddy** (ns45/ns46.domaincontrol.com) — NOT Cloudflare-proxied; the old "routes via Cloudflare" knowledge-base line was wrong, and PM-682's "Cloudflare presence unconfirmed" is now settled: none existed before tonight. `admin` is the ONLY Cloudflare-served hostname; www + online still ride GoDaddy DNS → GitHub Pages.
+
+**New deploy reality for vyve-command-centre (rules updated):**
+- Claude's workflow UNCHANGED — commit to GitHub main exactly as before (Vault PAT, Git Data API, md5 verify). Cloudflare watches the repo and deploys in <1 min with proper cache invalidation.
+- **§23.162: the fresh-?z=N Fastly ritual is DEAD for the CC** — plain URLs serve the latest deploy. (Still REQUIRED for vyve-site + Test-Site-Finalv3, which remain on GitHub Pages/Fastly.)
+- **§23.163: CC deploy verification = Cloudflare Pages deployments list, NOT GitHub /pages/builds** (GitHub Pages remains enabled on the repo purely as a rollback target — rollback is the GoDaddy CNAME back to vyvehealth.github.io).
+- Doomsday path exists but is NOT wired: wrangler direct-upload bypasses GitHub entirely; needs api.cloudflare.com added to Claude's sandbox egress allowlist (Dean-side setting) before it's usable.
+
+**NEW BACKLOG:** (1) migrate vyve-site (member portal) to Cloudflare Pages — its own deliberate session: sw.js/vbb cache discipline interplay, native fleet server.url, preview-branch gate pattern recommended since real members are the blast radius; (2) Test-Site-Finalv3 rides along whenever (NOTE: 404.html /join/[slug] catch-all behaviour must be re-verified on Cloudflare Pages — different 404 semantics, §23.129 dependency); (3) disable GitHub Pages on vyve-command-centre after ~1 quiet week; (4) OPTIONAL Dean check outstanding: avatar upload from the production origin (Profile tab) — row-click verified live, upload path verified only from pages.dev-era testing logic, expected fine (EF CORS pins admin.vyvehealth.co.uk which is unchanged).
+
+Session arc for the record: PM-837–840 shipped blind into a GitHub outage → diagnosis fought through stale caches and a wedged build queue → root-caused (navByView) → deploy path replaced entirely. The outage that hid the bug ended up buying the infrastructure upgrade.
+
 ## PM-837–840 — 6 Aug 2026: CC admin partner Profile editor + schedule view; latent partner-detail router break FIXED; deploys blocked by GitHub incident (2026-08-06)
 
 Dean's ask: curate partner profiles from the CC before partners get access, plus see each partner's upcoming live schedule. All four ships in `partners.html` (vyve-command-centre), no EF or schema changes.
