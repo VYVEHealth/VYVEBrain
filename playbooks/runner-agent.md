@@ -67,3 +67,10 @@ RLS: `runner_commands` has RLS enabled with **no policies** — service-role onl
 
 - The runner picking up schedule changes "on next heartbeat, no restart" is only true **while the heartbeat is fresh** — verify heartbeat age before relying on it (PM-833's regen assumed a live runner that had been dead 9 hours).
 - After any calendar regen or runner incident, close the loop with `uptime` + `status` via the queue, and confirm the next scheduled session actually flips its broadcast to 'live' (watchdog auto-resolves as the proof).
+
+## Addendum (PM-836, 6 Aug 2026)
+
+- **Install delivery:** `serve-agent-installer` EF (v3) serves the installer for `curl -s .../functions/v1/serve-agent-installer | bash` on the box — no scp needed. It embeds no secrets. Retained for rebuilds.
+- **curl|bash rule:** any interactive prompt in a piped script MUST `read ... < /dev/tty` — reading stdin consumes the script itself (v1 captured `umask 077` as the service key). Always API-validate a key before writing it to env.
+- **Proven failure mode this playbook exists for:** 5 Aug 23:12 — runner alive but silently blind (heartbeat stopped, no errors logged, sessions not airing, broadcasts still created by the server-side publish cron masking it). The agent's heartbeat-stale heal caps this at ~5 minutes. Until the runner's fail-fast patch lands (backlog), assume any stopped heartbeat with an active unit is this wedge: `restart_runner` fixes it.
+- systemd note: `StartLimitIntervalSec` goes in [Unit]; in [Service] it's ignored (harmless with RestartSec=10).
