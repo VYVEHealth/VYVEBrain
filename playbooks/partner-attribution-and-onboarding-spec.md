@@ -1,6 +1,6 @@
 # Partner attribution & in-app onboarding — spec v2
 
-**7 Aug 2026.** Supersedes v1. Decisions taken since v1: **7-day trial for everyone**, **no one-time PIN**, join page collects **email + confirm email + password**, onboarding sits **in the app**.
+**7 Aug 2026 (v2.1 — decisions folded in same day).** Supersedes v1. Decisions taken since v1: **7-day trial for everyone**, **no one-time PIN**, join page collects **email + confirm email + password**, onboarding sits **in the app**.
 
 **LIVE** = verified in code/DB, **BUILD** = doesn't exist yet.
 
@@ -84,10 +84,19 @@ Nothing currently shows a partner their link. On **Profile**:
 | Route | Attribution | Status |
 |---|---|---|
 | Link | Certain — slug stamped server-side | LIVE (needs §7 Piece 3 change) |
-| Code typed at signup | Near-certain | Partly LIVE (slug only) |
-| "Did someone invite you?" picker in onboarding | Self-declared | BUILD |
+| Code typed at signup | Near-certain — deliberate act | Partly LIVE (slug only) |
+| Manual grant after a support request | Human-verified exception | BUILD (CC-side only) |
 
-**The anti-abuse spine: the price is identical on every route.** Naming a partner never saves the member money, so there is no incentive to lie for personal gain. Residual risk is collusion (~£5/month per false claim), controlled by: `attribution_source` tracking, self-declared allowed **once and only before conversion**, the source split visible to the partner and to us in CC. **Do not add a partner-confirmation step at launch** — friction against an unobserved problem.
+**DECIDED 7 Aug (Dean): there is NO self-declared route.** An in-app "did someone invite you?" picker was specced in v2 and has been **removed**. Reasoning: a picker quietly teaches partners that the link doesn't matter, which undercuts the exact behaviour the model depends on. **Rev share is paid on members who arrived through something the partner actually shared** — their link or their code. A member who finds VYVE and buys for themselves is not attributable to anyone.
+
+**The genuine exception** (Michael joins under his own steam but is Sarah's friend and wants her credited): he **contacts VYVE** — a line in the app's help area pointing at team@vyvehealth.co.uk — and an admin sets the attribution by hand in the Command Centre. Deliberately not self-service: it cannot be micromanaged at scale, and every extra self-service route weakens the push to use the link.
+
+Rules for manual grants:
+- Stamped `attribution_source = 'admin'` with the approving admin recorded — a manual grant must always be distinguishable from an earned one when reading a partner's numbers.
+- **Only before the member converts.** Once money has moved on their subscription, attribution is frozen — no retroactive re-cutting of revenue already taken and paid out.
+- Visible in the partner's joins split and in CC.
+
+**The anti-abuse spine still holds and still matters: the price is identical on every route.** Naming a partner never saves the member money, so there is no incentive to invent a referral — which is what makes the human exception low-risk to grant.
 
 ---
 
@@ -105,8 +114,8 @@ Nothing currently shows a partner their link. On **Profile**:
 **Piece 4 — Three-state front door (~0.5 session)**
 Email-first app sign-in; server resolves state; passwordless accounts get the existing PM-830 set-password email.
 
-**Piece 5 — Recognition & late attribution (~1 session)**
-"Did someone invite you?" searchable live-partner picker in onboarding; Settings equivalent, one-shot, pre-conversion only; source split surfaced in portal + CC.
+**Piece 5 — Manual attribution grant, CC-side only (~0.5 session)** *(replaces the withdrawn self-declared picker)*
+CC control to set/clear a member's partner attribution pre-conversion, stamped `attribution_source='admin'` + approving admin, blocked once converted; help-area line pointing at team@vyvehealth.co.uk; source split shown in the partner portal and CC. **No member-facing picker.**
 
 **Piece 6 — Autofill association (rides the next native release)**
 AASA + assetlinks + entitlements.
@@ -122,10 +131,11 @@ AASA + assetlinks + entitlements.
 | 1 | Trial length | **SETTLED — 7 days for everyone** |
 | 2 | PIN / email verification at signup | **SETTLED — none; confirm-email field instead** |
 | 3 | Join page creates account rather than going to checkout | **SETTLED — yes** |
-| 4 | Per-partner member rates (£10 vs £15 tiers) | Lewis — Piece 2 enables either |
-| 5 | Agreement wording: rev share paid on *attributed* members + how attribution works | Lewis |
-| 6 | Self-declared attribution payable at launch | Recommend yes, tracked separately — Dean + Lewis |
-| 7 | Partner bio/why/feel limits — 60 / 400 / 200 / 160 | Dean, agreed in principle |
+| 4 | Per-partner member rates | **SETTLED 7 Aug — no separate rates for now; £10 universal. May change later; Piece 2 keeps tiering available so this needs no rework.** |
+| 5 | Self-declared attribution | **SETTLED 7 Aug — REMOVED. Link or code only; genuine exceptions handled by support request → manual CC grant.** |
+| 6 | Partner bio/why/feel limits — 60 / 400 / 200 / 160 | **SETTLED 7 Aug — agreed, pending build. May be revisited.** |
+| 7 | Agreement wording: rev share paid on *attributed* members; attribution happens via the partner's link or code; anything else is a manual exception at VYVE's discretion | **Lewis — still owed.** Dean to talk it through with him. The 50-vs-influenced expectation gap bites regardless of what the tech does. |
+| 8 | Partner-portal copy next to the link: "this is how you get paid" | **Lewis copy line** — if partners understand the link is the mechanism from day one, exception requests stay rare |
 
 ---
 
