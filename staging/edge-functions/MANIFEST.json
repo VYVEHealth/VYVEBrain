@@ -1,5 +1,5 @@
 {
-  "snapshot_at": "2026-08-02T03:10:58Z",
+  "snapshot_at": "2026-08-09T02:47:16Z",
   "supabase_project": "ixjfklpckgxrwjlfsaaz",
   "brain_repo": "VYVEHealth/VYVEBrain",
   "brain_branch": "main",
@@ -90,16 +90,16 @@
     {
       "slug": "achievements-mark-seen",
       "ok": true,
-      "platform_version": 15,
+      "platform_version": 16,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "42875c3280738b8385a2c9e871dbe1470ea9c011d3ca77ca6ce364a3ec29f69c",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_02d85ee5-b496-4490-9d9e-05e4a055bf69_1/source/index.ts",
+      "ezbr_sha256": "e36a9cbaae30b358eb3ec5d2cd0be74ee8a21b181586a6dbe939a0d164650e92",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_02d85ee5-b496-4490-9d9e-05e4a055bf69_16/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "9dcf51f804f3870b2a5afb2d1852352eae3bf34e39947c700270ce8dee396188",
-          "bytes": 3730
+          "sha256": "af3fa630ab6c154b08e5d4bc6251442796633483138b322d8a38b00d0d7761e7",
+          "bytes": 3688
         }
       ]
     },
@@ -743,16 +743,16 @@
     {
       "slug": "re-engagement-scheduler",
       "ok": true,
-      "platform_version": 42,
+      "platform_version": 43,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "c004e8917a8a1deebed3811d033139c6ec33fae1d2ac3ed0f4af1777f69c17c6",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_129e7765-302d-439b-bb74-a5f7ac5b2c20_41/source/index.ts",
+      "ezbr_sha256": "8280788a138f33b3c0d27009e808237605c43cd495d5d54a45dae2131935bb97",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_129e7765-302d-439b-bb74-a5f7ac5b2c20_43/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "d13d4d9701be6dc4be6c95c8e72524a8ee78ee021733b30e051471e847e76e2f",
-          "bytes": 24070
+          "sha256": "e1088bbd5fb531ee13a651009303ca846436d46b89e85ab8039973797acd4224",
+          "bytes": 27022
         }
       ]
     },

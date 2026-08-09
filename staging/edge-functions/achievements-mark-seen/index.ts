@@ -1,5 +1,11 @@
-// VYVE Health — achievements-mark-seen v1
+// VYVE Health — achievements-mark-seen v2 (PM-834)
 // JWT-authed endpoint. Marks earned tiers as seen so they don't re-toast.
+// v2: Allow-Origin '*' — v1 pinned the two web origins, so the native app
+// (bundled tree, origin capacitor://localhost) failed CORS post-preflight and
+// NO markSeen ever landed from the store-app fleet (OPTIONS 200, no POST —
+// same failure class as onboarding v120 / PM-826). No credentials mode is
+// used (JWT rides the Authorization header), so '*' is safe and also serves
+// both web origins.
 // Body: { metric_slug?: string, tier_index?: number, mark_all?: boolean }
 //   - { metric_slug, tier_index }: mark a single tier seen
 //   - { mark_all: true }: mark every unseen tier seen for the caller
@@ -8,20 +14,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const ALLOWED_ORIGINS = new Set([
-  "https://online.vyvehealth.co.uk",
-  "https://www.vyvehealth.co.uk"
-]);
-function getCORSHeaders(req) {
-  const origin = req.headers.get("Origin") ?? "";
-  const allowOrigin = ALLOWED_ORIGINS.has(origin) ? origin : origin === "null" || origin === "" ? "*" : "https://online.vyvehealth.co.uk";
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Credentials": allowOrigin !== "*" ? "true" : "false"
-  };
-}
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS"
+};
 async function getAuthUser(req) {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) return null;
@@ -37,7 +34,6 @@ async function getAuthUser(req) {
   return user.email?.toLowerCase() || null;
 }
 serve(async (req)=>{
-  const corsHeaders = getCORSHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", {
     headers: corsHeaders
   });

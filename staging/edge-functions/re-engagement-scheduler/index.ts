@@ -1,12 +1,24 @@
-// VYVE Health — Re-engagement Email Scheduler v13 — Stream B CTA fix (13 Jul 2026).
+// VYVE Health — Re-engagement Email Scheduler v14 — web_join shell routing (PM-869, 7 Aug 2026).
 //
-// CHANGES vs v12:
+// CHANGES vs v13:
+//   - members select adds signup_channel. Accounts created on the /join/<slug> web page
+//     (signup_channel='web_join') stamp privacy_accepted_at at signup, which under v13
+//     routed a never-installed shell into Stream B — whose copy claims "You've been in
+//     the app". FALSE for a partner-referred person who only ever touched the join page.
+//   - Routing: web_join AND NOT onboarding_complete AND no activity → Stream A (the
+//     "download the app, sign in with the password you created" nudge — exactly the
+//     spec's "you never finished" list). Once they onboard in the app, normal routing.
+//   - buildA gains an honest pre-onboarding copy variant: when onboarding_complete is
+//     false there is no assigned programme yet, so the bodies promise the 2-minute
+//     in-app setup instead of "your workout plan is assigned". [LEWIS COPY PASS]
+//     Shells have no persona/goal, so hasUsefulProfile is false and no AI line fires.
+//
+// CHANGES vs v12 (still applies):
 //   - hubBtn ("Open the VYVE Health app") and backBtn ("Log back in") previously linked to
 //     https://online.vyvehealth.co.uk/index.html — the web portal. Policy: no member-facing
 //     links to the web portal; the app is the only advertised surface. Both CTAs now render
 //     dual store buttons (App Store shows Open when the app is installed, so they work as
 //     app-openers for Stream B members too).
-//   - All other behaviour byte-identical to v12.
 //
 // CHANGES vs v11 (still applies):
 //   - Stream A appBtn now renders two store buttons instead of the web portal login.
@@ -20,7 +32,7 @@
 //
 // CHANGES vs v8 (still applies):
 //   - Single-app world: streams A + B only.
-//   - Stream A gate: privacy_accepted_at IS NULL AND no app activity.
+//   - Stream A gate: (privacy_accepted_at IS NULL OR never-onboarded web_join shell) AND no app activity.
 //   - Stream B: opened the app, currently dormant (no activity in last 7d).
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -201,7 +213,7 @@ async function writeAiInteraction(email, persona, prompt_summary, recommendation
       })
     });
   } catch (e) {
-    console.warn('[scheduler v13] ai_interactions write failed:', e.message);
+    console.warn('[scheduler v14] ai_interactions write failed:', e.message);
   }
 }
 const wrap = (body)=>`<!DOCTYPE html><html><body style="margin:0;padding:0;background:#F4FAFA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#F4FAFA;padding:32px 16px;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#FFFFFF;border-radius:12px;overflow:hidden;box-shadow:0 2px 16px rgba(13,43,43,0.08);"><tr><td style="background:#0D2B2B;padding:24px 32px;"><img src="https://online.vyvehealth.co.uk/logo.png" alt="VYVE Health" style="height:36px;display:block;" /></td></tr><tr><td style="padding:32px;">${body}</td></tr><tr><td style="background:#F4FAFA;padding:20px 32px;border-top:1px solid #C8E4E4;"><p style="margin:0;font-size:12px;color:#7A9A9A;">VYVE Health CIC &nbsp;&middot;&nbsp; team@vyvehealth.co.uk<br>ICO Registration No. 00013608608</p></td></tr></table></td></tr></table></body></html>`;
@@ -305,8 +317,30 @@ ${pp("Your habits, workouts and cardio are set up and ready. When you\u2019re re
 ${pp(CHARITY_LINE)}
 ${appBtn}`
   };
-  let body = staticBodies[key];
-  if (useAI && key !== "A_14d") {
+  // v14 (PM-869): honest pre-onboarding variant — no programme exists until the in-app
+  // 2-minute setup runs, so the copy must not claim one. Used for web_join shells and any
+  // account that hasn't onboarded. [LEWIS COPY PASS]
+  const shellBodies = {
+    A_48h: `${h2(`Hi ${n} \u2014 welcome to VYVE.`)}
+${pp("Your account is ready. One step left: get the app, sign in with the email and password you created, and a two-minute setup builds your personal programme.")}
+${pp("Your first week is on us \u2014 the clock only starts once you\u2019re set up.")}
+${appBtn}`,
+    A_96h: `${h2(`Still here, ${n}.`)}
+${pp("The VYVE Health app is where everything begins \u2014 your habits, your workouts, your coach.")}
+${pp("Sign in with the email and password you created, answer a couple of minutes of questions, and it\u2019s all built around you.")}
+${appBtn}`,
+    A_7d: `${h2(`A week in, ${n}.`)}
+${pp("Your account is still waiting. Nothing starts \u2014 including your free week \u2014 until you open the app and finish the two-minute setup.")}
+${pp("Sign in with the email and password you created. That\u2019s genuinely all that\u2019s left.")}
+${appBtn}`,
+    A_14d: `${h2(`One last nudge, ${n}.`)}
+${pp("This is our last reminder. We don\u2019t want to keep landing in your inbox.")}
+${pp("Your account is ready whenever you are \u2014 the app, a two-minute setup, and your free week starts.")}
+${pp(CHARITY_LINE)}
+${appBtn}`
+  };
+  let body = m.onboarding_complete ? staticBodies[key] : shellBodies[key];
+  if (useAI && key !== "A_14d" && m.onboarding_complete) {
     const instruction = {
       A_48h: `Write exactly one sentence connecting the member's goal ("${m.goal_focus}") to ${priority.primary} as their first action in the app. Make it feel specific and easy. Do not greet or sign off.`,
       A_96h: `Write exactly one sentence naming ${priority.primary} as the most important of the three activities for someone with the goal "${m.goal_focus}", and why. Do not greet or sign off.`,
@@ -319,7 +353,7 @@ ${appBtn}`
   return {
     subject: subjects[key],
     html: wrap(body),
-    ai_used: useAI && key !== "A_14d"
+    ai_used: useAI && key !== "A_14d" && !!m.onboarding_complete
   };
 }
 async function buildB(m, key) {
@@ -437,7 +471,7 @@ serve(async (req)=>{
   try {
     const { data: membersRaw, error } = await supabase.from("members").select(`
       email,first_name,persona,onboarding_complete,onboarding_completed_at,
-      created_at,overwhelm_response,privacy_accepted_at,
+      created_at,overwhelm_response,privacy_accepted_at,signup_channel,
       cert_habits_count,cert_workouts_count,cert_sessions_count,
       subscription_status,goal_focus,experience_level,life_context,
       welcome_rec_1,welcome_rec_2
@@ -501,7 +535,7 @@ serve(async (req)=>{
     return new Response(JSON.stringify({
       success: true,
       dry_run: DRY_RUN,
-      version: 13,
+      version: 14,
       processed: results.length,
       sent: sc,
       skipped: sk,
@@ -517,7 +551,7 @@ serve(async (req)=>{
       }
     });
   } catch (err) {
-    console.error("[scheduler v13] fatal:", err.message);
+    console.error("[scheduler v14] fatal:", err.message);
     return new Response(JSON.stringify({
       success: false,
       error: err.message
@@ -545,9 +579,13 @@ async function processMember(m, supabase, now, sentMap, suppMap, dryRun) {
   ].filter(Boolean).reduce((a, b)=>!a || b && b > a ? b : a, null);
   const hasAnyActivity = !!lastAny;
   const consentDone = !!m.privacy_accepted_at;
+  // v14 (PM-869): web_join shells stamp consent at web signup but have never opened the
+  // app — they belong in Stream A (get-the-app) until they onboard, never in Stream B
+  // ("you've been in the app" would be a false claim).
+  const webJoinShell = m.signup_channel === 'web_join' && !m.onboarding_complete;
   let stream = null;
   let trigger = created;
-  if (!consentDone && !hasAnyActivity) {
+  if ((!consentDone || webJoinShell) && !hasAnyActivity) {
     stream = "A";
     trigger = created;
   } else {
@@ -609,7 +647,8 @@ async function processMember(m, supabase, now, sentMap, suppMap, dryRun) {
     status: "sent",
     reason: "DRY RUN",
     subject: result.subject,
-    ai_used: result.ai_used
+    ai_used: result.ai_used,
+    shell: m.signup_channel === 'web_join' && !m.onboarding_complete
   };
   try {
     const msgId = await sendBrevo(m.email, m.first_name || "there", result.subject, result.html, [
@@ -634,7 +673,7 @@ async function processMember(m, supabase, now, sentMap, suppMap, dryRun) {
     }, {
       onConflict: "member_email,stream,email_key"
     });
-    console.log(`[scheduler v13] SENT ${m.email} | ${stream} | ${nextStep.key} | ai=${result.ai_used}`);
+    console.log(`[scheduler v14] SENT ${m.email} | ${stream} | ${nextStep.key} | ai=${result.ai_used}`);
     return {
       email: m.email,
       stream,
@@ -644,7 +683,7 @@ async function processMember(m, supabase, now, sentMap, suppMap, dryRun) {
       ai_used: result.ai_used
     };
   } catch (err) {
-    console.error(`[scheduler v13] ERROR ${m.email} | ${err.message}`);
+    console.error(`[scheduler v14] ERROR ${m.email} | ${err.message}`);
     return {
       email: m.email,
       stream,
