@@ -2,13 +2,13 @@
 
 > Auto-generated from live Supabase project `ixjfklpckgxrwjlfsaaz`.
 > DO NOT EDIT — overwritten weekly by the `schema-snapshot-refresh` Edge Function.
-> Last refresh: 2026-07-26T03:01:58.960Z
+> Last refresh: 2026-08-09T03:02:03.836Z
 
-**Totals:** 176 tables (176 with RLS) · 2023 columns · 68 FKs · 282 triggers · 143 public functions · 258 RLS policies · 458 indexes · 53 cron jobs
+**Totals:** 180 tables (180 with RLS) · 2053 columns · 71 FKs · 284 triggers · 150 public functions · 265 RLS policies · 465 indexes · 53 cron jobs
 
 ---
 
-## Tables (176)
+## Tables (180)
 
 ### `achievement_metrics` · RLS
 
@@ -2009,7 +2009,7 @@
 | `created_at` | timestamp with time zone | NO | now() |  |  |
 
 **Check constraints:**
-- `engagement_emails_stream_check`: CHECK ((stream = ANY (ARRAY['A'::text, 'B'::text, 'C1'::text, 'C2'::text, 'C3'::text, 'trial_end'::text, 'b2b_removed'::text])))
+- `engagement_emails_stream_check`: CHECK ((stream = ANY (ARRAY['A'::text, 'B'::text, 'C1'::text, 'C2'::text, 'C3'::text, 'trial_end'::text, 'b2b_removed'::text, 'partner_nudge'::text])))
 
 **Foreign keys:**
 - `member_email` → `members.email` (`engagement_emails_member_email_fkey`)
@@ -3168,9 +3168,12 @@
 | `primary_goal_set_at` | timestamp with time zone | YES |  |  |  |
 | `b2b_removal_effective_at` | timestamp with time zone | YES |  |  |  |
 | `b2b_removed_at` | timestamp with time zone | YES |  |  |  |
+| `attribution_source` | text | YES |  |  |  |
+| `signup_channel` | text | NO | 'app'::text |  |  |
 
 **Check constraints:**
 - `members_account_type_chk`: CHECK ((account_type = ANY (ARRAY['trial'::text, 'paid'::text, 'comp'::text, 'enterprise'::text])))
+- `members_attribution_source_chk`: CHECK (((attribution_source IS NULL) OR (attribution_source = ANY (ARRAY['link'::text, 'code'::text, 'admin'::text]))))
 - `members_baseline_activity_band_check`: CHECK (((baseline_activity_band IS NULL) OR (baseline_activity_band = ANY (ARRAY['under_3k'::text, '3k_5k'::text, '5k_8k'::text, 'over_8k'::text]))))
 - `members_baseline_diet_check`: CHECK (((baseline_diet >= 1) AND (baseline_diet <= 10)))
 - `members_baseline_energy_check`: CHECK (((baseline_energy >= 1) AND (baseline_energy <= 10)))
@@ -3684,6 +3687,34 @@
 - `partner_applications_partner_id_key`
 - `partner_applications_pkey`
 
+### `partner_bank_details` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `partner_id` | uuid | NO |  | ✓ |  |
+| `account_name` | text | NO |  |  |  |
+| `sort_code` | text | NO |  |  |  |
+| `account_number` | text | NO |  |  |  |
+| `updated_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `partner_bank_details_account_name_check`: CHECK (((length(TRIM(BOTH FROM account_name)) >= 2) AND (length(TRIM(BOTH FROM account_name)) <= 120)))
+- `partner_bank_details_account_number_check`: CHECK ((account_number ~ '^[0-9]{8}$'::text))
+- `partner_bank_details_sort_code_check`: CHECK ((sort_code ~ '^[0-9]{6}$'::text))
+
+**Foreign keys:**
+- `partner_id` → `partner_partners.id` (`partner_bank_details_partner_id_fkey`)
+
+**Triggers:**
+- `trg_touch_partner_bank_details` — BEFORE UPDATE
+
+**RLS policies:**
+- `partner_bank_admin_read` (SELECT, roles: authenticated) — is_admin()
+- `partner_bank_own` (ALL, roles: authenticated) — (partner_id = get_my_partner_id()) / CHECK: (partner_id = get_my_partner_id())
+
+**Indexes:**
+- `partner_bank_details_pkey`
+
 ### `partner_community_posts` · RLS
 
 | Column | Type | Nullable | Default | PK | Unique |
@@ -3699,12 +3730,16 @@
 | `like_count` | integer | NO | 0 |  |  |
 | `reply_count` | integer | NO | 0 |  |  |
 | `created_at` | timestamp with time zone | NO | now() |  |  |
+| `edited_at` | timestamp with time zone | YES |  |  |  |
 
 **Check constraints:**
 - `partner_community_posts_author_kind_check`: CHECK ((author_kind = ANY (ARRAY['member'::text, 'partner'::text])))
 
 **Foreign keys:**
 - `partner_id` → `partner_partners.id` (`partner_community_posts_partner_id_fkey`)
+
+**Triggers:**
+- `trg_stamp_partner_post_edit` — BEFORE UPDATE
 
 **RLS policies:**
 - `admin_all_partner_community_posts` (ALL, roles: authenticated) — ( SELECT is_admin() AS is_admin) / CHECK: ( SELECT is_admin() AS is_admin)
@@ -3879,6 +3914,7 @@
 - `partner_partners_referral_code_key`
 - `partner_partners_slug_key`
 - `partner_partners_stripe_coupon_code_key`
+- `uq_partner_contact_email`
 
 ### `partner_payouts` · RLS
 
@@ -3996,12 +4032,66 @@
 **RLS policies:**
 - `partner_scheduled_pushes_admin` (ALL, roles: public) — is_admin_or_team() / CHECK: is_admin_or_team()
 - `partner_scheduled_pushes_partner_cancel` (UPDATE, roles: public) — ((partner_id = get_my_partner_id()) AND (sent_at IS NULL)) / CHECK: (partner_id = get_my_partner_id())
+- `partner_scheduled_pushes_partner_delete` (DELETE, roles: public) — ((partner_id = get_my_partner_id()) AND (sent_at IS NULL))
 - `partner_scheduled_pushes_partner_insert` (INSERT, roles: public) — — / CHECK: ((partner_id = get_my_partner_id()) AND (send_at > (now() + '00:05:00'::interval)))
 - `partner_scheduled_pushes_partner_select` (SELECT, roles: public) — (partner_id = get_my_partner_id())
 
 **Indexes:**
 - `idx_partner_scheduled_pushes_pending`
 - `partner_scheduled_pushes_pkey`
+
+### `partner_support_messages` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `partner_id` | uuid | NO |  |  |  |
+| `sender_email` | text | NO |  |  |  |
+| `subject` | text | YES |  |  |  |
+| `message` | text | NO |  |  |  |
+| `status` | text | NO | 'open'::text |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `partner_support_messages_message_check`: CHECK (((length(TRIM(BOTH FROM message)) >= 3) AND (length(TRIM(BOTH FROM message)) <= 4000)))
+- `partner_support_messages_status_check`: CHECK ((status = ANY (ARRAY['open'::text, 'replied'::text, 'closed'::text])))
+- `partner_support_messages_subject_check`: CHECK (((subject IS NULL) OR (length(subject) <= 200)))
+
+**Foreign keys:**
+- `partner_id` → `partner_partners.id` (`partner_support_messages_partner_id_fkey`)
+
+**RLS policies:**
+- `partner_support_admin_all` (ALL, roles: authenticated) — is_admin()
+- `partner_support_own_select` (SELECT, roles: authenticated) — (partner_id = get_my_partner_id())
+
+**Indexes:**
+- `partner_support_messages_pkey`
+
+### `partner_support_replies` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `message_id` | uuid | NO |  |  |  |
+| `sender_role` | text | NO |  |  |  |
+| `sender_email` | text | NO |  |  |  |
+| `body` | text | NO |  |  |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+
+**Check constraints:**
+- `partner_support_replies_body_check`: CHECK (((length(TRIM(BOTH FROM body)) >= 1) AND (length(TRIM(BOTH FROM body)) <= 4000)))
+- `partner_support_replies_sender_role_check`: CHECK ((sender_role = ANY (ARRAY['admin'::text, 'partner'::text])))
+
+**Foreign keys:**
+- `message_id` → `partner_support_messages.id` (`partner_support_replies_message_id_fkey`)
+
+**RLS policies:**
+- `support_replies_admin_all` (ALL, roles: authenticated) — is_admin()
+- `support_replies_partner_select` (SELECT, roles: authenticated) — (EXISTS ( SELECT 1 FROM partner_support_messages m WHERE ((m.id = partner_support_replies.message_id) AND (m.partner_id = get_my_partner_id()))))
+
+**Indexes:**
+- `idx_support_replies_message`
+- `partner_support_replies_pkey`
 
 ### `perf_telemetry` · RLS
 
@@ -4491,6 +4581,26 @@
 - `replay_views_dedupe`
 - `replay_views_member_email_activity_date_category_session_nu_key`
 - `replay_views_pkey`
+
+### `runner_commands` · RLS
+
+| Column | Type | Nullable | Default | PK | Unique |
+|---|---|---|---|---|---|
+| `id` | uuid | NO | gen_random_uuid() | ✓ |  |
+| `created_at` | timestamp with time zone | NO | now() |  |  |
+| `command` | text | NO |  |  |  |
+| `args` | jsonb | NO | '{}'::jsonb |  |  |
+| `status` | text | NO | 'pending'::text |  |  |
+| `result` | jsonb | YES |  |  |  |
+| `requested_by` | text | YES |  |  |  |
+| `started_at` | timestamp with time zone | YES |  |  |  |
+| `completed_at` | timestamp with time zone | YES |  |  |  |
+
+**RLS policies:** _(none — service-role only)_
+
+**Indexes:**
+- `idx_runner_commands_pending`
+- `runner_commands_pkey`
 
 ### `runner_heartbeat` · RLS
 
@@ -5272,13 +5382,15 @@
 
 ---
 
-## Public Functions (143)
+## Public Functions (150)
 
 - `_vyve_daily_streak(p_dates date[], p_today date)` — func
 - `_vyve_daily_streak_best(p_dates date[])` — func
 - `apply_trial_campaign(p_email text, p_code text)` — func
 - `assert_member_not_expired()` — func
 - `assert_partner_golive()` — func
+- `auth_account_state(p_email text)` — func
+- `auth_user_id_by_email(p_email text)` — func
 - `autoresolve_stale_diagnostics()` — func
 - `b2b_auth_state(p_emails text[])` — func
 - `backfill_platform_metrics(p_days integer)` — func
@@ -5355,7 +5467,10 @@
 - `normalise_workout_plan_shape()` — func
 - `notify_crisis_scan()` — func
 - `partner_draft_erase(p_email text)` — func
+- `partner_drafts_nudge_candidates(p_limit integer)` — func
 - `partner_drafts_purgeable(p_days integer, p_limit integer)` — func
+- `partner_referral_stats()` — func
+- `partner_stage_email_candidates(p_limit integer)` — func
 - `podcast_episodes_set_updated_at()` — func
 - `prune_ef_rate_limits()` — func
 - `queue_health_write_back()` — func
@@ -5390,6 +5505,7 @@
 - `set_updated_at_mp()` — func
 - `set_updated_at_persona_welcome_copy()` — func
 - `set_updated_at_podcast_platforms()` — func
+- `stamp_partner_post_edit()` — func
 - `start_trial_clock()` — func
 - `sync_onboarding_health()` — func
 - `sync_partner_onboarding_pct()` — func
@@ -5404,6 +5520,7 @@
 - `tg_refresh_home_state_from_members()` — func
 - `tg_refresh_member_home_state()` — func
 - `touch_cc_kv()` — func
+- `touch_partner_bank_details()` — func
 - `touch_partner_rating()` — func
 - `trg_partner_session_min_notice()` — func
 - `trg_replay_partner_attribution()` — func
