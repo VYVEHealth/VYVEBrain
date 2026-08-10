@@ -2,6 +2,8 @@
 
 <!--CURRENT_FRONT_START-->
 
+**PM-897 (2026-08-10):** perks empty-page on 541 = auth-ready race (vyveSupabase is created async by auth.js, null at DOMContentLoaded; boot-time fetch threw → error card). Fixed vyve-site `a0ea2207` vbb 542: vyveToken awaits window.VYVE_AUTH_READY. NEW §23.172 banked: any page touching vyveSupabase at boot MUST await VYVE_AUTH_READY — the help.html template only survives because its first call is user-triggered.
+
 **PM-896 (2026-08-10):** first perk live — Eat Clean 10% off (show-at-till, Newcastle, id 3cd0a06d). Perk logos = repo-hosted `/assets/perks/` absolute-URL convention (no sandbox storage-write path; bucket dormant for future CC flow); wordmark logos padded to square PNG to survive the 52px cover slot. vyve-site `31f6efc6` vbb 541. More businesses awaited.
 
 **PM-895 (2026-08-10):** perks 'Near you' area picker live (vyve-site `c2d3af6a` vbb 540) — area chips auto-derived from member_perks.area (hidden until >1 area), device-persisted choice, Online/null rows shown everywhere. Deliberately no geolocation (binary-gated + unnecessary at current density).
@@ -2096,6 +2098,10 @@ The CC router re-runs each page's `<script src>` on every entry (and never cache
 
 #### §23.171 — admin_users role grants MUST be role-filtered in every gate; any-active-row checks silently escalate (PM-884 — HARD RULE)
 `is_admin()` originally checked only `active=true` — so `role='team'` and `role='partner'` rows passed it, making 7 non-admin grants full CC owners across auth.js, acl.js, and 37 RLS policies. `is_admin()` = `role='admin'` only; `is_admin_or_team()` = admin|team (the deliberate broader gate, 46 policies). Any new gate, EF check, or policy touching admin_users must name the roles it accepts — the admin-member-* EFs still verify active-only server-side (open item).
+
+#### §23.172 — vyveSupabase is created ASYNC by auth.js; boot-time client calls MUST await window.VYVE_AUTH_READY (PM-897 — HARD RULE)
+auth.js script-injects the SDK then createClient — `window.vyveSupabase` is null at DOMContentLoaded on every page, every load. Any page that fetches data at boot (rather than on user action) must `await window.VYVE_AUTH_READY` (resolves {user, supabase}) before touching the client, and null-guard after. Cloning help.html's vyveToken shape into a boot-time loader without the await = guaranteed silent empty page (TypeError eaten by the loader's try/catch). help.html itself is safe only because its first client call is user-triggered.
+
 
 ## 24. Key references, credentials & URLs
 
