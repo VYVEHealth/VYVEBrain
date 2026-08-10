@@ -2,7 +2,7 @@
 
 <!--CURRENT_FRONT_START-->
 
-**PM-915 (2026-08-10): MEETINGS V1 LIVE IN THE CC** — Daily Prebuilt embedded (pages/meetings.html, CC `7e6c7f82`), cc_meetings/participants/transcription_jobs tables, meeting-manage EF v1 (JWT, admin|team only) + meeting-guest EF v1 (public by design — token-hash + lobby). £0/mo model locked: free-tier participant-minutes + Hetzner bot audio capture + local Whisper (NOT Dean's Mac, NO Daily recording fees). GATED on Dean setting DAILY_API_KEY. Sessions 2–3 backlogged (bot capture + worker + benchmark-in-installer). Register: add Daily + Hetzner.
+**PM-915 (2026-08-10): MEETINGS V1 LIVE IN THE CC** — Daily Prebuilt embedded (pages/meetings.html, CC `7e6c7f82`), cc_meetings/participants/transcription_jobs tables, meeting-manage EF v1 (JWT, admin|team only) + meeting-guest EF v1 (public by design — token-hash + lobby). £0/mo model locked: free-tier participant-minutes + Hetzner bot audio capture + local Whisper (NOT Dean's Mac, NO Daily recording fees). DEVICE-PROVEN 10 Aug (Dean in-call on iPhone). Daily account vyvehealth.daily.co; key in VAULT as DAILY_API_KEY via get_daily_api_key() RPC (service-role only), EFs v2 vault-first. ROTATION DEBT: Daily key in chat transcripts — rotate at desktop. Sessions 2–3 backlogged (bot capture + worker + benchmark-in-installer). Register: add Daily + Hetzner.
 
 **PM-904 (2026-08-10):** CC Profile tab now shows the member-preview phone (mirrors the portal). **Partner agreement is signable from the PORTAL** — `partner-agreement` EF v1 + Profile card, DB-write-first then stored/emailed copy; closes the gap where the agreement could ONLY be captured by the wizard's submit (April's case). Also the re-sign path for future terms changes.
 
