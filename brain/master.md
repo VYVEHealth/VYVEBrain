@@ -2,7 +2,7 @@
 
 <!--CURRENT_FRONT_START-->
 
-**PM-900 (2026-08-10):** partner content model — dateless uploads = evergreen library (RLS rewritten: approved + (no date OR date passed); old policy hid dateless content forever), welcome-video ask card in portal (is_welcome column, wizard's ask is skippable), and the member app's dead eq.published filter fixed to eq.approved (NO partner content was member-visible before this). CC 8864a9ed, vyve-site 93ddec46 vbb 545, partner-content-upload v9.
+**PM-900+901 (2026-08-10):** partner content lifecycle SETTLED — upload (date optional) → VYVE approval → **partner pushes to their space** (Push button, publish_at=now) or scheduled date passes; approved+dateless = private library (RLS: approved AND publish_at NOT NULL AND passed — PM-901 superseded PM-900's auto-live same night). Welcome-video ask card (is_welcome) AUTO-pushes on approval. Member app's dead eq.published filter fixed to eq.approved (NO partner content was member-visible before PM-900). CC 8864a9ed+21334583, vyve-site 93ddec46 vbb 545, partner-content-upload v10.
 
 **PM-898/899 (2026-08-10):** perks loop solved — sw precache was storing Fastly-stale pages (cache:'reload' beats local cache only, §23.162 edge unbeaten → PM-897's fix never reached the device). 544 Fastly-busts every precache fetch with ?swv=<CACHE_NAME> (§23.173 banked). 543 added the nav header 'Discounts' label + diagnostic error card w/ Try again + client-error-report wire; 544 removed the doubled in-page h1. vyve-site `c1c41d74` + `878b6cf2`.
 
