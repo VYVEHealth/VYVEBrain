@@ -2,6 +2,8 @@
 
 <!--CURRENT_FRONT_START-->
 
+**PM-898/899 (2026-08-10):** perks loop solved — sw precache was storing Fastly-stale pages (cache:'reload' beats local cache only, §23.162 edge unbeaten → PM-897's fix never reached the device). 544 Fastly-busts every precache fetch with ?swv=<CACHE_NAME> (§23.173 banked). 543 added the nav header 'Discounts' label + diagnostic error card w/ Try again + client-error-report wire; 544 removed the doubled in-page h1. vyve-site `c1c41d74` + `878b6cf2`.
+
 **PM-897 (2026-08-10):** perks empty-page on 541 = auth-ready race (vyveSupabase is created async by auth.js, null at DOMContentLoaded; boot-time fetch threw → error card). Fixed vyve-site `a0ea2207` vbb 542: vyveToken awaits window.VYVE_AUTH_READY. NEW §23.172 banked: any page touching vyveSupabase at boot MUST await VYVE_AUTH_READY — the help.html template only survives because its first call is user-triggered.
 
 **PM-896 (2026-08-10):** first perk live — Eat Clean 10% off (show-at-till, Newcastle, id 3cd0a06d). Perk logos = repo-hosted `/assets/perks/` absolute-URL convention (no sandbox storage-write path; bucket dormant for future CC flow); wordmark logos padded to square PNG to survive the 52px cover slot. vyve-site `31f6efc6` vbb 541. More businesses awaited.
@@ -2101,6 +2103,10 @@ The CC router re-runs each page's `<script src>` on every entry (and never cache
 
 #### §23.172 — vyveSupabase is created ASYNC by auth.js; boot-time client calls MUST await window.VYVE_AUTH_READY (PM-897 — HARD RULE)
 auth.js script-injects the SDK then createClient — `window.vyveSupabase` is null at DOMContentLoaded on every page, every load. Any page that fetches data at boot (rather than on user action) must `await window.VYVE_AUTH_READY` (resolves {user, supabase}) before touching the client, and null-guard after. Cloning help.html's vyveToken shape into a boot-time loader without the await = guaranteed silent empty page (TypeError eaten by the loader's try/catch). help.html itself is safe only because its first client call is user-triggered.
+
+#### §23.173 — sw precache fetches MUST be Fastly-busted; cache:'reload' does not bypass the CDN (PM-899 — HARD RULE)
+PM-220.6's fetch(url,{cache:'reload'}) bypasses only the browser HTTP cache — the GitHub Pages Fastly edge still serves its TTL copy, so during multi-deploy sessions the sw install stores MIXED file generations and 'shipped' fixes silently never reach devices (the PM-897/898 perks loop). The install handler appends ?swv=<CACHE_NAME> to every precache fetch (unique per deploy, stored under the clean url). Any future precache or in-sw refresh fetch follows the same pattern. Diagnostic tell: a device shows one file's new behaviour beside another file's old copy — that is edge-generation skew, not a code failure; check delivered bytes before re-fixing code.
+
 
 
 ## 24. Key references, credentials & URLs
