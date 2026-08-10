@@ -2,6 +2,8 @@
 
 <!--CURRENT_FRONT_START-->
 
+**PM-894 (2026-08-10):** perks.html header → compact challenges-pattern page-title/page-sub (Dean device feedback; vyve-site `dd3aef96` vbb 539). Rule of thumb banked: new More-menu feature pages default to the compact header shape, not the help/certificates big hero.
+
 **PM-893 (2026-08-10): MEMBER DISCOUNTS live in More — vyve-site `ab3c484c` vbb 538.** NEW perks.html: Supabase-driven local-business offers (`member_perks` catalogue — one INSERT adds a business, zero deploy; RLS date-windowed active-only reads) + `perk_events` usage tracking (view/reveal/link_click, member-insert RLS, GDPR-registered purge). Reveal-panel mechanic = redemption proxy for per-business usage stats. Discounts nav entry desktop+mobile, sw pm893, perk-logos public bucket. OPEN: seed Newcastle businesses (awaiting Dean's list — name/discount/redemption type each); Lewis copy pass incl. third-party disclaimer; CC perks surface + stats line backlogged.
 
 **PM-892 (2026-08-10):** partner detail hero shows portal-access state (provisioned? login email sent? when/by whom) from admin_users + partner_provision audit rows; admin_audit_log gained is_admin() SELECT. Vanessa: provisioned + emailed 17:23 ✓, not yet signed in. **PM-891 (2026-08-10):** Vanessa Sturman resubmitted after a July decline — restored to Applied (review her; she was previously declined). partner-onboarding v16: declined resubmissions now auto-return to the board (status flip + _system stamp; live/onboarding never demoted).
