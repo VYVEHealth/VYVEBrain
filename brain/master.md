@@ -2,6 +2,8 @@
 
 <!--CURRENT_FRONT_START-->
 
+**PM-900 (2026-08-10):** partner content model — dateless uploads = evergreen library (RLS rewritten: approved + (no date OR date passed); old policy hid dateless content forever), welcome-video ask card in portal (is_welcome column, wizard's ask is skippable), and the member app's dead eq.published filter fixed to eq.approved (NO partner content was member-visible before this). CC 8864a9ed, vyve-site 93ddec46 vbb 545, partner-content-upload v9.
+
 **PM-898/899 (2026-08-10):** perks loop solved — sw precache was storing Fastly-stale pages (cache:'reload' beats local cache only, §23.162 edge unbeaten → PM-897's fix never reached the device). 544 Fastly-busts every precache fetch with ?swv=<CACHE_NAME> (§23.173 banked). 543 added the nav header 'Discounts' label + diagnostic error card w/ Try again + client-error-report wire; 544 removed the doubled in-page h1. vyve-site `c1c41d74` + `878b6cf2`.
 
 **PM-897 (2026-08-10):** perks empty-page on 541 = auth-ready race (vyveSupabase is created async by auth.js, null at DOMContentLoaded; boot-time fetch threw → error card). Fixed vyve-site `a0ea2207` vbb 542: vyveToken awaits window.VYVE_AUTH_READY. NEW §23.172 banked: any page touching vyveSupabase at boot MUST await VYVE_AUTH_READY — the help.html template only survives because its first call is user-triggered.
