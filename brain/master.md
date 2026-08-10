@@ -2,6 +2,8 @@
 
 <!--CURRENT_FRONT_START-->
 
+**PM-904 (2026-08-10):** CC Profile tab now shows the member-preview phone (mirrors the portal). **Partner agreement is signable from the PORTAL** — `partner-agreement` EF v1 + Profile card, DB-write-first then stored/emailed copy; closes the gap where the agreement could ONLY be captured by the wizard's submit (April's case). Also the re-sign path for future terms changes.
+
 **PM-903 (2026-08-10) — RATE LIMITS MUST NEVER BLOCK A REAL APPLICANT:** April Rosson was 429'd out of her own application (175 hits vs a 120/hr IP ceiling; wizard autosaves ~4/min). partner-onboarding v17: **submit is never IP-limited** (verified against a saturated window), IP ceiling 600/hr, save on its own 400/hr per-draft bucket, 429s carry retry_after + human copy, bare-domain origin allowed. Her window was cleared — she can submit. **Rule: any new rate limit must exempt the irreplaceable action.**
 
 **PM-902 (2026-08-10) — FAILURE VISIBILITY (standing capability):** client_errors table + `report-error` EF (verify_jwt:false by design, 20/hr/IP; critical → email + push, deduped hourly) receives browser-side failures the instant they happen; portal upload paths all wired + honest user copy. `partner-health-sweep` cron 07:45 UTC emails a digest ONLY when something is wrong — 6 fingerprints (stuck path:null uploads, agreement_copy_error, provisioned-never-signed-in >72h, live-partner-no-welcome-video, open client_errors 24h, support open >48h) via read-only `partner_health_findings()` RPC. First run: 11 findings. **New surfaces should wire reportError() at every failure path.**
