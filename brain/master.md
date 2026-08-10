@@ -2,6 +2,8 @@
 
 <!--CURRENT_FRONT_START-->
 
+**PM-895 (2026-08-10):** perks 'Near you' area picker live (vyve-site `c2d3af6a` vbb 540) — area chips auto-derived from member_perks.area (hidden until >1 area), device-persisted choice, Online/null rows shown everywhere. Deliberately no geolocation (binary-gated + unnecessary at current density).
+
 **PM-894 (2026-08-10):** perks.html header → compact challenges-pattern page-title/page-sub (Dean device feedback; vyve-site `dd3aef96` vbb 539). Rule of thumb banked: new More-menu feature pages default to the compact header shape, not the help/certificates big hero.
 
 **PM-893 (2026-08-10): MEMBER DISCOUNTS live in More — vyve-site `ab3c484c` vbb 538.** NEW perks.html: Supabase-driven local-business offers (`member_perks` catalogue — one INSERT adds a business, zero deploy; RLS date-windowed active-only reads) + `perk_events` usage tracking (view/reveal/link_click, member-insert RLS, GDPR-registered purge). Reveal-panel mechanic = redemption proxy for per-business usage stats. Discounts nav entry desktop+mobile, sw pm893, perk-logos public bucket. OPEN: seed Newcastle businesses (awaiting Dean's list — name/discount/redemption type each); Lewis copy pass incl. third-party disclaimer; CC perks surface + stats line backlogged.
