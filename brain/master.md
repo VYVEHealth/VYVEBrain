@@ -2,6 +2,8 @@
 
 <!--CURRENT_FRONT_START-->
 
+**PM-896 (2026-08-10):** first perk live — Eat Clean 10% off (show-at-till, Newcastle, id 3cd0a06d). Perk logos = repo-hosted `/assets/perks/` absolute-URL convention (no sandbox storage-write path; bucket dormant for future CC flow); wordmark logos padded to square PNG to survive the 52px cover slot. vyve-site `31f6efc6` vbb 541. More businesses awaited.
+
 **PM-895 (2026-08-10):** perks 'Near you' area picker live (vyve-site `c2d3af6a` vbb 540) — area chips auto-derived from member_perks.area (hidden until >1 area), device-persisted choice, Online/null rows shown everywhere. Deliberately no geolocation (binary-gated + unnecessary at current density).
 
 **PM-894 (2026-08-10):** perks.html header → compact challenges-pattern page-title/page-sub (Dean device feedback; vyve-site `dd3aef96` vbb 539). Rule of thumb banked: new More-menu feature pages default to the compact header shape, not the help/certificates big hero.
