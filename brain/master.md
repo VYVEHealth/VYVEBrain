@@ -2,7 +2,7 @@
 
 <!--CURRENT_FRONT_START-->
 
-**PM-891 (2026-08-10):** Vanessa Sturman resubmitted after a July decline — restored to Applied (review her; she was previously declined). partner-onboarding v16: declined resubmissions now auto-return to the board (status flip + _system stamp; live/onboarding never demoted).
+**PM-892 (2026-08-10):** partner detail hero shows portal-access state (provisioned? login email sent? when/by whom) from admin_users + partner_provision audit rows; admin_audit_log gained is_admin() SELECT. Vanessa: provisioned + emailed 17:23 ✓, not yet signed in. **PM-891 (2026-08-10):** Vanessa Sturman resubmitted after a July decline — restored to Applied (review her; she was previously declined). partner-onboarding v16: declined resubmissions now auto-return to the board (status flip + _system stamp; live/onboarding never demoted).
 
 **PM-887 (2026-08-08, misnumbered PM-882 at commit — parallel session collision, corrected f830d367):** portal Help tab live — 10-question FAQ (current-truth model, Lewis copy pass owed) + message-us form (partner-support EF v1, 5/day limit, logged to partner_support_messages then emailed to team@ reply-to-sender). **PM-889+890: full two-way support loop SHIPPED** — CC Support inbox (sidebar + open-count badge) with in-CC threaded replies (partner-support v2, admin reply emails the partner); portal 'Your messages' inbox with partner replies (reopens thread, emails team@). partner_support_messages + partner_support_replies; all writes via the EF only. Lewis copy pass owed on the reply-notification email.
 
