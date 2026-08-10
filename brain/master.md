@@ -2,6 +2,8 @@
 
 <!--CURRENT_FRONT_START-->
 
+**PM-915 (2026-08-10): MEETINGS V1 LIVE IN THE CC** — Daily Prebuilt embedded (pages/meetings.html, CC `7e6c7f82`), cc_meetings/participants/transcription_jobs tables, meeting-manage EF v1 (JWT, admin|team only) + meeting-guest EF v1 (public by design — token-hash + lobby). £0/mo model locked: free-tier participant-minutes + Hetzner bot audio capture + local Whisper (NOT Dean's Mac, NO Daily recording fees). GATED on Dean setting DAILY_API_KEY. Sessions 2–3 backlogged (bot capture + worker + benchmark-in-installer). Register: add Daily + Hetzner.
+
 **PM-904 (2026-08-10):** CC Profile tab now shows the member-preview phone (mirrors the portal). **Partner agreement is signable from the PORTAL** — `partner-agreement` EF v1 + Profile card, DB-write-first then stored/emailed copy; closes the gap where the agreement could ONLY be captured by the wizard's submit (April's case). Also the re-sign path for future terms changes.
 
 **PM-903 (2026-08-10) — RATE LIMITS MUST NEVER BLOCK A REAL APPLICANT:** April Rosson was 429'd out of her own application (175 hits vs a 120/hr IP ceiling; wizard autosaves ~4/min). partner-onboarding v17: **submit is never IP-limited** (verified against a saturated window), IP ceiling 600/hr, save on its own 400/hr per-draft bucket, 429s carry retry_after + human copy, bare-domain origin allowed. Her window was cleared — she can submit. **Rule: any new rate limit must exempt the irreplaceable action.**
