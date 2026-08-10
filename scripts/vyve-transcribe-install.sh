@@ -302,6 +302,16 @@ def run_job(job):
         for p in parts:
             os.remove(p)
         log('transcribed', mid, 'audio=%ds wall=%ds' % (audio_s, wall_s))
+        # auto-summary (EF calls Claude server-side; non-fatal on failure)
+        try:
+            r2 = requests.post(SB + '/functions/v1/meeting-summary',
+                               headers={'Authorization': 'Bearer ' + KEY, 'Content-Type': 'application/json'},
+                               json={'meeting_id': mid}, timeout=90)
+            log('summary', mid, r2.status_code)
+            if r2.status_code != 200:
+                report_error('summary', 'HTTP %s meeting=%s %s' % (r2.status_code, mid, r2.text[:200]))
+        except Exception as e:
+            report_error('summary', '%s meeting=%s' % (e, mid))
     except Exception as e:
         traceback.print_exc()
         failed_final = job.get('attempts', 0) + 1 >= 3
