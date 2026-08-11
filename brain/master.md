@@ -2,6 +2,8 @@
 
 <!--CURRENT_FRONT_START-->
 
+**PM-929/930/931 (2026-08-11): Website inbound → CC.** All public forms (careers/contact/podcast) write cc_inbound via inbound-intake EF; CC Inbound page (team tier) triages; 07:45 UTC digest bells Dean/Lewis/Alan. **Contact forms had been silently discarding submissions — tell Lewis.** Digest email leg pending: Lewis disables Brevo Authorised-IPs, or crack send-email's internal auth (all obvious shapes 401'd).
+
 **PM-924/926/927 (2026-08-11): Phase 2 SHIPPED, Dean QA in progress — data-load fixed (sf- compat stubs), tab-bar swipe fixed GLOBALLY (fit-content clamp), partner viewbar wraps on mobile.** — partners.html machine-ported into the SPA (pages/partner-management.html, CSS scoped, IIFE + 75 exports, internal sidebar → tab-bar, auth via shared session). Rollback = one sidebar line; /partners.html still live. Phase 3 (admin-console) next, then calendar mobile + chart sweep + wrap.
 
 **PM-920 (2026-08-11):** CC mobile dark-strip fixed — topnav toolbar overflowed phone viewports; ≤900px now bell+search+avatar only, meetings rows wrap. Dean direction reaffirmed: CC → native phone app; full mobile audit rides Streamline Phase 2/3.
