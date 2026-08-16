@@ -1,5 +1,5 @@
 {
-  "snapshot_at": "2026-08-09T02:47:16Z",
+  "snapshot_at": "2026-08-16T03:04:46Z",
   "supabase_project": "ixjfklpckgxrwjlfsaaz",
   "brain_repo": "VYVEHealth/VYVEBrain",
   "brain_branch": "main",
@@ -234,7 +234,7 @@
     {
       "slug": "cc-data",
       "ok": false,
-      "error": "Downloading function: cc-dataError status 404: {\"message\":\"Function not found\"}Try rerunning the command with --debug to troubleshoot the error."
+      "error": "Downloading function: cc-data\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "certificate-checker",
@@ -271,7 +271,7 @@
     {
       "slug": "check-cron",
       "ok": false,
-      "error": "Downloading function: check-cronError status 404: {\"message\":\"Function not found\"}Try rerunning the command with --debug to troubleshoot the error."
+      "error": "Downloading function: check-cron\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "daily-report",
@@ -292,7 +292,7 @@
     {
       "slug": "edit-habit",
       "ok": false,
-      "error": "Downloading function: edit-habitError status 404: {\"message\":\"Function not found\"}Try rerunning the command with --debug to troubleshoot the error."
+      "error": "Downloading function: edit-habit\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "email-watchdog",
@@ -521,7 +521,7 @@
     {
       "slug": "internal-dashboard",
       "ok": false,
-      "error": "Downloading function: internal-dashboardError status 404: {\"message\":\"Function not found\"}Try rerunning the command with --debug to troubleshoot the error."
+      "error": "Downloading function: internal-dashboard\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "leaderboard",
@@ -549,14 +549,14 @@
       "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_bd663a89-08f6-465b-9144-d8af2b3f8364_37/source/index.ts",
       "files": [
         {
-          "name": "_shared/achievements.ts",
-          "sha256": "e281aaadf6838698d5ac164bf7f883f51a1175bb3b58569c1cd0fb68fed22f87",
-          "bytes": 15482
-        },
-        {
           "name": "index.ts",
           "sha256": "ee629ff8799e6264a901a3b5ccdde4b418d081e8cb8177454750ff4ae4737c6a",
           "bytes": 15823
+        },
+        {
+          "name": "_shared/achievements.ts",
+          "sha256": "e281aaadf6838698d5ac164bf7f883f51a1175bb3b58569c1cd0fb68fed22f87",
+          "bytes": 15482
         }
       ]
     },
@@ -570,14 +570,14 @@
       "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_7c6364b5-f8b8-492f-a429-da3c6cc1fdd5_2/source/index.ts",
       "files": [
         {
-          "name": "_shared/achievements.ts",
-          "sha256": "f9dab3acac3138a9b15e407ae4885ac04d63f6a212ad741fcdf8da1ea8456db9",
-          "bytes": 15326
-        },
-        {
           "name": "index.ts",
           "sha256": "59ab58a20e463c2aee4d453c379da20fa53fe2957e87420374dbeca3f63380cc",
           "bytes": 3051
+        },
+        {
+          "name": "_shared/achievements.ts",
+          "sha256": "f9dab3acac3138a9b15e407ae4885ac04d63f6a212ad741fcdf8da1ea8456db9",
+          "bytes": 15326
         }
       ]
     },
@@ -591,9 +591,9 @@
       "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c950ab00-49f3-4c07-bd77-83b57c644069_79/source/index.ts",
       "files": [
         {
-          "name": "_shared/achievements.ts",
-          "sha256": "11b423de40df33d515def443b4d18836aeeb3e9b38f88efb8b06d0e66baa9bb0",
-          "bytes": 1795
+          "name": "index.ts",
+          "sha256": "a41da408bc98afb117ef2539f7e81846aab9761ebac4287a6379ee438baee18a",
+          "bytes": 17821
         },
         {
           "name": "_shared/taxonomy.ts",
@@ -601,9 +601,9 @@
           "bytes": 3481
         },
         {
-          "name": "index.ts",
-          "sha256": "a41da408bc98afb117ef2539f7e81846aab9761ebac4287a6379ee438baee18a",
-          "bytes": 17821
+          "name": "_shared/achievements.ts",
+          "sha256": "11b423de40df33d515def443b4d18836aeeb3e9b38f88efb8b06d0e66baa9bb0",
+          "bytes": 1795
         }
       ]
     },
@@ -690,7 +690,7 @@
     {
       "slug": "ops-brief",
       "ok": false,
-      "error": "Downloading function: ops-briefError status 404: {\"message\":\"Function not found\"}Try rerunning the command with --debug to troubleshoot the error."
+      "error": "Downloading function: ops-brief\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "platform-alert",
@@ -759,7 +759,7 @@
     {
       "slug": "re-engagement-test-sender",
       "ok": false,
-      "error": "Downloading function: re-engagement-test-senderError status 404: {\"message\":\"Function not found\"}Try rerunning the command with --debug to troubleshoot the error."
+      "error": "Downloading function: re-engagement-test-sender\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "register-push-token",
@@ -908,7 +908,7 @@
     {
       "slug": "storage-cleanup",
       "ok": false,
-      "error": "Downloading function: storage-cleanupError status 404: {\"message\":\"Function not found\"}Try rerunning the command with --debug to troubleshoot the error."
+      "error": "Downloading function: storage-cleanup\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "streak-reminder",
@@ -936,14 +936,14 @@
       "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_1b0d57b9-cbd2-4d6c-86e8-796bc9b42e4a_17/source/index.ts",
       "files": [
         {
-          "name": "_shared/taxonomy.ts",
-          "sha256": "fd8bde77df8671b24df90fb5ca29af86651c6b39037cffc6c8310a2566cd14ee",
-          "bytes": 3725
-        },
-        {
           "name": "index.ts",
           "sha256": "1250b43aa62491289c62b20f807e3c9cd8d4cf399d851714af208e7058d2e192",
           "bytes": 19952
+        },
+        {
+          "name": "_shared/taxonomy.ts",
+          "sha256": "fd8bde77df8671b24df90fb5ca29af86651c6b39037cffc6c8310a2566cd14ee",
+          "bytes": 3725
         }
       ]
     },
