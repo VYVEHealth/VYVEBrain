@@ -2,6 +2,8 @@
 
 <!--CURRENT_FRONT_START-->
 
+**PM-937–940 (2026-08-17): Lewis's videos LIVE in-app.** All 7 app_videos slots filled and active (questionnaire intro / welcome / Mind / Body / Connect / weekly + monthly check-in — the two check-in slots are NEW this session); give_back.mp4 parked in the bucket awaiting a Lewis placement call. storage-ingest EF v1 added (KEEP — secret-guarded URL→bucket puller). Local-first playback shipped: native builds play bundled /videos/<key>.mp4, remote fallback — bundling itself happens at the next store build (www/videos/, ~70MB) and **OTA zips must exclude videos/ (§23.175)**. No forced tour — first-visit cards are the standing model (Dean confirmed). Quick questionnaire path exists live (step-zero Full vs Quick cards) — now recorded.
+
 **PM-929/930/931 (2026-08-11): Website inbound → CC.** All public forms (careers/contact/podcast) write cc_inbound via inbound-intake EF; CC Inbound page (team tier) triages; 07:45 UTC digest bells Dean/Lewis/Alan. **Contact forms had been silently discarding submissions — tell Lewis.** Digest email leg pending: Lewis disables Brevo Authorised-IPs, or crack send-email's internal auth (all obvious shapes 401'd).
 
 **PM-924/926/927 (2026-08-11): Phase 2 SHIPPED, Dean QA in progress — data-load fixed (sf- compat stubs), tab-bar swipe fixed GLOBALLY (fit-content clamp), partner viewbar wraps on mobile.** — partners.html machine-ported into the SPA (pages/partner-management.html, CSS scoped, IIFE + 75 exports, internal sidebar → tab-bar, auth via shared session). Rollback = one sidebar line; /partners.html still live. Phase 3 (admin-console) next, then calendar mobile + chart sweep + wrap.
@@ -2122,6 +2124,12 @@ auth.js script-injects the SDK then createClient — `window.vyveSupabase` is nu
 
 #### §23.173 — sw precache fetches MUST be Fastly-busted; cache:'reload' does not bypass the CDN (PM-899 — HARD RULE)
 PM-220.6's fetch(url,{cache:'reload'}) bypasses only the browser HTTP cache — the GitHub Pages Fastly edge still serves its TTL copy, so during multi-deploy sessions the sw install stores MIXED file generations and 'shipped' fixes silently never reach devices (the PM-897/898 perks loop). The install handler appends ?swv=<CACHE_NAME> to every precache fetch (unique per deploy, stored under the clean url). Any future precache or in-sw refresh fetch follows the same pattern. Diagnostic tell: a device shows one file's new behaviour beside another file's old copy — that is edge-generation skew, not a code failure; check delivered bytes before re-fixing code.
+
+#### §23.174 — placeholder sweeps must be case-insensitive with a post-sweep assert (PM-937/938 — HARD RULE)
+The PM-XXX placeholder discipline failed twice in one session the same way: the sw CACHE_NAME carried the placeholder as lowercase `pmXXX` and an uppercase-only `sed s/PM-XXX/…/` swept everything else, shipping a literal `pmXXX` cache key both times (functionally harmless — the string still changed — but wrong markers in prod and a correction commit each time). Rule: sweep with case-insensitive replacement AND assert `not re.search(r'pm-?xxx', src, re.I)` on every touched file before the commit runs. Write placeholders in ONE case, but never rely on that.
+
+#### §23.175 — OTA bundle zips NEVER include videos/; bundled media rides the store binary only (PM-940 — HARD RULE)
+Capawesome live-updates replace the entire served web root, so anything inside the OTA zip is downloaded by every member on every update — bundling the ~70MB /videos/ directory would turn each one-line fix into a 70MB member download, and anything NOT in the zip vanishes from the device after the swap. Standing model: the App Store binary carries www/videos/<key>.mp4 (drop the app-videos bucket files in at build time — store-build checklist item); OTA zips exclude videos/; the PM-940 resolver in hub-videos.js + onboarding.html plays local-first and error-falls-back to app_videos.url, so post-OTA devices simply stream (fine — receiving an OTA proves connectivity, and the no-Wi-Fi case this protects is the FRESH install running the store binary).
 
 
 
