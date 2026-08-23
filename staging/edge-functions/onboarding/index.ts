@@ -1,3 +1,9 @@
+// onboarding v121 - PM-XXX: AI-output parsing hardened after PM-941 cycle-one fallbacks. jsonLoose() (fence-strip +
+// first-{...}-block extract) now backs selectPersona / generateGoalAnchor / selectHabits; selectPersona mt 350->500,
+// generateGoalAnchor mt 250->400 (position-202 truncation/malformed JSON seen live 17 Aug); rec-line parsing accepts
+// -, bullets and numbered lists and WARNS with raw text on fallback; writeAiInteraction remapped to the live
+// ai_interactions schema (triggered_by/prompt_summary/recommendation/decision_log - the old payload 400'd silently
+// on the nonexistent 'metadata' column for EVERY member). NO other changes vs v120.
 // onboarding v120 - PM-826: Access-Control-Allow-Origin 'https://www.vyvehealth.co.uk' -> '*'. The native app
 // (Capacitor server.url) submits from https://online.vyvehealth.co.uk; the origin pin made every app-origin
 // submit die at CORS preflight (OPTIONS 200, POST never sent). Public EF, verify_jwt:false, no credentials
@@ -33,6 +39,20 @@ const SPLITS = {
   Home: 'Home',
   Movement_Wellbeing: 'Movement & Wellbeing'
 };
+// v121: tolerant JSON extraction for model outputs - strips markdown fences, then falls back to the first {...} block.
+function jsonLoose(t) {
+  const s = String(t || '').replace(/```json|```/g, '').trim();
+  try {
+    return JSON.parse(s);
+  } catch (_) {}
+  const m = s.match(/\{[\s\S]*\}/);
+  if (m) {
+    try {
+      return JSON.parse(m[0]);
+    } catch (_) {}
+  }
+  return null;
+}
 function selectPlanType(d) {
   const loc = String(d.trainingLocation || '').trim().toLowerCase(), days = parseInt(String(d.trainDays)) || 3, exp = String(d.gymExperience || 'Beginner').toLowerCase();
   const goals = (d.trainingGoals || []).map((g)=>g.toLowerCase()).join(' '), lc = d.lifeContext || [], sens = lc.some((c)=>WORKOUT_SENSITIVE_CONTEXT.includes(c));
@@ -620,7 +640,7 @@ function isQuickPath(d) {
 function buildDecisionLog(d, persona, pt, pr, pm, prr, stream) {
   const s = d.scores || {}, lc = d.lifeContext || [];
   return {
-    onboarding_version: 'v120',
+    onboarding_version: 'v121',
     recorded_at: new Date().toISOString(),
     inputs: {
       exercise_stream: stream,
@@ -716,21 +736,20 @@ async function selectPersona(d) {
       aiReasoning: await mr('NOVA', r)
     };
   }
-  const txt = await callAnthropic(null, `Assign VYVE persona. ${PERSONA_DESCRIPTIONS}\nRULES:HAVEN=bereavement/MH.RIVER=stress<=3|wellbeing<=4|energy<=3.NOVA=all 7+,1-2 perf goals.SPARK=default.SAGE=analytical.\nMEMBER:W=${s.wellbeing}/10,St=${s.stress}/10(HIGH=calm),E=${s.energy}/10,Goals(${tg.length}):${tg.join(',') || 'none'},Spec:${d.specificGoal || 'N/A'},Ctx:${lc.join(',') || 'none'},Tone:${d.tonePreference || 'N/A'},Exp:${d.gymExperience || 'N/A'},Days:${d.trainDays || 'N/A'}\nJSON:{"persona":"SPARK","reason":"...","aiReasoning":"..."}`, 350);
-  try {
-    const p = JSON.parse(txt);
-    if ([
-      'NOVA',
-      'RIVER',
-      'SPARK',
-      'SAGE',
-      'HAVEN'
-    ].includes(p.persona) && p.reason) return {
-      ...p,
-      method: 'ai_decision',
-      aiReasoning: p.aiReasoning || p.reason
-    };
-  } catch (_) {}
+  const txt = await callAnthropic(null, `Assign VYVE persona. ${PERSONA_DESCRIPTIONS}\nRULES:HAVEN=bereavement/MH.RIVER=stress<=3|wellbeing<=4|energy<=3.NOVA=all 7+,1-2 perf goals.SPARK=default.SAGE=analytical.\nMEMBER:W=${s.wellbeing}/10,St=${s.stress}/10(HIGH=calm),E=${s.energy}/10,Goals(${tg.length}):${tg.join(',') || 'none'},Spec:${d.specificGoal || 'N/A'},Ctx:${lc.join(',') || 'none'},Tone:${d.tonePreference || 'N/A'},Exp:${d.gymExperience || 'N/A'},Days:${d.trainDays || 'N/A'}\nJSON:{"persona":"SPARK","reason":"...","aiReasoning":"..."}`, 500);
+  const p = jsonLoose(txt);
+  if (p && [
+    'NOVA',
+    'RIVER',
+    'SPARK',
+    'SAGE',
+    'HAVEN'
+  ].includes(p.persona) && p.reason) return {
+    ...p,
+    method: 'ai_decision',
+    aiReasoning: p.aiReasoning || p.reason
+  };
+  console.warn('selectPersona fallback - unparseable AI output:', String(txt).slice(0, 300));
   return {
     persona: 'SPARK',
     method: 'ai_fallback',
@@ -767,8 +786,12 @@ async function generateGoalAnchor(d, stream) {
       '',
       'Respond ONLY with JSON, no markdown: {"programme_name":"...","goal_summary":"..."}'
     ].join('\n');
-    const txt = await callAnthropic(null, prompt, 250);
-    const o = JSON.parse(txt.replace(/```json|```/g, '').trim());
+    const txt = await callAnthropic(null, prompt, 400);
+    const o = jsonLoose(txt);
+    if (!o) {
+      console.warn('generateGoalAnchor fallback - unparseable AI output:', String(txt).slice(0, 300));
+      return null;
+    }
     const name = String(o.programme_name || '').trim(), gs = String(o.goal_summary || '').trim();
     if (!name) return null;
     return {
@@ -812,18 +835,16 @@ async function selectHabits(d, lib) {
   const libLines = lib.map((h)=>`${h.id}|${h.habit_pot}|${h.habit_title}|${h.difficulty}`).join('\n');
   const exampleId = lib[0]?.id || 'uuid-here';
   const txt = await callAnthropic(null, `Select exactly 5 habits from the library below for this VYVE member. STRESS:1=stressed,10=calm.\nMember:Goals=${(d.trainingGoals || []).join(',') || 'general'},W=${s.wellbeing}/10,St=${s.stress}/10,Sl=${s.sleep}/10,E=${s.energy}/10,Ctx=${lc.join(',') || 'stable'},Exp=${d.gymExperience || 'N/A'},Sleep=${(d.sleepIssues || []).join(',') || 'none'},Act=${d.activityLevel || 'N/A'}\nLIB (id|pot|title|difficulty):\n${libLines}\nIMPORTANT: Return the UUID ids copied exactly from the LIB above. Do not use integers.\nJSON:{"ids":["${exampleId}","...","...","...","..."],"reasoning":"brief"}`, 500);
-  try {
-    const o = JSON.parse(txt.replace(/```json|```/g, '').trim());
-    if (Array.isArray(o.ids) && o.ids.length === 5) {
-      const validIds = o.ids.filter((id)=>lib.some((h)=>h.id === id));
-      if (validIds.length === 5) return {
-        ids: validIds,
-        reasoning: o.reasoning || 'Selected.'
-      };
-      console.warn('selectHabits: only', validIds.length, 'of 5 ids were valid UUIDs, using fallback');
-    }
-  } catch (e) {
-    console.warn('selectHabits parse error:', e);
+  const o = jsonLoose(txt);
+  if (o && Array.isArray(o.ids) && o.ids.length === 5) {
+    const validIds = o.ids.filter((id)=>lib.some((h)=>h.id === id));
+    if (validIds.length === 5) return {
+      ids: validIds,
+      reasoning: o.reasoning || 'Selected.'
+    };
+    console.warn('selectHabits: only', validIds.length, 'of 5 ids were valid UUIDs, using fallback');
+  } else {
+    console.warn('selectHabits fallback - unparseable AI output:', String(txt).slice(0, 300));
   }
   return {
     ids: lib.filter((h)=>h.difficulty === 'easy').slice(0, 5).map((h)=>h.id),
@@ -1098,12 +1119,11 @@ async function writeAiInteraction(email, persona, r1, r2, r3, dl) {
     r3
   ].filter(Boolean).map((rec, i)=>({
       member_email: email.toLowerCase().trim(),
+      triggered_by: 'onboarding',
       persona,
-      prompt_type: 'onboarding_rec_' + (i + 1),
-      response_text: rec,
-      model: 'claude-sonnet-4-5',
-      tokens_used: 0,
-      metadata: dl
+      prompt_summary: 'onboarding_rec_' + (i + 1),
+      recommendation: rec,
+      decision_log: dl
     }));
   if (!rows.length) return;
   const r = await fetch(SUPABASE_URL + '/rest/v1/ai_interactions', {
@@ -1333,7 +1353,8 @@ serve(async (req)=>{
       generateRecommendations(data, persona, ls, finalProgrammeName, stream, goalSummary)
     ]);
     const { ids: hids, reasoning: hreas } = habitResult;
-    const rl = recsText.split('\n').filter((l)=>l.trim().startsWith('-')).map((l)=>l.replace(/^-\s*/, '').trim()).filter(Boolean);
+    const rl = recsText.split('\n').map((l)=>l.trim()).filter((l)=>/^[-\u2022*]|^\d+[.)]/.test(l)).map((l)=>l.replace(/^[-\u2022*]\s*/, '').replace(/^\d+[.)]\s*/, '').trim()).filter(Boolean);
+    if (rl.length < 3) console.warn('generateRecommendations fallback - got', rl.length, 'recs from raw:', String(recsText).slice(0, 300));
     const r1 = rl[0] || `${ov.programme_name} is ready.`, r2 = rl[1] || 'Join a live session.', r3 = rl[2] || 'Complete your check-in.';
     const dl = buildDecisionLog(data, persona, planType, planReason, pm, personaReason, stream);
     phase = 'auth_and_member_write';
@@ -1384,7 +1405,7 @@ serve(async (req)=>{
       r2,
       r3
     ], finalProgrammeName, planTypeDesc, sessionRec, pwl, stream, goalSummary);
-    console.log('DONE v120:', email, persona, 'stream:', stream);
+    console.log('DONE v121:', email, persona, 'stream:', stream);
     if (stream === 'workouts') {
       EdgeRuntime.waitUntil((async ()=>{
         try {
