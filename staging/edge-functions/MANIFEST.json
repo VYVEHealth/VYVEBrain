@@ -1,5 +1,5 @@
 {
-  "snapshot_at": "2026-08-23T03:07:43Z",
+  "snapshot_at": "2026-08-30T08:08:20Z",
   "supabase_project": "ixjfklpckgxrwjlfsaaz",
   "brain_repo": "VYVEHealth/VYVEBrain",
   "brain_branch": "main",
@@ -234,7 +234,7 @@
     {
       "slug": "cc-data",
       "ok": false,
-      "error": "Downloading function: cc-data\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
+      "error": "Downloading function: cc-dataError status 404: {\"message\":\"Function not found\"}Try rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "certificate-checker",
@@ -271,7 +271,7 @@
     {
       "slug": "check-cron",
       "ok": false,
-      "error": "Downloading function: check-cron\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
+      "error": "Downloading function: check-cronError status 404: {\"message\":\"Function not found\"}Try rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "daily-report",
@@ -292,7 +292,7 @@
     {
       "slug": "edit-habit",
       "ok": false,
-      "error": "Downloading function: edit-habit\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
+      "error": "Downloading function: edit-habitError status 404: {\"message\":\"Function not found\"}Try rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "email-watchdog",
@@ -521,7 +521,7 @@
     {
       "slug": "internal-dashboard",
       "ok": false,
-      "error": "Downloading function: internal-dashboard\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
+      "error": "Downloading function: internal-dashboardError status 404: {\"message\":\"Function not found\"}Try rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "leaderboard",
@@ -690,7 +690,7 @@
     {
       "slug": "ops-brief",
       "ok": false,
-      "error": "Downloading function: ops-brief\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
+      "error": "Downloading function: ops-briefError status 404: {\"message\":\"Function not found\"}Try rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "platform-alert",
@@ -759,7 +759,7 @@
     {
       "slug": "re-engagement-test-sender",
       "ok": false,
-      "error": "Downloading function: re-engagement-test-sender\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
+      "error": "Downloading function: re-engagement-test-senderError status 404: {\"message\":\"Function not found\"}Try rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "register-push-token",
@@ -908,7 +908,7 @@
     {
       "slug": "storage-cleanup",
       "ok": false,
-      "error": "Downloading function: storage-cleanup\u001b[31mError status 404: {\"message\":\"Function not found\"}\u001b[39mTry rerunning the command with --debug to troubleshoot the error."
+      "error": "Downloading function: storage-cleanupError status 404: {\"message\":\"Function not found\"}Try rerunning the command with --debug to troubleshoot the error."
     },
     {
       "slug": "streak-reminder",
