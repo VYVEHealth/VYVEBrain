@@ -184,6 +184,8 @@
 
 **PM-772–779 (2026-07-12 late): Anthropic ToS+DPA canonical captures filed (position note verbatim-backed; NOTE: UK contracting entity = Anthropic Ireland Ltd, register row 2 patch pending Dean). Alert backlog purged 2797→22 (bot/telemetry noise; auto-ageing cron 55 live; vyve-site vbb 512 session-gates client diagnostics — device check now vs Update 512). CC repair: desktop drawer/topnav fixed + home tiles de-nested (PM-776), cc_kv strangler makes ALL 16 localStorage-era pages server-backed (PM-777 — cross-device, fill-gaps seed, graduated-table mirrors into VYVE_DATA), ONE Supabase wrapper (PM-779 — lib/supabase.js stub was clobbering supabase-client.js, breaking calendar/tasks/documents/sessions/active-users/settings + cc-sync). DEAN VERIFY NEXT: calendar renders, CRM/Finance post-swap, competitors→cc_kv smoke, 512 device check. NEW SPEC in changelog: CC Calendar completion (session editing w/ runner cancelled_at pre-check, invite emails + ICS; Meet-link generation blocked on Google OAuth Testing mode).**
 
+**PM-943 (2026-09-01): in-app onboarding s3 hardened (vbb 554, `fc477994`) — ≥8 physical skip prompt removed (was bypassing the stream picker → empty-input workout programmes), s3 validation gate added (stream required; workouts requires location/experience/days), activityLevel got descriptive life-cards + self-assessment q-hints on all satisfaction sliders (member feedback fix). Remaining audit debt in backlog: quick-path fake 5/10 baselines, consent-PATCH race, boot-failure dead end + 6 smaller. PM-942 shipped 18 Aug with no brain entry — stub reconciled in changelog.**
+
 <!--CURRENT_FRONT_END-->
 
 
