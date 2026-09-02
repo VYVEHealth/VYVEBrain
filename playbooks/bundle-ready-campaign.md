@@ -160,10 +160,13 @@ This phase produces a populated `playbooks/offline-correctness-audit.md` — the
 
   grep -c "HOTFIX (programme-render-shape)" www/exercise.html www/workouts-programme.js
 
-  npx @capawesome/cli apps:bundles:create \
+  # PM-959d: bundles:create is DEPRECATED; login first, --channel takes the NAME, sign with the Vault LU key (base64-PEM, decode first)
+  npx @capawesome/cli login --token "$CAPAWESOME_TOKEN"
+  npx @capawesome/cli apps:liveupdates:upload \
     --app-id f9961f66-eb66-4102-b1c5-f9b2c7baeebf \
-    --channel 89e12796-aa41-4176-8d78-bc2ef6dfd5c2 \
-    --path www
+    --channel production \
+    --path www \
+    --private-key lu_key.pem
   ```
 - Consider `--rollout 0.1` for safety on first-ever OTA. Roll to 100% after 24h of clean telemetry.
 
