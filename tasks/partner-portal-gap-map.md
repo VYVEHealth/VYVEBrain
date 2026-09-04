@@ -11,7 +11,7 @@ All Wave-1 dashboard/notification reads were already RLS-covered — verified li
 4. Design tokens already unified via assets/tokens.css v2 (PM-763) — W1 styles extend it; no further token work needed
 
 ## Per-area depth (Waves 2-5)
-5. **Profile → Account area (W2):** tabbed (Overview/Settings/Checklist), public-profile completion bar (partner_partners has 30 cols, form edits ~8), notification prefs (coach_notification_prefs jsonb pattern), post-approval checklist card (welcome video → polish space → schedule launch), welcome-video slot skipping the 48h publish_at rule, admin Go Live from CC gated on portal minimums (PM-880 posture; Lewis deferred-assessments nod is the switch not the build)
+5. ✅ W2 (PM-992, except CC Go Live → W2b) — **Profile → Account area:** tabbed (Overview/Settings/Checklist), public-profile completion bar (partner_partners has 30 cols, form edits ~8), notification prefs (coach_notification_prefs jsonb pattern), post-approval checklist card (welcome video → polish space → schedule launch), welcome-video slot skipping the 48h publish_at rule, admin Go Live from CC gated on portal minimums (PM-880 posture; Lewis deferred-assessments nod is the switch not the build)
 6. **Content library treatment (W3):** statuses/moderation lanes (draft/in-review/scheduled/live), folders, per-item play_count/attendance stats surfaced
 7. **Community engagement stats (W5):** reach/likes/replies per post (like_count/reply_count exist unrendered)
 8. **Calendar unification (W3):** sessions + diary (calendar_occurrences) + bookings → coach-style month/week/list grid; badge-counted requests inbox
