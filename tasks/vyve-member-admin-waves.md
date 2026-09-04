@@ -1,7 +1,7 @@
 # VYVE Member Admin — wave briefs (v2)
 
 **Companion to:** `tasks/vyve-member-admin-spec.md` v2 (design, verified state, architecture)
-**Status:** briefs rewritten 2026-09-05 (PM-1026) after the audit. **Seven waves, W0–W6. None started.**
+**Status:** briefs rewritten 2026-09-05 (PM-1026) after the audit. **W0 + W1 SHIPPED 2026-09-05 (PM-1027, changelog + §19).** At the reassess gate; W2–W6 not started.
 **How to use:** Dean says "load the brain, do wave N". Load `brain/master.md` → `brain/changelog.md` → `tasks/backlog.md`, then read the spec, then the brief below. The brief is the task; the spec is the reasoning. **The brain wins over both; live Supabase wins over the brain.**
 
 **Look and feel, every wave that touches UI:** `coach-portal.html` is the benchmark. Dean likes how it looks and wants the member-admin surface to feel the same — same sidebar, same client workspace, same tab bar, same density, same tokens. Match it; do not approximate it. Mock-up first, dark theme first.
@@ -34,7 +34,9 @@
 
 ---
 
-## W0 — Security gate (BEFORE anything else)
+## W0 — Security gate (BEFORE anything else) — SHIPPED PM-1027
+
+**Shipped 2026-09-05:** items 1–4 done and live-proven with minted partner/team JWTs (§23.216). Extras: `get_attribution`/`set_attribution` admin-only; admin-dashboard team shaping (`member_raw` 403, column-limited `member_detail`). Item 4 found no read fallbacks; seven unauthenticated cron sweeps + `platform-alert` intake went to the backlog.
 
 **Est. 0.5 session.** No UI. Closes three live defects that exist today regardless of this build.
 
@@ -50,7 +52,9 @@
 
 ---
 
-## W1 — Fix the programme EF, restore admin-console, close the stated need
+## W1 — Fix the programme EF, restore admin-console, close the stated need — SHIPPED PM-1027
+
+**Shipped 2026-09-05:** admin-member-programme v4 (rows by surface, row-id pause/resume/advance, `assign_template` with `swap_plan` alias — `programme_library.surface` column exists and is used), admin-member-habits v19 `create_library_habit`, admin-console.html restored + repointed (CC `75688462`). Dean has seen it; it is the interim look, not the coach-portal look — that is W3.
 
 **Est. 1 session.** Base: W0 shipped.
 
