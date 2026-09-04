@@ -1,7 +1,7 @@
 # VYVE Member Admin — wave briefs (v2)
 
 **Companion to:** `tasks/vyve-member-admin-spec.md` v2 (design, verified state, architecture)
-**Status:** briefs rewritten 2026-09-05 (PM-1026) after the audit. **W0 + W1 SHIPPED 2026-09-05 (PM-1027, changelog + §19).** At the reassess gate; W2–W6 not started.
+**Status:** briefs rewritten 2026-09-05 (PM-1026) after the audit. **W0 + W1 SHIPPED 2026-09-05 (PM-1027). W2 steps 1+2 SHIPPED 2026-09-05 (PM-1028); W2 step 3 (portal null scope) next. Dean cleared the gate: keep going.**
 **How to use:** Dean says "load the brain, do wave N". Load `brain/master.md` → `brain/changelog.md` → `tasks/backlog.md`, then read the spec, then the brief below. The brief is the task; the spec is the reasoning. **The brain wins over both; live Supabase wins over the brain.**
 
 **Look and feel, every wave that touches UI:** `coach-portal.html` is the benchmark. Dean likes how it looks and wants the member-admin surface to feel the same — same sidebar, same client workspace, same tab bar, same density, same tokens. Match it; do not approximate it. Mock-up first, dark theme first.
@@ -73,7 +73,9 @@
 
 ---
 
-## W2 — One data layer: null-scope library + `vyve_apply_template()` + scope-aware coach portal
+## W2 — One data layer: null-scope library + `vyve_apply_template()` + scope-aware coach portal — STEPS 1+2 SHIPPED PM-1028, STEP 3 OPEN
+
+**Shipped 2026-09-05:** item 1 (`vyve_apply_template`, program + habits, fixture-proven, `coach_build_program_json` tolerates NULL partner) and item 2 (35 library rows → `coach_templates` partner_id NULL with `payload.prebuilt`; `assign_template` repointed, legacy id mapped). **Open: items 3 and 4 — the portal `pscope()` sweep. Own session.**
 
 **Est. 2–3 sessions.** Base: W1 shipped. **The wave that makes "build once, hand to many" possible. It is mostly SQL, and it replaces v1's builder extraction.**
 
