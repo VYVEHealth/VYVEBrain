@@ -1,245 +1,141 @@
-# VYVE Member Admin — wave briefs
+# VYVE Member Admin — wave briefs (v2)
 
-**Companion to:** `tasks/vyve-member-admin-spec.md` (design, verdicts, architecture)
-**Status:** briefs written 2026-09-04 (PM-1025). None started.
-**How to use:** Dean says "load the brain, start wave N". Load `brain/master.md` →
-`brain/changelog.md` → `tasks/backlog.md`, then read the spec, then the brief below.
-The brief is the task; the spec is the reasoning behind it. **The brain wins over
-both.**
+**Companion to:** `tasks/vyve-member-admin-spec.md` v2 (design, verified state, architecture)
+**Status:** briefs rewritten 2026-09-05 (PM-1026) after the audit. **Seven waves, W0–W6. None started.**
+**How to use:** Dean says "load the brain, do wave N". Load `brain/master.md` → `brain/changelog.md` → `tasks/backlog.md`, then read the spec, then the brief below. The brief is the task; the spec is the reasoning. **The brain wins over both; live Supabase wins over the brain.**
 
----
+**Look and feel, every wave that touches UI:** `coach-portal.html` is the benchmark. Dean likes how it looks and wants the member-admin surface to feel the same — same sidebar, same client workspace, same tab bar, same density, same tokens. Match it; do not approximate it. Mock-up first, dark theme first.
 
-## GATE AFTER W2 — READ THIS BEFORE PROPOSING W3
-
-W0–W2 (~3.5 sessions) restore everything `admin-console.html` did and close the
-stated need ("a member says their habits are wrong and I need to fix them").
-**Dean's standing decision: stop there and reassess.** At spec time the platform had
-95 members, 74 on trial and **zero** paying — the trial wall matters more than the
-admin surface. Do not roll into W3 without Dean saying so.
+**Estimates are Claude-assisted sessions.** Honest total ≈ **8–10**: W0 0.5 · W1 1 · W2 2–3 · W3 1.5–2 · W4 1.5–2 · W5 0.5–1 · W6 1.5–2. W0+W1 (~1.5) close the stated need; W2–W6 is the ambitious half.
 
 ---
 
 ## RULES FOR EVERY WAVE
 
-These are not optional and are not repeated per wave.
-
-- **The brain wins** over the spec, these briefs, memory and chat history. Live
-  Supabase wins over the brain for counts, EF versions and schema.
-- **Talk-first for anything production-affecting**; surgical patches need a one-line
-  summary. Once direction is confirmed, execute end to end including commit, deploy,
-  verify and brain update.
-- **Mock-up first for UI**: never ship a new portal surface without an approved
-  mockup. The benchmark is `coach-portal.html`; match it, do not approximate it.
-- **GitHub writes via the Vault PAT and the Git Data API only.** §23.21 fresh-HEAD,
-  §23.22 per-file drift check against the pinned base, §23.30 md5-perfect
-  verification of every file at the commit SHA — never `ref=branch`, never
-  first-N-chars. §23.210: retry a single mismatch before treating it as failure.
-- **Claim the PM number fresh at commit time** by scanning live commit messages
-  across all four repos (§23.24/23.25). Run the §23.23 session-start collision scan
-  on the last 15 CC commits first.
-- **CC is Cloudflare Pages** — no vbb or service-worker ritual. Bump `?v=` on any
-  linked asset you touch, in the same commit, in every file that links it (§23.207).
-  Page fragments are fetched `cache:'no-cache'` and need no bump. **You cannot reach
-  the Cloudflare API from the sandbox — say so rather than claiming a deploy check.**
+- **The brain wins** over the spec, these briefs, memory and chat. Live Supabase wins for counts, EF versions and schema — re-read the schema before writing any EF or SQL.
+- **Talk-first for anything production-affecting**; surgical patches need a one-line summary. Once direction is confirmed, execute end to end: commit, deploy, verify, brain update.
+- **GitHub writes via the Vault PAT + Git Data API only.** §23.21 fresh-HEAD, §23.22 per-file drift check, §23.30 md5-perfect verification at the commit SHA — never `ref=branch`, never first-N-chars; §23.210 retry a single mismatch once.
+- **Claim the PM number fresh at commit time** across all four repos (§23.24/23.25). §23.23 collision scan on the last 15 CC commits at session start.
+- **CC is Cloudflare Pages** — no vbb ritual. Bump `?v=` on any linked asset you touch, same commit, every file that links it (§23.207). You cannot reach the Cloudflare API from the sandbox — say so.
 - **Soft-kill only.** Never delete a file.
-- **Assert every anchor before patching.** `node --check` every inline script you
-  touch. Prove the selector set unchanged either side of any CSS rewrite. Verify
-  column names and constraints against live Supabase before writing EF code.
-- **Every EF deploy is unverified until re-fetched or invoked** (§23.200). Use
-  `Supabase:deploy_edge_function` only; pass `verify_jwt` explicitly (§23.165).
-- **Commit in batches**, grouped so a regression on Dean's phone reverts one group
-  not the session. Tell him the grouping before starting.
-- **Close every session** with the atomic VYVEBrain sync — changelog prepended,
-  master and backlog patched, new gotchas earning a §23 rule — plus a plain list of
-  what to check on phone and desktop, **dark theme first**.
+- **Assert every anchor before patching.** `node --check` every inline script you touch. Prove the selector set unchanged either side of any CSS rewrite. §23.204 (inline styles set by JS, `#id *` resets) before blaming layout on your change.
+- **Every EF deploy is unverified until re-fetched or invoked** (§23.200). `Supabase:deploy_edge_function` only; pass `verify_jwt` explicitly (§23.165). admin-* EFs are `verify_jwt:false` at the gateway with in-code JWT verification — correct, do not "fix" it.
+- **§23.214: RLS policies OR.** A staff account is never a valid test of what a member sees.
+- **Commit in batches** grouped so a regression reverts one group, not the session. Tell Dean the grouping first.
+- **Close every session** with the atomic VYVEBrain sync (changelog prepended, master + backlog patched, new gotchas → §23 rules) plus a plain list of what to check on phone and desktop, dark theme first.
 
-### Traps that apply to this whole programme
+### Traps for the whole programme
 
-- This surface writes **directly** to `members`, `workout_plan_cache` and
-  `member_habits` for all 95 members. The coach portal, at worst, damages one
-  consented client. Behave accordingly.
-- `admin-member-edit` allowlists **21 of 142 columns** deliberately. Widening it
-  means adding a validator per field, never a blanket update.
-- Coaches must **never** see: billing, trial clocks, attribution, persona,
-  re-engagement streams, GDPR actions, certificates, push subscriptions, audit log.
-- §23.214: RLS policies OR. An admin `ALL` policy widens every read for staff, so a
-  staff account is not a valid test of what a member sees.
+- This surface writes directly to `members`, `workout_plan_cache` and `member_habits` for all 95 members. The coach portal, at worst, damages one consented client. Behave accordingly.
+- `workout_plan_cache` is one ACTIVE row per `(member_email, programme_json->>'surface')`, history retained. Never `.maybeSingle()` on member_email; never upsert on member_email (no such constraint); never touch a row without a surface filter. Read `coach_apply_assignments` for the canonical write.
+- The admin-* EFs from April (`-habits` v17, `-programme` v17, `-weekly-goals` v17, `-programme-library` v15) are presumed stale until re-read against live schema. `admin_audit_log` has never recorded a member edit — nothing here is proven until you invoke it.
+- `admin-member-edit` allowlists 21 of 142 columns deliberately. Widening = one validator per field, never a blanket update.
+- Coaches must never see: billing, trial clocks, attribution, persona, re-engagement streams, GDPR actions, certificates, push subscriptions, audit log.
 
 ---
 
-## W0 — Shell + Members list + member detail (Overview, Logs)
+## W0 — Security gate (BEFORE anything else)
 
-**Est. 1–1.5 sessions.** Base: CC HEAD at session start.
+**Est. 0.5 session.** No UI. Closes three live defects that exist today regardless of this build.
 
-Build the surface and prove the shape end to end on EFs that already work.
+**In scope:**
+1. `verifyAuth` in `admin-member-edit`, `admin-member-habits`, `admin-member-programme`, `admin-member-weekly-goals`, `admin-programme-library`, `admin-dashboard`: require `role IN ('admin','team')`. Deploy each; **live-invoke with a partner JWT and prove 403**, then with a team JWT and prove 200.
+2. Role split inside `admin-member-edit`: `team` may not edit `subscription_status`, `persona`, `health_data_consent`, `sensitive_context`; `member_audit_log` action is admin-only. Deploy; live-invoke both roles.
+3. `members` read for team: replace the 142-column `members_admin_read_pm796` SELECT with a column-limited view (`members_staff_view` — identity, company, account_type, subscription_status read-only, goals, exercise_stream, persona name only, habit/programme pointers; NO `sensitive_context`, NO health free text) or a column-privilege grant. Dean confirms the column list before the migration. admin keeps full read.
+4. PM-1003 follow-on: one-pass grep of every legacy EF for `?email=` / body-email fallbacks that bypass JWT. Report; fix the ones found.
 
-**In scope:** a new CC page (`pages/member-admin.html`) on the coach-portal layout —
-sidebar, member list with search, member detail workspace with a tab bar. Two tabs
-live: **Overview** (profile fields via `admin-member-edit`, respecting its SAFE/SCARY
-split and reason modal) and **Logs** (activity timeline). Members list is **all 95**,
-no consent link, no `is_coach_of`.
+**Explicitly out:** anything member-facing, any UI.
 
-**Explicitly out:** every other tab, every library, batch assign, tags, messages.
-
-**Already decided, do not re-litigate:** this is a new surface, not a fork of
-`coach-portal.html` and not a restore of `admin-console.html`. Both stay soft-killed.
-
-**Traps:** `admin-member-edit` is `verify_jwt:false` at the gateway with in-code JWT
-verification — that is correct, do not "fix" it. Its CORS allowlist already includes
-`admin.vyvehealth.co.uk`. Call `field_schema` to build the edit controls rather than
-hardcoding the enums; the EF is the source of truth for what is editable.
-
-**Dean checks:** member list loads and searches, open a member, edit a SAFE field,
-edit a SCARY field and see the reason modal, confirm the change lands in the audit
-log.
+**Dean checks:** none on phone. Paste the 403/200 invocation results in the brain entry.
 
 ---
 
-## W1 — Habits, Goals, Nutrition tabs
+## W1 — Fix the programme EF, restore admin-console, close the stated need
 
-**Est. 1 session.** Base: W0 shipped and device-checked.
+**Est. 1 session.** Base: W0 shipped.
 
-**This wave closes the original need.** Habits first — it is the thing Dean actually
-asked for.
+**In scope:**
+1. **Rewrite `admin-member-programme`** to the live contract. `get_programme` returns all rows for the member, active first, grouped by surface. `pause`/`resume`/`advance_week` take a row `id`, not an email. `swap_plan` (rename `assign_template`) takes `template_id` from `coach_templates WHERE partner_id IS NULL AND kind='program'` OR a `programme_library` id for now, deactivates the active `surface='workouts'` row, inserts a new row with `surface` set, `source='vyve'`, `source_id`, `current_week=1`. Audit row on every mutation. Deploy, live-invoke against a test member, confirm the member app renders it.
+2. **Restore `admin-console.html`**: uncomment the three PM-1012 lines (`sidebar-config.js`, `pages/home.html`, `pages/links.html`); bump `?v=`; repoint its programme tab at the new EF shape. It is the interim surface until W3.
+3. **"New library habit" form** in admin-console's habits tab: `habit_pot`, `habit_title`, `habit_description`, `difficulty` → insert into `habit_library` with `created_by='admin'`, `active=true`. Audit row.
 
-**In scope:** **Habits** tab (assignment picker over the 38-row `habit_library`
-against `member_habits`, via `admin-member-habits`) · **Goals** tab (via
-`admin-member-weekly-goals`) · **Nutrition** tab (TDEE, macros, deficit — live
-columns on `members`, which means widening the allowlist; `tdee_target` and
-`deficit_percentage` are already SCARY fields).
+**Explicitly out:** a habit form builder, new pages, the coach-portal look (that is W3).
 
-**Explicitly out:** a habit *form builder*. Dean's call — VYVE assigns from the
-library, it does not author habit forms. Same for check-in forms.
+**Traps:** `member_habits` carries 472 live rows; `habit_library` rows with `created_by LIKE 'coach:%'` are `active=false` and already filtered — keep it that way. `programme_library` rows lack `surface`; the EF injects it.
 
-**Traps:** `member_habits` carries 472 live rows against real members; a bad write is
-visible in the app immediately. `habit_library` rows created by coaches are
-`active=false, created_by='coach:<pid>'` — filter those out of the VYVE picker or
-staff will assign a coach's private habit to a stranger.
+**Dean checks:** on phone as a real member after admin-console edits a habit and swaps a programme: habits page changes, workouts page renders the new programme, nothing else moved. Confirm both audit rows exist.
 
-**Dean checks:** fix a member's habits end to end and confirm it changes in the app.
+### Reassess here. Dean's call whether W2 starts now. Audit's note: the natural trigger for W2–W6 is the first enterprise cohort or the first VYVE PT.
 
 ---
 
-## W2 — Workouts / Plans tab, single-member assignment
+## W2 — One data layer: null-scope library + `vyve_apply_template()` + scope-aware coach portal
 
-**Est. 1–1.5 sessions.** Base: W1 shipped and device-checked.
+**Est. 2–3 sessions.** Base: W1 shipped. **The wave that makes "build once, hand to many" possible. It is mostly SQL, and it replaces v1's builder extraction.**
 
-**In scope:** **Workouts** and **Plans** tabs — view a member's current programme
-from `workout_plan_cache`, browse the programme library via
-`admin-programme-library`, assign a programme to **one** member via
-`admin-member-programme`.
+**In scope:**
+1. **`vyve_apply_template(p_member_email text, p_template_id uuid, p_actor text) returns jsonb`** — SECURITY DEFINER, `search_path public`. Reads `coach_templates` where `id = p_template_id AND partner_id IS NULL AND active`. Programme kind: `coach_build_program_json(NULL, payload, name)` (confirm it tolerates a null partner; patch if not), then the canonical wpc deactivate/insert with `source='vyve'`. Habits kind: the same upsert-on-conflict as `coach_apply_assignments` with `assigned_by='admin'`; deactivate previously admin-assigned habits not in the new set. Returns `{ok, kind, wpc_id | habit_ids, prior_wpc_id}` — the prior id is what W4's revert needs. One migration, fixture-proven with a real template against a test member.
+2. **Retire `programme_library` from the VYVE path**: migrate its 35 rows into `coach_templates` (`partner_id NULL, kind='program', payload=programme_json+surface`) — soft: leave the table, stop reading it. Repoint W1's `assign_template` at `vyve_apply_template`.
+3. **Coach portal null scope**: `init()` — admin/team login with `get_my_partner_id()` null resolves to `partnerId = null` and continues instead of "Not linked". Introduce `pscope()` returning `partner_id=is.null` or `partner_id=eq.<id>` and sweep the 55 filters; inserts stamp `partner_id: partnerId` (null) — RLS `admin_all` on `coach_templates`/`cex_admin_all` on exercises already allow it. Staff see a "VYVE library" badge where a coach sees "Mine". Client-side sections that are coach-only (Clients, Leads, Messages, Automations, Forms, Profile) hide when `partnerId === null` — VYVE members are administered in W3's page, not here.
+4. Exercise library: `vyve / mine / all` scope selector already exists — staff default to `vyve` and can author into it.
 
-**Explicitly out:** batch assign (W4), the shared builder lift (W3), authoring new
-programmes.
+**Explicitly out:** any member-admin UI, batch, tags.
 
-**Traps:** `workout_plan_cache` holds 89 live member programmes as JSONB against the
-live `programme_json` contract. Read the contract from a real row before writing —
-the member app renders it directly and a shape error breaks their Workouts tab.
-Reassignment overwrites; decide with Dean whether the old programme is preserved.
+**Traps:** 536KB single file, shadowed functions (`viewClient`, `calLoad`, `go` — bottom definitions are live). Sweep with a script, assert the count of `partner_id=eq.` goes to zero and `pscope()` count matches. **Calum's portal must behave identically** — his `partnerId` is non-null, so every `pscope()` resolves as before; prove it by diffing his REST calls before/after in the network log. Revert to known-good bytes first, diagnose second, if a live staff surface breaks.
 
-**Dean checks:** view a real programme, assign a different one, confirm the member
-app renders it.
-
-### ⛔ STOP HERE unless Dean says otherwise. See the gate at the top.
+**Dean checks:** log in to the coach portal as Dean (admin, no partner): libraries load, VYVE-scope programme can be authored and saved; log in as Calum: nothing changed. `vyve_apply_template` on a test member renders in the app.
 
 ---
 
-## W3 — Lift the shared builders out of coach-portal
+## W3 — `pages/member-admin.html`: the real surface, on the coach-portal chrome
 
-**Est. 2 sessions.** Base: W2 shipped, **and Dean has cleared the gate.**
+**Est. 1.5–2 sessions.** Base: W2 shipped. **Mock-up first — this is the wave the coach-portal look applies to.**
 
-The wave that produces **no visible feature** and is therefore the one that gets
-skipped. If it is skipped, the 536KB duplication happens anyway and the architecture
-in the spec was never bought. **Do it before W4, or not at all.**
+**In scope:** new CC page on the coach-portal layout: sidebar (Dashboard · Members · Workouts · Exercise Library · Content Library · Notifications · Settings) · members list with search over all 95 (no consent link, no `is_coach_of`) · member workspace with tabs **Overview · Habits · Workouts · Goals · Nutrition · Check-ins · Logs · Admin**. Overview edits via `admin-member-edit` (`field_schema` drives the controls; SAFE/SCARY + reason modal). Habits via `admin-member-habits` + the W1 library-habit form. Workouts via the W1/W2 EF: view every wpc row grouped by surface, assign a VYVE template to one member, pause/resume/advance by row id. Goals via `admin-member-weekly-goals` (re-read it first). Nutrition = TDEE/macros/deficit on `members` (`tdee_target`/`deficit_percentage` already SCARY). Check-ins = `wellbeing_checkins`/`monthly_checkins`/`daily_mood_checkins`, read-only. Logs = activity timeline. **Admin tab** (admin role only): subscription/trial state, attribution (`get_attribution`/`set_attribution`), persona, re-engagement stream, certificates, push subscriptions, GDPR actions, audit log.
 
-**In scope:** extract the exercise library and the workout/programme builder from
-`coach-portal.html` into shared components both surfaces consume. The exercise
-library already carries a `vyve` / `mine` / `all` scope selector — the idea is
-half-built; finish it rather than reinventing.
+At the end of the wave: **re-soft-kill `admin-console.html`** (same three lines) and point the Members sidebar item at the new page.
 
-**Traps:** `coach-portal.html` is 536KB with shadowed functions (`viewClient`,
-`calLoad`, `go` — the bottom definitions are the live ones). Read §23.204 before
-blaming any layout fault on the extraction: inline styles set by JS and `#id *`
-resets have bitten this class of work twice. **Revert to known-good bytes first and
-diagnose second** if a live staff surface breaks.
+**Explicitly out:** batch assign, tags, messages.
 
-**Dean checks:** the coach portal must behave **identically** afterwards. That is the
-whole test. Calum uses it.
+**Traps:** the member row comes from PostgREST — select a column list, never `*`; under W0 the team role gets the view. `team` must not see the Admin tab at all, not merely have its buttons disabled.
+
+**Dean checks (dark theme first):** it looks like the coach portal; search, open a member, edit a SAFE field, edit a SCARY field with the reason modal, fix habits, assign a template, see it in the app, confirm audit rows; log in as `team` and confirm no Admin tab.
 
 ---
 
-## W4 — Tags + batch assign (BOTH surfaces)
+## W4 — Tags + batch assign
 
-**Est. 1.5 sessions.** Base: W3 shipped.
+**Est. 1.5–2 sessions.** Base: W3 shipped. The headline feature. Shared with coaches only where the coach path already has a cohort (it does not — coach batch is a later ask; do not widen this wave).
 
-The headline feature. Promoted to shared at Dean's instruction — coaches get it too.
+**In scope:**
+1. `member_tags` per spec §6 + `gdpr_table_policy` `purge` row in the same migration. Tag chips on the member Overview; global rename/delete in Settings.
+2. `admin_audit_log.batch_id uuid` column.
+3. **Cohort picker** on the Batch page: facets first (company, account_type, employer, attribution), then name / email / tag; multi-select; live count.
+4. **`admin-batch-assign` EF** (new, `verify_jwt:false` + in-code JWT, admin/team): `dry_run` returns the exact member list with each member's current programme name; `apply` iterates server-side calling `vyve_apply_template` per member, one audit row per member with `batch_id`, `action='batch_assign'`, `old_value={prior_wpc_id, programme_name}`, `new_value={wpc_id, template_id}`; returns per-member ok/error; never a single "done". `revert` takes `batch_id`: per row, deactivate `new_value.wpc_id`, reactivate `old_value.prior_wpc_id`, write a `batch_revert` audit row. Habits kind analogous via prior active set in `old_value`.
+5. Dry run → confirm ("N members, reversible, batch id shown") → apply → per-member report with a Revert button.
 
-**In scope:** `member_tags` table (per the spec: table not array; unique on
-`member_email, lower(tag)`; **registered in `gdpr_table_policy` as `purge` at
-creation**). Tag management on the member detail. Cohort picker: multi-select by
-**name**, by **email**, or by **tag**. Batch assignment of a programme to the cohort.
+**Traps:** largest blast radius in the platform. Fifty programmes rewritten overnight is visible to fifty people the next morning. Cap a batch at 100 and refuse silently-broad cohorts (an empty picker must not mean "everyone").
 
-**Non-negotiable, all three:**
-1. **Dry-run preview** listing exactly who is about to change, before anything writes.
-2. **One `admin_audit_log` row per member**, never one for the batch — a half-failed
-   batch must be readable afterwards.
-3. Report per-member success and failure honestly; never a single "done".
-
-**Ask Dean before building:** whether a batch is reversible, and what that means.
-
-**Traps:** this is the largest blast radius in the platform. Fifty members' programmes
-rewritten overnight is visible to fifty people in their app the next morning.
-
-**Dean checks:** tag some members, run a dry run, confirm the list is right, run it,
-spot-check two members in the app.
+**Dean checks:** tag three test members, dry run, confirm the list, apply, spot-check two in the app, revert, spot-check again.
 
 ---
 
-## W5 — Plan-change notification + member inbox (MEMBER-FACING)
+## W5 — Plan-change notification (push + in-app)
 
-**Est. 1–1.5 sessions.** Base: W4 shipped. **The only wave with an external
-dependency — treat it as its own thing.**
+**Est. 0.5–1 session.** Base: W4 shipped. **The inbox already exists** (`notifications.html` ← `notifications` EF v25 ← `member_notifications`). No inbox build, no OTA.
 
-**Read this first:** `member_notifications` is referenced in exactly ONE place in the
-member app (`wellbeing-checkin.html`). There is **no in-app inbox for a member to
-read**. Writing notifications before the inbox exists sends them nowhere.
+**In scope:** inside `admin-batch-assign` apply (and the single-member assign in W3), insert `member_notifications` (`type='plan_change'`, `title`, `body`, `route='/workouts.html'`) and a `scheduled_pushes` row per member. Strings from Lewis (copy pass, non-gating: ship with placeholders behind a `NOTIFY_ENABLED` flag defaulting off until approved). Note the 7-day prune.
 
-`coach-messages.html` DOES exist in the member app and works — the recommended route
-is extending it into a general inbox carrying both messages and notifications, rather
-than building a second surface. Confirm with Dean before choosing.
-
-**In scope:** the member inbox, then plan-change notification via push
-(`scheduled_pushes`) and in-app (`member_notifications`), wired on **both** surfaces.
-
-**Already established:** the email half exists — `coach_automations` has zero rows
-*by design* (built-in default-on templates) and `coach-provision-client` v7 already
-diffs assignment slots and emails on change. Extend it; do not rebuild it.
-
-**Gates:** member-facing, so **Lewis copy pass** on every string, and it needs an
-**OTA push** (vbb marker +1 in `index.html` AND `settings.html` AND the `sw.js`
-CACHE_NAME, same commit).
-
-**Dean checks:** change a plan, receive the push, open the app, read it in the inbox.
+**Dean checks:** assign a template to himself, receive the push, open the bell, read it, tap through to Workouts.
 
 ---
 
-## W6 — Messages VYVE-side, Admin tab, PT role model
+## W6 — VYVE-side messages + PT role hardening
 
-**Est. 1.5 sessions.** Base: W5 shipped.
+**Est. 1.5–2 sessions.** Base: W5 shipped. Optional — Dean confirms it is wanted before starting.
 
-**In scope:** (a) VYVE-side messaging — `coach_messages.partner_id` nullable plus a
-`sender_scope` discriminator (`coach` | `vyve`). **Do not create a VYVE partner row**;
-it leaks into payout queries, roster counts and Discover, exactly as the four bare
-referral placeholders did. (b) The **Admin tab**: billing and trial state,
-attribution, persona, re-engagement stream, certificates, push subscriptions, GDPR
-actions, audit log — all role-gated. (c) A **build-only role** for VYVE's own PTs
-that reaches libraries and programmes but not billing, GDPR or the audit log —
-`admin-member-edit` already understands `viewer` and `coach_exercise`; extend rather
-than invent.
+**In scope:** (a) migration: `coach_messages.partner_id` nullable; `sender_scope text not null default 'coach' check (sender_scope in ('coach','vyve'))`; `cmsg_admin_all` → `is_admin_or_team()`; new `cmsg_member_ins_vyve` (own email, `sender='member'`, `partner_id IS NULL`). (b) `coach-messages.html` renders a VYVE thread labelled "VYVE team" when `partner_id` is null; coach-side popover unchanged for coaches; Messages section in `member-admin.html`. (c) `coach-message-push` null-partner branch. (d) PT role: confirm `team` under W0 already cannot reach billing/GDPR/audit; if VYVE hires a PT who should see even less, add `role='pt'` then — not before.
 
-**Before starting:** run the PM-1003 fallback grep across the remaining legacy EFs.
-Widening staff write access is the wrong moment to still be carrying unauthenticated
-`?email=` holes.
+**Do not create a VYVE partner row** — `get_my_partner_id()` is one partner per login; five staff cannot share it.
 
-**Dean checks:** message a member and read it in the app; confirm a build-only role
-genuinely cannot reach billing or GDPR.
+**Dean checks:** message a test member from the CC, read and reply in the app, confirm the push; log in as team and confirm the Admin tab and audit log are unreachable.
