@@ -1,7 +1,7 @@
 # VYVE Member Admin — wave briefs (v2)
 
 **Companion to:** `tasks/vyve-member-admin-spec.md` v2 (design, verified state, architecture)
-**Status:** briefs rewritten 2026-09-05 (PM-1026) after the audit. **W0 + W1 SHIPPED 2026-09-05 (PM-1027). W2 steps 1+2 SHIPPED 2026-09-05 (PM-1028); W2 step 3 (portal null scope) next. Dean cleared the gate: keep going.**
+**Status:** briefs rewritten 2026-09-05 (PM-1026) after the audit. **W0 + W1 SHIPPED 2026-09-05 (PM-1027). W2 SHIPPED 2026-09-05 (steps 1+2 PM-1028, step 3 PM-1029, CC `4fceb967`). W3 next — mock-up first.**
 **How to use:** Dean says "load the brain, do wave N". Load `brain/master.md` → `brain/changelog.md` → `tasks/backlog.md`, then read the spec, then the brief below. The brief is the task; the spec is the reasoning. **The brain wins over both; live Supabase wins over the brain.**
 
 **Look and feel, every wave that touches UI:** `coach-portal.html` is the benchmark. Dean likes how it looks and wants the member-admin surface to feel the same — same sidebar, same client workspace, same tab bar, same density, same tokens. Match it; do not approximate it. Mock-up first, dark theme first.
@@ -73,9 +73,9 @@
 
 ---
 
-## W2 — One data layer: null-scope library + `vyve_apply_template()` + scope-aware coach portal — STEPS 1+2 SHIPPED PM-1028, STEP 3 OPEN
+## W2 — One data layer: null-scope library + `vyve_apply_template()` + scope-aware coach portal — SHIPPED (PM-1028 + PM-1029)
 
-**Shipped 2026-09-05:** item 1 (`vyve_apply_template`, program + habits, fixture-proven, `coach_build_program_json` tolerates NULL partner) and item 2 (35 library rows → `coach_templates` partner_id NULL with `payload.prebuilt`; `assign_template` repointed, legacy id mapped). **Open: items 3 and 4 — the portal `pscope()` sweep. Own session.**
+**Shipped 2026-09-05:** item 1 (`vyve_apply_template`, program + habits, fixture-proven, `coach_build_program_json` tolerates NULL partner) and item 2 (35 library rows → `coach_templates` partner_id NULL with `payload.prebuilt`; `assign_template` repointed, legacy id mapped) — PM-1028. Items 3 + 4 — PM-1029, CC `4fceb967`: `pscope()`/`pprefix()` sweep, `init()` staff branch gated on `rpc/is_admin_or_team`, coach-only chrome hidden (Calendar/Content/Notifications too — content uploads derive partner_id server-side), exercise scope defaults VYVE with VYVE rows editable, staff land on Programmes; migration `w2_null_scope_staff_write` gives team write on exercises/foods + `vyve/` storage. Inserts needed no change (`partner_id: partnerId` stamps null). Six storage prefixes, not three.
 
 **Est. 2–3 sessions.** Base: W1 shipped. **The wave that makes "build once, hand to many" possible. It is mostly SQL, and it replaces v1's builder extraction.**
 
