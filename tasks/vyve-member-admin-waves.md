@@ -1,7 +1,7 @@
 # VYVE Member Admin — wave briefs (v2)
 
 **Companion to:** `tasks/vyve-member-admin-spec.md` v2 (design, verified state, architecture)
-**Status:** briefs rewritten 2026-09-05 (PM-1026) after the audit. **W0 + W1 SHIPPED 2026-09-05 (PM-1027). W2 SHIPPED 2026-09-05 (steps 1+2 PM-1028, step 3 PM-1029, CC `4fceb967`). W3 SHIPPED 2026-09-05 (PM-1030 `ee93b90b` page + nav, PM-1031 `7c2e8358` admin-console re-soft-killed; admin-dashboard v25 `member_health`). W4 next.**
+**Status:** briefs rewritten 2026-09-05 (PM-1026) after the audit. **W0 + W1 SHIPPED 2026-09-05 (PM-1027). W2 SHIPPED 2026-09-05 (steps 1+2 PM-1028, step 3 PM-1029, CC `4fceb967`). W3 SHIPPED 2026-09-05 (PM-1030 `ee93b90b` page + nav, PM-1031 `7c2e8358` admin-console re-soft-killed; admin-dashboard v25 `member_health`). W4 SHIPPED 2026-09-05 (PM-1032 migration + `admin-batch-assign` EF, PM-1033 CC `239015a3` tags, PM-1034 CC `f3106ab1` batch). W4b (coach-side batch + tags, Dean's ask) recorded below; W5 next on Dean's call.**
 **How to use:** Dean says "load the brain, do wave N". Load `brain/master.md` → `brain/changelog.md` → `tasks/backlog.md`, then read the spec, then the brief below. The brief is the task; the spec is the reasoning. **The brain wins over both; live Supabase wins over the brain.**
 
 **Look and feel, every wave that touches UI:** `coach-portal.html` is the benchmark. Dean likes how it looks and wants the member-admin surface to feel the same — same sidebar, same client workspace, same tab bar, same density, same tokens. Match it; do not approximate it. Mock-up first, dark theme first.
@@ -111,7 +111,13 @@ At the end of the wave: **re-soft-kill `admin-console.html`** (same three lines)
 
 ---
 
-## W4 — Tags + batch assign
+## W4 — Tags + batch assign — SHIPPED PM-1032/1033/1034
+
+**Shipped 2026-09-05:** all five items. `member_tags` + purge row + `batch_id` in one migration; `admin-batch-assign` EF v1 with `facets`/`resolve_cohort` (facets AND'd, values OR'd, empty → 400, cap 100, test accounts excluded unless asked)/`dry_run`/`apply`/`revert`/`list_batches` + tag CRUD; four-step Batch page + Settings › Tags + Overview tag box. Two deviations from the brief, both deliberate: apply takes the dry run's email list, never the criteria, so preview and apply cannot diverge; revert is conditional — a batch row that is no longer the active one is reported `changed_since_batch` and left alone rather than forced. Habits kind snapshots the whole `member_habits` set into `old_value.prior_habits` because the RPC's upsert overwrites `assigned_by`. Proven live with a minted team JWT before the page existed. Team may apply and revert (spec role model).
+
+### W4b — the PT-area version (Dean's ask, 2026-09-05) — NOT STARTED
+Same shape for a coach's own consented clients inside `coach-portal.html`: cohort = multi-select over `coach_clients` (name/email/tag), template = the coach's own `coach_templates`, apply = the existing `update_assignments` → `coach_apply_assignments` path per client (already returns prior ids), one audit row per client, dry run → apply → per-client report → revert. Client tags need a partner scope (`member_tags.partner_id` nullable + policy, or a `coach_client_tags` table — decide at mock-up; VYVE tags must stay invisible to coaches either way). Own session, mock-up first, dark first, Calum-unchanged proof on his REST calls. Est. 1.5 sessions.
+
 
 **Est. 1.5–2 sessions.** Base: W3 shipped. The headline feature. Shared with coaches only where the coach path already has a cohort (it does not — coach batch is a later ask; do not widen this wave).
 
