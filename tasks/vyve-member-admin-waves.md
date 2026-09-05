@@ -1,7 +1,7 @@
 # VYVE Member Admin — wave briefs (v2)
 
 **Companion to:** `tasks/vyve-member-admin-spec.md` v2 (design, verified state, architecture)
-**Status:** briefs rewritten 2026-09-05 (PM-1026) after the audit. **W0 + W1 SHIPPED 2026-09-05 (PM-1027). W2 SHIPPED 2026-09-05 (steps 1+2 PM-1028, step 3 PM-1029, CC `4fceb967`). W3 SHIPPED 2026-09-05 (PM-1030 `ee93b90b` page + nav, PM-1031 `7c2e8358` admin-console re-soft-killed; admin-dashboard v25 `member_health`). W4 SHIPPED 2026-09-05 (PM-1032 migration + `admin-batch-assign` EF, PM-1033 CC `239015a3` tags, PM-1034 CC `f3106ab1` batch). W4b SHIPPED 2026-09-05 (PM-1035/1036, CC `555ba2d5`). W5 SHIPPED 2026-09-05 (PM-1037 EFs `admin-member-programme` v6 / `admin-batch-assign` v2 / `coach-provision-client` v13, PM-1038 CC `ab4a1e6d`) — collapsed to one `scheduled_pushes` row per member, flag-gated on Lewis copy (§23.223). W6 optional, on Dean's call.**
+**Status:** briefs rewritten 2026-09-05 (PM-1026) after the audit. **W0 + W1 SHIPPED 2026-09-05 (PM-1027). W2 SHIPPED 2026-09-05 (steps 1+2 PM-1028, step 3 PM-1029, CC `4fceb967`). W3 SHIPPED 2026-09-05 (PM-1030 `ee93b90b` page + nav, PM-1031 `7c2e8358` admin-console re-soft-killed; admin-dashboard v25 `member_health`). W4 SHIPPED 2026-09-05 (PM-1032 migration + `admin-batch-assign` EF, PM-1033 CC `239015a3` tags, PM-1034 CC `f3106ab1` batch). W4b SHIPPED 2026-09-05 (PM-1035/1036, CC `555ba2d5`). W5 SHIPPED 2026-09-05 (PM-1037 EFs `admin-member-programme` v6 / `admin-batch-assign` v2 / `coach-provision-client` v13, PM-1038 CC `ab4a1e6d`) — collapsed to one `scheduled_pushes` row per member, flag-gated on Lewis copy (§23.223). W6 SHIPPED 2026-09-05 (PM-1039 migrations + vyve-site `d470f7f3` vbb 591, PM-1040 CC `94f00a63`) — programme code-complete.**
 **How to use:** Dean says "load the brain, do wave N". Load `brain/master.md` → `brain/changelog.md` → `tasks/backlog.md`, then read the spec, then the brief below. The brief is the task; the spec is the reasoning. **The brain wins over both; live Supabase wins over the brain.**
 
 **Look and feel, every wave that touches UI:** `coach-portal.html` is the benchmark. Dean likes how it looks and wants the member-admin surface to feel the same — same sidebar, same client workspace, same tab bar, same density, same tokens. Match it; do not approximate it. Mock-up first, dark theme first.
@@ -144,7 +144,9 @@ Same shape for a coach's own consented clients inside `coach-portal.html`: cohor
 
 ---
 
-## W6 — VYVE-side messages + PT role hardening
+## W6 — VYVE-side messages + PT role hardening — SHIPPED PM-1039/1040
+
+**Shipped 2026-09-05:** (a) as briefed plus `sender_email`, a scope⇔partner CHECK, two partial indexes and the gdpr row; team's WITH CHECK is `partner_id IS NULL OR is_admin()`. (b) `coach-messages.html` two-thread model with switcher + `?t=vyve`; the coach-side popover needed nothing (coach policies never match a null partner); Messages tab in `member-admin.html` (coach threads deliberately not rendered). (c) collapsed to a trigger branch — `coach-message-push` v2 already forwards `coach_name`. (d) checked, not built: team cannot reach Admin tab / audit / billing (W3 jsdom + PM-1027 proof); `role='pt'` waits for a hire. Live-proven by RLS role simulation (§23.224), `coach_messages` had 0 rows before and after. OTA 591 pending Dean's pass.
 
 **Est. 1.5–2 sessions.** Base: W5 shipped. Optional — Dean confirms it is wanted before starting.
 
