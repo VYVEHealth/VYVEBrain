@@ -1,7 +1,7 @@
 # VYVE Member Admin — wave briefs (v2)
 
 **Companion to:** `tasks/vyve-member-admin-spec.md` v2 (design, verified state, architecture)
-**Status:** briefs rewritten 2026-09-05 (PM-1026) after the audit. **W0 + W1 SHIPPED 2026-09-05 (PM-1027). W2 SHIPPED 2026-09-05 (steps 1+2 PM-1028, step 3 PM-1029, CC `4fceb967`). W3 next — mock-up first.**
+**Status:** briefs rewritten 2026-09-05 (PM-1026) after the audit. **W0 + W1 SHIPPED 2026-09-05 (PM-1027). W2 SHIPPED 2026-09-05 (steps 1+2 PM-1028, step 3 PM-1029, CC `4fceb967`). W3 SHIPPED 2026-09-05 (PM-1030 `ee93b90b` page + nav, PM-1031 `7c2e8358` admin-console re-soft-killed; admin-dashboard v25 `member_health`). W4 next.**
 **How to use:** Dean says "load the brain, do wave N". Load `brain/master.md` → `brain/changelog.md` → `tasks/backlog.md`, then read the spec, then the brief below. The brief is the task; the spec is the reasoning. **The brain wins over both; live Supabase wins over the brain.**
 
 **Look and feel, every wave that touches UI:** `coach-portal.html` is the benchmark. Dean likes how it looks and wants the member-admin surface to feel the same — same sidebar, same client workspace, same tab bar, same density, same tokens. Match it; do not approximate it. Mock-up first, dark theme first.
@@ -93,7 +93,9 @@
 
 ---
 
-## W3 — `pages/member-admin.html`: the real surface, on the coach-portal chrome
+## W3 — `pages/member-admin.html`: the real surface, on the coach-portal chrome — SHIPPED PM-1030/1031
+
+**Shipped 2026-09-05:** fragment inside the CC shell with an in-fragment coach-portal rail (library items link out to coach-portal at null scope rather than re-rendering the builders); list + w5 workspace with all eight tabs; Admin tab absent for team; admin-dashboard v25 `member_health` added because the check-in tables have member-own policies only. admin-console re-soft-killed, byte-untouched; its dropdown deliberately not repointed. Staff-initiated GDPR not wired.
 
 **Est. 1.5–2 sessions.** Base: W2 shipped. **Mock-up first — this is the wave the coach-portal look applies to.**
 
