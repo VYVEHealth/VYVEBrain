@@ -1,24 +1,38 @@
-// get-activity-feed v1
-// 24 April 2026
+// get-activity-feed v2
+// v2 (PM-1001, §23.189 CORS sweep): pinned single-origin CORS replaced with the
+// allowlist pattern (notifications v25 precedent) carrying the native app origins
+// (capacitor://localhost = iOS store binary, https://localhost = Android).
+// Handler logic unchanged.
+// v1 — 24 April 2026
 // Unified personal activity feed for Exercise > Activity tab.
 // Reverse-chrono merged workouts + cardio with HR overlay for HK-sourced rows.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "https://online.vyvehealth.co.uk",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Max-Age": "86400",
-  "Vary": "Origin"
-};
+const ALLOWED_ORIGINS = new Set([
+  "https://online.vyvehealth.co.uk",
+  "https://www.vyvehealth.co.uk",
+  "capacitor://localhost",
+  "https://localhost"
+]);
+function getCORSHeaders(req) {
+  const origin = req.headers.get("Origin") ?? "";
+  const allowOrigin = ALLOWED_ORIGINS.has(origin) ? origin : origin === "null" || origin === "" ? "*" : "https://online.vyvehealth.co.uk";
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin"
+  };
+}
 const MAX_LIMIT = 30;
 const DEFAULT_LIMIT = 20;
-function json(body, status = 200) {
+function json(req, body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
-      ...CORS_HEADERS,
+      ...getCORSHeaders(req),
       "Content-Type": "application/json"
     }
   });
@@ -50,14 +64,14 @@ function humanize(raw, kind) {
 Deno.serve(async (req)=>{
   if (req.method === "OPTIONS") return new Response(null, {
     status: 200,
-    headers: CORS_HEADERS
+    headers: getCORSHeaders(req)
   });
-  if (req.method !== "POST") return json({
+  if (req.method !== "POST") return json(req, {
     error: "method_not_allowed"
   }, 405);
   const authHeader = req.headers.get("Authorization") || "";
   const jwt = authHeader.replace(/^Bearer\s+/i, "").trim();
-  if (!jwt) return json({
+  if (!jwt) return json(req, {
     error: "unauthorized"
   }, 401);
   const svc = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
@@ -67,7 +81,7 @@ Deno.serve(async (req)=>{
     }
   });
   const { data: userData, error: userErr } = await svc.auth.getUser(jwt);
-  if (userErr || !userData?.user?.email) return json({
+  if (userErr || !userData?.user?.email) return json(req, {
     error: "unauthorized"
   }, 401);
   const memberEmail = userData.user.email.toLowerCase();
@@ -76,7 +90,7 @@ Deno.serve(async (req)=>{
     body = await req.json();
   } catch  {}
   const before = body.before ? new Date(String(body.before)) : new Date();
-  if (isNaN(before.getTime())) return json({
+  if (isNaN(before.getTime())) return json(req, {
     error: "invalid_before"
   }, 400);
   let limit = Number(body.limit) || DEFAULT_LIMIT;
@@ -170,14 +184,14 @@ Deno.serve(async (req)=>{
       };
     });
     const nextBefore = rows.length === limit ? rows[rows.length - 1].occurred_at : null;
-    return json({
+    return json(req, {
       ok: true,
       rows,
       next_before: nextBefore
     });
   } catch (err) {
     console.error("get-activity-feed error", err);
-    return json({
+    return json(req, {
       error: "internal_error",
       message: String(err?.message || err)
     }, 500);

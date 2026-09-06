@@ -1,22 +1,35 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 // ─────────────────────────────────────────────────────────────────────────────
-// platform-alert v10 — PM-404 (26 May 2026)
+// platform-alert v11 — PM-1015 (4 Sep 2026)
 //
-// Real replacement for the PM-149 no-op (deployed as v10 source-labelled v9).
-// Restores platform error monitoring before bundle tonight widens the cohort
-// from ~15-20 trial seats to all members on approval.
+// v10 (PM-404) implemented brain PM-403.b decision 2: network_error_* on a
+// WRITE-PATH slug stays critical, everywhere else it downgrades to info. That
+// exemption has NEVER MATCHED, because it tested the wrong field.
 //
-// Design lock (brain PM-403.b):
-//   • Fingerprint:  (type, normalised_endpoint, member_email)
-//   • Severity recalibration on intake — see SEVERITY_RULES below
-//   • Circuit breaker: 20 calls / 60s sliding → 429 for 5 min (module-scoped)
-//   • Writes only to platform_alerts. No Brevo, no Anthropic, no push fan-out,
-//     no push_subscriptions write. <50ms 200-return on happy path.
-//   • CORS preserved from v9. verify_jwt: false preserved.
+// The client posts { type: 'network_error_<table>', page: '/x.html', details: '<string>' }
+// and sends no `endpoint`/`url`. v10's rawEndpoint therefore fell through to
+// `page`, normalised to 'onboarding.html', which is not in WRITE_PATH_SLUGS —
+// so every network_error_* since 26 May has been stored as info, including
+// genuine write failures on members / daily_habits / workouts. The table name
+// was in the TYPE the whole time, never in the endpoint.
 //
-// Storm-class line of defence is the circuit breaker. PM-149 was 40+ concurrent
-// 90-150s holders draining the connection pool. v10 is single-write, no awaited
-// fan-out, breaker caps anything pathological.
+// v11 changes, and nothing else:
+//   1. Severity now keys off the slug carried in the type suffix
+//      (network_error_<slug> / api_500_<slug> / auth_401_<slug>), falling back
+//      to endpoint/url/page for types that carry no slug. Fingerprints are
+//      UNCHANGED so existing rows keep grouping.
+//   2. A string `details` is stored as { message } instead of being buried
+//      under { raw: <entire payload> }, which is what made the list unreadable.
+//   3. The hourly increment path is generalised from skeleton_timeout_* to
+//      network_error_* too, so a client retrying the same table collapses into
+//      one row with a count instead of N rows.
+//   4. The increment lookup now requires resolved=false. Without this, clearing
+//      the queue and then hitting the same fault again would silently bump the
+//      RESOLVED row's counter and never resurface — a real hole once bulk
+//      resolve exists (PM-1013).
+//
+// Unchanged: CORS, verify_jwt:false, the circuit breaker, single-write happy
+// path, no fan-out, never throws, always 200s to the client.
 // ─────────────────────────────────────────────────────────────────────────────
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -53,17 +66,10 @@ const WRITE_PATH_SLUGS = new Set([
   'members'
 ]);
 // ─── Endpoint normalisation ────────────────────────────────────
-// Strip protocol + host + query, keep the path, return just the last path
-// segment for fingerprinting. So:
-//   https://...supabase.co/rest/v1/daily_habits?member_email=eq.X → 'daily_habits'
-//   https://...supabase.co/functions/v1/log-activity              → 'log-activity'
-//   /habits.html                                                  → 'habits.html'
-//   (anything else)                                               → the raw input lowercased, trimmed
 function normaliseEndpoint(raw) {
   if (typeof raw !== 'string') return 'unknown';
   let s = raw.trim();
   if (!s) return 'unknown';
-  // Strip protocol + host if present
   try {
     if (s.startsWith('http://') || s.startsWith('https://')) {
       const u = new URL(s);
@@ -72,66 +78,67 @@ function normaliseEndpoint(raw) {
   } catch  {
   // fall through with raw s
   }
-  // Strip query string
   const qi = s.indexOf('?');
   if (qi >= 0) s = s.slice(0, qi);
-  // Strip trailing slash
   if (s.endsWith('/') && s.length > 1) s = s.slice(0, -1);
-  // Take last path segment
   const parts = s.split('/').filter(Boolean);
   const tail = parts.length ? parts[parts.length - 1] : s;
   return tail.toLowerCase();
 }
-// ─── Severity recalibration (brain PM-403.b decision 2) ──────────────────
-// type pattern → severity decision rule. Returns the final severity to store.
-function decideSeverity(type, normEndpoint) {
+// ─── PM-1015: the slug the severity rules actually care about ────────────
+// For the prefixed families the table/endpoint is carried in the TYPE, which is
+// the only place the client ever puts it. Fall back to the normalised endpoint
+// for types that carry no slug (js_error, promise_rejection, ...).
+const SLUG_PREFIXES = [
+  'network_error_',
+  'api_500_',
+  'auth_401_'
+];
+function severitySlug(type, normEndpoint) {
   const t = type.toLowerCase();
-  const isWritePath = WRITE_PATH_SLUGS.has(normEndpoint);
-  // network_error_* — write-path critical, elsewhere info (the noise downgrade)
+  for (const p of SLUG_PREFIXES){
+    if (t.startsWith(p) && t.length > p.length) return t.slice(p.length);
+  }
+  return normEndpoint;
+}
+// ─── Severity recalibration (brain PM-403.b decision 2) ──────────────────
+function decideSeverity(type, slug) {
+  const t = type.toLowerCase();
+  const isWritePath = WRITE_PATH_SLUGS.has(slug);
   if (t.startsWith('network_error_') || t === 'network_error') {
     return isWritePath ? 'critical' : 'info';
   }
-  // auth_401_* — always critical
   if (t.startsWith('auth_401') || t === 'auth_401') {
     return 'critical';
   }
-  // api_500_* — always critical
   if (t.startsWith('api_500') || t === 'api_500') {
     return 'critical';
   }
-  // js_error + promise_rejection — high
   if (t === 'js_error' || t === 'promise_rejection') {
     return 'high';
   }
-  // skeleton_timeout_* — high (counter-in-details handles per-hour collapsing)
   if (t.startsWith('skeleton_timeout')) {
     return 'high';
   }
-  // Default for anything else — info (don't surface unknown types loudly)
   return 'info';
 }
 // ─── Circuit breaker ────────────────────────────────────────────
-// Module-scoped sliding-window counter. Cold-start reset to zero is intentional
-// — a fresh isolate isn't being stormed yet. Brain PM-403.b decision 3.
-const BREAKER_WINDOW_MS = 60_000; // 60s sliding window
-const BREAKER_THRESHOLD = 20; // > 20 in window → trip
-const BREAKER_COOLDOWN_MS = 5 * 60_000; // 5 min 429
+const BREAKER_WINDOW_MS = 60_000;
+const BREAKER_THRESHOLD = 20;
+const BREAKER_COOLDOWN_MS = 5 * 60_000;
 const invocationTimestamps = [];
 let breakerTrippedUntil = 0;
 function checkBreaker(now) {
-  // Honour active trip
   if (now < breakerTrippedUntil) {
     return {
       tripped: true,
       reason: 'cooldown'
     };
   }
-  // Prune window
   const cutoff = now - BREAKER_WINDOW_MS;
   while(invocationTimestamps.length && invocationTimestamps[0] < cutoff){
     invocationTimestamps.shift();
   }
-  // Count this invocation
   invocationTimestamps.push(now);
   if (invocationTimestamps.length > BREAKER_THRESHOLD) {
     breakerTrippedUntil = now + BREAKER_COOLDOWN_MS;
@@ -144,16 +151,20 @@ function checkBreaker(now) {
     tripped: false
   };
 }
-// ─── Skeleton timeout hourly counter ─────────────────────────────────
-// SELECT-then-UPSERT path. Looks for an existing row with same fingerprint
-// within the last hour; if found, increments details.count and updates created_at.
-// If not found, falls through to a normal INSERT.
-//
-// Trade-off banked: this is two round-trips, but skeleton_timeout repeats are
-// the rarest path AND every other write goes through the single-INSERT happy path.
-async function tryIncrementSkeletonHourly(fingerprint, details) {
-  // Look for existing skeleton_timeout row with this fingerprint in last hour
-  const lookupUrl = `${SUPABASE_URL}/rest/v1/platform_alerts` + `?fingerprint=eq.${encodeURIComponent(fingerprint)}` + `&type=like.skeleton_timeout_*` + `&created_at=gte.${encodeURIComponent(new Date(Date.now() - 60 * 60_000).toISOString())}` + `&select=id,details` + `&order=created_at.desc` + `&limit=1`;
+// ─── Hourly repeat collapsing ────────────────────────────────────────
+// PM-1015: was skeleton_timeout only, now also network_error_*. Only ever
+// touches an UNRESOLVED row — bumping a resolved one would hide a fresh
+// occurrence behind a cleared alert.
+const COLLAPSE_PREFIXES = [
+  'skeleton_timeout',
+  'network_error'
+];
+function isCollapsible(type) {
+  const t = type.toLowerCase();
+  return COLLAPSE_PREFIXES.some((p)=>t.startsWith(p));
+}
+async function tryIncrementHourly(fingerprint, details) {
+  const lookupUrl = `${SUPABASE_URL}/rest/v1/platform_alerts` + `?fingerprint=eq.${encodeURIComponent(fingerprint)}` + `&resolved=is.false` + `&created_at=gte.${encodeURIComponent(new Date(Date.now() - 60 * 60_000).toISOString())}` + `&select=id,details` + `&order=created_at.desc` + `&limit=1`;
   const lookupRes = await fetch(lookupUrl, {
     headers: {
       'apikey': SUPABASE_KEY,
@@ -219,7 +230,6 @@ serve(async (req)=>{
   if (req.method === 'OPTIONS') return new Response('ok', {
     headers: CORS
   });
-  // Breaker first — single shared mutable state check
   const now = Date.now();
   const breaker = checkBreaker(now);
   if (breaker.tripped) {
@@ -235,7 +245,6 @@ serve(async (req)=>{
       }
     });
   }
-  // Parse payload (defensive — never throw out of this handler)
   let payload = {};
   try {
     if (req.method === 'POST') payload = await req.json();
@@ -246,13 +255,25 @@ serve(async (req)=>{
   const memberEmail = typeof payload.member_email === 'string' ? payload.member_email.toLowerCase().trim().slice(0, 320) : null;
   const rawEndpoint = payload.endpoint ?? payload.url ?? payload.page ?? '';
   const normEndpoint = normaliseEndpoint(rawEndpoint);
+  // Fingerprint deliberately unchanged from v10 so existing rows keep grouping.
   const fingerprint = `${type}::${normEndpoint}::${memberEmail ?? 'anon'}`;
-  const severity = decideSeverity(type, normEndpoint);
-  // Build the row. `details` is a text column in the live schema; we serialise
-  // the incoming details (or the whole payload) to JSON text.
-  const detailsSrc = typeof payload.details === 'object' && payload.details !== null ? payload.details : {
-    raw: payload
-  };
+  const slug = severitySlug(type, normEndpoint);
+  const severity = decideSeverity(type, slug);
+  // `details` is a text column; serialise whatever we were given. PM-1015: a
+  // plain-string details is the common client shape and becomes { message },
+  // rather than the whole payload disappearing under { raw }.
+  let detailsSrc;
+  if (typeof payload.details === 'object' && payload.details !== null) {
+    detailsSrc = payload.details;
+  } else if (typeof payload.details === 'string' && payload.details.trim()) {
+    detailsSrc = {
+      message: payload.details.slice(0, 1000)
+    };
+  } else {
+    detailsSrc = {
+      raw: payload
+    };
+  }
   const row = {
     severity,
     type,
@@ -263,12 +284,10 @@ serve(async (req)=>{
     user_agent: req.headers.get('User-Agent')?.slice(0, 500) ?? null,
     fingerprint
   };
-  // Skeleton timeout path: try to increment an existing row's counter first.
-  // Falls through to INSERT on miss.
   let wrote = false;
-  if (type.startsWith('skeleton_timeout')) {
+  if (isCollapsible(type)) {
     try {
-      wrote = await tryIncrementSkeletonHourly(fingerprint, detailsSrc);
+      wrote = await tryIncrementHourly(fingerprint, detailsSrc);
     } catch  {
       wrote = false;
     }
@@ -277,9 +296,7 @@ serve(async (req)=>{
     try {
       wrote = await insertAlert(row);
     } catch (err) {
-      // Never throw — even on DB failure, we 200 to the client so the storm
-      // shape (client retries the alert post on failure) is suppressed.
-      console.warn('[platform-alert v10] insert failed', String(err));
+      console.warn('[platform-alert v11] insert failed', String(err));
     }
   }
   return new Response(JSON.stringify({

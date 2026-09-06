@@ -1,11 +1,16 @@
-// VYVE Health — notifications v3 — clear action + delete action + 7-day prune
+// VYVE Health — notifications v4 — PM-1001 (§23.189 CORS sweep): native app origins added
+// (capacitor://localhost = iOS store binary, https://localhost = Android) — store installs
+// were CORS-blocked on iOS whenever WebKit sent the capacitor origin. v3: clear/delete/prune.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const SUPABASE_ANON = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const ALLOWED_ORIGINS = new Set([
   'https://online.vyvehealth.co.uk',
-  'https://www.vyvehealth.co.uk'
+  'https://www.vyvehealth.co.uk',
+  'capacitor://localhost',
+  'https://localhost',
+  'http://localhost'
 ]);
 function getCORSHeaders(req) {
   const origin = req.headers.get('Origin') ?? '';

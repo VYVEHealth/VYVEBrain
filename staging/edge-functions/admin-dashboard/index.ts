@@ -1,9 +1,20 @@
+// admin-dashboard v9 — Member Admin W3 (5 September 2026)
+//   v9: NEW action member_health {email} → score-only wellbeing_checkins / monthly_checkins /
+//       daily_mood_checkins / weight_logs (+ gdpr_erasure_requests for admin). No free text.
+//       `members` list now also carries account_type, exercise_stream, last_active_at, is_test,
+//       member_state (all in members_staff_view, so team-safe).
+// admin-dashboard v8 — Member Admin W0 security gate (5 September 2026)
+//   v8: checkAdmin requires admin_users.role IN ('admin','team') — partner/coach/
+//       viewer rows are rejected (previously ANY active row passed, and a missing role
+//       defaulted to 'admin'). Team role shaping: the `members` list no longer ships
+//       life_context / sensitive_context to team; `member_detail` returns the staff
+//       column set (not select('*')) and omits push subscriptions + engagement emails
+//       for team; `member_raw` (check-in free text, AI interactions, monthly reports)
+//       is admin-only. Admin responses are unchanged.
 // admin-dashboard v7 — JWT verify fallback (18 April 2026)
 //   v5/v6 local-verify failed silently when SUPABASE_JWT_SECRET wasn't set in EF
 //   runtime. v7 tries local verify first (fast path) and falls back to
 //   supabase.auth.getUser(token) if local verify can't be done or fails.
-//   Restores admin login immediately; local verify kicks in once Dean sets
-//   `supabase secrets set SUPABASE_JWT_SECRET=...`.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -19,7 +30,15 @@ const CORS_ALLOWLIST = new Set([
   'http://localhost:8080',
   'http://127.0.0.1:5500'
 ]);
-const MEMBER_FIELDS = 'email, first_name, last_name, phone, persona, company, company_slug, ' + 'subscription_status, onboarding_complete, onboarding_completed_at, ' + 'created_at, life_context, sensitive_context';
+const STAFF_ROLES = new Set([
+  'admin',
+  'team'
+]);
+// Admin sees the April field set on the members list; team loses the two sensitive columns.
+const MEMBER_FIELDS_ADMIN = 'email, first_name, last_name, phone, persona, company, company_slug, ' + 'subscription_status, onboarding_complete, onboarding_completed_at, ' + 'created_at, account_type, exercise_stream, last_active_at, is_test, member_state, ' + 'life_context, sensitive_context';
+const MEMBER_FIELDS_TEAM = 'email, first_name, last_name, persona, company, company_slug, ' + 'subscription_status, onboarding_complete, onboarding_completed_at, created_at, ' + 'account_type, exercise_stream, last_active_at, is_test, member_state';
+// W0 staff column set for member_detail when the caller is 'team' — mirrors members_staff_view.
+const MEMBER_DETAIL_TEAM = 'id, email, first_name, last_name, company, company_slug, account_type, subscription_status, ' + 'persona, goal_focus, primary_goal, goal_summary, exercise_stream, training_days_per_week, ' + 'experience_level, training_location, equipment, tdee_maintenance, tdee_target, deficit_percentage, ' + 'weight_kg, height_cm, onboarding_complete, onboarding_completed_at, created_at, last_active_at, ' + 're_engagement_stream, timezone, member_state, display_name_preference, avatar_url, is_test';
 function corsHeaders(origin) {
   const allow = origin && CORS_ALLOWLIST.has(origin) ? origin : 'https://admin.vyvehealth.co.uk';
   return {
@@ -107,7 +126,8 @@ async function checkAdmin(email) {
     // Transient DB / schema issue — don't cache the miss
     return null;
   }
-  const role = row ? row.role || 'admin' : null;
+  // W0: only admin/team are staff. Anything else (partner, coach, viewer, null) is denied.
+  const role = row && STAFF_ROLES.has(String(row.role)) ? String(row.role) : null;
   allowlistCache.set(email, {
     role,
     expires: Date.now() + ALLOWLIST_TTL_MS
@@ -122,14 +142,12 @@ async function authorise(req) {
   const m = auth.match(/^Bearer\s+(.+)$/i);
   if (!m) return null;
   const token = m[1];
-  // Try local verify first (requires SUPABASE_JWT_SECRET to be set in secrets).
   let payload = await verifyJwtLocal(token);
-  // Fallback to Supabase Auth if local verify is unavailable or failed.
   if (!payload) payload = await verifyJwtViaSupabase(token);
   if (!payload?.email) return null;
   return await checkAdmin(String(payload.email).toLowerCase());
 }
-// ----- handlers (unchanged from v6) -----
+// ----- handlers -----
 async function handleOverview() {
   const today = new Date().toISOString().slice(0, 10);
   const [latestMetric, memberCount, atRisk, needsSupport, alerts7d] = await Promise.all([
@@ -166,7 +184,8 @@ async function handleOverview() {
     last_30_days: last30.data || []
   };
 }
-async function handleMembers(params) {
+async function handleMembers(params, role) {
+  const memberFields = role === 'admin' ? MEMBER_FIELDS_ADMIN : MEMBER_FIELDS_TEAM;
   const page = Math.max(1, Number(params.page) || 1);
   const pageSize = Math.min(200, Math.max(1, Number(params.pageSize) || 50));
   const search = String(params.search || '').trim().toLowerCase();
@@ -189,7 +208,7 @@ async function handleMembers(params) {
     active_days_30d, engagement_score, at_risk, needs_support, cert_count,
     current_programme, programme_week, programme_active,
     latest_wellbeing_score, latest_weight_kg, joined_at, updated_at,
-    members!inner(${MEMBER_FIELDS})
+    members!inner(${memberFields})
   `, {
     count: 'exact'
   });
@@ -214,7 +233,7 @@ async function handleMembers(params) {
     const hits = (nameHits || []).filter((m)=>!have.has((m.email || '').toLowerCase()));
     if (hits.length) {
       const emails = hits.map((m)=>m.email.toLowerCase());
-      const { data: matchingStats } = await service.from('member_stats').select(`*, members!inner(${MEMBER_FIELDS})`).in('member_email', emails);
+      const { data: matchingStats } = await service.from('member_stats').select(`*, members!inner(${memberFields})`).in('member_email', emails);
       extraResults = matchingStats || [];
     }
   }
@@ -228,21 +247,26 @@ async function handleMembers(params) {
     ]
   };
 }
-async function handleMemberDetail(params) {
+async function handleMemberDetail(params, role) {
   const email = String(params.email || '').toLowerCase();
   if (!email) return {
     error: 'email required'
   };
+  const isAdmin = role === 'admin';
   const [member, stats, cert, push, eng, plan, notes] = await Promise.all([
-    service.from('members').select('*').eq('email', email).maybeSingle(),
+    service.from('members').select(isAdmin ? '*' : MEMBER_DETAIL_TEAM).eq('email', email).maybeSingle(),
     service.from('member_stats').select('*').eq('member_email', email).maybeSingle(),
     service.from('certificates').select('*').eq('member_email', email).order('earned_at', {
       ascending: false
     }),
-    service.from('push_subscriptions').select('endpoint, created_at').eq('member_email', email),
-    service.from('engagement_emails').select('stream, email_key, sent_at, open_count, click_count').eq('member_email', email).order('sent_at', {
+    isAdmin ? service.from('push_subscriptions').select('endpoint, created_at').eq('member_email', email) : Promise.resolve({
+      data: []
+    }),
+    isAdmin ? service.from('engagement_emails').select('stream, email_key, sent_at, open_count, click_count').eq('member_email', email).order('sent_at', {
       ascending: false
-    }).limit(30),
+    }).limit(30) : Promise.resolve({
+      data: []
+    }),
     service.from('workout_plan_cache').select('id, current_week, is_active, paused_at, generated_at, source, plan_duration_weeks, programme_name:programme_json->>programme_name').eq('member_email', email).order('generated_at', {
       ascending: false
     }).limit(1),
@@ -261,7 +285,8 @@ async function handleMemberDetail(params) {
     push_subs: push.data || [],
     emails: eng.data || [],
     programmes,
-    notifications: notes.data || []
+    notifications: notes.data || [],
+    role
   };
 }
 async function handleMemberProgramme(params) {
@@ -348,6 +373,42 @@ async function handleMemberRaw(params) {
     weight_logs: weight.data || [],
     monthly_checkins: monthly.data || [],
     ai_interactions: ai.data || []
+  };
+}
+// W3: score-only health read for the member-admin Check-ins / Nutrition tabs.
+// No free text, no AI recommendations, no notes — those stay in member_raw (admin-only).
+async function handleMemberHealth(params, role) {
+  const email = String(params.email || '').toLowerCase();
+  if (!email) return {
+    error: 'email required'
+  };
+  const isAdmin = role === 'admin';
+  const [weekly, monthly, mood, weight, gdpr] = await Promise.all([
+    service.from('wellbeing_checkins').select('id, activity_date, iso_week, iso_year, check_in_type, flow_type, score_wellbeing, score_sleep, score_energy, score_stress, score_physical, score_diet, score_social, score_motivation, composite_score, dimension_energy, dimension_sleep, dimension_stress, dimension_body, branch, logged_at').eq('member_email', email).order('logged_at', {
+      ascending: false
+    }).limit(26),
+    service.from('monthly_checkins').select('id, iso_month, score_wellbeing, score_energy, score_stress, score_physical, score_sleep, score_diet, score_social, score_motivation, avg_score, goal_progress_score, created_at').eq('member_email', email).order('created_at', {
+      ascending: false
+    }).limit(12),
+    service.from('daily_mood_checkins').select('mood_date, mood_value, mood_label').eq('member_email', email).order('mood_date', {
+      ascending: false
+    }).limit(60),
+    service.from('weight_logs').select('logged_date, weight_kg, logged_at').eq('member_email', email).order('logged_at', {
+      ascending: false
+    }).limit(30),
+    isAdmin ? service.from('gdpr_erasure_requests').select('id, requested_at, requested_by, request_kind, scheduled_for, cancelled_at, executed_at, failed_at').eq('member_email', email).order('requested_at', {
+      ascending: false
+    }).limit(3) : Promise.resolve({
+      data: []
+    })
+  ]);
+  return {
+    weekly: weekly.data || [],
+    monthly: monthly.data || [],
+    mood: mood.data || [],
+    weight: weight.data || [],
+    gdpr_requests: gdpr.data || [],
+    role
   };
 }
 async function handleCompanies() {
@@ -490,19 +551,26 @@ Deno.serve(async (req)=>{
         result = await handleOverview();
         break;
       case 'members':
-        result = await handleMembers(params);
+        result = await handleMembers(params, user.role);
         break;
       case 'member_detail':
-        result = await handleMemberDetail(params);
+        result = await handleMemberDetail(params, user.role);
         break;
       case 'member_timeline':
         result = await handleMemberTimeline(params);
         break;
       case 'member_raw':
+        if (user.role !== 'admin') return json({
+          error: 'forbidden',
+          message: 'member_raw is admin-only'
+        }, 403, origin);
         result = await handleMemberRaw(params);
         break;
       case 'member_programme':
         result = await handleMemberProgramme(params);
+        break;
+      case 'member_health':
+        result = await handleMemberHealth(params, user.role);
         break;
       case 'companies':
         result = await handleCompanies();
@@ -528,6 +596,7 @@ Deno.serve(async (req)=>{
     return json({
       ok: true,
       admin: user.email,
+      role: user.role,
       action,
       data: result
     }, 200, origin);

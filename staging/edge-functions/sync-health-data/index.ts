@@ -1,45 +1,29 @@
 // sync-health-data
-// PM-433 (30 May 2026): cardio/workouts promotion now upserts with
-//   ignoreDuplicates against the semantic workout-identity unique indexes
-//   (cardio: member_email,source,cardio_type,logged_at; workouts:
-//   member_email,source,logged_at) instead of a plain INSERT. Root cause of
-//   the duplicate-cardio bug: the same physical workout reported by two
-//   HealthKit source apps (e.g. Strava + Garmin Connect) arrives under two
-//   native_uuids -> two member_health_samples rows -> two promoted rows. A
-//   native_uuid key can't catch cross-app dupes, so we dedupe on the workout's
-//   physical identity (member + source + type + start instant). DB migration
-//   pm433_cardio_workouts_healthkit_dedupe_guard added the matching unique
-//   indexes + removed existing dupes.
-//
-// v9 change vs v8: Don't advance last_sync_at when the client reports all probes
-//   failed with "Authorization not determined". Previously the EF wrote
-//   last_sync_at: nowIso unconditionally on every pull_samples call, even when
-//   zero samples came back due to silent auth failure. This created a gap where
-//   the next successful sync's incremental window started from an "auth-broken"
-//   timestamp and missed the real data that landed in HK during the broken
-//   window (Dean's run from 28 April 18:33 BST was in this gap).
-//   Now: if diagnostics show all probes failed with auth-not-determined, we
-//   write last_sync_status:'auth_blocked' but leave last_sync_at unchanged so
-//   the next successful sync re-pulls from the genuine last good timestamp.
-//
-// v8 change: MAX_SAMPLE_AGE_DAYS bumped from 60 → 365 to support the
-//   first-connect-from-join_date backfill.
-// v7 change: Pure refactor — extracts workout-type taxonomy.
-// v6 change: Stamp `source: 'healthkit'` / 'health_connect' on promoted rows.
-// v5 change: Added `push_daily` action.
-// v4 change: Persist client diagnostics from pull_samples body.
-// v3 change: Weight upsert includes native_uuid.
-// v2 change: Workout-type matching is taxonomy-agnostic.
+// v26 (PM-973, 3 Sep 2026): JOIN-DATE PROMOTION CLAMP (Dean's ruling). Workout/cardio
+//   promotions now require the sample's start date >= members.join_date. Rationale:
+//   the client's first-sync window was designed join-date-forward (decision B, Apr 2026)
+//   but the onboarding-page connect can't hydrate join_date (auth island, PM-972/§23.193),
+//   so the defensive 30-day fallback fired for every onboarding-time connect and
+//   backdated a month of pre-membership workouts into the milestone buckets (11/30 Body
+//   on day one). The server knows join_date authoritatively, so the clamp lives here:
+//   late-connectors keep their membership-period backfill (decision B intact), new
+//   members start at zero (same-day pre-signup workouts still count — Dean's call).
+//   Weight promotions and raw sample ingestion are NOT clamped — historical steps/
+//   sleep/weight context is chart-useful and feeds no milestones.
+// v25 (PM-968, 2 Sep 2026): CORS fix — Allow-Origin * (was pinned to dev-shell origin).
+// PM-433 (30 May 2026): cardio/workouts promotion upserts with ignoreDuplicates
+//   against semantic workout-identity unique indexes (cross-app dupe guard).
+// v9: don't advance last_sync_at on auth-blocked syncs.
+// v8: MAX_SAMPLE_AGE_DAYS 60 → 365 for first-connect-from-join_date backfill.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { normWorkoutType, STRENGTH_CANON, CARDIO_CANON, IGNORED_CANON, YOGA_CANON, YOGA_STRENGTH_MIN_MINUTES, ALLOWED_DAILY_TYPES } from "./_shared/taxonomy.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "https://online.vyvehealth.co.uk",
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Max-Age": "86400",
-  "Vary": "Origin"
+  "Access-Control-Max-Age": "86400"
 };
 const MAX_SAMPLES_PER_CALL = 500;
 const MAX_DAILY_PER_CALL = 200;
@@ -86,9 +70,6 @@ function isoDate(d) {
 function platformSourceTag(platform) {
   return platform === "health_connect" ? "health_connect" : "healthkit";
 }
-// v9: detect the all-probes-failed-with-auth-not-determined pattern from client diagnostics.
-// When true, we should NOT advance last_sync_at, only mark status. This preserves the
-// last good timestamp so the next successful sync's incremental window covers the gap.
 function diagnosticsShowAuthBlocked(diag) {
   if (!diag || typeof diag !== "object") return false;
   const probes = [];
@@ -198,8 +179,6 @@ function promoteMapping(sample, memberEmail, sourceTag) {
   }
   return null;
 }
-// PM-433: per-target semantic dedupe key for HealthKit-promoted activity rows.
-// Matches the unique indexes added in pm433_cardio_workouts_healthkit_dedupe_guard.
 function promotedConflictTarget(target) {
   return target === "cardio" ? "member_email,source,cardio_type,logged_at" : "member_email,source,logged_at";
 }
@@ -349,7 +328,6 @@ async function handlePullSamples(body, memberEmail, svc) {
     limit: MAX_SAMPLES_PER_CALL
   }, 413);
   const grantedScopes = Array.isArray(body.granted_scopes) ? body.granted_scopes : [];
-  // v9: detect auth-blocked sync from client diagnostics
   const isAuthBlocked = diagnosticsShowAuthBlocked(body.diagnostics);
   if (body.diagnostics && typeof body.diagnostics === "object") {
     try {
@@ -363,9 +341,6 @@ async function handlePullSamples(body, memberEmail, svc) {
     } catch (_) {}
   }
   const nowIso = new Date().toISOString();
-  // v9: Only advance last_sync_at when the sync wasn't auth-blocked. Auth-blocked syncs
-  // get last_sync_status:'auth_blocked' but leave last_sync_at unchanged so the next
-  // successful sync's incremental window starts from the genuine last good timestamp.
   if (isAuthBlocked) {
     await svc.from("member_health_connections").upsert({
       member_email: memberEmail,
@@ -388,6 +363,14 @@ async function handlePullSamples(body, memberEmail, svc) {
       onConflict: "member_email,platform"
     });
   }
+  // PM-973: fetch join_date for the promotion clamp. Server-authoritative — the
+  // client's pull window can be wrong (onboarding auth island → 30-day fallback),
+  // but promotion into milestone-feeding tables is gated HERE.
+  let joinDateStr = null;
+  try {
+    const { data: memberRow } = await svc.from("members").select("created_at").eq("email", memberEmail).maybeSingle();
+    if (memberRow && memberRow.created_at) joinDateStr = String(memberRow.created_at).slice(0, 10);
+  } catch (_) {}
   const { data: ledgerRows } = await svc.from("member_health_write_ledger").select("native_uuid").eq("member_email", memberEmail).eq("platform", platform).eq("write_status", "confirmed").not("native_uuid", "is", null);
   const writtenByVyve = new Set((ledgerRows || []).map((r)=>r.native_uuid));
   const cutoff = new Date(Date.now() - MAX_SAMPLE_AGE_DAYS * 86400_000);
@@ -447,11 +430,24 @@ async function handlePullSamples(body, memberEmail, svc) {
     workouts: 0,
     cardio: 0,
     weight_logs: 0,
-    skipped_cap: 0
+    skipped_cap: 0,
+    skipped_prejoin: 0
   };
   for (const s of insertedSamples){
     const m = promoteMapping(s, memberEmail, sourceTag);
     if (!m) continue;
+    // PM-973: workouts/cardio (milestone-feeding) promotions are clamped to the
+    // membership period. Weight promotions and raw samples are NOT clamped —
+    // historical charts stay rich, milestones stay honest. Late-connectors keep
+    // their full membership-era backfill (decision B); pre-join history never
+    // inflates Body progress, certificates or the charity counter.
+    if ((m.target === "workouts" || m.target === "cardio") && joinDateStr) {
+      const sampleDate = isoDate(new Date(String(s.start_at)));
+      if (sampleDate < joinDateStr) {
+        promoted.skipped_prejoin++;
+        continue;
+      }
+    }
     if (m.target === "weight_logs") {
       const { data, error } = await svc.from("weight_logs").upsert(m.row, {
         onConflict: "member_email,logged_date"
@@ -464,8 +460,6 @@ async function handlePullSamples(body, memberEmail, svc) {
         }).eq("id", s.id);
       }
     } else {
-      // PM-433: upsert (not insert) against the semantic unique index so the same
-      // physical workout reported by multiple HealthKit source apps cannot double.
       const { data, error } = await svc.from(m.target).upsert(m.row, {
         onConflict: promotedConflictTarget(m.target),
         ignoreDuplicates: true

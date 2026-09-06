@@ -1,3 +1,7 @@
+// admin-programme-library v2 — Member Admin W0 security gate (5 September 2026)
+//   v2: verifyAuth requires admin_users.role IN ('admin','team'). Partner/coach/viewer
+//       rows are rejected with 403 (previously ANY active admin_users row passed).
+//       Handlers unchanged.
 // admin-programme-library v1 — VYVE Admin Console Content Mgmt, Phase 1 (23 April 2026)
 //   Read-side admin endpoint for the programme_library.
 //   Actions:
@@ -8,10 +12,7 @@
 //     - verify_jwt=false at gateway (avoids ES256 rejection)
 //     - JWT verified in-code via anon.auth.getUser(token)
 //     - admin_users allowlist with active=true required
-//     - Role gating: only 'viewer' is blocked from duplicate (all other roles allowed for Phase 1)
 //     - Every duplicate writes an admin_audit_log row (service role; reason optional)
-//   Not in Phase 1 scope: create/edit/delete/toggle_active — those land with the visual
-//   builder in Phase 4. Any missing action returns a clear 400.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -25,6 +26,10 @@ const CORS_ALLOWLIST = new Set([
   'http://localhost:5173',
   'http://localhost:8080',
   'http://127.0.0.1:5500'
+]);
+const STAFF_ROLES = new Set([
+  'admin',
+  'team'
 ]);
 function corsHeaders(origin) {
   const allow = origin && CORS_ALLOWLIST.has(origin) ? origin : 'https://admin.vyvehealth.co.uk';
@@ -84,6 +89,13 @@ async function verifyAuth(req) {
   const { data: admin, error: adminError } = await service.from('admin_users').select('email, role, active').eq('email', email).eq('active', true).maybeSingle();
   if (adminError || !admin) {
     console.warn('Admin access denied for', email, adminError?.message);
+    return json({
+      success: false,
+      error: 'Admin access denied'
+    }, 403, origin);
+  }
+  if (!STAFF_ROLES.has(admin.role)) {
+    console.warn('Admin access denied (role) for', email, admin.role);
     return json({
       success: false,
       error: 'Admin access denied'
@@ -187,8 +199,6 @@ async function handleGetProgramme(req, _admin, body) {
     success: false,
     error: 'Programme not found'
   }, 404, origin);
-  // Lightweight shape summary for the UI (computed so preview renders without
-  // trusting client-side assumptions about the JSON structure).
   const pj = data.programme_json;
   const weeksArr = Array.isArray(pj?.weeks) ? pj.weeks : [];
   const firstWeek = weeksArr[0];
@@ -235,9 +245,6 @@ async function handleDuplicateProgramme(req, admin, body) {
     success: false,
     error: 'Source programme not found'
   }, 404, origin);
-  // Build a fresh copy. Let the DB generate a new UUID via the column default (gen_random_uuid()).
-  // Append " (copy)" — and if that name already exists, append " 2", " 3" etc. up to 20 tries.
-  // This keeps the UI predictable when you duplicate the same thing twice.
   const baseName = `${source.programme_name} (copy)`;
   let newName = baseName;
   for(let i = 2; i <= 20; i++){

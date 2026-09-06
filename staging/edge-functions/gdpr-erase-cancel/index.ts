@@ -1,4 +1,6 @@
-// VYVE Health — gdpr-erase-cancel v2 (Security commit 4, 07 May 2026 PM-4).
+// VYVE Health — gdpr-erase-cancel v3 (PM-1001, §23.189 CORS sweep): native app
+// origins added (capacitor://localhost = iOS store binary, https://localhost = Android).
+// v2 (Security commit 4, 07 May 2026 PM-4).
 //
 // Cancels a pending GDPR erasure request via either:
 //   (A) cancel_token in body (email link path) — token IS the auth
@@ -19,7 +21,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const ALLOWED_ORIGINS = new Set([
   "https://online.vyvehealth.co.uk",
-  "https://www.vyvehealth.co.uk"
+  "https://www.vyvehealth.co.uk",
+  "capacitor://localhost",
+  "https://localhost"
 ]);
 const DEFAULT_ORIGIN = "https://online.vyvehealth.co.uk";
 const MAX_BODY_BYTES = 102400;
@@ -110,7 +114,7 @@ async function writeAudit(supabaseSvc, subject, requester, kind, action, metadat
     console.error("[writeAudit] failed:", e.message);
   }
 }
-// ─── Handler ──────────────────────────────────────────────────────────────
+// ─── Handler ────────────────────────────────────────────────────────
 serve(async (req)=>{
   const cors = getCORSHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", {
@@ -240,7 +244,7 @@ serve(async (req)=>{
     cancellation_reason: cancellationReason
   }).eq("id", row.id).is("cancelled_at", null).is("executed_at", null);
   if (updateErr) {
-    console.error("[gdpr-erase-cancel v2] update failed:", updateErr);
+    console.error("[gdpr-erase-cancel v3] update failed:", updateErr);
     return new Response(JSON.stringify({
       error: "Failed to cancel erasure"
     }), {
@@ -258,7 +262,7 @@ serve(async (req)=>{
     const html = buildCancelEmailHTML(member?.first_name || "");
     messageId = await sendBrevo(BREVO_KEY, row.member_email, member?.first_name || "there", html, "VYVE Health: account deletion cancelled");
   } catch (e) {
-    console.error("[gdpr-erase-cancel v2] Brevo send failed:", e.message);
+    console.error("[gdpr-erase-cancel v3] Brevo send failed:", e.message);
     try {
       await supabaseSvc.from("platform_alerts").insert({
         severity: "info",

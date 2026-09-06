@@ -1,4 +1,6 @@
-// VYVE Health — gdpr-erase-request v1 (Security commit 4, 07 May 2026 PM-4).
+// VYVE Health — gdpr-erase-request v2 (PM-1001, §23.189 CORS sweep): native app
+// origins added (capacitor://localhost = iOS store binary, https://localhost = Android).
+// v1 (Security commit 4, 07 May 2026 PM-4).
 //
 // Article 17 GDPR right of erasure. Two-phase pattern with 30-day grace:
 //   1. Member taps "Delete my account" → typed-email confirmation → this EF
@@ -22,7 +24,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const ALLOWED_ORIGINS = new Set([
   "https://online.vyvehealth.co.uk",
-  "https://www.vyvehealth.co.uk"
+  "https://www.vyvehealth.co.uk",
+  "capacitor://localhost",
+  "https://localhost"
 ]);
 const DEFAULT_ORIGIN = "https://online.vyvehealth.co.uk";
 const MAX_BODY_BYTES = 102400;
@@ -67,7 +71,7 @@ function generateCancelToken() {
   crypto.getRandomValues(bytes);
   return Array.from(bytes).map((b)=>b.toString(16).padStart(2, "0")).join("");
 }
-// ─── Brevo email (request confirmation) ────────────────────────────────────
+// ─── Brevo email (request confirmation) ──────────────────────────────────
 const wrap = (body)=>`<!DOCTYPE html><html><body style="margin:0;padding:0;background:#F4FAFA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"><table width="100%" cellpadding="0" cellspacing="0" style="background:#F4FAFA;padding:32px 16px;"><tr><td align="center"><table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#FFFFFF;border-radius:12px;overflow:hidden;box-shadow:0 2px 16px rgba(13,43,43,0.08);"><tr><td style="background:#0D2B2B;padding:24px 32px;"><img src="https://online.vyvehealth.co.uk/logo.png" alt="VYVE Health" style="height:36px;display:block;" /></td></tr><tr><td style="padding:32px;">${body}</td></tr><tr><td style="background:#F4FAFA;padding:20px 32px;border-top:1px solid #C8E4E4;"><p style="margin:0;font-size:12px;color:#7A9A9A;">VYVE Health CIC &nbsp;&middot;&nbsp; team@vyvehealth.co.uk<br>ICO Registration No. 00013608608</p></td></tr></table></td></tr></table></body></html>`;
 const h2 = (t)=>`<h2 style="margin:0 0 20px;font-size:22px;font-family:Georgia,serif;color:#0D2B2B;font-weight:400;">${t}</h2>`;
 const pp = (t)=>`<p style="margin:0 0 16px;font-size:15px;color:#3A5A5A;line-height:1.7;">${t}</p>`;

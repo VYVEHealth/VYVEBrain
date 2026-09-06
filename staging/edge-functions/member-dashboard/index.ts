@@ -2,13 +2,23 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyOp, ukLocalDateISO, lastNightWindow, dailyMetricColumn, dailyUnitFor } from './_shared/taxonomy.ts';
 import { getMemberAchievementsPayload } from './_shared/achievements.ts';
-// member-dashboard v78 — PF-23: surface members.tour_completed_at on the member payload for the first-run gate.
+// member-dashboard v87 — PM-969: ALLOWED_ORIGINS now includes the native shells
+//   (capacitor://localhost iOS, https://localhost + http://localhost Android).
+//   Store binaries were CORS-rejected on every response (Allow-Credentials:true
+//   forbids wildcard AND forbids origin mismatch), which silently killed
+//   healthbridge's connection-state hydration on device — every surface showed
+//   "Connect" forever despite a healthy member_health_connections row. Dev shell
+//   (origin online.vyvehealth.co.uk) could never reproduce it (§23.189).
+// v78 — PF-23: surface members.tour_completed_at on the member payload for the first-run gate.
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const SUPABASE_ANON = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const ALLOWED_ORIGINS = new Set([
   'https://online.vyvehealth.co.uk',
-  'https://www.vyvehealth.co.uk'
+  'https://www.vyvehealth.co.uk',
+  'capacitor://localhost',
+  'https://localhost',
+  'http://localhost'
 ]);
 const DEFAULT_ORIGIN = 'https://online.vyvehealth.co.uk';
 const ASLEEP_STATES = new Set([
@@ -24,7 +34,8 @@ function getCORSHeaders(req) {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Credentials': 'true'
+    'Access-Control-Allow-Credentials': 'true',
+    'Vary': 'Origin'
   };
 }
 async function q(table, params) {

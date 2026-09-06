@@ -1,9 +1,20 @@
-// admin-member-edit v6 — VYVE Admin Console Shell 2 (22 April 2026)
+// admin-member-edit v8 — Member Admin W0 security gate (5 September 2026):
+//   verifyAuth now requires admin_users.role IN ('admin','team') — partner/coach/
+//   viewer/coach_exercise rows are rejected with 403 (previously ANY active row passed).
+//   Role split: 'team' may not edit persona / sensitive_context / health_data_consent /
+//   subscription_status; member_audit_log, get_attribution and set_attribution are
+//   admin-only. Everything else unchanged.
+// v7 — PM-996 (Partner Portal W5, attribution spec Piece 5):
+//   NEW actions get_attribution / set_attribution — the CC-side manual attribution
+//   grant (the withdrawn member-facing picker's replacement). set: {member_email,
+//   slug|null, reason?} — BLOCKED once converted (account_type paid) and for
+//   enterprise members (B2B never carries partner attribution); slug must resolve to
+//   an existing partner (ANY status — the admin grant IS the exception path); stamps
+//   attribution_source='admin' + attribution_admin=<approving admin> (pm996 column);
+//   slug:null clears all three. Audit-logged like every other edit. get: current
+//   attribution + converted flag + partner list for the picker.
+// v6 — VYVE Admin Console Shell 2 (22 April 2026)
 //   v6: reason field is now OPTIONAL even on SCARY fields (was: min 5 chars required).
-//       Still captured in admin_audit_log when provided. Rationale: pre-enterprise
-//       solo-admin phase; friction outweighs benefit. Mandatory reason can be
-//       re-added for specific sensitive fields (persona, subscription_status,
-//       health_data_consent) in a later revision if enterprise DPA requires it.
 //   v5: verify_jwt=false at gateway (ES256 fix). In-code JWT verification retained.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
@@ -18,6 +29,18 @@ const CORS_ALLOWLIST = new Set([
   'http://localhost:5173',
   'http://localhost:8080',
   'http://127.0.0.1:5500'
+]);
+// W0: only these admin_users roles may reach this function at all.
+const STAFF_ROLES = new Set([
+  'admin',
+  'team'
+]);
+// W0: fields the 'team' role may never edit (admin only).
+const TEAM_BLOCKED_FIELDS = new Set([
+  'persona',
+  'sensitive_context',
+  'health_data_consent',
+  'subscription_status'
 ]);
 const SAFE_FIELDS = new Set([
   'first_name',
@@ -174,10 +197,26 @@ async function verifyAuth(req) {
       error: 'Admin access denied'
     }, 403, origin);
   }
+  if (!STAFF_ROLES.has(admin.role)) {
+    console.warn('Admin access denied (role) for', email, admin.role);
+    return json({
+      success: false,
+      error: 'Admin access denied'
+    }, 403, origin);
+  }
   return {
     email: admin.email,
     role: admin.role
   };
+}
+function adminOnly(admin, origin) {
+  if (admin.role !== 'admin') {
+    return json({
+      success: false,
+      error: 'Admin role required'
+    }, 403, origin);
+  }
+  return null;
 }
 function optionalReason(reason) {
   if (typeof reason !== 'string') return null;
@@ -328,6 +367,25 @@ function clientInfo(req) {
     userAgent: req.headers.get('user-agent') || 'unknown'
   };
 }
+async function auditLog(req, admin, member_email, column_name, oldValue, newValue, reason) {
+  const { ip, userAgent } = clientInfo(req);
+  const { error } = await service.from('admin_audit_log').insert({
+    admin_email: admin.email,
+    admin_role: admin.role,
+    member_email,
+    action: 'member_edit',
+    table_name: 'members',
+    column_name,
+    old_value: oldValue ?? null,
+    new_value: newValue ?? null,
+    reason,
+    ip_address: ip,
+    user_agent: userAgent,
+    created_at: new Date().toISOString()
+  });
+  if (error) console.error('Audit log insert failed:', error);
+  return !error;
+}
 async function handleMemberEdit(req, admin, body) {
   const origin = req.headers.get('origin');
   const { member_email, field_name, new_value } = body;
@@ -352,16 +410,11 @@ async function handleMemberEdit(req, admin, body) {
       error: `Field not editable: ${field_name}`
     }, 400, origin);
   }
-  if (admin.role === 'coach_exercise' && (field_name === 'persona' || field_name === 'sensitive_context' || field_name === 'health_data_consent')) {
+  // W0 role split: team cannot touch the four admin-only fields.
+  if (admin.role !== 'admin' && TEAM_BLOCKED_FIELDS.has(field_name)) {
     return json({
       success: false,
       error: 'Your role cannot edit this field'
-    }, 403, origin);
-  }
-  if (admin.role === 'viewer') {
-    return json({
-      success: false,
-      error: 'Viewer role cannot edit'
     }, 403, origin);
   }
   const v = validateField(field_name, new_value);
@@ -405,32 +458,121 @@ async function handleMemberEdit(req, admin, body) {
       details: updErr.message
     }, 500, origin);
   }
-  const { ip, userAgent } = clientInfo(req);
-  const { error: auditErr } = await service.from('admin_audit_log').insert({
-    admin_email: admin.email,
-    admin_role: admin.role,
-    member_email,
-    action: 'member_edit',
-    table_name: 'members',
-    column_name: field_name,
-    old_value: oldValue ?? null,
-    new_value: processed ?? null,
-    reason,
-    ip_address: ip,
-    user_agent: userAgent,
-    created_at: new Date().toISOString()
-  });
-  if (auditErr) console.error('Audit log insert failed:', auditErr);
+  const logged = await auditLog(req, admin, member_email, field_name, oldValue, processed, reason);
   return json({
     success: true,
     field: field_name,
     old_value: oldValue ?? null,
     new_value: processed ?? null,
-    audit_logged: !auditErr
+    audit_logged: logged
   }, 200, origin);
 }
-async function handleMemberAuditLog(req, _admin, body) {
+// ── PM-996: manual attribution grant (spec Piece 5) — admin-only since W0 ──
+async function handleGetAttribution(req, admin, body) {
   const origin = req.headers.get('origin');
+  const gate = adminOnly(admin, origin);
+  if (gate) return gate;
+  const member_email = String(body.member_email || '').toLowerCase().trim();
+  if (!member_email) return json({
+    success: false,
+    error: 'member_email required'
+  }, 400, origin);
+  const { data: m } = await service.from('members').select('email, account_type, signup_campaign_code, attribution_source, attribution_admin').eq('email', member_email).maybeSingle();
+  if (!m) return json({
+    success: false,
+    error: 'Member not found'
+  }, 404, origin);
+  const { data: partners } = await service.from('partner_partners').select('slug, name, status').order('name');
+  return json({
+    success: true,
+    attribution: {
+      signup_campaign_code: m.signup_campaign_code || null,
+      attribution_source: m.attribution_source || null,
+      attribution_admin: m.attribution_admin || null
+    },
+    converted: m.account_type === 'paid',
+    enterprise: m.account_type === 'enterprise',
+    partners: (partners || []).map((p)=>({
+        slug: p.slug,
+        name: p.name,
+        status: p.status
+      }))
+  }, 200, origin);
+}
+async function handleSetAttribution(req, admin, body) {
+  const origin = req.headers.get('origin');
+  const gate = adminOnly(admin, origin);
+  if (gate) return gate;
+  const member_email = String(body.member_email || '').toLowerCase().trim();
+  if (!member_email) return json({
+    success: false,
+    error: 'member_email required'
+  }, 400, origin);
+  const rawSlug = body.slug === null || body.slug === '' ? null : String(body.slug || '').toLowerCase().trim();
+  const reason = optionalReason(body.reason);
+  const { data: m } = await service.from('members').select('email, account_type, signup_campaign_code, attribution_source, attribution_admin').eq('email', member_email).maybeSingle();
+  if (!m) return json({
+    success: false,
+    error: 'Member not found'
+  }, 404, origin);
+  // Spec: blocked once converted — the ledger has already attributed the money.
+  if (m.account_type === 'paid') return json({
+    success: false,
+    error: 'Member already converted — attribution is locked'
+  }, 409, origin);
+  if (m.account_type === 'enterprise') return json({
+    success: false,
+    error: 'B2B members never carry partner attribution'
+  }, 409, origin);
+  let update;
+  if (rawSlug === null) {
+    update = {
+      signup_campaign_code: null,
+      attribution_source: null,
+      attribution_admin: null
+    };
+  } else {
+    // ANY existing partner — the admin grant IS the exception path (live-only applies to codes/links).
+    const { data: p } = await service.from('partner_partners').select('slug').eq('slug', rawSlug).maybeSingle();
+    if (!p) return json({
+      success: false,
+      error: 'No partner with that slug'
+    }, 404, origin);
+    update = {
+      signup_campaign_code: p.slug,
+      attribution_source: 'admin',
+      attribution_admin: admin.email
+    };
+  }
+  const { error: updErr } = await service.from('members').update(update).eq('email', member_email);
+  if (updErr) return json({
+    success: false,
+    error: 'Update failed',
+    details: updErr.message
+  }, 500, origin);
+  const logged = await auditLog(req, admin, member_email, 'signup_campaign_code', JSON.stringify({
+    code: m.signup_campaign_code,
+    source: m.attribution_source,
+    admin: m.attribution_admin
+  }), JSON.stringify({
+    code: update.signup_campaign_code,
+    source: update.attribution_source,
+    admin: update.attribution_admin
+  }), reason);
+  return json({
+    success: true,
+    attribution: {
+      signup_campaign_code: update.signup_campaign_code,
+      attribution_source: update.attribution_source,
+      attribution_admin: update.attribution_admin
+    },
+    audit_logged: logged
+  }, 200, origin);
+}
+async function handleMemberAuditLog(req, admin, body) {
+  const origin = req.headers.get('origin');
+  const gate = adminOnly(admin, origin);
+  if (gate) return gate;
   const { member_email, limit } = body;
   if (!member_email) return json({
     success: false,
@@ -452,12 +594,14 @@ async function handleMemberAuditLog(req, _admin, body) {
     audit_log: data ?? []
   }, 200, origin);
 }
-async function handleGetFieldSchema(req) {
+async function handleGetFieldSchema(req, admin) {
   const origin = req.headers.get('origin');
   return json({
     success: true,
+    role: admin.role,
     safe_fields: Array.from(SAFE_FIELDS),
     scary_fields: Array.from(SCARY_FIELDS),
+    blocked_for_role: admin.role === 'admin' ? [] : Array.from(TEAM_BLOCKED_FIELDS),
     enums: {
       persona: Array.from(VALID_PERSONAS),
       re_engagement_stream: Array.from(VALID_STREAMS),
@@ -509,7 +653,11 @@ Deno.serve(async (req)=>{
       case 'member_audit_log':
         return await handleMemberAuditLog(req, authResult, body);
       case 'field_schema':
-        return await handleGetFieldSchema(req);
+        return await handleGetFieldSchema(req, authResult);
+      case 'get_attribution':
+        return await handleGetAttribution(req, authResult, body);
+      case 'set_attribution':
+        return await handleSetAttribution(req, authResult, body);
       default:
         return json({
           success: false,

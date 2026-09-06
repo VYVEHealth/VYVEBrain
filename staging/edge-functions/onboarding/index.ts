@@ -1,19 +1,15 @@
-// onboarding v121 - PM-XXX: AI-output parsing hardened after PM-941 cycle-one fallbacks. jsonLoose() (fence-strip +
-// first-{...}-block extract) now backs selectPersona / generateGoalAnchor / selectHabits; selectPersona mt 350->500,
-// generateGoalAnchor mt 250->400 (position-202 truncation/malformed JSON seen live 17 Aug); rec-line parsing accepts
-// -, bullets and numbered lists and WARNS with raw text on fallback; writeAiInteraction remapped to the live
-// ai_interactions schema (triggered_by/prompt_summary/recommendation/decision_log - the old payload 400'd silently
-// on the nonexistent 'metadata' column for EVERY member). NO other changes vs v120.
-// onboarding v120 - PM-826: Access-Control-Allow-Origin 'https://www.vyvehealth.co.uk' -> '*'. The native app
-// (Capacitor server.url) submits from https://online.vyvehealth.co.uk; the origin pin made every app-origin
-// submit die at CORS preflight (OPTIONS 200, POST never sent). Public EF, verify_jwt:false, no credentials
-// mode -- '*' is safe and still satisfies the www web path. NO other changes vs v119.
-// onboarding v99 - PM-696: password set server-side at auth-user creation (welcome.html's chosen password
-// arrives in the payload). Replaces the separate set-member-password EF, which was an unauthenticated
-// account-takeover surface killed in PM-689 -- welcome.html gated its success screen on it, breaking every
-// signup after 3 Jul. createAuthUser now returns { pwl, passwordSet }; on the already-exists path (re-onboards)
-// the password is applied via admin PUT; magic link now via /admin/generate_link (works by email, no userId
-// dependency). Response carries password_set for the client gate. Carries v98 (PM-666 model-string fix).
+// onboarding v123 - PM-959e: writeWeeklyGoals + writeAiDecisions rebuilt against the LIVE schemas - both had
+// been silently 400-ing on every onboard (same class as the v121 ai_interactions remap; the EF only warns on
+// these writes). weekly_goals is ONE row per member-week of *_target integer columns (unique member_email+
+// week_start - now upserted with merge-duplicates), not five goal_text rows. ai_decisions is decision_type/
+// decision_value/reasoning/triggered_by, not persona_assigned/habits_selected. No other changes vs v122.
+// onboarding v122 - PM-959e: sync path slimmed (~10-15s): rule-matched personas skip the serial aiReasoning
+// AI call (rule text IS the reasoning; ai_decision path keeps model reasoning); welcome email + analytics
+// writes + Make webhook ride a post-response waitUntil tail; writeHabits + writeWeeklyGoals stay sync so
+// home is populated. Plan generation stays background as in v121. Response shape unchanged.
+// onboarding v121 - AI-output parsing hardened (jsonLoose, mt bumps, ai_interactions schema remap).
+// onboarding v120 - PM-826: CORS origin '*' (Capacitor app submits from online.vyvehealth.co.uk).
+// onboarding v99 - PM-696: password set server-side at auth-user creation; response carries password_set.
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -39,7 +35,6 @@ const SPLITS = {
   Home: 'Home',
   Movement_Wellbeing: 'Movement & Wellbeing'
 };
-// v121: tolerant JSON extraction for model outputs - strips markdown fences, then falls back to the first {...} block.
 function jsonLoose(t) {
   const s = String(t || '').replace(/```json|```/g, '').trim();
   try {
@@ -640,7 +635,7 @@ function isQuickPath(d) {
 function buildDecisionLog(d, persona, pt, pr, pm, prr, stream) {
   const s = d.scores || {}, lc = d.lifeContext || [];
   return {
-    onboarding_version: 'v121',
+    onboarding_version: 'v123',
     recorded_at: new Date().toISOString(),
     inputs: {
       exercise_stream: stream,
@@ -699,13 +694,6 @@ async function callAnthropic(sys, usr, mt = 1000) {
 }
 async function selectPersona(d) {
   const s = d.scores || {}, lc = d.lifeContext || [], w = parseInt(s.wellbeing) || 5, st = parseInt(s.stress) || 5, en = parseInt(s.energy) || 5, tg = (d.trainingGoals || []).map((g)=>g.toLowerCase()), gl = tg.join(' ');
-  async function mr(p, sr) {
-    try {
-      return await callAnthropic(null, `2-sentence explanation for VYVE member matched with ${p}. W=${s.wellbeing}/10,St=${s.stress}/10(1=stressed,10=calm),E=${s.energy}/10,Goals:${(d.trainingGoals || []).join(',') || 'N/A'},Ctx:${lc.join(',') || 'none'},Exp:${d.gymExperience || 'N/A'},Days:${d.trainDays || 'N/A'}. Write to member. Plain text.`, 150);
-    } catch (_) {
-      return sr;
-    }
-  }
   if (lc.some((c)=>[
       'Bereavement',
       'Struggling with mental health'
@@ -715,7 +703,7 @@ async function selectPersona(d) {
       persona: 'HAVEN',
       method: 'hard_rule_haven',
       reason: r,
-      aiReasoning: await mr('HAVEN', r)
+      aiReasoning: r
     };
   }
   if (st <= 3 || w <= 4 || en <= 3) {
@@ -724,7 +712,7 @@ async function selectPersona(d) {
       persona: 'RIVER',
       method: 'hard_rule_river',
       reason: r,
-      aiReasoning: await mr('RIVER', r)
+      aiReasoning: r
     };
   }
   if (w >= 7 && en >= 7 && st >= 7 && tg.length <= 2 && (gl.includes('strength') || gl.includes('performance') || gl.includes('muscle'))) {
@@ -733,7 +721,7 @@ async function selectPersona(d) {
       persona: 'NOVA',
       method: 'hard_rule_nova',
       reason: r,
-      aiReasoning: await mr('NOVA', r)
+      aiReasoning: r
     };
   }
   const txt = await callAnthropic(null, `Assign VYVE persona. ${PERSONA_DESCRIPTIONS}\nRULES:HAVEN=bereavement/MH.RIVER=stress<=3|wellbeing<=4|energy<=3.NOVA=all 7+,1-2 perf goals.SPARK=default.SAGE=analytical.\nMEMBER:W=${s.wellbeing}/10,St=${s.stress}/10(HIGH=calm),E=${s.energy}/10,Goals(${tg.length}):${tg.join(',') || 'none'},Spec:${d.specificGoal || 'N/A'},Ctx:${lc.join(',') || 'none'},Tone:${d.tonePreference || 'N/A'},Exp:${d.gymExperience || 'N/A'},Days:${d.trainDays || 'N/A'}\nJSON:{"persona":"SPARK","reason":"...","aiReasoning":"..."}`, 500);
@@ -1075,7 +1063,6 @@ async function createAuthUser(e, fn, ln, pw) {
   if (!r.ok && !already) throw new Error('createAuthUser: ' + JSON.stringify(j));
   let userId = j.id || j.user?.id || null;
   let passwordSet = r.ok && !!pw;
-  // Magic link via generate_link -- works by email, and on the already-exists path also yields the user id.
   let pwl = null;
   try {
     const magic = await fetch(SUPABASE_URL + '/auth/v1/admin/generate_link', {
@@ -1095,7 +1082,6 @@ async function createAuthUser(e, fn, ln, pw) {
   } catch (mlErr) {
     console.warn('magic link error for', email, mlErr);
   }
-  // Re-onboard path: apply the chosen password to the existing auth user.
   if (already && pw && userId) {
     const upd = await fetch(SUPABASE_URL + '/auth/v1/admin/users/' + userId, {
       method: 'PUT',
@@ -1138,121 +1124,59 @@ async function writeAiInteraction(email, persona, r1, r2, r3, dl) {
   });
   if (!r.ok) console.warn('writeAiInteraction failed:', await r.text());
 }
+// v123: weekly_goals live schema = ONE row per member-week of *_target integers (unique member_email+week_start).
 async function writeWeeklyGoals(email, stream) {
   const em = email.toLowerCase().trim(), now = new Date(), day = now.getUTCDay(), diff = day === 0 ? -6 : 1 - day;
   const weekStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + diff)), ws = weekStart.toISOString().slice(0, 10);
-  const goals = stream === 'workouts' ? [
-    {
-      goal_text: 'Log 3 daily habits',
-      goal_type: 'habits',
-      target_count: 3
-    },
-    {
-      goal_text: 'Complete 2 workouts',
-      goal_type: 'workouts',
-      target_count: 2
-    },
-    {
-      goal_text: 'Complete a cardio session',
-      goal_type: 'cardio',
-      target_count: 1
-    },
-    {
-      goal_text: 'Watch a live session',
-      goal_type: 'sessions',
-      target_count: 1
-    },
-    {
-      goal_text: 'Complete your weekly check-in',
-      goal_type: 'checkin',
-      target_count: 1
-    }
-  ] : stream === 'movement' ? [
-    {
-      goal_text: 'Log 3 daily habits',
-      goal_type: 'habits',
-      target_count: 3
-    },
-    {
-      goal_text: 'Complete 3 movement sessions',
-      goal_type: 'movement',
-      target_count: 3
-    },
-    {
-      goal_text: 'Watch a live session',
-      goal_type: 'sessions',
-      target_count: 1
-    },
-    {
-      goal_text: 'Complete your weekly check-in',
-      goal_type: 'checkin',
-      target_count: 1
-    },
-    {
-      goal_text: 'Log your wellbeing score',
-      goal_type: 'wellbeing',
-      target_count: 1
-    }
-  ] : [
-    {
-      goal_text: 'Log 3 daily habits',
-      goal_type: 'habits',
-      target_count: 3
-    },
-    {
-      goal_text: 'Complete 2 cardio sessions',
-      goal_type: 'cardio',
-      target_count: 2
-    },
-    {
-      goal_text: 'Watch a live session',
-      goal_type: 'sessions',
-      target_count: 1
-    },
-    {
-      goal_text: 'Complete your weekly check-in',
-      goal_type: 'checkin',
-      target_count: 1
-    },
-    {
-      goal_text: 'Generate your running plan',
-      goal_type: 'running_plan',
-      target_count: 1
-    }
-  ];
-  const rows = goals.map((g)=>({
-      member_email: em,
-      week_start: ws,
-      ...g,
-      completed: false,
-      source: 'onboarding'
-    }));
-  const r = await fetch(SUPABASE_URL + '/rest/v1/weekly_goals', {
+  const row = stream === 'workouts' ? {
+    member_email: em,
+    week_start: ws,
+    habits_target: 3,
+    workouts_target: 2,
+    cardio_target: 1,
+    sessions_target: 1,
+    checkin_target: 1
+  } : stream === 'movement' ? {
+    member_email: em,
+    week_start: ws,
+    habits_target: 3,
+    movement_target: 3,
+    sessions_target: 1,
+    checkin_target: 1
+  } : {
+    member_email: em,
+    week_start: ws,
+    habits_target: 3,
+    cardio_target: 2,
+    sessions_target: 1,
+    checkin_target: 1
+  };
+  const r = await fetch(SUPABASE_URL + '/rest/v1/weekly_goals?on_conflict=member_email,week_start', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'apikey': SUPABASE_KEY,
       'Authorization': 'Bearer ' + SUPABASE_KEY,
-      'Prefer': 'resolution=ignore-duplicates,return=minimal'
+      'Prefer': 'resolution=merge-duplicates,return=minimal'
     },
-    body: JSON.stringify(rows)
+    body: JSON.stringify(row)
   });
   if (!r.ok) console.warn('writeWeeklyGoals failed:', await r.text());
+  else console.log('writeWeeklyGoals: wrote week', ws, 'for', em);
 }
+// v123: ai_decisions live schema = decision_type/decision_value/reasoning/triggered_by.
 async function writeAiDecisions(email, persona, aiReasoning, hids, hreas, hlf) {
   const em = email.toLowerCase().trim(), hlfArr = Array.isArray(hlf) ? hlf : [], habitNames = hids.map((id)=>{
     const h = hlfArr.find((x)=>x.id === id);
     return h ? h.habit_title : id;
   });
+  const reasoning = 'Persona: ' + String(aiReasoning || '') + ' | Habits: ' + habitNames.join(', ') + ' | Habit selection: ' + String(hreas || '');
   const row = {
     member_email: em,
     decision_type: 'onboarding',
-    persona_assigned: persona,
-    persona_ai_reasoning: aiReasoning,
-    habits_selected: hids,
-    habit_names: habitNames,
-    habit_selection_reasoning: hreas,
-    recorded_at: new Date().toISOString()
+    decision_value: persona,
+    reasoning: reasoning.slice(0, 4000),
+    triggered_by: 'onboarding'
   };
   const r = await fetch(SUPABASE_URL + '/rest/v1/ai_decisions', {
     method: 'POST',
@@ -1365,47 +1289,53 @@ serve(async (req)=>{
     const pwl = authRes ? authRes.pwl : null, passwordSet = !!(authRes && authRes.passwordSet);
     phase = 'reset_existing_data';
     await resetMemberData(email);
-    phase = 'secondary_writes';
-    const hlf = await fetch(SUPABASE_URL + '/rest/v1/habit_library?active=eq.true&select=id,habit_title,habit_description,habit_pot,difficulty', {
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: 'Bearer ' + SUPABASE_KEY
-      }
-    }).then((r)=>r.json()).catch(()=>hl);
+    phase = 'core_writes';
     await Promise.all([
       writeHabits(email, hids),
-      writeAiInteraction(email, persona, r1, r2, r3, dl),
-      writeWeeklyGoals(email, stream),
-      writeAiDecisions(email, persona, aiReasoning, hids, hreas, hlf),
-      MAKE_WEBHOOK ? fetch(MAKE_WEBHOOK, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          email,
-          first_name: fn,
-          last_name: ln,
-          persona,
-          persona_reason: personaReason,
-          exercise_stream: stream,
-          rec_1: r1,
-          rec_2: r2,
-          rec_3: r3
-        })
-      }).catch(()=>{}) : Promise.resolve()
+      writeWeeklyGoals(email, stream)
     ]);
-    phase = 'welcome_email';
-    const hlfArr = Array.isArray(hlf) ? hlf : [], hlfMap = Object.fromEntries(hlfArr.map((h)=>[
-        h.id,
-        h
-      ])), habitsFull = hids.map((id)=>hlfMap[id]).filter(Boolean), sessionRec = pickSessionRec(persona, stream, upcoming), planTypeDesc = PLAN_TYPE_DESCRIPTIONS[planType] || ov.rationale || '';
-    await sendWelcomeEmail(email, fn, persona, personaReason, habitsFull, [
-      r1,
-      r2,
-      r3
-    ], finalProgrammeName, planTypeDesc, sessionRec, pwl, stream, goalSummary);
-    console.log('DONE v121:', email, persona, 'stream:', stream);
+    console.log('DONE v123 sync path:', email, persona, 'stream:', stream);
+    EdgeRuntime.waitUntil((async ()=>{
+      try {
+        const hlf = hl;
+        const hlfMap = Object.fromEntries((Array.isArray(hlf) ? hlf : []).map((h)=>[
+            h.id,
+            h
+          ])), habitsFull = hids.map((id)=>hlfMap[id]).filter(Boolean), sessionRec = pickSessionRec(persona, stream, upcoming), planTypeDesc = PLAN_TYPE_DESCRIPTIONS[planType] || ov.rationale || '';
+        await Promise.all([
+          sendWelcomeEmail(email, fn, persona, personaReason, habitsFull, [
+            r1,
+            r2,
+            r3
+          ], finalProgrammeName, planTypeDesc, sessionRec, pwl, stream, goalSummary).catch((e)=>{
+            console.error('BG welcome email error:', e);
+            return sendErrorAlert('onboarding-bg', 'welcome_email', email, String(e));
+          }),
+          writeAiInteraction(email, persona, r1, r2, r3, dl),
+          writeAiDecisions(email, persona, aiReasoning, hids, hreas, hlf),
+          MAKE_WEBHOOK ? fetch(MAKE_WEBHOOK, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              email,
+              first_name: fn,
+              last_name: ln,
+              persona,
+              persona_reason: personaReason,
+              exercise_stream: stream,
+              rec_1: r1,
+              rec_2: r2,
+              rec_3: r3
+            })
+          }).catch(()=>{}) : Promise.resolve()
+        ]);
+        console.log('BG tail done for', email);
+      } catch (bgErr) {
+        console.error('BG tail error:', bgErr);
+      }
+    })());
     if (stream === 'workouts') {
       EdgeRuntime.waitUntil((async ()=>{
         try {

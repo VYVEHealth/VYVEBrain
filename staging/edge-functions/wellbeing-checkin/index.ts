@@ -1,4 +1,6 @@
-// Edge Function: wellbeing-checkin v37
+// Edge Function: wellbeing-checkin v38
+// v38 (PM-1001, §23.189 CORS sweep): native app origins added to ALLOWED_ORIGINS
+//      (capacitor://localhost = iOS store binary, https://localhost = Android).
 // v37 (finding B, 4 Jul 2026): crisis-scan wired in. Both paths (new 'mood' flow
 //      free_text + legacy 'answer') are scanned server-side via the crisis-scan EF,
 //      fire-and-forget through EdgeRuntime.waitUntil — a scan failure or outage can
@@ -12,7 +14,9 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const ALLOWED_ORIGINS = new Set([
   'https://online.vyvehealth.co.uk',
-  'https://www.vyvehealth.co.uk'
+  'https://www.vyvehealth.co.uk',
+  'capacitor://localhost',
+  'https://localhost'
 ]);
 const DEFAULT_ORIGIN = 'https://online.vyvehealth.co.uk';
 const MAX_BODY_BYTES = 102400;

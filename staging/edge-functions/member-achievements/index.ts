@@ -1,4 +1,8 @@
-// VYVE Health — member-achievements v2
+// VYVE Health — member-achievements v4 (PM-1003): _shared/achievements.ts hk-connected
+// check now requires revoked_at IS NULL (was: row-exists only — revoked members
+// counted as connected forever). Handler logic unchanged.
+// v3 (PM-1001, §23.189 CORS sweep): native app origins added to ALLOWED_ORIGINS
+// (capacitor://localhost = iOS store binary, https://localhost = Android).
 // Phase 3 grid endpoint. JWT-required. Returns the full 32-metric ladder for the
 // authenticated member with each tier flagged earned/locked/current and read-time
 // inflight progress for the active tile of each row.
@@ -11,7 +15,9 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const ALLOWED_ORIGINS = new Set([
   'https://online.vyvehealth.co.uk',
-  'https://www.vyvehealth.co.uk'
+  'https://www.vyvehealth.co.uk',
+  'capacitor://localhost',
+  'https://localhost'
 ]);
 function getCORSHeaders(req) {
   const origin = req.headers.get('Origin') ?? '';

@@ -1,3 +1,7 @@
+// admin-member-weekly-goals v4 — Member Admin W0 security gate (5 September 2026)
+//   v4: verifyAuth requires admin_users.role IN ('admin','team'). Partner/coach/viewer
+//       rows are rejected with 403 (previously ANY active admin_users row passed).
+//       Handlers unchanged.
 // admin-member-weekly-goals v3 — VYVE Admin Console Shell 3, Sub-scope A (23 April 2026)
 //   v3: reason field is now OPTIONAL on mutations. Still captured in audit log.
 //   v2: verify_jwt=false at gateway (ES256 fix). In-code JWT verification retained.
@@ -15,6 +19,10 @@ const CORS_ALLOWLIST = new Set([
   'http://localhost:5173',
   'http://localhost:8080',
   'http://127.0.0.1:5500'
+]);
+const STAFF_ROLES = new Set([
+  'admin',
+  'team'
 ]);
 const TARGET_FIELDS = [
   'habits_target',
@@ -83,6 +91,13 @@ async function verifyAuth(req) {
   const { data: admin, error: adminError } = await service.from('admin_users').select('email, role, active').eq('email', email).eq('active', true).maybeSingle();
   if (adminError || !admin) {
     console.warn('Admin access denied for', email, adminError?.message);
+    return json({
+      success: false,
+      error: 'Admin access denied'
+    }, 403, origin);
+  }
+  if (!STAFF_ROLES.has(admin.role)) {
+    console.warn('Admin access denied (role) for', email, admin.role);
     return json({
       success: false,
       error: 'Admin access denied'

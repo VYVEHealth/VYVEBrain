@@ -1,7 +1,13 @@
-// leaderboard v17 — SQL-side ranking via get_leaderboard() RPC (PM-22)
+// leaderboard v19 — PM-1003: unauthenticated ?email= fallback REMOVED (was v11 back-compat;
+// no live client uses it — leaderboard.html has sent a JWT since v11 and handles 401 by
+// bouncing to login). Anyone with the anon key could previously read any member's rank +
+// activity data by email. JWT is now the only identity path; missing/invalid JWT → 401.
+// v18 — PM-1001 (§23.189 CORS sweep): native app origins added
+// (capacitor://localhost = iOS store binary, https://localhost = Android).
+// v17 — SQL-side ranking via get_leaderboard() RPC (PM-22)
 // Replaces v11/v16 application-side sort + slice with a single RPC call. EF is now a thin wrapper:
-//   - Parse query params (scope, range, optional ?email= for legacy back-compat).
-//   - JWT-validate caller (or fall back to ?email= for back-compat with pre-v11 clients).
+//   - Parse query params (scope, range).
+//   - JWT-validate caller.
 //   - Call public.get_leaderboard(p_email, p_scope, p_range).
 //   - Return RPC result as JSON.
 // Response shape unchanged from v11/v16. Portal pages do not need to change.
@@ -17,7 +23,9 @@ const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const SUPABASE_ANON = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const ALLOWED_ORIGINS = new Set([
   'https://online.vyvehealth.co.uk',
-  'https://www.vyvehealth.co.uk'
+  'https://www.vyvehealth.co.uk',
+  'capacitor://localhost',
+  'https://localhost'
 ]);
 function getCORSHeaders(req) {
   const origin = req.headers.get('Origin') ?? '';
@@ -35,7 +43,7 @@ serve(async (req)=>{
     headers: CORS
   });
   try {
-    // Auth: prefer JWT; fall back to ?email= for back-compat with v11 callers.
+    // Auth: JWT only (v19 — ?email= fallback removed).
     let callerEmail = null;
     const authHeader = req.headers.get('Authorization');
     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -48,21 +56,18 @@ serve(async (req)=>{
         } catch (_) {}
       }
     }
-    const url = new URL(req.url);
-    if (!callerEmail) {
-      callerEmail = url.searchParams.get('email')?.toLowerCase() ?? null;
-    }
     if (!callerEmail) {
       return new Response(JSON.stringify({
-        error: 'Missing auth — send JWT or ?email= param'
+        error: 'unauthorised'
       }), {
-        status: 400,
+        status: 401,
         headers: {
           ...CORS,
           'Content-Type': 'application/json'
         }
       });
     }
+    const url = new URL(req.url);
     const scopeParam = (url.searchParams.get('scope') || 'all').toLowerCase();
     const scope = scopeParam === 'company' || scopeParam === 'my-team' ? scopeParam : 'all';
     const rangeParam = (url.searchParams.get('range') || 'this_month').toLowerCase();

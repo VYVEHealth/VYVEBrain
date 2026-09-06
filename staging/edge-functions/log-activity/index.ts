@@ -1,11 +1,24 @@
-// VYVE Health — log-activity v30 — PM-534 (06 Jun 2026).
+// VYVE Health — log-activity v33 — PM-1003: bundled _shared/achievements.ts hk-connected
+// check now requires revoked_at IS NULL (was: row-exists only). Handler unchanged.
+// v32 — PM-1001 (§23.189 CORS sweep): native app origins added
+// to ALLOWED_ORIGINS (capacitor://localhost = iOS store binary, https://localhost = Android,
+// http://localhost = dev). Behaviour otherwise byte-identical to v31.
 //
-// CHANGES vs v29:
+// v31 — security patch (01 Sep 2026):
+//   - SECURITY FIX (mass-assignment): the insert payload previously spread the
+//     raw request body (`...fields`) AFTER member_email, so a caller could send
+//     {"member_email":"victim@..."} in the body and override the JWT-derived
+//     identity, writing an activity row attributed to another member. Fixed by
+//     spreading `...fields` FIRST and setting the authoritative server keys
+//     (member_email, activity_date, session_number, logged_at) LAST, so no body
+//     key can override them. A defensive reserved-key strip is also applied.
+//     member_email is still derived solely from the validated JWT.
+//
+// v30 (PM-534, 06 Jun 2026):
 //   - Detects device_platform (ios/android/web) from User-Agent header on every
 //     request and upserts into members.device_platform if the value has changed
 //     or is currently null. Runs via EdgeRuntime.waitUntil so it never blocks
 //     the activity log response.
-//   - All other behaviour byte-identical to v29.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { evaluateInline } from "./_shared/achievements.ts";
@@ -14,7 +27,10 @@ const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const LEGACY_SERVICE_ROLE_JWT = Deno.env.get('LEGACY_SERVICE_ROLE_JWT') ?? '';
 const ALLOWED_ORIGINS = new Set([
   'https://online.vyvehealth.co.uk',
-  'https://www.vyvehealth.co.uk'
+  'https://www.vyvehealth.co.uk',
+  'capacitor://localhost',
+  'https://localhost',
+  'http://localhost'
 ]);
 const DEFAULT_ORIGIN = 'https://online.vyvehealth.co.uk';
 const MAX_BODY_BYTES = 102400;
@@ -34,7 +50,7 @@ function payloadTooLarge(req) {
   const n = Number(cl);
   return Number.isFinite(n) && n > MAX_BODY_BYTES;
 }
-// ── PM-534: device platform detection ───────────────────────────────────────
+// ── PM-534: device platform detection ─────────────────────────────────
 function detectPlatform(req) {
   const ua = (req.headers.get('User-Agent') ?? '').toLowerCase();
   if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ipod') || ua.includes('mac os') && ua.includes('mobile')) return 'ios';
@@ -50,10 +66,10 @@ async function upsertDevicePlatform(supabase, email, platform) {
       device_platform: platform
     }).eq('email', email);
   } catch (e) {
-    console.warn('[log-activity v30] device_platform upsert failed:', e.message);
+    console.warn('[log-activity v33] device_platform upsert failed:', e.message);
   }
 }
-// ────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────
 const CAPS = {
   daily_habits: 1,
   workouts: 2,
@@ -72,6 +88,15 @@ const STREAK_MILESTONES = [
   30,
   60,
   100
+];
+// SECURITY: keys the client must never be able to set via the request body.
+// member_email is derived from the JWT; the rest are computed server-side.
+const RESERVED_PAYLOAD_KEYS = [
+  'member_email',
+  'session_number',
+  'logged_at',
+  'logged_by',
+  'id'
 ];
 const TYPE_TO_HS_COLS = {
   daily_habits: {
@@ -99,7 +124,7 @@ async function getHomeStatePatched(supabase, email, type, loggedAt) {
   try {
     const { data, error } = await supabase.from('member_home_state').select('*').eq('member_email', email).maybeSingle();
     if (error) {
-      console.warn('[log-activity v30] home_state read err:', error.message);
+      console.warn('[log-activity v33] home_state read err:', error.message);
       return null;
     }
     if (!data) return null;
@@ -113,7 +138,7 @@ async function getHomeStatePatched(supabase, email, type, loggedAt) {
     }
     return data;
   } catch (e) {
-    console.warn('[log-activity v30] home_state read exception:', e.message);
+    console.warn('[log-activity v33] home_state read exception:', e.message);
     return null;
   }
 }
@@ -360,6 +385,9 @@ serve(async (req)=>{
         }
       });
     }
+    // SECURITY: strip any client-supplied reserved keys so the body can never
+    // override the JWT-derived identity or server-computed fields.
+    for (const k of RESERVED_PAYLOAD_KEYS)delete fields[k];
     const cap = CAPS[type];
     const { count, error: countErr } = await supabase.from(type).select("*", {
       count: "exact",
@@ -395,12 +423,14 @@ serve(async (req)=>{
     }
     const session_number = existing + 1;
     const logged_at = new Date().toISOString();
+    // SECURITY: server-authoritative keys are set LAST so no ...fields body key
+    // can override member_email / session_number / logged_at / activity_date.
     const payload = {
+      ...fields,
       member_email,
       activity_date,
       session_number,
-      logged_at,
-      ...fields
+      logged_at
     };
     if (type === "daily_habits") delete payload.session_number;
     const { error: insertErr } = await supabase.from(type).insert(payload);

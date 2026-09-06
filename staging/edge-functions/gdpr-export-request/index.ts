@@ -1,4 +1,6 @@
-// VYVE Health — gdpr-export-request v1 (Security commit 3, 07 May 2026 PM-3).
+// VYVE Health — gdpr-export-request v2 (PM-1001, §23.189 CORS sweep): native app
+// origins added (capacitor://localhost = iOS store binary, https://localhost = Android).
+// v1 (Security commit 3, 07 May 2026 PM-3).
 //
 // Article 15 GDPR right of access. Async pattern matching Strava/Notion:
 //   1. Member taps "Download my data" → this EF queues an export request
@@ -19,7 +21,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const ALLOWED_ORIGINS = new Set([
   "https://online.vyvehealth.co.uk",
-  "https://www.vyvehealth.co.uk"
+  "https://www.vyvehealth.co.uk",
+  "capacitor://localhost",
+  "https://localhost"
 ]);
 const DEFAULT_ORIGIN = "https://online.vyvehealth.co.uk";
 const MAX_BODY_BYTES = 102400;

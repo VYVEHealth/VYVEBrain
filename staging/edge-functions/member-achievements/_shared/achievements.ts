@@ -1,4 +1,6 @@
 // _shared/achievements.ts — VYVE Achievements evaluator (Phase 1 + Phase 2 vol + Phase 3 grid)
+// PM-1003 v4: hk-connected checks (isHkConnected + healthkitConnected) now require
+// revoked_at IS NULL — a revoked Apple Health connection no longer counts as connected.
 // 29 April 2026 v3: volume_lifted_total wired into INLINE map.
 async function count(s, table, email) {
   const { count: c } = await s.from(table).select('*', {
@@ -46,7 +48,7 @@ async function tourComplete(s, email) {
   return 0;
 }
 async function healthkitConnected(s, email) {
-  const { data } = await s.from('member_health_connections').select('member_email').eq('member_email', email).maybeSingle();
+  const { data } = await s.from('member_health_connections').select('member_email').eq('member_email', email).is('revoked_at', null).maybeSingle();
   return data ? 1 : 0;
 }
 async function hkDailySum(s, email, sampleType) {
@@ -148,7 +150,7 @@ export async function loadCatalog(supabase) {
   return data;
 }
 async function isHkConnected(supabase, email) {
-  const { data } = await supabase.from('member_health_connections').select('member_email').eq('member_email', email).maybeSingle();
+  const { data } = await supabase.from('member_health_connections').select('member_email').eq('member_email', email).is('revoked_at', null).maybeSingle();
   return !!data;
 }
 export async function evaluateInline(supabase, email) {

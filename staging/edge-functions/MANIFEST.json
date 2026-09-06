@@ -1,5 +1,5 @@
 {
-  "snapshot_at": "2026-08-30T08:08:20Z",
+  "snapshot_at": "2026-09-06T07:00:39Z",
   "supabase_project": "ixjfklpckgxrwjlfsaaz",
   "brain_repo": "VYVEHealth/VYVEBrain",
   "brain_branch": "main",
@@ -122,112 +122,112 @@
     {
       "slug": "admin-dashboard",
       "ok": true,
-      "platform_version": 23,
+      "platform_version": 25,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "2600195126e653ce78168de1cf847f7afc1ef939603b5513b139d136c7e8c2f3",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_043c123f-a7f8-4661-b0a4-247162df243a_9/source/index.ts",
+      "ezbr_sha256": "0743531239a6ebd0fe71878dcb06ac88af49ad3be6bf8883d62fa2c3ad1d0f4b",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_043c123f-a7f8-4661-b0a4-247162df243a_25/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "446ba49f06f919f635c9c760e40f3c0e5027c82145dadf59940d4186e4039f44",
-          "bytes": 18852
+          "sha256": "4200a7267cc0a36af9362d259485701203ffc7f070e468a376d1f199ef3f597b",
+          "bytes": 23400
         }
       ]
     },
     {
       "slug": "admin-member-edit",
       "ok": true,
-      "platform_version": 20,
+      "platform_version": 22,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "a62a74dfed705750a837cbcb4aa3edeeebd3e1045cbcd608b8b95275ecd02008",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_ad108a46-823d-4b95-9009-7656a8956104_6/source/index.ts",
+      "ezbr_sha256": "88dd64dfa3eb01e4d31b4d7871a41f77f4e75188cad5588d94dda40b2c453986",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_ad108a46-823d-4b95-9009-7656a8956104_22/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "231b1076aded55a9b51f7449555cb3d884fc654ad26487a0ab11ed8b464f9f4b",
-          "bytes": 14007
+          "sha256": "f288029ddeedb16e12e55221ee251457ebea81f2a4955e96fa4f635a5228dce5",
+          "bytes": 19907
         }
       ]
     },
     {
       "slug": "admin-member-habits",
       "ok": true,
-      "platform_version": 17,
+      "platform_version": 19,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "eccafaf72a183ec447eca508375e4813a7a720fc108e443aaeb738168abf059e",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_ee5acebc-4a0e-4739-90a0-bdf76bc8cdc1_3/source/index.ts",
+      "ezbr_sha256": "2bcc9e00c651adeba1cb63571b0be2a3aaa2a00b2e807da582c4f559cec23b2e",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_ee5acebc-4a0e-4739-90a0-bdf76bc8cdc1_19/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "efcf71360a4c487ba271e825381bfc6e680416e0abdf001cab184e55684db79a",
-          "bytes": 15734
+          "sha256": "2dcab744dcb4e9f54c4627ec9e667393ef54b8db00b08ba8ce99a03c03c2717a",
+          "bytes": 19010
         }
       ]
     },
     {
       "slug": "admin-member-programme",
       "ok": true,
-      "platform_version": 17,
+      "platform_version": 20,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "0d2b03ddac71c58ef23c61b84780593f1c9a5ef75aba31ecb115de6ae010c967",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_3129f5c9-7ccb-41eb-bfe7-6d4361edd36e_3/source/index.ts",
+      "ezbr_sha256": "4423e68ecc398293ff531ca46558298104057e5180769e56d45f7c93584bd497",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_3129f5c9-7ccb-41eb-bfe7-6d4361edd36e_20/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "60500af578a607123335c828f3a17d1ed84dd2e27122e1058d77231c775d8f4a",
-          "bytes": 18507
+          "sha256": "4e8b6c722961d710cda31fc5daa6c38c7b2334fa1e192bf73252b55144fbcb10",
+          "bytes": 22938
         }
       ]
     },
     {
       "slug": "admin-member-weekly-goals",
       "ok": true,
-      "platform_version": 17,
+      "platform_version": 18,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "ee6f1994a8e5c8f072a0c447ee4fa3d674e6dac6a5572f5306503a47eee87eed",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c35ece85-edc0-462d-9141-86f5ea27247e_3/source/index.ts",
+      "ezbr_sha256": "361192711f6e2234d689b9a8ceb8e99573ac14c271c833b4ac241814e708a245",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c35ece85-edc0-462d-9141-86f5ea27247e_18/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "bed4fb2506f044e9ce45f1341ea5abcc4d5c933d0eb244053fe1e827bd5e8194",
-          "bytes": 11863
+          "sha256": "7d0db693fb26b20c29c4e3c957b9d0f62f2395e0b1871a57370e3babc64cf3f9",
+          "bytes": 12412
         }
       ]
     },
     {
       "slug": "admin-programme-library",
       "ok": true,
-      "platform_version": 15,
+      "platform_version": 16,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "ecb54da956b3eebccf84842008056417b10b08c6f0074284119925da9815bf8a",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_6f16c5ee-deeb-46a4-87fc-23a094cb4d44_1/source/index.ts",
+      "ezbr_sha256": "fa333a2d43b2b44faa9fd1f4a6b584fa73087abff3ef3f377700ec957c83d950",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_6f16c5ee-deeb-46a4-87fc-23a094cb4d44_16/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "dccb9d46b7e6906ae2efa388db31173de8970ca38903b607c609180bf4299e3b",
-          "bytes": 12467
+          "sha256": "80ab6f29e2194fa9d63d4cceb1d3b415107816e64c090217d2a1f90e1eae1a68",
+          "bytes": 12340
         }
       ]
     },
     {
       "slug": "anthropic-proxy",
       "ok": true,
-      "platform_version": 32,
+      "platform_version": 33,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "207d9b03de5c5b3a201e6acef6e131f92588774cf32747b3a5a4ebc01a8a2480",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_e5b568d4-b634-467f-9455-eaea379eb8f2_21/source/index.ts",
+      "ezbr_sha256": "5e025ee04f0c732ae77ee5c2dd524d89dae10b348181827c89c67cab5b98b2d2",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_e5b568d4-b634-467f-9455-eaea379eb8f2_33/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "a545150355fa01b8cf4093accc0ec30b8b9066d161a896b0880b02894a324a97",
-          "bytes": 6024
+          "sha256": "aaa6755083d10da01994bd12dc5ef5b6123219c9b4ec7e9cd7b1ad08a41c8944",
+          "bytes": 6297
         }
       ]
     },
@@ -329,16 +329,16 @@
     {
       "slug": "gdpr-erase-cancel",
       "ok": true,
-      "platform_version": 13,
+      "platform_version": 14,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "1e2287258cd7f196eb0373163d41c94bd217ae80870ee68c1aac20d609eb5cb7",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_5632b706-5e0d-49e7-9393-a33355b4b0eb_3/source/index.ts",
+      "ezbr_sha256": "a2791297a9a810d6516e3d04f556232fd152ab1c8abbc36edbeaa6b8aa2942a2",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_5632b706-5e0d-49e7-9393-a33355b4b0eb_14/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "5231ec9b563eaf0063668ee5e09a7f99f933870d1a996f69cd71174a17d7ad21",
-          "bytes": 11659
+          "sha256": "7f809cc9ccedc11cc524caba3f6f9de51990f72a61fb7964cc6da4c9467352e3",
+          "bytes": 11830
         }
       ]
     },
@@ -361,32 +361,32 @@
     {
       "slug": "gdpr-erase-request",
       "ok": true,
-      "platform_version": 12,
+      "platform_version": 13,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "c91e456d2b7b08c56652b68b862f3b589df529e71d63081e33d20dd7c02bff33",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_6590a0cf-d9b0-4d35-bc1d-0e3aa00c51df_1/source/index.ts",
+      "ezbr_sha256": "38d426f9726704c1faa6bff0b64a2964200f6b98a07034f20bb0f7547d879e83",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_6590a0cf-d9b0-4d35-bc1d-0e3aa00c51df_13/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "772a92c1ab525316202b3414a3edece93d943744a143a7c16eaed5fea0cc954b",
-          "bytes": 14232
+          "sha256": "cbe8d5e92dcaa258829ac227c32d96597072ef28cddaced87a7d2c07061ede21",
+          "bytes": 14415
         }
       ]
     },
     {
       "slug": "gdpr-erase-status",
       "ok": true,
-      "platform_version": 11,
+      "platform_version": 12,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "ac579a5bc02c8ea735749c503d122f2618fcaaefeeabfbc62599dde9d79f8eef",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_cd838eab-406e-42ed-80ac-d84cf8b6e992_1/source/index.ts",
+      "ezbr_sha256": "397967c4f6dd4f72f7cd5a57be8c197cd456894b03f754b76a3a21b676f0382e",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_cd838eab-406e-42ed-80ac-d84cf8b6e992_12/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "71e52be702f90309b636918e496a80e8e7848abdab2d0358b9a8fd713c47763f",
-          "bytes": 3477
+          "sha256": "1d36e25393d4dd036159aaef4ea49c1eb61b11bf3f1560e4d6a21eb0e8ffc67d",
+          "bytes": 3666
         }
       ]
     },
@@ -409,16 +409,16 @@
     {
       "slug": "gdpr-export-request",
       "ok": true,
-      "platform_version": 12,
+      "platform_version": 13,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "ba06d0533f7fe206d7a4ff0db171990062ee15188385125d3a02ec8531eaaa0f",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_62a911d5-2399-4139-94d7-83daf3d478a5_1/source/index.ts",
+      "ezbr_sha256": "dae10f59bd14a80193912faff0e3b4f5e565286d5e939c4d4b870ba1629d4835",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_62a911d5-2399-4139-94d7-83daf3d478a5_13/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "46bf6fe14c14f35436fcac386277cca9303670eace171e08d72aeb71affcb50d",
-          "bytes": 7874
+          "sha256": "b168159fcff46df52ba4d8ee1f7dc49addcd8a87574f17a5a48c18883107bf06",
+          "bytes": 8063
         }
       ]
     },
@@ -441,32 +441,32 @@
     {
       "slug": "get-activity-feed",
       "ok": true,
-      "platform_version": 15,
+      "platform_version": 16,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "8bb6c7fc7849cdcf2fcf0912734041dc9126a9285989d7b63354ac2ee6449ac7",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_2a46e0d6-bc57-4215-b4b9-a943c3455619_1/source/index.ts",
+      "ezbr_sha256": "73bb8a5f3f0cbc73cb33ed94b34f8a0a3f6c7a3dd9fb78a58a468ae3f4fc5ca4",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_2a46e0d6-bc57-4215-b4b9-a943c3455619_16/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "a722f83da5440cb5b8507cc58572f8662f202d7f3e9a6e4937f7b89bafc601f9",
-          "bytes": 7382
+          "sha256": "52a3fdf65e8c8735a8f7613aa004202165def761fa6e92e9328d568848a7a3f6",
+          "bytes": 8065
         }
       ]
     },
     {
       "slug": "get-health-data",
       "ok": true,
-      "platform_version": 17,
-      "verify_jwt": false,
+      "platform_version": 18,
+      "verify_jwt": true,
       "status": "ACTIVE",
-      "ezbr_sha256": "51c1c5a7371724542b134cb647658bbf84316bde60ae98d8f48f294cdcb5f8c1",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_56f48c55-03fd-48ca-ad2f-8b3cde88df1f_6/source/index.ts",
+      "ezbr_sha256": "5d7bf53f75c4d6bf9f8c14ee979180dbba8057b455a778a76a2ed831f5446f67",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_56f48c55-03fd-48ca-ad2f-8b3cde88df1f_18/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "94349792de88bcbc3839f0731110e810268d01c28dbf9cdca1a1ea1d45a4a102",
-          "bytes": 11892
+          "sha256": "9d90df4977e6523d2b554bd004df50c9af2c63959e720004bbde4b3feb527656",
+          "bytes": 10848
         }
       ]
     },
@@ -526,100 +526,100 @@
     {
       "slug": "leaderboard",
       "ok": true,
-      "platform_version": 26,
+      "platform_version": 28,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "ee55c3fe3a1e060f0eabb20e895ddab619229a769306287a4d0234a6d0d181c2",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_e7d71167-aa90-42fd-8659-c06721f2617a_17/source/index.ts",
+      "ezbr_sha256": "6810f92df58b3bcefc65426481468ed5ceb0603c51c4590641ce226900925290",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_e7d71167-aa90-42fd-8659-c06721f2617a_28/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "0000a5837cecea12801aa7b2e15926e402f5db187b504771dbde5214390844bf",
-          "bytes": 4408
+          "sha256": "30cff2930b811eb2df0be7ea7d9b6d7ac2ffe335b6d1ad10ec5acaa4ded28e47",
+          "bytes": 4696
         }
       ]
     },
     {
       "slug": "log-activity",
       "ok": true,
-      "platform_version": 44,
+      "platform_version": 47,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "6bba5fd67022bb0d51d98a6a2cc3bd92e7cfedf12bc0c2e119c9faea230eb716",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_bd663a89-08f6-465b-9144-d8af2b3f8364_37/source/index.ts",
+      "ezbr_sha256": "9786a11636ede287d8bce2271db15beddf7269910b94b85168788c555a13fb07",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_bd663a89-08f6-465b-9144-d8af2b3f8364_47/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "ee629ff8799e6264a901a3b5ccdde4b418d081e8cb8177454750ff4ae4737c6a",
-          "bytes": 15823
+          "sha256": "74b59ce1cd3d4e57069416a52edf7da73b626f8bde6a2070201ad8103714455c",
+          "bytes": 17459
         },
         {
           "name": "_shared/achievements.ts",
-          "sha256": "e281aaadf6838698d5ac164bf7f883f51a1175bb3b58569c1cd0fb68fed22f87",
-          "bytes": 15482
+          "sha256": "d4576873ca2c3b6c7cc8812cb57d8a29de9e9a16c32d3532874e6e30fa8219d6",
+          "bytes": 15703
         }
       ]
     },
     {
       "slug": "member-achievements",
       "ok": true,
-      "platform_version": 13,
+      "platform_version": 15,
       "verify_jwt": true,
       "status": "ACTIVE",
-      "ezbr_sha256": "0fc262ad2f9e947ec4067dbcb32431192ae0f8a5e14037bc527f0fe8534b31a1",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_7c6364b5-f8b8-492f-a429-da3c6cc1fdd5_2/source/index.ts",
+      "ezbr_sha256": "a92e80464db1b99e7f28ac582706760e7f19018f83f7ec94abac8c2eed7c3a8b",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_7c6364b5-f8b8-492f-a429-da3c6cc1fdd5_15/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "59ab58a20e463c2aee4d453c379da20fa53fe2957e87420374dbeca3f63380cc",
-          "bytes": 3051
+          "sha256": "c5e0e02d87ce6c6bee08eece9528c10c31e0f15a726a32c261a13ada4a326011",
+          "bytes": 3449
         },
         {
           "name": "_shared/achievements.ts",
-          "sha256": "f9dab3acac3138a9b15e407ae4885ac04d63f6a212ad741fcdf8da1ea8456db9",
-          "bytes": 15326
+          "sha256": "daedabce4048fb10bc593e4986c33f823e5bbe5983262d282a5c41ca56930189",
+          "bytes": 15547
         }
       ]
     },
     {
       "slug": "member-dashboard",
       "ok": true,
-      "platform_version": 86,
+      "platform_version": 87,
       "verify_jwt": true,
       "status": "ACTIVE",
-      "ezbr_sha256": "045f2fa2bc8233d56f4807acdb42ac839f074d5d0d3bed4b9b6154f5098eb49a",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c950ab00-49f3-4c07-bd77-83b57c644069_79/source/index.ts",
+      "ezbr_sha256": "12ccb25092ebce9c7b6d1568188b5c196731c37ca98ab8a1c0df6370ce67a240",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c950ab00-49f3-4c07-bd77-83b57c644069_87/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "a41da408bc98afb117ef2539f7e81846aab9761ebac4287a6379ee438baee18a",
-          "bytes": 17821
-        },
-        {
-          "name": "_shared/taxonomy.ts",
-          "sha256": "f67f4d779160acd5d3c115f360eeb28067d2d49a336cc6157a91fa0c0b2487fd",
-          "bytes": 3481
+          "sha256": "ab34ba6b77d221baa7439629e51f735a9cd8e6fc531595c544078d54930fb146",
+          "bytes": 18455
         },
         {
           "name": "_shared/achievements.ts",
           "sha256": "11b423de40df33d515def443b4d18836aeeb3e9b38f88efb8b06d0e66baa9bb0",
           "bytes": 1795
+        },
+        {
+          "name": "_shared/taxonomy.ts",
+          "sha256": "f67f4d779160acd5d3c115f360eeb28067d2d49a336cc6157a91fa0c0b2487fd",
+          "bytes": 3481
         }
       ]
     },
     {
       "slug": "monthly-checkin",
       "ok": true,
-      "platform_version": 35,
+      "platform_version": 37,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "7f96461ddc16738fb0c6697d9e8a10c6679e16d376b3159c00a666a40e210f67",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_f5dbef36-2165-407f-9191-f7442ce0ca57_33/source/index.ts",
+      "ezbr_sha256": "514efb35939955cb3e8c91c0fc888f7ac5d544c965ae6a19f0576df1d80993d2",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_f5dbef36-2165-407f-9191-f7442ce0ca57_37/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "146ef3831aabd40147d4f3f60074c9aeab697e64a6aa688dc6941a8c12a6418f",
-          "bytes": 32767
+          "sha256": "e492e3c33e867fcf67a8623eb3faceacf7d87eeabc775e30655659314c9094ae",
+          "bytes": 33814
         }
       ]
     },
@@ -642,48 +642,48 @@
     {
       "slug": "notifications",
       "ok": true,
-      "platform_version": 24,
+      "platform_version": 25,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "784552fa19978a5f155266984f1471852a72578f02ecb0f528cd62b9597aa06f",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_216f782e-d907-4817-bea0-911f38dabd83_17/source/index.ts",
+      "ezbr_sha256": "6c1f879481df63d4f646e0f61cb3762a447da2d97d373bb3f905e0f77b1266d5",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_216f782e-d907-4817-bea0-911f38dabd83_25/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "341c1315456185bbc955b51df5e2cb8d53cd2e9dfaa0f6320170e507e523d4d1",
-          "bytes": 5842
+          "sha256": "410573c3676504c9fad86ebc89a20d99aa8059691d95b6ffc95906d4b3fc5ec0",
+          "bytes": 6116
         }
       ]
     },
     {
       "slug": "off-proxy",
       "ok": true,
-      "platform_version": 32,
+      "platform_version": 34,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "25f1d9fb58421468867a5cd09d99feb8d8355d72bef3441cf364f228e658e17a",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_6c32e403-d05f-471b-8081-0bb78cc8e91c_8/source/index.ts",
+      "ezbr_sha256": "0cee3a8e0db2ec8f1bab4e8f2b509bf3494359e5d1760c78b045dc28d495bafa",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_6c32e403-d05f-471b-8081-0bb78cc8e91c_34/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "4b12746715ce4807623a6800ced5159311c13d2af343f9f12936b310658e048e",
-          "bytes": 5399
+          "sha256": "ab2a5a77d7037749c38db71ea42d35b7dc5141e89e543c14c66092dc5c8ef237",
+          "bytes": 9339
         }
       ]
     },
     {
       "slug": "onboarding",
       "ok": true,
-      "platform_version": 121,
+      "platform_version": 123,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "ce2e3021b13fa321def9fad5b58624832c1591ce4b9025c4b5a17afa781b265a",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b22c6618-2a62-4c8d-a81f-aa4bd723db1f_121/source/index.ts",
+      "ezbr_sha256": "3a4a419b8e10e07a2ef98de26c4341764d53f900df949628bdfa39e76422d469",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b22c6618-2a62-4c8d-a81f-aa4bd723db1f_123/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "465c3cabf926bc4f91dd7dff0b6f5fff229ecea0da73578d1b1f489375a89c78",
-          "bytes": 71619
+          "sha256": "e48402c6f8fb054a5c1f5f82b029ed4e9e006d47de66867f0c2f135f3cb73e48",
+          "bytes": 69573
         }
       ]
     },
@@ -695,16 +695,16 @@
     {
       "slug": "platform-alert",
       "ok": true,
-      "platform_version": 19,
+      "platform_version": 20,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "6bf675fae0026a48236f30f2147bcf0d25292641c17f1814b59cbfdc24495389",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_f033566c-6f1c-422c-a149-7680cd189cde_11/source/index.ts",
+      "ezbr_sha256": "ef6559d9e44d3cfe383de27c66ded6ab7e6c0091c433f3c960ef045ff9f6f396",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_f033566c-6f1c-422c-a149-7680cd189cde_20/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "f5a135ba72e9b68965bb8f47df637b69239e6ac13a3811312c7f385dcbf2da7c",
-          "bytes": 12021
+          "sha256": "cf8693d9da3480c320eb571c58db7fff26ccbb0ba3ba008e8d6b340dd297cd64",
+          "bytes": 12105
         }
       ]
     },
@@ -929,16 +929,16 @@
     {
       "slug": "sync-health-data",
       "ok": true,
-      "platform_version": 24,
-      "verify_jwt": false,
+      "platform_version": 26,
+      "verify_jwt": true,
       "status": "ACTIVE",
-      "ezbr_sha256": "655be75a60de9e897f691869ba873815cb813b166a3e94cc81f672a0fb025147",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_1b0d57b9-cbd2-4d6c-86e8-796bc9b42e4a_17/source/index.ts",
+      "ezbr_sha256": "354b2ef4d26a3a33e29c11193aaa93fd519c861b7674c8f1dd54bfc3fc68b05b",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_1b0d57b9-cbd2-4d6c-86e8-796bc9b42e4a_26/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "1250b43aa62491289c62b20f807e3c9cd8d4cf399d851714af208e7058d2e192",
-          "bytes": 19952
+          "sha256": "14a4c76cd638450ae55f2e4fba71c3286ec0fe1839135a2711254091d9ca572a",
+          "bytes": 19432
         },
         {
           "name": "_shared/taxonomy.ts",
@@ -982,16 +982,16 @@
     {
       "slug": "wellbeing-checkin",
       "ok": true,
-      "platform_version": 69,
+      "platform_version": 70,
       "verify_jwt": true,
       "status": "ACTIVE",
-      "ezbr_sha256": "6809dbe58fbe764c4e572aadc04aac69f08fed93a10e22df43f64d4566e8e765",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_7fcc8d02-03b1-4905-a701-ce85eb048cea_67/source/index.ts",
+      "ezbr_sha256": "39674e3322e59591e54e2bf54b89e366cc1ecb96ed9265494597515426b67f40",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_7fcc8d02-03b1-4905-a701-ce85eb048cea_70/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "c115a226205c6c7c0426fe4a5f7d556891e5513bc71174d08c885dd12ce9c83a",
-          "bytes": 36814
+          "sha256": "05ec18ea3fb4a286233b1d91f43357950d54634ad4ef2dc0bd9005643c6bd614",
+          "bytes": 37028
         }
       ]
     },

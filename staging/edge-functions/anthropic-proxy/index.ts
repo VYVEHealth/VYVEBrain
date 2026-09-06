@@ -1,4 +1,7 @@
-// VYVE Health — anthropic-proxy v16 — Security commit 1B fix-up (07 May 2026).
+// VYVE Health — anthropic-proxy v17 (PM-1001, §23.189 CORS sweep): native app
+// origins added (capacitor://localhost = iOS store binary, https://localhost = Android)
+// — running plans were dead on ALL store installs (missing both native origins).
+// v16 — Security commit 1B fix-up (07 May 2026).
 //
 // CHANGES vs v15:
 //   - triggered_by value corrected to 'running_plan' to satisfy the
@@ -19,7 +22,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const ALLOWED_ORIGINS = new Set([
   "https://online.vyvehealth.co.uk",
-  "https://www.vyvehealth.co.uk"
+  "https://www.vyvehealth.co.uk",
+  "capacitor://localhost",
+  "https://localhost"
 ]);
 const DEFAULT_ORIGIN = "https://online.vyvehealth.co.uk";
 const MAX_BODY_BYTES = 102400;

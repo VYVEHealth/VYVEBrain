@@ -1,4 +1,6 @@
-// VYVE Health — gdpr-erase-status v1 (Security commit 4, 07 May 2026 PM-4).
+// VYVE Health — gdpr-erase-status v2 (PM-1001, §23.189 CORS sweep): native app
+// origins added (capacitor://localhost = iOS store binary, https://localhost = Android).
+// v1 (Security commit 4, 07 May 2026 PM-4).
 //
 // Tiny read-only EF returning pending-erasure status for the authenticated member.
 // Used by settings.html to render the persistent in-app cancel banner without
@@ -14,7 +16,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const ALLOWED_ORIGINS = new Set([
   "https://online.vyvehealth.co.uk",
-  "https://www.vyvehealth.co.uk"
+  "https://www.vyvehealth.co.uk",
+  "capacitor://localhost",
+  "https://localhost"
 ]);
 const DEFAULT_ORIGIN = "https://online.vyvehealth.co.uk";
 function getCORSHeaders(req) {

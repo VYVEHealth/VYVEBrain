@@ -1,34 +1,29 @@
-// get-health-data v3
-// 29 April 2026
-// VYVE Health — Apple Health data inspector backend.
-//
+// get-health-data v4 (PM-969, 2 Sep 2026): CORS fix — Allow-Origin was pinned to
+//   https://online.vyvehealth.co.uk (dev-shell origin), so the store binaries'
+//   apple-health.html data view died with "Load failed" (§23.189, third patient
+//   after sync-health-data and member-dashboard). Now * — auth is the JWT header,
+//   no ambient credentials.
 // v3 change (29 April 2026): Split the single combined samples query into 4 per-type
 //   queries with sensible limits. Previously a single .in([...]) query against
 //   member_health_samples hit Supabase's default 1,000-row cap; high-volume HR data
 //   filled the entire quota and starved workouts/sleep/weight to zero rows even though
-//   they existed in the DB. Diagnostic page was rendering 0 workouts / 0 sleep / 0 weight
-//   while the underlying tables held 15 / 187 / 2 rows respectively over the last 30 days.
-//
+//   they existed in the DB.
 // v2 change: Read steps/distance/active_energy from member_health_daily (source-deduped)
 //   instead of member_health_samples (which had raw Watch + iPhone doubles).
-//   HR/weight/sleep/workouts still come from member_health_samples.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "https://online.vyvehealth.co.uk",
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS, GET",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Max-Age": "86400",
-  "Vary": "Origin"
+  "Access-Control-Max-Age": "86400"
 };
 const WINDOW_DAYS = 30;
-// Per-type row limits. Chosen so a typical 30-day window fits without truncation
-// while protecting against runaway HR streams (Watch can produce 4-6/min = 200k+/30d).
 const LIMIT_WORKOUT = 500;
 const LIMIT_WEIGHT = 200;
 const LIMIT_SLEEP = 2000;
-const LIMIT_HR = 5000; // sufficient for daily min/max/avg aggregation
+const LIMIT_HR = 5000;
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -82,9 +77,6 @@ Deno.serve(async (req)=>{
   try {
     const { data: connRows } = await svc.from("member_health_connections").select("platform, last_sync_at, last_sync_status, granted_scopes, total_synced, revoked_at").eq("member_email", memberEmail);
     const connection = connRows && connRows[0] ? connRows[0] : null;
-    // ─── Fetch each sample type independently with its own limit ───
-    // The previous single .in([...]) query ran into the default 1,000-row cap and
-    // HR data crowded out everything else. Per-type queries solve this cleanly.
     const baseSelect = "sample_type, workout_type, start_at, end_at, value, unit, metadata, app_source, promoted_to, native_uuid";
     const [workoutRes, hrRes, weightRes, sleepRes] = await Promise.all([
       svc.from("member_health_samples").select(baseSelect).eq("member_email", memberEmail).eq("sample_type", "workout").gte("start_at", startIso).order("start_at", {
@@ -114,13 +106,11 @@ Deno.serve(async (req)=>{
       ...weightSamples,
       ...sleepSamples
     ];
-    // Fetch daily aggregates (steps, distance, active_energy)
     const { data: dailyRaw, error: dailyErr } = await svc.from("member_health_daily").select("sample_type, date, value, unit").eq("member_email", memberEmail).gte("date", isoDate(startDate)).order("date", {
       ascending: false
     });
     if (dailyErr) throw dailyErr;
     const daily = dailyRaw || [];
-    // ─── Workouts card ───
     const workouts = workoutSamples.map((s)=>{
       const start = new Date(s.start_at);
       const end = new Date(s.end_at);
@@ -135,14 +125,12 @@ Deno.serve(async (req)=>{
         promoted_to: s.promoted_to || null
       };
     });
-    // ─── Steps daily (from aggregated table) ───
     const stepsDaily = emptyDailyBuckets(startDate, endDate);
     for (const d of daily){
       if (d.sample_type !== "steps") continue;
       if (!stepsDaily[d.date]) stepsDaily[d.date] = {};
       stepsDaily[d.date].total = Number(d.value || 0);
     }
-    // ─── Heart rate daily (from samples) ───
     const hrAgg = {};
     for (const s of hrSamples){
       const day = isoDate(new Date(s.start_at));
@@ -160,14 +148,12 @@ Deno.serve(async (req)=>{
         hrAgg[day].n += 1;
       }
     }
-    // ─── Active energy daily (from aggregated table) ───
     const kcalDaily = emptyDailyBuckets(startDate, endDate);
     for (const d of daily){
       if (d.sample_type !== "active_energy") continue;
       if (!kcalDaily[d.date]) kcalDaily[d.date] = {};
       kcalDaily[d.date].total = Number(d.value || 0);
     }
-    // ─── Sleep nightly ───
     const sleepNightly = {};
     for (const s of sleepSamples){
       const start = new Date(s.start_at);
@@ -190,7 +176,6 @@ Deno.serve(async (req)=>{
       else if (state.includes("awake")) sleepNightly[day].awake += mins;
       else sleepNightly[day].asleep += mins;
     }
-    // ─── Distance daily (from aggregated table, already in metres) ───
     const distDaily = emptyDailyBuckets(startDate, endDate);
     for (const d of daily){
       if (d.sample_type !== "distance") continue;
@@ -199,7 +184,6 @@ Deno.serve(async (req)=>{
       const km = d.unit === "km" ? v : v / 1000;
       distDaily[d.date].total_km = km;
     }
-    // ─── Weight ───
     const weightHkSamples = weightSamples.map((s)=>({
         date: isoDate(new Date(s.start_at)),
         at: s.start_at,
@@ -217,7 +201,6 @@ Deno.serve(async (req)=>{
         source_app: r.native_uuid ? "apple_health" : "vyve_manual",
         native_uuid: r.native_uuid || null
       }));
-    // ─── Counts (diagnostic) ───
     const counts = {
       workout: workoutSamples.length,
       heart_rate: hrSamples.length,
@@ -227,7 +210,6 @@ Deno.serve(async (req)=>{
       active_energy: 0,
       distance: 0
     };
-    // For aggregated types: count = distinct days with data
     for (const d of daily){
       const t = d.sample_type;
       if (t in counts) counts[t]++;

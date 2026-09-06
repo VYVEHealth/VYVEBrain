@@ -1,4 +1,15 @@
-// monthly-checkin v21
+// monthly-checkin v23
+// v23 (PM-1003): unauthenticated email fallbacks REMOVED — body.email and ?email=
+//               (v17-era back-compat) let anyone with the anon key read a member's
+//               full monthly report (ai_report + all scores) or submit a check-in
+//               as them. JWT is now the only identity path; no resolvable JWT → 401
+//               'unauthorised' (client handles 401 by bouncing to login on both
+//               GET and POST). No live client relied on the fallbacks —
+//               monthly-checkin.html has sent a JWT on every call since PM-67d.
+// v22 (PM-1001, §23.189 CORS sweep): pinned single-origin CORS replaced with the
+//               allowlist pattern (notifications v25 precedent) carrying the native
+//               app origins (capacitor://localhost = iOS store binary,
+//               https://localhost = Android). Handler logic unchanged.
 // v21 (finding B, 4 Jul 2026): crisis-scan wired in. All member free-text (the 8
 //               per-dimension notes + goal_progress_note) is scanned server-side via
 //               the crisis-scan EF, fire-and-forget through EdgeRuntime.waitUntil —
@@ -33,8 +44,6 @@
 //         names which produced a Postgres 42703 error inside Promise.all, killing the
 //         entire POST handler with a 500. Symptom: page jumps back to question and
 //         alerts "Something went wrong". Zero successful monthly check-ins ever in DB.
-// v17 FIX: GET requests now accept ?email=... query-string fallback when the JWT
-//         doesn't resolve to a user.
 // Fix: wellbeing_checkins table uses `score_wellbeing` (not `wellbeing_score`).
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -42,12 +51,22 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const SUPABASE_ANON = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
-const CORS = {
-  'Access-Control-Allow-Origin': 'https://online.vyvehealth.co.uk',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-  'Access-Control-Allow-Credentials': 'true'
-};
+const ALLOWED_ORIGINS = new Set([
+  'https://online.vyvehealth.co.uk',
+  'https://www.vyvehealth.co.uk',
+  'capacitor://localhost',
+  'https://localhost'
+]);
+function getCORSHeaders(req) {
+  const origin = req.headers.get('Origin') ?? '';
+  const allowOrigin = ALLOWED_ORIGINS.has(origin) ? origin : origin === 'null' || origin === '' ? '*' : 'https://online.vyvehealth.co.uk';
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+    'Access-Control-Allow-Credentials': allowOrigin !== '*' ? 'true' : 'false'
+  };
+}
 const PERSONA_VOICES = {
   NOVA: 'You are NOVA — a high-performance coach. Direct, data-led, precision-focused. Push the member with structured insights and measurable targets.',
   RIVER: 'You are RIVER — a mindful wellness guide. Calm, empathetic, restorative. Lead with compassion and sustainable progress.',
@@ -239,10 +258,12 @@ function fmtByKind(map) {
   return keys.map((k)=>`${map[k]} ${k}`).join(', ');
 }
 serve(async (req)=>{
+  const CORS = getCORSHeaders(req);
   if (req.method === 'OPTIONS') return new Response('ok', {
     headers: CORS
   });
   try {
+    // v23: JWT-only identity. body.email / ?email= fallbacks removed.
     let email = null;
     const authHeader = req.headers.get('Authorization');
     if (authHeader?.startsWith('Bearer ')) {
@@ -256,17 +277,10 @@ serve(async (req)=>{
       }
     }
     const body = req.method === 'POST' ? await req.json().catch(()=>({})) : {};
-    if (!email) email = (body.email ?? '').toLowerCase();
-    if (!email) {
-      try {
-        const urlEmail = new URL(req.url).searchParams.get('email');
-        if (urlEmail) email = urlEmail.toLowerCase();
-      } catch (_) {}
-    }
     if (!email) return new Response(JSON.stringify({
-      error: 'Missing email'
+      error: 'unauthorised'
     }), {
-      status: 400,
+      status: 401,
       headers: {
         ...CORS,
         'Content-Type': 'application/json'
@@ -683,7 +697,7 @@ serve(async (req)=>{
     }), {
       status: 500,
       headers: {
-        ...CORS,
+        ...getCORSHeaders(req),
         'Content-Type': 'application/json'
       }
     });

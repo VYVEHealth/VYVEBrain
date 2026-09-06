@@ -1,12 +1,13 @@
+// admin-member-habits v5 — Member Admin W1 (5 September 2026)
+//   v5: NEW action create_library_habit {habit_pot, habit_title, habit_description?,
+//       difficulty} → INSERT habit_library (active=true, created_by='admin', habit_prompt=
+//       title). Duplicate title within the same pot is refused (409). Audit row
+//       (table_name habit_library, action habit_library_create). Everything else unchanged.
+//   v4: W0 gate — verifyAuth requires admin_users.role IN ('admin','team').
 // admin-member-habits v3 — VYVE Admin Console Shell 3, Sub-scope A (22 April 2026)
 //   v3: reason field is now OPTIONAL on mutations (was: min 5 chars required).
-//       Still captured in admin_audit_log when provided. Rationale: pre-enterprise
-//       solo-admin phase; friction outweighs benefit. Reason can be made mandatory
-//       for specific sensitive fields (persona, subscription_status, health_data_consent)
-//       in a later revision if enterprise DPA requires it.
 //   v2: verify_jwt set to false at gateway to avoid ES256 rejection.
 //       In-code JWT verification via anon.auth.getUser() handles ES256 natively.
-//       Security unchanged: every request still verifies token + admin_users allowlist.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -21,12 +22,21 @@ const CORS_ALLOWLIST = new Set([
   'http://localhost:8080',
   'http://127.0.0.1:5500'
 ]);
+const STAFF_ROLES = new Set([
+  'admin',
+  'team'
+]);
 const VALID_POTS = new Set([
   'sleep',
   'movement',
   'nutrition',
   'mindfulness',
   'social'
+]);
+const VALID_DIFFICULTY = new Set([
+  'easy',
+  'medium',
+  'hard'
 ]);
 function corsHeaders(origin) {
   const allow = origin && CORS_ALLOWLIST.has(origin) ? origin : 'https://admin.vyvehealth.co.uk';
@@ -91,6 +101,13 @@ async function verifyAuth(req) {
       error: 'Admin access denied'
     }, 403, origin);
   }
+  if (!STAFF_ROLES.has(admin.role)) {
+    console.warn('Admin access denied (role) for', email, admin.role);
+    return json({
+      success: false,
+      error: 'Admin access denied'
+    }, 403, origin);
+  }
   return {
     email: admin.email,
     role: admin.role
@@ -103,7 +120,6 @@ function clientInfo(req) {
     userAgent: req.headers.get('user-agent') || 'unknown'
   };
 }
-// optional reason: returns trimmed string if provided and non-empty, else null
 function optionalReason(reason) {
   if (typeof reason !== 'string') return null;
   const t = reason.trim();
@@ -118,7 +134,7 @@ async function writeAudit(params) {
     admin_role: params.admin_role,
     member_email: params.member_email,
     action: params.action,
-    table_name: 'member_habits',
+    table_name: params.table_name ?? 'member_habits',
     column_name: params.column_name,
     old_value: params.old_value ?? null,
     new_value: params.new_value ?? null,
@@ -184,6 +200,79 @@ async function handleListLibrary(req, _admin, body) {
   return json({
     success: true,
     library: data ?? []
+  }, 200, origin);
+}
+// W1: create a VYVE library habit. Coach-private habits (created_by 'coach:<pid>') are
+// active=false by design and never touched here.
+async function handleCreateLibraryHabit(req, admin, body) {
+  const origin = req.headers.get('origin');
+  const reason = optionalReason(body.reason);
+  const habit_pot = typeof body.habit_pot === 'string' ? body.habit_pot.trim().toLowerCase() : '';
+  const habit_title = typeof body.habit_title === 'string' ? body.habit_title.trim() : '';
+  const habit_description = typeof body.habit_description === 'string' && body.habit_description.trim() ? body.habit_description.trim() : null;
+  const difficulty = typeof body.difficulty === 'string' ? body.difficulty.trim().toLowerCase() : 'easy';
+  if (!VALID_POTS.has(habit_pot)) return json({
+    success: false,
+    error: `habit_pot must be one of: ${Array.from(VALID_POTS).join(', ')}`
+  }, 400, origin);
+  if (habit_title.length < 3 || habit_title.length > 120) return json({
+    success: false,
+    error: 'habit_title must be 3–120 characters'
+  }, 400, origin);
+  if (habit_description && habit_description.length > 400) return json({
+    success: false,
+    error: 'habit_description too long (max 400)'
+  }, 400, origin);
+  if (!VALID_DIFFICULTY.has(difficulty)) return json({
+    success: false,
+    error: 'difficulty must be easy, medium or hard'
+  }, 400, origin);
+  const { data: dup } = await service.from('habit_library').select('id, active').eq('habit_pot', habit_pot).ilike('habit_title', habit_title).limit(1);
+  if (dup && dup.length) return json({
+    success: false,
+    error: 'A habit with that title already exists in this pot',
+    existing_id: dup[0].id,
+    existing_active: dup[0].active
+  }, 409, origin);
+  const { data: inserted, error: insErr } = await service.from('habit_library').insert({
+    habit_pot,
+    habit_title,
+    habit_description,
+    habit_prompt: habit_title,
+    difficulty,
+    active: true,
+    created_by: 'admin'
+  }).select('id, habit_pot, habit_title, habit_description, difficulty, active, created_by, created_at').maybeSingle();
+  if (insErr || !inserted) return json({
+    success: false,
+    error: 'Create failed',
+    details: insErr?.message ?? 'insert returned no row'
+  }, 500, origin);
+  const { ip, userAgent } = clientInfo(req);
+  const audit_logged = await writeAudit({
+    admin_email: admin.email,
+    admin_role: admin.role,
+    member_email: null,
+    action: 'habit_library_create',
+    table_name: 'habit_library',
+    column_name: '__row__',
+    old_value: null,
+    new_value: {
+      id: inserted.id,
+      habit_pot,
+      habit_title,
+      difficulty,
+      active: true,
+      created_by: 'admin'
+    },
+    reason,
+    ip,
+    userAgent
+  });
+  return json({
+    success: true,
+    habit: inserted,
+    audit_logged
   }, 200, origin);
 }
 function gateMutation(role, origin) {
@@ -494,6 +583,8 @@ Deno.serve(async (req)=>{
         return await handleListHabits(req, authResult, body);
       case 'list_library':
         return await handleListLibrary(req, authResult, body);
+      case 'create_library_habit':
+        return await handleCreateLibraryHabit(req, authResult, body);
       case 'assign_habit':
         return await handleAssignHabit(req, authResult, body);
       case 'deactivate_habit':
