@@ -36,6 +36,7 @@
 2. EF `coach-weekly-snapshot` v1 (cron Sun 23:30 UTC + `?member=` on-demand branch, x-vyve-cron-key): scheduled = programme_json days projected onto the week (reuse the projection you will formalise in W5 — write it as `_shared/programme_projection.ts` now, both consumers import it); completed = workouts + cardio rows in week; nutrition = days with nutrition_logs total within ±10% of tdee_target (or macro_override); sign_ins from members.last_seen history if available else count of log-activity rows; messages from coach_messages.
 3. `coach-portal.html`: quick-add (+) in the header; dismissable Get-Started card on the cockpit; `coach_profile.calendar_tile = type|name` honoured by the W6 calendar; `archived` on threads list.
 4. Verify current chat transport (poll interval, endpoint); decide Realtime for W3.
+5. **Video backfill (PM-1067 finding):** `UPDATE coach_exercises ce SET video_url = wp.video_url FROM (SELECT DISTINCT ON (lower(exercise_name)) lower(exercise_name) n, video_url FROM workout_plans WHERE video_url <> '') wp WHERE lower(ce.name)=wp.n AND ce.video_url IS NULL AND ce.partner_id IS NULL` — expect 111 rows; eyeball 10 matches first; member player already resolves `video_url`.
 
 **Verify:** run the snapshot for Calum's client; row appears; on-demand branch returns the same numbers; cron job registered.
 **Dean checks:** none member-facing.
