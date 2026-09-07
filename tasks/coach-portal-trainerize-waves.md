@@ -1,7 +1,7 @@
 # Coach Portal — Trainerize waves (v1)
 
 **Companion to:** `tasks/coach-portal-trainerize-gap-map.md` (PM-1066, items #62–#111) and `tasks/coach-portal-gap-map.md` (Kahunas, #1–#61, all dispositioned PM-983→990).
-**Status:** briefs written 2026-09-07 late. **W0 SHIPPED 2026-09-07 late (PM-1072–1074: migration `tz_w0_coach_client_weekly`, `coach-weekly-snapshot` v1 + `_shared/programme_projection.ts`, cron 70, video backfill 111, CC `8f2a0abd`). Next: W1.**
+**Status:** briefs written 2026-09-07 late. **W0 SHIPPED 2026-09-07 late (PM-1072–1074: migration `tz_w0_coach_client_weekly`, `coach-weekly-snapshot` v1 + `_shared/programme_projection.ts`, cron 70, video backfill 111, CC `8f2a0abd`). W1 SHIPPED 2026-09-08 (PM-1075–1076: migration `tz_w1_leads_convert`, CC `9e403569`). Next: W2.**
 **How to use:** Dean says "load the brain, do Trainerize wave N". Load `brain/master.md` → `brain/changelog.md` → `tasks/backlog.md`, then the gap map, then the brief below. Run the §23.23 collision scan (last 15 commits on vyve-command-centre AND vyve-site for the wave's keywords) before any design talk. **The brain wins over these briefs; live Supabase wins over the brain.**
 
 **Look and feel:** `coach-portal.html` is the benchmark. Every wave that touches UI: mockup first, dark first — until Wave D ships, after which light-first. Match the existing wave-zone pattern (new zone at the IIFE tail, shadow by same-scope redeclaration, edit the bottom versions).
@@ -44,7 +44,10 @@
 **Dean checks:** none member-facing.
 **Lewis:** none.
 
-## W1 — Roster + Insights (1.5 sessions)
+## W1 — Roster + Insights (1.5 sessions) — SHIPPED PM-1075–1076
+
+> Delivered as written with four corrections: thresholds live in **`coach_ui_prefs.auto_tags`** (not `coach_notification_prefs` — §23.237); **#65 was already the Notifications feed** and was widened (cardio / meals / weight / messages / goals) rather than rebuilt over `coach_client_events` (0 live rows); `missed_workouts` dropped as a duplicate of low compliance; Booking clients prefill email only (`bookings` has no name). Segment / selection sends ride the legacy broadcast panel via a document-capture intercept (§23.239). Snapshot rows exist for active clients only — invited show "—".
+
 
 **Scope:** #62, #63 + #98 thresholds UI, #65, #78, #79, #80, #82, #84.
 
