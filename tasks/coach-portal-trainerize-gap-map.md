@@ -21,12 +21,12 @@
 | 63 | **Auto-tagged segments** — needs-attention / follow-up in one click | Take | Computed system tags (`inactive_7d`, `missed_workouts`, `checkin_overdue`, `new_this_week`, `trial_ending`, `goal_due`, `low/high_compliance`) beside W4b manual tags; "Message this segment" → broadcast. Predicates reuse coach-notify's inactive5/phase_ending. Thresholds in #98. |
 | 64 | **Auto messages** — triggered sequences | Take — headline | `coach_auto_messages` (partner_id, trigger, offset_days, channel, body w/ {{first_name}} etc., enabled) + cron sweep in the coach-notify pattern writing coach_messages + scheduled_pushes. Triggers: activation, program_assigned, days_since_start N, first_workout, N_workouts, first_cardio, first_meal_logged, inactive N, checkin_submitted, goal_reached, birthday, health_not_connected. Folds coach_automations (plan-change email) under one Automations view. Stock default set in #97. |
 | 65 | Roster-wide Recent Activities feed w/ event-type filter | Take — small | Lens over coach_client_events (W5 #52). No schema. |
-| 66 | Global (+) quick-add: Client / Message / Event / Announcement | Take — trivial | Header button → existing wizard, chat, event editor, broadcast. |
-| 67 | Coach Get-Started checklist | Take — small | Dismissable cockpit card: first client, first programme, check-in form assigned, notifications set. |
+| 66 | Global (+) quick-add: Client / Message / Event / Announcement | Take — trivial | Header button → existing wizard, chat, event editor, broadcast. **SHIPPED W0 PM-1073** |
+| 67 | Coach Get-Started checklist | Take — small | Dismissable cockpit card: first client, first programme, check-in form assigned, notifications set. **SHIPPED W0 PM-1073** |
 | 68 | **Group conversations** — one thread, many clients | Take | `coach_threads` (kind group\|challenge) + `coach_thread_members` + `thread_id` on coach_messages; member RLS via membership. Challenge threads auto-created (#72). "Send separately" = existing broadcast. |
 | 69 | Scheduled / pre-planned messages | Take — small | `deliver_at` on coach_messages, delivered by the #64 sweep. |
-| 70 | Active / archived conversation filter | Take — trivial | Archive flag per thread. |
-| 71 | Real-time delivery in coach chat | Verify | Supabase Realtime on coach_messages, client-side only. Confirm polling state at build time first. |
+| 70 | Active / archived conversation filter | Take — trivial | Archive flag per thread. **SHIPPED W0 PM-1073 (coach_ui_prefs list until W3 threads)** |
+| 71 | Real-time delivery in coach chat | Verify | Supabase Realtime on coach_messages, client-side only. Confirm polling state at build time first. **VERIFIED W0: 15 s poll, table not in supabase_realtime → W3 adds it** |
 | — | Team, Payments, Sale quick-add, Add-ons, referral/upgrade banners, Academy, hire-an-expert, FitMetrics | Parked / Excluded | See header. |
 
 ## Batch 2 — Challenges (+ messaging extras)
@@ -94,7 +94,7 @@ All of Products / Sales / Invoices / Transactions / Disputes / Discount codes / 
 | 92 | **Group / class event type** — capacity N, in-person or virtual, self-book | Take | `capacity` (default 1) on booking_services; replace `bk_slot_guard` partial-unique with a trigger counting live bookings < capacity; member picker shows "3 of 10 places"; coach tile shows roster. Thumbnail + explicit `self_booking` toggle fold in. |
 | 93 | **Default availability + date-specific overrides + time off** | Take — small | Partner-level default windows inherited by new services; "Time off" range writes exceptions across all services. Virtual-only per window = delivery_mode on the service. |
 | 94 | **Google Calendar sync** | Take — ICS first, OAuth parked | Tokenised `/calendar/<partner>.ics` EF over coach_events + confirmed bookings + hosted calendar_occurrences. Two-way busy-time import = OAuth app + DPA line → parked. |
-| 95 | Calendar tile display — event type vs client name | Take — trivial | Pref in coach_profile jsonb. |
+| 95 | Calendar tile display — event type vs client name | Take — trivial | Pref in coach_profile jsonb. **SHIPPED W0 PM-1073** |
 | 96 | **Prospect booking** — public consultation slot on the lead page | Take | booking_services `public=true` → slot picker on `www.vyvehealth.co.uk/lead/<slug>`; submit writes coach_leads + a booking keyed on `lead_id` (third door after member_email / employer_name); requests inbox + #78 Convert. |
 | — | Session credit | Excluded | |
 
@@ -106,7 +106,7 @@ All of Products / Sales / Invoices / Transactions / Disputes / Discount codes / 
 | — | About / socials; Consultation form selector; Custom client tags; Terms editor | Parity | W7 #48; is_default; W4b; coach_terms. |
 | — | Locations, Billing, Team roles, Branding (custom app) | Parked / Excluded | |
 | 97 | **Auto-message stock set + onboarding attachments** | Take — extends #64 | Seeded per-coach defaults (ON, editable): first sign-in, day 3/7/14, first workout, first cardio, first meal, birthday (members.dob), connect-health (no member_health_connections row at day 2). Welcome email: `_meta.welcome_pack_path` → `welcome_attachments[]` (≤4 PDFs). Payment-failure messages excluded. |
-| 98 | **Auto-tag thresholds + weekly snapshot backbone** | Take — extends #63 | Settings page: workout-compliance low/high %, nutrition-compliance days, inactivity / not-messaged / not-responded windows (jsonb). Persist `coach_client_weekly` (partner_id, member_email, week_start, scheduled_count, completed_count, compliance_pct, nutrition_days, sign_ins, last_msg_out, last_msg_in, weight) computed Sunday night + on demand. Feeds #62, #63, #80, #107. |
+| 98 | **Auto-tag thresholds + weekly snapshot backbone** | Take — extends #63 | Settings page: workout-compliance low/high %, nutrition-compliance days, inactivity / not-messaged / not-responded windows (jsonb). Persist `coach_client_weekly` (partner_id, member_email, week_start, scheduled_count, completed_count, compliance_pct, nutrition_days, sign_ins, last_msg_out, last_msg_in, weight) computed Sunday night + on demand. Feeds #62, #63, #80, #107. **SHIPPED W0 PM-1072 (snapshot + EF + cron; thresholds UI = W1)** |
 | 99 | **Client permissions** — messaging mode, calendar look-ahead, strict/loose rescheduling, own workouts, water tracker, show/hide VYVE libraries | Take — unparks the rest of Kahunas #46 | `assignments.gates` += `messaging` (two_way\|one_way\|off), `look_ahead_weeks`, `reschedule` (strict\|loose), `own_workouts`, `water_tracker`; coach-level `hide_vyve_library`. Phase-change notify = W5 PLAN_CHANGE_NOTIFY (Lewis copy). Strict mode is what makes #62 compliance honest. |
 | 100 | **Portal visual direction — light-first, white surfaces, green trim** | Design item — mockup gate | Coach-portal default-theme flip + token pass on sidebar/topbar using the PM-1006 design-system tokens. Talk-first: mockup before CSS; own short wave. Dean has said it twice. |
 

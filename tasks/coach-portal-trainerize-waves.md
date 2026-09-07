@@ -1,7 +1,7 @@
 # Coach Portal — Trainerize waves (v1)
 
 **Companion to:** `tasks/coach-portal-trainerize-gap-map.md` (PM-1066, items #62–#111) and `tasks/coach-portal-gap-map.md` (Kahunas, #1–#61, all dispositioned PM-983→990).
-**Status:** briefs written 2026-09-07 late. **Nothing built.**
+**Status:** briefs written 2026-09-07 late. **W0 SHIPPED 2026-09-07 late (PM-1072–1074: migration `tz_w0_coach_client_weekly`, `coach-weekly-snapshot` v1 + `_shared/programme_projection.ts`, cron 70, video backfill 111, CC `8f2a0abd`). Next: W1.**
 **How to use:** Dean says "load the brain, do Trainerize wave N". Load `brain/master.md` → `brain/changelog.md` → `tasks/backlog.md`, then the gap map, then the brief below. Run the §23.23 collision scan (last 15 commits on vyve-command-centre AND vyve-site for the wave's keywords) before any design talk. **The brain wins over these briefs; live Supabase wins over the brain.**
 
 **Look and feel:** `coach-portal.html` is the benchmark. Every wave that touches UI: mockup first, dark first — until Wave D ships, after which light-first. Match the existing wave-zone pattern (new zone at the IIFE tail, shadow by same-scope redeclaration, edit the bottom versions).
@@ -27,7 +27,9 @@
 
 ---
 
-## W0 — Backbone (1 session)
+## W0 — Backbone (1 session) — SHIPPED PM-1072–1074
+
+> Delivered as written with three brief corrections: `sign_ins` is **`active_days`** (no sign-in history exists); `calendar_tile` + Get-Started dismissal live in NEW `partner_partners.coach_ui_prefs` (not coach_profile — §23.237); #71 verdict = 15 s polling today, `coach_messages` not in `supabase_realtime` → W3 adds it. EF sources at `scripts/ef/coach-weekly-snapshot/`.
 
 **Scope:** #98 snapshot + compliance engine, #71 realtime verify, #66 quick-add, #67 checklist, #95 tile pref, #70 archive flag.
 
