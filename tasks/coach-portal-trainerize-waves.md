@@ -69,7 +69,9 @@
 
 **Build:** `playbooks/coach-help-corpus.md` (drafted by Claude from master §6/§7 coaching sections + the two gap maps + these briefs; Lewis tone pass, non-gating) → EF `coach-help` v1 (anthropic-proxy pattern: coach JWT, `partner_type='coach'` via get_my_partner_id, per-coach cap 40/day in coach_notification_prefs, system prompt = corpus with prompt caching, model Haiku by default with a Sonnet flag, refusal rule for non-VYVE topics, optional `{action:'open', route}` in the reply) → portal header help button opening a chat drawer (history in localStorage per coach, first-run suggested prompts: build a programme, add a client, set up check-ins, see what the client sees) → route buttons rendered from actions. Log usage to ai_interactions with `surface='coach_help'`.
 
-**Verify:** minted coach JWT: on-topic answer with a route button; off-topic refused; non-coach 403; cap trips at 41.
+**Cost controls (PM-1070, Dean):** (1) corpus in the system prompt with prompt caching (cached read ≈ 1/10 price); (2) topic gate before the corpus call — Haiku sees the question only (no corpus), returns on_topic|off_topic; off-topic/gibberish gets a fixed refusal string with no corpus call; (3) answer cache keyed on normalised question hash (`coach_help_cache`, 30-day TTL) — repeats are free; (4) input hygiene: max 500 chars, reject empty/duplicate-of-last, 3 s min interval; (5) per-coach cap 40/day + global daily budget in prefs with a `platform_alerts` high row at 80 %. Expected: ≈½p per answered question on Haiku with caching, ≈¼p per refusal, worst case 20p/coach/day.
+
+**Verify:** minted coach JWT: on-topic answer with a route button; off-topic refused WITHOUT a corpus call (assert in logs); cache hit on repeat; non-coach 403; cap trips at 41; budget alert fires at 80 %.
 **Dean checks:** ask it three real questions in the portal.
 **Lewis:** corpus tone pass (non-gating).
 **Rule from here:** every wave's closing checklist adds "update coach-help corpus for what shipped".
