@@ -5,7 +5,7 @@ VYVE — Open Food Facts UK mirror loader (PM-1063, §23.233).
 Runs on the Hetzner box (vyve-live-runner). Pulls OFF's Parquet export, keeps
 UK products with usable energy data, normalises to per-100g truth (the off-proxy
 `_norm` contract), and upserts into Supabase `food_products` through PostgREST
-with the box's service_role key. Idempotent — safe to re-run monthly.
+with the box's service_role key. Idempotent — safe to re-run weekly.
 
   python3 off-mirror-load.py            # full run: download (if stale) → extract → upsert
   python3 off-mirror-load.py --no-download
@@ -21,7 +21,7 @@ PARQ   = f'{WORK}/food.parquet'
 CSV    = f'{WORK}/uk_products.csv'
 SRC    = 'https://huggingface.co/datasets/openfoodfacts/product-database/resolve/main/food.parquet'
 BATCH  = 2000
-STALE_DAYS = 25
+STALE_DAYS = 5
 
 SUPA_URL = os.environ['VYVE_SUPABASE_URL'].rstrip('/')
 SUPA_KEY = os.environ['VYVE_SUPABASE_SERVICE_KEY']
