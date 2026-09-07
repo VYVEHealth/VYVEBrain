@@ -6,9 +6,9 @@
 
 **Look and feel:** `coach-portal.html` is the benchmark. Every wave that touches UI: mockup first, dark first — until Wave D ships, after which light-first. Match the existing wave-zone pattern (new zone at the IIFE tail, shadow by same-scope redeclaration, edit the bottom versions).
 
-**Estimates are Claude-assisted sessions.** Honest total ≈ **15–18**: W0 1 · W1 1.5 · W2 1.5 · W3 1.5–2 · W4 2 · W5 2 · W6 2 · W7 2 · W8 1 · W9 2 · WD 1. This is not a one-day plan; it is a two-to-three-week plan at Dean's usual cadence. W0–W2 (≈4 sessions) is the visible-to-a-PT half; W5 is the highest-value single wave.
+**Estimates are Claude-assisted sessions.** Honest total ≈ **15–18**: W0 1 · W1 1.5 · W2 1.5 · W2b 1–1.5 · W3 1.5–2 · W4 2 · W5 2 · W6 2 · W7 2 · W8 1 · W9 2 · WD 1. This is not a one-day plan; it is a two-to-three-week plan at Dean's usual cadence. W0–W2 (≈4 sessions) is the visible-to-a-PT half; W5 is the highest-value single wave.
 
-**Recommended order:** W0 → W1 → W2 → W3 → W4 → W5 → W6 → W7 → W8 → W9 → WD. Dependencies: W1/W5/W9 read the W0 snapshot; W4 challenge chat needs W3 threads; W7's AI meal draft needs W7's recipe library; WD can run any time after its mockup is approved.
+**Recommended order:** W0 → W1 → W2 → W2b → W3 → W4 → W5 → W6 → W7 → W8 → W9 → WD. Dependencies: W1/W5/W9 read the W0 snapshot; W4 challenge chat needs W3 threads; W7's AI meal draft needs W7's recipe library; WD can run any time after its mockup is approved.
 
 ---
 
@@ -62,6 +62,17 @@
 **Verify:** fixture client with start date backdated → day-3 message fires once, reruns fresh:0; scheduled message delivers at deliver_at; threshold alert fires and dedupes.
 **Dean checks:** phone receives an auto message on deanonbrown2.
 **Lewis:** stock message bodies [LEWIS COPY PASS] — ship with placeholders flagged.
+
+## W2b — Coach help assistant (1–1.5 sessions)
+
+**Scope:** #112.
+
+**Build:** `playbooks/coach-help-corpus.md` (drafted by Claude from master §6/§7 coaching sections + the two gap maps + these briefs; Lewis tone pass, non-gating) → EF `coach-help` v1 (anthropic-proxy pattern: coach JWT, `partner_type='coach'` via get_my_partner_id, per-coach cap 40/day in coach_notification_prefs, system prompt = corpus with prompt caching, model Haiku by default with a Sonnet flag, refusal rule for non-VYVE topics, optional `{action:'open', route}` in the reply) → portal header help button opening a chat drawer (history in localStorage per coach, first-run suggested prompts: build a programme, add a client, set up check-ins, see what the client sees) → route buttons rendered from actions. Log usage to ai_interactions with `surface='coach_help'`.
+
+**Verify:** minted coach JWT: on-topic answer with a route button; off-topic refused; non-coach 403; cap trips at 41.
+**Dean checks:** ask it three real questions in the portal.
+**Lewis:** corpus tone pass (non-gating).
+**Rule from here:** every wave's closing checklist adds "update coach-help corpus for what shipped".
 
 ## W3 — Messaging depth (1.5–2 sessions)
 

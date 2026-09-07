@@ -135,6 +135,12 @@ All of Products / Sales / Invoices / Transactions / Disputes / Discount codes / 
 | 110 | Badges Earned (coach view) + coach-created badges | Split | Coach view = #101. `coach_badges` parked into the post-trial Achievements overhaul. |
 | 111 | **Smart Meal Planner** — auto-generate ≤7 days from goal + preferences, client swaps | Take — gated, with #87 | `coach-ai-draft` kind=meal_plan sourcing #90 recipes + food_products macros → editable draft in the W4 day-tabbed plan builder. Needs #90 first; Calum/Lewis call on AI here. |
 
+## Addendum (PM-1068) — Coach help assistant
+
+| # | Item | Call | Landing |
+|---|---|---|---|
+| 112 | **In-portal AI help assistant** — scoped support bot ("how do I…"), first-run guided paths, off-topic refusal, deep links into the portal | Take — ~1 session + 0.5 for deep links | `coach-help` EF on the anthropic-proxy pattern (coach JWT, partner_type=coach only, per-coach daily cap, prompt caching); corpus = `playbooks/coach-help-corpus.md` drafted from the brain's coach-portal sections + wave briefs, Lewis tone pass; chat drawer in the portal header; refusal for anything not about VYVE coaching; responses may carry `{action:'open', route}` rendered as a button. **Corpus update becomes a closing step of every wave.** Running cost: pennies per question (Haiku + caching); well inside the existing spend line. |
+
 ---
 
 ## Headline builds (the defining items)
