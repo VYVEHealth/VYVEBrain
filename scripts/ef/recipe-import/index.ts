@@ -371,12 +371,13 @@ function jsonFromModel(t: string): unknown {
 
 const STRUCT_SYSTEM = `You convert recipe ingredient lines into structured data.
 Return ONLY a JSON array, no prose, no markdown fences. One object per input line, in the SAME ORDER, same length as the input.
-Each object: {"raw": <the input line verbatim>, "name": <the food itself, singular, no quantity, no preparation words>, "qty": <number or null>, "unit": <"g"|"ml"|"tsp"|"tbsp"|"cup"|null>}
+Each object: {"raw": <the input line verbatim>, "name": <the food itself, singular, no quantity, no preparation words>, "qty": <number or null>, "unit": <"g"|"kg"|"ml"|"l"|"tsp"|"tbsp"|"cup"|null>}
 Rules:
 - "name" is what you would search a food database for: "200g plain flour" -> "plain flour"; "2 large eggs, beaten" -> "egg"; "a handful of fresh basil" -> "basil".
 - Drop preparation words (chopped, melted, beaten, to serve, finely diced) from "name".
 - unit null means the qty counts whole items (2 eggs, 1 lemon). If there is no number at all, qty null.
 - Convert simple fractions to decimals (1/2 -> 0.5). "a pinch" -> qty 1, unit "tsp". "a handful" -> qty null.
+- Keep the unit the recipe used: "1kg braising steak" -> qty 1 unit "kg"; "1 litre stock" -> qty 1 unit "l". Never drop a weight or volume unit.
 - Never invent an ingredient that is not in the input.`;
 
 const FIND_SYSTEM = `You extract a recipe from the text of a web page.
@@ -507,6 +508,9 @@ function pickBest(name: string, rows: FoodRow[]): { row: FoodRow | null; confide
 function gramsFor(qty: number | null, unit: string | null, row: FoodRow | null): number | null {
   if (qty == null || !isFinite(qty) || qty <= 0) return null;
   if (unit === 'g' || unit === 'ml') return qty;          // ml→g at 1:1; honest for most liquids
+  // Without these, "1kg braising steak" loses its unit, falls through to the
+  // per-item branch and comes back as a confident 2.9 kcal.
+  if (unit === 'kg' || unit === 'l') return qty * 1000;
   // "2 eggs" only converts when serving_g is a real single-item weight. A row
   // whose serving_g is exactly 100 is quoting per-100g, not one egg — treating
   // that as an item weight is how 2 eggs becomes 200g.
@@ -659,7 +663,7 @@ Deno.serve(async (req) => {
         raw: String(o.raw || parsed!.ingredients[i] || '').slice(0, 200),
         name: String(o.name || '').trim().slice(0, 80),
         qty: isFinite(q) && q > 0 ? q : null,
-        unit: (u && ['g', 'ml', 'tsp', 'tbsp', 'cup'].includes(u)) ? u : null,
+        unit: (u && ['g', 'kg', 'ml', 'l', 'tsp', 'tbsp', 'cup'].includes(u)) ? u : null,
       };
     }).filter((x) => x.name);
   } catch (e) {
@@ -687,7 +691,10 @@ Deno.serve(async (req) => {
     const best = pickBest(s.name, cands);
     const row = best.row;
     const grams = gramsFor(s.qty, s.unit, row);
-    const conf = row == null ? 'none' : (grams == null ? 'check' : best.confidence);
+    // Grams derived from a serving weight ("2 eggs" -> 116g) is an assumption
+    // about the item, not a match — amber, so the member actually looks at it.
+    const assumed = grams != null && s.unit === null;
+    const conf = row == null ? 'none' : (grams == null || assumed ? 'check' : best.confidence);
     items.push({
       raw: s.raw,
       name: s.name,
