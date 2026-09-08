@@ -23,10 +23,10 @@
 | 65 | Roster-wide Recent Activities feed w/ event-type filter | Take — small | Lens over coach_client_events (W5 #52). No schema. **SHIPPED W1 PM-1075 (widened the existing Notifications feed)** |
 | 66 | Global (+) quick-add: Client / Message / Event / Announcement | Take — trivial | Header button → existing wizard, chat, event editor, broadcast. **SHIPPED W0 PM-1073** |
 | 67 | Coach Get-Started checklist | Take — small | Dismissable cockpit card: first client, first programme, check-in form assigned, notifications set. **SHIPPED W0 PM-1073** |
-| 68 | **Group conversations** — one thread, many clients | Take | `coach_threads` (kind group\|challenge) + `coach_thread_members` + `thread_id` on coach_messages; member RLS via membership. Challenge threads auto-created (#72). "Send separately" = existing broadcast. |
+| 68 | **Group conversations** — one thread, many clients | Take | `coach_threads` (kind group\|challenge) + `coach_thread_members` + `thread_id` on coach_messages; member RLS via membership. Challenge threads auto-created (#72). "Send separately" = existing broadcast. **SHIPPED W3 PM-1080 (fan-out rows, §23.243)** |
 | 69 | Scheduled / pre-planned messages | Take — small | `deliver_at` on coach_messages, delivered by the #64 sweep. **SHIPPED W2 PM-1077** (`coach_messages.deliver_at`; trigger + member RLS guard; sweep delivers; coach cancel = delete) |
 | 70 | Active / archived conversation filter | Take — trivial | Archive flag per thread. **SHIPPED W0 PM-1073 (coach_ui_prefs list until W3 threads)** |
-| 71 | Real-time delivery in coach chat | Verify | Supabase Realtime on coach_messages, client-side only. Confirm polling state at build time first. **VERIFIED W0: 15 s poll, table not in supabase_realtime → W3 adds it** |
+| 71 | Real-time delivery in coach chat | Verify | Supabase Realtime on coach_messages, client-side only. Confirm polling state at build time first. **VERIFIED W0: 15 s poll, table not in supabase_realtime → W3 adds it. SHIPPED W3 PM-1080 (publication + both subscribers, polls kept as fallback)** |
 | — | Team, Payments, Sale quick-add, Add-ons, referral/upgrade banners, Academy, hire-an-expert, FitMetrics | Parked / Excluded | See header. |
 
 ## Batch 2 — Challenges (+ messaging extras)
@@ -40,8 +40,8 @@ Landing note: VYVE has `challenge_library`/`challenge_enrolments` (PM-709, membe
 | 74 | **Member-side challenge surface** | Take | challenges.html gains "From your coach" / "Your company" block above the catalogue: opt-in sheet, leaderboard (opted-in names + points), threshold summit progress. One component serves coach AND employer launches. |
 | 75 | Themes + thumbnail | Take — partial | Own upload to coach-content + pick from the 23 `/challenge-art/` tiles. Unsplash dropped. |
 | — | Auto-delete 7 days after end | Not taking | Archive + keep results. |
-| 76 | **Message attachments** — image / file / video | Take | `attachment_path` + `attachment_kind` on coach_messages, new `coach-message-media` private bucket, read-through-domain-row storage policy. Member upload via the coach-checkins compression path. |
-| 77 | **Voice notes** | Take | Coach side MediaRecorder (webm); member playback first; member recording needs a native recorder plugin → next binary. |
+| 76 | **Message attachments** — image / file / video | Take | `attachment_path` + `attachment_kind` on coach_messages, new `coach-message-media` private bucket, read-through-domain-row storage policy. Member upload via the coach-checkins compression path. **SHIPPED W3 PM-1079/1080 (bucket `coach-message-media`, read-through-row)** |
+| 77 | **Voice notes** | Take | Coach side MediaRecorder (webm); member playback first; member recording needs a native recorder plugin → next binary. **SHIPPED W3 PM-1080 (coach side + member playback); member recording banked** |
 
 ## Batch 3 — Clients + Team
 

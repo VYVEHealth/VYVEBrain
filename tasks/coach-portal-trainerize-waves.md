@@ -1,7 +1,7 @@
 # Coach Portal — Trainerize waves (v1)
 
 **Companion to:** `tasks/coach-portal-trainerize-gap-map.md` (PM-1066, items #62–#111) and `tasks/coach-portal-gap-map.md` (Kahunas, #1–#61, all dispositioned PM-983→990).
-**Status:** briefs written 2026-09-07 late. **W0 SHIPPED 2026-09-07 late (PM-1072–1074: migration `tz_w0_coach_client_weekly`, `coach-weekly-snapshot` v1 + `_shared/programme_projection.ts`, cron 70, video backfill 111, CC `8f2a0abd`). W1 SHIPPED 2026-09-08 (PM-1075–1076: migration `tz_w1_leads_convert`, CC `9e403569`). W2 SHIPPED 2026-09-08 (PM-1077–1078: migration `tz_w2_auto_messages` + `tz_w2_seed_partner_arg` + `tz_w2_scheduled_cancel`, `coach-automations` v1 + cron 71, `coach-provision-client` v14, CC `3e43fca7`). Next: W2b.**
+**Status:** briefs written 2026-09-07 late. **W0 SHIPPED 2026-09-07 late (PM-1072–1074: migration `tz_w0_coach_client_weekly`, `coach-weekly-snapshot` v1 + `_shared/programme_projection.ts`, cron 70, video backfill 111, CC `8f2a0abd`). W1 SHIPPED 2026-09-08 (PM-1075–1076: migration `tz_w1_leads_convert`, CC `9e403569`). W2 SHIPPED 2026-09-08 (PM-1077–1078: migration `tz_w2_auto_messages` + `tz_w2_seed_partner_arg` + `tz_w2_scheduled_cancel`, `coach-automations` v1 + cron 71, `coach-provision-client` v14, CC `3e43fca7`). W3 SHIPPED 2026-09-08 (PM-1079–1081: migration `tz_w3_threads_media` + `tz_w3_media_coach_delete`, CC `9b6c26f0`, vyve-site `65bee552` vbb 612). Next: W2b.**
 **How to use:** Dean says "load the brain, do Trainerize wave N". Load `brain/master.md` → `brain/changelog.md` → `tasks/backlog.md`, then the gap map, then the brief below. Run the §23.23 collision scan (last 15 commits on vyve-command-centre AND vyve-site for the wave's keywords) before any design talk. **The brain wins over these briefs; live Supabase wins over the brain.**
 
 **Look and feel:** `coach-portal.html` is the benchmark. Every wave that touches UI: mockup first, dark first — until Wave D ships, after which light-first. Match the existing wave-zone pattern (new zone at the IIFE tail, shadow by same-scope redeclaration, edit the bottom versions).
@@ -86,6 +86,8 @@
 **Rule from here:** every wave's closing checklist adds "update coach-help corpus for what shipped".
 
 ## W3 — Messaging depth (1.5–2 sessions)
+
+> **SHIPPED PM-1079–1081.** Delivered with three corrections: group messages are **fan-out rows** (one `coach_messages` row per member sharing `thread_id` + `group_key`) rather than a nullable-email row — push, deliver_at, read receipts, nudge and member RLS unchanged, coach gets Seen by n/N; every direct-thread reader filters `thread_id=is.null` (§23.243). Archived state: groups on `coach_threads.archived`, direct threads stay in `coach_ui_prefs` (no direct thread rows minted). Member photo attach shipped (compressed, `p-<pid>/m/`); member voice recording banked for the next binary. `cmm_member_read` is a pure read-through-row policy (`EXISTS coach_messages` under the member's RLS) — no path parsing. `coach_threads` already carries `kind='challenge'` + `challenge_id` for W4.
 
 **Scope:** #68, #76, #77, #71.
 
