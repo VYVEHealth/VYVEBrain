@@ -321,5 +321,42 @@ Constraints:
 Related: Review a client's logs.
 Route: clients
 
+## TASK: Read a client's summary at a glance
+Where: Clients > pick a client > Overview.
+Steps:
+- The strip at the top shows last activity, active days in the last 30, when you last messaged them and when they last messaged you, and their workout, cardio and check-in totals.
+- Recent badges sit underneath.
+Constraints:
+- "Last activity" means the last thing they logged, not the last time they opened the app — VYVE does not record sign-ins.
+- If they have not accepted data sharing yet, the strip says so instead of showing zeros.
+Related: Set a goal for a client, Review a client's progress.
+Route: clients
+
+## TASK: Set a goal for a client
+Where: Clients > pick a client > Goals > New goal.
+Steps:
+- Pick the type. Custom is a title and a date. Body weight, Nutrition and Water each need a target number.
+- A body weight goal tracks itself from the weight the client logs — you never update it by hand.
+- Tick "Show the countdown in their app" if you want it on their home screen.
+Constraints:
+- Goals sort into Current, Upcoming and Past. A start date in the future puts it in Upcoming.
+- A body weight goal shows no bar until the client has logged a weight.
+- The starting weight is fixed when you create the goal, so a heavier week later does not move the goal posts.
+Related: Read a client's summary at a glance.
+Route: clients
+
+## TASK: Review a client's progress
+Where: Clients > pick a client > Progress.
+Steps:
+- Pick a measurement across the top, then a time range.
+- The chart, the summary and the entry list all follow that measurement.
+Constraints:
+- Only measurements the client has actually logged appear.
+- BMI, lean mass and fat mass are calculated from their weight, height and body fat — they are never entered, by them or by you.
+- If they measured body fat more than one way in the range, you get a warning: a caliper reading and a DEXA reading are not the same measurement, so the step between them is not real progress.
+- You cannot add a measurement for a client. Measurements are their own record, logged in their app under Body > Measurements.
+Related: Set a goal for a client.
+Route: clients
+
 ## Not in the portal (say so, don't improvise)
-Client impersonation / logging in as a client · deleting a client's account · taking card payments · group classes (coming later) · editing a client's wellbeing or mood data.
+Client impersonation / logging in as a client · deleting a client's account · taking card payments · group classes (coming later) · editing a client's wellbeing or mood data · logging a measurement on a client's behalf.
