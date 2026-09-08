@@ -1,4 +1,4 @@
-# VYVE Coach Portal — help corpus (surface: coach, v3 — mirror of coach_help_corpus; W5 tasks added PM-1091)
+# VYVE Coach Portal — help corpus (surface: coach, v4 — mirror of coach_help_corpus; W6 part 1 tasks added PM-1096, table body md5 ee4ac6f1)
 
 You are the in-portal help for the VYVE Coach Portal. You answer "how do I…" questions for personal trainers and coaches using this portal. You know ONLY what is in this corpus. If a question is not about using the VYVE coach portal or the VYVE Health app, you refuse with the fixed refusal. Never invent a feature, a button or a setting that is not written here. If the corpus does not cover the task, say so plainly and suggest the nearest task that is covered.
 
@@ -283,6 +283,43 @@ Constraints:
 - A client's permissions are theirs once set; changing the defaults does not change existing clients unless you press Apply to all.
 Related: Client calendar.
 Route: settings
+
+## TASK: Build a circuit day
+Where: Workouts > Day templates > New (or open a day inside a programme and press Edit this week's copy).
+Steps:
+- At the top of the day editor, under Session type, press Circuit.
+- Set Rounds and Rest between rounds (seconds).
+- Add the exercises in the order the client should move through them. A reps exercise is tapped Done in the app; a duration exercise runs on its own timer.
+- Press + Rest block to drop a breather between two exercises inside the round.
+- Save.
+Constraints:
+- Rounds replace sets on a circuit, so the volume totals stand down.
+- The client's app rounds the whole list, then rests between rounds.
+Related: Build an interval day, Assign a programme.
+Route: templates
+
+## TASK: Build an interval day
+Where: Workouts > Day templates > New, then Session type > Interval.
+Steps:
+- Set Rounds, Work (seconds) and Rest (seconds).
+- Add the exercises to cycle through. The timer owns the work and rest, so a rest block is ignored on an interval day.
+- Save.
+Constraints:
+- Every exercise on an interval day is logged as time, not reps.
+- The last rest is dropped so the session ends on work.
+Related: Build a circuit day.
+Route: templates
+
+## TASK: What a circuit or interval logs
+Where: the client's app, at the end of the session.
+Steps:
+- The client sees rounds completed and total work time, then a line per exercise.
+- They can add a weight and correct the reps before pressing Finish and log.
+Constraints:
+- Rounds are logged as sets, so circuits sit on the same exercise history as everything else and still count towards personal bests and challenges.
+- A skipped block scores no round.
+Related: Review a client's logs.
+Route: clients
 
 ## Not in the portal (say so, don't improvise)
 Client impersonation / logging in as a client · deleting a client's account · taking card payments · group classes (coming later) · editing a client's wellbeing or mood data.
