@@ -1,4 +1,4 @@
-// challenge-score v2 — Trainerize W4 (PM-1085, 8 Sep 2026). Gap map #73: the points rule engine.
+// challenge-score v3 — Trainerize W4 (PM-1085, 8 Sep 2026). Gap map #73: the points rule engine.
 // Idempotent recompute (never increment) of points / rank / passed / breakdown for every opted-in
 // participant of every live coach challenge, and of every employer launch that is in its date window.
 // Same rules contract for both launchers ({earn:{workout,cardio,pb,nutrition_goal,habit,fitness_goal},
@@ -182,7 +182,7 @@ serve(async (req) => {
     const ps = parts.get(l.id) || [];
     const endIso = l.ends < today ? l.ends : today;
     for (const p of ps) {
-      const from = p.opted_in > l.starts ? p.opted_in : l.starts; // joining late scores from the join date
+      const from = l.starts; // everyone scores from the challenge start (a late joiner's earlier activity counts — Trainerize shape)
       const inWin = (d: string) => d >= from && d <= endIso;
       const dayCount = (days: string[]) => { const m = new Map<string, number>(); for (const d of days) if (inWin(d)) m.set(d, (m.get(d) || 0) + 1); return m; };
       const sources: Record<string, Map<string, number>> = {
