@@ -148,6 +148,8 @@
 
 ## W8 — Scheduling (1 session)
 
+**SHIPPED 2026-09-08 (PM-1108–1111): migration `tz_w8_scheduling`, `create-booking` v4, `coach-lead-submit` v3, NEW `coach-calendar-ics` v1, CC `77c1dfc8`, Test-Site `e214ffdf`, vyve-site `fd81b3b4` vbb 619.** The brief assumed a services editor existed on the coach side — it did not (`booking_services` CRUD is in `partner-portal.html`), so W8 built a Scheduling view in the coach portal as well. `bk_slot_guard` dropped for `trg_booking_capacity_guard` (advisory lock + 23505). `booking_slot_counts()` added because members cannot read each other's bookings. Time off is a fan-out across services, default hours are additive. #96 needs a coach lead form to exercise end to end (0 live). Thumbnail column ships dormant — no uploader this wave.
+
 **Scope:** #92, #93, #94, #96.
 
 **Build:** booking_services `capacity` (default 1), `public`, `self_booking`, `thumbnail_path`; drop `bk_slot_guard` partial-unique → BEFORE INSERT trigger counting live bookings per slot < capacity (keep the friendly-error path in the EF); member slot picker shows places left; coach calendar tile shows roster. Partner-level default availability (`partner_partners.default_availability` jsonb) inherited on service create; "Time off" writes booking_exceptions across services. EF `coach-calendar-ics` v1 (tokenised URL in coach_profile, VEVENTs over coach_events + confirmed bookings + hosted calendar_occurrences). Prospect booking: public service → slot picker on `/lead/<slug>` (Test-Site) → coach-lead-submit v3 writes lead + booking with `lead_id`; requests inbox shows it; #78 Convert.
