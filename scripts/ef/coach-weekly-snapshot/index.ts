@@ -1,4 +1,5 @@
-// coach-weekly-snapshot v1 — Trainerize W0 (PM-1068, 8 Sep 2026). Gap map #98: the weekly snapshot backbone.
+// coach-weekly-snapshot v2 — Trainerize W5 (PM-1089): projection v2 (week_start anchor, session days, schedule_overrides skips).
+// v1 — Trainerize W0 (PM-1068, 8 Sep 2026). Gap map #98: the weekly snapshot backbone.
 // Writes one coach_client_weekly row per (partner, client, ISO week) — the table W1 insights/auto-tags,
 // W5 scheduling, W9 dashboard all read. Scheduled sessions come from _shared/programme_projection.ts
 // (the single projection truth W5 will extend with phases/queue/overrides).
@@ -47,7 +48,7 @@ async function partnerFromJwt(token: string): Promise<string | null> {
   return typeof v === 'string' && v ? v : null;
 }
 
-type Client = { partner_id: string; member_email: string; status: string };
+type Client = { partner_id: string; member_email: string; status: string; assignments?: Row | null };
 type Row = Record<string, unknown>;
 
 serve(async (req) => {
@@ -77,7 +78,7 @@ serve(async (req) => {
   const thisMon = isoDate(mondayOf(now));
 
   // ── clients in scope ──
-  let cq = 'coach_clients?select=partner_id,member_email,status&archived_at=is.null';
+  let cq = 'coach_clients?select=partner_id,member_email,status,assignments&archived_at=is.null';
   if (scopePartner) cq += '&partner_id=eq.' + scopePartner;
   if (memberFilter) cq += '&member_email=ilike.' + encodeURIComponent(memberFilter);
   else cq += '&status=eq.active';
@@ -89,7 +90,7 @@ serve(async (req) => {
   // ── bulk reads (service role; one query per table) ──
   const el = inList(emails);
   const [wpcs, workouts, cardio, nutri, mal, weights, msgs, members] = await Promise.all([
-    restGet<WpcRow[]>('workout_plan_cache?select=member_email,programme_json,plan_duration_weeks,current_week,is_active,paused_at,generated_at,source&is_active=eq.true&member_email=' + el),
+    restGet<WpcRow[]>('workout_plan_cache?select=member_email,programme_json,plan_duration_weeks,current_week,is_active,paused_at,generated_at,source,week_start&is_active=eq.true&member_email=' + el),
     restGet<Row[]>('workouts?select=member_email,activity_date&member_email=' + el + '&activity_date=gte.' + fromIso),
     restGet<Row[]>('cardio?select=member_email,activity_date&member_email=' + el + '&activity_date=gte.' + fromIso),
     restGet<Row[]>('nutrition_logs?select=member_email,activity_date,calories_kcal&member_email=' + el + '&activity_date=gte.' + fromIso + '&limit=20000'),
@@ -124,7 +125,7 @@ serve(async (req) => {
     const lastIn = pmsgs.find((m) => m.sender === 'member')?.created_at ?? null;
     for (const ws of weekStarts) {
       const we = weekEnd(ws);
-      const proj = projectWeek(plan, ws, now);
+      const proj = projectWeek(plan, ws, now, (c.assignments && (c.assignments as Row).schedule_overrides) ? (c.assignments as Row).schedule_overrides as Record<string, { to?: string; skip?: boolean }> : null);
       const completed = (woBy.get(em) || []).filter((r) => inWeek(r.activity_date, ws, we)).length;
       const cardioN = (caBy.get(em) || []).filter((r) => inWeek(r.activity_date, ws, we)).length;
       const kcalByDay = new Map<string, number>();

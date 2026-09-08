@@ -1,4 +1,4 @@
-# VYVE Coach Portal — help corpus (surface: coach, v2)
+# VYVE Coach Portal — help corpus (surface: coach, v3 — mirror of coach_help_corpus; W5 tasks added PM-1091)
 
 You are the in-portal help for the VYVE Coach Portal. You answer "how do I…" questions for personal trainers and coaches using this portal. You know ONLY what is in this corpus. If a question is not about using the VYVE coach portal or the VYVE Health app, you refuse with the fixed refusal. Never invent a feature, a button or a setting that is not written here. If the corpus does not cover the task, say so plainly and suggest the nearest task that is covered.
 
@@ -230,6 +230,59 @@ Route: profile
 ## TASK: Challenges (leaderboard or summit for your clients)
 Where: **Clients** › **Challenges**. Press **+ New challenge**: name and dates, type (Leaderboard ranks everyone; Summit sets a points target everyone can reach), then the points rules — workout logged, cardio logged, personal best, daily calorie goal hit, daily habit done, fitness goal achieved — with a daily cap (each rule once a day by default), then a VYVE tile or your own image, then save. It is a draft until you open it and press **Go live**; every active client then sees it under Challenges in their app and chooses whether to join (they are told their first name and points will be visible to everyone who joins). Points are scored automatically every hour from what clients already log; **Recompute now** scores straight away. The challenge page shows the board, who has not joined, and **Open thread** (a group chat created for everyone who joins). **End challenge** freezes the board and keeps the results; ended challenges can be archived.
 Route: clients
+
+---
+
+## TASK: Group a programme into phases
+Where: Workouts › Programmes › open a programme (or **New programme**).
+Steps:
+1. Press **+ Add phase** under the week tabs. The first press wraps every existing week into "Phase 1"; each further press adds a new week in a new phase.
+2. Click the phase name to rename it (for example "Base", "Build", "Peak").
+3. **+ Add week to phase** adds a week inside that phase; **Duplicate week** and **Remove week** keep working on the selected week and the phases renumber themselves.
+4. **Import phase from…** copies a phase (or a whole programme) from one of your other programmes into this one as a new phase — the copy is independent.
+5. Save. Clients on the programme see "Phase 2 · Week 3 of 4" in their app and the phase boundary is marked on their calendar.
+Constraints:
+- Day 1 is Monday — the day slots are labelled Mon…Sun. Empty slots are rest days.
+- A week with no training days is dropped when the programme is built for a client.
+Related: Build a workout programme · Queue the next phase · Client calendar.
+Route: kindsel:program
+
+## TASK: Queue the next phase for a client
+Where: Clients › open the client › **Plans** tab › **Next phase queue** (also the strip under the calendar on the **Calendar** tab).
+Steps:
+1. Pick a programme or weekly workout plan from the list and choose **when the previous one ends** or **on a date…**, then **Add** (Plans tab, then **Save**) or **Queue** (Calendar tab).
+2. Up to five can be queued; they apply in order. **Remove** takes one out.
+Constraints:
+- The queue is applied every night around 00:20 UK time: the next programme starts on the Monday after the current one ends (or the Monday of the date you chose) and the client gets the normal "your training plan was updated" email.
+- If a programme ends this week with nothing queued you get a "programme ends this week" notification (Profile › Settings › Notifications › Phase ending).
+Related: Client calendar · Assign a programme to a client.
+Route: clients
+
+## TASK: Client calendar — see, move or skip sessions
+Where: Clients › open the client › **Calendar** tab.
+Steps:
+1. The month grid shows every planned session on its date: green = done (matches a workout they logged that day), red = missed (date passed, nothing logged), plain = upcoming, dotted = a workout they logged outside the plan. Gold line = a phase starting. Hatched days are beyond what the client can currently see.
+2. **Drag** a session to another day to move it (dropping on a day that already has one swaps them). Dashed = moved; click it for **Move back**.
+3. **Click** a session for **Skip this session** / **Restore session**.
+4. **Programme starts** sets the Monday the programme counts from; **‹ ›** change month. Events, calls and bookings still list below the grid.
+Constraints:
+- You can move sessions into the past only up to today; the client (in Loose mode) can only move a session within its own week.
+- Missed sessions stay missed — that is what keeps compliance honest.
+Related: Queue the next phase for a client · Client permissions.
+Route: clients
+
+## TASK: Client permissions (what a client can see and do)
+Where: Clients › open the client › **Plans** tab › **Client permissions**; defaults for new clients under Profile › **Settings › Client permissions**.
+Steps:
+1. Messaging: Two-way / One-way (they read only) / Off (thread hidden).
+2. Calendar look-ahead: This week / +1 / +2 / +4 / All.
+3. Rescheduling: Strict (sessions stay on their day) or Loose (they can move a session within the week).
+4. Own workouts, Water tracker, VYVE library (VYVE's own programmes, exercise library and "import plan by code"), Estimated 1-rep max, Exercise swaps from the full library — on or off.
+5. **Save** on the client; on Settings, **Save defaults** (new clients) or **Apply to all current clients**.
+Constraints:
+- A client's permissions are theirs once set; changing the defaults does not change existing clients unless you press Apply to all.
+Related: Client calendar.
+Route: settings
 
 ## Not in the portal (say so, don't improvise)
 Client impersonation / logging in as a client · deleting a client's account · taking card payments · group classes (coming later) · editing a client's wellbeing or mood data.
