@@ -158,7 +158,7 @@
 **Dean checks:** book a class from the phone; subscribe the ICS on your Mac.
 **Lewis:** prospect-booking public copy.
 
-## W9 — Client workspace depth (2 sessions) — **PART 1 SHIPPED PM-1112/1113 (#101, #105, #108; #106 dark behind `W9_HEALTH_VISIBLE`). PART 2 REMAINS: #107, #109, per-habit heatmap, #91, and recipe search + filter drawer (added PM-1121 — see backlog for the facet mapping, the 175 dark stock recipes and the dirty tag vocabulary that must be normalised first).**
+## W9 — Client workspace depth (2 sessions) — **PART 1 SHIPPED PM-1112/1113 (#101, #105, #108; #106 dark behind `W9_HEALTH_VISIBLE`). PART 2 REMAINS: #107, #109, per-habit heatmap, #91.** (PM-1121 briefly added recipe search + filter here; PM-1124 removed it — that belongs to the W7 / nutrition workstream, not W9.)
 
 > Corrections found against live schema at part 1: the widget set belongs in `coach_ui_prefs`, NOT `coach_profile` (§23.237). `members.last_seen` does not exist and `last_active_at` is dead (§23.263) — the strip reads `member_activity_log`. #91 is smaller than written: `textarea` and `scale` (1–10) already exist in `QTYPES` and both renderers, so only multi-select, an "other" option and a `longtext` alias are new. #106 needs no ingestion work — `member_health_daily` already holds the aggregates.
 
