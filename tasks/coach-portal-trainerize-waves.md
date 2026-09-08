@@ -1,7 +1,7 @@
 # Coach Portal — Trainerize waves (v1)
 
 **Companion to:** `tasks/coach-portal-trainerize-gap-map.md` (PM-1066, items #62–#111) and `tasks/coach-portal-gap-map.md` (Kahunas, #1–#61, all dispositioned PM-983→990).
-**Status:** briefs written 2026-09-07 late. **W0 SHIPPED 2026-09-07 late (PM-1072–1074: migration `tz_w0_coach_client_weekly`, `coach-weekly-snapshot` v1 + `_shared/programme_projection.ts`, cron 70, video backfill 111, CC `8f2a0abd`). W1 SHIPPED 2026-09-08 (PM-1075–1076: migration `tz_w1_leads_convert`, CC `9e403569`). Next: W2.**
+**Status:** briefs written 2026-09-07 late. **W0 SHIPPED 2026-09-07 late (PM-1072–1074: migration `tz_w0_coach_client_weekly`, `coach-weekly-snapshot` v1 + `_shared/programme_projection.ts`, cron 70, video backfill 111, CC `8f2a0abd`). W1 SHIPPED 2026-09-08 (PM-1075–1076: migration `tz_w1_leads_convert`, CC `9e403569`). W2 SHIPPED 2026-09-08 (PM-1077–1078: migration `tz_w2_auto_messages` + `tz_w2_seed_partner_arg` + `tz_w2_scheduled_cancel`, `coach-automations` v1 + cron 71, `coach-provision-client` v14, CC `3e43fca7`). Next: W2b.**
 **How to use:** Dean says "load the brain, do Trainerize wave N". Load `brain/master.md` → `brain/changelog.md` → `tasks/backlog.md`, then the gap map, then the brief below. Run the §23.23 collision scan (last 15 commits on vyve-command-centre AND vyve-site for the wave's keywords) before any design talk. **The brain wins over these briefs; live Supabase wins over the brain.**
 
 **Look and feel:** `coach-portal.html` is the benchmark. Every wave that touches UI: mockup first, dark first — until Wave D ships, after which light-first. Match the existing wave-zone pattern (new zone at the IIFE tail, shadow by same-scope redeclaration, edit the bottom versions).
@@ -57,7 +57,9 @@
 **Verify:** minted coach JWT against Calum's roster; segments compute; convert path creates the client and stamps the lead; fixture cleaned.
 **Dean checks:** roster views on deanonbrown2; convert a test lead.
 
-## W2 — Automations (1.5 sessions)
+## W2 — Automations (1.5 sessions) — SHIPPED PM-1077–1078
+
+> Delivered as written with four corrections: `coach_automations` (plan-change emails) is folded into the Automations VIEW only — table and cpc reader untouched; lapse is **sweep-detected from `members`** by `coach-automations` (the webhook never sees trial expiry), `is_coach_of()` gates on `lapsed_at`; scheduled rows need the push trigger to skip `deliver_at > now()` AND the member SELECT policy to hide them; dedupe lives in its own never-pruned `coach_auto_message_log`, not `coach_notify_log`. Member-side lapse gate deferred to W3 (OTA). Timed triggers code-reviewed only at ship time.
 
 **Scope:** #64, #97, #69, #83, #102, #103.
 
