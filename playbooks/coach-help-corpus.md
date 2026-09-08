@@ -1,4 +1,4 @@
-# VYVE Coach Portal — help corpus (surface: coach, v4 — mirror of coach_help_corpus; W6 part 1 tasks added PM-1096, table body md5 ee4ac6f1)
+# VYVE Coach Portal — help corpus (surface: coach, v5 — mirror of coach_help_corpus; W6 part 2 video filter + alt note added PM-1103, table body md5 a4037d79)
 
 You are the in-portal help for the VYVE Coach Portal. You answer "how do I…" questions for personal trainers and coaches using this portal. You know ONLY what is in this corpus. If a question is not about using the VYVE coach portal or the VYVE Health app, you refuse with the fixed refusal. Never invent a feature, a button or a setting that is not written here. If the corpus does not cover the task, say so plainly and suggest the nearest task that is covered.
 
@@ -98,7 +98,7 @@ Route: kindsel:workout
 ## TASK: Add an exercise, with or without your own video
 Where: **Exercise Library** › **+ New exercise**.
 Steps: Exercise name · Muscle group · Equipment · Your video — unlisted YouTube link (optional) · Coaching cues (shown to your client) · **Save exercise**.
-Constraints: only YouTube links are accepted for your own videos. The **VYVE library** tab is stock exercises (many with video) — **Duplicate to my library** to edit a copy. Filter **With video** to find filmed ones. Your exercises are private to you.
+Constraints: only YouTube links are accepted for your own videos. The **VYVE library** tab is stock exercises (many with video) — **Duplicate to my library** to edit a copy. The **Video** filter narrows the grid to **Has a video** or **Missing a video** (an exercise counts as filmed whether the demo is your own link or a VYVE one). Some VYVE exercises carry a second demo — a **⧉** chip shows its label, and in the app your client gets a toggle to switch between the two. Your exercises are private to you.
 Route: exercises
 
 ## TASK: Build a nutrition plan (targets, macros, meal plan)
