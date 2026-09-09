@@ -120,15 +120,21 @@ Business continuity is documented in a key-person handover runbook covering ever
 
 ## 5C. Performance and load testing
 
-Load tested 9 September 2026 against production using k6, at two levels.
+Load tested against production using k6 on 9 September 2026, remediated the same evening, and re-tested.
 
-**Pilot load (30 concurrent users, 4 minutes, 2,520 requests):** zero failed requests, 100% of functional checks passed, median response 107ms. This is the level relevant to a typical departmental pilot.
+**Pilot load (30 concurrent virtual users, 4 minutes, 2,520 requests):** zero failed requests, 100% of functional checks passed, median response 107ms. This is the level relevant to a departmental pilot.
 
-**Projected full-rollout load (200 concurrent users, 7 minutes, 4,856 requests):** 93.6% success. All failures were concentrated in a single endpoint — the member dashboard aggregation — which timed out under sustained load. **Direct authenticated data reads sustained 200 concurrent users with a 100% success rate and a 95th-percentile response under 90ms**, so the database and authorisation layers were not the constraint.
+**Remediation shipped between tests.** The first run identified a single constraint: the member dashboard aggregation issued a large number of sequential internal queries per request, which both slowed the response and multiplied load under concurrency. That aggregation was collapsed into a single database call, verified byte-identical in output against the previous version by live invocation before and after deployment.
 
-**Identified constraint and remediation.** The dashboard endpoint aggregates a member's full home view and currently issues a large number of sequential internal queries per request, which both slows the response and multiplies load under concurrency. Remediation is understood and scoped: reduce the query count per request and cache the aggregate. We state the limit rather than the headline figure because the useful answer to "will it scale" is knowing precisely what fails first and what the fix is.
+**Post-remediation measurement.** At 50 concurrent users — above the pilot profile — the dashboard endpoint now responds at a **median of 400ms and a 95th percentile of 912ms**, against a median of 1.4-2.7 seconds at only 30 concurrent before the change. Total internal request volume across an identical test fell by **44%** while the test drove 17% more client traffic.
 
-**Scaling levers, in order:** the identified endpoint fix; a database compute tier increase (connection ceiling is currently 60, with 21 held at idle by platform services); and provider-side function scaling. Re-testing is scheduled to follow the endpoint remediation rather than at fixed intervals.
+**Known limit, stated plainly.** At 200 sustained concurrent users the platform still degrades, with a 5.1% request failure rate concentrated in the same aggregation endpoint. We state this rather than the headline figure because the useful answer to "will it scale" is knowing what fails first and what the fix is.
+
+**What that limit means in member numbers.** 200 sustained virtual users equates to approximately 46 member home-screen loads per second, held indefinitely. Modelled against observed usage — roughly three app opens per member per day, half of them inside a two-hour morning window — that request rate corresponds to a member base well above 70,000. The tested clean band covers an estimated 15,000-20,000 members at realistic peak. Concurrency, not headcount, is the meaningful unit here, and the two differ by orders of magnitude.
+
+**Identified concentrator and control.** The one mechanism capable of compressing many sessions into a short window is a simultaneous push notification. Send windows are staggered as the member base grows, which is a configuration control rather than an engineering dependency.
+
+**Scaling levers, in order:** staggered notification sends; further reduction of internal query count on the dashboard endpoint; database compute tier increase (which raises both memory and the connection pool depth that is the operative constraint); and read replication for the read path. Re-testing follows each remediation rather than a fixed calendar.
 
 ---
 
