@@ -1,3 +1,17 @@
+**PM-1142 (2026-09-09): MFA POSITION CORRECTED — I had it wrong in PM-1141, and the truth is both stronger and concentrated somewhere else.**
+
+`team@vyvehealth.co.uk` is a **Google account**, and most of the estate is reached through *Sign in with Google* rather than through separate per-service credentials. The second factor is a **Google prompt approved on a signed-in device**. PM-1141 recorded the second factor as email-delivered codes and called it "the weakest widely-used second factor" — that was wrong on both counts. A device-approved prompt is phishing-resistant in ways SMS and emailed codes are not, and the security position is better than the brain has been claiming since this afternoon. §23.288 rewritten wholesale, `brain/security_questionnaire.md` §5B rewritten, report 13's C6 row updated, both policy documents corrected.
+
+**Device coverage confirmed, which closes the failure that would only have appeared during an emergency.** Both Dean's and Lewis's devices are signed in and can approve prompts, so either director can complete a login unaided. Had this been one-sided, Lewis would have held the password and still been unable to log in — and nobody would have discovered it until the day it mattered.
+
+**The exposure is concentration and recovery, not factor strength, and it is sharper than the mailbox framing.** *Sign in with Google* makes that one account the **identity provider for the entire production estate**. And a **consumer** Google account has **no administrator**: a lock-out, compromise or automated flag has no human remedy — recovery is an automated web form, and accounts are lost to it permanently. A managed Workspace tenant gives administrative reset in minutes, plus enforced two-step verification, hardware-key support and audit logging.
+
+**This is a better argument for C6 than anything written earlier today.** The item has been carried since July as data-protection housekeeping — special-category crisis alerts on consumer-grade hosting. The real case is one sentence: *if that account goes, we don't lose our email, we lose access to the company's entire infrastructure, and there is nobody to call.*
+
+**Cheap mitigation before migration:** generate Google backup codes and store them outside Google. Device-based approval is strong but still fails if both devices are unavailable together or the account is flagged, and backup codes are the only path that does not depend on either the devices or the account's good standing.
+
+**Third correction of the day worth noting as a pattern.** Report 13 said CSP was absent (it was on 66/96). An April report inferred PITR from config flags. And this brain asserted email-delivered MFA on no evidence. All three were statements about our own posture written from assumption rather than from a check, and all three were wrong in ways that would have embarrassed us in a review. The remedy is the same every time: ask, or test, before writing it down.
+
 **PM-1141 (2026-09-09): C6 RE-RATED FROM DATA-PROTECTION HOUSEKEEPING TO THE HIGHEST-VALUE SECURITY ITEM IN THE ESTATE.**
 
 Dean confirmed that not only account registration but **MFA and account recovery for every system resolve to `team@vyvehealth.co.uk`**. That completes the continuity picture from PM-1140: Lewis can reach Supabase, GitHub, Apple, Google Play, Stripe and the rest independently, without Dean's devices, today. Key-person risk is settled as a capability problem rather than an access one.
