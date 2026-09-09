@@ -26,7 +26,7 @@ Waves are ordered by risk, not by convenience. Wave 1 blocks everything else —
 
 | Wave | Scope | Status | Owner |
 |---|---|---|---|
-| 1 | Database security remediation | NOT STARTED | Dean |
+| 1 | Database security remediation | **COMPLETE 2026-09-09 (PM-1133)** | Dean |
 | 2 | Infrastructure, credentials, backup integrity | NOT STARTED | Dean |
 | 3 | Enterprise platform features | NOT STARTED | Dean |
 | 4 | Proof and documentation | NOT STARTED | Dean |
@@ -69,6 +69,8 @@ The last piece of Wave 1 is the bit that stops this happening again, and honestl
 While you're in there, document the 21 tables that have RLS enabled with zero policies. That's a deliberate deny-all, service-role-only posture and it's correct, but a reviewer will ask for the list and the reasoning and I don't want to be deriving it live on a call.
 
 **Done when:** zero anon-executable non-trigger definer functions; every remaining `authenticated`-executable one self-scopes; the posture cron is running and has caught at least one deliberate test change; the deny-all table list is written into the security questionnaire.
+
+**CLOSED 9 September 2026 (PM-1133).** Anon-executable non-trigger definer functions 25 → 0, probed as `anon` before and after. Migrations `enterprise_w1_definer_lockdown` and `enterprise_w1_security_posture_monitor`; cron 74 `security-posture-check` at 03:15 UTC, validated against a deliberate re-grant. Deny-all table register and an honest §3 rewrite are in `brain/security_questionnaire.md`. New §23.278–§23.282. Two things worth carrying into later waves: the audit's named worst-offenders were not the actual exposures (they guard indirectly through `get_my_partner_id()`), and the one genuine unauthenticated write was scored as *guarded* by the regex — so probe, never read. One item left open by choice: `ALTER DEFAULT PRIVILEGES … REVOKE EXECUTE … FROM public, anon, authenticated` is the structural fix for the root cause but changes the default for every parallel session's new RPC; cron 74 is the compensating control until Dean calls it.
 
 **Then:** update `brain/security_questionnaire.md` §3 and §4, add a §23 hard rule about definer exposure being re-checked on every RPC ship, and close the session with the usual atomic brain commit.
 

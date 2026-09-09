@@ -41,13 +41,18 @@ All 120 public tables in our project have RLS enabled (verified April 2026, re-v
 
 ## 3. How do you handle SECURITY DEFINER functions in the database?
 
-This was the subject of a full audit in June 2026 (PM-564–567). **Result: zero open violations.**
+Audited June 2026 (PM-564–567), re-audited September 2026 (PM-1132), remediated and placed under continuous monitoring 9 September 2026 (PM-1133).
 
-All SECURITY DEFINER functions have EXECUTE revoked from PUBLIC, anon, and authenticated roles unless they are deliberately member-callable. Member-callable functions are the four that members invoke legitimately: `is_admin()`, `refresh_member_home_state()`, `queue_health_write_back()`, and `compute_engagement_components_v2()`. Each of these implements a self-scoping guard: when called by an authenticated member, the function forces the scope to the caller's own `auth.email()`. Service-role callers (Edge Functions, cron jobs) bypass the guard since `auth.email()` is null under service_role.
+**Current state:** zero SECURITY DEFINER functions in the `public` schema are executable by the `anon` role, other than trigger functions — which execute as the trigger owner regardless of who holds EXECUTE and are not invocable over the API. 34 remain executable by `authenticated`; each either self-scopes to the caller's own `auth.email()` / `get_my_partner_id()` or raises `42501`. Verified by invoking every function as `anon` after the change: 24 of 24 blocked.
 
-Two CRITICAL-severity functions that were open before this audit — `convert_member_to_paid` and `gdpr_erasure_purge` — were callable by unauthenticated anonymous requests. Both were locked in the first migration of the June 2026 audit. Two P0-severity functions that were open — `read_vault_secret(text)` (which could return any Vault secret including API keys) and `gdpr_erase_purge_subject(text)` (which could erase any member's data) — were locked in the subsequent migration.
+**We state the September drift openly, because the process finding matters more than the functions did.** The June audit closed at zero open violations. Three months of coaching and partner development later, a re-audit found 25 non-trigger definer functions executable by an unauthenticated caller. None had been deliberately granted: Supabase's default privileges grant EXECUTE on every new function to PUBLIC, anon and authenticated at creation, so exposure was the default state and each new RPC silently re-opened the surface. Nothing re-checked posture between audits, so the drift was silent by construction. That control gap is now closed (see §4).
 
-**§23.104:** Every SECURITY DEFINER function must REVOKE EXECUTE from PUBLIC, anon, authenticated unless deliberately member-callable. Member-callable ones must self-scope with service_role bypass.
+**What an unauthenticated caller could actually do** — established by invoking each function, not by reading its source: five had real effect. One returned a schema map of member-scoped tables and their erasure policies; three were rate-limit and booking-hold maintenance routines that an anonymous caller could trigger; one inserted stock automation messages into a partner tenancy identified by id. The remaining twenty returned empty, false, or raised. **No member personal data was reachable through any of them**, and there is no evidence of exploitation in the logs. All 25 were closed in a single migration on 9 September 2026.
+
+**One guard failed for a reason worth naming.** A function tested `if not (… or auth.role() = 'service_role' or …)`. With no JWT `auth.role()` is NULL, the disjunction evaluates NULL, and `IF NULL` does not fire — so a guard that reads as correct admitted anonymous callers. Every identity guard is now NULL-safe by `coalesce`, and guards are proved by calling with no identity rather than by inspection.
+
+**§23.104:** every SECURITY DEFINER function must REVOKE EXECUTE from PUBLIC, anon and authenticated unless deliberately member-callable; member-callable functions self-scope with service_role bypass.
+**§23.280:** revoking from `anon` alone is ineffective while the default PUBLIC grant stands — revoke from PUBLIC too, and re-grant `service_role` explicitly.
 
 ---
 
@@ -60,6 +65,18 @@ Two CRITICAL-severity functions that were open before this audit — `convert_me
 **Service-role-only tables** (`admin_audit_log`, `admin_users`, `platform_metrics_daily`, `broadcast_schedules`, `admin_broadcast_log`): No RLS policies — service-role access only. PostgREST blocks all direct client access.
 
 **Audit table** (`ai_interactions`, `ai_decisions`): Members can SELECT their own rows (member-scoped); INSERT is service-role only (Edge Functions write, not clients).
+
+**Tables with RLS enabled and zero policies — deliberate deny-all (22 tables, verified 9 September 2026).** RLS is on and no policy grants access, so PostgREST returns nothing to any client role; only `service_role` (Edge Functions and cron) can read or write. This is intentional for data that no client should ever reach directly:
+
+| Class | Tables | Why deny-all |
+|---|---|---|
+| Operational telemetry | `watchdog_alerts`, `broadcast_watch_alerts`, `vyve_job_runs`, `runner_commands`, `runner_heartbeat`, `transcribe_heartbeat`, `ef_rate_limits`, `coach_help_cache`, `food_lookup_misses`, `security_posture_snapshots` | Infrastructure state and abuse controls. No member data. Client visibility would expose internals and, for the rate-limit table, the controls themselves. |
+| Subject-rights and compliance | `gdpr_erasure_requests`, `gdpr_export_requests`, `gdpr_table_policy`, `health_alerts`, `stripe_events` | Requests and events are actioned by staff and Edge Functions; the erasure catalogue is a data map. Members exercise these rights through the request flow, never by reading the tables. |
+| Employer aggregate | `employer_admins`, `employer_metrics_weekly` | Employer-facing data is served exclusively through the aggregate-only dashboard function, which is the mechanism enforcing the no-individual-PII boundary. |
+| Reference and config | `trial_campaigns`, `workstyle_orgs` | Server-side configuration. Read through functions with their own guards. |
+| Internal queues | `exercise_name_misses`, `member_home_state_dirty`, `workstyle_responses` | Write-only work queues drained by scheduled jobs. |
+
+**Continuous posture monitoring (PM-1133).** A scheduled job runs daily at 03:15 UTC and records: tables with RLS disabled, tables with RLS enabled and zero policies, SECURITY DEFINER functions executable by `anon` (non-trigger and total), definer functions executable by `authenticated`, and the count of policies targeting the `public` role. Each run is diffed against the previous snapshot and any change raises an internal alert — high severity if exposure increased, naming the specific functions newly exposed. The control was validated on installation by deliberately re-granting a function to `anon`, confirming the alert fired and identified it by name, then reverting. Current baseline: 0 RLS-off tables, 22 deny-all tables, 0 anon-executable non-trigger definer functions.
 
 Cross-account isolation was verified by running a scripted self-test in June 2026: authenticate as member A, attempt to SELECT from all 62 member-scoped tables with a `member_email=member_B_email` filter. Result: zero rows returned on all tables. *(Test script available in `brain/security_questionnaire.md`.)*
 
