@@ -1,3 +1,17 @@
+**PM-1145 (2026-09-09): ACHIEVEMENTS — Dean called the overhaul, and the load test handed us the mechanisms for free.** Nothing built; this is diagnosis logged against PM-358.
+
+**Dean's two observations, both with a found cause rather than a shrug.** He noticed achievements sometimes re-firing after being seen, and that logging food produced no achievement at all, and wondered whether either was just dev-loop noise. Neither is.
+
+**"Nothing popped up when logging food" is not a popup bug — earning is not event-driven.** `getMemberAchievementsPayload`, which `member-dashboard` calls, **only reads** rows already in `member_achievements`. The function that awards tiers is `evaluateInline`, and it is not on the food-log path or most other activity paths. Crossing a threshold therefore awards nothing until some unrelated surface happens to trigger evaluation. Dean's requirement is unambiguous — *"if something's complete, it should be instant"* — and that means awarding at write time (a trigger or an EF hook on activity inserts), which is an architecture change, not a fix.
+
+**The re-firing is a race, and `seen_at` is innocent.** Live counts: 1,349 earned rows, **1,223 marked seen, 126 unseen across 108 members** (Dean 75 earned, 3 unseen). Marking works. The unseen set is read in more than one place and marked *after* display, so two overlapping loads can both claim the same row and show it twice. The dev loop raises the odds; it is not the cause.
+
+**And the same function is the member-dashboard latency found by tonight's load test.** `getMemberAchievementsPayload` iterates all 24 INLINE metrics and **awaits each sequentially** — 24-plus database round trips per home load, several of them expensive (`volume_lifted_total` pulls every `exercise_logs` row for the member and sums in JavaScript; the `sumColumn` metrics pull every workout and cardio row). At 50–80ms per round trip that is 1.2–2s of pure serial waiting, which matches the measured **p50 2,104ms** almost exactly. The outer function is well built — 21 queries already in `Promise.all` — the serial loop sits inside one of them.
+
+**Worth separating: the parallelisation fix does not need the overhaul.** Running those 24 evaluations concurrently is contained, returns byte-identical output, and should take the dashboard from ~2.1s to roughly 200ms — the cost of the slowest metric rather than the sum. It can ship on its own whenever Dean wants it; it was **not** deployed tonight because it is a production Edge Function and he had not given the word.
+
+**Brain correction:** the achievements catalogue is **107 metrics and 538 tiers** live, not the 32 metrics / 327 tiers recorded against PM-358. Anyone scoping that overhaul off the cached figure would be sizing it at a third of the real thing.
+
 **PM-1144 (2026-09-09): A SILENT SYNC FAILURE, FOUND BY ACCIDENT IN A BROWSER CONSOLE.** vyve-site `b3cf615c`, **vbb 626**.
 
 While setting up the load test, Dean's console showed `[VYVESync] delta pull failed monthly_checkins http_400: column monthly_checkins.logged_at does not exist`. **The table has no `logged_at`; its timestamp is `created_at`.**
