@@ -85,6 +85,8 @@ A note on posture throughout. Sage is a software company. Their InfoSec team wri
 
 ---
 
+> **STATUS CORRECTIONS 9 September 2026 (PM-1139).** Two scorecard rows in this report were asserted rather than verified and were wrong. **B5 said CSP was "Absent"** — it was live on 66 of 96 pages; only the newest 30 lacked it (PM-1135). **B4's underlying claim about backups** traced to an April report that inferred PITR from Postgres config flags (PM-1134, §23.283). Both are now corrected in place. **Treat other statuses in this report as unverified until checked against live state** — the pattern in both cases was a status written from memory rather than from a query. B1 and B5 are closed as of tonight; B4, B6 partially.
+
 ## 1. Scorecard
 
 | # | Domain | Status | Cost to close | Lead time | Blocks pilot? | Blocks full contract? |
@@ -93,11 +95,11 @@ A note on posture throughout. Sage is a software company. Their InfoSec team wri
 | A2 | ISO 27001 | Not started | £6–10k cert + £5–15k/yr tooling | 4–9 months | No | Contractual commitment usually sufficient |
 | A3 | SOC 2 Type II | Not started | £20–40k + tooling | 6–12 months | No | Only if a US-shaped buyer insists |
 | A4 | External penetration test | Not started | £4–8k (CREST/CHECK) | 6–8 weeks end to end | Possibly | **Yes** |
-| B1 | SECURITY DEFINER exposure | **Regressed** | £0 — internal | 1–2 sessions | **Yes if found** | **Yes** |
+| B1 | SECURITY DEFINER exposure | ~~Regressed~~ **CLOSED 9 Sep 2026 (PM-1133) — 25 anon-executable → 0, cron 74 monitoring live** | £0 — internal | Done | No | No |
 | B2 | RLS posture | Strong | £0 | Documentation only | No | No |
 | B3 | Credential rotation (service_role, anon) | Open debt | £0 | 1 session | No | Yes |
 | B4 | PITR / backup restore test | Not enabled, never tested | ~£80–150/mo | 1 day | No | **Yes** |
-| B5 | CSP / client-side hardening | Absent | £0 | 1–2 sessions | No | Yes |
+| B5 | CSP / client-side hardening | ~~Absent~~ **WRONG — corrected 9 Sep 2026 (PM-1135/1136): CSP was live on 66 of 96 pages; the 30 gaps were the newest surfaces. Now 96/96 with a coverage check. Residual: `unsafe-inline`** | £0 | Done | No | Partially |
 | B6 | Monitoring, alerting, on-call | Partial, single-person | £0–50/mo | 1–2 sessions | No | Yes |
 | B7 | Load / concurrency testing | Never done | £0–500 | 2–3 days | Possibly | **Yes** |
 | C1 | ICO registration, DPIA, DPA | **Complete** | — | — | No | No |
