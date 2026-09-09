@@ -118,6 +118,20 @@ Business continuity is documented in a key-person handover runbook covering ever
 
 ---
 
+## 5C. Performance and load testing
+
+Load tested 9 September 2026 against production using k6, at two levels.
+
+**Pilot load (30 concurrent users, 4 minutes, 2,520 requests):** zero failed requests, 100% of functional checks passed, median response 107ms. This is the level relevant to a typical departmental pilot.
+
+**Projected full-rollout load (200 concurrent users, 7 minutes, 4,856 requests):** 93.6% success. All failures were concentrated in a single endpoint — the member dashboard aggregation — which timed out under sustained load. **Direct authenticated data reads sustained 200 concurrent users with a 100% success rate and a 95th-percentile response under 90ms**, so the database and authorisation layers were not the constraint.
+
+**Identified constraint and remediation.** The dashboard endpoint aggregates a member's full home view and currently issues a large number of sequential internal queries per request, which both slows the response and multiplies load under concurrency. Remediation is understood and scoped: reduce the query count per request and cache the aggregate. We state the limit rather than the headline figure because the useful answer to "will it scale" is knowing precisely what fails first and what the fix is.
+
+**Scaling levers, in order:** the identified endpoint fix; a database compute tier increase (connection ceiling is currently 60, with 21 held at idle by platform services); and provider-side function scaling. Re-testing is scheduled to follow the endpoint remediation rather than at fixed intervals.
+
+---
+
 ## 6. Where is member data stored, and what regions does data transit through?
 
 All member data rests in a single Supabase Postgres instance (project `ixjfklpckgxrwjlfsaaz`) in **West EU / Ireland (eu-west-1)**. No member data leaves the EU under our control.

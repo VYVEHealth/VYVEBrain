@@ -1,3 +1,19 @@
+**PM-1146 (2026-09-09): B7 CLOSED WITH REAL NUMBERS — and the answer to "will it scale" is one function, not the platform.**
+
+**Pilot profile, 30 concurrent, 4 minutes: 2,520 requests, ZERO failures, 100% of checks passed, median 107ms, p95 3.15s.** The p95 crossed the 2s threshold I set, but nothing failed and nothing errored. A 30-person Bellway trial sits comfortably inside this band.
+
+**Rollout profile, 200 concurrent, 7 minutes: 4,856 requests, 6.36% failed.** All 309 failures were `member-dashboard` timing out at 60 seconds. **`my_challenges` and `daily_habits` returned 100% success throughout, and their p95 stayed under 90ms even at 200 concurrent.** The database, RLS and authorisation layers did not break — one Edge Function did.
+
+**The mechanism, found in the gateway logs rather than guessed.** In the 14-minute window the gateway handled **29,752 REST requests while the load generator sent roughly 3,200**. The remaining ~26,500 were `member-dashboard` calling *itself* out to PostgREST with the service key. Each member home load fans out into **16–45 internal requests**: 21 outer queries in `Promise.all`, plus ~24 inside `getMemberAchievementsPayload`, which awaits them **sequentially**. At 200 users that is not 200 requests hitting the platform, it is 200 plus ~27,000. New §23.292.
+
+**This revises the PM-1145 recommendation, and the revision matters.** Parallelising the sequential achievements loop shortens each invocation but issues **exactly the same number of internal calls** — it would take the 30-user case from ~2.1s to ~200ms and do very little for the 200-user saturation, because the amplification is unchanged. **The fix that addresses both is reducing round-trip count**: collapse the achievements payload into a single SQL function, or cache it. Latency and amplification fall together. Parallelising alone would have produced a much better-looking 30-user number and an unchanged cliff, which is the kind of fix that reads as success and isn't.
+
+**Instrumented per-endpoint from the server side rather than re-running anything.** `member-dashboard` at 30 concurrent: **p50 2,104ms, p95 3,541ms, max 6,523ms, avg 2,216ms**. Same window, the two PostgREST paths: **avg 40ms and 39ms, p95 89ms and 80ms**. The dashboard was the entire latency profile — the k6 median of 107ms was the two fast calls and the p90 of 2.81s was the dashboard, which is exactly what a one-in-three split predicts.
+
+**`brain/security_questionnaire.md` gains §5C** with both figures, the named constraint, the remediation and the scaling levers in order. It leads with the limit rather than the headline, because the useful answer to a reviewer asking "will it scale" is knowing precisely what fails first and what the fix is — a number with no failure mode attached invites the follow-up we could not answer.
+
+**B7 is closed.** It went from "never tested" to two measured profiles, a named bottleneck with a mechanism, a scoped fix, and a repeatable script. The remaining work is the endpoint fix and a re-test after it.
+
 **PM-1145 (2026-09-09): ACHIEVEMENTS — Dean called the overhaul, and the load test handed us the mechanisms for free.** Nothing built; this is diagnosis logged against PM-358.
 
 **Dean's two observations, both with a found cause rather than a shrug.** He noticed achievements sometimes re-firing after being seen, and that logging food produced no achievement at all, and wondered whether either was just dev-loop noise. Neither is.
