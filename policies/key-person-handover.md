@@ -19,7 +19,7 @@ Dean Brown is the only person who **operates** the technical estate. There is no
 
 | System | What it is | Access route |
 |---|---|---|
-| **Supabase** (project `ixjfklpckgxrwjlfsaaz`, EU/Ireland, Pro) | Database (232 tables), authentication, Edge Functions, 21 storage buckets, 67 cron jobs. **The single most important system — everything else is peripheral.** | Dashboard, organisation owner |
+| **Supabase** (project `ixjfklpckgxrwjlfsaaz`, EU Frankfurt `eu-central-1`, Pro) | Database (232 tables), authentication, Edge Functions, 21 storage buckets, 67 cron jobs. **The single most important system — everything else is peripheral.** | Dashboard, organisation owner |
 | **GitHub** (VYVEHealth org) | `vyve-site` member app, `vyve-command-centre` internal + coach/partner portals, `Test-Site-Finalv3` marketing, `VYVEBrain` documentation, `vyve-capacitor` native builds | Org owner |
 | **Capawesome** | Over-the-air app bundle delivery (app `f9961f66`, production channel) | Account |
 | **Apple Developer / Google Play** | App Store and Play Store listings and releases | Accounts |

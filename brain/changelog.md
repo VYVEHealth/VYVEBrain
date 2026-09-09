@@ -1,3 +1,17 @@
+**PM-1149 (2026-09-09): THE REGION IN THE PROSPECT-FACING QUESTIONNAIRE WAS WRONG, AND HAD BEEN SINCE JULY.** Plus Dean has called a full brain reconciliation for tomorrow; the drift evidence is collected so it starts from a list.
+
+**`brain/security_questionnaire.md` §6 stated that all member data rests in "West EU / Ireland (eu-west-1)". Live is `eu-central-1` — Frankfurt, Germany**, confirmed against the provider management API tonight.
+
+**What makes this worth more than a typo correction: it was already found and fixed once.** PM-767 on 12 July recorded *"REGION CORRECTION — Supabase prod is eu-central-1 FRANKFURT, not Ireland (verified via management API mid-DPA-filing)"* and corrected master.md, the live privacy policy and the sub-processor register. It missed `security_questionnaire.md` — **the single document written to be read by prospects and their data-protection officers** — and nothing caught it for two months. The legal substance is unchanged (both are EU, no transfer mechanism implicated) but naming the wrong country to a DPO in a document that feeds a DPA schedule is exactly the kind of small inaccuracy that makes a reviewer re-read everything else.
+
+**I propagated it further tonight before catching it.** The sub-processor register copy in Dean's project files is the pre-correction v1 and says Ireland; I read it, believed it, and wrote Ireland into `policies/key-person-handover.md` §2 and into questionnaire §12. All three corrected here. Worth stating plainly because it is the same failure mode as the other three today — trusting a written description of live state instead of querying the system.
+
+**Still open and handed to tomorrow:** Lewis's Complete Knowledge Base still says "West EU / Ireland" (PM-767 flagged it, never fixed), and someone needs to confirm the register copy Lewis actually holds is the corrected one rather than v1.
+
+**Dean called the full reconciliation** — his words, *"it's been a very long time… I have been a little bit lazy"* — and the last full pass was PM-603 on 12 June. Rather than leave tomorrow to hunt, the drift is enumerated in the backlog: **133 tables recorded against 232 live; 47 members against 107; 41 cron jobs against 75; achievements 32 metrics / 327 tiers against 107 / 538**; plus `prompts/cold-start.md` (banded superseded at PM-1148) and report 13, which had **three statuses proven wrong in a single day**.
+
+**The lesson to bank as a §23 rule tomorrow:** four separate times today a hand-maintained summary of live state was wrong — CSP coverage, PITR, the MFA method, and now the region — and in every case the live system was one query away. §6 of master.md already says live counts must never be cached in the brain. That policy exists and is not being followed. The reconciliation should therefore **delete cached numbers wherever a query can answer**, not merely refresh them, or this recurs in three months with different figures.
+
 **PM-1148 (2026-09-09): TRIGGER INDEX AT THE TOP OF `brain/master.md` — phrase in, doc out.**
 
 Dean's ask: he wants to open a session with *"load brain, start the dashboard fix"* and have the right document load without either of us hunting for it. The enterprise playbook already worked that way internally; this generalises it. The table sits **immediately under the master.md H1**, above CURRENT FRONT, so it is the first thing every session reads and does not get pushed down as front entries accumulate.

@@ -134,7 +134,7 @@ Load tested 9 September 2026 against production using k6, at two levels.
 
 ## 6. Where is member data stored, and what regions does data transit through?
 
-All member data rests in a single Supabase Postgres instance (project `ixjfklpckgxrwjlfsaaz`) in **West EU / Ireland (eu-west-1)**. No member data leaves the EU under our control.
+All member data rests in a single Supabase Postgres instance (project `ixjfklpckgxrwjlfsaaz`) in **EU Central / Frankfurt, Germany (eu-central-1)**, verified against the provider management API. No member data leaves the EU under our control. *(Corrected 9 Sep 2026, PM-1149: this section had said Ireland/eu-west-1. The region was verified and corrected everywhere else at PM-767 in July; this document — the prospect-facing one — was missed.)*
 
 Anthropic's API is called server-side from EU-hosted Edge Functions. We transmit pseudonymised activity summaries and wellbeing context — no raw biometrics, no full health records. Anthropic's DPA/SCCs apply. We are evaluating Anthropic's zero-data-retention API option before the Sage pilot.
 
@@ -198,7 +198,7 @@ Covered in full in the separate Disaster Recovery & Business Continuity Note (av
 - **Point-in-time recovery: not currently enabled.** It is a purchasable add-on we have not yet taken. We say so plainly because an earlier internal report inferred PITR from Postgres configuration flags and that inference was wrong; the affected documents carry dated corrections (§23.283).
 - **RPO: 24 hours. RTO: 4 hours (target, not yet evidenced).** These two figures do not currently reconcile, and we would rather state that than quote a number we cannot demonstrate. Enabling PITR takes RPO under one hour; a timed restore test will replace the RTO target with a measured figure. Both are scheduled remediation, not open-ended intentions.
 - **Restore testing:** no full restore has yet been performed and minuted. This is the single weakest point in our continuity position and it is scheduled.
-- All code in private GitHub repositories; all secrets in Supabase Vault; database and all special-category data in EU (Ireland).
+- All code in private GitHub repositories; all secrets in Supabase Vault; database and all special-category data in the EU (Frankfurt, Germany — eu-central-1).
 - ICO breach notification procedure documented; 72-hour notification window.
 
 ---
