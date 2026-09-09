@@ -7,13 +7,13 @@
 
 ## 1. The risk, stated plainly
 
-Dean Brown is the sole person with production access to the technical estate. There is no second engineer, no on-call rota, and no one else who has operated the platform. If Dean were unavailable, the platform would continue running unattended — it is substantially automated — but nothing could be fixed, deployed or restored.
+Dean Brown is the only person who **operates** the technical estate. There is no second engineer and no on-call rota. Access, however, is not the constraint: all accounts sit under the shared business email and Lewis Vines can reach them (see §3). If Dean were unavailable the platform would continue running — it is substantially automated — but nothing would be fixed, deployed or restored until a technical replacement was brought in, which Lewis is in a position to do.
 
 **What continues without intervention:** the app and portal serve normally; 67 scheduled jobs continue; billing, emails and notifications continue; backups continue.
 
 **What stops:** all fixes, all deploys, incident response, restores, and any request needing production data access — including a subject-access or erasure request that fails automatically.
 
-**Realistic unattended survival: weeks, not days, and not months.** The first thing to fail would be an expiring credential or a third-party change, not the platform itself.
+**Realistic unattended survival: weeks, not days, and not months.** The first thing to fail would be an expiring credential or a third-party change, not the platform itself. The practical window for bringing in a replacement is therefore comfortable rather than tight.
 
 ## 2. Estate inventory
 
@@ -33,11 +33,26 @@ Dean Brown is the sole person with production access to the technical estate. Th
 
 **Credentials:** 18 secrets in Supabase Vault. Vault access requires Supabase dashboard access, so **Supabase organisation access is the master key to most of the estate.**
 
-## 3. The single point of failure that matters most
+## 3. Access continuity — corrected 9 September 2026
 
-**If nobody can log into the Supabase organisation, nothing else in this document is actionable** — Vault is inside it, and Vault holds the runner SSH key and the service credentials.
+**An earlier draft of this document assumed Dean was the only holder of account access. That was wrong and the correction improves the position materially.**
 
-**ACTION, and the highest-value item in this document:** ensure a second person (Lewis, as CEO and co-founder) holds organisation-owner access to Supabase, GitHub, Apple, Google Play, Stripe and the domain registrar, and that account recovery does not depend solely on Dean's devices or personal email. **This is a £0, one-hour task that removes the sharpest edge of the risk and is not yet done.** It does not require Lewis to be technical; it requires him to be able to grant access to someone who is.
+Every account in the estate is registered to the **shared business email, team@vyvehealth.co.uk**, to which both directors have access. Lewis Vines therefore already holds a route into Supabase, GitHub, the store accounts, Stripe and the rest — not as a courtesy grant that could be forgotten, but structurally, because the accounts were never personal in the first place. Lewis also has repository access and an AI assistant linked to the same documentation repository, so the written architecture and decision history are reachable by him today without any preparation.
+
+**What this means for the risk rating:** key-person risk here is a **capability** risk, not an **access** risk. Lewis can get in; what he cannot do is operate the platform, because that is not his role. That is a materially better position than the one most single-technical-founder companies are in, and it should be stated to vendor management in those terms.
+
+**The residual risk, and it is the one to actually check.** Account access depends on more than an inbox:
+
+1. **Second factor.** If MFA codes for these accounts resolve to Dean's phone or authenticator app rather than to something Lewis can also reach, the shared email is not sufficient on its own. **ACTION: confirm, per account, how the second factor is satisfied and whether Lewis can satisfy it independently.** This is the single highest-value check in this document and it is not a large piece of work.
+2. **Recovery paths.** Confirm that account recovery for each provider routes to the shared mailbox and not to a personal address or device.
+3. **The email tenant itself.** The shared mailbox is the root of this entire chain, which makes migrating it off consumer-grade hosting (scorecard C6) a continuity issue as well as a data-protection one.
+4. **Vault contents.** Supabase Vault holds 18 secrets including the live-session runner's SSH key. Vault is reachable through Supabase organisation access, so this follows from item 1 rather than needing separate provision.
+
+**Recommended: a dry run.** Lewis signs into Supabase, GitHub and one store account from his own device, without Dean's help, and records what worked and what he could not complete. Fifteen minutes, and it converts an assumption into evidence — which is also exactly what a vendor-management reviewer is asking for when they ask this question.
+
+## 3A. Emergency continuity prompt
+
+`policies/emergency-continuity-prompt.md` is written for Lewis to paste into his AI assistant if Dean is unavailable. It orients the assistant, points it at the documentation repository, and walks through triage in priority order. It is deliberately written to be usable by someone non-technical under pressure, and it should be **tested once while nothing is wrong**, because a contingency nobody has ever run is a hope rather than a plan.
 
 ## 4. Where an incoming engineer starts
 
@@ -49,7 +64,7 @@ Dean Brown is the sole person with production access to the technical estate. Th
 
 ## 5. Contingency statement for vendor management
 
-VYVE is a small supplier and does not claim otherwise. Key-person risk is real, is documented rather than denied, and is mitigated by: comprehensive written architecture and decision history maintained continuously rather than retrospectively; a platform built on managed services that continue operating unattended; no bespoke infrastructure requiring specialist knowledge; and — once §3 is actioned — a second director able to grant access to a replacement engineer. Restoring active development would take a competent engineer days rather than months, because the system is documented and conventional.
+VYVE is a small supplier and does not claim otherwise. Key-person risk is real, is documented rather than denied, and is mitigated by: comprehensive written architecture and decision history maintained continuously rather than retrospectively; a platform built on managed services that continue operating unattended; no bespoke infrastructure requiring specialist knowledge; and a second director who already holds account access through the shared business email and can therefore bring in and enable a replacement engineer without waiting on anyone. Restoring active development would take a competent engineer days rather than months, because the system is documented, conventional, and built on managed services. A written emergency continuity procedure exists (`policies/emergency-continuity-prompt.md`).
 
 ## 6. Review
 
