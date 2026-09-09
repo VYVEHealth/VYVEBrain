@@ -2,6 +2,8 @@
 > Report 9 of 11 | 14 April 2026 | 26 items, 12 security Q&As, 6 pilot metrics
 > Target: Sage (HubSpot deal 495586118853)
 
+> **CORRECTION 9 September 2026 (PM-1134).** This report was written 14 April 2026 and is **superseded by `reports/13-enterprise-readiness-audit-2026-09.md`**. One line below was factually wrong and this document was written for procurement reviewers, so the correction is recorded here rather than the line being silently edited away. **Point-in-time recovery has never been enabled on this project.** The original claim was inferred from `wal_level=logical` and `archive_mode=on`, which are Supabase defaults present on every project and say nothing about whether PITR is purchased or restorable (§23.283). Actual position as at 9 September 2026: daily automated backups, 7-day retention, WAL archiving genuinely active at instance level (1,439 segments archived, last 20:49 UTC 9 Sep) — but **no point-in-time restore capability, so real RPO is 24 hours**. Enabling PITR is a Wave 2 item.
+
 ## Executive Summary
 Not yet enterprise-ready. 8 ready, 7 partial, 11 not ready. Top blockers: per-employer auth (6-8 hrs), GDPR tools (9-11 hrs), volume tiers (Lewis decision). Timeline: Sage demo possible by late May with 35-45 hrs development.
 
@@ -36,7 +38,7 @@ Not yet enterprise-ready. 8 ready, 7 partial, 11 not ready. Top blockers: per-em
 3. Encrypted in transit: TLS 1.2+
 4. Access control: RLS on 61 tables, JWT auth, service-role server-side only
 5. Authentication: Supabase Auth, individual credentials, no shared accounts
-6. Backup: Daily + PITR (7-day retention), WAL archiving active
+6. Backup: Daily automated backups, 7-day retention. WAL archiving active at instance level. **Point-in-time recovery NOT enabled — RPO 24 hours** (corrected 9 Sep 2026, PM-1134; the original line claimed PITR and was wrong)
 7. Uptime: Target 99.5% (Supabase 99.9% SLA)
 8. Breach procedure: 72-hour ICO notification documented
 9. Cross-border: Anthropic (US) via SCCs. PostHog EU endpoint

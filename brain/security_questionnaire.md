@@ -156,12 +156,13 @@ No third-party penetration test has been conducted as of June 2026. The June 202
 
 ## 12. Business continuity and recovery
 
-Covered in full in the separate Disaster Recovery & Business Continuity Note (available on request). Summary:
+Covered in full in the separate Disaster Recovery & Business Continuity Note (available on request). Summary, accurate as at 9 September 2026:
 
-- RTO: 4 hours | RPO: 24 hours (target: <1 hour once Supabase PITR is enabled — pending).
-- Supabase daily automated backups on Pro plan (7-day retention).
-- All code in private GitHub repositories.
-- All secrets in Supabase Vault.
+- **Backups:** Supabase Pro daily automated backups, 7-day retention. WAL archiving is active at instance level (verified: 1,439 segments archived, most recent 9 September 2026).
+- **Point-in-time recovery: not currently enabled.** It is a purchasable add-on we have not yet taken. We say so plainly because an earlier internal report inferred PITR from Postgres configuration flags and that inference was wrong; the affected documents carry dated corrections (§23.283).
+- **RPO: 24 hours. RTO: 4 hours (target, not yet evidenced).** These two figures do not currently reconcile, and we would rather state that than quote a number we cannot demonstrate. Enabling PITR takes RPO under one hour; a timed restore test will replace the RTO target with a measured figure. Both are scheduled remediation, not open-ended intentions.
+- **Restore testing:** no full restore has yet been performed and minuted. This is the single weakest point in our continuity position and it is scheduled.
+- All code in private GitHub repositories; all secrets in Supabase Vault; database and all special-category data in EU (Ireland).
 - ICO breach notification procedure documented; 72-hour notification window.
 
 ---

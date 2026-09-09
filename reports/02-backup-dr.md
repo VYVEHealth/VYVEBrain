@@ -2,13 +2,15 @@
 > Report 2 of 11 | 14 April 2026 | 7 asset categories, 6 DR scenarios
 > Database: 20 MB, PostgreSQL 17.6, WAL archiving ON, 15 auth users, 4 storage buckets, 266 objects
 
+> **CORRECTION 9 September 2026 (PM-1134).** This report is where the PITR error originated, and it propagated from here into `reports/09-enterprise-readiness.md`, which was prospect-facing. **PITR has never been enabled on this project.** `wal_level=logical` and `archive_mode=on` are Supabase defaults on every project and are not evidence of point-in-time recovery — PITR is a paid add-on and a *restore capability*, not a Postgres setting (§23.283). The two claims below are struck. Actual position 9 Sep 2026: daily automated backups with 7-day retention, WAL archiving genuinely running (wal-g, 1,439 segments archived), **no point-in-time restore, real RPO 24 hours** against a stated 4-hour RTO. Neither number has ever been proven by an actual restore test. Both are Wave 2 items.
+
 ## Executive Summary
-**CRITICAL: 19 of 20 core Edge Functions have NO external backup.** Only onboarding has a staging copy (7 versions stale). The Composio wipe on 13 April proved this is real. Database has Supabase PITR but no off-platform backup. VAPID private key exists only in Supabase secrets.
+**CRITICAL: 19 of 20 core Edge Functions have NO external backup.** Only onboarding has a staging copy (7 versions stale). The Composio wipe on 13 April proved this is real. Database has daily backups (7-day retention) and no off-platform backup. ~~Supabase PITR~~ — **PITR is not enabled; corrected PM-1134.** VAPID private key exists only in Supabase secrets.
 
 ## Asset Categories
 
 ### Database - PARTIAL
-- Supabase PITR active (wal_level=logical, archive_mode=on). 7-day retention
+- ~~Supabase PITR active (wal_level=logical, archive_mode=on). 7-day retention~~ **WRONG, corrected PM-1134:** daily automated backups with 7-day retention only. Those two GUCs are Supabase defaults and do not indicate PITR. No point-in-time restore; RPO 24h; no restore ever tested.
 - No off-platform backup. If Supabase project deleted, all data lost
 - auth.users password hashes cannot be exported - users need password reset on restore
 - SQL functions and triggers not version-controlled
