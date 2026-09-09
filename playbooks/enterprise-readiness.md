@@ -88,6 +88,8 @@ Then credentials. The service_role key picked up an extra consumer on the Hetzne
 
 Last, add a Content Security Policy to the portal pages and document what we hold in localStorage. JWTs in localStorage is standard and we have a defensible answer for it, but CSP is the mitigation a tester asks for immediately after probing for XSS, and not having it turns a fine answer into a follow-up finding.
 
+**PROGRESS 9 September 2026.** Doc track done (PM-1134): the false backup claim is corrected in `reports/09-enterprise-readiness.md` **and in its actual origin `reports/02-backup-dr.md`**, which the playbook did not name — 09 was the copy. Questionnaire §12 rewritten honest. CSP done (PM-1135), and the item as written was stale: CSP was not missing, it was on 66 of 96 pages, with the 30 gaps being the newest surfaces including the Mind and Connect pillars. **BLOCKED: PITR is a paid dashboard add-on Dean must enable** (~$100/mo Pro, 7-day) — the restore test and any evidenced RTO sit behind it. **NOT STARTED: key rotation** — treat as its own session; service_role gained a consumer on the Hetzner box at PM-714 and a missed consumer fails hard, so build the full checklist before touching anything. **CSP follow-ups:** canonicalise the six policy variants on the other 66 pages; size the nonce migration off `'unsafe-inline'`; ship a CI coverage check (§23.285).
+
 **Done when:** PITR on; one restore performed and minuted with a timestamp; no false backup claim anywhere in the brain or in Lewis's materials; both keys rotated with a documented cadence; CSP headers live.
 
 ---

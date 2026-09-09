@@ -96,6 +96,16 @@ JWTs in localStorage are a standard SPA pattern. The access token is short-lived
 
 ---
 
+## 5A. Content Security Policy
+
+All portal pages ship a Content Security Policy via meta tag, restricting script, style, font, image, media, frame and connection origins to an explicit allow-list, with `object-src 'none'`, `base-uri 'self'` and `form-action 'self'`. Coverage was completed on 9 September 2026: 30 pages built after the policy was first introduced had been shipping without it, which we found and closed rather than discovered in review.
+
+**Stated limitation:** `script-src` currently permits `'unsafe-inline'`. The portal carries roughly 200 inline script blocks and 880 inline event handlers, so removing it is a scoped refactor to nonce-based execution rather than a configuration change. We state this plainly because a CSP with `unsafe-inline` provides meaningfully weaker XSS mitigation than one without, and an accurate description of a partial control is more useful to a reviewer than an overstated one. Report-only mode is not available to us: browsers honour it only as an HTTP header and the portal is served from static hosting that cannot set headers.
+
+**Compensating controls:** no third-party origin is allowed that the application does not actually use (an unused allow-list entry is a widened attack surface, so the email and Google API origins inherited from the earlier policy were removed); all database access is behind RLS with per-row member scoping; and API credentials are never present in client code.
+
+---
+
 ## 6. Where is member data stored, and what regions does data transit through?
 
 All member data rests in a single Supabase Postgres instance (project `ixjfklpckgxrwjlfsaaz`) in **West EU / Ireland (eu-west-1)**. No member data leaves the EU under our control.
