@@ -2540,6 +2540,10 @@ Continuity is complete: both directors reach the account and **both directors' d
 
 **Consequence for planning: the C6 tenant migration is a continuity and security priority, not the data-protection housekeeping it has been carried as.** The sentence for Lewis: *if that account goes, we don't lose our email, we lose access to the company's entire infrastructure, and there is nobody to call.* Any new system added to the estate inherits this — register it to the shared account and check what its recovery path actually resolves to.
 
+**§23.289 (PM-1143):** `max_connections` on this project is **60**, and **21 are held at idle with nobody on the platform** (10 by PostgREST's pool, the rest by pg_cron, pg_net, the exporter, pgbouncer and management). That leaves roughly 39 for everything else, and it is the **real concurrency ceiling** — not CPU, not query time. Edge Functions reach the database through the pooler, so the ceiling bites as pooler saturation and shows up as slow or refused connections rather than as an obvious error. Anything that raises baseline connection count (a new always-on service, another exporter, a long-running session) eats headroom that member traffic needs. Check `pg_stat_activity` before adding one, and treat connection headroom as a budget with a named owner.
+
+**§23.290 (PM-1143):** `cron.job_run_details` **grows without bound and nothing prunes it** — found at **318,213 rows** with 2,243 sequential scans and zero index scans, from 67 jobs. pg_cron writes a row per job per run forever; Supabase does not clean it up. Symptoms are diffuse rather than obvious: slow `update cron.job_run_details` statements (1.4s observed), autovacuum load, and wasted buffer cache. **Cron 75 `prune-cron-history` (03:40 UTC) now deletes rows older than 7 days**; the backfill took it to 25,097. Any project adding pg_cron jobs inherits this and should ship the prune with the first job, not after 318k rows.
+
 ## 24. Key references, credentials & URLs
 
 ### Core infrastructure
