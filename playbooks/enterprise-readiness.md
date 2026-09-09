@@ -28,10 +28,10 @@ Waves are ordered by risk, not by convenience. Wave 1 blocks everything else —
 |---|---|---|---|
 | 1 | Database security remediation | **COMPLETE 2026-09-09 (PM-1133)** | Dean |
 | 2 | Infrastructure, credentials, backup integrity | NOT STARTED | Dean |
-| 3 | Enterprise platform features | NOT STARTED | Dean |
+| 3 | Enterprise platform features | **DEFERRED 2026-09-09 — blocked on L12** | Dean |
 | 4 | Proof and documentation | NOT STARTED | Dean |
 | 5 | External and paid engagements | NOT STARTED | Dean books, Lewis funds |
-| L | Lewis track — 11 items | NOT STARTED | Lewis |
+| L | Lewis track — 12 items | NOT STARTED | Lewis |
 
 *Update this table at the close of every enterprise session. It is the fastest read of where we are.*
 
@@ -96,6 +96,8 @@ Last, add a Content Security Policy to the portal pages and document what we hol
 
 ## WAVE 3 — Enterprise platform features
 
+**DEFERRED 9 September 2026 (PM-1137), pending L12.** Dean's read of the Sage arrangement — VYVE distributed to Sage's own customers, embedded in the Sage portal — would change the tenant model, the identity model and the privacy floor. Building this wave against the wrong assumption means building it twice, and none of it is load-bearing today: **there are no real employer accounts** (live check 9 Sep: 86 real members carry no company at all; the BT, Sage and Individual rows are test data). Resume when L12 is answered.
+
 This is where the product actually has to change, and it's the wave most likely to be discovered late by someone else, so I'd rather we got ahead of it.
 
 The employer dashboard still authenticates on a shared API key. One static secret across all employers is the sort of thing that ends a security review in a single sentence, and it was flagged back in April. Move to proper per-employer authentication with scoped access. Keep the aggregate-only PII boundary exactly as it is — that policy is a genuine competitive strength and it's the most reassuring thing we can say to an employer's works council, so it doesn't get relaxed for convenience.
@@ -138,7 +140,7 @@ Alongside it: the formal accessibility audit if the pre-assessment in Wave 4 say
 
 ---
 
-## LEWIS TRACK — 11 items
+## LEWIS TRACK — 12 items
 
 Not ours to build, but ours to track, because every one of these has weeks of external lead time and they've all been sitting still longer than anything on my list.
 
@@ -155,6 +157,17 @@ Not ours to build, but ours to track, because every one of these has weeks of ex
 | L9 | Article 9 consent wording — legal review | £500–1.5k | 2–3 weeks | OPEN |
 | L10 | Agree pilot success criteria with Sage in writing | £0 | One meeting | OPEN since April |
 | L11 | YouTube-embed disclosure into privacy policy | £0 | 1 hour | OPEN since July |
+| L12 | **Confirm the Sage commercial model — this re-shapes Wave 3** | £0 | One conversation | OPEN 2026-09-09 |
+
+**L12 (added 9 September 2026, PM-1137) — ask Sage what the arrangement actually is, because Dean's current understanding changes Wave 3's design.** Dean's read is that VYVE would be offered to **Sage's customers** — small businesses using Sage — and would likely sit inside the Sage portal, with users signing in through Sage. If that is right, this is a **distribution channel, not an enterprise sale**, and three Wave 3 assumptions break:
+
+- **The tenant is not Sage.** It is hundreds or thousands of small employers, each arriving on their own. Wave 3's bulk CSV import of 200 employees is the wrong shape; self-serve tenant creation at signup is the right one.
+- **Identity is probably not SAML.** Users arriving already authenticated inside a host portal means Sage is the identity provider, and for an embedded app that is far more likely to be OAuth/OIDC via a developer programme. Supabase Auth handles SAML natively but not arbitrary OIDC providers, so that route means a token exchange in an Edge Function — real work, not huge, but a different build from SAML.
+- **The aggregate-only PII boundary stops being sufficient.** It is genuinely strong at 200 employees. At a nine-person firm, "team wellbeing dropped this month" identifies a person. A minimum cohort floor below which the employer dashboard shows nothing is cheap to design in now and expensive to retrofit after a small employer complains.
+
+**The question to put:** is this an app-marketplace listing, an embedded integration, or a reseller arrangement? Those are three different builds. Alan is the right person to help shape it — procurement background, and he will know how these arrangements get structured internally.
+
+**Supabase note for whoever prices it:** end-user SSO is included on Pro for 50 monthly active SSO users, then roughly $0.015/MAU. Dashboard SSO (logging into Supabase itself) is Team/Enterprise — different thing, often conflated. Confirm on the live pricing page before anyone quotes it.
 
 L1 comes first because it re-prices everything — until Sage tells us whether they want Cyber Essentials, ISO 27001 or SOC 2, we're guessing at a decision worth somewhere between £400 and £40,000. L2 comes next because HAVEN is live for real members without clinical sign-off and the downside there isn't a lost contract.
 
