@@ -1,5 +1,30 @@
 # VYVE Health — Brain Master
 
+## TRIGGER INDEX — say the phrase, Claude loads the doc
+
+*Read this first, every session. `/playbooks/`, `/tasks/` and `/prompts/` are loaded on demand — this table is how they get found. If Dean says something close to a phrase below, load the doc named beside it before doing anything else. Keep this table updated whenever a new wave map, playbook or session prompt is written; a doc nobody can trigger is a doc nobody reads.*
+
+| Dean says | Claude loads |
+|---|---|
+| "load brain" | `brain/master.md` → `brain/changelog.md` → `tasks/backlog.md`, in that order, then confirm and ask what we're working on |
+| **"start dashboard fix"** / "fix the home screen" / "member-dashboard perf" | `prompts/session-member-dashboard-performance.md` — **the 500-member blocker; do this before the achievements overhaul** |
+| **"start achievements overhaul"** / "fix achievements" | `prompts/session-achievements-overhaul.md` (PM-358) |
+| **"start key rotation"** / "rotate the keys" | `prompts/session-credential-rotation.md` (enterprise B3) |
+| "enterprise status" / "start enterprise wave N" / "lewis enterprise chase" | `playbooks/enterprise-readiness.md` — has its own internal trigger index |
+| "employer dashboard" / "cohort floor" / "Bellway" | `tasks/employer-dashboard-cohort-floor.md` |
+| "partner portal wave N" / "partner portal gap map" | `tasks/partner-portal-premium-gap-map.md` (+ `tasks/partner-portal-gap-map.md`) |
+| "do Trainerize wave N" / "coach portal wave N" | `tasks/coach-portal-trainerize-waves.md` + `tasks/coach-portal-trainerize-gap-map.md` |
+| "member admin wave N" | `tasks/vyve-member-admin-waves.md` + `tasks/vyve-member-admin-spec.md` |
+| "CC design system" / "design tokens" | `tasks/cc-design-system-locked.md` |
+| "partner onboarding" / "partner funnel" | `playbooks/partner-onboarding.md` + `playbooks/partner-attribution-and-onboarding-spec.md` |
+| "live sessions" / "the runner" | `playbooks/live-sessions-operations.md` + `playbooks/live-runner-ops.md` |
+| "load test" / "run the k6" | `tools/vyve-load-test.js` — 30 VUs default; 200 via `k6 run --stage 1m:50 --stage 2m:200 --stage 3m:200 --stage 1m:0` |
+| "security questionnaire" / "a prospect asked" | `brain/security_questionnaire.md` — prospect-facing source of truth |
+| "GDPR" / "erasure" / "SAR" | `brain/gdpr_erasure_flow.md` + `brain/gdpr_export_schema.md` |
+| "disaster recovery" / "what if" | `playbooks/disaster-recovery.md` + `policies/key-person-handover.md` |
+| "what's the schema" | `brain/schema-snapshot.md` — but for live counts, query the database, never the doc |
+
+
 <!--CURRENT_FRONT_START-->
 
 **PM-1125→1127 (2026-09-08, late): TRAINERIZE W9 PART 2 SHIPPED — W9 COMPLETE (CC `bd7b5647`; vyve-site `24c915c6` vbb 623 — NOT OTA'd; no migration, no EF, no cron).** **#107** Overview becomes a widget grid that **moves** the legacy nodes rather than re-rendering them, so the notes textarea, W2's alert toggles and the activity search keep working untouched (§23.266); debounced on the pane settling, idempotent. **Every widget defaults on because `partner_partners.coach_ui_prefs` is `{}` on every row** — W1's `auto_tags` and W8's `default_availability` have never been written by anyone, so the no-prefs branch is the only one that runs. (`coach_ui_prefs` is a jsonb COLUMN on `partner_partners`, not a table.) Prefs save as one own-row PATCH under `widgets`, merging. The editor lists only widgets the client actually has. **Per-habit heatmap** replaces the 7-day strip (`w5Habits` shadowed once); days before assignment render not-applicable, never missed. **#109 review by workout** — prescribed vs logged off `programme_json.weeks[].sessions[].exercises[].exercise_name`; **10 of 42 logged names match nothing prescribed**, so unmatched sets get their own group rather than being dropped or force-matched. **The feedback slot is visible and empty on purpose: `workouts.difficulty_rating` is null and `member_note` empty on ALL 81 rows** — PM-956 shipped the capture and nothing has ever come through it; why is OPEN. **#91 was three-quarters built** — `textarea` and `scale` already existed in both renderers, so only multi-select and "Other" are new; **`longtext` is aliased on READ**, fixing the live form that was giving clients a one-line box for a long answer, without rewriting the stored question. jsdom 58/58 + 55/55 re-run. **NEXT: clear the OTA stack (vbb 623 = ten waves + the two YouTube-wrapper builds), then WD light-first skin, or W10.**

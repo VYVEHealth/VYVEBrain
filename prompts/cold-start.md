@@ -1,5 +1,15 @@
 # VYVE Health — AI Cold Start Prompt
 
+> **SUPERSEDED — do not paste this. Flagged 9 September 2026 (PM-1148).** This file has drifted badly
+> and now states things that are wrong: it says 36 tables (live is **232**), points at the **retired**
+> Composio GitHub path (the live path is Vault PAT + GitHub REST/Git Data API, §23.27), claims GitHub
+> MCP is read-only, and lists the Capacitor wrap as the current priority (shipped long ago — we are on
+> iOS 2.0.1 / Android 1.0.10). Anyone pasting it inherits a wrong rule set.
+>
+> **Use instead:** say **"load brain"**, which loads `brain/master.md` (whose TRIGGER INDEX is at the
+> top) → `brain/changelog.md` → `tasks/backlog.md`. That is the current cold start and it cannot go
+> stale the way a hand-written summary does. Kept rather than deleted per soft-kill discipline.
+
 > Copy everything below this line and paste it as your first message in ANY AI session.
 
 ---
