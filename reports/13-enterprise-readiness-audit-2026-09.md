@@ -107,7 +107,7 @@ A note on posture throughout. Sage is a software company. Their InfoSec team wri
 | C3 | GDPR Art. 15 / 17 pipelines | **Live and programmatic** | — | — | No | No |
 | C4 | Article 9 consent wording | Needs legal review | £500–1.5k | 2–3 weeks | No | Yes |
 | C5 | Records retention schedule | Not written | £0 | 1 session | No | Yes |
-| C6 | Email tenant (finding U) | **Special-category data on consumer hosting** | ~£12/user/mo | 1 week | **Yes** | **Yes** |
+| C6 | Email tenant (finding U) | **RE-RATED 9 Sep 2026 — special-category data on consumer hosting AND the root of trust for the entire estate: MFA + account recovery for every system resolve to this mailbox. Highest-value security item we have.** | ~£12/user/mo | 1 week | **Yes** | **Yes** |
 | D1 | B2B volume tiers | Undefined | £0 — Lewis decision | Days | **Yes** | **Yes** |
 | D2 | MSA / contract template | Not drafted | £2–5k legal | 3–4 weeks | **Yes** | **Yes** |
 | D3 | Pilot success criteria | Proposed, not agreed | £0 | Days | **Yes** | No |

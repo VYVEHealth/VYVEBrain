@@ -106,6 +106,16 @@ All portal pages ship a Content Security Policy via meta tag, restricting script
 
 ---
 
+## 5B. Administrative access, MFA and continuity
+
+Privileged access is role-based and enforced technically rather than by convention: 13 active privileged accounts across admin, team and partner roles, with row-level security on every member-scoped table and a daily automated check that alerts on any change to the enforcement surface.
+
+All administrative accounts across the estate are registered to a shared company mailbox, with multi-factor authentication and account recovery resolving to the same place. Both directors can therefore reach every system independently. We state the trade-off rather than leave it to be found: email-delivered second factors are weaker than an authenticator app or hardware key, and we accept that today in exchange for complete access continuity at a two-person company. The mitigating controls are that the mailbox itself carries the strongest second factor available to it, and that migration to a managed tenant is scheduled.
+
+Business continuity is documented in a key-person handover runbook covering every system, its access route, and what an incoming engineer would need. A written emergency continuity procedure exists for the non-technical director. Full architecture, decision history and operational state are maintained continuously in a documentation repository both directors can read.
+
+---
+
 ## 6. Where is member data stored, and what regions does data transit through?
 
 All member data rests in a single Supabase Postgres instance (project `ixjfklpckgxrwjlfsaaz`) in **West EU / Ireland (eu-west-1)**. No member data leaves the EU under our control.

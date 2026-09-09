@@ -41,12 +41,16 @@ Every account in the estate is registered to the **shared business email, team@v
 
 **What this means for the risk rating:** key-person risk here is a **capability** risk, not an **access** risk. Lewis can get in; what he cannot do is operate the platform, because that is not his role. That is a materially better position than the one most single-technical-founder companies are in, and it should be stated to vendor management in those terms.
 
-**The residual risk, and it is the one to actually check.** Account access depends on more than an inbox:
+**Confirmed 9 September 2026: second factor and account recovery for every account also resolve to `team@vyvehealth.co.uk`.** Continuity is therefore complete — Lewis can reach every system independently, without Dean's devices, today.
 
-1. **Second factor.** If MFA codes for these accounts resolve to Dean's phone or authenticator app rather than to something Lewis can also reach, the shared email is not sufficient on its own. **ACTION: confirm, per account, how the second factor is satisfied and whether Lewis can satisfy it independently.** This is the single highest-value check in this document and it is not a large piece of work.
-2. **Recovery paths.** Confirm that account recovery for each provider routes to the shared mailbox and not to a personal address or device.
-3. **The email tenant itself.** The shared mailbox is the root of this entire chain, which makes migrating it off consumer-grade hosting (scorecard C6) a continuity issue as well as a data-protection one.
-4. **Vault contents.** Supabase Vault holds 18 secrets including the live-session runner's SSH key. Vault is reachable through Supabase organisation access, so this follows from item 1 rather than needing separate provision.
+**That resolution creates a single, concentrated dependency, and it should be named rather than celebrated.** The shared mailbox is no longer just an inbox: it is the second factor and the recovery path for the entire estate. Anyone who reaches it reaches Supabase, GitHub, the store accounts and Stripe together, with nothing else in the way.
+
+Two things follow, and both are decisions rather than defects:
+
+1. **Email-delivered codes are the weakest widely-used form of MFA** — phishable and interceptable in ways an authenticator app or hardware key is not. For a two-person company this is a defensible trade: continuity bought at some cost in credential strength. It is recorded here so that it is a decision we know we have made rather than a default we drifted into, and so that a reviewer hears it from us first.
+2. **The mailbox itself is the one door where email-based recovery cannot be the answer**, because it *is* the email. It must therefore carry the strongest second factor its provider offers — an authenticator app or a hardware key, never SMS — and both directors must be able to satisfy it. **This is the highest-value security action open to us and it is not large.**
+
+**Scorecard C6 re-rated.** The email tenant migration has been carried as a data-protection item (special-category crisis alerts arriving in consumer-grade hosting). It is now also the **single highest-value security item in the estate**, because that mailbox is the master key to everything else. "Consumer-grade hosting protects our support inbox" and "consumer-grade hosting is the root of trust for our entire production environment" are very different sentences in a security questionnaire, and only the second one is true.
 
 **Recommended: a dry run.** Lewis signs into Supabase, GitHub and one store account from his own device, without Dean's help, and records what worked and what he could not complete. Fifteen minutes, and it converts an assumption into evidence — which is also exactly what a vendor-management reviewer is asking for when they ask this question.
 

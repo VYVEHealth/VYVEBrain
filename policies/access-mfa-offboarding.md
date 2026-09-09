@@ -27,7 +27,11 @@ Enforcement is technical, not procedural: row-level security on every member-sco
 
 **Required** on every account that can reach member data or credentials: Supabase, GitHub, Apple Developer, Google Play, Stripe, Brevo, PostHog, HubSpot, Cloudflare, and the email tenant.
 
-**Current state, stated honestly:** MFA is enabled on the principal accounts but there is **no periodic evidence check** that it remains enabled everywhere, and enforcement relies on each provider's own settings rather than a central identity provider. **ACTION: a one-off audit of every account in the estate inventory, recording MFA state, then an annual re-check.** £0, one session.
+**Current state, stated honestly.** MFA is enabled across the estate, and both second factor and account recovery resolve to the shared business mailbox `team@vyvehealth.co.uk`, which both directors reach. That gives complete access continuity (see the handover runbook §3) at a known cost: **email-delivered codes are the weakest widely-used second factor**, being phishable and interceptable in ways an authenticator app or hardware key is not. For a two-person company this is a deliberate and defensible trade, and it is recorded as a decision rather than left as an unexamined default.
+
+**The consequence is a concentrated dependency.** The shared mailbox is the second factor and the recovery route for every system, so reaching it reaches Supabase, GitHub, the store accounts and Stripe at once. **Two actions follow, and the first is the highest-value security item open to us:** (1) the mailbox itself must carry the strongest second factor its provider offers — authenticator app or hardware key, never SMS — satisfiable by both directors, since email recovery cannot protect the email; (2) migrating the mailbox to a managed tenant (scorecard C6) is a **security** priority, not only the data-protection one it has been carried as.
+
+There is also **no periodic evidence check** that MFA remains enabled everywhere; enforcement relies on each provider's settings rather than a central identity provider. **ACTION: one-off audit of every account in the estate inventory recording MFA state and method, then an annual re-check.** £0, one session.
 
 Member accounts do not currently require MFA. This is a deliberate product decision for a consumer wellbeing app; it is stated rather than implied, and would be revisited if an employer required it.
 
