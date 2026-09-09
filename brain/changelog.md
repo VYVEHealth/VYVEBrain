@@ -1,3 +1,17 @@
+**PM-1144 (2026-09-09): A SILENT SYNC FAILURE, FOUND BY ACCIDENT IN A BROWSER CONSOLE.** vyve-site `b3cf615c`, **vbb 626**.
+
+While setting up the load test, Dean's console showed `[VYVESync] delta pull failed monthly_checkins http_400: column monthly_checkins.logged_at does not exist`. **The table has no `logged_at`; its timestamp is `created_at`.**
+
+**The cause is a two-place configuration that only got fixed in one place.** `sync.js` holds the hydrate `path()` for each table in one block and the `CURSOR_COL` delta map about three hundred lines further down. PM-112 corrected the hydrate path — its comment still reads "server schema has iso_month (text 'YYYY-MM'), not activity_date… order by created_at (real timestamp on the table)" — and the `CURSOR_COL` entry beside it was never touched. So full hydrate worked, delta failed, and the two disagreed about the same table indefinitely. New §23.291.
+
+**The impact was quiet, which is why it lasted.** The delta cycle logs the failure and carries on — the console line reads `13 delta, 42 full, 42 skipped, 1 failed` — so monthly check-in data simply went stale between full hydrates. Nothing errored anywhere a member would see, nothing alerted, and no monitoring covers it. It surfaced because Dean happened to have DevTools open for an unrelated reason.
+
+**Checked the whole map rather than just the reported table.** All 14 `CURSOR_COL` entries verified against the live schema: `daily_habits`, `workouts`, `cardio`, `movement_activities`, `exercise_logs`, `session_views`, `replay_views`, `nutrition_logs`, `weight_logs`, `wellbeing_checkins` on `logged_at`; `replay_video_views` and `session_live_views` on `last_updated_at`; `weekly_goals` on `created_at` — **13 correct, `monthly_checkins` the only mismatch.** The map is otherwise sound, which is worth knowing so nobody re-audits it.
+
+**Also found and deliberately not fixed: two missing images.** `sessions-data.js` points at `thumb-podcast.jpg` and `thumb-education.jpg`; neither is in the repo, though six sibling thumbnails are. Those two session cards render broken images. Both are dead streams awaiting content per Dean's earlier ruling, so the correct fix is two real images from Lewis or Calum rather than silently substituting an existing thumbnail and calling it done.
+
+**B7 parked rather than closed.** The load-test script is committed and now also written into Dean's `~/Downloads`; what remains is a five-minute run with a real anon key and a fresh member token, not a session's work. The substantive B7 answer already exists from PM-1143 — member path measured at 3–56ms in production, connection ceiling identified at 60 with roughly 39 spare. The setup ate more of the evening than the finding was worth, and that is recorded so the next session doesn't re-litigate it.
+
 **PM-1143 (2026-09-09): B7 LOAD TESTING — the member path is fine, the ceiling is connections, and a cron table had quietly grown to 318k rows.**
 
 **Honest scope first: the sandbox has no network route to supabase.co**, so live concurrent load cannot be generated from a Claude session. Rather than skip the item, the work split into the half that can be done here — measuring real cost against production — and a script Dean runs from his Mac for the half that cannot.

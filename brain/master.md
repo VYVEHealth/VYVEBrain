@@ -2544,6 +2544,8 @@ Continuity is complete: both directors reach the account and **both directors' d
 
 **§23.290 (PM-1143):** `cron.job_run_details` **grows without bound and nothing prunes it** — found at **318,213 rows** with 2,243 sequential scans and zero index scans, from 67 jobs. pg_cron writes a row per job per run forever; Supabase does not clean it up. Symptoms are diffuse rather than obvious: slow `update cron.job_run_details` statements (1.4s observed), autovacuum load, and wasted buffer cache. **Cron 75 `prune-cron-history` (03:40 UTC) now deletes rows older than 7 days**; the backfill took it to 25,097. Any project adding pg_cron jobs inherits this and should ship the prune with the first job, not after 318k rows.
 
+**§23.291 (PM-1144):** `sync.js` keeps **two** independent per-table configurations — the hydrate `path()` and the `CURSOR_COL` delta map — and **fixing one does not fix the other**. `monthly_checkins` was corrected in the hydrate path at PM-112 (comment even says "server schema has iso_month, not activity_date… order by created_at") while its `CURSOR_COL` entry stayed `logged_at`, a column that does not exist on the table. Result: every delta cycle 400'd on that one table for months while full hydrate reported healthy, so the data simply went stale between hydrates with nothing member-visible to notice. **The failure is silent by design** — the delta cycle logs and moves on (`13 delta, 42 full, 42 skipped, 1 failed`), so the only evidence is a console line. **When touching a table's sync config, change both, and verify the cursor column against the live schema** — all 14 entries were checked at PM-1144 and 13 were right, so the map is otherwise sound.
+
 ## 24. Key references, credentials & URLs
 
 ### Core infrastructure
