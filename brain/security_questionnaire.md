@@ -120,21 +120,28 @@ Business continuity is documented in a key-person handover runbook covering ever
 
 ## 5C. Performance and load testing
 
-Load tested against production using k6 on 9 September 2026, remediated the same evening, and re-tested.
+Load tested against production using k6 on 9 September 2026, remediated the same evening, then re-tested and capacity-measured on 10 September.
 
-**Pilot load (30 concurrent virtual users, 4 minutes, 2,520 requests):** zero failed requests, 100% of functional checks passed, median response 107ms. This is the level relevant to a departmental pilot.
+**Pilot load (30 concurrent users, 4 minutes, 2,520 requests):** zero failed requests, 100% of functional checks passed, median response 107ms.
 
-**Remediation shipped between tests.** The first run identified a single constraint: the member dashboard aggregation issued a large number of sequential internal queries per request, which both slowed the response and multiplied load under concurrency. That aggregation was collapsed into a single database call, verified byte-identical in output against the previous version by live invocation before and after deployment.
+**Remediation shipped between tests.** The initial test identified one constraint: the member dashboard aggregation issued a large number of sequential internal queries per request, slowing the response and multiplying load under concurrency. That aggregation was collapsed into a single database call, verified byte-identical in output against the previous version by live invocation before and after deployment.
 
-**Post-remediation measurement.** At 50 concurrent users — above the pilot profile — the dashboard endpoint now responds at a **median of 400ms and a 95th percentile of 912ms**, against a median of 1.4-2.7 seconds at only 30 concurrent before the change. Total internal request volume across an identical test fell by **44%** while the test drove 17% more client traffic.
+**Measured capacity, not modelled.** Capacity was then measured directly using an arrival-rate test that holds a fixed request rate regardless of response time, where one request equals one member opening the app:
 
-**Known limit, stated plainly.** At 200 sustained concurrent users the platform still degrades, with a 5.1% request failure rate concentrated in the same aggregation endpoint. We state this rather than the headline figure because the useful answer to "will it scale" is knowing what fails first and what the fix is.
+| Home screen loads per second | Median | 95th percentile |
+|---|---|---|
+| 1 | 349ms | 582ms |
+| 3 | 313ms | 456ms |
+| 6 | 286ms | 475ms |
+| 8 (sustained 2 minutes) | 353ms | 692ms |
 
-**What that limit means in member numbers.** 200 sustained virtual users equates to approximately 46 member home-screen loads per second, held indefinitely. Modelled against observed usage — roughly three app opens per member per day, half of them inside a two-hour morning window — that request rate corresponds to a member base well above 70,000. The tested clean band covers an estimated 15,000-20,000 members at realistic peak. Concurrency, not headcount, is the meaningful unit here, and the two differ by orders of magnitude.
+Response time is essentially flat from one request per second to eight, with no failed requests. Degradation beyond that point is a queueing effect rather than an error condition: in the test that exceeded capacity, the median response remained at 413ms and 2.4% of requests failed.
 
-**Identified concentrator and control.** The one mechanism capable of compressing many sessions into a short window is a simultaneous push notification. Send windows are staggered as the member base grows, which is a configuration control rather than an engineering dependency.
+**What that means in member numbers.** Observed usage over 60 days averages 1.94 sessions per active member per day, with activity concentrated in identifiable evening and morning hours. On that pattern, measured capacity corresponds to an estimated **25,000-30,000 members** under normal usage. Concurrency rather than headcount is the meaningful unit, and the two differ by orders of magnitude.
 
-**Scaling levers, in order:** staggered notification sends; further reduction of internal query count on the dashboard endpoint; database compute tier increase (which raises both memory and the connection pool depth that is the operative constraint); and read replication for the read path. Re-testing follows each remediation rather than a fixed calendar.
+**The identified concentrator, and its control.** The only mechanism capable of compressing many sessions into a short window is a simultaneous push notification. Tested directly: a send to approximately 5,000 members is served at a 95th-percentile response of 692ms with no failures; a send to approximately 10,000 members exceeds current capacity. Send windows are therefore staggered as the member base grows — a configuration control, not an engineering dependency.
+
+**Scaling levers, in order:** staggered notification sends; further reduction of internal query count on the dashboard endpoint; database compute tier increase (raising memory and connection pool depth, the operative constraint); and read replication. Re-testing follows each remediation rather than a fixed calendar. Testing methodology and results are retained internally and can be shared under NDA.
 
 ---
 
