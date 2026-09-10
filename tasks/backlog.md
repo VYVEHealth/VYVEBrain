@@ -1,3 +1,15 @@
+> **[PM-1153 · 2026-09-10 · SCALING DECISION: NOTHING UNTIL 2,500 MEMBERS]** Dean asked whether this is being worried about too early. It is. At 1,000 members a simultaneous push is **~1.6 loads/sec against a measured ceiling of 8**; at 3,000 it is ~5/s. **No performance work is justified below 2,500 members.**
+>
+> **THRESHOLDS — act on these, not on anxiety:** **2,500** → build the performance posture monitor (p95, PostgREST pool, CPU → `platform_alerts`, cron-74 pattern). **5,000 or p95>1s** → collapse the outer 21 queries (22 internal calls → ~2 via `member_home_state`; ~5x, no spend, no visible change). **10,000 or CPU>60%** → compute tier (Medium $50 net). **10,000** → batch-path audit.
+>
+> **FREE AND NOW — (1) push jitter**, opportunistic next time anyone is in notification code; **hard rule: no synchronised 07:00 send to a cohort of several thousand until it exists**. **(2) STANDING DISCIPLINE: no new code that loops over members one at a time** (§23.296). Free now, expensive to retrofit.
+>
+> **BATCH PATH — the one that will actually surprise us (§23.296).** `daily-report`, `certificate-checker`, `re-engagement-scheduler`, `monthly-report`, push sender all iterate members and scale with **total membership**, not concurrency. **No compute tier fixes a per-member loop.** Needs engineering at tens of thousands. Nothing in read-path monitoring will ever warn about it, so it needs its own member-count trigger.
+>
+> **MILLION-SUBSCRIBER PATH (for Lewis conversations):** ~200-270 loads/sec required, ~30x from today, reachable via outer-21 + compute tier + read replicas, **no re-architecture**. ~$6-8k/month ≈ **0.04% of revenue**. Infrastructure cost is not the constraint at any size on the roadmap.
+>
+> **RECORDED PLAINLY: the model assumes 40% DAU; we are at ~6% (6.7 daily actives of 107 members). Capacity and engagement are the same question, and today the engagement number is the risk, not the capacity number.**
+
 > **[PM-1152 · 2026-09-10 · CAPACITY MEASURED — CEILING IS ~8 LOADS/SEC, PLAN BROUGHT FORWARD]** New tool `tools/vyve-capacity-test.js` (arrival-rate, two scenarios: `knee` and `push`). **Knee: flat to 7.3/s at p95 497ms, cliff to p50 7.2s by ~12/s, zero errors throughout. Push: 8/s held two minutes at p95 692ms (= 5,000-member simultaneous push, PROVEN), broke at 17.94/s (= 10,000-member push, FAILS).** Estimate of 15-25/s was wrong; real is 8.
 >
 > **REVISED CAPACITY: ~25-30k members natural traffic, ~5,000 on simultaneous pushes.** Behaviour measured over 60 days: 1.94 sessions/active/day, 6.7 daily actives, **41.8% of activity in the 19:00 hour**, top-3 hours 74.3%. Small sample (17 members, 1,265 events) and activity logs are a proxy for opens — carry both caveats.
