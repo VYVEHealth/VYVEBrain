@@ -29,6 +29,8 @@
 
 <!--CURRENT_FRONT_START-->
 
+**PM-1167 (2026-09-11): partner-profile avatar now straddles cover + meta (hero overflow was clipping it); 72px, -30px overhang. vyve-site `fd972c9ee517a82cd7f05a5521492793f047365e` vbb 629. Unpushed OTA stack now vbb 627–629.**
+
 **PM-1166 (2026-09-11): View my page cache-busts the framed member page (SW stale-while-revalidate showed the previous build on the second open). CC `83b5e970a605ef2bc28dc9bd433668418c5e1d81`. §23.303.**
 
 **PM-1165 (2026-09-11): cover photo one shape everywhere — app hero locked to 3:1 (`object-fit:cover`), portal cover box 3:1, cropper already 3:1. vyve-site `4b42ee4e738c805782dd10fb11af6d4a502a05e0` vbb 628, CC `c24a958b0b35fedf9fd71b4a1d485f58432a8ed3`. Legacy square covers (Emma) centre-crop until re-uploaded. View my page confirmed working by Dean.**
@@ -345,7 +347,7 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-11, PM-1166)
+## CURRENT FRONT (updated 2026-09-11, PM-1167)
 
 **PM-1143–1146 (2026-09-09): B7 LOAD TESTING DONE — REAL NUMBERS, AND THE BOTTLENECK IS ONE FUNCTION.** **30 concurrent: 2,520 requests, ZERO failures, p95 3.15s.** **200 concurrent: 4,856 requests, 6.36% failures — every single failure a `member-dashboard` 60s timeout; both direct PostgREST paths stayed at 100% success.** The database never broke. `member-dashboard` measured at **p50 2,104ms / p95 3,541ms at 30 concurrent** while every other call sat under 90ms, and it is **the whole of the latency and the whole of the failure**. Cause: it fans one home load into **~16–45 internal PostgREST calls** (29,752 REST requests logged in 14 min against ~3,200 actually sent) — 21 outer queries plus ~24 inside `getMemberAchievementsPayload`, which awaits them **sequentially** (§23.292). **The fix is to cut round-trip COUNT, not just parallelise** — parallelising helps 30, barely helps 200. Also live: cron 74 posture check, cron 75 cron-history prune (`job_run_details` had hit 318k rows), max_connections 60 with 21 held at idle (§23.289/§23.290).
 
