@@ -1,3 +1,15 @@
+**PM-1178 (2026-09-11): FAILED UPLOADS NOW TELL US — migration `pm1178_upload_attempts`, cron **sweep-stale-uploads** (every 10 min, jobid 76), `partner-content-upload` **v16**, CC `c8542b3e4b5f75c227efa9c8acb86d003560b025` (three files, md5-perfect).** April messaged that two content videos “aren't showing up”; `partner_content_items` had only her welcome video and `storage.objects` had **no object at all** for the attempts — they died mid-transfer and nothing anywhere recorded it. (Her welcome video was 139 MB / IMG_0065.mov, so long clips over mobile data are the likely shape.)
+
+**Data:** `partner_upload_attempts` — partner, email, storage_path, file_name/bytes/type, batch, status (`signed→uploading→uploaded→committed` | `failed` | `abandoned`), progress_pct, error, content_id, alerted_at. RLS: admin all; a partner may read their own. `sweep_stale_uploads()` turns anything untouched for 20 minutes and not committed into an **info** `platform_alerts` row naming the partner, file, size, batch flag, percentage reached and the error, then marks it `abandoned` so it alerts once.
+
+**EF v16:** `sign` opens the attempt row (client now sends `file_bytes`/`file_type`/`batch`); NEW **`attempt`** action takes `uploading` / `uploaded` / `failed` with progress and error (path must be under the caller's own prefix); `commit` closes the row with the content id. All tracking is best-effort — it can never block an upload.
+
+**Portal:** progress beacons every 15 s and on failure (single and batch paths); **screen wake lock** held for the duration where supported; the progress label reads “n% uploaded — keep this page open”; a `beforeunload` prompt if they navigate away mid-upload. **CC:** a warning tile at the top of the partner's Content library listing uploads that started and never arrived (file, MB, % reached, status, error, when) — in both copies (§23.306).
+
+**Not yet known for April:** whether hers were size, backgrounding or the new batch queue (never tested with real files from a phone). Dean is asking her length / one-at-a-time-or-both / stayed-on-page / saw-a-percentage. From now on the answer arrives as an alert instead.
+
+---
+
 **PM-1177 (2026-09-11): CANNED ANSWERS FOR THE HELP ASSISTANT — the top 20 partner questions now cost nothing and read exactly as VYVE approved them. Migration `pm1177_help_canned` (+ `help_canned_hit` RPC), 20 seeded rows, `coach-help` **v8**, CC `be86137d4a03fb0716574876afd160596510be79` (partner-portal.html, md5-perfect).**
 
 **Table `help_canned`:** surface · question (the label) · `match_all[]` (every term must appear) · `match_any[]` (at least one) · `answer` jsonb in the drawer's exact shape · `partner_types[]` (NULL = everyone; `{creator}` hides 7 rows from ambassadors) · sort_order · active · hits. RLS: admin all, any signed-in reader sees active rows. `coach_help_log.kind` CHECK widened with `'canned'` (never billable, never counts against the 40/day cap).
