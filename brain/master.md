@@ -27,6 +27,8 @@
 
 <!--CURRENT_FRONT_START-->
 
+**PM-1159 (2026-09-11): partner-portal boot gate — RPC error no longer renders "Access not yet provisioned" (CC `c7a5c069f10e57b5d02aba3888a5d74ba5683aee`); offline/expired → retry screen or login. §23.300.**
+
 **PM-1158 (2026-09-11): AI HELP DRAWER ON THE PARTNER PORTAL — premium gap map P0 SHIPPED. `coach-help` v6 (surface from `partner_type`; coach byte-identical), corpus `surface='partner'` v1 (25 tasks; mirror `playbooks/partner-help-corpus.md`), CC `82773323` "?" drawer. Live-verified with a throwaway partner login, residue zero. NEXT on this map = P1 (type-aware shell + type dashboards + `partner_weekly` backbone).**
 
 **PM-1157 (2026-09-11): Gate B notice on the partner portal is dynamic (CC `06cf4553`) — "Finish your profile to go live" + the outstanding items + "live within 2 business days once complete", link/code-already-work reminder; the false "1–2 day safeguarding review" copy is gone. April is on the current portal (same page, non-live branch), not an old build.**
@@ -327,7 +329,7 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-11, PM-1158)
+## CURRENT FRONT (updated 2026-09-11, PM-1159)
 
 **PM-1143–1146 (2026-09-09): B7 LOAD TESTING DONE — REAL NUMBERS, AND THE BOTTLENECK IS ONE FUNCTION.** **30 concurrent: 2,520 requests, ZERO failures, p95 3.15s.** **200 concurrent: 4,856 requests, 6.36% failures — every single failure a `member-dashboard` 60s timeout; both direct PostgREST paths stayed at 100% success.** The database never broke. `member-dashboard` measured at **p50 2,104ms / p95 3,541ms at 30 concurrent** while every other call sat under 90ms, and it is **the whole of the latency and the whole of the failure**. Cause: it fans one home load into **~16–45 internal PostgREST calls** (29,752 REST requests logged in 14 min against ~3,200 actually sent) — 21 outer queries plus ~24 inside `getMemberAchievementsPayload`, which awaits them **sequentially** (§23.292). **The fix is to cut round-trip COUNT, not just parallelise** — parallelising helps 30, barely helps 200. Also live: cron 74 posture check, cron 75 cron-history prune (`job_run_details` had hit 318k rows), max_connections 60 with 21 held at idle (§23.289/§23.290).
 
@@ -2614,6 +2616,10 @@ Since `vyve_scope_example_forms`, `coach_forms.partner_id` is nullable, exactly 
 
 #### §23.299 — Partner referral links, codes and earnings are active from Gate A (`status='onboarding'`), not go-live (PM-1156 — HARD RULE)
 Dean decision 11 Sep 2026, reversing PM-879. The set of statuses that can recruit and earn is `('onboarding','live')`; `live` additionally makes the community member-visible (Connect hub, partner-space, `partner_memberships` display, `partner_health_findings.live_no_welcome`). Every attribution rail checks the SAME set — `app-signup` `lookupPartner` (validate_code + signup stamp), `checkout-session` coupon/metadata, `stripe-webhook` `handlePartnerReferral`, `stripe-reconcile` partner load, `apply_trial_campaign` slug fallback, `run_partner_payouts` loop. **Any new code that keys partner attribution or payout on `status = 'live'` is a bug** — use the pair, and if a constant exists in the file (`REFERRAL_ACTIVE_STATUSES`) reuse it. `applied/vetting/interview/contract/suspended/declined` never attribute. The portal and CC referral cards must never present a link as dormant for an onboarding partner (that was the PM-879 banner, now retired).
+
+
+#### §23.300 — A failed gate RPC is a connection problem, never a permissions verdict (PM-1159 — HARD RULE)
+Any boot-time gate (`is_partner`, `is_admin`, `get_my_partner_id`, coach-portal scope checks) must branch three ways: **error** → "can't connect" + retry (401 → sign out); **false** → the access-denied copy; **true** → proceed. Collapsing error into false tells a provisioned user they are not provisioned, and they take it up with Lewis/Dean (April, PM-1159). Applies to every CC surface and the member app's auth.js consent/role checks.
 
 
 ## 24. Key references, credentials & URLs
