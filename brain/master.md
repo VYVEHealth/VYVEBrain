@@ -29,6 +29,8 @@
 
 <!--CURRENT_FRONT_START-->
 
+**PM-1192 (2026-09-11): go-live gate = portal minimums + agreement/identity/profile only. Modules, safeguarding and GDPR assessments are “coming soon” for everyone (not a failure); go-live stamps `assessments_pending_at_golive` for back-fill. CC `7287ec9fe331a3e0a12a13f11cff9d32f4b7e25b`. April Rosson's flag patch no longer needed.**
+
 **PM-1191 (2026-09-11, late): partner list cleaned to 11 real rows (8 demo/test/applicant deleted; the old `april` ambassador row was April Rosson's own pre-application row). **BLOCKER for next session: members cannot play partner uploads at all — `partner-profile.html` only links YouTube replays; uploaded items are dead cards.** Portrait handling + the £0 encode/deliver path (ffmpeg on Hetzner, R2 at ~1,600 views/mo) specced in the backlog. Dean parked it tired at 23:40.**
 
 **PM-1190 (2026-09-11): library items can be SCHEDULED (48h min) as well as pushed now; scheduled items get Go live now / Cancel schedule. `partner-content-upload` v17, CC `0752d9d2939c0f0c55c4f31aae9ab08379d70233`. (Rebased over a parallel session's PM-1189.)**
@@ -376,7 +378,7 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-11, PM-1191)
+## CURRENT FRONT (updated 2026-09-11, PM-1192)
 
 **PM-1194 (2026-09-11): partner portal has a password reset — "Forgot your password?" + in-page recovery on partner-portal.html (CC `f2169b10`; message says PM-1189, collision, canonical 1194). Sharon needed it on night one. Dean: Cloudflare CC deploy check.**
 
