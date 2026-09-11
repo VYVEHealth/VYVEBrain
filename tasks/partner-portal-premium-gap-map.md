@@ -47,7 +47,7 @@ That kills the direct coach analogues — no client workspace, no named threads,
 | 22 | **Premium skin pass** — the portal is on tokens.css v2 but reads flatter than the coach portal: card density, empty-state art, section rhythm, motion on state change | Dean's ask | **Mockup-gated.** Do this *last*, once the surfaces exist to skin |
 | 23 | Mobile pass — the W1 sidebar collapses to a horizontal scroll strip; the coach portal's phone behaviour is better | coach parity | Small |
 
-## B. AI help (P0 — ship first)
+## B. AI help (P0 — ship first) — **SHIPPED PM-1158 (2026-09-11): coach-help v6 + partner corpus v1 + CC `82773323`**
 
 | # | Row | Source | Notes |
 |---|---|---|---|
@@ -139,7 +139,7 @@ Named **P1–P6** to avoid collision with the partner W1–W6 (PM-991) and the T
 
 | Wave | Contents | Sessions |
 |---|---|---|
-| **P0** | #24–26 AI help drawer | 0.5 |
+| **P0** | #24–26 AI help drawer — **DONE PM-1158** | 0.5 |
 | **P1** | #19–21, #23, #27–28 — type-aware shell, type dashboards, `partner_weekly` backbone, 12-week strip | 2–2.5 |
 | **P2** | #29–33, #35–40 — insights views + community depth | 2.5–3 |
 | **P3** | #41–49 — content series/drip + sessions/bookings depth | 2.5 |
