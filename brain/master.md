@@ -29,6 +29,8 @@
 
 <!--CURRENT_FRONT_START-->
 
+**PM-1168 (2026-09-11): My Content New folder fixed on mobile (inline creator, no prompt()). CC `850ec310e1804c225169eb0c49ee762cb930c601`. §23.304. Library rework = next design talk.**
+
 **PM-1167 (2026-09-11): partner-profile avatar now straddles cover + meta (hero overflow was clipping it); 72px, -30px overhang. vyve-site `fd972c9ee517a82cd7f05a5521492793f047365e` vbb 629. Unpushed OTA stack now vbb 627–629.**
 
 **PM-1166 (2026-09-11): View my page cache-busts the framed member page (SW stale-while-revalidate showed the previous build on the second open). CC `83b5e970a605ef2bc28dc9bd433668418c5e1d81`. §23.303.**
@@ -347,7 +349,7 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-11, PM-1167)
+## CURRENT FRONT (updated 2026-09-11, PM-1168)
 
 **PM-1143–1146 (2026-09-09): B7 LOAD TESTING DONE — REAL NUMBERS, AND THE BOTTLENECK IS ONE FUNCTION.** **30 concurrent: 2,520 requests, ZERO failures, p95 3.15s.** **200 concurrent: 4,856 requests, 6.36% failures — every single failure a `member-dashboard` 60s timeout; both direct PostgREST paths stayed at 100% success.** The database never broke. `member-dashboard` measured at **p50 2,104ms / p95 3,541ms at 30 concurrent** while every other call sat under 90ms, and it is **the whole of the latency and the whole of the failure**. Cause: it fans one home load into **~16–45 internal PostgREST calls** (29,752 REST requests logged in 14 min against ~3,200 actually sent) — 21 outer queries plus ~24 inside `getMemberAchievementsPayload`, which awaits them **sequentially** (§23.292). **The fix is to cut round-trip COUNT, not just parallelise** — parallelising helps 30, barely helps 200. Also live: cron 74 posture check, cron 75 cron-history prune (`job_run_details` had hit 318k rows), max_connections 60 with 21 held at idle (§23.289/§23.290).
 
@@ -2650,6 +2652,10 @@ On 11 Sep 2026 a parallel chat outside this Project tried Composio first because
 
 #### §23.303 — Anything that embeds a member-app page from another origin must cache-bust the URL (PM-1166 — HARD RULE)
 The member app's SW serves `*.html` stale-while-revalidate: a repeat load of the same URL within one deploy returns the previous copy. When a CC surface (partner portal preview, any future admin "view as member") frames `online.vyvehealth.co.uk/<page>.html`, append a unique query (`&v=Date.now()`) on every open so the SW misses and the live page renders. Do not try to fix this in sw.js — SWR is the right member-side behaviour.
+
+
+#### §23.304 — No `prompt()` / `confirm()` / `alert()` in partner-facing flows on the CC (PM-1168 — HARD RULE)
+iOS Safari (and Messenger's in-app browser) suppress `prompt()` raised from a `<select>` change and often from any handler after a picker closes; the result is a silent no-op that partners report as "nothing happens". Use inline inputs, sheets or the existing modal pattern. `alert()` for hard errors is tolerated in admin-only CC pages; partner-portal.html and coach-portal.html get inline errors.
 
 
 ## 24. Key references, credentials & URLs

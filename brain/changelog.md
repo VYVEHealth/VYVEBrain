@@ -1,3 +1,7 @@
+**PM-1168 (2026-09-11): My Content "New folder" works on a phone — CC `850ec310e1804c225169eb0c49ee762cb930c601`.** Dean: "when you click new folder, nothing happens." The option sat inside each item's folder `<select>` and called `prompt()`; iOS Safari suppresses a prompt raised from a select's change handler, so it failed silently on mobile (worked on desktop). Now: a **+ New folder** chip in the folder bar opens an inline name field with Save / Cancel (Enter / Escape); the select option resets and routes to the same creator via `window.w3NewFolderOpen`. **§23.304.** Library rework (Dean's ask: a real Library — pushed vs awaiting push, bulk upload, push when ready) is the next design conversation, not started.
+
+---
+
 **PM-1167 (2026-09-11): partner-profile avatar straddles cover and meta — vyve-site `fd972c9ee517a82cd7f05a5521492793f047365e` **vbb 629** (sw `v2026-09-11c-pm1167-avatar`).** Dean, from the preview: the profile picture should overlap both the cover and the section below. It was designed to (`bottom:-22px`) but `.profile-hero { overflow:hidden }` clipped the overhang, so it has never shown. Hero is now `overflow:visible` (the cover `<img>` is contained by `inset:0` + `object-fit`, so nothing else can escape), avatar 72px at `bottom:-30px` with `z-index:2`, `.profile-meta` padding-top 40px. The 3:1 cover shape stays (cropper parity, PM-1165). Dean's alternative — a taller cover with the avatar in the corner — parked unless the overlap doesn't land for him. OTA stack: vbb 627–629 unpushed.
 
 ---
