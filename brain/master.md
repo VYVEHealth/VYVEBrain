@@ -372,7 +372,9 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-11, PM-1193)
+## CURRENT FRONT (updated 2026-09-11, PM-1194)
+
+**PM-1194 (2026-09-11): partner portal has a password reset — "Forgot your password?" + in-page recovery on partner-portal.html (CC `f2169b10`; message says PM-1189, collision, canonical 1194). Sharon needed it on night one. Dean: Cloudflare CC deploy check.**
 
 **PM-1188 (2026-09-11): APPLY WIZARD EMAIL VERIFICATION ARMED — nothing past step 1 until a 6-digit code sent to the address as typed comes back. Test-Site `0070a7a4`, `partner-onboarding` v21 (`REQUIRE_EMAIL_VERIFICATION=true`, submit gated too, `save` syncs contact/partner email from formFields + clears verification on change). Cause: Daniel Reay's `gmail.con` — three emails to nowhere, no alert, found by the applicant. Dean check owed: Cloudflare deploy + phone run. §23.308.**
 
@@ -1576,6 +1578,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). **DNS/proxy: SETTLED PM-841 — z
 ---
 
 ## 19. Current status
+
+### PM-1194 — Partner portal forgot-password + in-page recovery (2026-09-11)
+CC `f2169b10` partner-portal.html (md5 `ed4c5e54`; commit message says PM-1189 — collision, canonical PM-1194). Coach-portal PM-1158 pattern: `#pp-forgot` → `resetPasswordForEmail` redirecting to the portal; `#type=recovery` hash + `PASSWORD_RECOVERY` event → reset form before `showApp()`; new password works app + portal.
 
 ### PM-1190→1193 — OTA apply-on-navigation + member-dashboard v94 (2026-09-11)
 `live-update.js` (writes `vyve_lu_next` on stage), `nav.js` (`vyveLuMaybeApply` on bottom-nav hub taps + More-sheet items; `LiveUpdate.ready()` + `getNextBundle()` probe on every page; hold list `workouts/wellbeing-checkin/monthly-checkin/onboarding/log-food/*-live`, playing `<video>`, `window.__vyveHoldUpdate`), `index.html` (head consumer: `vyve_lu_apply` + `vyve_return_to` → `location.replace` before body parse). vyve-site `5ab8b9d9` vbb 637 (prod `096d9c90`), `17046c93` 638 (`5de66496`), `5928b3fc` 639 (`cfaa576c`). Device-proven both platforms. `member-dashboard` v94: `health_connect` counts for connection state, auto-tick and the daily filter (`source=in.(healthkit,health_connect)`). One-shot `pm1190-tarball-relay` EF (inert, delete).
