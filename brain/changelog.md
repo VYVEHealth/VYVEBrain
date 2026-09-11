@@ -1,3 +1,7 @@
+**PM-1172 (2026-09-11): CC edits ported to the SPA page — `pages/partner-management.html` (CC `60f6b7082ecb1dcd260ed472b38a5f2cf1a87557`, md5-perfect).** Dean's screenshot: `admin.vyvehealth.co.uk/#/partner-management`, Emma Clarke › Content library, no removal pills and Content & Moderation showing 0. Cause: since PM-993 the CC shell runs `pages/partner-management.html`, the machine-ported SPA copy of `partners.html`; today's PM-1156 (referral banner), PM-1169 (Removal requests subtab + `actionRemoval`) and PM-1171 (per-partner pills/buttons) all went into the standalone `partners.html` only. All three now applied to the SPA page; `actionRemoval` exported on `window` like the other handlers. **§23.306.**
+
+---
+
 **PM-1171 (2026-09-11): removal requests also surface in the partner's management area — CC `c3b6276765d29e554ffc89ba63fa055109cdba44`.** Dean raised two real requests from Emma's portal ("Dead Bug Female" mistake; "Bodyweight Single Leg Glute Bridge Female" safeguarding → hidden) and went looking in Partners › Emma Clarke — they were only under Content & moderation › Removal requests. `loadPartnerContent()` now shows a `removal requested · <reason>` pill (note on hover), a `hidden · safeguarding` / `removed` status pill, and the same **Remove / Keep live** (or **Confirm removal / Reinstate**) buttons via `actionRemoval()`. Content & moderation remains the cross-partner queue. **Two live requests are open right now awaiting Dean/Lewis.**
 
 ---
