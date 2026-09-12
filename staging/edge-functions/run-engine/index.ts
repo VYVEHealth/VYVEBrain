@@ -1,5 +1,10 @@
 // PM-1239 — run-engine Edge Function (Wave 0, server only, no member surface).
 // PM-1240 (v4) — repeated-effort distances no longer scale with volume.
+// PM-1241 (v6) — quality ceilings are time-aware: a percentage cap alone starves a
+//   low-mileage runner of any real threshold stimulus.
+// PM-1241 (v5) — band fractions corrected against Daniels (the Wave 0 figures were
+//   %VO2max used as %velocity); per-session quality-volume caps; a week with no
+//   long run fills every run day instead of silently dropping a session.
 // Self-contained per §23.79: the engine module is inlined, not imported.
 // Actions: health | profile | build | persist.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
@@ -8,7 +13,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 // PURE FUNCTIONS ONLY. No Date.now(), no randomness, no I/O in this file.
 // Distances in metres, durations in seconds, paces in seconds per kilometre.
 
-export const ENGINE_VERSION = "run-engine@0.2.0";
+export const ENGINE_VERSION = "run-engine@0.4.0";
 
 export type Band = "easy" | "long" | "threshold" | "interval" | "rep";
 export type VolumeKnob = "low" | "steady" | "high";
@@ -65,14 +70,52 @@ export function velocityForVo2(vo2: number): number {
 
 const secPerKm = (vMetresPerMin: number) => 60000 / vMetresPerMin;
 
-// Fractions of velocity at VDOT. Fast bound first.
+// Fractions of VELOCITY at VDOT. Fast bound first.
+// PM-1241: Daniels publishes his zones as fractions of VO2 UPTAKE (E 59-74%,
+// T ~88%, I 95-100%). Wave 0 used those numbers as velocity fractions, which is
+// only near-correct at the top of the range — hence easy and threshold came out
+// materially slow while interval and rep were fine. These are solved backwards
+// from the published pace table: at VDOT 38.3 (a 25:00 5k, vVDOT 4:45/km) they
+// give easy 6:10-6:53, threshold 5:17-5:28, interval 4:45-5:01, rep 4:29-4:40,
+// against Daniels' easy 6:10-6:53, threshold 5:19, interval 4:54, rep ~4:35.
+// `long` is NOT a separate intensity — Daniels runs long runs at E pace, so it
+// carries the easy range and exists only as a display label.
 const BAND_FRACTIONS: Record<Band, [number, number]> = {
-  easy: [0.72, 0.62],
-  long: [0.70, 0.60],
-  threshold: [0.88, 0.83],
+  easy: [0.77, 0.69],
+  long: [0.77, 0.69],
+  threshold: [0.90, 0.87],
   interval: [1.00, 0.95],
   rep: [1.06, 1.02],
 };
+
+// PM-1241 — Daniels' per-session ceilings, as fractions of that week's volume.
+// T no more than 10%, I no more than 8% (and never more than 10km), R no more
+// than 5%, long run no more than 30%. Enforced by trimming REP COUNTS, never rep
+// distances: an 800 stays an 800, a 20km week just gets fewer of them.
+const QUALITY_CAP_FRACTION: Partial<Record<Band, number>> = {
+  threshold: 0.10,
+  interval: 0.08,
+  rep: 0.05,
+};
+const INTERVAL_SESSION_CAP_M = 10000;
+const LONG_RUN_CAP_FRACTION = 0.30;
+const MIN_REPS = 2;
+
+// Daniels' percentages assume a runner with mileage to spend. At 15km a week,
+// 10% is eight minutes at threshold — below the dose that produces the
+// adaptation at all, and his own guidance is that a tempo run is about twenty
+// minutes. So each quality band gets a floor and a ceiling in TIME at that
+// band's pace, and the percentage only binds between them.
+const QUALITY_TIME_FLOOR_S: Partial<Record<Band, number>> = { threshold: 1200, interval: 720 };
+const QUALITY_TIME_CEILING_S: Partial<Record<Band, number>> = { threshold: 1800, interval: 900 };
+const REP_FLOOR_M = 800;
+
+/** Metres covered in `seconds` at the middle of a band. */
+function metresAtBand(bands: Bands, band: Band, seconds: number): number {
+  const r = bands[band];
+  const mid = (r.min_s_per_km + r.max_s_per_km) / 2;
+  return mid > 0 ? (seconds * 1000) / mid : 0;
+}
 
 const DIFFICULTY_FACTOR: Record<DifficultyKnob, number> = {
   gentle: 0.98,
@@ -301,10 +344,15 @@ export function buildPlan(
       .sort((a, b) => a.day_slot - b.day_slot);
     if (weekRows.length === 0) continue;
 
-    // long run takes the member's long-run day; the rest fill the others in order
+    // The long run takes the member's chosen day; the rest fill the others in
+    // slot order. PM-1241: when NO row is flagged as the long run — a run/walk
+    // week, say — every run day is available, so slot order is simply
+    // chronological and a week that progresses within itself stays in sequence.
     const longRow = weekRows.find((r) => r.is_long_run) ?? null;
     const otherRows = weekRows.filter((r) => r !== longRow);
-    const otherDays = runDays.filter((d) => d !== params.long_run_dow);
+    const otherDays = longRow
+      ? runDays.filter((d) => d !== params.long_run_dow)
+      : runDays.slice();
 
     const placed: Array<{ row: TemplateWeek; dow: number }> = [];
     if (longRow) placed.push({ row: longRow, dow: params.long_run_dow });
@@ -313,53 +361,46 @@ export function buildPlan(
     });
     placed.sort((a, b) => a.dow - b.dow);
 
+    // Two settling passes: compose the week uncapped to get its volume, derive
+    // the caps from it, recompose. Deterministic — fixed iteration count, no I/O.
+    let composed = placed.map((p) =>
+      composeSession(template.sessions[p.row.session_template_id], Number(p.row.volume_multiplier) * volume, bands, null)
+    );
+    let caps: Caps = { threshold: 0, interval: 0, rep: 0, long: 0 };
+    for (let iter = 0; iter < 2; iter++) {
+      const weekTotal = composed.reduce((a, c) => a + (c ? c.total : 0), 0);
+      caps = {
+        threshold: Math.min(
+          Math.max(QUALITY_CAP_FRACTION.threshold! * weekTotal,
+                   metresAtBand(bands, "threshold", QUALITY_TIME_FLOOR_S.threshold!)),
+          metresAtBand(bands, "threshold", QUALITY_TIME_CEILING_S.threshold!),
+        ),
+        interval: Math.min(
+          Math.max(QUALITY_CAP_FRACTION.interval! * weekTotal,
+                   metresAtBand(bands, "interval", QUALITY_TIME_FLOOR_S.interval!)),
+          metresAtBand(bands, "interval", QUALITY_TIME_CEILING_S.interval!),
+          INTERVAL_SESSION_CAP_M,
+        ),
+        rep: Math.max(QUALITY_CAP_FRACTION.rep! * weekTotal, REP_FLOOR_M),
+        long: LONG_RUN_CAP_FRACTION * weekTotal,
+      };
+      composed = placed.map((p) => {
+        const tmpl = template.sessions[p.row.session_template_id];
+        if (!tmpl) return null;
+        let scale = Number(p.row.volume_multiplier) * volume;
+        if (p.row.is_long_run && caps.long > 0) {
+          const un = composeSession(tmpl, scale, bands, null);
+          if (un && un.total > caps.long) scale = scale * (caps.long / un.total);
+        }
+        return composeSession(tmpl, scale, bands, caps);
+      });
+    }
+
     placed.forEach((p, idx) => {
       const tmpl = template.sessions[p.row.session_template_id];
-      if (!tmpl) return;
-      const scale = Number(p.row.volume_multiplier) * volume;
-
-      let sessionDistance = 0;
-      let minS = 0, maxS = 0;
-
-      const steps: BuiltStep[] = tmpl.steps
-        .slice()
-        .sort((a, b) =>
-          a.block === b.block ? a.ordinal - b.ordinal : blockRank(a.block) - blockRank(b.block)
-        )
-        .map((s) => {
-          const reps = s.repeat_count ?? 1;
-          // PM-1240: a repeated effort is a NAMED distance, not a volume dial.
-          // "Rolling 800s" must stay 800m and a stride must stay 100m at every
-          // volume knob; only unrepeated steps (warmups, easy runs, long runs)
-          // absorb the week multiplier and the member's volume setting.
-          const distance = s.distance_m == null
-            ? null
-            : s.repeat_count != null
-              ? Math.round(Number(s.distance_m))
-              : Math.round((Number(s.distance_m) * scale) / 10) * 10;
-          const band = s.band;
-          const range = band ? bands[band] : null;
-
-          if (distance != null) sessionDistance += distance * reps;
-
-          if (distance != null && range) {
-            minS += ((distance / 1000) * range.min_s_per_km) * reps;
-            maxS += ((distance / 1000) * range.max_s_per_km) * reps;
-          } else if (s.duration_s != null) {
-            minS += s.duration_s * reps;
-            maxS += s.duration_s * reps;
-          }
-
-          return {
-            ...s,
-            distance_m: distance,
-            pace_s_per_km_min: range ? range.min_s_per_km : null,
-            pace_s_per_km_max: range ? range.max_s_per_km : null,
-          };
-        });
-
-      planTotal += sessionDistance;
-
+      const c = composed[idx];
+      if (!tmpl || !c) return;
+      planTotal += c.total;
       sessions.push({
         week_index: w,
         day_index: idx + 1,
@@ -371,11 +412,11 @@ export function buildPlan(
         phase: p.row.phase,
         is_long_run: p.row.is_long_run,
         surface,
-        total_distance_m: sessionDistance,
-        est_duration_s_min: Math.round(minS),
-        est_duration_s_max: Math.round(maxS),
+        total_distance_m: c.total,
+        est_duration_s_min: Math.round(c.minS),
+        est_duration_s_max: Math.round(c.maxS),
         coach_note: tmpl.coach_note,
-        steps,
+        steps: c.steps,
       });
     });
   }
@@ -396,6 +437,106 @@ export function buildPlan(
     params,
     sessions,
   };
+}
+
+interface Caps { threshold: number; interval: number; rep: number; long: number }
+interface Composed { steps: BuiltStep[]; total: number; minS: number; maxS: number }
+
+/**
+ * One session template + a volume scale + resolved bands -> concrete steps.
+ * `caps` null composes at the template's authored rep counts; otherwise rep
+ * counts are trimmed (never below MIN_REPS) so the session respects Daniels'
+ * per-session quality ceilings for the week it sits in.
+ */
+function composeSession(
+  tmpl: SessionTemplate | undefined,
+  scale: number,
+  bands: Bands,
+  caps: Caps | null,
+): Composed | null {
+  if (!tmpl) return null;
+  const sorted = tmpl.steps.slice().sort((a, b) =>
+    a.block === b.block ? a.ordinal - b.ordinal : blockRank(a.block) - blockRank(b.block)
+  );
+
+  const key = (s: TemplateStep) =>
+    s.repeat_group != null ? `g${s.repeat_group}` : `s${s.block}${s.ordinal}`;
+
+  // Authored rep counts, per-rep banded distance per group, and the banded
+  // distance that sits OUTSIDE any repeat (which cannot be trimmed away).
+  const groupReps: Record<string, number> = {};
+  const groupBandPerRep: Record<string, Partial<Record<Band, number>>> = {};
+  const unrepeated: Partial<Record<Band, number>> = {};
+  for (const s of sorted) {
+    const raw = s.distance_m == null ? 0 : Number(s.distance_m);
+    if (s.repeat_count != null) {
+      const g = key(s);
+      groupReps[g] = s.repeat_count;
+      if (s.band && raw > 0) {
+        groupBandPerRep[g] = groupBandPerRep[g] ?? {};
+        groupBandPerRep[g][s.band] = (groupBandPerRep[g][s.band] ?? 0) + raw;
+      }
+    } else if (s.band && raw > 0) {
+      const scaled = Math.round((raw * scale) / 10) * 10;
+      unrepeated[s.band] = (unrepeated[s.band] ?? 0) + scaled;
+    }
+  }
+
+  if (caps) {
+    // Remaining allowance per band, consumed group by group in a fixed order.
+    const left: Partial<Record<Band, number>> = {};
+    for (const b of Object.keys(QUALITY_CAP_FRACTION) as Band[]) {
+      left[b] = Math.max(0, (caps as unknown as Record<string, number>)[b] - (unrepeated[b] ?? 0));
+    }
+    for (const g of Object.keys(groupBandPerRep).sort()) {
+      let allowed = groupReps[g];
+      for (const b of Object.keys(groupBandPerRep[g]) as Band[]) {
+        if (left[b] === undefined) continue;
+        const per = groupBandPerRep[g][b]!;
+        if (per > 0) allowed = Math.min(allowed, Math.floor(left[b]! / per));
+      }
+      const finalReps = Math.max(MIN_REPS, Math.min(groupReps[g], allowed));
+      groupReps[g] = finalReps;
+      for (const b of Object.keys(groupBandPerRep[g]) as Band[]) {
+        if (left[b] === undefined) continue;
+        left[b] = Math.max(0, left[b]! - groupBandPerRep[g][b]! * finalReps);
+      }
+    }
+  }
+
+  let total = 0, minS = 0, maxS = 0;
+  const steps: BuiltStep[] = sorted.map((s) => {
+    const reps = s.repeat_count != null ? groupReps[key(s)] ?? s.repeat_count : 1;
+    // PM-1240: a repeated effort is a NAMED distance, not a volume dial.
+    // "Rolling 800s" must stay 800m and a stride must stay 100m at every
+    // volume knob; only unrepeated steps (warmups, easy runs, long runs)
+    // absorb the week multiplier and the member's volume setting.
+    const distance = s.distance_m == null
+      ? null
+      : s.repeat_count != null
+        ? Math.round(Number(s.distance_m))
+        : Math.round((Number(s.distance_m) * scale) / 10) * 10;
+    const range = s.band ? bands[s.band] : null;
+
+    if (distance != null) total += distance * reps;
+    if (distance != null && range) {
+      minS += ((distance / 1000) * range.min_s_per_km) * reps;
+      maxS += ((distance / 1000) * range.max_s_per_km) * reps;
+    } else if (s.duration_s != null) {
+      minS += s.duration_s * reps;
+      maxS += s.duration_s * reps;
+    }
+
+    return {
+      ...s,
+      distance_m: distance,
+      repeat_count: s.repeat_count != null ? reps : s.repeat_count,
+      pace_s_per_km_min: range ? range.min_s_per_km : null,
+      pace_s_per_km_max: range ? range.max_s_per_km : null,
+    };
+  });
+
+  return { steps, total, minS, maxS };
 }
 
 function blockRank(b: string): number {

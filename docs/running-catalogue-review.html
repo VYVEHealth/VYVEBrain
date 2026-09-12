@@ -54,28 +54,41 @@ code{font:13px ui-monospace,Menlo,monospace;background:#eef4f3;padding:2px 5px;b
 </style></head>
 <body><div class="wrap">
 <h1>VYVE Running Plans — review draft</h1>
-<p class="sub">Four plan templates and seventeen session templates, drafted 13 September 2026 (PM-1240, Wave 1).
+<p class="sub">Four plan templates and twenty-two session templates, drafted 13 September 2026 (PM-1240/1241, Wave 1).
 Nothing here is live to members yet — the member-facing running surface is Wave 3.</p>
 
 <div class="callout">
-<b>Calum — what I need from you.</b> This is a first draft written to get something concrete in front of you rather than
-a blank page. Correct it freely; nothing is precious.
+<b>What this is, and what it needs.</b> This catalogue was drafted against the published literature rather than by a
+running coach, and it needs a qualified one to sign it off before any member sees it — an England Athletics
+<b>Coach in Running Fitness</b> or equivalent. Everything below is a draft position, not a settled one.
 <ul>
 <li>Is the <b>weekly shape</b> right for each plan — the mix of long run, quality and easy running?</li>
 <li>Is the <b>progression</b> sensible? The <code>×</code> figure on each cell is a volume multiplier applied to that
 session's base distance, so the week totals in the right-hand column are what a member actually runs.</li>
 <li>Are the <b>session structures</b> right — rep distances, rest lengths, warm-up and cool-down?</li>
-<li>Are the <b>names and coach notes</b> yours? Your name goes on the recommendation, so nothing carries it until you say so.</li>
-<li>For <b>Start Running</b> specifically: is the eight-week run/walk ramp to thirty continuous minutes about right,
-or too fast for a true beginner?</li>
+<li>Are the <b>names and coach notes</b> right, and whose name should sit on the recommendation?</li>
+<li>For <b>Start Running</b>: it now follows the NHS Couch to 5K intervals exactly. Is that the right base, given
+roughly a quarter of people finish that plan as written, or should the default be a slower 12-week variant?</li>
 </ul>
 </div>
 
 <div class="callout">
+<b>What the engine enforces on top of these templates.</b> Three ceilings are applied at build time, per week, from
+Daniels' guidance: no more than 10% of the week's distance at threshold, 8% at interval (and never more than 10km),
+5% at repetition, and no long run above 30% of the week. They are enforced by trimming <i>rep counts</i>, never rep
+distances — an 800 is always an 800. Below about 25km a week the percentages would leave too little to be a training
+stimulus at all, so each band also has a floor and ceiling in <i>minutes</i>: threshold lands between 20 and 30
+minutes, interval between 12 and 15. So the same template yields fewer reps for a low-mileage member than the tables
+below show at full volume.
+</div>
+
+<div class="callout">
 <b>How the paces work.</b> Sessions never store a pace figure — they reference one of five <b>bands</b>, and the band is
-resolved per member from their race time. A member who runs 25:00 for 5k sees easy 6:36–7:40/km, long 6:48–7:56/km,
-threshold 5:24–5:44/km, interval 4:45–5:01/km, rep 4:29–4:40/km. A faster member sees faster numbers from exactly the
-same session. <b>Limit</b> means "no faster than this"; <b>target</b> means "run at this".
+resolved per member from their race time using Daniels' VDOT method. A member who runs 25:00 for 5k (VDOT 38.3) sees
+easy 6:11–6:54/km, threshold 5:17–5:28/km, interval 4:45–5:01/km, rep 4:29–4:40/km — against Daniels' published
+figures for that VDOT of easy 6:10–6:53, threshold 5:19, interval 4:54, rep about 4:35. Long runs are run at easy
+pace; "long" is a label, not a separate intensity. A faster member sees faster numbers from exactly the same session.
+<b>Limit</b> means "no faster than this"; <b>target</b> means "run at this".
 <br><br>
 <b>What scales and what doesn't.</b> Repeated efforts hold their named distance at every volume setting — 800s are always
 800m, a stride is always 100m, a broken mile is always a mile. Warm-ups, cool-downs, easy runs and long runs absorb the
@@ -86,11 +99,11 @@ week multiplier and the member's own volume setting.
 
 <section class="plan">
   <h2>Start Running <span class="slug">start-running</span></h2>
-  <p class="planmeta">block · 8 weeks · 3 days/week · 5 km · level: beginner</p>
-  <p class="desc">Eight weeks of run/walk, three times a week, ending in a continuous thirty-minute run. No pace targets beyond an easy effort and no race at the end — the goal is running without stopping.</p>
+  <p class="planmeta">block · 9 weeks · 3 days/week · 5 km · level: beginner</p>
+  <p class="desc">Nine weeks of run/walk, three times a week, ending in a continuous thirty-minute run. Built on the NHS Couch to 5K structure, including the twenty-minute continuous run in week five and twenty-five in week six that bridge the gap to running without stopping. No pace targets beyond an easy effort and no race at the end.</p>
   <table>
     <thead><tr><th>Week</th><th>Phase</th><th>Slot 1</th><th>Slot 2</th><th>Slot 3</th><th>Week total</th></tr></thead>
-    <tbody><tr><th>W1</th><td class="ph">base</td><td><a href="#s-run-walk-w1">Run/Walk — Week 1</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w1">Run/Walk — Week 1</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w1">Run/Walk — Week 1</a> <span class="lr">long run</span><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W2</th><td class="ph">base</td><td><a href="#s-run-walk-w2">Run/Walk — Week 2</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w2">Run/Walk — Week 2</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w2">Run/Walk — Week 2</a> <span class="lr">long run</span><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W3</th><td class="ph">base</td><td><a href="#s-run-walk-w3">Run/Walk — Week 3</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w3">Run/Walk — Week 3</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w3">Run/Walk — Week 3</a> <span class="lr">long run</span><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W4</th><td class="ph">base</td><td><a href="#s-run-walk-w4">Run/Walk — Week 4</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w4">Run/Walk — Week 4</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w4">Run/Walk — Week 4</a> <span class="lr">long run</span><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W5</th><td class="ph">build</td><td><a href="#s-run-walk-w5">Run/Walk — Week 5</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w5">Run/Walk — Week 5</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w5">Run/Walk — Week 5</a> <span class="lr">long run</span><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W6</th><td class="ph">build</td><td><a href="#s-run-walk-w6">Run/Walk — Week 6</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w6">Run/Walk — Week 6</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w6">Run/Walk — Week 6</a> <span class="lr">long run</span><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W7</th><td class="ph">build</td><td><a href="#s-run-walk-w7">Run/Walk — Week 7</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w7">Run/Walk — Week 7</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w7">Run/Walk — Week 7</a> <span class="lr">long run</span><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W8</th><td class="ph">peak</td><td><a href="#s-run-walk-w8">Run/Walk — Week 8</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w8">Run/Walk — Week 8</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w8">Run/Walk — Week 8</a> <span class="lr">long run</span><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr></tbody>
+    <tbody><tr><th>W1</th><td class="ph">base</td><td><a href="#s-run-walk-w1">Run/Walk — Week 1</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w1">Run/Walk — Week 1</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w1">Run/Walk — Week 1</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W2</th><td class="ph">base</td><td><a href="#s-run-walk-w2">Run/Walk — Week 2</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w2">Run/Walk — Week 2</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w2">Run/Walk — Week 2</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W3</th><td class="ph">base</td><td><a href="#s-run-walk-w3">Run/Walk — Week 3</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w3">Run/Walk — Week 3</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w3">Run/Walk — Week 3</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W4</th><td class="ph">base</td><td><a href="#s-run-walk-w4">Run/Walk — Week 4</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w4">Run/Walk — Week 4</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w4">Run/Walk — Week 4</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W5</th><td class="ph">build</td><td><a href="#s-run-walk-w5a">Run/Walk — Week 5, Run 1</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w5b">Run/Walk — Week 5, Run 2</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w5c">Run/Walk — Week 5, Run 3</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W6</th><td class="ph">build</td><td><a href="#s-run-walk-w6a">Run/Walk — Week 6, Run 1</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w6b">Run/Walk — Week 6, Run 2</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w6c">Run/Walk — Week 6, Run 3</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W7</th><td class="ph">build</td><td><a href="#s-run-walk-w7">Run/Walk — Week 7</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w7">Run/Walk — Week 7</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w7">Run/Walk — Week 7</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W8</th><td class="ph">peak</td><td><a href="#s-run-walk-w8">Run/Walk — Week 8</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w8">Run/Walk — Week 8</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w8">Run/Walk — Week 8</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr><tr><th>W9</th><td class="ph">peak</td><td><a href="#s-run-walk-w9">Run/Walk — Week 9</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w9">Run/Walk — Week 9</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td><a href="#s-run-walk-w9">Run/Walk — Week 9</a><br><span class="d">timed</span> <span class="mult">×1</span></td><td class="tot">timed</td></tr></tbody>
   </table>
 </section>
 
@@ -239,14 +252,15 @@ week multiplier and the member's own volume setting.
 </div>
 <div class="sess" id="s-run-walk-w1">
 <h4>Run/Walk — Week 1 <span class="slug">run-walk-w1</span> <span class="stype">run_walk</span></h4>
-<p class="desc">Five short runs with a generous walk between each.</p>
-<p class="meta">22:30 of timed work</p>
+<p class="desc">Eight one-minute runs with a minute and a half of walking between each.</p>
+<p class="meta">28:30 of timed work</p>
 <div class="blk"><span class="blkname">Warm-up</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Brisk walk to warm up</span></li>
 </ol></div>
 <div class="blk"><span class="blkname">Session</span><ol>
-<li><span class="tag t-run">RUN</span> 5 × <b>1 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
-<li><span class="tag t-walk">WALK</span> 5 × <b>1:30</b></li>
+<li><span class="tag t-run">RUN</span> 7 × <b>1 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
+<li><span class="tag t-walk">WALK</span> 7 × <b>1:30</b></li>
+<li><span class="tag t-run">RUN</span> <b>1 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span> <span class="note">Last one</span></li>
 </ol></div>
 <div class="blk"><span class="blkname">Cool-down</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Walk until your breathing settles</span></li>
@@ -256,13 +270,14 @@ week multiplier and the member's own volume setting.
 <div class="sess" id="s-run-walk-w2">
 <h4>Run/Walk — Week 2 <span class="slug">run-walk-w2</span> <span class="stype">run_walk</span></h4>
 <p class="desc">Six runs of a minute and a half, walking two minutes between.</p>
-<p class="meta">31 min of timed work</p>
+<p class="meta">29 min of timed work</p>
 <div class="blk"><span class="blkname">Warm-up</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Brisk walk to warm up</span></li>
 </ol></div>
 <div class="blk"><span class="blkname">Session</span><ol>
-<li><span class="tag t-run">RUN</span> 6 × <b>1:30</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
-<li><span class="tag t-walk">WALK</span> 6 × <b>2 min</b></li>
+<li><span class="tag t-run">RUN</span> 5 × <b>1:30</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
+<li><span class="tag t-walk">WALK</span> 5 × <b>2 min</b></li>
+<li><span class="tag t-run">RUN</span> <b>1:30</b> <span class="band band-easy">easy</span> <span class="mode">limit</span> <span class="note">Last one</span></li>
 </ol></div>
 <div class="blk"><span class="blkname">Cool-down</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Walk until your breathing settles</span></li>
@@ -271,16 +286,19 @@ week multiplier and the member's own volume setting.
 </div>
 <div class="sess" id="s-run-walk-w3">
 <h4>Run/Walk — Week 3 <span class="slug">run-walk-w3</span> <span class="stype">run_walk</span></h4>
-<p class="desc">Two rounds of a short run and a longer one.</p>
-<p class="meta">28 min of timed work</p>
+<p class="desc">Short runs and three-minute runs, alternating.</p>
+<p class="meta">25 min of timed work</p>
 <div class="blk"><span class="blkname">Warm-up</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Brisk walk to warm up</span></li>
 </ol></div>
 <div class="blk"><span class="blkname">Session</span><ol>
-<li><span class="tag t-run">RUN</span> 2 × <b>1:30</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
-<li><span class="tag t-walk">WALK</span> 2 × <b>1:30</b></li>
-<li><span class="tag t-run">RUN</span> 2 × <b>3 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
-<li><span class="tag t-walk">WALK</span> 2 × <b>3 min</b></li>
+<li><span class="tag t-run">RUN</span> <b>1:30</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
+<li><span class="tag t-walk">WALK</span> <b>1:30</b></li>
+<li><span class="tag t-run">RUN</span> <b>3 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
+<li><span class="tag t-walk">WALK</span> <b>3 min</b></li>
+<li><span class="tag t-run">RUN</span> <b>1:30</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
+<li><span class="tag t-walk">WALK</span> <b>1:30</b></li>
+<li><span class="tag t-run">RUN</span> <b>3 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
 </ol></div>
 <div class="blk"><span class="blkname">Cool-down</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Walk until your breathing settles</span></li>
@@ -289,7 +307,7 @@ week multiplier and the member's own volume setting.
 </div>
 <div class="sess" id="s-run-walk-w4">
 <h4>Run/Walk — Week 4 <span class="slug">run-walk-w4</span> <span class="stype">run_walk</span></h4>
-<p class="desc">The first session with a five-minute run in it. Twice.</p>
+<p class="desc">The first session with five-minute runs in it. Twice.</p>
 <p class="meta">31:30 of timed work</p>
 <div class="blk"><span class="blkname">Warm-up</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Brisk walk to warm up</span></li>
@@ -308,41 +326,111 @@ week multiplier and the member's own volume setting.
 </ol></div>
 <p class="coach"><b>Coach note</b> — Run at a pace you could talk at. If you cannot, slow down — the walk breaks are there to be used.</p>
 </div>
-<div class="sess" id="s-run-walk-w5">
-<h4>Run/Walk — Week 5 <span class="slug">run-walk-w5</span> <span class="stype">run_walk</span></h4>
-<p class="desc">Two eight-minute runs with a three-minute walk between.</p>
-<p class="meta">32 min of timed work</p>
+<div class="sess" id="s-run-walk-w5a">
+<h4>Run/Walk — Week 5, Run 1 <span class="slug">run-walk-w5a</span> <span class="stype">run_walk</span></h4>
+<p class="desc">Three five-minute runs with three minutes of walking between.</p>
+<p class="meta">31 min of timed work</p>
 <div class="blk"><span class="blkname">Warm-up</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Brisk walk to warm up</span></li>
 </ol></div>
 <div class="blk"><span class="blkname">Session</span><ol>
-<li><span class="tag t-run">RUN</span> 2 × <b>8 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
-<li><span class="tag t-walk">WALK</span> 2 × <b>3 min</b></li>
+<li><span class="tag t-run">RUN</span> <b>5 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
+<li><span class="tag t-walk">WALK</span> <b>3 min</b></li>
+<li><span class="tag t-run">RUN</span> <b>5 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
+<li><span class="tag t-walk">WALK</span> <b>3 min</b></li>
+<li><span class="tag t-run">RUN</span> <b>5 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
 </ol></div>
 <div class="blk"><span class="blkname">Cool-down</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Walk until your breathing settles</span></li>
 </ol></div>
-<p class="coach"><b>Coach note</b> — Run at a pace you could talk at. If you cannot, slow down — the walk breaks are there to be used.</p>
+<p class="coach"><b>Coach note</b> — Run at a pace you could talk at. The three runs should feel the same as each other.</p>
 </div>
-<div class="sess" id="s-run-walk-w6">
-<h4>Run/Walk — Week 6 <span class="slug">run-walk-w6</span> <span class="stype">run_walk</span></h4>
-<p class="desc">Two ten-minute runs. The walk is earned, not required.</p>
-<p class="meta">36 min of timed work</p>
+<div class="sess" id="s-run-walk-w5b">
+<h4>Run/Walk — Week 5, Run 2 <span class="slug">run-walk-w5b</span> <span class="stype">run_walk</span></h4>
+<p class="desc">Two eight-minute runs with five minutes of walking between.</p>
+<p class="meta">31 min of timed work</p>
 <div class="blk"><span class="blkname">Warm-up</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Brisk walk to warm up</span></li>
 </ol></div>
 <div class="blk"><span class="blkname">Session</span><ol>
-<li><span class="tag t-run">RUN</span> 2 × <b>10 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
-<li><span class="tag t-walk">WALK</span> 2 × <b>3 min</b></li>
+<li><span class="tag t-run">RUN</span> <b>8 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
+<li><span class="tag t-walk">WALK</span> <b>5 min</b></li>
+<li><span class="tag t-run">RUN</span> <b>8 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
 </ol></div>
 <div class="blk"><span class="blkname">Cool-down</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Walk until your breathing settles</span></li>
 </ol></div>
-<p class="coach"><b>Coach note</b> — Run at a pace you could talk at. If you cannot, slow down — the walk breaks are there to be used.</p>
+<p class="coach"><b>Coach note</b> — Longer blocks, more walking. Keep the first one honest so the second is possible.</p>
+</div>
+<div class="sess" id="s-run-walk-w5c">
+<h4>Run/Walk — Week 5, Run 3 <span class="slug">run-walk-w5c</span> <span class="stype">run_walk</span></h4>
+<p class="desc">Twenty minutes continuous. No walk breaks.</p>
+<p class="meta">30 min of timed work</p>
+<div class="blk"><span class="blkname">Warm-up</span><ol>
+<li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Brisk walk to warm up</span></li>
+</ol></div>
+<div class="blk"><span class="blkname">Session</span><ol>
+<li><span class="tag t-run">RUN</span> <b>20 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span> <span class="note">No walk breaks</span></li>
+</ol></div>
+<div class="blk"><span class="blkname">Cool-down</span><ol>
+<li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Walk until your breathing settles</span></li>
+</ol></div>
+<p class="coach"><b>Coach note</b> — This is the session the first four weeks were for. Slower than you think is the way to finish it.</p>
+</div>
+<div class="sess" id="s-run-walk-w6a">
+<h4>Run/Walk — Week 6, Run 1 <span class="slug">run-walk-w6a</span> <span class="stype">run_walk</span></h4>
+<p class="desc">Five, eight and five minutes, with walks between.</p>
+<p class="meta">34 min of timed work</p>
+<div class="blk"><span class="blkname">Warm-up</span><ol>
+<li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Brisk walk to warm up</span></li>
+</ol></div>
+<div class="blk"><span class="blkname">Session</span><ol>
+<li><span class="tag t-run">RUN</span> <b>5 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
+<li><span class="tag t-walk">WALK</span> <b>3 min</b></li>
+<li><span class="tag t-run">RUN</span> <b>8 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
+<li><span class="tag t-walk">WALK</span> <b>3 min</b></li>
+<li><span class="tag t-run">RUN</span> <b>5 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
+</ol></div>
+<div class="blk"><span class="blkname">Cool-down</span><ol>
+<li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Walk until your breathing settles</span></li>
+</ol></div>
+<p class="coach"><b>Coach note</b> — Walk breaks come back after last week&#x27;s twenty minutes. That is deliberate, not a step backwards.</p>
+</div>
+<div class="sess" id="s-run-walk-w6b">
+<h4>Run/Walk — Week 6, Run 2 <span class="slug">run-walk-w6b</span> <span class="stype">run_walk</span></h4>
+<p class="desc">Two ten-minute runs with three minutes of walking between.</p>
+<p class="meta">33 min of timed work</p>
+<div class="blk"><span class="blkname">Warm-up</span><ol>
+<li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Brisk walk to warm up</span></li>
+</ol></div>
+<div class="blk"><span class="blkname">Session</span><ol>
+<li><span class="tag t-run">RUN</span> <b>10 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
+<li><span class="tag t-walk">WALK</span> <b>3 min</b></li>
+<li><span class="tag t-run">RUN</span> <b>10 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
+</ol></div>
+<div class="blk"><span class="blkname">Cool-down</span><ol>
+<li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Walk until your breathing settles</span></li>
+</ol></div>
+<p class="coach"><b>Coach note</b> — Two blocks, one walk. The walk is there to be used properly.</p>
+</div>
+<div class="sess" id="s-run-walk-w6c">
+<h4>Run/Walk — Week 6, Run 3 <span class="slug">run-walk-w6c</span> <span class="stype">run_walk</span></h4>
+<p class="desc">Twenty-five minutes continuous.</p>
+<p class="meta">35 min of timed work</p>
+<div class="blk"><span class="blkname">Warm-up</span><ol>
+<li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Brisk walk to warm up</span></li>
+</ol></div>
+<div class="blk"><span class="blkname">Session</span><ol>
+<li><span class="tag t-run">RUN</span> <b>25 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span> <span class="note">No walk breaks</span></li>
+</ol></div>
+<div class="blk"><span class="blkname">Cool-down</span><ol>
+<li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Walk until your breathing settles</span></li>
+</ol></div>
+<p class="coach"><b>Coach note</b> — Five minutes longer than last week&#x27;s. Settle into a pace you could hold for longer than asked.</p>
 </div>
 <div class="sess" id="s-run-walk-w7">
 <h4>Run/Walk — Week 7 <span class="slug">run-walk-w7</span> <span class="stype">run_walk</span></h4>
-<p class="desc">Twenty-five minutes, continuous, no walking.</p>
+<p class="desc">Twenty-five minutes continuous, three times this week.</p>
 <p class="meta">35 min of timed work</p>
 <div class="blk"><span class="blkname">Warm-up</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Brisk walk to warm up</span></li>
@@ -353,11 +441,26 @@ week multiplier and the member's own volume setting.
 <div class="blk"><span class="blkname">Cool-down</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Walk until your breathing settles</span></li>
 </ol></div>
-<p class="coach"><b>Coach note</b> — Run at a pace you could talk at. If you cannot, slow down — the walk breaks are there to be used.</p>
+<p class="coach"><b>Coach note</b> — No new distance this week — the same run, three times, is the point.</p>
 </div>
 <div class="sess" id="s-run-walk-w8">
 <h4>Run/Walk — Week 8 <span class="slug">run-walk-w8</span> <span class="stype">run_walk</span></h4>
-<p class="desc">Thirty minutes, continuous. This is the one you started for.</p>
+<p class="desc">Twenty-eight minutes continuous.</p>
+<p class="meta">38 min of timed work</p>
+<div class="blk"><span class="blkname">Warm-up</span><ol>
+<li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Brisk walk to warm up</span></li>
+</ol></div>
+<div class="blk"><span class="blkname">Session</span><ol>
+<li><span class="tag t-run">RUN</span> <b>28 min</b> <span class="band band-easy">easy</span> <span class="mode">limit</span></li>
+</ol></div>
+<div class="blk"><span class="blkname">Cool-down</span><ol>
+<li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Walk until your breathing settles</span></li>
+</ol></div>
+<p class="coach"><b>Coach note</b> — Three minutes longer than last week. That is the whole change.</p>
+</div>
+<div class="sess" id="s-run-walk-w9">
+<h4>Run/Walk — Week 9 <span class="slug">run-walk-w9</span> <span class="stype">run_walk</span></h4>
+<p class="desc">Thirty minutes continuous. This is the one you started for.</p>
 <p class="meta">40 min of timed work</p>
 <div class="blk"><span class="blkname">Warm-up</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Brisk walk to warm up</span></li>
@@ -368,12 +471,15 @@ week multiplier and the member's own volume setting.
 <div class="blk"><span class="blkname">Cool-down</span><ol>
 <li><span class="tag t-walk">WALK</span> <b>5 min</b> <span class="note">Walk until your breathing settles</span></li>
 </ol></div>
-<p class="coach"><b>Coach note</b> — Run at a pace you could talk at. If you cannot, slow down — the walk breaks are there to be used.</p>
+<p class="coach"><b>Coach note</b> — Thirty minutes without stopping. However far that takes you is far enough.</p>
 </div>
 
 <p class="foot">Generated from the live catalogue (<code>run_plan_templates</code>, <code>run_session_templates</code>,
 <code>run_template_steps</code>, <code>run_template_weeks</code>) on Supabase project <code>ixjfklpckgxrwjlfsaaz</code>.
 Every plan in this document has been built end to end through the <code>run-engine</code> Edge Function and checked for
 week-by-week volume, day placement and session balance. Distances are stored in metres and converted for display.
-Author field currently reads <code>claude-draft PM-1240 — pending Calum review</code>; it becomes Calum's on sign-off.</p>
+Every plan has been built end to end through the <code>run-engine</code> Edge Function at both its minimum and maximum
+days per week, with the volume and injury settings exercised, and checked for week-by-week volume, day placement,
+session balance and quality-ceiling compliance. Author field reads <code>claude-draft</code> and no coach name is
+attached; both change on qualified sign-off.</p>
 </div></body></html>
