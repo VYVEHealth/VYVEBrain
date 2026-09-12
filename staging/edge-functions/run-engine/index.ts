@@ -1,4 +1,5 @@
 // PM-1239 — run-engine Edge Function (Wave 0, server only, no member surface).
+// PM-1240 (v4) — repeated-effort distances no longer scale with volume.
 // Self-contained per §23.79: the engine module is inlined, not imported.
 // Actions: health | profile | build | persist.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
@@ -7,7 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 // PURE FUNCTIONS ONLY. No Date.now(), no randomness, no I/O in this file.
 // Distances in metres, durations in seconds, paces in seconds per kilometre.
 
-export const ENGINE_VERSION = "run-engine@0.1.0";
+export const ENGINE_VERSION = "run-engine@0.2.0";
 
 export type Band = "easy" | "long" | "threshold" | "interval" | "rep";
 export type VolumeKnob = "low" | "steady" | "high";
@@ -327,9 +328,15 @@ export function buildPlan(
         )
         .map((s) => {
           const reps = s.repeat_count ?? 1;
+          // PM-1240: a repeated effort is a NAMED distance, not a volume dial.
+          // "Rolling 800s" must stay 800m and a stride must stay 100m at every
+          // volume knob; only unrepeated steps (warmups, easy runs, long runs)
+          // absorb the week multiplier and the member's volume setting.
           const distance = s.distance_m == null
             ? null
-            : Math.round((Number(s.distance_m) * scale) / 10) * 10;
+            : s.repeat_count != null
+              ? Math.round(Number(s.distance_m))
+              : Math.round((Number(s.distance_m) * scale) / 10) * 10;
           const band = s.band;
           const range = band ? bands[band] : null;
 

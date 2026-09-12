@@ -2,7 +2,7 @@
 
 **Trigger:** "running wave N" / "cardio running plan" / "start running wave N"
 **Opened:** 13 September 2026, from a full teardown of Runna (web onboarding + paid app, Dean's 7-day trial).
-**Status:** **Wave 0 shipped 13 September 2026 (PM-1239)** — schema + pace engine live, server only, nothing member-facing. Wave 1 (template library) is the next build session.
+**Status:** **Waves 0 and 1 shipped 13 September 2026 (PM-1239, PM-1240)** — schema, pace engine and the template catalogue are live, server only, nothing member-facing. Wave 2 (wizard, recap, projection) is the next build session.
 **Owner gates:** Lewis — all member-facing strings + trial/entitlement framing. Phil — the injury-history question, its consent wording and anything that adapts training on an injury answer. Calum — plan templates, session library, progression rules, and whose face/name sits on the recommended pick.
 
 ---
@@ -80,8 +80,14 @@ Eight tables: `run_plan_templates`, `run_session_templates`, `run_template_steps
 
 **Proof:** two identical `build` calls returned byte-identical responses (md5 `3b31b4b8`, 23,977 chars); unauthenticated and wrong-key calls 401; `persist` wrote 1 plan / 24 sessions / 57 steps and was cleaned to zero residue; RLS proven by claims simulation. Fixture template `fixture-5k-improver` and its four session templates are `is_active=false` and exist only for the determinism harness. `member_running_plans` and `running_plan_cache` untouched and still serving.
 
-### Wave 1 — Template library + authoring
-The catalogue: goal taxonomy, plan templates with week ranges and target distance, session templates ("Easy Run", "Over and Unders", "Broken Miles", "Progressive Long Run", "Rolling 800s"), block/step definitions with band references and progression rules. Seeded from a first Calum batch. Needs a way for Calum to review them — decision open on whether that is a CC surface or a seed migration plus a printed sheet.
+### Wave 1 — Template library + authoring — **SHIPPED 13 Sep 2026, PM-1240**
+Four plan templates, all `is_active=true`: **`start-running`** (8wk × 3 days, run/walk, beginner, five short runs to 30 continuous minutes) · **`general-training`** (`mode='rolling'`, a 4-week cycle authored out to 12 weeks, 3–5 days, all levels) · **`5k-improver`** (8wk, 3–4 days) · **`10k-build`** (10wk, 3–5 days). Seventeen session templates: Easy Run, Recovery Run, Easy Run + Strides, Long Run, Progressive Long Run, Threshold Blocks, Broken Miles, Over and Unders, Rolling 800s, and eight weekly run/walk progressions. 166 week rows, 61 step rows. Marathon and half deliberately absent — the member base is beginner/return-to-running.
+
+**The three open decisions, closed.** General Training is **rolling**, not a fixed block. Calum's authoring surface is a **seed migration plus a rendered review sheet** (`docs/running-catalogue-review.html`), not a CC page — build the editor only if the catalogue proves it churns. And the first catalogue is a **Claude draft pending Calum's sign-off**: `coach_name` is NULL and `authored_by` reads `claude-draft PM-1240`, because waiting on a batch that had not arrived would have parked the wave.
+
+**Authoring rules learned here, and binding on every future template.** A repeated effort is a named distance and never scales (§23.348) — progression in a quality session comes from swapping the session template, never from stretching its reps. **Every week must carry exactly one `is_long_run` row**, or the engine places one session fewer than the member asked for. **Day slots are a priority order**: a member on fewer days than the template authors gets slots 1..n and the rest are dropped, so slot 1 is the long run and the remaining slots descend by importance. And the **long run must be the longest session in its week** — the first draft had a 12.9km over-and-unders against a 7.4km long run.
+
+**Proof:** every plan built end to end at minimum and maximum days per week through `pg_net`; determinism re-proven after the v4 deploy (two identical `5k-improver` builds, md5 `34781c44`, 29,770 chars); no-key and wrong-key 401; RLS by claims simulation (`authenticated` 4/17/166/61 and zero fixture rows, `anon` 0/0/0/0). `start-running` is duration-authored and therefore totals 0km — correct for the plan, and something Wave 3's plan header must not render as "0 km".
 
 ### Wave 2 — Wizard, recap, projection
 Single-question screens, all enums. Ability with objective anchors and the conditional beginner redirect. Injury question gated on Phil. Pre-filled load and fitness inputs for connected members. **The projection screen** ("in 16 weeks: 3:49–3:59") and **the recap screen** are both mandatory — they are where the product feels personal. Derived knobs (volume, difficulty) named and shown, editable later.
@@ -108,8 +114,10 @@ A watchOS or Wear OS app of our own is further out again: a separate native targ
 
 ## 5. Open decisions
 
-- Calum's authoring surface for templates — CC page or migration + sheet.
-- Which goals ship in the first catalogue. Our member base skews beginner/return-to-running, not marathon; "Start running" (run/walk steps — a step type the race plans never use) and "General training" matter more to us than marathon blocks do.
-- Whether "General training" is a rolling plan with no end date or a fixed block, since it has no race to taper into.
+- ~~Calum's authoring surface for templates~~ — **closed PM-1240: seed migration + rendered review sheet.**
+- ~~Which goals ship in the first catalogue~~ — **closed PM-1240: Start Running, General Training, 5k, 10k.**
+- ~~Whether "General training" is rolling or a fixed block~~ — **closed PM-1240: rolling, 4-week cycle.**
+- Whether Wave 3's plan header shows elapsed time rather than distance for a duration-authored plan like Start Running — Dean.
+- Calum's verdict on the first catalogue: weekly shape, progression, session structures, names and coach notes, and whether the eight-week run/walk ramp is too fast for a true beginner.
 - Free-trial / entitlement framing for running specifically, if any — Lewis.
 - Whether the projection screen's estimate is shown to members who have given only one race time, or held until we have two.
