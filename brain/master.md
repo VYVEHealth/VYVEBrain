@@ -382,7 +382,9 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-13, PM-1219)
+## CURRENT FRONT (updated 2026-09-13, PM-1220)
+
+**PM-1220 (2026-09-13, 02:00): EXERCISE LIBRARY MOCKUP — CC `bddf35c1`, `docs/mockups/exercise-library-mockup.html`.** RMP-style browse for Calum Batch 2: rail with live counts (muscle / equipment / stretching by region), search + video + sort chips, card grid, picker mode with the session column, preview sheet. Nothing built. **Finding:** stock `category`/`equipment` values are dirty (case, compounds) — Batch 2 opens with a normalisation migration. Dean to react to the mockup; decisions (rail grouping, Recently used, duplicate-vs-edit, picker as column vs sheet) in the changelog.
 
 **PM-1219 (2026-09-13, 01:30): RMP IMPORT GONE EXCEPT 478 STRETCHES — migration `pm1219_rmp_teardown_keep_stretches`.** 4,398 of the 4,876 `rmp:%` rows deleted on Dean's word; the 478 tagged Stretching promoted to VYVE stock (`partner_id NULL`, `library 'strength'`, `category 'Stretching'`, region in `subcategory`). Coach library = 977 stock + 478 stretches. **Physio demo library is gone** (physio-portal Library 4,876 → 478; re-import is the PM-1207 recipe if the PT demo is still wanted). Stretches are RMP YouTube embeds — placeholder stock until our own recordings; Lewis to be told. `source_slug` kept for the one-DELETE swap. Library browse redesign (RMP-style rail + grid) = Calum Batch 2 centrepiece, mockup first.
 
@@ -1628,6 +1630,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). **DNS/proxy: SETTLED PM-841 — z
 ---
 
 ## 19. Current status
+
+### PM-1220 — Exercise library mockup (2026-09-13)
+**CC `bddf35c1`:** `docs/mockups/exercise-library-mockup.html` — unlinked standalone, CC tokens inlined, no schema, no code paths. Library page + picker mode, rail with live counts, preview sheet. Reference for Calum Batch 2; nothing in the portals changed.
 
 ### PM-1219 — RMP import torn down; 478 stretches promoted to stock (2026-09-13)
 **Migration `pm1219_rmp_teardown_keep_stretches`, no repo change.** `coach_exercises`: 4,398 `rmp:%` rows deleted; 478 (`subcategory='Stretching'`) → `partner_id NULL`, `library 'strength'`, `category 'Stretching'`, `subcategory` = former body region, `source_slug` kept. Live: 977 VYVE stock + 478 stretches + own. The PM-1207 demo library and PM-1216 demo tagging are gone with it; `rehab_plan_items.exercise_id` SET NULL on the three affected items of Dean's test plan.

@@ -28,7 +28,7 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 | 15 | Add New appends at the bottom of the page | Open the builder as the view, list hidden, back on save/cancel |
 | 16 | Tabs per day vs whole-programme view | Toggle: Full programme / Session tabs on the programme builder and preview |
 | 17 | Muscle-group filter returns odd results | `muscle_volumes` (PM-985) fuzzy map; tighten to primary muscle + exact category |
-| 22 | (Dean, 13 Sep) Library should browse like Rehab My Patient — left rail of categories with counts, sub-groups, search, card grid with Add · info · play, favourites, My exercises | **Batch 2 centrepiece** — shared by the coach picker (#11) and the physio picker; mockup on the CC tokens before code |
+| 22 | (Dean, 13 Sep) Library should browse like Rehab My Patient — left rail of categories with counts, sub-groups, search, card grid with Add · info · play, favourites, My exercises | **Batch 2 centrepiece** — mockup shipped PM-1220 (`docs/mockups/exercise-library-mockup.html`), awaiting Dean's reaction; build opens with a taxonomy normalisation migration |
 
 ## Batch 3 — talk-first (changes the `programme_json` contract the member app renders)
 
@@ -49,3 +49,4 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 - 12 Sep 2026 — batch 1 received (Programmes / Weekly workouts / Day templates / Exercise Library / Profile); r1 shipped PM-1217.
 - 13 Sep 2026 — PM-1218: Dean's own pass — wide-screen centring + notification reminder timestamps (not Calum items, same surface).
 - 13 Sep 2026 — PM-1219: RMP import torn down, 478 stretches kept as stock; library browse redesign added as #22.
+- 13 Sep 2026 — PM-1220: library mockup on CC main; Batch 2 build order written in the backlog.
