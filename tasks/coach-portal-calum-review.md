@@ -25,7 +25,7 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 | 12 | Weekly workouts show names without images | Editor side **shipped PM-1224** (weekly sessions now use the day builder — thumbnails, picker, toggle); the list/preview view still to do |
 | 13 | Treadmill Run locked to sets/reps; want sets/reps · time · distance · calories per row | **Shipped PM-1223/1228** — Reps → Secs → Mins on the row label, seconds on save; distance / kcal = Batch 3 contract |
 | 14 | Search/filter on Programmes, Weekly workouts, Day templates | **Shipped PM-1234** — search · sort · list/grid · per page · pager on every template list; Clients got per page / sort / check-in-day chips |
-| 15 | Add New appends at the bottom of the page | Open the builder as the view, list hidden, back on save/cancel |
+| 15 | Add New appends at the bottom of the page | **Shipped PM-1236** — editor hides the list, ← Back |
 | 16 | Tabs per day vs whole-programme view | Toggle: Full programme / Session tabs on the programme builder and preview |
 | 17 | Muscle-group filter returns odd results | **Shipped PM-1223** — taxonomy normalised (36→20 muscle values, 32→18 equipment) + rail with counts |
 | 22 | (Dean, 13 Sep) Library should browse like Rehab My Patient — left rail of categories with counts, sub-groups, search, card grid with Add · info · play, favourites, My exercises | **Shipped PM-1223** — rail with counts, search, sort, video chip, ★ favourites, show-more; physio page gets it in part 2 |
@@ -34,14 +34,14 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 
 | # | Calum said | Notes |
 |---|---|---|
-| 18 | Blocks within one workout (warm-up / main / conditioning / cool-down) | New `blocks[]` on a day; `workouts-session.js` must render it. **Mocked PM-1221** (`docs/mockups/programme-builder-mockup.html`) with #13 #15 #19 #20 |
-| 19 | Toggle weekday-tied vs Session 1/2/3 | W5 emits `session.day`; add a per-programme `days_mode` and a "complete when ready" render |
-| 20 | Programmes should accept Weekly workouts, not only Day templates | Programme phases referencing `workout` templates as well as `workout_day` |
+| 18 | Blocks within one workout (warm-up / main / conditioning / cool-down) | **Dean decided (PM-1236):** fixed four — Warm up · Workout · Cardio finisher · Cool down. Needs `finisher[]` in the contract + member render (Batch 3) |
+| 19 | Toggle weekday-tied vs Session 1/2/3 | **Dean decided (PM-1236):** Session 1/2/3 default, checkbox to tie to weekdays. Batch 3 |
+| 20 | Programmes should accept Weekly workouts, not only Day templates | Dean's read: import day templates into programmes *and* weekly plans — weekly side **shipped PM-1236**; programmes already pick day templates per slot |
 | 21 | Feature/access levels by package (1-to-1 vs cheap group programme) | Build on client tags (W4b) + `assignments.gates`; per-tag can/can't lists on content, messaging, nutrition, education |
 
 ## Call items (Calum + Dean, Lewis only where a member-facing string changes)
 
-- "Weekly Workouts" naming — he'd build most bespoke plans there and the name says "one temporary week". Candidate: "Training plans".
+- "Weekly Workouts" naming — **Dean decided PM-1236:** match Kahunas/Trainerize — Workouts (was Day templates), Weekly plans (was Weekly workouts), Programmes.
 - Goals "Target" — reads as a duplicate of the goal for nutrition goals; water makes sense. Decide the semantics, then the copy.
 - Duplicate-then-edit vs edit-in-place-auto-fork on stock exercises — he sees both sides; leave as is until the call.
 
@@ -57,3 +57,4 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 - 13 Sep 2026 — PM-1225: picker re-presented as a right-hand drawer, + Exercise opens it; doubled-library race fixed.
 - 13 Sep 2026 — PM-1226→1228: drawer polished on Dean's live pass (blank row gone, video on top, minutes, cardio videos wired from Storage).
 - 13 Sep 2026 — PM-1234: list tools on every list page (Dean's Kahunas comparison); #14 closed.
+- 13 Sep 2026 — PM-1236: builder as a page, naming, import-a-day; Dean settled blocks / Session-N / naming himself.
