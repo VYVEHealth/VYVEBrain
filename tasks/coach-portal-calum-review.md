@@ -58,3 +58,4 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 - 13 Sep 2026 — PM-1226→1228: drawer polished on Dean's live pass (blank row gone, video on top, minutes, cardio videos wired from Storage).
 - 13 Sep 2026 — PM-1234: list tools on every list page (Dean's Kahunas comparison); #14 closed.
 - 13 Sep 2026 — PM-1236: builder as a page, naming, import-a-day; Dean settled blocks / Session-N / naming himself.
+- 13 Sep 2026 — PM-1241: weekly plan sessions as tabs; programme slots can create a day in place (Dean's Kahunas comparison).
