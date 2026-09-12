@@ -54,3 +54,4 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 - 13 Sep 2026 — PM-1222: Dean decided the picker is the library over the builder (multi-add, Done); Batch 2 build unblocked.
 - 13 Sep 2026 — PM-1223: Batch 2 part 1 shipped (library v2, picker over the builder, Reps/Secs toggle, taxonomy). Part 2 = #12 #14 #15 + physio.
 - 13 Sep 2026 — PM-1224: weekly workouts moved onto the day builder (Dean hit the old editor); Cardio 23 added to stock.
+- 13 Sep 2026 — PM-1225: picker re-presented as a right-hand drawer, + Exercise opens it; doubled-library race fixed.

@@ -382,7 +382,9 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-13, PM-1224)
+## CURRENT FRONT (updated 2026-09-13, PM-1225)
+
+**PM-1225 (2026-09-13, 04:50): PICKER = RIGHT-HAND DRAWER, "+ EXERCISE" OPENS IT, LIBRARY NO LONGER DOUBLED — CC `f18764dc`.** Dean saw 2,956 (every row twice): concurrent `exLoad` callers both passed the guard — now single-flight + dedupe (§23.341). Drawer slides in from the right; block buttons open it directly; "or type a name" keeps the blank row. Deploy check owed; Programmes complaint still to be pinned.
 
 **PM-1224 (2026-09-13, 04:30): WEEKLY WORKOUTS ON THE REAL BUILDER + CARDIO — CC `d2203364`, migration `pm1224_cardio_stock`.** Dean's "just a dropdown, only sets and reps" was the PM-955 weekly editor (`addWSession`), never upgraded; each session is now a `renderDayEditor` day (library rows, Choose from library sheet, Reps/Secs, superset, tempo/RIR, volume strip), `plCollect` uses `collectDay` per session (contract-safe: `coach_build_program_json` already reads those fields on sessions). 23 timed Cardio stock rows added. Deploy check owed. Open: what Dean hit on Programmes.
 
@@ -1638,6 +1640,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). **DNS/proxy: SETTLED PM-841 — z
 ---
 
 ## 19. Current status
+
+### PM-1225 — Picker drawer, block buttons open it, exLoad single-flight (2026-09-13)
+**CC `f18764dc`** (coach-portal.html md5 `8690b289`): `330-library-v2-pm1223.js` — `exLoad` wrapper is single-flight (`exv2.loading`) + dedupes `cexRows` by id; `.exv2-modal` is a right-hand drawer (`justify-content:flex-end`, `.in` `min(1180px,88vw)` × 100vh, `translateX` transition, `.open` class); `renderDayEditor` wrapper clone-replaces `.de-add-warm/.de-add-main/.de-add-cool` (drops the blank-row listener; labels "+ Warm up exercises" / "+ Add exercises" / "+ Cool down exercises"; `data-exv2`) and adds an `.exv2-blank` "or type a name" link that calls `addDayRow`. `.exv2-choose` no longer exists.
 
 ### PM-1224 — Weekly workouts on the day builder; Cardio stock (2026-09-13)
 **Migration `pm1224_cardio_stock`:** 23 `coach_exercises` stock rows, `category 'Cardio'`, `exercise_type 'duration'`, `source_slug 'vyve:cardio:%'`. **CC `d2203364`** (coach-portal.html md5 `76aeeb0d`): new slice `340-weekly-editor-pm1224.js` after `330` — `addWSession` SHADOW (name row + `.w-day` via `renderDayEditor`, `cex-names` datalist ensured), `plCollect` wrapped for kind `workout` (`collectDay` per `.w-session .w-day`, `name` merged). `050-plans.js` untouched; its `addWSession`/workout branch of `plCollect` are now dead.
@@ -2974,6 +2979,10 @@ The notification feed mixes real rows (workouts, check-ins, messages — stamped
 #### §23.340 — One library, two contexts: move the DOM, don't clone it (PM-1223)
 
 The exercise picker over the builder is the Exercise Library page's own `#exv2-wrap` node moved into a sheet and moved back on close — not a second render of the same rows. Every id (`ex-list`, `ex-f-q`, `ex-f-cat`, …) stays unique, every existing handler keeps working, and the page and the picker cannot drift apart because there is only one of them. The pattern for any future "same surface, different context" ask in the portals: keep the surface's element, add a `mode` flag the renderer reads (`exv2.pick` here), move the node, restore it on close. Corollary: the rail drives the *hidden* legacy controls (`#ex-f-cat` etc.) rather than replacing them, so nothing that read those controls needed touching — when a control is superseded, hide it and keep it truthful before considering removal.
+
+#### §23.341 — A cached async loader guards with an in-flight promise, not a boolean set at the end (PM-1225)
+
+`exLoad` guarded with `if (cexLoaded) return;` and set `cexLoaded = true` after its paging loop. Any two callers that start before the first finishes both pass the guard, both `cexRows = []`, both concat — the library doubled to 2,956 the moment two views preloaded it, and nobody noticed until a rail put the count on screen. Pattern: keep the loaded flag, but also hold the in-flight promise and return it to every concurrent caller; dedupe the result by id anyway, because the cost is nil and the failure mode is silent. Same shape applies to `loadExerciseNames`, `w0loadPrefs`, `w3Clients` and every other "load once" cache in the portal.
 
 ## 24. Key references, credentials & URLs
 
