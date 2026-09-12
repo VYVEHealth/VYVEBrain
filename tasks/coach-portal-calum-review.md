@@ -21,7 +21,7 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 
 | # | Calum said | Plan |
 |---|---|---|
-| 11 | Visual exercise selector with thumbnails when adding exercises | Thumbnails in the builder picker (library already has them, PM-1157/1209) |
+| 11 | Visual exercise selector with thumbnails when adding exercises | **Decided PM-1222:** Add an exercise opens the full library (PM-1220 picker mode) as a sheet over the builder, multi-add, Done |
 | 12 | Weekly workouts show names without images | `w3ThumbImg` per row in the workout view |
 | 13 | Treadmill Run locked to sets/reps; want sets/reps · time · distance · calories per row | `w3RowSetMode` already carries reps/duration per row with no UI; add a per-row type control (reps / secs / distance / kcal) and carry it into `coach_build_program_json` |
 | 14 | Search/filter on Programmes, Weekly workouts, Day templates | Search box + sort on the three lists (recipes have the pattern from W9b) |
@@ -51,3 +51,4 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 - 13 Sep 2026 — PM-1219: RMP import torn down, 478 stretches kept as stock; library browse redesign added as #22.
 - 13 Sep 2026 — PM-1220: library mockup on CC main; Batch 2 build order written in the backlog.
 - 13 Sep 2026 — PM-1221: programme builder mockup (Kahunas shape) on CC main; Dean asking Calum whether the picker needs a browse rail or search only.
+- 13 Sep 2026 — PM-1222: Dean decided the picker is the library over the builder (multi-add, Done); Batch 2 build unblocked.
