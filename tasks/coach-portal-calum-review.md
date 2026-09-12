@@ -34,7 +34,7 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 
 | # | Calum said | Notes |
 |---|---|---|
-| 18 | Blocks within one workout (warm-up / main / conditioning / cool-down) | New `blocks[]` on a day; `workouts-session.js` must render it; Calum to show the Kahunas version on the call first |
+| 18 | Blocks within one workout (warm-up / main / conditioning / cool-down) | New `blocks[]` on a day; `workouts-session.js` must render it. **Mocked PM-1221** (`docs/mockups/programme-builder-mockup.html`) with #13 #15 #19 #20 |
 | 19 | Toggle weekday-tied vs Session 1/2/3 | W5 emits `session.day`; add a per-programme `days_mode` and a "complete when ready" render |
 | 20 | Programmes should accept Weekly workouts, not only Day templates | Programme phases referencing `workout` templates as well as `workout_day` |
 | 21 | Feature/access levels by package (1-to-1 vs cheap group programme) | Build on client tags (W4b) + `assignments.gates`; per-tag can/can't lists on content, messaging, nutrition, education |
@@ -50,3 +50,4 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 - 13 Sep 2026 — PM-1218: Dean's own pass — wide-screen centring + notification reminder timestamps (not Calum items, same surface).
 - 13 Sep 2026 — PM-1219: RMP import torn down, 478 stretches kept as stock; library browse redesign added as #22.
 - 13 Sep 2026 — PM-1220: library mockup on CC main; Batch 2 build order written in the backlog.
+- 13 Sep 2026 — PM-1221: programme builder mockup (Kahunas shape) on CC main; Dean asking Calum whether the picker needs a browse rail or search only.

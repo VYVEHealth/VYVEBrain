@@ -382,7 +382,9 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-13, PM-1220)
+## CURRENT FRONT (updated 2026-09-13, PM-1221)
+
+**PM-1221 (2026-09-13, 02:40): PROGRAMME BUILDER MOCKUP — CC `f49648d8`, `docs/mockups/programme-builder-mockup.html`.** Kahunas-shape builder on our tokens: Simple / Detailed / PDF chooser; builder as a page; day tabs with Mon–Sun vs Session-N toggle and + Create new · Import day template · Import weekly workout · Rest day; Warm up / Workout / Cool down blocks + add-a-block; per-row tracking select + superset letters; search-first Choose-exercise drawer with the library rail folded away. Nothing built. Dean asking Calum whether the picker needs a browse at all. Builder shape = `programme_json` contract change (Batch 3).
 
 **PM-1220 (2026-09-13, 02:00): EXERCISE LIBRARY MOCKUP — CC `bddf35c1`, `docs/mockups/exercise-library-mockup.html`.** RMP-style browse for Calum Batch 2: rail with live counts (muscle / equipment / stretching by region), search + video + sort chips, card grid, picker mode with the session column, preview sheet. Nothing built. **Finding:** stock `category`/`equipment` values are dirty (case, compounds) — Batch 2 opens with a normalisation migration. Dean to react to the mockup; decisions (rail grouping, Recently used, duplicate-vs-edit, picker as column vs sheet) in the changelog.
 
@@ -1630,6 +1632,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). **DNS/proxy: SETTLED PM-841 — z
 ---
 
 ## 19. Current status
+
+### PM-1221 — Programme builder mockup (2026-09-13)
+**CC `f49648d8`:** `docs/mockups/programme-builder-mockup.html` — unlinked standalone, CC tokens inlined. Chooser + builder-as-page + day tabs + blocks + search-first exercise drawer. Reference for Calum Batches 2–3; nothing in the portals changed.
 
 ### PM-1220 — Exercise library mockup (2026-09-13)
 **CC `bddf35c1`:** `docs/mockups/exercise-library-mockup.html` — unlinked standalone, CC tokens inlined, no schema, no code paths. Library page + picker mode, rail with live counts, preview sheet. Reference for Calum Batch 2; nothing in the portals changed.
