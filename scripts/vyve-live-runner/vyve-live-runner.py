@@ -91,6 +91,22 @@ SPAWN_HORIZON = int(os.environ.get("VYVE_SPAWN_HORIZON", "900"))
 STREAM_ACTIVE_TIMEOUT = 120  # seconds to wait for the bound stream to report active after ffmpeg starts
 STREAM_POLL_INTERVAL = 3
 
+# PM-1201 — padding + hang protection.
+# The first seconds of every airing were lost because ffmpeg pushed the master from t=0 while the
+# runner was still waiting for the stream to go active and transitioning ready->live; the end was
+# cut because the broadcast completed the instant ffmpeg exited while HLS viewers sat behind the
+# live edge. Fix: the push is [holding card][master][end card] via the concat demuxer, ffmpeg starts
+# EARLY_START_SEC before the slot so ready->live lands on the hour, and completion waits
+# COMPLETE_HOLD_SEC after the push ends. Cards are rendered per airing at the master's own
+# resolution/fps/audio so the concat is byte-compatible (falls back to a bare push on any failure).
+PREROLL_SEC = int(os.environ.get("VYVE_PREROLL_SEC", "15"))
+POSTROLL_SEC = int(os.environ.get("VYVE_POSTROLL_SEC", "10"))
+COMPLETE_HOLD_SEC = int(os.environ.get("VYVE_COMPLETE_HOLD_SEC", "20"))
+EARLY_START_SEC = int(os.environ.get("VYVE_EARLY_START_SEC", "10"))
+RTMP_RW_TIMEOUT_US = int(os.environ.get("VYVE_RTMP_RW_TIMEOUT_US", str(30 * 1_000_000)))  # ffmpeg exits if YouTube stops reading
+PUSH_GRACE_SEC = 180  # hard ceiling = media duration + padding + this; beyond it the push is killed
+AIR_TMP = "/tmp/vyve-air"
+
 
 def log(*a):
     print(f"[{datetime.now(timezone.utc).isoformat(timespec='seconds')}]", *a, flush=True)
@@ -343,15 +359,128 @@ def transition(token, bid, status):
     return True
 
 
-def ffmpeg_cmd(media_path, rtmp_url):
+def ffmpeg_cmd(media_path, rtmp_url, concat_list=None):
+    """The push. With a concat list (PM-1201) the input is [card][master][card]; otherwise the bare
+    master as before. -rw_timeout makes ffmpeg give up when YouTube stops reading instead of sitting
+    in CLOSE-WAIT forever (the 10 Sep zombies)."""
+    inp = ["-f", "concat", "-safe", "0", "-re", "-i", concat_list] if concat_list else ["-re", "-i", media_path]
     return [
         "ffmpeg", "-hide_banner", "-loglevel", "warning",
-        "-re", "-i", media_path,
+        *inp,
         "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
         "-b:v", "4500k", "-maxrate", "4500k", "-bufsize", "9000k", "-g", "60",
         "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
+        "-rw_timeout", str(RTMP_RW_TIMEOUT_US),
         "-f", "flv", rtmp_url,
     ]
+
+
+def probe_media(path):
+    """width, height, fps, audio sample rate, channels, duration — what the padding cards must match."""
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-print_format", "json", "-show_streams", "-show_format", path],
+                             capture_output=True, text=True, timeout=60)
+        j = json.loads(out.stdout or "{}")
+        v = next((x for x in j.get("streams", []) if x.get("codec_type") == "video"), None)
+        a = next((x for x in j.get("streams", []) if x.get("codec_type") == "audio"), None)
+        if not v:
+            return None
+        num, _, den = (v.get("avg_frame_rate") or v.get("r_frame_rate") or "30/1").partition("/")
+        fps = round(float(num) / float(den or 1), 3) if float(den or 1) else 30.0
+        if not (1 <= fps <= 120):
+            fps = 30.0
+        return {"w": int(v["width"]), "h": int(v["height"]), "fps": fps,
+                "ar": int(a.get("sample_rate") or 44100) if a else None,
+                "ch": int(a.get("channels") or 2) if a else 0,
+                "dur": float((j.get("format") or {}).get("duration") or 0)}
+    except Exception as e:
+        log("  probe failed:", repr(e))
+        return None
+
+
+def render_card_clip(card_jpg, seconds, m, out_path):
+    """A still card (or a VYVE-dark frame when there is no card) as an h264/aac clip that concats
+    cleanly with the master: same size, fps, sample rate and channel count."""
+    fps = m["fps"]
+    if card_jpg:
+        vin = ["-loop", "1", "-framerate", str(fps), "-t", str(seconds), "-i", card_jpg]
+        vf = (f"scale={m['w']}:{m['h']}:force_original_aspect_ratio=decrease,"
+              f"pad={m['w']}:{m['h']}:(ow-iw)/2:(oh-ih)/2:color=0x0D2B2B,fps={fps},format=yuv420p")
+    else:
+        vin = ["-f", "lavfi", "-t", str(seconds), "-i", f"color=c=0x0D2B2B:s={m['w']}x{m['h']}:r={fps}"]
+        vf = "format=yuv420p"
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *vin]
+    if m["ch"]:
+        layout = "mono" if m["ch"] == 1 else "stereo"
+        cmd += ["-f", "lavfi", "-t", str(seconds), "-i", f"anullsrc=r={m['ar']}:cl={layout}"]
+    cmd += ["-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-g", "60", "-r", str(fps)]
+    if m["ch"]:
+        cmd += ["-c:a", "aac", "-b:a", "128k", "-ar", str(m["ar"]), "-ac", str(m["ch"]), "-shortest"]
+    else:
+        cmd += ["-an"]
+    cmd += ["-movflags", "+faststart", out_path]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if r.returncode != 0:
+        raise RuntimeError(r.stderr.strip()[-300:])
+    return out_path
+
+
+FALLBACK_FONT = "/opt/vyve/PlayfairDisplay.ttf"
+
+
+def render_fallback_card(oid, title, m):
+    """When an occurrence has no host card: VYVE dark frame, gold wordmark, the session title.
+    No new member-facing copy — the title is the session's own. Returns a jpg path or None."""
+    try:
+        d = os.path.join(AIR_TMP, oid)
+        os.makedirs(d, exist_ok=True)
+        tf = os.path.join(d, "title.txt")
+        with open(tf, "w") as f:
+            f.write((title or "VYVE").strip()[:80])
+        out = os.path.join(d, "card.jpg")
+        size = max(m["w"], 1280)
+        fs_brand = int(size * 0.0625); fs_title = int(size * 0.033)
+        font = f"fontfile={FALLBACK_FONT}:" if os.path.isfile(FALLBACK_FONT) else ""
+        vf = (f"drawtext={font}text=VYVE:fontcolor=0xC9A84C:fontsize={fs_brand}:x=(w-text_w)/2:y=(h-text_h)/2-{int(fs_brand*0.75)},"
+              f"drawtext={font}textfile={tf}:fontcolor=white:fontsize={fs_title}:x=(w-text_w)/2:y=(h-text_h)/2+{int(fs_brand*0.55)}")
+        r = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-t", "1",
+                            "-i", f"color=c=0x0D2B2B:s={m['w']}x{m['h']}:r=1", "-vf", vf, "-frames:v", "1", out],
+                           capture_output=True, text=True, timeout=60)
+        return out if r.returncode == 0 and os.path.isfile(out) else None
+    except Exception:
+        return None
+
+
+def build_air_playlist(oid, media_path, card_jpg, title=None):
+    """Render the two cards and write the concat list. Returns (list_path, media_meta) or (None, meta)
+    when padding is not possible — the caller then pushes the bare master exactly as before."""
+    m = probe_media(media_path)
+    if not m:
+        return None, None
+    d = os.path.join(AIR_TMP, oid)
+    os.makedirs(d, exist_ok=True)
+    if not card_jpg:
+        card_jpg = render_fallback_card(oid, title, m)   # None again -> plain dark frame
+    try:
+        pre = render_card_clip(card_jpg, PREROLL_SEC, m, os.path.join(d, "pre.mp4"))
+        post = render_card_clip(card_jpg, POSTROLL_SEC, m, os.path.join(d, "post.mp4"))
+    except Exception as e:
+        log(f"  WARN: padding cards failed ({e}) — airing the bare master")
+        return None, m
+    lst = os.path.join(d, "list.txt")
+    with open(lst, "w") as f:
+        for p in (pre, media_path, post):
+            f.write("file '" + p.replace("'", "'\\''") + "'\n")
+    return lst, m
+
+
+def cleanup_air(oid):
+    d = os.path.join(AIR_TMP, oid)
+    for n in ("pre.mp4", "post.mp4", "list.txt", "card.jpg", "title.txt"):
+        try: os.remove(os.path.join(d, n))
+        except Exception: pass
+    try: os.rmdir(d)
+    except Exception: pass
 
 
 def redact(rtmp_url, key):
@@ -372,7 +501,13 @@ def run_occurrence(occ, token, dry_run=False, wait_for_start=False):
     rtmp_url, key = resolve_rtmp(token, cat["youtube_stream_id"])
     bid, how = ensure_broadcast(token, occ, cat, dry_run)
     thumb = thumb_for(occ)
-    cmd = ffmpeg_cmd(media_path, rtmp_url)
+    # PM-1201: build the padded playlist now, while there is still time before the slot
+    concat_list, meta = (None, None) if dry_run else build_air_playlist(oid, media_path, thumb, label)
+    if dry_run:
+        meta = probe_media(media_path)
+    cmd = ffmpeg_cmd(media_path, rtmp_url, concat_list)
+    padded = PREROLL_SEC + POSTROLL_SEC if concat_list else 0
+    expected = (meta["dur"] if meta else 0) + padded
 
     if dry_run:
         log("  DRY-RUN plan:")
@@ -381,8 +516,9 @@ def run_occurrence(occ, token, dry_run=False, wait_for_start=False):
         log(f"    rtmp      : {redact(rtmp_url, key)}")
         log(f"    broadcast : {bid}  ({how})")
         log(f"    thumbnail : {thumb or '(none found — would use YouTube auto-frame)'}")
+        log(f"    padding   : {PREROLL_SEC}s card + master ({meta['dur']:.0f}s) + {POSTROLL_SEC}s card [{'host card' if thumb else 'rendered title card'}]; start {EARLY_START_SEC}s early; hold {COMPLETE_HOLD_SEC}s before complete" if meta else "    padding   : (probe failed — bare master)")
         log(f"    would: set thumbnail -> start ffmpeg -> poll stream active -> transition {bid} ready->live")
-        log(f"           -> wait ffmpeg end -> transition {bid} live->complete")
+        log(f"           -> wait ffmpeg end (ceiling {expected + PUSH_GRACE_SEC:.0f}s) -> hold -> transition {bid} live->complete")
         log(f"    ffmpeg    : {' '.join(cmd[:-1])} {redact(rtmp_url, key)}")
         return True
 
@@ -395,13 +531,25 @@ def run_occurrence(occ, token, dry_run=False, wait_for_start=False):
 
     if wait_for_start:
         start = datetime.fromisoformat(occ["starts_at"].replace("Z", "+00:00"))
-        delay = (start - datetime.now(timezone.utc)).total_seconds()
+        delay = (start - datetime.now(timezone.utc)).total_seconds() - (EARLY_START_SEC if concat_list else 0)
         if delay > 0:
-            log(f"  sleeping {int(delay)}s until air time")
+            log(f"  sleeping {int(delay)}s until air time" + (f" (starting {EARLY_START_SEC}s early on the holding card)" if concat_list else ""))
             time.sleep(delay)
 
-    log(f"  starting ffmpeg push -> {redact(rtmp_url, key)}")
+    log(f"  starting ffmpeg push -> {redact(rtmp_url, key)}" + ("  [padded]" if concat_list else "  [bare]"))
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    # PM-1201: drain stderr continuously. With a full 64KB pipe ffmpeg blocks on its next warning and
+    # never exits — that is exactly how three Pilates pushes sat in CLOSE-WAIT for 30h on 10 Sep.
+    err_buf = []
+    def _drain(pipe):
+        try:
+            for line in iter(pipe.readline, b""):
+                err_buf.append(line)
+                if len(err_buf) > 60:
+                    del err_buf[:-60]
+        except Exception:
+            pass
+    threading.Thread(target=_drain, args=(proc.stderr,), daemon=True).start()
 
     # poll the bound stream until YouTube sees active ingest, then go live
     deadline = time.time() + STREAM_ACTIVE_TIMEOUT
@@ -419,9 +567,32 @@ def run_occurrence(occ, token, dry_run=False, wait_for_start=False):
     if not went_live:
         log("  WARN: never confirmed live; letting push run, will still complete on exit")
 
-    proc.wait()
-    err_tail = (proc.stderr.read().decode()[-400:] if proc.stderr else "")
+    ceiling = expected + PUSH_GRACE_SEC if expected else 6 * 3600
+    killed = False
+    try:
+        proc.wait(timeout=ceiling)
+    except subprocess.TimeoutExpired:
+        killed = True
+        log(f"  ERROR: push exceeded its ceiling ({ceiling:.0f}s) — killing ffmpeg")
+        try: proc.kill()
+        except Exception: pass
+        proc.wait()
+        try:
+            supa("POST", "platform_alerts", data={"severity": "high", "type": "runner_push_hung", "source": "vyve-live-runner",
+                                                  "page": "live", "details": f"'{label}' ({oid}) push ran past {ceiling:.0f}s and was killed; broadcast {bid} completed by force."})
+        except Exception:
+            pass
+    err_tail = b"".join(err_buf[-6:]).decode(errors="replace")[-400:]
     log(f"  ffmpeg finished rc={proc.returncode} {err_tail.strip()[:200]}")
+    cleanup_air(oid)
+    if not killed and COMPLETE_HOLD_SEC > 0:
+        log(f"  holding {COMPLETE_HOLD_SEC}s for viewers behind the live edge")
+        time.sleep(COMPLETE_HOLD_SEC)
+    # a worker's token is minted at spawn; a long session outlives it (the 10 Sep zombies got 401 here)
+    try:
+        token = refresh_access_token()
+    except Exception as e:
+        log("  WARN: token refresh before complete failed:", repr(e))
     transition(token, bid, "complete")
     log(f"  broadcast {bid} -> COMPLETE. done.")
     return True

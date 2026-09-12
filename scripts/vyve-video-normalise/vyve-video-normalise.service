@@ -1,0 +1,14 @@
+[Unit]
+Description=VYVE normalise-once-at-ingest (partner uploads -> airing masters) — PM-1200
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/vyve/vyve-runner.env
+Environment=VYVE_NORMALISE_MIN_FREE_GB=2
+ExecStart=/usr/bin/python3 /opt/vyve/vyve-video-normalise.py --once --max 1
+TimeoutStartSec=2h
+Nice=19
+CPUWeight=20
+IOWeight=20

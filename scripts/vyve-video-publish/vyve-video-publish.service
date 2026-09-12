@@ -1,0 +1,13 @@
+[Unit]
+Description=VYVE partner video publish (YouTube unlisted) — PM-1198
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/vyve/vyve-runner.env
+Environment=VYVE_YT_WELCOME_ONLY=1
+Environment=VYVE_YT_MAX_PER_DAY=40
+ExecStart=/usr/bin/python3 /opt/vyve/vyve-video-publish.py --once
+TimeoutStartSec=45min
+Nice=10

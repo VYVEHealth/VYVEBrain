@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 """
-vyve-video-publish.py  —  PM-1197
+vyve-video-publish.py  —  PM-1197 / PM-1198
 
 Partner uploads reach members through YouTube, not through our own storage egress.
 This worker takes any approved, non-removed partner_content_items row that has a file in the
-private `partner-content` bucket and no replay_video_id yet, pushes it to the VYVE channel as
-an UNLISTED video, and writes the video id back onto the row. partner-profile.html already
-renders a playable card the moment replay_video_id is set.
+private `partner-content` bucket and no youtube_video_id yet, pushes it to the VYVE channel as
+an UNLISTED video, and writes the video id back onto the row. partner-profile.html plays the
+welcome video from YouTube the moment youtube_video_id is set (PM-1198).
+
+NEVER write replay_video_id here — it is an FK into the replay catalogue and means "this item
+aired" (§23.317). youtube_video_id is its own nullable column with no FK.
+
+Scope (PM-1198): welcome videos only by default (VYVE_YT_WELCOME_ONLY=1). Everything else
+reaches members by airing as a session and coming home as a replay (PM-1196), so uploading it
+unlisted now would only burn the daily quota the live schedule shares. Flip the env to widen.
 
 It also sweeps the other direction: a row that has been removed (including the urgent
 safeguarding path) has its YouTube video flipped to private, so a takedown actually takes the
@@ -34,6 +41,7 @@ SUPABASE_URL = os.environ.get("VYVE_SUPABASE_URL", "https://ixjfklpckgxrwjlfsaaz
 SERVICE_KEY  = os.environ.get("VYVE_SUPABASE_SERVICE_KEY", "")
 BUCKET       = "partner-content"
 MAX_PER_DAY  = int(os.environ.get("VYVE_YT_MAX_PER_DAY", "5"))
+WELCOME_ONLY = os.environ.get("VYVE_YT_WELCOME_ONLY", "1") != "0"
 OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
 UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos"
 API_URL    = "https://www.googleapis.com/youtube/v3/videos"
@@ -169,7 +177,9 @@ def alert(severity, atype, details):
 def pending(item_id=None):
     q = ("partner_content_items?select=id,title,description,media_url,partner_id,is_welcome"
          "&moderation_status=eq.approved&removed_at=is.null"
-         "&replay_video_id=is.null&media_url=not.is.null&order=created_at.asc&limit=20")
+         "&youtube_video_id=is.null&media_url=not.is.null&order=created_at.asc&limit=20")
+    if WELCOME_ONLY:
+        q += "&is_welcome=is.true"
     if item_id:
         q = f"partner_content_items?select=id,title,description,media_url,partner_id,is_welcome&id=eq.{item_id}"
     st, rows = supa("GET", q)
@@ -177,8 +187,8 @@ def pending(item_id=None):
 
 
 def takedowns():
-    st, rows = supa("GET", "partner_content_items?select=id,title,replay_video_id"
-                           "&removed_at=not.is.null&replay_video_id=not.is.null&limit=20")
+    st, rows = supa("GET", "partner_content_items?select=id,title,youtube_video_id"
+                           "&removed_at=not.is.null&youtube_video_id=not.is.null&limit=20")
     return rows if st == 200 and isinstance(rows, list) else []
 
 
@@ -219,7 +229,7 @@ def run(dry_run=False, item_id=None):
                 alert("high", "yt_publish_failed", f"{who}: '{title}' failed to publish — {err}")
                 continue
             st, _ = supa("PATCH", f"partner_content_items?id=eq.{row['id']}",
-                         data={"replay_video_id": vid}, prefer="return=minimal")
+                         data={"youtube_video_id": vid}, prefer="return=minimal")
             log(f"  published {vid}  (patch {st})")
             done += 1
         finally:
@@ -228,17 +238,17 @@ def run(dry_run=False, item_id=None):
 
     for row in takedowns():
         if dry_run:
-            log(f"dry-run: would privatise {row['replay_video_id']} ('{row['title']}')"); continue
+            log(f"dry-run: would privatise {row['youtube_video_id']} ('{row['title']}')"); continue
         if token is None:
             token = refresh_access_token()
-        ok, j = yt_set_private(token, row["replay_video_id"])
-        log(f"takedown {row['replay_video_id']} private={ok}")
+        ok, j = yt_set_private(token, row["youtube_video_id"])
+        log(f"takedown {row['youtube_video_id']} private={ok}")
         if ok:
             supa("PATCH", f"partner_content_items?id=eq.{row['id']}",
-                 data={"replay_video_id": None}, prefer="return=minimal")
+                 data={"youtube_video_id": None}, prefer="return=minimal")
         else:
             alert("high", "yt_takedown_failed",
-                  f"Removed item '{row['title']}' is still live on YouTube as {row['replay_video_id']}: {j}")
+                  f"Removed item '{row['title']}' is still live on YouTube as {row['youtube_video_id']}: {j}")
 
 
 def main():
