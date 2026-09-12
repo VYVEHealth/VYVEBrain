@@ -1,3 +1,21 @@
+**PM-1244 (2026-09-13): RUNNING WAVE 2, PART 1 — A PLAN LENGTH IS NOW A REAL QUESTION. `run-engine` v9 (`run-engine@0.5.2`), migration `pm1244_run_phase_expansion`. Server only, nothing member-facing.**
+
+PM-1243 moved variable plan length forward into Wave 2 because the wizard asks "how many weeks" and every template was locked to exactly one. `buildPlan` clamped to a template's min/max and needed an authored row for every week up to the max, so a 26-week plan meant 130 hand-authored week rows.
+
+**Phase-based expansion.** A template is now authored as an optional **head** (intro weeks), a repeating **cycle**, and a fixed **tail** (peak + taper), carried on five columns (`expansion_mode`, `cycle_start_week`, `cycle_end_week`, `cycle_growth_step`, `cycle_growth_cap`). A new pure function `weekScript(template, weeks)` returns which authored week each built week draws from; head and tail are always kept in authored order and the cycle repeats or truncates to reach the requested length. The built plan carries `week_script` so the mapping is visible in the response rather than inferred. Ranges now live: **`5k-improver` 6–20** (head w1, cycle w2–5, tail w6–8), **`10k-build` 8–24** (head w1–3, cycle w4–7, tail w8–10), **`general-training` 4–26** (the whole 12-week arc is the cycle — a short plan is its opening weeks, a long one repeats the arc). **`start-running` stays FIXED at 9** on purpose: it is the NHS Couch to 5K structure verbatim (§23.349), and stretching a reference plan we deliberately copied is re-authoring it.
+
+**Two defects the proof run found, one of them pre-dating this wave.**
+
+**(1) The peak stopped being the peak.** Each cycle repetition adds `growth_step` to its volume (5k/10k 5% per repeat capped at 1.20, general training 4% capped at 1.12), but the first cut left the tail at authored volume — so a 24-week 10k reached 37.3km in its last cycle week and then "peaked" at 33.3km, reading as a three-week taper with a peak week buried in it. **The tail now inherits the final repetition's growth**: the same build peaks at week 23 (38.9km) and tapers to 19.3km.
+
+**(2) A three-day week's long run was its shortest run — and this was live before today.** `10k-build` is authored for five days; a member on three keeps slots 1–3, and Daniels' 30% long-run ceiling then capped the long run at 4.9km inside a 16.4km week while an uncapped easy run came out at 5.6km. Proven pre-existing by building the authored 10-week length at three days on the same engine: identical fault, every week. **The ceiling is now days-aware** — 40% at three days, 35% at four, 30% at five or more (§23.351). Every week of every build in the final sweep has the long run as its longest session, including the low-volume injury-adjusted case that first showed it.
+
+**Live proof (`pg_net`, engine v9).** Thirteen invocations: health reports `run-engine@0.5.2`; every plan built at its minimum and maximum days per week across short, authored and stretched lengths (5k 6/8/20, 10k 8/16/24, general 4/26, start-running 9); determinism re-proven post-deploy (two identical `5k-improver` 20-week builds, md5 `bb1d4e5959adab27fd154448a0d704d6`); no-key and wrong-key both 401; a 40-week request clamps to 20 and a 20-week request on `start-running` returns 9. Long-run-longest violations: **0 across every week of every build**. `run_member_plans` still 0 rows; `running_plan_cache` (7) and `member_running_plans` (16) untouched and still serving.
+
+**NEXT: Wave 2, part 2 — the wizard, recap and projection.** Mockup first (member-facing surface), shipped unlinked so it lands on Dean's dev shell without reaching members until Wave 3 links it into Body. Dean's calls this session: the injury question is asked and stored but adapts nothing until Phil signs off; the projection shows on a single race time with a wider range; the derived knobs (Volume, Difficulty) are named on the recap.
+
+---
+
 **PM-1243 (2026-09-13): CATALOGUE BREADTH — THE BAR IS "FEELS LIKE A PREMIUM RUNNING PRODUCT", AND IT IS CLAUDE'S JOB TO HIT IT. Doc only, no code.**
 
 Dean, on four plans looking thin against Runna's twelve-plus: **"your job is to make this feel close to Runna, or other premium running plans. However we do it, we need to do that."** Sequencing left to Claude; his instinct was finish the waves first, then add.

@@ -1,5 +1,8 @@
 // PM-1239 — run-engine Edge Function (Wave 0, server only, no member surface).
 // PM-1240 (v4) — repeated-effort distances no longer scale with volume.
+// PM-1244 (v7) — phase-based plan length: a template is authored as an optional
+//   head, a repeating cycle and a fixed tail (peak + taper), and the engine
+//   stretches or trims the cycle to the requested number of weeks.
 // PM-1241 (v6) — quality ceilings are time-aware: a percentage cap alone starves a
 //   low-mileage runner of any real threshold stimulus.
 // PM-1241 (v5) — band fractions corrected against Daniels (the Wave 0 figures were
@@ -13,7 +16,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 // PURE FUNCTIONS ONLY. No Date.now(), no randomness, no I/O in this file.
 // Distances in metres, durations in seconds, paces in seconds per kilometre.
 
-export const ENGINE_VERSION = "run-engine@0.4.0";
+export const ENGINE_VERSION = "run-engine@0.5.2";
 
 export type Band = "easy" | "long" | "threshold" | "interval" | "rep";
 export type VolumeKnob = "low" | "steady" | "high";
@@ -98,8 +101,17 @@ const QUALITY_CAP_FRACTION: Partial<Record<Band, number>> = {
   rep: 0.05,
 };
 const INTERVAL_SESSION_CAP_M = 10000;
-const LONG_RUN_CAP_FRACTION = 0.30;
 const MIN_REPS = 2;
+
+// PM-1244 — Daniels' 25-30% ceiling assumes a week with several other runs in
+// it. On three runs a week the long run IS the week: capped at 30% it comes out
+// SHORTER than that week's easy run, and a plan whose "Long Run" is its shortest
+// session contradicts its own labels. Found on 10k-build at 3 days, which is
+// authored for five — it predates this wave and is fixed here because the Wave 2
+// wizard is about to let a member choose three days.
+export function longRunCapFraction(daysPerWeek: number): number {
+  return daysPerWeek <= 3 ? 0.40 : daysPerWeek === 4 ? 0.35 : 0.30;
+}
 
 // Daniels' percentages assume a runner with mileage to spend. At 15km a week,
 // 10% is eight minutes at threshold — below the dose that produces the
@@ -257,6 +269,27 @@ export interface TemplateWeek {
   phase: string | null;
 }
 
+export interface PlanExpansion {
+  /** `fixed` = authored length only. `cycle` = the weeks between cycle_start
+   *  and cycle_end repeat (or truncate) to reach the requested length. */
+  mode: "fixed" | "cycle";
+  cycle_start: number | null;
+  cycle_end: number | null;
+  /** Added to the cycle's volume multiplier per completed repetition. */
+  growth_step: number;
+  growth_cap: number;
+}
+
+export interface ScriptWeek {
+  /** Position in the built plan, 1..n. */
+  week_index: number;
+  /** The authored template week this position draws its sessions from. */
+  authored_week: number;
+  /** Volume growth applied to a repeated cycle week. 1 for head, tail and
+   *  the first pass through the cycle. */
+  growth: number;
+}
+
 export interface PlanTemplate {
   id: string;
   slug: string;
@@ -266,6 +299,7 @@ export interface PlanTemplate {
   target_distance_m: number | null;
   min_weeks: number;
   max_weeks: number;
+  expansion: PlanExpansion;
   weeks: TemplateWeek[];
   sessions: Record<string, SessionTemplate>;
 }
@@ -314,6 +348,8 @@ export interface BuiltPlan {
   end_date: string;
   race_date: string | null;
   weeks: number;
+  /** Authored template week behind each built week, in order (PM-1244). */
+  week_script: number[];
   days_per_week: number;
   long_run_dow: number;
   run_days: number[];
@@ -322,25 +358,99 @@ export interface BuiltPlan {
   sessions: BuiltSession[];
 }
 
+/**
+ * PM-1244 — the week script: which authored template week each week of the
+ * built plan draws from.
+ *
+ * A template is authored as an optional HEAD (intro weeks), a repeating CYCLE
+ * and a fixed TAIL (peak + taper). Head and tail are always kept in authored
+ * order; the cycle repeats or truncates to reach the requested length, so a
+ * 26-week plan needs a 4-week authored block rather than 130 hand-authored
+ * rows. Each completed repetition of the cycle adds `growth_step` to its
+ * volume, capped at `growth_cap`, and the tail inherits the final repetition's
+ * growth so the peak is still the peak — volume lives in easy mileage and the
+ * long run (§23.348), and the engine's quality ceilings still bind on top.
+ *
+ * Pure and deterministic: same template + same requested weeks -> same script.
+ */
+export function weekScript(template: PlanTemplate, weeksWanted: number): ScriptWeek[] {
+  const authored = Array.from(new Set(template.weeks.map((w) => w.week_index)))
+    .sort((a, b) => a - b);
+  if (authored.length === 0) return [];
+
+  const want = Math.min(
+    Math.max(Math.round(weeksWanted) || template.min_weeks, template.min_weeks),
+    template.max_weeks,
+  );
+  const ex = template.expansion;
+  const out: ScriptWeek[] = [];
+  const push = (authored_week: number, growth: number) =>
+    out.push({ week_index: out.length + 1, authored_week, growth });
+
+  const start = ex?.cycle_start ?? null;
+  const end = ex?.cycle_end ?? null;
+  const cycle = ex?.mode === "cycle" && start !== null && end !== null
+    ? authored.filter((a) => a >= start && a <= end)
+    : [];
+
+  // Fixed template (or a cycle that authored no rows): authored order, trimmed.
+  if (cycle.length === 0) {
+    authored.slice(0, want).forEach((a) => push(a, 1));
+    return out;
+  }
+
+  const head = authored.filter((a) => a < start!);
+  const tail = authored.filter((a) => a > end!);
+  const need = want - head.length - tail.length;
+
+  // Defensive: min_weeks should always leave room for at least one cycle week.
+  // If it does not, keep the tail (the taper is the part that must survive)
+  // and fill backwards from the head.
+  if (need <= 0) {
+    const keptTail = tail.slice(Math.max(0, tail.length - want));
+    const keptHead = head.slice(0, Math.max(0, want - keptTail.length));
+    keptHead.forEach((a) => push(a, 1));
+    keptTail.forEach((a) => push(a, 1));
+    return out;
+  }
+
+  head.forEach((a) => push(a, 1));
+  let lastGrowth = 1;
+  for (let i = 0; i < need; i++) {
+    const rep = Math.floor(i / cycle.length);
+    const growth = Math.min(1 + rep * (ex.growth_step ?? 0), ex.growth_cap ?? 1);
+    lastGrowth = growth;
+    push(cycle[i % cycle.length], growth);
+  }
+  // The tail inherits the load the member actually reached. Without this a
+  // 24-week build peaks LOWER than its own final cycle week, and the plan reads
+  // as a three-week taper with a "peak" week in the middle of it.
+  tail.forEach((a) => push(a, lastGrowth));
+  return out;
+}
+
 /** Template + parameters + bands -> a dated, fully resolved plan. Deterministic. */
 export function buildPlan(
   template: PlanTemplate,
   params: BuildParams,
   bands: Bands,
 ): BuiltPlan {
-  const weeks = Math.min(Math.max(params.weeks, template.min_weeks), template.max_weeks);
+  const script = weekScript(template, params.weeks);
+  const weeks = script.length;
   const volume = VOLUME_FACTOR[params.volume_knob ?? "steady"] *
     (params.injury_adjusted ? INJURY_VOLUME_FACTOR : 1);
   const surface = params.surface ?? "outdoor";
   const monday = firstMonday(params.start_date);
   const runDays = chooseRunDays(params.days_per_week, params.long_run_dow);
+  const longCapFraction = longRunCapFraction(runDays.length);
 
   const sessions: BuiltSession[] = [];
   let planTotal = 0;
 
-  for (let w = 1; w <= weeks; w++) {
+  for (const sw of script) {
+    const w = sw.week_index;
     const weekRows = template.weeks
-      .filter((r) => r.week_index === w)
+      .filter((r) => r.week_index === sw.authored_week)
       .sort((a, b) => a.day_slot - b.day_slot);
     if (weekRows.length === 0) continue;
 
@@ -364,7 +474,7 @@ export function buildPlan(
     // Two settling passes: compose the week uncapped to get its volume, derive
     // the caps from it, recompose. Deterministic — fixed iteration count, no I/O.
     let composed = placed.map((p) =>
-      composeSession(template.sessions[p.row.session_template_id], Number(p.row.volume_multiplier) * volume, bands, null)
+      composeSession(template.sessions[p.row.session_template_id], Number(p.row.volume_multiplier) * volume * sw.growth, bands, null)
     );
     let caps: Caps = { threshold: 0, interval: 0, rep: 0, long: 0 };
     for (let iter = 0; iter < 2; iter++) {
@@ -382,12 +492,12 @@ export function buildPlan(
           INTERVAL_SESSION_CAP_M,
         ),
         rep: Math.max(QUALITY_CAP_FRACTION.rep! * weekTotal, REP_FLOOR_M),
-        long: LONG_RUN_CAP_FRACTION * weekTotal,
+        long: longCapFraction * weekTotal,
       };
       composed = placed.map((p) => {
         const tmpl = template.sessions[p.row.session_template_id];
         if (!tmpl) return null;
-        let scale = Number(p.row.volume_multiplier) * volume;
+        let scale = Number(p.row.volume_multiplier) * volume * sw.growth;
         if (p.row.is_long_run && caps.long > 0) {
           const un = composeSession(tmpl, scale, bands, null);
           if (un && un.total > caps.long) scale = scale * (caps.long / un.total);
@@ -430,6 +540,7 @@ export function buildPlan(
     end_date: addDays(monday, weeks * 7 - 1),
     race_date: params.race_date ?? null,
     weeks,
+    week_script: script.map((x) => x.authored_week),
     days_per_week: params.days_per_week,
     long_run_dow: params.long_run_dow,
     run_days: runDays,
@@ -622,6 +733,15 @@ async function loadTemplate(db: ReturnType<typeof admin>, slug: string): Promise
     id: plan.id, slug: plan.slug, name: plan.name, goal: plan.goal, mode: plan.mode,
     target_distance_m: plan.target_distance_m,
     min_weeks: plan.min_weeks, max_weeks: plan.max_weeks,
+    expansion: {
+      mode: plan.expansion_mode === "cycle" ? "cycle" : "fixed",
+      cycle_start: plan.cycle_start_week === null || plan.cycle_start_week === undefined
+        ? null : Number(plan.cycle_start_week),
+      cycle_end: plan.cycle_end_week === null || plan.cycle_end_week === undefined
+        ? null : Number(plan.cycle_end_week),
+      growth_step: Number(plan.cycle_growth_step ?? 0),
+      growth_cap: Number(plan.cycle_growth_cap ?? 1),
+    },
     weeks: (weeks ?? []).map((w: any) => ({
       week_index: w.week_index, day_slot: w.day_slot,
       session_template_id: w.session_template_id,
