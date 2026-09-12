@@ -382,7 +382,9 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-13, PM-1233)
+## CURRENT FRONT (updated 2026-09-13, PM-1234)
+
+**PM-1234 (2026-09-13, 07:30): LIST TOOLS EVERYWHERE — CC `fdcf37e4`.** Template lists: search · sort · list/grid · per page (12–100) · pager, + New in the bar (DOM-level, every kind, foods/meals skipped). Clients: per page, sort (name/newest/last active/latest check-in), Mon–Sun check-in-day chips. Calum #14 closed. Deploy check owed.
 
 **PM-1233 (2026-09-13, 07:00): PM-1231 LIBRARY COPIED TO CALUM — migration `pm1233_calum_library_seed`; programmes rebuilt on his partner so `src_id`s are his (§23.275).**
 
@@ -1654,6 +1656,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). **DNS/proxy: SETTLED PM-841 — z
 ---
 
 ## 19. Current status
+
+### PM-1234 — List tools (2026-09-13)
+**CC `fdcf37e4`** (coach-portal.html md5 `26710ce7`): new slice `350-list-tools-pm1234.js` after `340` — `lt` state, `ltEnsure()` (toolbar `#lt-bar` before the + New row, `#pl-new` moved into it, `#lt-pager` after `#pl-list`, MutationObserver on `#pl-list`), `ltApply()` (filter / order via `data-lt-idx`+`data-lt-name` / page / count / pager; `LT_SKIP` food+meal), `plLoad` wrapped; Clients: `clxEnsure()` (`#clx-per`, `#clx-sort`, `#clx-days` inserted before `#cl-mode`; sets `CL_PAGE`/`clShown`), `clxLoadCheckins()`, **`clFiltered` SHADOW** (200 body + `clx.day` + sort).
 
 ### PM-1233 — Calum's copy of the PM-1231 library (2026-09-13)
 **Migration `pm1233_calum_library_seed`:** same 15 day templates (payload copy), 5 weeklies + 4 programmes rebuilt via `vyve_sess`/`vyve_day_snap` on `3d552455`, nutrition/habits/supplements/forms copied. Idempotent.
@@ -3026,6 +3031,10 @@ PM-1225 made "+ Add exercises" open the library drawer, but the editor still ope
 #### §23.343 — Class names in the portal slices are one namespace; a new slice never reuses a class an earlier slice styles (PM-1227 — HARD RULE)
 
 PM-1080's messaging dialog took the name `.w3-modal` for a 460px box; `132-shared-library.js` already used `.w3-modal` for its full-screen overlay. The later style block wins, so the assign modal, the preview sheet and the PM-1225 picker drawer all rendered as a squashed 400px column — for five days, unreported. Every slice's injected CSS lands in the same document; grep the class (`grep -n "\.name{" src/portal/js/*.js src/portal/shared/*.html`) before introducing it, prefix with the slice's own token (`w6-`, `exv2-`, `rh-`), and when a surface must not be squashed by anyone later, state its layout rules on its own class rather than inheriting them from a shared one.
+
+#### §23.344 — A MutationObserver that re-applies a DOM transform must ignore its own mutations by a flag that outlives the microtask, and be idempotent (PM-1234)
+
+`ltApply` re-orders and hides `#pl-list` children; an observer re-applies after any re-render. Observer callbacks run as microtasks after the mutating code returns, so a `mute` flag reset synchronously at the end of the transform is already false when the callback arrives — every apply triggers another, forever (the harness timed out at 300s). Reset the flag in `setTimeout(…, 0)` and make the transform a no-op when the DOM already matches (compare before `appendChild`). Same shape applies to any "observe and normalise" code in the portal.
 
 ## 24. Key references, credentials & URLs
 
