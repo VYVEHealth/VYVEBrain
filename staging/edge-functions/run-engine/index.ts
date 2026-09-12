@@ -1,5 +1,6 @@
 // PM-1239 — run-engine Edge Function (Wave 0, server only, no member surface).
 // PM-1240 (v4) — repeated-effort distances no longer scale with volume.
+// PM-1246 (v10) — the member says WHICH days they can run, not just how many.
 // PM-1244 (v7) — phase-based plan length: a template is authored as an optional
 //   head, a repeating cycle and a fixed tail (peak + taper), and the engine
 //   stretches or trims the cycle to the requested number of weeks.
@@ -16,7 +17,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 // PURE FUNCTIONS ONLY. No Date.now(), no randomness, no I/O in this file.
 // Distances in metres, durations in seconds, paces in seconds per kilometre.
 
-export const ENGINE_VERSION = "run-engine@0.5.2";
+export const ENGINE_VERSION = "run-engine@0.6.0";
 
 export type Band = "easy" | "long" | "threshold" | "interval" | "rep";
 export type VolumeKnob = "low" | "steady" | "high";
@@ -227,13 +228,68 @@ export function firstMonday(date: string): string {
  * back-to-back day falls AFTER the long run rather than before it.
  * 4 runs with a Sunday long run -> Mon / Wed / Fri / Sun.
  */
-export function chooseRunDays(daysPerWeek: number, longRunDow: number): number[] {
-  const days: number[] = [];
-  for (let i = 0; i < daysPerWeek; i++) {
-    const offset = Math.floor((i * 7) / daysPerWeek);
-    days.push(((longRunDow - 1 + offset) % 7) + 1);
+export function chooseRunDays(
+  daysPerWeek: number,
+  longRunDow: number,
+  availableDows?: number[] | null,
+): number[] {
+  const avail = Array.from(new Set((availableDows ?? []).filter((d) => d >= 1 && d <= 7)))
+    .sort((a, b) => a - b);
+
+  // No availability given: even spacing forward from the long run, as before.
+  if (avail.length === 0) {
+    const days: number[] = [];
+    for (let i = 0; i < daysPerWeek; i++) {
+      const offset = Math.floor((i * 7) / daysPerWeek);
+      days.push(((longRunDow - 1 + offset) % 7) + 1);
+    }
+    return Array.from(new Set(days)).sort((a, b) => a - b);
   }
-  return Array.from(new Set(days)).sort((a, b) => a - b);
+
+  // PM-1246 — a member who says they cannot run Tuesdays must not be given a
+  // Tuesday. Even spacing is the goal, availability is the constraint, and the
+  // constraint wins: we take the long run's day, then repeatedly add whichever
+  // available day sits furthest from everything already chosen. Ties go to the
+  // earlier weekday, so the result is deterministic.
+  const long = resolveLongRunDay(longRunDow, avail);
+  const want = Math.min(Math.max(1, daysPerWeek), avail.length);
+  const chosen = [long];
+  const rest = avail.filter((d) => d !== long);
+  while (chosen.length < want && rest.length > 0) {
+    let best = rest[0];
+    let bestGap = -1;
+    for (const d of rest) {
+      let gap = 7;
+      for (const c of chosen) gap = Math.min(gap, circularGap(c, d));
+      if (gap > bestGap) { bestGap = gap; best = d; }
+    }
+    chosen.push(best);
+    rest.splice(rest.indexOf(best), 1);
+  }
+  return chosen.sort((a, b) => a - b);
+}
+
+/** Days between two ISO weekdays the short way round. */
+export function circularGap(a: number, b: number): number {
+  const d = Math.abs(a - b);
+  return Math.min(d, 7 - d);
+}
+
+/**
+ * The long run lands on the member's chosen day unless they have said they
+ * cannot run it, in which case it moves to the nearest day they can — later
+ * rather than earlier on a tie, because a long run is easier to protect at the
+ * end of a week than pulled forward into it.
+ */
+export function resolveLongRunDay(longRunDow: number, availableDows: number[]): number {
+  if (availableDows.length === 0 || availableDows.includes(longRunDow)) return longRunDow;
+  let best = availableDows[0];
+  let bestGap = 8;
+  for (const d of availableDows) {
+    const gap = circularGap(d, longRunDow);
+    if (gap < bestGap || (gap === bestGap && d > best)) { bestGap = gap; best = d; }
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------- plan build
@@ -309,6 +365,8 @@ export interface BuildParams {
   weeks: number;
   days_per_week: number;
   long_run_dow: number; // ISO 1-7
+  /** ISO weekdays the member can actually run. Empty or absent = any day. */
+  available_dows?: number[] | null;
   volume_knob?: VolumeKnob;
   difficulty_knob?: DifficultyKnob;
   injury_adjusted?: boolean;
@@ -441,7 +499,10 @@ export function buildPlan(
     (params.injury_adjusted ? INJURY_VOLUME_FACTOR : 1);
   const surface = params.surface ?? "outdoor";
   const monday = firstMonday(params.start_date);
-  const runDays = chooseRunDays(params.days_per_week, params.long_run_dow);
+  const avail = Array.from(new Set((params.available_dows ?? []).filter((d) => d >= 1 && d <= 7)))
+    .sort((a, b) => a - b);
+  const longDow = resolveLongRunDay(params.long_run_dow, avail);
+  const runDays = chooseRunDays(params.days_per_week, params.long_run_dow, avail);
   const longCapFraction = longRunCapFraction(runDays.length);
 
   const sessions: BuiltSession[] = [];
@@ -461,11 +522,11 @@ export function buildPlan(
     const longRow = weekRows.find((r) => r.is_long_run) ?? null;
     const otherRows = weekRows.filter((r) => r !== longRow);
     const otherDays = longRow
-      ? runDays.filter((d) => d !== params.long_run_dow)
+      ? runDays.filter((d) => d !== longDow)
       : runDays.slice();
 
     const placed: Array<{ row: TemplateWeek; dow: number }> = [];
-    if (longRow) placed.push({ row: longRow, dow: params.long_run_dow });
+    if (longRow) placed.push({ row: longRow, dow: longDow });
     otherRows.forEach((row, i) => {
       if (i < otherDays.length) placed.push({ row, dow: otherDays[i] });
     });
@@ -541,8 +602,8 @@ export function buildPlan(
     race_date: params.race_date ?? null,
     weeks,
     week_script: script.map((x) => x.authored_week),
-    days_per_week: params.days_per_week,
-    long_run_dow: params.long_run_dow,
+    days_per_week: runDays.length,
+    long_run_dow: longDow,
     run_days: runDays,
     total_distance_m: planTotal,
     params,
