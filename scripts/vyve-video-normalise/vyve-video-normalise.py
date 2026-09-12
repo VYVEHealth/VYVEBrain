@@ -26,10 +26,26 @@ Guards (the box is 2 vCPU and airs live sessions):
 Env (shares /opt/vyve/vyve-runner.env with the live runner):
   VYVE_SUPABASE_URL, VYVE_SUPABASE_SERVICE_KEY, VYVE_MEDIA_DIR
 Usage:
-  vyve-video-normalise.py --once          one pass (systemd timer)
+  vyve-video-normalise.py --once          one pass over partner uploads (systemd timer)
   vyve-video-normalise.py --dry-run       print the plan, encode nothing
   vyve-video-normalise.py --item <uuid>   force one item (ignores the attempts cap)
   vyve-video-normalise.py --max N         items per run (default 1)
+
+Second mode — the session masters (PM-XXX):
+  vyve-video-normalise.py --masters [--max N] [--budget-min M] [--only <substring>] [--dry-run]
+
+  Walks the top level of VYVE_MEDIA_DIR (the 125 riverside masters — 22 are 640x360, 16 carry 48kHz
+  audio, all carry ~10s keyframe intervals) and writes a runner-spec copy of each to
+  norm/<same filename> with a JSON sidecar beside it. The ORIGINAL IS NEVER TOUCHED: the runner
+  prefers norm/<notes> when its sidecar is valid and stream-copies it, and falls back to the
+  original + re-encode otherwise. Masters are taken soonest-scheduled first so upcoming airings
+  get the copy path early. Uses two x264 threads (nice 19) — the box has two cores and a copy-path
+  push costs nothing — but never starts a master that would still be encoding when the next
+  occurrence airs (calendar guard), never while a push is in flight, and never under the disk floor.
+
+Sidecars (`<output>.json`) are the contract with the runner: they record the source's size/mtime
+and the encode spec (preset, fps, gop, sample rate, channels, colour) so the runner can render
+byte-compatible padding cards and verify the concat before choosing `-c copy`.
 """
 import argparse, json, os, shutil, subprocess, sys, time, urllib.parse, urllib.request
 from datetime import datetime, timezone
@@ -44,8 +60,19 @@ MAX_ATTEMPTS = 3
 CHUNK = 8 * 1024 * 1024
 
 # Matches vyve-live-runner.py ffmpeg_cmd() so the runner can `-c copy` this file straight to RTMP.
-TARGET = dict(v_bitrate="4500k", v_maxrate="4500k", v_bufsize="9000k", fps=30, gop=60,
-              a_bitrate="128k", a_rate=44100, max_edge=1920)
+# preset/colour/gop are recorded in the sidecar and the runner renders its padding cards with the
+# SAME values so the SPS/PPS match across the concat (a mismatch is caught by the runner's probe gate).
+# preset: veryfast is what the live push already uses today (PM-1201 ffmpeg_cmd), so a crf-20 veryfast
+# copy is never worse than what members see now; measured on the box for full-motion 1080p24 with two
+# threads: medium 0.77x realtime, faster 1.05x, veryfast 1.5x — the 30h library is ~20h at veryfast, ~40h at medium.
+TARGET = dict(v_bitrate="4500k", v_maxrate="4500k", v_bufsize="9000k", fps=30, gop_sec=2,
+              a_bitrate="128k", a_rate=44100, max_edge=1920, preset="veryfast", crf=20,
+              color="bt709", color_range="tv")
+SPEC_VERSION = 2
+COLOR_SETPARAMS = (f"setparams=range={TARGET['color_range']}:color_primaries={TARGET['color']}"
+                   f":color_trc={TARGET['color']}:colorspace={TARGET['color']}")
+NORM_SUBDIR = "norm"
+KEEP_FPS = {"24000/1001", "24/1", "25/1", "30000/1001", "30/1"}   # kept as-is; anything else -> 30 CFR
 
 
 def log(*a):
@@ -121,26 +148,50 @@ def probe(path):
     w, h = int(v.get("width") or 0), int(v.get("height") or 0)
     if rot % 180: w, h = h, w
     dur = float((j.get("format") or {}).get("duration") or v.get("duration") or 0)
+    rfr = v.get("r_frame_rate") or "30/1"
+    afr = v.get("avg_frame_rate") or rfr
     return {"width": w, "height": h, "duration": dur, "vcodec": v.get("codec_name"), "pix_fmt": v.get("pix_fmt"),
+            "profile": v.get("profile"), "r_frame_rate": rfr, "avg_frame_rate": afr,
+            "a_channels": int(a.get("channels") or 0) if a else 0,
             "acodec": a.get("codec_name") if a else None, "a_rate": int(a.get("sample_rate") or 0) if a else 0,
             "bit_rate": int((j.get("format") or {}).get("bit_rate") or 0), "has_audio": a is not None}, None
 
 
-def encode(src, dst, info):
+def target_fps(info):
+    """Keep a standard source rate (24/25/30, drop-frame variants) so 24fps masters are not frame-doubled;
+    anything else (VFR phones, 50/60/120) becomes 30 CFR. Returns (fps_string, gop_frames)."""
+    fr = (info.get("r_frame_rate") or "30/1").strip()
+    if fr != (info.get("avg_frame_rate") or fr).strip():
+        fr = "30/1"   # VFR: r and avg disagree
+    if fr not in KEEP_FPS:
+        fr = "30/1"
+    num, _, den = fr.partition("/")
+    fps_val = float(num) / float(den or 1)
+    return fr, int(round(fps_val * TARGET["gop_sec"]))
+
+
+def encode(src, dst, info, threads=1):
     edge = TARGET["max_edge"]
+    fps_str, gop = target_fps(info)
     # scale uniformly so the longest side is <= 1080p and both dimensions stay even; portrait keeps its shape
-    vf = (f"scale='trunc(min(1,min({edge}/iw,{edge}/ih))*iw/2)*2':'trunc(min(1,min({edge}/iw,{edge}/ih))*ih/2)*2',"
-          f"fps={TARGET['fps']},format=yuv420p")
+    # setparams pins the colour tags IN THE FRAMES: ffmpeg 8 lets frame-side properties (a jpeg's, a bt470bg
+    # master's) win over the encoder's -colorspace/-color_primaries options, and the runner's copy gate
+    # compares those tags across the concat entries (PM-XXX)
+    vf = (f"scale='trunc(min(1,min({edge}/iw,{edge}/ih))*iw/2)*2':'trunc(min(1,min({edge}/iw,{edge}/ih))*ih/2)*2':out_range=tv,"
+          f"fps={fps_str},format=yuv420p,{COLOR_SETPARAMS}")
     inputs = ["-i", src]
     if not info["has_audio"]:
         # the runner and YouTube both expect an audio track — synthesise silence as input 1
         inputs += ["-f", "lavfi", "-i", f"anullsrc=r={TARGET['a_rate']}:cl=stereo"]
     cmd = ["nice", "-n", "19", "ffmpeg", "-hide_banner", "-loglevel", "error", "-y"] + inputs + [
            "-map", "0:v:0", "-vf", vf,
-           "-c:v", "libx264", "-preset", "medium", "-profile:v", "high", "-threads", "1",
-           "-crf", "20", "-maxrate", TARGET["v_maxrate"], "-bufsize", TARGET["v_bufsize"],   # quality-led, capped at the runner rate
-           "-g", str(TARGET["gop"]), "-keyint_min", str(TARGET["gop"]), "-sc_threshold", "0",
+           "-c:v", "libx264", "-preset", TARGET["preset"], "-profile:v", "high", "-threads", str(threads),
+           "-crf", str(TARGET["crf"]), "-maxrate", TARGET["v_maxrate"], "-bufsize", TARGET["v_bufsize"],   # quality-led, capped at the runner rate
+           "-g", str(gop), "-keyint_min", str(gop), "-sc_threshold", "0",
            "-fps_mode", "cfr",
+           # pinned so the SPS/VUI is identical to the padding cards the runner renders (concat -c copy)
+           "-color_range", TARGET["color_range"], "-colorspace", TARGET["color"],
+           "-color_primaries", TARGET["color"], "-color_trc", TARGET["color"],
            "-map", "0:a:0" if info["has_audio"] else "1:a:0",
            "-c:a", "aac", "-b:a", TARGET["a_bitrate"], "-ar", str(TARGET["a_rate"]), "-ac", "2"]
     if not info["has_audio"]:
@@ -149,6 +200,58 @@ def encode(src, dst, info):
     t0 = time.time()
     out = subprocess.run(cmd, capture_output=True, text=True)
     return out.returncode == 0, (out.stderr.strip()[-400:] if out.returncode else ""), time.time() - t0
+
+
+def spec_for(info, preset=None):
+    """The values the runner must reproduce when it renders padding cards for this file."""
+    fps_str, gop = target_fps(info)
+    return {"v": SPEC_VERSION, "vcodec": "h264", "profile": "high", "pix_fmt": "yuv420p", "preset": preset or TARGET["preset"],
+            "crf": TARGET["crf"], "maxrate": TARGET["v_maxrate"], "bufsize": TARGET["v_bufsize"],
+            "fps": fps_str, "gop": gop, "acodec": "aac", "a_bitrate": TARGET["a_bitrate"], "ar": TARGET["a_rate"], "ch": 2,
+            "color": TARGET["color"], "color_range": TARGET["color_range"]}
+
+
+def sidecar_path(out_path):
+    return out_path + ".json"
+
+
+def write_sidecar(out_path, src_name, src_stat, info, out_info, secs, preset=None):
+    sc = {"src": src_name, "src_bytes": src_stat[0], "src_mtime": src_stat[1],
+          "bytes": os.path.getsize(out_path), "width": out_info["width"], "height": out_info["height"],
+          "duration": out_info["duration"], "spec": spec_for(info, preset),
+          "normalised_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "encode_sec": round(secs)}
+    tmp = sidecar_path(out_path) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(sc, f, indent=1)
+    os.replace(tmp, sidecar_path(out_path))
+    return sc
+
+
+def read_sidecar(out_path):
+    try:
+        with open(sidecar_path(out_path)) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def verify_output(dst, info):
+    """The copy must probe as the spec says and be the same length as its source (±2s)."""
+    out_info, err = probe(dst)
+    if not out_info:
+        return None, f"output probe failed: {err}"
+    fps_str, _ = target_fps(info)
+    want = [("vcodec", "h264"), ("pix_fmt", "yuv420p"), ("a_rate", TARGET["a_rate"]), ("a_channels", 2), ("acodec", "aac")]
+    for k, v in want:
+        if out_info.get(k) != v:
+            return None, f"output {k}={out_info.get(k)!r}, expected {v!r}"
+    if out_info.get("r_frame_rate") != fps_str:
+        return None, f"output fps={out_info.get('r_frame_rate')}, expected {fps_str}"
+    if (out_info.get("profile") or "").lower() != "high":
+        return None, f"output profile={out_info.get('profile')!r}, expected High"
+    if abs(out_info["duration"] - info["duration"]) > 2.0:
+        return None, f"output duration {out_info['duration']:.1f}s vs source {info['duration']:.1f}s"
+    return out_info, None
 
 
 def airing_now():
@@ -194,11 +297,15 @@ def run(dry_run=False, item_id=None, limit=1):
         except Exception as e:
             log(f"takedown FAILED for '{row['title']}': {e}")
 
+    backfill_partner_sidecars(dry_run)
     rows = pending(item_id, limit)
     if not rows:
         log("nothing pending"); return
     if airing_now():
         log("live push in progress — skipping this run (§23.318)"); return
+    gap = next_airing_in(upcoming_by_file())
+    if gap is not None and gap < 20 * 60 and not item_id:
+        log(f"next airing in {gap/60:.0f}min — skipping this run so the encode never overlaps it"); return
     fg = free_gb(MEDIA_DIR)
     if fg < MIN_FREE_GB:
         log(f"only {fg:.1f}GB free under {MEDIA_DIR} — stopping")
@@ -227,8 +334,11 @@ def run(dry_run=False, item_id=None, limit=1):
             ok, err, secs = encode(src, tmp_dst, info)
             if not ok:
                 raise RuntimeError(f"encode failed: {err}")
+            out_info, verr = verify_output(tmp_dst, info)
+            if not out_info:
+                raise RuntimeError(f"verify failed: {verr}")
             os.replace(tmp_dst, dst)
-            out_info, _ = probe(dst)
+            write_sidecar(dst, path, (n, 0), info, out_info, secs)
             size = os.path.getsize(dst)
             patch = {"normalised_path": dst_rel, "normalised_at": datetime.now(timezone.utc).isoformat(),
                      "normalised_bytes": size, "normalise_error": None}
@@ -251,16 +361,161 @@ def run(dry_run=False, item_id=None, limit=1):
                 except Exception: pass
 
 
+# ── masters mode (PM-XXX) ───────────────────────────────────────────────────
+def upcoming_by_file(days=14):
+    """{notes filename: soonest starts_at epoch} over the next N days — the encode order, and the calendar guard."""
+    now = datetime.now(timezone.utc)
+    lo = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    hi = datetime.fromtimestamp(now.timestamp() + days * 86400, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    st, rows = supa("GET", "calendar_occurrences?select=notes,starts_at&type=eq.live_session&active=eq.true&cancelled_at=is.null"
+                           f"&starts_at=gte.{lo}&starts_at=lte.{hi}&order=starts_at.asc&limit=1000")
+    out = {}
+    if st != 200 or not isinstance(rows, list):
+        log(f"WARN: calendar read failed ({st}) — no scheduling priority, guard assumes an airing in 15 min")
+        return None
+    for r in rows:
+        n = (r.get("notes") or "").strip()
+        try:
+            ts = datetime.fromisoformat(r["starts_at"].replace("Z", "+00:00")).timestamp()
+        except Exception:
+            continue
+        if n and (n not in out or ts < out[n]):
+            out[n] = ts
+    return out
+
+
+def next_airing_in(cal):
+    """Seconds until the soonest scheduled occurrence (None = nothing in the window)."""
+    if cal is None:
+        return 900.0
+    if not cal:
+        return None
+    return min(cal.values()) - time.time()
+
+
+def backfill_partner_sidecars(dry_run=False):
+    """partner/<id>.mp4 files written before sidecars existed (PM-1200 ran with preset medium, the same TARGET)."""
+    d = os.path.join(MEDIA_DIR, SUBDIR)
+    if not os.path.isdir(d):
+        return
+    for n in sorted(os.listdir(d)):
+        p = os.path.join(d, n)
+        if not n.endswith(".mp4") or os.path.isfile(sidecar_path(p)):
+            continue
+        info, err = probe(p)
+        if not info:
+            log(f"sidecar backfill: probe failed for {n}: {err}"); continue
+        if dry_run:
+            log(f"dry-run: would write sidecar for partner/{n}"); continue
+        # PM-1200's v1 encoder was preset medium with the same crf/gop/rate — record what was actually used
+        write_sidecar(p, f"{BUCKET}:{n}", (os.path.getsize(p), 0), info, info, 0, preset="medium")
+        log(f"sidecar backfill: partner/{n} (legacy medium)")
+
+
+def masters_todo(only=None):
+    """Top-level masters lacking a valid norm copy. Valid = sidecar present, src size+mtime unchanged, output present."""
+    todo = []
+    for n in sorted(os.listdir(MEDIA_DIR)):
+        src = os.path.join(MEDIA_DIR, n)
+        if not n.lower().endswith(".mp4") or not os.path.isfile(src):
+            continue
+        if only and only.lower() not in n.lower():
+            continue
+        st = os.stat(src)
+        dst = os.path.join(MEDIA_DIR, NORM_SUBDIR, n)
+        sc = read_sidecar(dst)
+        if sc and os.path.isfile(dst) and sc.get("src_bytes") == st.st_size and int(sc.get("src_mtime") or 0) == int(st.st_mtime) \
+                and (sc.get("spec") or {}).get("v") == SPEC_VERSION and os.path.getsize(dst) == sc.get("bytes"):
+            continue
+        todo.append(n)
+    return todo
+
+
+def run_masters(dry_run=False, limit=500, budget_min=0, only=None):
+    os.makedirs(os.path.join(MEDIA_DIR, NORM_SUBDIR), exist_ok=True)
+    backfill_partner_sidecars(dry_run)
+    cal = upcoming_by_file()
+    todo = masters_todo(only)
+    if not todo:
+        log("masters: nothing to do — every top-level master has a valid norm copy"); return
+    # soonest-scheduled first, then unscheduled alphabetically
+    todo.sort(key=lambda n: ((cal or {}).get(n, float("inf")), n.lower()))
+    log(f"masters: {len(todo)} to normalise ({sum(1 for n in todo if n in (cal or {}))} scheduled in the next 14 days)")
+    t_end = time.time() + budget_min * 60 if budget_min else None
+    done = 0
+    for n in todo:
+        if done >= limit:
+            log(f"masters: --max {limit} reached"); break
+        if t_end and time.time() > t_end:
+            log("masters: budget exhausted"); break
+        src = os.path.join(MEDIA_DIR, n)
+        info, perr = probe(src)
+        if not info:
+            log(f"  SKIP {n}: probe failed: {perr}"); continue
+        est = info["duration"] / 1.2 + 120   # veryfast/2 threads measured ~1.5x realtime on a free box; assume 1.2x + margin
+        if dry_run:
+            sched = (cal or {}).get(n)
+            when = datetime.fromtimestamp(sched, timezone.utc).strftime("%d %b %H:%M") if sched else "unscheduled"
+            log(f"  would encode {n}  {info['width']}x{info['height']} {info['r_frame_rate']} {info['a_rate']}Hz {info['duration']:.0f}s  ~{est/60:.0f}min  [{when}]")
+            done += 1
+            continue
+        # guards — re-evaluated per master
+        while True:
+            if airing_now():
+                log("  live push in flight — waiting 60s (§23.318)"); time.sleep(60); continue
+            fg = free_gb(MEDIA_DIR)
+            if fg < MIN_FREE_GB:
+                log(f"  only {fg:.1f}GB free — stopping")
+                alert("high", "normalise_disk_low", f"vyve-live-runner has {fg:.1f}GB free under {MEDIA_DIR}; the master normalise pass stopped.")
+                return
+            cal = upcoming_by_file() or cal
+            gap = next_airing_in(cal)
+            if gap is not None and gap < est:
+                # would still be encoding when the next occurrence airs — wait for that airing to pass
+                wait = min(max(gap, 0) + 60, 900)
+                log(f"  next airing in {gap/60:.0f}min < ~{est/60:.0f}min encode for '{n}' — waiting {wait:.0f}s")
+                time.sleep(wait); continue
+            break
+        dst = os.path.join(MEDIA_DIR, NORM_SUBDIR, n)
+        tmp_dst = dst + ".part"
+        st = os.stat(src)
+        log(f"master '{n}'  {info['width']}x{info['height']} {info['r_frame_rate']} {info['vcodec']}/{info['acodec']}@{info['a_rate']} {info['duration']:.0f}s")
+        try:
+            ok, err, secs = encode(src, tmp_dst, info, threads=2)
+            if not ok:
+                raise RuntimeError(f"encode failed: {err}")
+            out_info, verr = verify_output(tmp_dst, info)
+            if not out_info:
+                raise RuntimeError(f"verify failed: {verr}")
+            os.replace(tmp_dst, dst)
+            sc = write_sidecar(dst, n, (st.st_size, int(st.st_mtime)), info, out_info, secs)
+            done += 1
+            log(f"  -> {NORM_SUBDIR}/{n} {sc['bytes']/1048576:.1f}MB {sc['spec']['fps']} in {secs:.0f}s, {info['duration']/max(secs,0.1):.1f}x realtime  ({done} done, {free_gb(MEDIA_DIR):.1f}GB free)")
+        except Exception as e:
+            log(f"  FAILED '{n}': {str(e)[:300]}")
+            alert("high", "normalise_master_failed", f"'{n}' failed to normalise: {str(e)[:300]}")
+        finally:
+            try: os.remove(tmp_dst)
+            except Exception: pass
+    log(f"masters: pass finished, {done} normalised, {len(masters_todo(only))} remaining")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--item")
-    ap.add_argument("--max", type=int, default=1)
+    ap.add_argument("--max", type=int, default=None)
+    ap.add_argument("--masters", action="store_true", help="normalise the session masters into norm/ (PM-XXX)")
+    ap.add_argument("--budget-min", type=int, default=0, help="masters: stop starting new encodes after N minutes")
+    ap.add_argument("--only", help="masters: only filenames containing this substring")
     a = ap.parse_args()
     if not SERVICE_KEY: die("VYVE_SUPABASE_SERVICE_KEY not set")
     if not shutil.which("ffmpeg") or not shutil.which("ffprobe"): die("ffmpeg/ffprobe not on PATH")
-    run(dry_run=a.dry_run, item_id=a.item, limit=a.max)
+    if a.masters:
+        run_masters(dry_run=a.dry_run, limit=a.max or 500, budget_min=a.budget_min, only=a.only)
+    else:
+        run(dry_run=a.dry_run, item_id=a.item, limit=a.max or 1)
 
 
 if __name__ == "__main__":

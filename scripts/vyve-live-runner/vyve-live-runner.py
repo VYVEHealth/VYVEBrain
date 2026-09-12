@@ -107,6 +107,17 @@ RTMP_RW_TIMEOUT_US = int(os.environ.get("VYVE_RTMP_RW_TIMEOUT_US", str(30 * 1_00
 PUSH_GRACE_SEC = 180  # hard ceiling = media duration + padding + this; beyond it the push is killed
 AIR_TMP = "/tmp/vyve-air"
 
+# PM-XXX — stream-copy at airtime (§23.318). A master that vyve-video-normalise.py has already put into the
+# push spec (norm/<notes> for session masters, partner/<id>.mp4 for uploads — each with a JSON sidecar) is
+# pushed with `-c copy`: no encode at airtime, so the 2-vCPU box can carry several airings at once. The
+# padding cards for the copy path are rendered ONCE with the sidecar's exact encode settings and cached
+# under VYVE_MEDIA_DIR/cards/, and the concat is probe-gated before the push — any mismatch falls back
+# to the per-airing re-encode path exactly as PM-1201 shipped it. VYVE_STREAM_COPY=0 disables the copy path.
+STREAM_COPY = os.environ.get("VYVE_STREAM_COPY", "1") != "0"
+NORM_SUBDIR = "norm"
+CARD_CACHE_DIR = os.path.join(MEDIA_DIR, "cards") if MEDIA_DIR else ""
+NORM_SPEC_VERSION = 2
+
 
 def log(*a):
     print(f"[{datetime.now(timezone.utc).isoformat(timespec='seconds')}]", *a, flush=True)
@@ -186,7 +197,7 @@ def yt_post(token, path, data):
 # ── domain resolves ─────────────────────────────────────────────────────────
 def get_occurrence(occ_id):
     st, rows = supa("GET", "calendar_occurrences?id=eq." + urllib.parse.quote(occ_id) +
-                    "&select=id,category,starts_at,ends_at,session_title,session_description,name,description,notes,image_url,youtube_broadcast_id,active,cancelled_at")
+                    "&select=id,category,starts_at,ends_at,session_title,session_description,name,description,notes,image_url,youtube_broadcast_id,youtube_stream_id,active,cancelled_at")
     if st != 200 or not rows:
         die(f"occurrence {occ_id} not found ({st})")
     return rows[0]
@@ -197,7 +208,7 @@ def get_upcoming(date_filter=None):
     hi = now.timestamp() + 24 * 3600
     lo_iso = datetime.fromtimestamp(now.timestamp() - 300, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     q = ("calendar_occurrences?select=id,category,starts_at,ends_at,session_title,"
-         "session_description,name,description,notes,image_url,youtube_broadcast_id"
+         "session_description,name,description,notes,image_url,youtube_broadcast_id,youtube_stream_id"
          "&type=eq.live_session&active=eq.true&cancelled_at=is.null"
          "&starts_at=gte." + lo_iso +
          "&order=starts_at.asc&limit=100")
@@ -216,6 +227,13 @@ def get_upcoming(date_filter=None):
         if sa.timestamp() <= hi:
             out.append(r)
     return out
+
+
+def stream_for(occ, cat):
+    """PM-1203: the ingest stream is allocated per occurrence at scheduling time (calendar_occurrences.
+    youtube_stream_id, DB exclusion guard) — the category's own key is only the fallback for rows that
+    pre-date the allocator."""
+    return occ.get("youtube_stream_id") or cat["youtube_stream_id"]
 
 
 def get_category(category):
@@ -243,16 +261,55 @@ def stream_status(token, stream_id):
     return body["items"][0]["status"].get("streamStatus")
 
 
+def _read_sidecar(path):
+    try:
+        with open(path + ".json") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def normalised_copy(name, original):
+    """(path, sidecar) for a runner-spec copy of this master, or (None, None).
+
+    Session master: norm/<name> whose sidecar still matches the original's size+mtime (a re-uploaded
+    master silently invalidates its old copy). Partner upload: notes already points at partner/<id>.mp4,
+    which the normaliser wrote — its sidecar is the proof. Anything without a current sidecar is not
+    trusted for -c copy."""
+    if not STREAM_COPY:
+        return None, None
+    if name.startswith("partner/") or name.startswith(NORM_SUBDIR + "/"):
+        sc = _read_sidecar(original)
+        return (original, sc) if sc and (sc.get("spec") or {}).get("v") == NORM_SPEC_VERSION else (None, None)
+    cand = os.path.join(MEDIA_DIR, NORM_SUBDIR, name)
+    sc = _read_sidecar(cand)
+    if not sc or not os.path.isfile(cand):
+        return None, None
+    try:
+        st = os.stat(original)
+    except Exception:
+        return None, None
+    if sc.get("src_bytes") != st.st_size or int(sc.get("src_mtime") or 0) != int(st.st_mtime):
+        return None, None
+    if (sc.get("spec") or {}).get("v") != NORM_SPEC_VERSION or os.path.getsize(cand) != sc.get("bytes"):
+        return None, None
+    return cand, sc
+
+
 def resolve_media(occ):
+    """(path, err, sidecar). sidecar is set when `path` is a normalised copy eligible for stream-copy."""
     name = (occ.get("notes") or "").strip()
     if not name:
-        return None, "notes is empty (no master filename)"
+        return None, "notes is empty (no master filename)", None
     if not MEDIA_DIR:
-        return None, "VYVE_MEDIA_DIR is not set"
+        return None, "VYVE_MEDIA_DIR is not set", None
     path = os.path.join(MEDIA_DIR, name)
     if not os.path.isfile(path):
-        return None, f"file not found: {path}"
-    return path, None
+        return None, f"file not found: {path}", None
+    npath, sc = normalised_copy(name, path)
+    if npath:
+        return npath, None, sc
+    return path, None, None
 
 
 def thumb_for(occ):
@@ -326,7 +383,7 @@ def ensure_broadcast(token, occ, cat, dry_run):
     bid = ins["id"]
 
     st, _ = yt_post(token, f"liveBroadcasts/bind?id={urllib.parse.quote(bid)}"
-                           f"&part=id,contentDetails&streamId={urllib.parse.quote(cat['youtube_stream_id'])}", {})
+                           f"&part=id,contentDetails&streamId={urllib.parse.quote(stream_for(occ, cat))}", {})
     if st != 200:
         die(f"liveBroadcasts.bind: {st}")
 
@@ -359,17 +416,22 @@ def transition(token, bid, status):
     return True
 
 
-def ffmpeg_cmd(media_path, rtmp_url, concat_list=None):
+def ffmpeg_cmd(media_path, rtmp_url, concat_list=None, copy=False):
     """The push. With a concat list (PM-1201) the input is [card][master][card]; otherwise the bare
-    master as before. -rw_timeout makes ffmpeg give up when YouTube stops reading instead of sitting
-    in CLOSE-WAIT forever (the 10 Sep zombies)."""
+    master as before. copy=True (PM-XXX) passes the normalised bytes straight through (`-c copy`) —
+    near-zero CPU — and is only chosen after build_air_playlist() has probe-gated the concat.
+    -rw_timeout makes ffmpeg give up when YouTube stops reading instead of sitting in CLOSE-WAIT
+    forever (the 10 Sep zombies)."""
     inp = ["-f", "concat", "-safe", "0", "-re", "-i", concat_list] if concat_list else ["-re", "-i", media_path]
+    if copy:
+        codec = ["-c:v", "copy", "-c:a", "copy"]
+    else:
+        codec = ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                 "-b:v", "4500k", "-maxrate", "4500k", "-bufsize", "9000k", "-g", "60",
+                 "-c:a", "aac", "-b:a", "128k", "-ar", "44100"]
     return [
         "ffmpeg", "-hide_banner", "-loglevel", "warning",
-        *inp,
-        "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-        "-b:v", "4500k", "-maxrate", "4500k", "-bufsize", "9000k", "-g", "60",
-        "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
+        *inp, *codec,
         "-rw_timeout", str(RTMP_RW_TIMEOUT_US),
         "-f", "flv", rtmp_url,
     ]
@@ -390,6 +452,10 @@ def probe_media(path):
         if not (1 <= fps <= 120):
             fps = 30.0
         return {"w": int(v["width"]), "h": int(v["height"]), "fps": fps,
+                # the video track timescale — every concat entry MUST share it (§23.326: the concat demuxer
+                # applies the file offset in the wrong timebase when they differ: a 15s card at 1/12288 in
+                # front of a 1/90000 master put the master's first frame at 109.86s and stalled -re for 95s)
+                "vtb": int((v.get("time_base") or "1/90000").partition("/")[2] or 90000),
                 "ar": int(a.get("sample_rate") or 44100) if a else None,
                 "ch": int(a.get("channels") or 2) if a else 0,
                 "dur": float((j.get("format") or {}).get("duration") or 0)}
@@ -398,31 +464,122 @@ def probe_media(path):
         return None
 
 
-def render_card_clip(card_jpg, seconds, m, out_path):
+def render_card_clip(card_jpg, seconds, m, out_path, spec=None):
     """A still card (or a VYVE-dark frame when there is no card) as an h264/aac clip that concats
-    cleanly with the master: same size, fps, sample rate and channel count."""
-    fps = m["fps"]
+    cleanly with the master: same size, fps, sample rate and channel count.
+
+    With `spec` (the normaliser sidecar, PM-XXX) the clip is encoded with the master's OWN x264/aac
+    settings so its SPS/PPS/VUI match and the concat can be pushed with -c copy; the result is cached
+    under cards/ keyed on everything that shapes it, so each card is rendered once ever."""
+    fps = spec["fps"] if spec else m["fps"]
+    if spec:
+        key_src = {"spec": spec, "w": m["w"], "h": m["h"], "sec": seconds, "vtb": m.get("vtb"), "render_v": 3}  # bump render_v when the card recipe changes
+        if card_jpg:
+            st = os.stat(card_jpg)
+            key_src["card"] = [os.path.abspath(card_jpg), st.st_size, int(st.st_mtime)]
+            if os.path.dirname(os.path.abspath(card_jpg)).startswith(AIR_TMP):
+                # a per-occurrence rendered title card: key on its pixels, not its temp path
+                import hashlib
+                with open(card_jpg, "rb") as f:
+                    key_src["card"] = hashlib.sha1(f.read()).hexdigest()
+        import hashlib
+        key = hashlib.sha1(json.dumps(key_src, sort_keys=True).encode()).hexdigest()[:20]
+        os.makedirs(CARD_CACHE_DIR, exist_ok=True)
+        out_path = os.path.join(CARD_CACHE_DIR, f"{key}.mp4")
+        if os.path.isfile(out_path) and os.path.getsize(out_path) > 0:
+            return out_path
     if card_jpg:
         vin = ["-loop", "1", "-framerate", str(fps), "-t", str(seconds), "-i", card_jpg]
-        vf = (f"scale={m['w']}:{m['h']}:force_original_aspect_ratio=decrease,"
+        vf = (f"scale={m['w']}:{m['h']}:force_original_aspect_ratio=decrease:out_range=tv,"
               f"pad={m['w']}:{m['h']}:(ow-iw)/2:(oh-ih)/2:color=0x0D2B2B,fps={fps},format=yuv420p")
     else:
         vin = ["-f", "lavfi", "-t", str(seconds), "-i", f"color=c=0x0D2B2B:s={m['w']}x{m['h']}:r={fps}"]
         vf = "format=yuv420p"
+    if spec:
+        # pin the colour tags in the frames — the encoder-level options lose to a jpeg's own tags (PM-XXX gate finding)
+        vf += (f",setparams=range={spec['color_range']}:color_primaries={spec['color']}"
+               f":color_trc={spec['color']}:colorspace={spec['color']}")
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *vin]
-    if m["ch"]:
-        layout = "mono" if m["ch"] == 1 else "stereo"
-        cmd += ["-f", "lavfi", "-t", str(seconds), "-i", f"anullsrc=r={m['ar']}:cl={layout}"]
-    cmd += ["-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-g", "60", "-r", str(fps)]
-    if m["ch"]:
-        cmd += ["-c:a", "aac", "-b:a", "128k", "-ar", str(m["ar"]), "-ac", str(m["ch"]), "-shortest"]
+    ch = spec["ch"] if spec else m["ch"]
+    ar = spec["ar"] if spec else m["ar"]
+    if ch:
+        layout = "mono" if ch == 1 else "stereo"
+        cmd += ["-f", "lavfi", "-t", str(seconds), "-i", f"anullsrc=r={ar}:cl={layout}"]
+    if spec:
+        cmd += ["-vf", vf, "-c:v", "libx264", "-preset", spec["preset"], "-profile:v", "high", "-threads", "1",
+                "-crf", str(spec["crf"]), "-maxrate", spec["maxrate"], "-bufsize", spec["bufsize"],
+                "-g", str(spec["gop"]), "-keyint_min", str(spec["gop"]), "-sc_threshold", "0", "-fps_mode", "cfr",
+                "-pix_fmt", "yuv420p",
+                "-color_range", spec["color_range"], "-colorspace", spec["color"],
+                "-color_primaries", spec["color"], "-color_trc", spec["color"]]
+        if ch:
+            cmd += ["-c:a", "aac", "-b:a", spec["a_bitrate"], "-ar", str(ar), "-ac", str(ch), "-shortest"]
+        else:
+            cmd += ["-an"]
+        cmd += ["-movflags", "+faststart", "-video_track_timescale", str(m["vtb"]), "-f", "mp4", out_path + ".part"]
+        cmd = ["nice", "-n", "10"] + cmd
     else:
-        cmd += ["-an"]
-    cmd += ["-movflags", "+faststart", out_path]
+        cmd += ["-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-g", "60", "-r", str(fps)]
+        if ch:
+            cmd += ["-c:a", "aac", "-b:a", "128k", "-ar", str(ar), "-ac", str(ch), "-shortest"]
+        else:
+            cmd += ["-an"]
+        cmd += ["-movflags", "+faststart", "-video_track_timescale", str(m["vtb"]), out_path]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if r.returncode != 0:
         raise RuntimeError(r.stderr.strip()[-300:])
+    if spec:
+        os.replace(out_path + ".part", out_path)
     return out_path
+
+
+# ffprobe fields that must agree across every concat entry for -c copy to be safe (SPS/PPS/VUI and audio config)
+_CONCAT_FIELDS = ["codec_name", "profile", "level", "width", "height", "pix_fmt", "r_frame_rate", "time_base",
+                  "color_range", "color_space", "color_transfer", "color_primaries", "has_b_frames", "refs", "field_order"]
+_CONCAT_AFIELDS = ["codec_name", "profile", "sample_rate", "channels", "channel_layout", "time_base"]
+
+
+def _stream_signature(path):
+    out = subprocess.run(["ffprobe", "-v", "error", "-print_format", "json", "-show_streams", path],
+                         capture_output=True, text=True, timeout=60)
+    j = json.loads(out.stdout or "{}")
+    v = next((x for x in j.get("streams", []) if x.get("codec_type") == "video"), {}) or {}
+    a = next((x for x in j.get("streams", []) if x.get("codec_type") == "audio"), {}) or {}
+    return {"v": {k: v.get(k) for k in _CONCAT_FIELDS}, "a": {k: a.get(k) for k in _CONCAT_AFIELDS}}
+
+
+def verify_concat_copy(list_path, entries):
+    """Gate for the copy path: every entry must carry an identical video/audio signature, and a full
+    stream-copy demux of the playlist must complete without ffmpeg complaining. Returns (ok, reason)."""
+    sigs = [_stream_signature(p) for p in entries]
+    for i, sg in enumerate(sigs[1:], 1):
+        for side in ("v", "a"):
+            diff = {k: (sigs[0][side].get(k), sg[side].get(k)) for k in sg[side] if sigs[0][side].get(k) != sg[side].get(k)}
+            if diff:
+                return False, f"entry {i} {side} differs from entry 0: {diff}"
+    # the real muxer (flv, 1/1000 timebase) so the warning text is in milliseconds; /dev/null is fine for flv
+    r = subprocess.run(["nice", "-n", "10", "ffmpeg", "-hide_banner", "-loglevel", "warning", "-nostdin", "-y",
+                        "-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", "-f", "flv", "/dev/null"],
+                       capture_output=True, text=True, timeout=600)
+    if r.returncode != 0:
+        return False, f"copy demux rc={r.returncode}: {r.stderr.strip()[-200:]}"
+    import re
+    bad, tiny = [], 0
+    for line in r.stderr.splitlines():
+        line = line.strip()
+        if not line or "update header" in line or "Failed to update" in line:
+            continue   # flv cannot seek in /dev/null to write the duration — irrelevant for a live push
+        mm = re.search(r"[Nn]on-monotonic\w* increasing dts to muxer in stream \d+: (\d+) >= (\d+)", line)
+        if mm:
+            # aac priming leaves each card/master join a few ms overlapped; ffmpeg nudges the dts and carries on.
+            # Anything wider than 100ms at a join is a real fault and fails the gate.
+            if abs(int(mm.group(1)) - int(mm.group(2))) <= 100:
+                tiny += 1
+                continue
+        bad.append(line)
+    if bad:
+        return False, f"copy demux warned: {' | '.join(bad)[-300:]}"
+    return True, f"ok ({tiny} sub-100ms dts nudges at joins)" if tiny else "ok"
 
 
 FALLBACK_FONT = "/opt/vyve/PlayfairDisplay.ttf"
@@ -451,27 +608,84 @@ def render_fallback_card(oid, title, m):
         return None
 
 
-def build_air_playlist(oid, media_path, card_jpg, title=None):
-    """Render the two cards and write the concat list. Returns (list_path, media_meta) or (None, meta)
-    when padding is not possible — the caller then pushes the bare master exactly as before."""
+def verify_join_continuity(list_path, pre_seconds):
+    """§23.326 — the master's first video packet must land right after the card (within 2s), never at
+    card_seconds x (tb_master/tb_card). Cheap: reads only the first ~pre+3s of the concat. Returns (ok, reason)."""
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-f", "concat", "-safe", "0", "-i", list_path,
+                              "-select_streams", "v:0", "-show_entries", "packet=pts_time,flags",
+                              "-of", "csv=p=0", "-read_intervals", f"%+{pre_seconds + 3}"],
+                             capture_output=True, text=True, timeout=120).stdout
+        pts = [float(l.split(",")[0]) for l in out.splitlines() if l.strip() and l[0].isdigit()]
+        if not pts:
+            return False, "no packets read"
+        if max(pts) < pre_seconds + 0.5:
+            return False, f"master video does not start within {pre_seconds + 3}s of the playlist (concat timebase offset, §23.326)"
+        return True, "ok"
+    except Exception as e:
+        return False, f"probe failed: {e}"
+
+
+def _write_list(lst, entries):
+    with open(lst, "w") as f:
+        for p in entries:
+            f.write("file '" + p.replace("'", "'\\''") + "'\n")
+    return lst
+
+
+def build_air_playlist(oid, media_path, card_jpg, title=None, sidecar=None, original_path=None):
+    """Render the two cards and write the concat list. Returns (list_path, media_meta, copy, media_path) —
+    copy=True means the playlist has passed the stream-copy gate (PM-XXX); media_path is the file the
+    list was actually built on. (None, meta, False, path) when padding is not possible — the caller then
+    pushes the bare master exactly as before. When the copy gate fails the ORIGINAL master and the
+    PM-1201 re-encode path are used, never a half-trusted copy."""
     m = probe_media(media_path)
     if not m:
-        return None, None
+        return None, None, False, media_path
     d = os.path.join(AIR_TMP, oid)
     os.makedirs(d, exist_ok=True)
     if not card_jpg:
         card_jpg = render_fallback_card(oid, title, m)   # None again -> plain dark frame
+    if sidecar:
+        spec = sidecar["spec"]
+        try:
+            pre = render_card_clip(card_jpg, PREROLL_SEC, m, None, spec=spec)
+            post = render_card_clip(card_jpg, POSTROLL_SEC, m, None, spec=spec)
+            lst = _write_list(os.path.join(d, "list.txt"), (pre, media_path, post))
+            ok, why = verify_join_continuity(lst, PREROLL_SEC)
+            if ok:
+                ok, why = verify_concat_copy(lst, [pre, media_path, post])
+        except Exception as e:
+            ok, why = False, f"card render failed: {e}"
+        if ok:
+            log(f"  stream-copy gate passed: {why}")
+            return lst, m, True, media_path
+        log(f"  WARN: stream-copy gate failed ({why}) — falling back to re-encode of the original")
+        try:
+            supa("POST", "platform_alerts", data={"severity": "info", "type": "runner_copy_gate_failed", "source": "vyve-live-runner",
+                                                  "page": "live", "details": f"{oid}: {why[:400]}"})
+        except Exception:
+            pass
+        media_path = original_path or media_path
+        m = probe_media(media_path) or m
     try:
         pre = render_card_clip(card_jpg, PREROLL_SEC, m, os.path.join(d, "pre.mp4"))
         post = render_card_clip(card_jpg, POSTROLL_SEC, m, os.path.join(d, "post.mp4"))
     except Exception as e:
         log(f"  WARN: padding cards failed ({e}) — airing the bare master")
-        return None, m
-    lst = os.path.join(d, "list.txt")
-    with open(lst, "w") as f:
-        for p in (pre, media_path, post):
-            f.write("file '" + p.replace("'", "'\\''") + "'\n")
-    return lst, m
+        return None, m, False, media_path
+    lst = _write_list(os.path.join(d, "list.txt"), (pre, media_path, post))
+    ok, why = verify_join_continuity(lst, PREROLL_SEC)
+    if not ok:
+        # 12 Sep 06:00/07:30/11:00: three padded airings died at ~110s because the join jumped 95s. Never again.
+        log(f"  WARN: padded playlist failed the join check ({why}) — airing the bare master")
+        try:
+            supa("POST", "platform_alerts", data={"severity": "high", "type": "runner_join_check_failed", "source": "vyve-live-runner",
+                                                  "page": "live", "details": f"{oid}: {why[:400]}"})
+        except Exception:
+            pass
+        return None, m, False, media_path
+    return lst, m, False, media_path
 
 
 def cleanup_air(oid):
@@ -494,25 +708,27 @@ def run_occurrence(occ, token, dry_run=False, wait_for_start=False):
     log(f"=== occurrence {oid}  '{label}'  ({occ['category']})  starts {occ['starts_at']} ===")
 
     cat = get_category(occ["category"])
-    media_path, err = resolve_media(occ)
+    media_path, err, sidecar = resolve_media(occ)
     if err:
         log(f"  SKIP: {err}")
         return False
-    rtmp_url, key = resolve_rtmp(token, cat["youtube_stream_id"])
+    original_path = os.path.join(MEDIA_DIR, (occ.get("notes") or "").strip())
+    stream_id = stream_for(occ, cat)
+    rtmp_url, key = resolve_rtmp(token, stream_id)
     bid, how = ensure_broadcast(token, occ, cat, dry_run)
     thumb = thumb_for(occ)
-    # PM-1201: build the padded playlist now, while there is still time before the slot
-    concat_list, meta = (None, None) if dry_run else build_air_playlist(oid, media_path, thumb, label)
-    if dry_run:
-        meta = probe_media(media_path)
-    cmd = ffmpeg_cmd(media_path, rtmp_url, concat_list)
+    # PM-1201: build the padded playlist now, while there is still time before the slot.
+    # PM-XXX: for a normalised master this also runs the stream-copy gate (dry-run runs it too — it changes nothing).
+    concat_list, meta, copy, media_path = build_air_playlist(oid, media_path, thumb, label, sidecar=sidecar, original_path=original_path)
+    cmd = ffmpeg_cmd(media_path, rtmp_url, concat_list, copy=copy)
     padded = PREROLL_SEC + POSTROLL_SEC if concat_list else 0
     expected = (meta["dur"] if meta else 0) + padded
+    mode = "copy" if copy else "encode"
 
     if dry_run:
         log("  DRY-RUN plan:")
-        log(f"    media     : {media_path}")
-        log(f"    category  : {cat['category']}  stream={cat['youtube_stream_id']}  playlist={cat.get('youtube_playlist_id')}")
+        log(f"    media     : {media_path}  [{mode}{' — normalised copy' if sidecar else ''}]")
+        log(f"    category  : {cat['category']}  stream={stream_id}{' (allocated)' if occ.get('youtube_stream_id') else ' (category fallback)'}  playlist={cat.get('youtube_playlist_id')}")
         log(f"    rtmp      : {redact(rtmp_url, key)}")
         log(f"    broadcast : {bid}  ({how})")
         log(f"    thumbnail : {thumb or '(none found — would use YouTube auto-frame)'}")
@@ -520,6 +736,7 @@ def run_occurrence(occ, token, dry_run=False, wait_for_start=False):
         log(f"    would: set thumbnail -> start ffmpeg -> poll stream active -> transition {bid} ready->live")
         log(f"           -> wait ffmpeg end (ceiling {expected + PUSH_GRACE_SEC:.0f}s) -> hold -> transition {bid} live->complete")
         log(f"    ffmpeg    : {' '.join(cmd[:-1])} {redact(rtmp_url, key)}")
+        cleanup_air(oid)
         return True
 
     # custom thumbnail (best-effort; never blocks the air)
@@ -536,7 +753,7 @@ def run_occurrence(occ, token, dry_run=False, wait_for_start=False):
             log(f"  sleeping {int(delay)}s until air time" + (f" (starting {EARLY_START_SEC}s early on the holding card)" if concat_list else ""))
             time.sleep(delay)
 
-    log(f"  starting ffmpeg push -> {redact(rtmp_url, key)}" + ("  [padded]" if concat_list else "  [bare]"))
+    log(f"  starting ffmpeg push -> {redact(rtmp_url, key)}" + ("  [padded]" if concat_list else "  [bare]") + f"  [{mode}]")
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     # PM-1201: drain stderr continuously. With a full 64KB pipe ffmpeg blocks on its next warning and
     # never exits — that is exactly how three Pilates pushes sat in CLOSE-WAIT for 30h on 10 Sep.
@@ -558,7 +775,7 @@ def run_occurrence(occ, token, dry_run=False, wait_for_start=False):
         if proc.poll() is not None:
             log("  ffmpeg exited before stream went active")
             break
-        if stream_status(token, cat["youtube_stream_id"]) == "active":
+        if stream_status(token, stream_id) == "active":
             if transition(token, bid, "live"):
                 log(f"  broadcast {bid} -> LIVE")
                 went_live = True
