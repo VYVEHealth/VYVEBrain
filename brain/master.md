@@ -382,7 +382,9 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-13, PM-1225)
+## CURRENT FRONT (updated 2026-09-13, PM-1226)
+
+**PM-1226 (2026-09-13, 05:05): NEW DAY OPENS EMPTY — CC `33643954`.** The auto blank typed row hid the drawer button in plain sight (Dean: "where am I meant to be looking?"); removed on new days. Deploy check owed; Programmes complaint still to be pinned.
 
 **PM-1225 (2026-09-13, 04:50): PICKER = RIGHT-HAND DRAWER, "+ EXERCISE" OPENS IT, LIBRARY NO LONGER DOUBLED — CC `f18764dc`.** Dean saw 2,956 (every row twice): concurrent `exLoad` callers both passed the guard — now single-flight + dedupe (§23.341). Drawer slides in from the right; block buttons open it directly; "or type a name" keeps the blank row. Deploy check owed; Programmes complaint still to be pinned.
 
@@ -1640,6 +1642,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). **DNS/proxy: SETTLED PM-841 — z
 ---
 
 ## 19. Current status
+
+### PM-1226 — New day opens empty (2026-09-13)
+**CC `33643954`** (coach-portal.html md5 `e1eed166`): `330` `renderDayEditor` wrapper removes the base editor's single blank `[{}]` row when the day has no exercises and the row's name is empty.
 
 ### PM-1225 — Picker drawer, block buttons open it, exLoad single-flight (2026-09-13)
 **CC `f18764dc`** (coach-portal.html md5 `8690b289`): `330-library-v2-pm1223.js` — `exLoad` wrapper is single-flight (`exv2.loading`) + dedupes `cexRows` by id; `.exv2-modal` is a right-hand drawer (`justify-content:flex-end`, `.in` `min(1180px,88vw)` × 100vh, `translateX` transition, `.open` class); `renderDayEditor` wrapper clone-replaces `.de-add-warm/.de-add-main/.de-add-cool` (drops the blank-row listener; labels "+ Warm up exercises" / "+ Add exercises" / "+ Cool down exercises"; `data-exv2`) and adds an `.exv2-blank` "or type a name" link that calls `addDayRow`. `.exv2-choose` no longer exists.
@@ -2983,6 +2988,10 @@ The exercise picker over the builder is the Exercise Library page's own `#exv2-w
 #### §23.341 — A cached async loader guards with an in-flight promise, not a boolean set at the end (PM-1225)
 
 `exLoad` guarded with `if (cexLoaded) return;` and set `cexLoaded = true` after its paging loop. Any two callers that start before the first finishes both pass the guard, both `cexRows = []`, both concat — the library doubled to 2,956 the moment two views preloaded it, and nobody noticed until a rail put the count on screen. Pattern: keep the loaded flag, but also hold the in-flight promise and return it to every concurrent caller; dedupe the result by id anyway, because the cost is nil and the failure mode is silent. Same shape applies to `loadExerciseNames`, `w0loadPrefs`, `w3Clients` and every other "load once" cache in the portal.
+
+#### §23.342 — When a new entry path replaces an old one, the old one must not be the first thing on screen (PM-1226)
+
+PM-1225 made "+ Add exercises" open the library drawer, but the editor still opened every new day with one blank typed row — the very field the drawer was replacing — so the person testing it looked straight at the old experience and asked where the new one was. A replaced path can stay available (the "or type a name" link), but it cannot be the default state of the screen; the new path has to be the empty state's only obvious move. Check the empty state, not just the happy path, whenever an interaction is superseded.
 
 ## 24. Key references, credentials & URLs
 
