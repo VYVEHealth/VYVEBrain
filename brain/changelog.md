@@ -1,3 +1,19 @@
+**PM-1245 (2026-09-13): RUNNING WAVE 2 PART 2 — THE WIZARD, AS A MOCKUP. CC `df9d641c`, `docs/mockups/running-wizard-mockup.html`. Nothing built.**
+
+Talk-first artefact for the member-facing half of Wave 2: a standalone unlinked page on the member app's own tokens (dark first, light toggle), twelve clickable screens in a phone frame with a rail to jump between them. Every answer is an enum or a number, which is the whole point — the plan can appear instantly because nothing on the path needs interpreting.
+
+**The screens.** Goal (four, mapping to the four live templates) → recommendation → ability with objective anchors → **health pre-fill** → recent race time with a distance toggle and an "I don't know" escape → days per week → long-run day → **plan length** → start date → injury → projection → recap.
+
+**Three of them carry the argument.** *Health pre-fill* shows runs a week, weekly distance, longest run and a 5k equivalent read from the last twelve weeks, every field editable — Runna asks a stranger to self-report all four at signup and we don't have to, which is the single biggest onboarding advantage we have and it is aimed exactly at the beginner-to-intermediate members we actually have. *Plan length* is a slider over the live PM-1244 range that redraws the **week shape** underneath it — build weeks, the easier week every fourth, the peak and the taper — so a member can see what a longer plan buys before committing to it; on `start-running` the slider is disabled and says why (NHS C25K, nine weeks, doesn't stretch). *Projection* shows a range with the reason for its width stated ("we've widened it because we only have one time from you"), which is the honest version of Runna's thirteen seconds of Olympian photography.
+
+**Gates marked on the page, not assumed.** The injury screen carries a `Phil` tag in the rail, a not-medical-advice line, a plain statement of what the answer is used for, and a Prefer-not-to-say option — and the screen says the answer sets starting volume only, never a session type, and only once Phil signs the wording off. All copy is placeholder and Lewis owns every string; the recommendation screen's coach line reads Calum Denham per PM-1242, and the strength-halves-injuries claim sits there as the product argument from §23.349.
+
+**Numbers on screen are engine output, not invented** — a 27:40 5k gives easy 6:48–7:36/km and threshold 5:49–6:01/km, which is what `run-engine@0.5.2` returns for that VDOT.
+
+**Dean: Cloudflare deploy check on the CC, then react.** The build is gated on that reaction. Open questions for him in the backlog.
+
+---
+
 **PM-1244 (2026-09-13): RUNNING WAVE 2, PART 1 — A PLAN LENGTH IS NOW A REAL QUESTION. `run-engine` v9 (`run-engine@0.5.2`), migration `pm1244_run_phase_expansion`. Server only, nothing member-facing.**
 
 PM-1243 moved variable plan length forward into Wave 2 because the wizard asks "how many weeks" and every template was locked to exactly one. `buildPlan` clamped to a template's min/max and needed an authored row for every week up to the max, so a 26-week plan meant 130 hand-authored week rows.
