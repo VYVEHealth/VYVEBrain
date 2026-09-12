@@ -1,2 +1,2 @@
-> **[PM-1228 · 2026-09-13 · DRAWER ROUND 2 + CARDIO VIDEOS WIRED — CC `afd0d5b1`, migration `pm1228_cardio_videos_wired`]** Dean: hard refresh → new day empty → + Add exercises → Cardio → Rowing Machine ▶ plays over the drawer → Add → Done → "Mins 20". Storage audit worth one pass: which other `exercise-videos/` files are referenced by nothing (the 10 cardio ones were) — `select name from storage.objects where bucket_id='exercise-videos' and name not in (…workout_plans.video_url basenames…) and … coach_exercises.media_url`. Programmes still owed.
+> **[PM-1229 · 2026-09-13 · DAY BUILDER BLOCKS AS PANELS — CC `37377790`]** Dean: hard refresh → Day templates › + New → three panels, big add bars; Circuit → Rounds / Rest between rounds line up. Programmes: still owed.
 
