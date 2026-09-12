@@ -15,7 +15,7 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 | 7 | "Mark's Exercise…" sentence | "▶ marks exercises with a demo video" | **Fixed** — reworded |
 | 8 | Can't click the date field, have to find the icon | Native Chrome behaviour | **Fixed** — `showPicker()` on click |
 | 9 | Sidebar scrollbar doesn't match the theme | Unstyled | **Fixed** — `scrollbar-color` on tokens |
-| 10 | App doesn't fit my laptop, side-scroll, buttons off-screen | Not reproducible blind; his viewport is ≤840px (burger breakpoint) — small laptop at high scaling | **Open — needs screenshot + `innerWidth`** |
+| 10 | App doesn't fit my laptop, side-scroll, buttons off-screen | Not reproducible blind; his viewport is ≤840px (burger breakpoint) — small laptop at high scaling. PM-1218 fixed the other end (wide monitors: column now centred, was pinned left) | **Open — needs screenshot + `innerWidth`** |
 
 ## Batch 2 — builder ergonomics, coach-side only (one session)
 
@@ -46,3 +46,4 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 
 ## Log
 - 12 Sep 2026 — batch 1 received (Programmes / Weekly workouts / Day templates / Exercise Library / Profile); r1 shipped PM-1217.
+- 13 Sep 2026 — PM-1218: Dean's own pass — wide-screen centring + notification reminder timestamps (not Calum items, same surface).
