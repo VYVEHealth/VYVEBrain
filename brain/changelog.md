@@ -1,3 +1,21 @@
+**PM-1214 (2026-09-12, late): CALUM'S DEMO COHORT COMPLETED — THE TABS C1–C4 LEFT EMPTY NOW HAVE DATA. Migration `calum_demo_seed_c5_nutrition_weight_sessions_feedback`. No repo commit outside the brain; no EF, no vyve-site, no CC.**
+
+**Dean's question was the right one: "does this have everything a PT would see?"** It did not. A column-level sweep of every `member_email`- and `partner_id`-keyed table in `public` (via `query_to_xml` over `information_schema`) put numbers on it rather than guesses, and the gaps were the nutrition tab, the weight chart, live-session and replay engagement, custom workouts, exercise notes and swaps, session feedback, and achievements. **That sweep is worth re-running whenever a fixture claims to be complete** — "seeded" and "seeded everywhere a coach clicks" are different claims.
+
+**C4 carried a fudge inherited from PM-1130's M4 and it is now fixed.** `coach_client_weekly.nutrition_logged_days` was written from the *habits* count, so the weekly strip claimed food-logging days with no `nutrition_logs` rows behind them — a coach drilling from the strip into the Nutrition tab would have found nothing there. C5 recomputes it from real rows (`count(DISTINCT activity_date)` per week). **The same fudge is still live on Dean's PM-1130 cohort.**
+
+**What landed.** 66 weekly `weight_logs` trending toward each client's `body_weight` goal so the chart and the goal agree; 321 `nutrition_logs` over 87 client-days for six clients across four meal slots with macros near target; 46 `session_views` + 32 `replay_views` on the same per-client engagement profile; 58 recent workouts given a 1–5 `difficulty_rating` and a third of them a `member_note`; 3 `custom_workouts`, 3 `exercise_notes`, 2 `exercise_swaps` (Gary's Back Squat → Goblet Squat pairs with his knee note); 245 `member_achievements` awards across 9 metrics. **Dedupe leak still zero** — session and replay views are one per day, well inside the 2/day caps.
+
+**Achievements had to be written explicitly and are still truthful.** Awards are normally minted at log time by the EF, so SQL-inserted activity earns none — the rows come from joining each client's actual counts against `achievement_tiers` on `threshold <= count`, so nothing is awarded that was not earned by the seeded history.
+
+**Deliberately still empty: `coach_nutrition_plans`, which is 0 rows platform-wide, not just here.** No coach has ever populated it (§23.255 — the nutrition template is targets-only). Faking one would have hidden a real product gap from the person best placed to flag it. Also untouched, because they are Calum's to create: coach challenges, client tags, automations, content library, leads. Health Connect (`member_health_daily`), `mind_*`, `monthly_checkins` and journal remain empty.
+
+**Wart in the permanent record:** C5's achievements block carries a dead placeholder CTE (`mets`, selecting against `ARRAY['x']`) that was never referenced. Zero data effect, but it is in the migration text for good. **Rule of thumb worth holding: a migration is an artefact, not a scratchpad — read it once more before applying.**
+
+**Charity counter climbs again** with the session and replay rows; unchanged posture — Dean's PM-1130 ruling, self-restoring on teardown (§23.274). Teardown predicate unchanged.
+
+---
+
 **PM-1213 (2026-09-12, 17:10–18:20): PHYSIO WAVE 3 SHIPPED TO MAIN — PHYSIOTHERAPY IS A BODY STREAM. vyve-site `2f89d129` (vbb 643, sw `v2026-09-12d-pm1213-rehab`) — NOT OTA'd, main → Dean's dev shell only (§23.324). No migration, no EF, no CC change. Seeded a live plan on Dean's member (`rehab_plans` `9c1e6a2b…12a1`, 3 knee items, applied → `active`, his workouts/movement wpc rows untouched).**
 
 **Placement (Dean's call, overriding the More-sheet + Home-card proposal):** no nav, no Home change. `rehab.html` is a stream inside Body exactly like Workouts; the only touch outside the page is a **Physiotherapy** row on `exercise.html` that paints only for a member with an active `rehab_plans` row (last state cached per email in `vyve_rehab_active_<email>` for an instant paint; one `select=id&limit=1` probe after `vyveAuthReady` re-confirms). Nothing changes for anyone without a plan. A Home banner for physio-first members is noted for later.
