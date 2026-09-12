@@ -382,7 +382,9 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-13, PM-1234)
+## CURRENT FRONT (updated 2026-09-13, PM-1235)
+
+**PM-1235 (2026-09-13, 07:45): LIST ROWS FIXED — CC `d7a2027c`.** PM-1234's pager blanked the rows' inline `display:flex` on show, stacking them; now remembered and restored (§23.345). Grid cards: thumb left, name + actions beside. Deploy check owed.
 
 **PM-1234 (2026-09-13, 07:30): LIST TOOLS EVERYWHERE — CC `fdcf37e4`.** Template lists: search · sort · list/grid · per page (12–100) · pager, + New in the bar (DOM-level, every kind, foods/meals skipped). Clients: per page, sort (name/newest/last active/latest check-in), Mon–Sun check-in-day chips. Calum #14 closed. Deploy check owed.
 
@@ -1656,6 +1658,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). **DNS/proxy: SETTLED PM-841 — z
 ---
 
 ## 19. Current status
+
+### PM-1235 — List rows restore inline display; grid cards re-cut (2026-09-13)
+**CC `d7a2027c`** (coach-portal.html md5 `df7fa420`): `350` — `data-lt-disp` remembered per item and restored on show (also on the `LT_SKIP` path); `#pl-list.lt-grid > *` is a flex-wrap card (64×48 thumb left, name beside, smaller buttons).
 
 ### PM-1234 — List tools (2026-09-13)
 **CC `fdcf37e4`** (coach-portal.html md5 `26710ce7`): new slice `350-list-tools-pm1234.js` after `340` — `lt` state, `ltEnsure()` (toolbar `#lt-bar` before the + New row, `#pl-new` moved into it, `#lt-pager` after `#pl-list`, MutationObserver on `#pl-list`), `ltApply()` (filter / order via `data-lt-idx`+`data-lt-name` / page / count / pager; `LT_SKIP` food+meal), `plLoad` wrapped; Clients: `clxEnsure()` (`#clx-per`, `#clx-sort`, `#clx-days` inserted before `#cl-mode`; sets `CL_PAGE`/`clShown`), `clxLoadCheckins()`, **`clFiltered` SHADOW** (200 body + `clx.day` + sort).
@@ -3035,6 +3040,10 @@ PM-1080's messaging dialog took the name `.w3-modal` for a 460px box; `132-share
 #### §23.344 — A MutationObserver that re-applies a DOM transform must ignore its own mutations by a flag that outlives the microtask, and be idempotent (PM-1234)
 
 `ltApply` re-orders and hides `#pl-list` children; an observer re-applies after any re-render. Observer callbacks run as microtasks after the mutating code returns, so a `mute` flag reset synchronously at the end of the transform is already false when the callback arrives — every apply triggers another, forever (the harness timed out at 300s). Reset the flag in `setTimeout(…, 0)` and make the transform a no-op when the DOM already matches (compare before `appendChild`). Same shape applies to any "observe and normalise" code in the portal.
+
+#### §23.345 — Rows carry `display:flex` inline; a DOM-level show/hide must restore the original value, never set `''` (PM-1235)
+
+Every template renderer writes its row layout in the `style` attribute. `el.style.display = ''` to "show" removes that declaration entirely, the row falls back to block, and the thumbnail / name / chip / buttons stack — the rows looked twice the height and Dean assumed the thumbnails were the problem. Remember the inline value on first sight (`data-lt-disp`) and restore it; treat `''` as "remove", not "show", anywhere a slice toggles visibility on markup it does not own. Prefer the `hidden` attribute for elements you do own.
 
 ## 24. Key references, credentials & URLs
 
