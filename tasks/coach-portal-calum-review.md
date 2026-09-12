@@ -21,14 +21,14 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 
 | # | Calum said | Plan |
 |---|---|---|
-| 11 | Visual exercise selector with thumbnails when adding exercises | **Decided PM-1222:** Add an exercise opens the full library (PM-1220 picker mode) as a sheet over the builder, multi-add, Done |
+| 11 | Visual exercise selector with thumbnails when adding exercises | **Shipped PM-1223** — ☰ Choose from library beside every block, library sheet, multi-add, Done |
 | 12 | Weekly workouts show names without images | `w3ThumbImg` per row in the workout view |
-| 13 | Treadmill Run locked to sets/reps; want sets/reps · time · distance · calories per row | `w3RowSetMode` already carries reps/duration per row with no UI; add a per-row type control (reps / secs / distance / kcal) and carry it into `coach_build_program_json` |
+| 13 | Treadmill Run locked to sets/reps; want sets/reps · time · distance · calories per row | **Shipped PM-1223** for reps ⇄ secs (click the Reps/Secs label); distance / kcal = Batch 3 contract |
 | 14 | Search/filter on Programmes, Weekly workouts, Day templates | Search box + sort on the three lists (recipes have the pattern from W9b) |
 | 15 | Add New appends at the bottom of the page | Open the builder as the view, list hidden, back on save/cancel |
 | 16 | Tabs per day vs whole-programme view | Toggle: Full programme / Session tabs on the programme builder and preview |
-| 17 | Muscle-group filter returns odd results | `muscle_volumes` (PM-985) fuzzy map; tighten to primary muscle + exact category |
-| 22 | (Dean, 13 Sep) Library should browse like Rehab My Patient — left rail of categories with counts, sub-groups, search, card grid with Add · info · play, favourites, My exercises | **Batch 2 centrepiece** — mockup shipped PM-1220 (`docs/mockups/exercise-library-mockup.html`), awaiting Dean's reaction; build opens with a taxonomy normalisation migration |
+| 17 | Muscle-group filter returns odd results | **Shipped PM-1223** — taxonomy normalised (36→20 muscle values, 32→18 equipment) + rail with counts |
+| 22 | (Dean, 13 Sep) Library should browse like Rehab My Patient — left rail of categories with counts, sub-groups, search, card grid with Add · info · play, favourites, My exercises | **Shipped PM-1223** — rail with counts, search, sort, video chip, ★ favourites, show-more; physio page gets it in part 2 |
 
 ## Batch 3 — talk-first (changes the `programme_json` contract the member app renders)
 
@@ -52,3 +52,4 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 - 13 Sep 2026 — PM-1220: library mockup on CC main; Batch 2 build order written in the backlog.
 - 13 Sep 2026 — PM-1221: programme builder mockup (Kahunas shape) on CC main; Dean asking Calum whether the picker needs a browse rail or search only.
 - 13 Sep 2026 — PM-1222: Dean decided the picker is the library over the builder (multi-add, Done); Batch 2 build unblocked.
+- 13 Sep 2026 — PM-1223: Batch 2 part 1 shipped (library v2, picker over the builder, Reps/Secs toggle, taxonomy). Part 2 = #12 #14 #15 + physio.

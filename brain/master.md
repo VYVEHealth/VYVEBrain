@@ -9,7 +9,7 @@
 | Dean says | Claude loads |
 |---|---|
 | "load brain" | `brain/master.md` → `brain/changelog.md` → `tasks/backlog.md`, in that order, then confirm and ask what we're working on |
-| **"calum review"** / "calum batch N" | `tasks/coach-portal-calum-review.md` — Calum's coach-portal feedback tracker (PM-1217); Batch 1 shipped, Batch 2 builder ergonomics next |
+| **"calum review"** / "calum batch N" | `tasks/coach-portal-calum-review.md` — Calum's coach-portal feedback tracker (PM-1217); Batch 1 shipped, Batch 2 part 1 shipped (PM-1223), part 2 = #12 #14 #15 + physio slice |
 | **"physio wave N"** / "start physio wave N" / "physio backend wave N" | `tasks/physio-portal-waves.md` + `tasks/physio-rehab-spec.md` + `prompts/session-physio-rehab-s2.md` — physio product (PM-1207); Waves 0–5 shipped 12 Sep 2026, Wave 6 parked |
 | **"start dashboard fix"** / "fix the home screen" / "member-dashboard perf" | `prompts/session-member-dashboard-performance.md` — **the 500-member blocker; do this before the achievements overhaul** |
 | **"start achievements overhaul"** / "fix achievements" | `prompts/session-achievements-overhaul.md` (PM-358) |
@@ -382,7 +382,9 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-13, PM-1222)
+## CURRENT FRONT (updated 2026-09-13, PM-1223)
+
+**PM-1223 (2026-09-13, 04:10): CALUM BATCH 2 PART 1 SHIPPED — CC `0bbcbeda`, migration `pm1223_exercise_taxonomy_normalise`.** Library v2 on the coach page: left rail with live counts (scope · muscle · equipment · stretching by region), ★ favourites (`coach_ui_prefs.fav_exercises`), sort, video chip, show-more; the same DOM opens as a sheet over the day builder ("☰ Choose from library" beside every block), multi-add, Done → `addDayRow`; Reps/Secs label toggles a row's tracking (#13). Taxonomy normalised (36→20 muscle values, 32→18 equipment). Harness-proven, not device-checked. **Part 2 next:** weekly-workout thumbnails (#12), template list search (#14), builder as a page (#15), physio gets the slice.
 
 **PM-1222 (2026-09-13): DECISION — Add an exercise opens the full library (PM-1220 picker mode) as a sheet over the builder; multi-add; Done drops the picks into the block. PM-1221's narrow drawer retired. Batch 2 build ready on "calum batch 2".**
 
@@ -1634,6 +1636,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). **DNS/proxy: SETTLED PM-841 — z
 ---
 
 ## 19. Current status
+
+### PM-1223 — Library v2 + picker over the builder (2026-09-13)
+**Migration `pm1223_exercise_taxonomy_normalise`:** `vyve_norm_muscle(text)`, `vyve_norm_equipment(text)` (immutable SQL), stock `category`/`equipment` rewritten to one vocabulary (own rows: casing only), index `coach_exercises_cat_eq_idx (library, category, equipment)`. **CC `0bbcbeda`** (coach-portal.html md5 `aa22cf29`): new slice `330-library-v2-pm1223.js` after `320` — `W3_SEL += ',created_at'`; `exv2` state; `exv2Ensure()` two-column shell (moves toolbar/count/hint/list into `#exv2-main`, hides `.ex-scope`, `#ex-f-cat`, `#ex-f-eq`, `#ex-f-vidsel`); `exv2RailPaint/Pick`, `exv2SetSel`, `exv2Counts`; favourites `exv2FavsLoad/FavToggle` (`coach_ui_prefs.fav_exercises`); **`exRender` v4 SHADOW** (fav scope, sort, star, pick mode, show-more); `exInit` and `exLoad` wrapped; picker `exv2PickerOpen/Close/PickToggle/PicksPaint` (`.exv2-modal`, moves `#exv2-wrap`); `renderDayEditor` wrapped to inject `.exv2-choose` buttons; delegated Reps/Secs label toggle + MutationObserver marking `.exv2-tog`. Physio manifest unchanged.
 
 ### PM-1221 — Programme builder mockup (2026-09-13)
 **CC `f49648d8`:** `docs/mockups/programme-builder-mockup.html` — unlinked standalone, CC tokens inlined. Chooser + builder-as-page + day tabs + blocks + search-first exercise drawer. Reference for Calum Batches 2–3; nothing in the portals changed.
@@ -2960,6 +2965,10 @@ The `workout_plan_cache` Dexie store is keyed on `member_email` — one row per 
 #### §23.339 — A synthesised feed item is stamped with when it became true, never with `new Date()` at render time (PM-1218 — HARD RULE)
 
 The notification feed mixes real rows (workouts, check-ins, messages — stamped by the database) with reminders the portal invents on load ("Trial ends in 3 days", "Goal due today"). The reminders were stamped `new Date().toISOString()`, so on every load they were the newest things in the world: sorted to the top, "fresh" against any last-seen mark, badge-lit for ever, and on the demo cohort eight of them read "12 Sep 19:44" the second Dean clicked the bell. Stamp a reminder with the moment its condition started holding (`trial_ends_at − window`, `target_date − soon_days`, clamped to now), give it a `when` label for the row instead of a clock time, and the existing seen/badge logic works unchanged. Corollary for the CC shell: `.cp-content` has `margin:0 auto` in the base styles — any later rule that sets `margin-left` for the sidebar must be the `max(228px, calc(…))` form, or centring silently dies on wide monitors.
+
+#### §23.340 — One library, two contexts: move the DOM, don't clone it (PM-1223)
+
+The exercise picker over the builder is the Exercise Library page's own `#exv2-wrap` node moved into a sheet and moved back on close — not a second render of the same rows. Every id (`ex-list`, `ex-f-q`, `ex-f-cat`, …) stays unique, every existing handler keeps working, and the page and the picker cannot drift apart because there is only one of them. The pattern for any future "same surface, different context" ask in the portals: keep the surface's element, add a `mode` flag the renderer reads (`exv2.pick` here), move the node, restore it on close. Corollary: the rail drives the *hidden* legacy controls (`#ex-f-cat` etc.) rather than replacing them, so nothing that read those controls needed touching — when a control is superseded, hide it and keep it truthful before considering removal.
 
 ## 24. Key references, credentials & URLs
 
