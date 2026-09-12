@@ -2,7 +2,7 @@
 
 **Trigger:** "running wave N" / "cardio running plan" / "start running wave N"
 **Opened:** 13 September 2026, from a full teardown of Runna (web onboarding + paid app, Dean's 7-day trial).
-**Status:** specced, nothing built. Wave 0 is the next build session.
+**Status:** **Wave 0 shipped 13 September 2026 (PM-1239)** — schema + pace engine live, server only, nothing member-facing. Wave 1 (template library) is the next build session.
 **Owner gates:** Lewis — all member-facing strings + trial/entitlement framing. Phil — the injury-history question, its consent wording and anything that adapts training on an injury answer. Calum — plan templates, session library, progression rules, and whose face/name sits on the recommended pick.
 
 ---
@@ -73,8 +73,12 @@ Session names are template names, not descriptions: "Over and Unders Miles", "Br
 
 ## 4. Waves
 
-### Wave 0 — Schema + pace engine (server, no UI)
-Tables for plan templates, template weeks/sessions/steps, member plans, member plan sessions and steps, and a member running profile (parameters + pace bands + fitness score + source of each). Pure functions for race-time → fitness score → five bands, and for template + parameters → dated session set. Retire nothing yet; `member_running_plans` and `running_plan_cache` stay live until Wave 3 ships. Proven by fixture: same inputs → identical plan, twice.
+### Wave 0 — Schema + pace engine (server, no UI) — **SHIPPED 13 Sep 2026, PM-1239**
+Eight tables: `run_plan_templates`, `run_session_templates`, `run_template_steps`, `run_template_weeks` (catalogue, authenticated-read where `is_active`) and `run_member_profile`, `run_member_plans`, `run_member_sessions`, `run_member_steps` (own-rows RLS on `auth.email()`, all registered `purge` for GDPR erasure). Engine is **`run-engine` v3** — pure TypeScript, no AI, no I/O in the maths: VDOT from one or two race times (blended 0.4 short / 0.6 long), five bands as fractions of vVDOT, Riegel equivalents, template + params → dated session set. Actions `health` / `profile` / `build` / `persist`; gated on `x-vyve-internal-key` (resolved via the `vyve_internal_key()` RPC — §23.346) or a member JWT.
+
+**Conventions locked here:** everything stores SI (metres, seconds, seconds per km — miles are display only); plan `mode` is `block` or `rolling` with `end_date` nullable, so the General-training question below is a per-template flag rather than a schema change; steps carry a band reference **and** a resolved pace snapshot, so re-baselining at Wave 6 rewrites paces without touching structure; run days are spaced evenly *forward* from the long-run day so any unavoidable back-to-back falls after it, not before (4 runs + Sunday long → Mon/Wed/Fri/Sun).
+
+**Proof:** two identical `build` calls returned byte-identical responses (md5 `3b31b4b8`, 23,977 chars); unauthenticated and wrong-key calls 401; `persist` wrote 1 plan / 24 sessions / 57 steps and was cleaned to zero residue; RLS proven by claims simulation. Fixture template `fixture-5k-improver` and its four session templates are `is_active=false` and exist only for the determinism harness. `member_running_plans` and `running_plan_cache` untouched and still serving.
 
 ### Wave 1 — Template library + authoring
 The catalogue: goal taxonomy, plan templates with week ranges and target distance, session templates ("Easy Run", "Over and Unders", "Broken Miles", "Progressive Long Run", "Rolling 800s"), block/step definitions with band references and progression rules. Seeded from a first Calum batch. Needs a way for Calum to review them — decision open on whether that is a CC surface or a seed migration plus a printed sheet.
