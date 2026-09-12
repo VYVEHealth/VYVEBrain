@@ -7,6 +7,24 @@
 
 ---
 
+## 0. Scope — what this replaces, and what it must not touch
+
+Dean, 13 Sep 2026: **this replaces the running-plan area and nothing else.** Any session that finds itself widening past this list should stop and ask.
+
+**Replaced (and only at Wave 3, never before):**
+- `running-plan.html` — the member-facing surface. **Soft-kill only:** unlinked from the Body stream and script loads, file kept in the repo, restorable in one line. Never deleted.
+- The `anthropic-proxy` call made *from the running path*. The EF itself stays deployed and unchanged — other features call it.
+- `running_plan_cache` (the 5,376-combination parametric AI cache) and `member_running_plans`. Both stay live and untouched until Wave 3 ships a working replacement; new work lands in new tables alongside them, so the current feature is never half-broken.
+
+**Explicitly untouched:**
+- `cardio.html` and `cardio-history.html` — cardio logging carries on exactly as it is.
+- Nav, bottom bar, Home. The running plan lives **inside Body (`exercise.html`) as a stream**, the same pattern as Physiotherapy (PM-1213). No new tab, no Home change.
+- Workouts, habits, Mind, Connect, sessions, nutrition, coaching, partner and employer surfaces: all out of scope.
+
+**The one deliberate crossing, called out so it is never a surprise:** at **Wave 4**, ticking a plan session complete writes a row into `workouts` / `cardio` with a source tag, so a run counts toward streak, charity and achievements like any other activity. This is an insert through the existing promotion mechanism (the same one HealthKit rows already use), not a schema change to shared tables — but it does mean completed plan sessions appear in a member's existing totals. Intended. Note the PM-150 rule: caps apply to `source='manual'` only, so promoted rows bypass them.
+
+**One pointer moves, at Wave 3:** members with `members.exercise_stream = 'cardio'` currently land on `running-plan.html` and would land on the new surface instead. Single value, reversible.
+
 ## 1. Why we are rebuilding
 
 `running-plan.html` → `anthropic-proxy` → `running_plan_cache` (parametric AI cache) → `member_running_plans` produces a plan you **read**. It is slow (an AI call on the critical path), it is prose rather than data, it has no end condition, it never adapts, and nothing downstream can consume it. Dean's call: running was good when it was the first thing built and has been overtaken by everything we have learned since.

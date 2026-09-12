@@ -1,3 +1,9 @@
+**PM-1238 (2026-09-13, 22:20): RUNNING REBUILD — BLAST RADIUS PINNED (doc only).**
+
+Dean's scope check answered in writing as §0 of `tasks/cardio-running-waves.md`, ahead of the numbered sections so it is the first thing any session reads. **Replaced at Wave 3 and not before:** `running-plan.html` (soft-kill only — unlinked, file kept, one-line restore), the running path's `anthropic-proxy` call (the EF itself stays, other features use it), and `running_plan_cache` / `member_running_plans`, both of which stay live until a working replacement ships — new work lands in new tables alongside. **Untouched:** `cardio.html`, `cardio-history.html`, nav, bottom bar, Home, and every other pillar; the plan lives inside Body as a stream like Physiotherapy (PM-1213). **One deliberate crossing:** Wave 4's completion tick inserts a `workouts`/`cardio` row through the existing promotion mechanism so runs count for streak, charity and achievements — an insert, not a shared-schema change, and PM-150's caps-apply-to-manual-only rule means promoted rows bypass the cap. **One pointer moves at Wave 3:** `members.exercise_stream = 'cardio'` lands on the new surface instead of `running-plan.html`. Reversible.
+
+---
+
 **PM-1237 (2026-09-13): PRICING CORRECTION — £20 IS THE ANCHOR, NOT RETIRED.**
 
 PM-1236 recorded the £20 list price as retired. Wrong, and corrected in place. **Dean: £20 is the full list price and stays — precisely so the real £10 can be marketed as a half-price rate.** Nobody pays £20 in practice except a walk-up signup straight off the website. So the split is: **£20 = anchor, marketing reference and B2B ROI comparator; £10 = the number to plan revenue, the £90k VAT threshold and partner payouts on.** Corporate £10/seat or lower.
