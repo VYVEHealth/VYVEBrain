@@ -20,6 +20,8 @@ The one-line finding from the RMP review: **their physio side is fine, their pat
 
 Plan name · patient · start date · duration (weeks) · exercises · note to patient · fixed safety-netting paragraph · red flag(s) · monitor selection. Templates are phased and diagnosis-named (RMP: "ACL and Meniscus Tear — Phase 1…5", "Lower Back Pain Facet Joint — Week 1-2"; own / RMP / community tiers).
 
+**Schema (Wave 2, PM-1211, live):** `rehab_plans` → `rehab_plan_items` (snapshot by value, `removed_at` soft-remove) → on Send `rehab_apply_plan()` materialises a `workout_plan_cache` row `surface='rehab'` (`shape:'rehab_v1'`, each exercise carries a `prescription` block) so the app hydrates it on the existing rails without touching Body; patient writes `rehab_item_logs` (per item / day / slot) and `rehab_monitor_logs` (once a day). Templates = `coach_templates` kind `rehab_plan`. `partner_partners.capabilities.rehab` gates the physio face.
+
 **Prescription per exercise (rehab, not sets/reps):** hold seconds · repeat N times · perform N times daily · rest seconds · perform N days per week · both sides. New shape on top of `coach_build_program_json` — extend, don't bend the workout one.
 
 **Monitor (chosen per plan, drives the patient's post-session questions).** Five 0–10 sliders with anchored ends:
