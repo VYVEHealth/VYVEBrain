@@ -382,7 +382,9 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-13, PM-1235)
+## CURRENT FRONT (updated 2026-09-13, PM-1236)
+
+**PM-1236 (2026-09-13): PRICING RESET — £10 IS THE MEMBERSHIP PRICE.** £20 list retired on Dean's word; B2B £10/seat or lower. §3 updated; the £20 Stripe new-signup link + £20/£15/£10 tier-coupon ladder now misdescribe the product, Lewis sign-off owed. **VAT:** not registered, threshold £90k **turnover** (not profit) rolling 12 months ≈ 750 members at £10; cliff edge, never retrospective; **bill the first enterprise contract monthly, never annually up front** (30-day forward test). B2B contracts "exclusive of VAT"; partner share = 50% of Net Revenue, inclusive of partner VAT. CC turnover tripwire owed. No code.
 
 **PM-1235 (2026-09-13, 07:45): LIST ROWS FIXED — CC `d7a2027c`.** PM-1234's pager blanked the rows' inline `display:flex` on show, stacking them; now remembered and restored (§23.345). Grid cards: thumb left, name + actions beside. Deploy check owed.
 
@@ -564,7 +566,8 @@ Pre-call briefs via Sales Intelligence skill (8-step deep dive, ROI calculator, 
 
 | Stream | Detail |
 |---|---|
-| B2C individual | £20/month per member. Stripe direct link. Onboarding via `welcome.html` (stream-aware since 19 April). |
+| B2C individual | **£10/month per member — the £20 list price is RETIRED (Dean, 13 Sep 2026); B2B £10/seat or lower. Lewis sign-off owed; the £20 Stripe new-signup link and the £20/£15/£10 tier-coupon ladder (§23.129) still describe the old price.** Stripe direct link. Onboarding via `welcome.html` (stream-aware since 19 April). |
+| VAT | **Not registered.** Threshold £90k of **turnover, not profit**, rolling 12 months (≈£7.5k/month). B2B contracts + price list must read "exclusive of VAT"; partner share = 50% of Net Revenue, inclusive of any partner VAT; **never invoice the first enterprise contract annually up front** (30-day forward test). Full reasoning: changelog PM-1236. |
 | B2C trial → conversion | **LIVE end-to-end (PM-573 confirmed; Stripe webhook secret set).** 30-day free trial, then **£10/month-forever** conversion (`VYVE10`; a SEPARATE Stripe link from the £20 new-signup link, must NOT redirect to `welcome.html`). Access gated on `subscription_status` (cron flag-flip `expire_lapsed_trials`, never request-time date math) per §23.85. Off-app / IAP-compliant: wall → marketing-site `continue.html` (binds `members.id`) → £10/mo Payment Link → `stripe-webhook` EF flips `account_type→paid` + `subscription_status→active`. |
 | B2B enterprise | £10/user/month. Contact-first sales. Volume tiers TBD before first enterprise contract; indicative bands: 50–200 full rate, 201–500 negotiable, 500+ bespoke. |
 | Annual option | 10–15% discount — Lewis decision, Dean adds to Stripe once confirmed. |
