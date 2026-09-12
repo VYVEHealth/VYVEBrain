@@ -382,7 +382,9 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-13, PM-1229)
+## CURRENT FRONT (updated 2026-09-13, PM-1230)
+
+**PM-1230 (2026-09-13, 06:20): LIGHT-MODE SIDEBAR + TOP BAR BRAND-DARK — CC `a27d71d0`, both portals.** Dean's live pass on the builder is green ("this looks way better"). Open: Programmes complaint, deploy checks, Batch 2 part 2 (weekly view thumbnails, template list search, builder as a page, physio rail).
 
 **PM-1229 (2026-09-13, 06:05): DAY BUILDER BLOCKS AS PANELS — CC `37377790`.** Warm up / Workout / Cool down are separate bordered panels with headings, row cards and a wide dashed add bar (bigger "+ Add exercises"); circuit fields aligned. Deploy check owed. Programmes still to be pinned.
 
@@ -1648,6 +1650,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). **DNS/proxy: SETTLED PM-841 — z
 ---
 
 ## 19. Current status
+
+### PM-1230 — Light-mode sidebar and top bar brand-dark (2026-09-13)
+**CC `a27d71d0`** (coach `2649f571`, physio `afff9c8c`): `shared/head-styles.html` — `html[data-theme="light"] .cp-side / .cp-topbar` scoped token overrides + `#0D2B2B` backgrounds, active/hover/brand rules. Dark theme unchanged.
 
 ### PM-1229 — Day builder blocks as panels (2026-09-13)
 **CC `37377790`** (coach-portal.html md5 `cca9b2f4`): `330` `renderDayEditor` wrapper re-parents heading + `.de-warm/.de-main/.de-cool` + add row into `.exv2-blk` panels (`.exv2-bh` heading, `.exv2-addbar`); CSS for panels, row cards, add bar, `.w6-cfg .field` label height.

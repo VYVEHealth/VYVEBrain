@@ -1,2 +1,2 @@
-> **[PM-1229 · 2026-09-13 · DAY BUILDER BLOCKS AS PANELS — CC `37377790`]** Dean: hard refresh → Day templates › + New → three panels, big add bars; Circuit → Rounds / Rest between rounds line up. Programmes: still owed.
+> **[PM-1230 · 2026-09-13 · LIGHT-MODE SIDEBAR + TOP BAR BRAND-DARK — CC `a27d71d0`]** Dean: toggle light → sidebar/top bar dark, content light; physio portal same. **Programmes still owed** ("can't really do anything"). Batch 2 part 2 unchanged.
 
