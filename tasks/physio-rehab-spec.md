@@ -54,6 +54,8 @@ Delivery options RMP offers (email PDF + code, custom email, SMS credits, WhatsA
 - Second axis under body regions: Flexion · Extension · Side Flexion · Rotation · Abduction · Adduction · Stretching · Strengthening · Swiss Ball · Posture · Advice. S&C's second axis is equipment/movement. **Needs a `subcategory` column + sub-filter** (Wave 5).
 - Four entry points: Categories · Advice (sheets per region — non-exercise plan items) · Diagnosis (A–Z conditions → curated exercises; how a physio actually browses) · Muscles (A–Z). We have muscles half-covered via `muscle_volumes`; diagnosis is new.
 - Per-card "i" = patient-facing instruction (our `cues`, populated for the demo rows).
+- **Libraries are separate (Dean, 12 Sep):** `coach_exercises.library` = `strength` (today's stock, coaches) or `rehab` (physios). Each portal reads its own plus the partner's private rows; a coach can opt the rehab library in via settings, never by default. Demo rows tagged `rehab`.
+- **Inline play in the library, both portals (Dean, 12 Sep):** play button → preview sheet (native `<video>` for files, YouTube embed for links). Today only direct mp4s play in the coach portal; YouTube-backed rows show a thumbnail only — the demo cannot be shown until this ships. Wave 0.
 - AI Plan Generator (RMP Pro add-on): prompt → titled plan with prescription filled. Ours = Anthropic in an EF over the tagged library. Wave 6.
 
 ## 7. Demo library (temporary)
