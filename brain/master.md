@@ -382,7 +382,9 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-13, PM-1226)
+## CURRENT FRONT (updated 2026-09-13, PM-1227)
+
+**PM-1227 (2026-09-13, 05:20): DRAWER FULL-SIZE — CC `b481bafe`.** 220 (messaging) had reused `.w3-modal` for its 460px inner dialog, squashing every 132-style overlay since PM-1080; renamed `.w3-mdlg`, drawer self-styled (§23.343). Deploy check owed.
 
 **PM-1226 (2026-09-13, 05:05): NEW DAY OPENS EMPTY — CC `33643954`.** The auto blank typed row hid the drawer button in plain sight (Dean: "where am I meant to be looking?"); removed on new days. Deploy check owed; Programmes complaint still to be pinned.
 
@@ -1642,6 +1644,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). **DNS/proxy: SETTLED PM-841 — z
 ---
 
 ## 19. Current status
+
+### PM-1227 — `.w3-modal` collision fixed; drawer self-styled (2026-09-13)
+**CC `b481bafe`** (coach-portal.html md5 `af31f5e1`): `220-tz-w3-pm1080.js` inner dialog class `.w3-modal` → `.w3-mdlg` (three CSS rules + one markup line; `.w3-modal-bg` unchanged); `330` `.exv2-modal` carries full overlay rules (fixed/inset/z-975/backdrop) and `.in` its own surface/border/flex.
 
 ### PM-1226 — New day opens empty (2026-09-13)
 **CC `33643954`** (coach-portal.html md5 `e1eed166`): `330` `renderDayEditor` wrapper removes the base editor's single blank `[{}]` row when the day has no exercises and the row's name is empty.
@@ -2992,6 +2997,10 @@ The exercise picker over the builder is the Exercise Library page's own `#exv2-w
 #### §23.342 — When a new entry path replaces an old one, the old one must not be the first thing on screen (PM-1226)
 
 PM-1225 made "+ Add exercises" open the library drawer, but the editor still opened every new day with one blank typed row — the very field the drawer was replacing — so the person testing it looked straight at the old experience and asked where the new one was. A replaced path can stay available (the "or type a name" link), but it cannot be the default state of the screen; the new path has to be the empty state's only obvious move. Check the empty state, not just the happy path, whenever an interaction is superseded.
+
+#### §23.343 — Class names in the portal slices are one namespace; a new slice never reuses a class an earlier slice styles (PM-1227 — HARD RULE)
+
+PM-1080's messaging dialog took the name `.w3-modal` for a 460px box; `132-shared-library.js` already used `.w3-modal` for its full-screen overlay. The later style block wins, so the assign modal, the preview sheet and the PM-1225 picker drawer all rendered as a squashed 400px column — for five days, unreported. Every slice's injected CSS lands in the same document; grep the class (`grep -n "\.name{" src/portal/js/*.js src/portal/shared/*.html`) before introducing it, prefix with the slice's own token (`w6-`, `exv2-`, `rh-`), and when a surface must not be squashed by anyone later, state its layout rules on its own class rather than inheriting them from a shared one.
 
 ## 24. Key references, credentials & URLs
 
