@@ -1,0 +1,17 @@
+# Physio portal — wave map (PM-1207, 12 Sep 2026)
+
+*Trigger: "physio wave N" / "start physio wave N" / "physio backend wave N". Load this file + `tasks/physio-rehab-spec.md` + `prompts/session-physio-rehab-s2.md`, then start from the wave's brief. Estimates are Claude-assisted sessions.*
+
+| Wave | Status | Sessions | Scope |
+|---|---|---|---|
+| **0 — Portal split** | NOT STARTED | 1–2 | Break `coach-portal.html` into a shell + shared modules (auth, REST layer, roster, library + video, messaging) + coaching modules; create `physio-portal.html` as a thin page on the same shared modules with the rehab sidebar (Patients · Plans · Library · Templates · Messages · Settings). No behaviour change for Calum — byte-identical rendering proven on the CC before and after. Physio copy says physio/patient, never coach/client. |
+| **1 — Mockup** | NOT STARTED | 1 | Three clickable screens on the CC design tokens, dark first: (a) physio plan builder, (b) patient Rehab tab with a session and its post-session monitor sheet, (c) physio patient view with Tracking + Monitor populated from a fortnight of seeded data. Standalone HTML; no schema, no code paths. Gate: Dean → Lewis → the PT partner. |
+| **2 — Plan builder** | NOT STARTED | 1–2 | Talk-first schema: `rehab_plans` (name, patient, partner, start, duration_weeks, note, safety_netting, red_flags, monitor jsonb), plan items with the rehab prescription (hold_s, reps, times_daily, rest_s, days_per_week, both_sides), plan-level templates by phase/diagnosis. Builder in `physio-portal.html`; add-patient → VYVE invite via the partner trial rail (Lewis: duration). |
+| **3 — Patient side** | NOT STARTED | 2 | Rehab tab in vyve-site (hidden without an active plan): plan hydrate into Dexie (merge, never wipe — §23.43), session player driven by the rehab prescription, done/skipped + like per exercise, once-daily monitor sheet from the plan's selected metrics, question-to-physio into the coach thread, push at the prescribed times of day, streak. Main → Dean's dev shell first; OTA only on his word. |
+| **4 — The loop** | NOT STARTED | 1 | Physio patient view: Plan · Tracking (done vs skipped, liked vs disliked) · Monitor (line per metric). Adherence = done ÷ (times daily × days per week × duration). Alert into the physio's thread on pain rising / adherence dropping for 2–3 weeks (thresholds: Phil). |
+| **5 — Library depth** | NOT STARTED | 1 | `subcategory` column + sub-filter under body regions (Flexion, Extension, Rotation, Stretching, Strengthening, Advice…); diagnosis-led entry (condition → curated set); phased templates; PDF plan export as the paper fallback. |
+| **6 — Later** | PARKED | — | AI draft plan (Anthropic EF over the tagged library), advice sheets as plan items, PROMs, translation, multi-practitioner clinics. |
+
+**Cross-cutting gates.** Lewis: trial duration, product name, every patient-facing string. Phil: safety netting, red flags, monitor wording, alert thresholds. Dean: schema talk-first, CC deploy checks, OTA.
+
+**Constraints.** The RMP demo rows (`source_slug LIKE 'rmp:%'`, partner `a23478c8`) are a demo with a ~12 Oct 2026 tear-down; nothing in any wave depends on them. Product video = own recordings on own storage, never YouTube (§23.331). `coach-portal.html` split trigger also stands on its own: do it when the file passes ~1.2MB regardless of physio (§23.332).

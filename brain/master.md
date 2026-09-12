@@ -9,6 +9,7 @@
 | Dean says | Claude loads |
 |---|---|
 | "load brain" | `brain/master.md` → `brain/changelog.md` → `tasks/backlog.md`, in that order, then confirm and ask what we're working on |
+| **"physio wave N"** / "start physio wave N" / "physio backend wave N" | `tasks/physio-portal-waves.md` + `tasks/physio-rehab-spec.md` + `prompts/session-physio-rehab-s2.md` — physio product (PM-1207); Wave 0 = coach-portal split |
 | **"start dashboard fix"** / "fix the home screen" / "member-dashboard perf" | `prompts/session-member-dashboard-performance.md` — **the 500-member blocker; do this before the achievements overhaul** |
 | **"start achievements overhaul"** / "fix achievements" | `prompts/session-achievements-overhaul.md` (PM-358) |
 | **"start key rotation"** / "rotate the keys" | `prompts/session-credential-rotation.md` (enterprise B3) |
@@ -28,6 +29,8 @@
 
 
 <!--CURRENT_FRONT_START-->
+**PM-1207 (2026-09-12, 14:30–17:00): PHYSIO PRODUCT OPENED.** Rehab My Patient's channel imported as a **4,876-row private demo library** on Dean's partner `a23478c8` (`source_slug LIKE 'rmp:%'`, RMP's 41 categories applied, tear-down ~12 Oct — never build on it). Found and fixed the **coach-portal library 1,000-row cap** (`exLoad` now pages; CC `fc3ba427`; **Dean's Cloudflare deploy check owed**). RMP reviewed end to end from Dean's trial account: their physio side is fine, their patient side is a website with checkboxes — ours is the native app. **Spec `tasks/physio-rehab-spec.md`, waves `tasks/physio-portal-waves.md` (say "physio wave N"), brief `prompts/session-physio-rehab-s2.md`.** Wave 0 = split `coach-portal.html` into shell + shared modules and give physios `physio-portal.html` on the same engine (decided over a duplicate). Gates: Lewis trial duration + name + strings; Phil safety netting, red flags, monitor wording, thresholds. Rehab product video = own recordings on own storage, never YouTube (§23.331).
+
 
 **PM-1192 (2026-09-11): go-live gate = portal minimums + agreement/identity/profile only. Modules, safeguarding and GDPR assessments are “coming soon” for everyone (not a failure); go-live stamps `assessments_pending_at_golive` for back-fill. CC `7287ec9fe331a3e0a12a13f11cff9d32f4b7e25b`. April Rosson's flag patch no longer needed.**
 
@@ -378,7 +381,7 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-12, PM-1206)
+## CURRENT FRONT (updated 2026-09-12, PM-1207)
 
 **PM-1206 (2026-09-12, 12:46–13:10): EMAIL OUTAGE, 24 MIN.** Brevo's Authorised-IPs restriction (active for API keys, IPv4-only list, 83 addresses already refused) blocked every Edge-runtime send after a `send-email` redeploy moved egress to rotating IPv6. Dean deactivated the feature for API keys; sends 200 again 13:10. `send-email` v5 = dual-auth (§23.7). §23.329: never re-enable Brevo IP restriction; harden with a scoped key instead.
 
@@ -1596,6 +1599,11 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). **DNS/proxy: SETTLED PM-841 — z
 ---
 
 ## 19. Current status
+
+### PM-1207 — Physio product: RMP demo library, coach-portal library paging, spec + waves (2026-09-12)
+**CC `fc3ba427` coach-portal.html (md5 `b9cd64b0`):** `exLoad` v3 pages `/coach_exercises` 1,000 at a time (`order=name.asc,id.asc&limit=1000&offset=`) until a short page, replacing the single `limit=2000` call PostgREST capped at 1,000 (§23.332). No UI change. Deploy check: Dean.
+**Data (no migration):** 4,876 `coach_exercises` rows, `partner_id='a23478c8-…'`, `source_slug='rmp:<videoId>'`, `video_url` YouTube, `image_url` YT thumb, `cues`, `equipment`, `exercise_type`, RMP 41-name `category`. Inserted from the Composio workbench via the Supabase Management API query endpoint (§23.330). Demo only; tear-down ~12 Oct 2026.
+**Brain:** `tasks/physio-rehab-spec.md`, `tasks/physio-portal-waves.md`, `prompts/session-physio-rehab-s2.md`; trigger row "physio wave N".
 
 ### PM-1198→1201 — Welcome video end-to-end, media workers, runner padding + hang fix (2026-09-12)
 **vyve-site `22a5cb30` (vbb 642, no OTA):** `partner-profile.html` — `wvInit` selects `youtube_video_id`; `pvOpen(id,title,youtubeId)` iframe path (wrapper in the shell, direct embed on the web, `.pv-frame` 16:9 in the same sheet); `pvVideo.play()` on the signed-URL path; 700ms long-press on `#wv-btn` clears `vyve_wv_seen_<partnerId>` (`wvToast`); CSP `frame-src` += `https://online.vyvehealth.co.uk`. Markers: index 642, settings 642 (had drifted to 639), sw `vyve-cache-v2026-09-12c-pm1198-welcome-youtube`.
@@ -2834,6 +2842,18 @@ Writing to a file hides pacing (`-re`), backpressure, YouTube's ingest tolerance
 #### §23.329 — Brevo's "Authorised IPs" restriction must stay OFF for API keys; the Edge runtime has no fixed egress address (PM-1206 — HARD RULE)
 
 Supabase Edge Functions send from a rotating pool — on 12 Sep every call left from a different `2a05:d0xx:…` IPv6 address, and Brevo's security page showed 83 distinct refused addresses. With the feature active, "unrecognised IP" 401s every send (welcome, re-engagement, recaps, alert digest) and nothing member-facing tells you. Emptying the list does not help — active + empty = nobody allowed; the control is the **"Deactivate for API keys"** button on app.brevo.com/security/authorised_ips. It had been active since setup and only bit when a redeploy shifted the egress pool. The right hardening is a Brevo key scoped to transactional send only (backlog), never an address list. A `Brevo 401` in `send-email` logs with "unrecognised IP" in the body = this, not a bad key.
+
+#### §23.330 — Bulk data loads go through the Supabase Management API query endpoint from the workbench, not a one-shot Edge Function (PM-1207)
+
+`POST https://api.supabase.com/v1/projects/ixjfklpckgxrwjlfsaaz/database/query` with `Authorization: Bearer <MGMT_PAT>` (vault `MGMT_PAT`) and `{"query": "<sql>"}` runs arbitrary SQL with a large body from the Composio remote sandbox, which can reach both googleapis and api.supabase.com. Chunks of ~200–500 rows via `jsonb_to_recordset($tag$…$tag$::jsonb)` worked for 4,876 rows in under a minute. This avoids the dead-EF residue the security audit is still listing (89 one-shot patchers) and keeps the PAT off the repo. `ON CONFLICT` cannot target `uq_coach_ex_partner_name` (expression index) — use an anti-join on `lower(name)` instead. Local `bash_tool` cannot reach googleapis (network allow-list), so the fetch side has to run in the workbench too.
+
+#### §23.331 — Rehab product video is our own recordings on our own storage; never YouTube, and never a third party's library (PM-1207 — HARD RULE)
+
+YouTube Developer Policies (rev. 2026-06-24) III.F.3.a: API clients must not charge users to watch content in an embedded player; III.G.1.a: no selling/redistributing YouTube audiovisual content; III.E.4.d: non-authorised API data (titles, descriptions) stored ≤30 days; III.F.2: YouTube branding wherever content shows. A paid wellbeing app with replays on unlisted YouTube is the intended "sell an API client with independent value" case and stays as-is — but a rehab product where the prescribed video *is* the deliverable sits on the wrong side, and the sanction is suspension of the one API project (`vyve-website`, 210114068429) the live runner, replay reconcile and welcome-video uploads all depend on. Own file + `partner-content-play` signed URL / R2 + native `<video>` = no YouTube terms, own copyright, offline playback, no player-side data sharing in the DPIA. The RMP rows on `a23478c8` are a private demo with a ~12 Oct 2026 tear-down; nothing in any wave may depend on them, and no member may ever see them.
+
+#### §23.332 — PostgREST caps a single request at 1,000 rows; any "load everything" call must page (PM-1207 — HARD RULE)
+
+`coach-portal.html` `exLoad` asked for `limit=2000` and got 1,000 — silently, alphabetically, so every coach with 977 stock + a real private library lost everything after ~C and nobody noticed for weeks. Pattern for any catalogue-sized read from the client: loop `limit=1000&offset=N` with a stable `order=…,id.asc` until a short page. Audit candidates: any other `rest('/…?…limit=…')` above 1,000 in the CC and any Dexie hydrate that assumes one REST call returns the table. Related: `coach-portal.html` is 985KB in one file — split into shell + shared modules when it passes ~1.2MB or when physio Wave 0 lands, whichever first; user count is not the risk (static file on Cloudflare edge; the DB is the ceiling), file size is.
 
 ## 24. Key references, credentials & URLs
 
