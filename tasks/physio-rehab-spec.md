@@ -39,6 +39,7 @@ Plus free text "anything you want to ask your physio" → existing coach thread.
 ## 4. Patient side
 
 - Plan list → plan → today's exercises (date-headed). Per exercise: instruction text, still + video, **done / skipped**, thumbs up/down. Therapist note pops once.
+- **Guided player (Dean, 12 Sep, after the Wave 1 mockup): each exercise has a Start, and it runs like the workout player does for sets and reps — the prescription drives a timer sequence: hold 5s → rest 10s → next rep, ×10, then the other side if both sides, with the video available alongside (optional, not forced). The mockup's done/skip buttons are the summary state; the player is how a session is actually done. Reuse the existing workout player's timer/rest engine rather than building a second one (Wave 3).**
 - Once per day: the monitor sliders for the plan's selected metrics.
 - **VYVE additions:** push at the prescribed times of day; streak; offline video; the plan is in the app the patient already has — no code, no PDF needed. PDF export kept as a fallback for paper.
 
