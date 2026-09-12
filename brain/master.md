@@ -382,7 +382,9 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-13, PM-1227)
+## CURRENT FRONT (updated 2026-09-13, PM-1228)
+
+**PM-1228 (2026-09-13, 05:45): DRAWER ROUND 2 — CC `afd0d5b1`, migration `pm1228_cardio_videos_wired`.** Video preview above the drawer (z 960 < 970); blank auto-row really gone (test names, not length) + "or type a name" removed; Reps → Secs → Mins on duration rows with seconds on save; VYVE's cardio recordings (10, sitting unwired in Storage) attached to the Cardio rows. Deploy check owed.
 
 **PM-1227 (2026-09-13, 05:20): DRAWER FULL-SIZE — CC `b481bafe`.** 220 (messaging) had reused `.w3-modal` for its 460px inner dialog, squashing every 132-style overlay since PM-1080; renamed `.w3-mdlg`, drawer self-styled (§23.343). Deploy check owed.
 
@@ -1644,6 +1646,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). **DNS/proxy: SETTLED PM-841 — z
 ---
 
 ## 19. Current status
+
+### PM-1228 — Drawer round 2; cardio videos wired (2026-09-13)
+**Migration `pm1228_cardio_videos_wired`:** `media_url`/`image_url` on 10 Cardio stock rows from `exercise-videos/` + `exercise-thumbnails/`; stock Sled Push gets the sled recording; stock Recumbent Bike → Cardio, duration, video. **CC `afd0d5b1`** (coach-portal.html md5 `8b6cb975`): `330` — `.exv2-modal` z-index 960; `renderDayEditor` wrapper removes unnamed rows when the day has no named exercise, no `.exv2-blank` link; `exv2UnitSet/UnitAuto` (`data-w3unit` sec|min), label click cycles reps → sec → min, `collectDay` wrapped to pass seconds; picker applies `exv2UnitAuto` to added rows.
 
 ### PM-1227 — `.w3-modal` collision fixed; drawer self-styled (2026-09-13)
 **CC `b481bafe`** (coach-portal.html md5 `af31f5e1`): `220-tz-w3-pm1080.js` inner dialog class `.w3-modal` → `.w3-mdlg` (three CSS rules + one markup line; `.w3-modal-bg` unchanged); `330` `.exv2-modal` carries full overlay rules (fixed/inset/z-975/backdrop) and `.in` its own surface/border/flex.

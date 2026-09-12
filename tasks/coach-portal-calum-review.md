@@ -23,7 +23,7 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 |---|---|---|
 | 11 | Visual exercise selector with thumbnails when adding exercises | **Shipped PM-1223** — ☰ Choose from library beside every block, library sheet, multi-add, Done |
 | 12 | Weekly workouts show names without images | Editor side **shipped PM-1224** (weekly sessions now use the day builder — thumbnails, picker, toggle); the list/preview view still to do |
-| 13 | Treadmill Run locked to sets/reps; want sets/reps · time · distance · calories per row | **Shipped PM-1223** for reps ⇄ secs (click the Reps/Secs label); distance / kcal = Batch 3 contract |
+| 13 | Treadmill Run locked to sets/reps; want sets/reps · time · distance · calories per row | **Shipped PM-1223/1228** — Reps → Secs → Mins on the row label, seconds on save; distance / kcal = Batch 3 contract |
 | 14 | Search/filter on Programmes, Weekly workouts, Day templates | Search box + sort on the three lists (recipes have the pattern from W9b) |
 | 15 | Add New appends at the bottom of the page | Open the builder as the view, list hidden, back on save/cancel |
 | 16 | Tabs per day vs whole-programme view | Toggle: Full programme / Session tabs on the programme builder and preview |
@@ -55,3 +55,4 @@ Trigger: "calum review" / "calum batch N". Calum Denham (partner `3d552455…`, 
 - 13 Sep 2026 — PM-1223: Batch 2 part 1 shipped (library v2, picker over the builder, Reps/Secs toggle, taxonomy). Part 2 = #12 #14 #15 + physio.
 - 13 Sep 2026 — PM-1224: weekly workouts moved onto the day builder (Dean hit the old editor); Cardio 23 added to stock.
 - 13 Sep 2026 — PM-1225: picker re-presented as a right-hand drawer, + Exercise opens it; doubled-library race fixed.
+- 13 Sep 2026 — PM-1226→1228: drawer polished on Dean's live pass (blank row gone, video on top, minutes, cardio videos wired from Storage).
