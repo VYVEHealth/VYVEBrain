@@ -382,7 +382,9 @@
 **PM-665 (2026-06-22): Dexie-first partner community feed. SCHEMA_V26: `partner_community_posts` + `partner_memberships_local` stores. sync.js: memberships sync on login. partner-profile.html: `renderFeedPosts` + Dexie-first `loadFeed` (instant paint on return, bulkUpsert on REST refresh, re-render only on change). vbb 473.**
 **PM-664 (2026-06-22): Partner Space Workstreams 1-3 complete. WS3: community push notifications shipped — `partner_subscribers` audience shape in `resolve_broadcast_audience`, Notify Community panel in `partner-portal.html` (preview + send, audited to admin_broadcast_log, routes to partner-profile). Gate B still holds. WS4 (audited Claude-driven actions) is next.**
 **PM-661 (2026-06-22): Partner Space full build shipped. Schema: `admin_users.role` += partner, `calendar_occurrences` += visibility/partner_id, `is_partner()` RPC, `partner_memberships` subscription_status + unique constraint, partner-scoped RLS on 6 tables, `get_my_partner_id()` helper. EF `partner-provision` v1 (Gate A provision/deprovision). CC `partner-portal.html` (5-tab partner-facing page) + `partners.html` Gate A wire. vyve-site `partner-space.html` (in-app discover, Gate B enforced, vbb 471). Community tile added to Connect hub. Entry path: Connect → Community tile. Gate B still holds (no live partners yet). Next: `partner-profile.html`.**
-## CURRENT FRONT (updated 2026-09-13, PM-1232)
+## CURRENT FRONT (updated 2026-09-13, PM-1233)
+
+**PM-1233 (2026-09-13, 07:00): PM-1231 LIBRARY COPIED TO CALUM — migration `pm1233_calum_library_seed`; programmes rebuilt on his partner so `src_id`s are his (§23.275).**
 
 **PM-1231/1232 (2026-09-13, 06:50): DEAN'S LIBRARY SEEDED — 15 day templates, 5 weekly workouts, 4 programmes, 3 nutrition plans, 2 habit plans, 1 stack, 3 forms on `a23478c8` (migration `pm1231_dean_library_seed`, real rows, no teardown). 'Other 60' in the rail was the VYVE-video exercises without a muscle group — recategorised (`pm1232_other_recategorised`). Programmes complaint answered by construction (no day templates → empty slots).**
 
@@ -1652,6 +1654,9 @@ Hosted via GitHub Pages (`Test-Site-Finalv3`). **DNS/proxy: SETTLED PM-841 — z
 ---
 
 ## 19. Current status
+
+### PM-1233 — Calum's copy of the PM-1231 library (2026-09-13)
+**Migration `pm1233_calum_library_seed`:** same 15 day templates (payload copy), 5 weeklies + 4 programmes rebuilt via `vyve_sess`/`vyve_day_snap` on `3d552455`, nutrition/habits/supplements/forms copied. Idempotent.
 
 ### PM-1231/1232 — Dean's library seed; 'Other' recategorised (2026-09-13)
 **Migrations `pm1231_dean_library_seed`** (SQL helpers `vyve_attach_exercise_ids(jsonb)`, `vyve_day_snap(uuid,text,text)`, `vyve_sess(uuid,text,text)`; 15 `workout_day`, 5 `workout`, 4 `program`, 3 `nutrition`, 2 `habits`, 1 `supplements` templates + 3 `coach_forms` on partner `a23478c8`, idempotent on partner+kind+name) and **`pm1232_other_recategorised`** (stock `category='Other'` → keyword muscle group; 0 left).
