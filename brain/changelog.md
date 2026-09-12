@@ -1,4 +1,4 @@
-**PM-1240 (2026-09-13): RUNNING WAVE 1 SHIPPED — THE SHELF IS STOCKED. FOUR PLAN TEMPLATES, SEVENTEEN SESSION TEMPLATES, `run-engine` v4.**
+**PM-1240 (2026-09-13): RUNNING WAVE 1 SHIPPED — THE SHELF IS STOCKED. FOUR PLAN TEMPLATES, SEVENTEEN SESSION TEMPLATES, `run-engine` v4.** *(PM number collides with the parallel coach-portal session's PM-1240 rest-block entry below — both claimed 1239+1 within the same minute. Migration and EF artefacts here are stamped `pm1240_*` and are immutable, so both entries keep the number; they are told apart by title.)*
 
 Migrations `pm1240_run_wave1_catalogue`, `pm1240_run_wave1_balance_fix`, `pm1240_run_wave1_activate_catalogue`. **166 `run_template_weeks` rows, 61 `run_template_steps`, 17 `run_session_templates`, 4 `run_plan_templates` — all `is_active=true` after verification; the `fixture-%` harness rows stay inactive and were never touched.** Still nothing member-facing: `running_plan_cache` (7) and `member_running_plans` (16) untouched and still serving until Wave 3, per the PM-1238 blast radius. No vyve-site commit, no vbb bump, no OTA.
 
@@ -13,6 +13,10 @@ Migrations `pm1240_run_wave1_catalogue`, `pm1240_run_wave1_balance_fix`, `pm1240
 **§23.26 earned its keep again:** a parallel session landed `98d362e4` on VYVEBrain between brain load and commit, rewriting both changelog and backlog. Re-fetched and merged rather than overwritten.
 
 **Open on Dean:** whether Start Running should show elapsed time instead of distance in Wave 3's plan header. **Calum:** the review sheet — weekly shape, progression, session structures, names and coach notes, and whether the eight-week run/walk ramp is too fast for a true beginner. **Lewis:** strings. **Phil:** the injury-history question. **NEXT: Wave 2 — the wizard, recap and projection screens.**
+
+---
+
+**PM-1240 (2026-09-13, 08:30): REST BLOCK BUTTON REMOVED FROM THE WORKOUT BUILDER — CC `1c449941` (coach-portal.html md5 `cf8f057b`).** Dean: "remove the rest block from this page". The `330` `renderDayEditor` wrapper removes `.de-add-rest`; W6's `w6AddRestRow` and existing rest rows in saved templates are untouched (they still render and save). Rest between sets stays on every row. (Comment in the slice says PM-1237 — the number was taken by the parallel running-plan session; it is this entry.)
 
 ---
 
