@@ -2,6 +2,25 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { applyOp, ukLocalDateISO, lastNightWindow, dailyMetricColumn, dailyUnitFor } from './_shared/taxonomy.ts';
 import { getMemberAchievementsPayload } from './_shared/achievements.ts';
+// member-dashboard v94 — PM-1193 (server half of PM-1182): Health Connect counts as a health
+//   connection. `hkConnection` now matches any non-revoked row whose platform is healthkit OR
+//   health_connect (healthkit preferred when both exist), so `health_connection_state`,
+//   `hasHealthkitConnection` (habit auto-tick evaluation) and the `member_health_daily` filter
+//   (`source=in.(healthkit,health_connect)`, rows from the connected platform win) all see
+//   Android members. sync-health-data stamps `source=platform`, so Android daily rows arrive as
+//   `health_connect` and were invisible to every one of those three. Handler otherwise identical.
+// member-dashboard v91 — PM-1150: getMemberAchievementsPayload collapsed from ~26 internal
+//   PostgREST round trips to ONE rpc('member_achievements_payload'). §23.292: parallelising
+//   the old sequential loop would have fixed 30-VU latency and left the 200-VU cliff, because
+//   the internal call COUNT was unchanged. Handler logic in this file is byte-identical to v90;
+//   only this comment block and _shared/achievements.ts changed. Output shape verified identical
+//   to v90 against a live invocation before deploy.
+// member-dashboard v88 — PM-1063: bundled _shared/achievements.ts was the PM-419 original
+//   (selected achievement_key/achievement_label — columns retired by the achievements
+//   overhaul — and carried the inverted hk-connected check PM-1003 fixed elsewhere).
+//   Every home load fired two 400s against member_achievements, the payload came back
+//   empty, and achievements.js replayUnseen() never had anything to replay. Now the
+//   member-achievements v15 copy. Handler logic byte-identical to v87.
 // member-dashboard v87 — PM-969: ALLOWED_ORIGINS now includes the native shells
 //   (capacitor://localhost iOS, https://localhost + http://localhost Android).
 //   Store binaries were CORS-rejected on every response (Allow-Credentials:true
@@ -27,6 +46,10 @@ const ASLEEP_STATES = new Set([
   'rem',
   'deep'
 ]);
+const HEALTH_PLATFORMS = [
+  'healthkit',
+  'health_connect'
+]; // PM-1193: order = preference when both connected
 function getCORSHeaders(req) {
   const origin = req.headers.get('Origin') ?? '';
   const allowOrigin = ALLOWED_ORIGINS.has(origin) ? origin : DEFAULT_ORIGIN;
@@ -244,7 +267,7 @@ serve(async (req)=>{
       q('certificates', `member_email=eq.${enc}&select=id,activity_type,milestone_count,earned_at,certificate_url,charity_moment_triggered,global_cert_number&order=earned_at.desc`),
       q('member_health_connections', `member_email=eq.${enc}&select=platform,granted_scopes,connected_at,last_sync_at,last_sync_status,total_synced,revoked_at`),
       q('member_habits', `member_email=eq.${enc}&active=eq.true&select=habit_id,active,assigned_at,habit_library(id,habit_pot,habit_title,habit_description,habit_prompt,difficulty,health_rule)`),
-      q('member_health_daily', `member_email=eq.${enc}&date=eq.${todayLocal}&source=eq.healthkit&select=sample_type,value,unit`),
+      q('member_health_daily', `member_email=eq.${enc}&date=eq.${todayLocal}&source=in.(healthkit,health_connect)&select=sample_type,value,unit,source`),
       q('member_health_samples', `member_email=eq.${enc}&sample_type=eq.sleep&start_at=gte.${encodeURIComponent(sleepStartIso)}&start_at=lt.${encodeURIComponent(sleepEndIso)}&select=value,metadata`),
       q('workouts', `member_email=eq.${enc}&activity_date=eq.${todayLocal}&select=id`),
       q('cardio', `member_email=eq.${enc}&activity_date=eq.${todayLocal}&select=id,duration_minutes`),
@@ -280,11 +303,22 @@ serve(async (req)=>{
     });
     const state = homeStateRpc && typeof homeStateRpc === 'object' ? homeStateRpc : {};
     const charityTotal = Number(state.__charity_total ?? 0);
+    // PM-1193: the health connection is any live row on a known platform; healthkit wins if both exist.
+    const liveConnections = (healthConnections || []).filter((c)=>HEALTH_PLATFORMS.includes(c.platform) && !c.revoked_at);
+    const hkConnection = HEALTH_PLATFORMS.map((p)=>liveConnections.find((c)=>c.platform === p)).find(Boolean) || null;
+    const hasHealthkitConnection = !!hkConnection;
+    const primaryPlatform = hkConnection ? hkConnection.platform : null;
     const dailyByType = new Map();
-    for (const row of dailyToday || [])dailyByType.set(row.sample_type, {
-      value: Number(row.value),
-      unit: row.unit || ''
-    });
+    for (const row of dailyToday || []){
+      // Rows from the connected platform win; anything else only fills gaps.
+      const existing = dailyByType.get(row.sample_type);
+      if (existing && existing.source === primaryPlatform && row.source !== primaryPlatform) continue;
+      dailyByType.set(row.sample_type, {
+        value: Number(row.value),
+        unit: row.unit || '',
+        source: row.source
+      });
+    }
     let sleepLastNightAsleepMin = null;
     const sleepRows = sleepLastNight || [];
     if (sleepRows.length > 0) {
@@ -296,8 +330,6 @@ serve(async (req)=>{
       }
       sleepLastNightAsleepMin = total;
     }
-    const hkConnection = (healthConnections || []).find((c)=>c.platform === 'healthkit' && !c.revoked_at);
-    const hasHealthkitConnection = !!hkConnection;
     const cardioTodayArr = cardioToday || [];
     const workoutsTodayArr = workoutsToday || [];
     const snap = {

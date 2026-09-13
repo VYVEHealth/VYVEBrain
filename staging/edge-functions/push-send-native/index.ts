@@ -1,4 +1,8 @@
-// VYVE Health — push-send-native v6
+// VYVE Health — push-send-native v7
+// v7 (PM-1181): ANDROID FCM LEG. Android subs are delivered via FCM HTTP v1 using a
+// Firebase service account in secret FCM_SERVICE_ACCOUNT (JSON). iOS/APNs path
+// unchanged. If the secret is missing, Android subs are skipped with a reason
+// (never fails the iOS send). UNREGISTERED / bad-token responses revoke, mirroring APNs.
 // v6: cross-environment retry + self-heal. On 400 BadDeviceToken, retry the
 // same token against the OTHER APNs host (prod<->sandbox). On success, persist
 // the corrected `environment` so future sends route directly. Only revoke when
@@ -83,6 +87,111 @@ async function makeApnsJwt() {
     exp: now + 3600
   };
   return jwt;
+}
+// ─── FCM HTTP v1 (Android) ───────────────────────────────────────────────────
+const FCM_SA_RAW = Deno.env.get('FCM_SERVICE_ACCOUNT') ?? '';
+let fcmSa = null;
+try {
+  if (FCM_SA_RAW) fcmSa = JSON.parse(FCM_SA_RAW);
+} catch  {
+  fcmSa = null;
+}
+let cachedFcmToken = null;
+async function makeFcmAccessToken() {
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedFcmToken && cachedFcmToken.exp > now + 300) return cachedFcmToken.token;
+  if (!fcmSa || !fcmSa.client_email || !fcmSa.private_key || !fcmSa.project_id) {
+    throw new Error('FCM_SERVICE_ACCOUNT missing or malformed (needs client_email, private_key, project_id)');
+  }
+  const enc = new TextEncoder();
+  const header = b64u(enc.encode(JSON.stringify({
+    alg: 'RS256',
+    typ: 'JWT'
+  })));
+  const claims = b64u(enc.encode(JSON.stringify({
+    iss: fcmSa.client_email,
+    scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600
+  })));
+  const signingInput = `${header}.${claims}`;
+  const pkcs8 = pemToPkcs8(fcmSa.private_key);
+  const key = await crypto.subtle.importKey('pkcs8', pkcs8.buffer.slice(pkcs8.byteOffset, pkcs8.byteOffset + pkcs8.byteLength), {
+    name: 'RSASSA-PKCS1-v1_5',
+    hash: 'SHA-256'
+  }, false, [
+    'sign'
+  ]);
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, enc.encode(signingInput));
+  const assertion = `${signingInput}.${b64u(sig)}`;
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: `grant_type=${encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer')}&assertion=${encodeURIComponent(assertion)}`
+  });
+  const j = await res.json().catch(()=>({}));
+  if (!res.ok || !j.access_token) throw new Error(`FCM oauth failed ${res.status}: ${JSON.stringify(j).slice(0, 300)}`);
+  cachedFcmToken = {
+    token: j.access_token,
+    exp: now + Math.min(3600, Number(j.expires_in || 3600))
+  };
+  return cachedFcmToken.token;
+}
+async function sendFcmPush(token, accessToken, title, text, customData) {
+  const data = {};
+  for (const [k, v] of Object.entries(customData))data[k] = typeof v === 'string' ? v : JSON.stringify(v);
+  const url = `https://fcm.googleapis.com/v1/projects/${fcmSa.project_id}/messages:send`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'authorization': `Bearer ${accessToken}`,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        message: {
+          token,
+          notification: {
+            title,
+            body: text
+          },
+          data,
+          android: {
+            priority: 'high',
+            notification: {
+              sound: 'default'
+            }
+          }
+        }
+      })
+    });
+    if (res.ok) return {
+      status: res.status,
+      ok: true
+    };
+    let reason = '';
+    try {
+      const err = await res.json();
+      const details = err?.error?.details || [];
+      const fcmErr = details.find((d)=>d && d.errorCode);
+      reason = fcmErr && fcmErr.errorCode || err?.error?.status || err?.error?.message || '';
+    } catch  {}
+    return {
+      status: res.status,
+      ok: false,
+      reason
+    };
+  } catch (e) {
+    console.error('[push-send-native] fcm fetch error:', token.slice(0, 12), e);
+    return {
+      status: 0,
+      ok: false,
+      reason: String(e)
+    };
+  }
 }
 function hostFor(env) {
   return env === 'development' ? 'api.development.push.apple.com' : 'api.push.apple.com';
@@ -234,7 +343,7 @@ serve(async (req)=>{
   }
   let subs = Array.from(subsById.values());
   if (subs.length === 0) {
-    console.log('[push-send-native v6] no active subscriptions match');
+    console.log('[push-send-native v7] no active subscriptions match');
     return new Response(JSON.stringify({
       ok: true,
       sent: 0,
@@ -266,16 +375,20 @@ serve(async (req)=>{
     subs = filtered;
   }
   const iosSubs = [];
+  const androidSubs = [];
   for (const s of subs){
     if (s.platform === 'ios') iosSubs.push(s);
-    else skipped.push({
-      member_email: s.member_email,
-      token_prefix: s.token.slice(0, 12) + '\u2026',
-      reason: 'android FCM not implemented (backlog #6)'
-    });
+    else if (s.platform === 'android') {
+      if (fcmSa) androidSubs.push(s);
+      else skipped.push({
+        member_email: s.member_email,
+        token_prefix: s.token.slice(0, 12) + '\u2026',
+        reason: 'FCM_SERVICE_ACCOUNT secret not set'
+      });
+    }
   }
-  if (iosSubs.length === 0) {
-    console.log(`[push-send-native v6] all ${skipped.length} subs filtered out`);
+  if (iosSubs.length === 0 && androidSubs.length === 0) {
+    console.log(`[push-send-native v7] all ${skipped.length} subs filtered out`);
     return new Response(JSON.stringify({
       ok: true,
       sent: 0,
@@ -301,21 +414,43 @@ serve(async (req)=>{
     },
     ...customData
   };
-  let jwt;
-  try {
-    jwt = await makeApnsJwt();
-  } catch (e) {
-    console.error('[push-send-native] JWT generation failed:', e);
-    return new Response(JSON.stringify({
-      error: 'apns jwt error',
-      detail: String(e)
-    }), {
-      status: 500,
-      headers: {
-        ...CORS,
-        'Content-Type': 'application/json'
-      }
-    });
+  let jwt = '';
+  if (iosSubs.length > 0) {
+    try {
+      jwt = await makeApnsJwt();
+    } catch (e) {
+      console.error('[push-send-native] JWT generation failed:', e);
+      return new Response(JSON.stringify({
+        error: 'apns jwt error',
+        detail: String(e)
+      }), {
+        status: 500,
+        headers: {
+          ...CORS,
+          'Content-Type': 'application/json'
+        }
+      });
+    }
+  }
+  // Android leg (v7). An FCM auth failure skips Android with a reason; it never blocks iOS.
+  let fcmAccess = '';
+  const androidResults = [];
+  if (androidSubs.length > 0) {
+    try {
+      fcmAccess = await makeFcmAccessToken();
+      const rs = await Promise.all(androidSubs.map((s)=>sendFcmPush(s.token, fcmAccess, title, text, customData)));
+      rs.forEach((r, i)=>androidResults.push({
+          sub: androidSubs[i],
+          result: r
+        }));
+    } catch (e) {
+      console.error('[push-send-native] FCM auth failed:', e);
+      for (const s of androidSubs)skipped.push({
+        member_email: s.member_email,
+        token_prefix: s.token.slice(0, 12) + '\u2026',
+        reason: 'fcm auth error: ' + String(e).slice(0, 200)
+      });
+    }
   }
   const delivered = await Promise.all(iosSubs.map((s)=>deliverWithRetry(s, jwt, apnsPayload)));
   const nowIso = new Date().toISOString();
@@ -372,15 +507,56 @@ serve(async (req)=>{
       console.warn(`[push-send-native] failed status=${r.status} reason=${r.reason} token=${token_prefix}`);
     }
   }
+  for (const { sub, result: r } of androidResults){
+    const token_prefix = sub.token.slice(0, 12) + '\u2026';
+    results.push({
+      member_email: sub.member_email,
+      token_prefix,
+      platform: 'android',
+      status: r.status,
+      ok: r.ok,
+      reason: r.reason
+    });
+    if (r.ok) {
+      sent++;
+      dbWrites.push(db(`push_subscriptions_native?id=eq.${sub.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({
+          last_used_at: nowIso
+        })
+      }));
+      continue;
+    }
+    const dead = r.status === 404 || r.reason === 'UNREGISTERED' || r.reason === 'INVALID_ARGUMENT' || r.reason === 'SENDER_ID_MISMATCH';
+    if (dead) {
+      revoked++;
+      dbWrites.push(db(`push_subscriptions_native?id=eq.${sub.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({
+          revoked_at: nowIso
+        })
+      }));
+      console.warn(`[push-send-native] revoked android ${token_prefix} member=${sub.member_email} reason=${r.reason}`);
+    } else {
+      console.warn(`[push-send-native] fcm failed status=${r.status} reason=${r.reason} token=${token_prefix}`);
+    }
+  }
   await Promise.all(dbWrites);
-  console.log(`[push-send-native v6] sent=${sent} healed=${healed} revoked=${revoked} skipped=${skipped.length} of ${iosSubs.length + skipped.length} targets`);
+  const totalTargets = iosSubs.length + androidSubs.length + skipped.length;
+  console.log(`[push-send-native v7] sent=${sent} healed=${healed} revoked=${revoked} skipped=${skipped.length} of ${totalTargets} targets (ios=${iosSubs.length} android=${androidSubs.length})`);
   return new Response(JSON.stringify({
     ok: true,
     sent,
     revoked,
     healed,
     skipped: skipped.length,
-    total_targets: iosSubs.length + skipped.length,
+    total_targets: totalTargets,
     results,
     skipped_detail: skipped,
     allowlist_active: NATIVE_PUSH_ALLOWLIST !== null

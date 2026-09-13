@@ -1,5 +1,5 @@
 {
-  "snapshot_at": "2026-09-06T07:00:39Z",
+  "snapshot_at": "2026-09-13T07:21:11Z",
   "supabase_project": "ixjfklpckgxrwjlfsaaz",
   "brain_repo": "VYVEHealth/VYVEBrain",
   "brain_branch": "main",
@@ -74,7 +74,7 @@
     {
       "slug": "achievement-earned-push",
       "ok": true,
-      "platform_version": 13,
+      "platform_version": 17,
       "verify_jwt": true,
       "status": "ACTIVE",
       "ezbr_sha256": "43538d15cd924475fdfab515183af4f90186df70ff388f4088fb7775a5514b80",
@@ -90,7 +90,7 @@
     {
       "slug": "achievements-mark-seen",
       "ok": true,
-      "platform_version": 16,
+      "platform_version": 20,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "e36a9cbaae30b358eb3ec5d2cd0be74ee8a21b181586a6dbe939a0d164650e92",
@@ -106,7 +106,7 @@
     {
       "slug": "achievements-sweep",
       "ok": true,
-      "platform_version": 16,
+      "platform_version": 20,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "81f0f3f8903186c08a22d4f9eb576d52dc670185f785e605cc5ea7bbc1660b38",
@@ -122,7 +122,7 @@
     {
       "slug": "admin-dashboard",
       "ok": true,
-      "platform_version": 25,
+      "platform_version": 29,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "0743531239a6ebd0fe71878dcb06ac88af49ad3be6bf8883d62fa2c3ad1d0f4b",
@@ -138,7 +138,7 @@
     {
       "slug": "admin-member-edit",
       "ok": true,
-      "platform_version": 22,
+      "platform_version": 26,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "88dd64dfa3eb01e4d31b4d7871a41f77f4e75188cad5588d94dda40b2c453986",
@@ -154,7 +154,7 @@
     {
       "slug": "admin-member-habits",
       "ok": true,
-      "platform_version": 19,
+      "platform_version": 23,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "2bcc9e00c651adeba1cb63571b0be2a3aaa2a00b2e807da582c4f559cec23b2e",
@@ -170,7 +170,7 @@
     {
       "slug": "admin-member-programme",
       "ok": true,
-      "platform_version": 20,
+      "platform_version": 24,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "4423e68ecc398293ff531ca46558298104057e5180769e56d45f7c93584bd497",
@@ -186,7 +186,7 @@
     {
       "slug": "admin-member-weekly-goals",
       "ok": true,
-      "platform_version": 18,
+      "platform_version": 22,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "361192711f6e2234d689b9a8ceb8e99573ac14c271c833b4ac241814e708a245",
@@ -202,7 +202,7 @@
     {
       "slug": "admin-programme-library",
       "ok": true,
-      "platform_version": 16,
+      "platform_version": 20,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "fa333a2d43b2b44faa9fd1f4a6b584fa73087abff3ef3f377700ec957c83d950",
@@ -218,7 +218,7 @@
     {
       "slug": "anthropic-proxy",
       "ok": true,
-      "platform_version": 33,
+      "platform_version": 37,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "5e025ee04f0c732ae77ee5c2dd524d89dae10b348181827c89c67cab5b98b2d2",
@@ -239,7 +239,7 @@
     {
       "slug": "certificate-checker",
       "ok": true,
-      "platform_version": 40,
+      "platform_version": 44,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "b3070202374af1349050a1fa76be22ed74bb4fc3d66eff6e7c78c29875b74d2a",
@@ -255,7 +255,7 @@
     {
       "slug": "certificate-serve",
       "ok": true,
-      "platform_version": 40,
+      "platform_version": 44,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "873af1fef6d751e9dce877617e1cca498b910fe81c04daceae1f79f3691fd235",
@@ -276,7 +276,7 @@
     {
       "slug": "daily-report",
       "ok": true,
-      "platform_version": 39,
+      "platform_version": 43,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "2e6ef3e8b73ca9fada707c7bb6f16386c3d4574b6a5a2cfb6174005204393f2b",
@@ -297,7 +297,7 @@
     {
       "slug": "email-watchdog",
       "ok": true,
-      "platform_version": 12,
+      "platform_version": 16,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "c600d5c90d0dfdec0c38620971cfae21c992af66ac90c66e2d4083bd369cbfbe",
@@ -313,7 +313,7 @@
     {
       "slug": "employer-dashboard",
       "ok": true,
-      "platform_version": 45,
+      "platform_version": 49,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "e18da006b95c168b5d5468dae797622543b62af30b2a41bf3bf373f270a0ecc7",
@@ -329,7 +329,7 @@
     {
       "slug": "gdpr-erase-cancel",
       "ok": true,
-      "platform_version": 14,
+      "platform_version": 18,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "a2791297a9a810d6516e3d04f556232fd152ab1c8abbc36edbeaa6b8aa2942a2",
@@ -345,7 +345,7 @@
     {
       "slug": "gdpr-erase-execute",
       "ok": true,
-      "platform_version": 19,
+      "platform_version": 23,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "7e3a0b457adf7d09032c70da75eb255281dc268240809d36c0d557b61bdeac28",
@@ -361,7 +361,7 @@
     {
       "slug": "gdpr-erase-request",
       "ok": true,
-      "platform_version": 13,
+      "platform_version": 17,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "38d426f9726704c1faa6bff0b64a2964200f6b98a07034f20bb0f7547d879e83",
@@ -377,7 +377,7 @@
     {
       "slug": "gdpr-erase-status",
       "ok": true,
-      "platform_version": 12,
+      "platform_version": 16,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "397967c4f6dd4f72f7cd5a57be8c197cd456894b03f754b76a3a21b676f0382e",
@@ -393,7 +393,7 @@
     {
       "slug": "gdpr-export-execute",
       "ok": true,
-      "platform_version": 15,
+      "platform_version": 19,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "9a6adf87bc7c35e04fefa644a141b46d22e791336776d20090533f63462915c6",
@@ -409,7 +409,7 @@
     {
       "slug": "gdpr-export-request",
       "ok": true,
-      "platform_version": 13,
+      "platform_version": 17,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "dae10f59bd14a80193912faff0e3b4f5e565286d5e939c4d4b870ba1629d4835",
@@ -425,7 +425,7 @@
     {
       "slug": "generate-workout-plan",
       "ok": true,
-      "platform_version": 25,
+      "platform_version": 29,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "4fabc05d8ae53a51ec4ae4827baa06e36d5423af13d548f67695ebf0b6d3e963",
@@ -441,7 +441,7 @@
     {
       "slug": "get-activity-feed",
       "ok": true,
-      "platform_version": 16,
+      "platform_version": 20,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "73bb8a5f3f0cbc73cb33ed94b34f8a0a3f6c7a3dd9fb78a58a468ae3f4fc5ca4",
@@ -457,7 +457,7 @@
     {
       "slug": "get-health-data",
       "ok": true,
-      "platform_version": 18,
+      "platform_version": 22,
       "verify_jwt": true,
       "status": "ACTIVE",
       "ezbr_sha256": "5d7bf53f75c4d6bf9f8c14ee979180dbba8057b455a778a76a2ed831f5446f67",
@@ -473,7 +473,7 @@
     {
       "slug": "github-proxy",
       "ok": true,
-      "platform_version": 35,
+      "platform_version": 39,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "e0b2b0f5f52e64abbd5d452b37342f027af05515b523b59201da59e8e87afa5d",
@@ -489,7 +489,7 @@
     {
       "slug": "github-proxy-marketing",
       "ok": true,
-      "platform_version": 25,
+      "platform_version": 29,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "790a783897fb1cafdda0a8f6011fa388bcacfc0e22342eb419661927f899c120",
@@ -505,7 +505,7 @@
     {
       "slug": "habit-reminder",
       "ok": true,
-      "platform_version": 26,
+      "platform_version": 30,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "07e83c3d45278dec90b1216e6d7e20d9e801974ca76947165427d450bfd6f160",
@@ -526,7 +526,7 @@
     {
       "slug": "leaderboard",
       "ok": true,
-      "platform_version": 28,
+      "platform_version": 32,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "6810f92df58b3bcefc65426481468ed5ceb0603c51c4590641ce226900925290",
@@ -542,7 +542,7 @@
     {
       "slug": "log-activity",
       "ok": true,
-      "platform_version": 47,
+      "platform_version": 51,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "9786a11636ede287d8bce2271db15beddf7269910b94b85168788c555a13fb07",
@@ -563,7 +563,7 @@
     {
       "slug": "member-achievements",
       "ok": true,
-      "platform_version": 15,
+      "platform_version": 19,
       "verify_jwt": true,
       "status": "ACTIVE",
       "ezbr_sha256": "a92e80464db1b99e7f28ac582706760e7f19018f83f7ec94abac8c2eed7c3a8b",
@@ -584,21 +584,21 @@
     {
       "slug": "member-dashboard",
       "ok": true,
-      "platform_version": 87,
+      "platform_version": 94,
       "verify_jwt": true,
       "status": "ACTIVE",
-      "ezbr_sha256": "12ccb25092ebce9c7b6d1568188b5c196731c37ca98ab8a1c0df6370ce67a240",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c950ab00-49f3-4c07-bd77-83b57c644069_87/source/index.ts",
+      "ezbr_sha256": "767420ea06d6e0799e3ef5cc3c9a50ed12b358af3a88eb8a832c314ce22e72e3",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_c950ab00-49f3-4c07-bd77-83b57c644069_94/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "ab34ba6b77d221baa7439629e51f735a9cd8e6fc531595c544078d54930fb146",
-          "bytes": 18455
+          "sha256": "2df83f1b0a9def6314cb3a2c8b5760666aea06f80eb3db6825a8143984ecbd3b",
+          "bytes": 20902
         },
         {
           "name": "_shared/achievements.ts",
-          "sha256": "11b423de40df33d515def443b4d18836aeeb3e9b38f88efb8b06d0e66baa9bb0",
-          "bytes": 1795
+          "sha256": "f96d40d377be4571b6612c56bcb8b49e6e84eb854474104d34f6a53c4b99dde8",
+          "bytes": 10116
         },
         {
           "name": "_shared/taxonomy.ts",
@@ -610,7 +610,7 @@
     {
       "slug": "monthly-checkin",
       "ok": true,
-      "platform_version": 37,
+      "platform_version": 41,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "514efb35939955cb3e8c91c0fc888f7ac5d544c965ae6a19f0576df1d80993d2",
@@ -626,7 +626,7 @@
     {
       "slug": "monthly-report",
       "ok": true,
-      "platform_version": 31,
+      "platform_version": 35,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "c0e0e81c72ffd0f0b262be09991f0d4b2e0e2902b03848ea593fccc5758588b7",
@@ -642,7 +642,7 @@
     {
       "slug": "notifications",
       "ok": true,
-      "platform_version": 25,
+      "platform_version": 29,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "6c1f879481df63d4f646e0f61cb3762a447da2d97d373bb3f905e0f77b1266d5",
@@ -658,23 +658,23 @@
     {
       "slug": "off-proxy",
       "ok": true,
-      "platform_version": 34,
+      "platform_version": 40,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "0cee3a8e0db2ec8f1bab4e8f2b509bf3494359e5d1760c78b045dc28d495bafa",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_6c32e403-d05f-471b-8081-0bb78cc8e91c_34/source/index.ts",
+      "ezbr_sha256": "9a6ca280148994b74f025e7663a0c07589ede71cd481b5fb4fce9d168438a530",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_6c32e403-d05f-471b-8081-0bb78cc8e91c_36/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "ab2a5a77d7037749c38db71ea42d35b7dc5141e89e543c14c66092dc5c8ef237",
-          "bytes": 9339
+          "sha256": "10c80502bc4c79caa13c058e32facf11d8291fd15036eba56cf5c7143b75260b",
+          "bytes": 16823
         }
       ]
     },
     {
       "slug": "onboarding",
       "ok": true,
-      "platform_version": 123,
+      "platform_version": 127,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "3a4a419b8e10e07a2ef98de26c4341764d53f900df949628bdfa39e76422d469",
@@ -695,7 +695,7 @@
     {
       "slug": "platform-alert",
       "ok": true,
-      "platform_version": 20,
+      "platform_version": 24,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "ef6559d9e44d3cfe383de27c66ded6ab7e6c0091c433f3c960ef045ff9f6f396",
@@ -711,7 +711,7 @@
     {
       "slug": "process-scheduled-pushes",
       "ok": true,
-      "platform_version": 13,
+      "platform_version": 17,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "e8b920b094fa17cccfd04e0624ad7a2a26cfdf563eb97f93717c4134893101d5",
@@ -727,23 +727,23 @@
     {
       "slug": "push-send-native",
       "ok": true,
-      "platform_version": 18,
+      "platform_version": 23,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "ea01949ff6dab7f56e914234b258557291a80656a35a4b70e935028d82687e93",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_1170aacd-aacc-4345-a29c-a938ba543572_11/source/index.ts",
+      "ezbr_sha256": "ca75f8921a38b2ea717146d5419f68a3a8aff9ad7995142c51052e8fbdfaf07f",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_1170aacd-aacc-4345-a29c-a938ba543572_21/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "c3e48244359ebb7276f671eb2465db8475cd52cbc94f49691e588002af1cbfc5",
-          "bytes": 12949
+          "sha256": "abd0737135995f69d11dfb5774639a6ec43f5a2c5f6b339fdb75d85f615c7efa",
+          "bytes": 19192
         }
       ]
     },
     {
       "slug": "re-engagement-scheduler",
       "ok": true,
-      "platform_version": 43,
+      "platform_version": 47,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "8280788a138f33b3c0d27009e808237605c43cd495d5d54a45dae2131935bb97",
@@ -764,23 +764,23 @@
     {
       "slug": "register-push-token",
       "ok": true,
-      "platform_version": 15,
+      "platform_version": 20,
       "verify_jwt": true,
       "status": "ACTIVE",
-      "ezbr_sha256": "83555212fec3de2e93829d94eb60939a56fd5f61052b761c2415a20adaca6560",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b4ea6023-0da0-4bcd-8e38-d416b769359d_1/source/index.ts",
+      "ezbr_sha256": "930552c08b911ccf45908688e0b89f11ae695c95b8f46730c317fc60fc85ca86",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_b4ea6023-0da0-4bcd-8e38-d416b769359d_18/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "c7ffd5dbdb748a74830938e3e098842c430772c1b9ff5bedfb39e243046892c1",
-          "bytes": 4662
+          "sha256": "0468fda93b87b8099fc379319d2b07fd5a18f42fcabeb3f5fa6dd0c10576cd75",
+          "bytes": 4766
         }
       ]
     },
     {
       "slug": "schedule-push",
       "ok": true,
-      "platform_version": 12,
+      "platform_version": 16,
       "verify_jwt": true,
       "status": "ACTIVE",
       "ezbr_sha256": "b95d86953e59bf87dc23f398f713f0028aa3408c128ecb0ca563f06d6ad28557",
@@ -796,7 +796,7 @@
     {
       "slug": "schema-snapshot-refresh",
       "ok": true,
-      "platform_version": 18,
+      "platform_version": 22,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "79bb34ddcb5f7b73718660e0b72947afe09761aad6b7d63c6aed6f33090705bd",
@@ -812,7 +812,7 @@
     {
       "slug": "seed-weekly-goals",
       "ok": true,
-      "platform_version": 12,
+      "platform_version": 16,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "ec99afe29f0a2d032b91a0f3abc3d6c5612f8d299c3f259a7deed745ba5d4634",
@@ -828,23 +828,23 @@
     {
       "slug": "send-email",
       "ok": true,
-      "platform_version": 36,
+      "platform_version": 41,
       "verify_jwt": false,
       "status": "ACTIVE",
-      "ezbr_sha256": "bd6c9a0e9a12412335acbb66e579d9076e0d57d26de509129a2aa7652962d482",
-      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_ef051b56-2b1d-412f-a367-f9ef10ba3806_20/source/index.ts",
+      "ezbr_sha256": "8e3ee7e1ca22c5400dc4bd7cb8f3ba641d704439c9543f7f661b55e2d78b65a1",
+      "entrypoint": "file:///tmp/user_fn_ixjfklpckgxrwjlfsaaz_ef051b56-2b1d-412f-a367-f9ef10ba3806_41/source/index.ts",
       "files": [
         {
           "name": "index.ts",
-          "sha256": "5343d96a9a2b3403bf29b2408dd66608628183be806a985b27c6ca2cdfb8d57a",
-          "bytes": 9206
+          "sha256": "d656ddc56f8035db8c40907248c7607fadd97abede39234796a95ea6bce3b10c",
+          "bytes": 9689
         }
       ]
     },
     {
       "slug": "send-journey-recap",
       "ok": true,
-      "platform_version": 27,
+      "platform_version": 31,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "e895c117a2a2bcf1116815982098214c076242c8714d0dfe00ac2ee77c0cef23",
@@ -860,7 +860,7 @@
     {
       "slug": "send-push",
       "ok": true,
-      "platform_version": 24,
+      "platform_version": 28,
       "verify_jwt": true,
       "status": "ACTIVE",
       "ezbr_sha256": "fc50b40a26b523ecefda733016cff62b16d4fa4592778904ccc046de4a5b551a",
@@ -876,7 +876,7 @@
     {
       "slug": "send-session-recap",
       "ok": true,
-      "platform_version": 27,
+      "platform_version": 31,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "646efe4cc7b238fddc27778db42730af2debf5a3f48a4ce2006e2e15b1478752",
@@ -892,7 +892,7 @@
     {
       "slug": "share-workout",
       "ok": true,
-      "platform_version": 25,
+      "platform_version": 29,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "8253f25290cff3506670901160d36f0a6f1df1ab8088e09218c347fef31671d6",
@@ -913,7 +913,7 @@
     {
       "slug": "streak-reminder",
       "ok": true,
-      "platform_version": 27,
+      "platform_version": 31,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "9bf22a19bf68f6c6fd7490ec561c209e5a14b7f79ec994409c9520ced47bd3f5",
@@ -929,7 +929,7 @@
     {
       "slug": "sync-health-data",
       "ok": true,
-      "platform_version": 26,
+      "platform_version": 30,
       "verify_jwt": true,
       "status": "ACTIVE",
       "ezbr_sha256": "354b2ef4d26a3a33e29c11193aaa93fd519c861b7674c8f1dd54bfc3fc68b05b",
@@ -950,7 +950,7 @@
     {
       "slug": "warm-ping",
       "ok": true,
-      "platform_version": 18,
+      "platform_version": 22,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "eeb9680682d426a0f2ac33a72967163b6ea4aaa01d790b3b19fb102d95257f7e",
@@ -966,7 +966,7 @@
     {
       "slug": "weekly-report",
       "ok": true,
-      "platform_version": 32,
+      "platform_version": 36,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "da144a2cc636a036b199ea8ce1126b14ad0df6aadd729fd860dfc6f4049c0483",
@@ -982,7 +982,7 @@
     {
       "slug": "wellbeing-checkin",
       "ok": true,
-      "platform_version": 70,
+      "platform_version": 74,
       "verify_jwt": true,
       "status": "ACTIVE",
       "ezbr_sha256": "39674e3322e59591e54e2bf54b89e366cc1ecb96ed9265494597515426b67f40",
@@ -998,7 +998,7 @@
     {
       "slug": "workout-library",
       "ok": true,
-      "platform_version": 23,
+      "platform_version": 27,
       "verify_jwt": false,
       "status": "ACTIVE",
       "ezbr_sha256": "4054088c498451ea0ce0d9d8401073fc3ba606c2d37fd4cbffba6b21156c4716",

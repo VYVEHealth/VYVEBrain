@@ -1,10 +1,14 @@
-// VYVE Health — send-email v4
+// VYVE Health — send-email v5
+// v5 (PM-1202): dual-auth like send-push v11 — the direct HTTP handler accepts the runtime
+//   SUPABASE_SERVICE_ROLE_KEY (sb_secret_*) OR the legacy JWT via LEGACY_SERVICE_ROLE_JWT (§23.7), so the
+//   live-runner box, pg_cron and Claude can send internal mail. Nothing else changed.
 // Changes from v3: Logo image replaces text "VYVE" in email header
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 const FROM_EMAIL = "team@vyvehealth.co.uk";
 const FROM_NAME = "VYVE Health";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const LEGACY_JWT = Deno.env.get("LEGACY_SERVICE_ROLE_JWT") ?? "";
 // Restrict direct HTTP handler to internal callers only
 const ALLOWED_ORIGINS = new Set([
   "https://online.vyvehealth.co.uk",
@@ -212,10 +216,11 @@ serve(async (req)=>{
   if (req.method === "OPTIONS") return new Response("ok", {
     headers: corsHeaders
   });
-  // Auth check — require service role key or valid internal bearer
+  // Auth check — require service role key (runtime sb_secret_* OR legacy JWT, §23.7 dual-auth)
   const authHeader = req.headers.get("Authorization") ?? "";
   const providedKey = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!providedKey || providedKey !== SERVICE_ROLE_KEY) {
+  const authorised = !!providedKey && (SERVICE_ROLE_KEY && providedKey === SERVICE_ROLE_KEY || LEGACY_JWT && providedKey === LEGACY_JWT);
+  if (!authorised) {
     return new Response(JSON.stringify({
       success: false,
       error: "Unauthorized"
@@ -234,7 +239,7 @@ serve(async (req)=>{
     const toEmail = body.to || "team@vyvehealth.co.uk";
     const toName = body.name || "VYVE Team";
     const subject = body.subject || "VYVE Health — send-email test";
-    const htmlBody = body.html || wrap(`${h2("Test email")}${p("send-email v4 is live. Logo header active.")}`);
+    const htmlBody = body.html || wrap(`${h2("Test email")}${p("send-email v5 is live. Dual-auth active.")}`);
     const tags = body.tags || [
       "test"
     ];

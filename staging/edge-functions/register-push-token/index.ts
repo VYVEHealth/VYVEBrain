@@ -1,5 +1,5 @@
-// VYVE Health — register-push-token v1
-// Called from the Capacitor iOS app on the PushNotifications 'registration' event.
+// VYVE Health — register-push-token v2 (PM-XXXX: + https://localhost — Android store-binary origin)
+// Called from the Capacitor app on the PushNotifications 'registration' event.
 // verify_jwt: true — Supabase validates the bearer token before invocation;
 // we then derive member_email from the JWT and upsert the device token by token (unique).
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
@@ -9,6 +9,7 @@ const ALLOWED_ORIGINS = new Set([
   'https://online.vyvehealth.co.uk',
   'https://www.vyvehealth.co.uk',
   'capacitor://localhost',
+  'https://localhost',
   'http://localhost'
 ]);
 function getCORSHeaders(req) {
@@ -18,7 +19,8 @@ function getCORSHeaders(req) {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Credentials': allowOrigin !== '*' ? 'true' : 'false'
+    'Access-Control-Allow-Credentials': allowOrigin !== '*' ? 'true' : 'false',
+    'Vary': 'Origin'
   };
 }
 async function getAuthEmail(req) {
@@ -137,7 +139,7 @@ serve(async (req)=>{
     });
   }
   const rows = await upsertRes.json();
-  console.log(`[register-push-token v1] registered token for ${email} platform=${platform} env=${environment} app_version=${app_version ?? '(none)'}`);
+  console.log(`[register-push-token v2] registered token for ${email} platform=${platform} env=${environment} app_version=${app_version ?? '(none)'}`);
   return new Response(JSON.stringify({
     ok: true,
     id: rows[0]?.id,
